@@ -2661,7 +2661,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const bar = () => host.querySelector('.importing-section mat-progress-bar');
       const line = () => host.querySelector('.importing-status');
-      const readings: (string | null | undefined)[][] = [];
+      const readings: (string | boolean | null | undefined)[][] = [];
 
       const progressSpy = spyOn(service.processingProgress, 'set').and.callThrough();
       // Captured before the spy stands in for it: the fake has to write the
@@ -2672,7 +2672,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         if (row) {
           setTimeout(() => {
             fixture.detectChanges();
-            readings.push([bar()?.getAttribute('aria-valuenow'), line()?.textContent?.trim()]);
+            readings.push([
+              bar()?.getAttribute('aria-valuenow'),
+              line()?.textContent?.trim(),
+              component.stepper.steps.get(1)?.completed,
+            ]);
           }, 0);
         }
       });
@@ -2691,10 +2695,12 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // confirm step renders and that the line is on screen while the write
       // runs, never the interpolated sentence. The placeholders inside it are
       // translation-keys.spec.ts's to guard.
-      expect(readings).toEqual([
-        ['50', translation.t('import.importingRow', { done: 1, total: 2 })],
-        ['100', translation.t('import.importingRow', { done: 2, total: 2 })]
-      ]);
+      expect(readings)
+        .withContext('a step already passed does not un-complete while the rows are written')
+        .toEqual([
+          ['50', translation.t('import.importingRow', { done: 1, total: 2 }), true],
+          ['100', translation.t('import.importingRow', { done: 2, total: 2 }), true]
+        ]);
       expect(progressSpy.calls.allArgs())
         .withContext('reset once, then once per row — never per file or per batch')
         .toEqual([[0], [50], [100]]);

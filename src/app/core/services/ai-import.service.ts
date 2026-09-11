@@ -120,9 +120,6 @@ export class AIImportService {
   // The confirm step renders this translated too, so the write's own progress
   // is a structured fact rather than a sentence the service wrote (ADR 0114).
   processingRow = signal<{ done: number; total: number } | null>(null);
-  // Written by confirmImport and read by nothing: the confirm step's line is
-  // processingRow. No template may bind this — it is an English sentence.
-  processingStatus = signal<string>('');
 
   // New signals for processing
   processingSource = signal<'cloud' | 'native' | null>(null);
@@ -1218,8 +1215,6 @@ export class AIImportService {
     sourceFiles?: File[],
     provenance?: ImportProvenance
   ): Promise<ImportHistory> {
-    this.isProcessing.set(true);
-    this.processingStatus.set('Saving transactions...');
     this.processingProgress.set(0);
 
     const selectedTransactions = transactions.filter(t => t.selected);
@@ -1422,8 +1417,11 @@ export class AIImportService {
       }]);
       throw error;
     } finally {
-      this.isProcessing.set(false);
-      // The row is a fact about a write in progress; it outlives none.
+      // The row is a fact about a write in progress and outlives none. The
+      // bar is zeroed where the write begins, in the same synchronous block
+      // as the wizard's seal, so a second write in one session never paints
+      // the previous one's full bar — and the bar is never seen emptying
+      // while it is still on screen.
       this.processingRow.set(null);
     }
 

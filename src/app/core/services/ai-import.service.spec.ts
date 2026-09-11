@@ -2438,6 +2438,30 @@ describe('AIImportService', () => {
       expect(progressSpy.calls.allArgs()).toEqual([[0], [50], [100]]);
     });
 
+    it('leaves the extraction\'s flag alone while it writes, and starts the next write\'s bar at zero', async () => {
+      let release!: (id: string) => void;
+      transactionService.addTransaction.and.returnValue(new Promise<string>(resolve => (release = resolve)));
+
+      const pending = service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+      expect(service.isProcessing()).toBeFalse();
+
+      release('txn-id');
+      await pending;
+
+      // Standing regression guard: the row outlives no write.
+      expect(service.processingRow()).toBeNull();
+
+      // Nothing resets the bar at the end of a write, so it sits at 100
+      // here. A second write must not inherit that — only its own head
+      // reset stands between it and a stale full bar.
+      transactionService.addTransaction.and.returnValue(new Promise<string>(resolve => (release = resolve)));
+      const second = service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+      expect(service.processingProgress()).toBe(0);
+
+      release('txn-id');
+      await second;
+    });
+
     describe('history read-back', () => {
       it('skips a null first emission and resolves on the record', async () => {
         // subscribeToDocument emits null while the write is still landing;
