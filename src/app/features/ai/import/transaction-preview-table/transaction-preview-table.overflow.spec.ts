@@ -538,6 +538,10 @@ describe('overflow guard: the import review card', () => {
     expect(caret.getBoundingClientRect().left)
       .withContext('caret paints after the label')
       .toBeGreaterThanOrEqual(label.getBoundingClientRect().right - 1);
+
+    expect(getComputedStyle(caret).display)
+      .withContext('the caret shows where the card is wide')
+      .not.toBe('none');
   });
 
   it('the caret trails the name under RTL too', () => {
@@ -1002,6 +1006,20 @@ describe('overflow guard: the import review card', () => {
     expect(parseFloat(getComputedStyle(label).fontSize))
       .withContext('scaled no further than the 12px floor')
       .toBeGreaterThanOrEqual(12);
+
+    const caret = host.querySelector('[data-row-id="r1"] .dropdown-icon') as HTMLElement;
+    expect(getComputedStyle(caret).display)
+      .withContext('the caret yields at phone width')
+      .toBe('none');
+
+    // Measured, not chosen: 5 lines with the caret still beside the name,
+    // 3 once it drops — the number the caret's own width buys back at this
+    // card width, for this fixture's name, nothing more.
+    const rects = document.createRange();
+    rects.selectNodeContents(label);
+    expect(rects.getClientRects().length)
+      .withContext('the caret\'s width is what the name gained, and the chip beside the amount cannot give it more than that; two lines needs the chip on a line of its own, which this wave did not take')
+      .toBeLessThanOrEqual(3);
   });
 });
 

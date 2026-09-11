@@ -108,6 +108,13 @@
 }
 
 .transaction-card {
+  // The phone layout below is a viewport query and never reads a card
+  // clipped narrower than the window (ADR 0110), so what the chip inside
+  // needs is the card's own width — a named container the chip queries, so
+  // the 240px probe and a real phone see the same chip. The card's width
+  // comes from the list rather than from its content, so sizing itself on
+  // a container query is safe here.
+  container: review-card / inline-size;
   display: flex;
   align-items: flex-start;
   gap: 10px;
