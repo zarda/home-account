@@ -751,8 +751,15 @@ r.getClientRects().length;
 reading, taken here at a real phone's width. Three is what the caret's
 width bought: the probe measured five lines with the caret standing and
 three without it, and two lines would need the chip on a line of its own, a
-layout this wave did not take. Record the label's measured box width in the
-run's notes, not here.
+layout this wave did not take. A run at a real 375px phone viewport saw the
+pass criterion met exactly, not just under it: the card **225px**, the
+label's box **68px** at the 12px floor, and the account's longest category
+name, *Hotels & Accommodation* (22 rendered characters), at **3** lines.
+
+Take that reading with the card on screen. A card read before it scrolls
+into view answers a collapsed **34px**, with a **0px** label, under
+viewport emulation — that is the pane's width, not the card's, so scroll
+the card into view before measuring it.
 
 One shot: the review card, question chip and open tag editor together.
 

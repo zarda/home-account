@@ -545,9 +545,9 @@ describe('overflow guard: the import review card', () => {
   });
 
   it('the caret trails the name under RTL too', () => {
-    // Same reading as above, flipped: the caret fix relies on a logical
-    // margin and Material's own trailing-icon rule under [dir=rtl], and this
-    // is the one place that direction is exercised.
+    // Same reading as above, flipped: the caret fix relies on Material's
+    // own trailing-icon rule under [dir=rtl], and this is the one place
+    // that direction is exercised.
     clip.style.width = '2400px';
     clip.setAttribute('dir', 'rtl');
     fixture.detectChanges();

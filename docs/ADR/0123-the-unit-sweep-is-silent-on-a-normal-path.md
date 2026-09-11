@@ -148,16 +148,28 @@ about something else.
 
 ## Known gaps
 
-- **The residue is real failure logs, and it is per file.** Measured after
-  the change, on the five touched files: `currency.service.spec.ts` 0 LOG /
-  0 WARN / 0 ERROR; `gemini.service.spec.ts` 28 / 0 / 32;
+- **The residue is real failure logs, whole-suite and per file.** The
+  before figures above are a whole-run count off the previous wave's
+  ladder against this same tree — exact for `ERROR:`/`WARN:`, approximate
+  for `LOG:`, said here rather than presented as exact. The same recipe
+  run on the finished branch is the after figure this record owes:
+  **40 `ERROR:`**, **38 `WARN:`** and **26 `LOG:`**, with `npm run test:ci`
+  at **5632 SUCCESS**. The recipe is `grep -cE "(^| )ERROR: "` (the same
+  pattern with `WARN:`/`LOG:` swapped in): `test:ci` prefixes every
+  captured line with the browser string, but a plain
+  `ng test --include=…` emits `LOG:` with no leading space at all, so a
+  single-spelling grep reads zero on a per-file run. The whole-suite
+  residue is genuine: 12 reclaimed-item warnings, 12 Gemini initialization
+  logs from a spec that supplies a key, 8 font 404s, and the simulated
+  failures specs deliberately raise (`Error: boom`). Measured after the
+  change, on the five touched files alone: `currency.service.spec.ts` 0
+  LOG / 0 WARN / 0 ERROR; `gemini.service.spec.ts` 28 / 0 / 32;
   `ai-strategy.service.spec.ts` 2 / 4 / 2;
   `offline-queue.service.spec.ts` 0 / 14 / 0;
-  `camera-capture.component.spec.ts` 0 / 6 / 2. Each was traced to a
-  deliberately simulated failure in a case that is about the failure — a
-  provider rejecting, a database refusing — rather than to leftover
-  narration. The before figures above are a whole-run count; the matching
-  after figure is taken from the same command and reported with the change.
+  `camera-capture.component.spec.ts` 0 / 6 / 2 — each traced to a
+  deliberately simulated failure in a case that is about the failure, a
+  provider rejecting or a database refusing, rather than to leftover
+  narration.
 - **Lines of exactly the same shape stand in the same files.** The queue
   still logs *Cleared completed items*, *Cleared failed items*, a queued
   image and a completed sync; the strategy service still logs *Models
