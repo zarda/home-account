@@ -14,6 +14,15 @@ been destroyed` log lines carrying no app frames at all — four thrown
 errors, each printed twice (Karma logs an `ERROR:` line and a bare `Error:`
 line per event). Nothing failed, and nothing had failed for a long time.
 
+*Corrected by
+[ADR 0123](0123-the-unit-sweep-is-silent-on-a-normal-path.md): "pristine" was
+true of the unit sweep's failures and never of its output — the same sweep
+printed about 480 `ERROR:`, 141 `WARN:` and about 500 `LOG:` lines from
+services narrating a path their specs had chosen (measured 2026-09-11).
+Eleven of those call sites are gone; what is left in the files they were in
+traces to deliberately simulated failures rather than to narration, and 0123
+carries the per-file figures.*
+
 **Both classes come from the same wrapper.** Every `@angular/fire` export is
 zone-wrapped so it can hop in and out of `NgZone`; the wrapper binds any
 function argument to the `EnvironmentInjector` that was active *at the call*.

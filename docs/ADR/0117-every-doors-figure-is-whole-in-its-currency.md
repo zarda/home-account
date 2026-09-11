@@ -186,4 +186,6 @@ count on the confirm summary.
   `applyCurrencyToSelected` rounds every selected row, so a batch of sub-unit
   rows switched to a zero-decimal currency becomes that many unfilled rows in
   one gesture, with only the placeholders and the held Continue to say so —
-  the per-row chip's trade-off, magnified. Tracked in #415.
+  the per-row chip's trade-off, magnified. Tracked in #415. Closed by
+  [ADR 0121](0121-a-bulk-currency-switch-says-how-many-rows-it-blanked.md),
+  #415.

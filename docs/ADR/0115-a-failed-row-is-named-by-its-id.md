@@ -133,3 +133,5 @@ verdict for a second attempt.
   submitted, never saved — leaves with the saved ones, and the reviewer's
   only way back to it is the file. Pre-existing: the position mapping drew
   from the selected subset too. Out of this record's scope; tracked in #415.
+  Closed by
+  [ADR 0120](0120-a-partial-import-keeps-every-row-it-did-not-write.md), #415.

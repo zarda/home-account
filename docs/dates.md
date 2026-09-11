@@ -208,6 +208,17 @@ consecutive periods cannot overlap or leave a gap.
   `npm run smoke:dates` (ADR 0050). Anything asserting a calendar day or a
   window bound belongs in one of the two lists; a spec left out of both is
   only ever run at one offset.
+- `import-dto.utils.spec.ts` is left out **on purpose**, and this is the
+  place that says so, so it is not re-filed. Every `resolveImportDate` case
+  there freezes the clock with `jasmine.clock().mockDate` and then compares
+  an instant, or delegates to `parseDateInput` and compares against its
+  answer for the same string; the function's only calendar arithmetic is
+  built from the same frozen `now` on both sides. No zone can change an
+  outcome, so running it under the two zones would prove nothing it does not
+  already prove at one offset
+  ([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md),
+  restated by
+  [ADR 0123](ADR/0123-the-unit-sweep-is-silent-on-a-normal-path.md)).
 
 ### The audit greps
 

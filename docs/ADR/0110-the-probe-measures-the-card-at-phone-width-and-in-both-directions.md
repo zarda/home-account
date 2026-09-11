@@ -197,7 +197,9 @@ Two cases join the overflow probe:
 - **Material projects both `mat-icon`s through the leading slot**, so the
   caret renders before the category name rather than after it. Unrelated to
   the width, spotted while reading the chip, and filed as its own follow-up
-  (`iconPositionEnd` is the fix).
+  (`iconPositionEnd` is the fix). Closed by
+  [ADR 0122](0122-the-chips-caret-trails-the-name-and-drops-at-phone-width.md),
+  #413.
 
 ## Known gaps
 

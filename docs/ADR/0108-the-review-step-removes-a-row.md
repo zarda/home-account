@@ -1,6 +1,6 @@
 # 108. The review step removes a row
 
-**Status:** Accepted, implemented; amended for #400 (2026-09-11) · **Date:** 2026-09-10 · **Issues:** #391
+**Status:** Accepted, implemented; amended for #400 and #415 (2026-09-11) · **Date:** 2026-09-10 · **Issues:** #391
 
 Reference documentation lives in [../import-fields.md](../import-fields.md)
 and [../receipt-import.md](../receipt-import.md).
@@ -219,3 +219,21 @@ One asymmetry is left standing: `onFilesSelected` resets
 `extractedTransactions` to `[]` without resetting the id set, where
 `processFiles` resets both. It is inert — the review step is unreachable until
 `processFiles` has run and reset both — and it is not part of this amendment.
+
+## Amended for #415 (2026-09-11)
+
+**The set is now cleared where the batch is cleared.** The asymmetry left
+standing above is gone: `onFilesSelected` sets `receiptRowIds` to an empty
+`Set` beside its `extractedTransactions.set([])`.
+
+This is consistency, not a fix. Everything that made the asymmetry inert
+still holds — the review step is unreachable until `processFiles` has run and
+reset both, and the set is only ever read against rows that are present, all
+of which this method has just emptied. What changes is that the method reads
+as what it is. A reader of `onFilesSelected` had to go to `processFiles` to
+learn that the other half of the batch is cleared there, and "inert because
+of something two methods away" is exactly the kind of claim that stops being
+true without anyone editing the line it was made about.
+
+Recorded in [ADR 0121](0121-a-bulk-currency-switch-says-how-many-rows-it-blanked.md),
+with the bulk-switch message it shipped beside.

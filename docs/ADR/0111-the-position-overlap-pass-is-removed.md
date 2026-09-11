@@ -99,7 +99,8 @@ deletion cannot half-land.
   which is why the removal is a record rather than a chore.
 - **`checkDuplicates` leaves `LOG:` lines in every Karma run.** Two
   `console.log` calls, unrelated to this pass and untouched by it, brush the
-  pristine-output rule. Noted rather than fixed here.
+  pristine-output rule. Noted rather than fixed here. Closed by #402
+  (2026-09-11) — the two calls are gone.
 - **The within-batch spec helper builds ids with `Math.random()`.** Also
   pre-existing, also untouched; it makes a failure's ids meaningless in the
   output.
