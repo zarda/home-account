@@ -108,6 +108,7 @@ describe('truncation guard: a label that cannot wrap', () => {
     // clipped that — turning a shortened label into a hidden one.
     const button = host.querySelector('.category-button') as HTMLElement;
     const dropdown = host.querySelector('.dropdown-icon') as HTMLElement;
+    const label = host.querySelector('.category-name') as HTMLElement;
     const b = button.getBoundingClientRect();
     const d = dropdown.getBoundingClientRect();
 
@@ -116,6 +117,9 @@ describe('truncation guard: a label that cannot wrap', () => {
     expect(b.right)
       .withContext('chip inside the row that holds it')
       .toBeLessThanOrEqual((host.querySelector('.chip-clip') as HTMLElement).getBoundingClientRect().right + 1);
+    expect(d.left)
+      .withContext('the caret paints after the name')
+      .toBeGreaterThanOrEqual(label.getBoundingClientRect().right - 1);
   });
 });
 

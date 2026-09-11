@@ -93,12 +93,17 @@
   white-space: nowrap;
 }
 
+// The caret sits in Material's trailing ng-content slot, so its spacing is
+// Material's own `.mdc-button__label + .mat-icon` rule: 8px toward the
+// label, 8px pulled back into the end padding, mirrored under [dir=rtl] by
+// Material's own stylesheet. A margin declared here would lose to it at
+// (0,3,0) anyway — the same fight a leading-slot `margin-inline-start: -2px`
+// was already losing at (0,2,0) against Material's leading-icon rule.
 .dropdown-icon {
   font-size: var(--text-xl);
   width: 1em;
   height: 1em;
   line-height: 1em;
-  margin-inline-start: -2px;
   opacity: 0.7;
 }
 

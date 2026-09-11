@@ -523,6 +523,43 @@ describe('overflow guard: the import review card', () => {
         .withContext(`tag chip "${chip.textContent?.trim()}" stays chip-sized beside the trigger`)
         .toBeLessThanOrEqual(28);
     }
+
+    // Caret order is read only here and in the RTL case beside it: the next
+    // pass hides the caret behind a container query below phone width, which
+    // would make a reading in the 288px or 262px cases above wrong on
+    // arrival. r1's categories are empty here, so its chip reads the Unknown
+    // fallback — fine for an order/geometry reading, and short enough that
+    // appFitText never engages, so there is nothing to flush.
+    const label = host.querySelector('[data-row-id="r1"] .category-name') as HTMLElement;
+    const caret = host.querySelector('[data-row-id="r1"] .dropdown-icon') as HTMLElement;
+    expect(!!(label.compareDocumentPosition(caret) & Node.DOCUMENT_POSITION_FOLLOWING))
+      .withContext('caret after the category label in DOM order')
+      .toBeTrue();
+    expect(caret.getBoundingClientRect().left)
+      .withContext('caret paints after the label')
+      .toBeGreaterThanOrEqual(label.getBoundingClientRect().right - 1);
+  });
+
+  it('the caret trails the name under RTL too', () => {
+    // Same reading as above, flipped: the caret fix relies on a logical
+    // margin and Material's own trailing-icon rule under [dir=rtl], and this
+    // is the one place that direction is exercised.
+    clip.style.width = '2400px';
+    clip.setAttribute('dir', 'rtl');
+    fixture.detectChanges();
+
+    const label = host.querySelector('[data-row-id="r1"] .category-name') as HTMLElement;
+    const caret = host.querySelector('[data-row-id="r1"] .dropdown-icon') as HTMLElement;
+    const labelRect = label.getBoundingClientRect();
+    const caretRect = caret.getBoundingClientRect();
+    // Finite first, the way the hit-box RTL case above guards it: a missing
+    // inset reads as NaN, and NaN comparisons fail without naming a side.
+    expect([labelRect.left, caretRect.right].every(Number.isFinite))
+      .withContext('label and caret both resolve to real edges under rtl')
+      .toBeTrue();
+    expect(caretRect.right)
+      .withContext('caret trails the name under rtl too')
+      .toBeLessThanOrEqual(labelRect.left + 1);
   });
 
   it('puts the date on a control of its own without wedging the picker between the chips', () => {
