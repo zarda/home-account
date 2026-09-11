@@ -184,7 +184,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Service bindings
   isProcessing = this.importService.isProcessing;
-  processingStatus = this.importService.processingStatus;
+  processingStep = this.importService.processingStep;
   processingProgress = this.importService.processingProgress;
   processingRow = this.importService.processingRow;
   categories = this.categoryService.categories;
@@ -205,6 +205,25 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   imagePreviewUrls = signal<{ name: string; url: string }[]>([]);
 
   // Computed
+  /**
+   * The processing step's line, resolved from the name the service set.
+   *
+   * A switch of literal keys rather than a lookup table: check-i18n.mjs walks
+   * literal `t(` arguments and is blind to a key held in a variable, so a
+   * table would take every one of these out of its sight.
+   */
+  processingStepText = computed(() => {
+    const step = this.processingStep();
+    switch (step?.name) {
+      case 'reading': return this.t('import.readingFile');
+      case 'readingImage': return this.t('import.readingImageOf', { done: step.done, total: step.total });
+      case 'extracting': return this.t('import.extractingData');
+      case 'converting': return this.t('import.convertingRows');
+      case 'categorizing': return this.t('import.categorizingTransactions');
+      case 'duplicates': return this.t('import.checkingDuplicates');
+      default: return '';
+    }
+  });
   uploadComplete = computed(() => this.selectedFiles().length > 0);
   processingComplete = computed(() =>
     !this.isProcessing() && this.extractedTransactions().length > 0

@@ -2882,4 +2882,41 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     },
     30000
   );
+
+  it(
+    "the processing step's line is the catalog's, not the service's sentence",
+    async () => {
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      const translation = TestBed.inject(TranslationService);
+      const service = TestBed.inject(AIImportService);
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+
+      // Every mat-step body is eager — none uses matStepContent — so the
+      // processing card is in the DOM without navigating to it, and the two
+      // signals the real service would write are written here directly
+      // instead of running a door to reach one step of it.
+      service.processingStep.set({ name: 'categorizing' });
+      service.isProcessing.set(true);
+      fixture.detectChanges();
+
+      // Karma loads no catalog, so the line is the bare key on both sides of
+      // the comparison: what this pins is which key the step renders and that
+      // it is on screen, never the sentence the catalogs carry.
+      expect(host.querySelector('.processing-status')?.textContent?.trim())
+        .toBe(translation.t('import.categorizingTransactions'));
+
+      service.isProcessing.set(false);
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
 });

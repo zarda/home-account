@@ -186,7 +186,7 @@ describe('AIImportService', () => {
   describe('initial state', () => {
     it('should start idle', () => {
       expect(service.isProcessing()).toBeFalse();
-      expect(service.processingStatus()).toBe('');
+      expect(service.processingStep()).toBeNull();
       expect(service.processingProgress()).toBe(0);
       expect(service.processingSource()).toBeNull();
     });
@@ -1282,6 +1282,30 @@ describe('AIImportService', () => {
       expect(result.transactions.map(t => t.imageMetadata?.receiptId)).toEqual([1, 2]);
     });
 
+    it('names each image as it is read', async () => {
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+      ]));
+
+      await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'),
+        makeFile('b.png', 'image/png')
+      ]);
+
+      // This is the only step that carries figures, and it carries them as
+      // figures: the wizard interpolates them into the catalog's line, which
+      // a counter the service had already written into a sentence could not.
+      const reads = setSpy.calls.allArgs()
+        .map(([step]) => step)
+        .filter(step => step?.name === 'readingImage');
+      expect(reads).toEqual([
+        { name: 'readingImage', done: 1, total: 2 },
+        { name: 'readingImage', done: 2, total: 2 }
+      ]);
+    });
+
     it('should throw when no provider is configured', async () => {
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
       await expectAsync(
@@ -1893,17 +1917,29 @@ describe('AIImportService', () => {
     });
 
     it('names the categorization step for what it does', async () => {
-      const setSpy = spyOn(service.processingStatus, 'set').and.callThrough();
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
       exportService.importFromCSV.and.returnValue(csvRows());
 
       await service.importFromCSV(makeFile('data.csv', 'text/csv'));
 
-      const statuses = setSpy.calls.allArgs().map(([status]) => status);
+      const names = setSpy.calls.allArgs().map(([step]) => step?.name);
       // Whichever rung answers — memory, model or the flagged floor — the
-      // step is categorization; the old string claimed an AI call the path
-      // never made.
-      expect(statuses).toContain('Categorizing transactions...');
-      expect(statuses).not.toContain('Categorizing with AI...');
+      // step is categorization; the string this replaced claimed an AI call
+      // the path never made.
+      expect(names).toContain('categorizing');
+      expect(names.indexOf('duplicates'))
+        .withContext('the duplicate check follows the categorization it grades')
+        .toBeGreaterThan(names.indexOf('categorizing'));
+    });
+
+    it('clears the step when the door closes', async () => {
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      // The step names what a door is doing; once the door has closed there
+      // is nothing to name, and the wizard's line goes with it.
+      expect(service.processingStep()).toBeNull();
     });
 
     it('never offers a currency suggestion for a fallen-back row', async () => {

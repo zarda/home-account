@@ -12,7 +12,7 @@ import { DuplicateDetectionService } from '../../../../core/services/duplicate-d
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
-import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult } from '../../../../models';
+import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult, ProcessingStep } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
@@ -95,7 +95,7 @@ describe('ImportWizardComponent', () => {
   beforeEach(async () => {
     mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary', 'baseCurrency'], {
       isProcessing: signal(false),
-      processingStatus: signal(''),
+      processingStep: signal(null),
       processingProgress: signal(0),
       processingRow: signal(null)
     });
@@ -225,6 +225,35 @@ describe('ImportWizardComponent', () => {
       // import-wizard.smoke.spec.ts.
       expect(component.processingRow).toBe(mockImportService.processingRow);
       expect(component.processingProgress).toBe(mockImportService.processingProgress);
+    });
+  });
+
+  describe('processingStepText', () => {
+    // The fake TranslationService echoes the key it was handed, so every
+    // reading below is the key the step resolved to and never the sentence:
+    // which line each step reads is this file's to pin, the wording is the
+    // catalogs'.
+    const resolve = (step: ProcessingStep | null): string => {
+      mockImportService.processingStep.set(step);
+      return component.processingStepText();
+    };
+
+    it('says nothing while no door is open', () => {
+      expect(resolve(null)).toBe('');
+    });
+
+    it('reads each step off the catalogs', () => {
+      expect(resolve({ name: 'reading' })).toBe('import.readingFile');
+      expect(resolve({ name: 'extracting' })).toBe('import.extractingData');
+      expect(resolve({ name: 'converting' })).toBe('import.convertingRows');
+      expect(resolve({ name: 'categorizing' })).toBe('import.categorizingTransactions');
+      expect(resolve({ name: 'duplicates' })).toBe('import.checkingDuplicates');
+    });
+
+    it('hands the image counter to its line as parameters', () => {
+      expect(resolve({ name: 'readingImage', done: 1, total: 2 })).toBe('import.readingImageOf');
+      expect(mockTranslationService.t)
+        .toHaveBeenCalledWith('import.readingImageOf', { done: 1, total: 2 });
     });
   });
 

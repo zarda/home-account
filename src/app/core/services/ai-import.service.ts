@@ -52,6 +52,7 @@ import {
   ImportSource,
   ImportFileType,
   DuplicateCheck,
+  ProcessingStep,
   RecurringTransaction,
   Transaction,
   TransactionLocation,
@@ -111,11 +112,17 @@ export class AIImportService {
 
   // Processing state signals
   isProcessing = signal<boolean>(false);
-  processingStatus = signal<string>('');
+  // Named, never narrated: the processing step's line is a surface the user
+  // reads, so it lives in the catalogs and the wizard resolves this name
+  // through them (ADR 0036).
+  processingStep = signal<ProcessingStep | null>(null);
   processingProgress = signal<number>(0);
-  // The confirm step renders this translated, so the write's progress is a
-  // structured fact rather than an English sentence like processingStatus.
+  // The confirm step renders this translated too, so the write's own progress
+  // is a structured fact rather than a sentence the service wrote (ADR 0114).
   processingRow = signal<{ done: number; total: number } | null>(null);
+  // Written by confirmImport and read by nothing: the confirm step's line is
+  // processingRow. No template may bind this — it is an English sentence.
+  processingStatus = signal<string>('');
 
   // New signals for processing
   processingSource = signal<'cloud' | 'native' | null>(null);
@@ -163,7 +170,7 @@ export class AIImportService {
     }
 
     this.isProcessing.set(true);
-    this.processingStatus.set('Reading image...');
+    this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(10);
     this.processingSource.set(null);
 
@@ -172,21 +179,21 @@ export class AIImportService {
 
       // Try using strategy service
       try {
-        this.processingStatus.set('Processing with AI...');
+        this.processingStep.set({ name: 'extracting' });
         this.processingProgress.set(30);
 
         const strategyResult = await this.strategyService.processReceipt(file);
         this.processingSource.set(strategyResult.source);
 
         if (strategyResult.transactions.length > 0) {
-          this.processingStatus.set('Categorizing transactions...');
+          this.processingStep.set({ name: 'categorizing' });
           this.processingProgress.set(60);
 
           const categorized = this.convertStrategyResultToCategories(strategyResult);
           const suggested = await this.suggestTagsFor(categorized, history);
           const offered = await this.attachRecurringMatches(suggested);
 
-          this.processingStatus.set('Checking for duplicates...');
+          this.processingStep.set({ name: 'duplicates' });
           this.processingProgress.set(80);
 
           const duplicates = await this.duplicateService.checkDuplicates(offered);
@@ -218,7 +225,7 @@ export class AIImportService {
 
       const imageBase64 = await this.fileToBase64(file);
 
-      this.processingStatus.set('Extracting transactions with cloud AI...');
+      this.processingStep.set({ name: 'extracting' });
       this.processingProgress.set(30);
       this.processingSource.set('cloud');
 
@@ -228,7 +235,7 @@ export class AIImportService {
         'AI extraction timed out. Please try again.'
       );
 
-      this.processingStatus.set('Categorizing transactions...');
+      this.processingStep.set({ name: 'categorizing' });
       this.processingProgress.set(60);
 
       // The one categorizeTransactions call site that is a real receipt
@@ -240,7 +247,7 @@ export class AIImportService {
       const suggested = await this.suggestTagsFor(categorized, history);
       const offered = await this.attachRecurringMatches(suggested);
 
-      this.processingStatus.set('Checking for duplicates...');
+      this.processingStep.set({ name: 'duplicates' });
       this.processingProgress.set(80);
 
       const duplicates = await this.duplicateService.checkDuplicates(offered);
@@ -256,6 +263,7 @@ export class AIImportService {
       return result;
     } finally {
       this.isProcessing.set(false);
+      this.processingStep.set(null);
       this.processingSource.set(null);
     }
   }
@@ -287,7 +295,7 @@ export class AIImportService {
 
     const startedAt = performance.now();
     this.isProcessing.set(true);
-    this.processingStatus.set('Reading statement...');
+    this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(10);
     this.processingSource.set('cloud');
     // Stays null until a request is actually issued, the same discipline
@@ -312,13 +320,13 @@ export class AIImportService {
         );
       }
 
-      this.processingStatus.set('Categorizing transactions...');
+      this.processingStep.set({ name: 'categorizing' });
       this.processingProgress.set(60);
       const categorized = await this.categorizeTransactions(extracted);
       const suggested = await this.suggestTagsFor(categorized, history);
       const offered = await this.attachRecurringMatches(suggested);
 
-      this.processingStatus.set('Checking for duplicates...');
+      this.processingStep.set({ name: 'duplicates' });
       this.processingProgress.set(80);
       const duplicates = await this.duplicateService.checkDuplicates(offered);
       const marked = this.duplicateService.markDuplicates(offered, duplicates);
@@ -337,6 +345,7 @@ export class AIImportService {
       throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
       this.isProcessing.set(false);
+      this.processingStep.set(null);
       this.processingSource.set(null);
     }
   }
@@ -484,7 +493,7 @@ export class AIImportService {
     this.analytics.trackAiAssistUsed({ feature: 'receipt_scan' });
 
     this.isProcessing.set(true);
-    this.processingStatus.set('Reading images...');
+    this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(5);
     // Stays null until the extraction request is actually issued, the same
     // discipline AIStrategyService.runProcessing keeps: a failure in the
@@ -498,14 +507,14 @@ export class AIImportService {
       // Convert all files to base64
       const imageBase64Array: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        this.processingStatus.set(`Reading image ${i + 1} of ${files.length}...`);
+        this.processingStep.set({ name: 'readingImage', done: i + 1, total: files.length });
         this.processingProgress.set(5 + Math.round((i / files.length) * 20));
         const base64 = await this.fileToBase64(files[i]);
         // Extract just the base64 data part
         imageBase64Array.push(base64);
       }
 
-      this.processingStatus.set('Extracting items from all images with AI...');
+      this.processingStep.set({ name: 'extracting' });
       this.processingProgress.set(30);
       provider = this.strategyService.receiptProvider();
 
@@ -520,7 +529,7 @@ export class AIImportService {
       // call just awaited, and every later provider call clears it (#331).
       const answerIncomplete = this.cloudLLMProvider.answerWasIncomplete();
 
-      this.processingStatus.set('Categorizing transactions...');
+      this.processingStep.set({ name: 'categorizing' });
       this.processingProgress.set(60);
 
       // Consolidate line items into a single receipt transaction. The base
@@ -536,7 +545,7 @@ export class AIImportService {
       const suggested = await this.suggestTagsFor(categorized, history);
       const offered = await this.attachRecurringMatches(suggested);
 
-      this.processingStatus.set('Checking for duplicates...');
+      this.processingStep.set({ name: 'duplicates' });
       this.processingProgress.set(80);
 
       const duplicates = await this.duplicateService.checkDuplicates(offered);
@@ -556,6 +565,7 @@ export class AIImportService {
       throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
       this.isProcessing.set(false);
+      this.processingStep.set(null);
     }
   }
 
@@ -915,7 +925,7 @@ export class AIImportService {
     this.analytics.trackAiAssistUsed({ feature: 'pdf_import' });
 
     this.isProcessing.set(true);
-    this.processingStatus.set('Reading PDF...');
+    this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(10);
     this.processingSource.set('cloud');
 
@@ -927,7 +937,7 @@ export class AIImportService {
         throw new Error('No pages could be read from this PDF.');
       }
 
-      this.processingStatus.set('Extracting transactions with AI...');
+      this.processingStep.set({ name: 'extracting' });
       this.processingProgress.set(30);
 
       // The provider method, not the sibling image import: that one tags its
@@ -944,13 +954,13 @@ export class AIImportService {
         );
       }
 
-      this.processingStatus.set('Categorizing transactions...');
+      this.processingStep.set({ name: 'categorizing' });
       this.processingProgress.set(60);
       const categorized = await this.categorizeTransactions(extracted);
       const suggested = await this.suggestTagsFor(categorized, history);
       const offered = await this.attachRecurringMatches(suggested);
 
-      this.processingStatus.set('Checking for duplicates...');
+      this.processingStep.set({ name: 'duplicates' });
       this.processingProgress.set(80);
 
       const duplicates = await this.duplicateService.checkDuplicates(offered);
@@ -968,6 +978,7 @@ export class AIImportService {
       return result;
     } finally {
       this.isProcessing.set(false);
+      this.processingStep.set(null);
       this.processingSource.set(null);
     }
   }
@@ -977,7 +988,7 @@ export class AIImportService {
    */
   async importFromCSV(file: File): Promise<ImportResult> {
     this.isProcessing.set(true);
-    this.processingStatus.set('Reading CSV...');
+    this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(10);
 
     try {
@@ -986,10 +997,10 @@ export class AIImportService {
       // Use existing CSV parser from export service
       const importedTransactions = await this.exportService.importFromCSV(file);
 
-      this.processingStatus.set('Converting transactions...');
+      this.processingStep.set({ name: 'converting' });
       this.processingProgress.set(30);
 
-      this.processingStatus.set('Categorizing transactions...');
+      this.processingStep.set({ name: 'categorizing' });
       this.processingProgress.set(50);
 
       // Convert to ExtractedTransaction format. Mapped straight off the parsed
@@ -1033,7 +1044,7 @@ export class AIImportService {
       const suggested = await this.suggestTagsFor(categorized, history);
       const offered = await this.attachRecurringMatches(suggested);
 
-      this.processingStatus.set('Checking for duplicates...');
+      this.processingStep.set({ name: 'duplicates' });
       this.processingProgress.set(80);
 
       const duplicates = await this.duplicateService.checkDuplicates(offered);
@@ -1044,6 +1055,7 @@ export class AIImportService {
       return this.buildImportResult(file, 'csv', 'generic_csv', markedTransactions, duplicates);
     } finally {
       this.isProcessing.set(false);
+      this.processingStep.set(null);
     }
   }
 
@@ -1052,7 +1064,7 @@ export class AIImportService {
    */
   async importFromJSON(file: File): Promise<ImportResult> {
     this.isProcessing.set(true);
-    this.processingStatus.set('Reading JSON...');
+    this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(20);
 
     try {
@@ -1063,7 +1075,7 @@ export class AIImportService {
         throw new Error('Invalid backup format: missing transactions array');
       }
 
-      this.processingStatus.set('Processing transactions...');
+      this.processingStep.set({ name: 'converting' });
       this.processingProgress.set(50);
 
       const baseCurrency = baseCurrencyOf(this.authService.currentUser());
@@ -1110,7 +1122,7 @@ export class AIImportService {
         }
       );
 
-      this.processingStatus.set('Checking for duplicates...');
+      this.processingStep.set({ name: 'duplicates' });
       this.processingProgress.set(80);
 
       const duplicates = await this.duplicateService.checkDuplicates(categorized);
@@ -1121,6 +1133,7 @@ export class AIImportService {
       return this.buildImportResult(file, 'json', 'backup_json', markedTransactions, duplicates);
     } finally {
       this.isProcessing.set(false);
+      this.processingStep.set(null);
     }
   }
 

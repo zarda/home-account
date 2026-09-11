@@ -270,6 +270,16 @@ export interface MultiImageMetadata {
   imageIds: string[];              // Ordered list of image identifiers
 }
 
+/**
+ * What an import door is doing right now, named rather than narrated: the
+ * wizard resolves the name through the catalogs, because a line the user
+ * reads lives there (ADR 0036) and a door has no business writing English.
+ * One step also carries the figures its line interpolates.
+ */
+export type ProcessingStep =
+  | { name: 'reading' | 'extracting' | 'converting' | 'categorizing' | 'duplicates' }
+  | { name: 'readingImage'; done: number; total: number };
+
 export interface ImportResult {
   source: ImportSource;
   fileType: ImportFileType;
