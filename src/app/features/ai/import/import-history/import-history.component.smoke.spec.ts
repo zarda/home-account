@@ -1,13 +1,17 @@
 // Import-history shortcut smoke test: proves the three-way branch (nothing /
 // direct button / positional menu) against records that actually round-
 // tripped through Firestore, not the hand-built fixture the unit spec
-// constructs. Two things only this file can show: that a raw setDoc missing
-// `transactionIds` — the shape of every record written before this field
-// existed — passes the real import-history rules and renders no shortcut at
-// all, and that the ids the Router receives are the ones a real
+// constructs. Three things only this file can show: that a raw setDoc
+// missing `transactionIds` — the shape of every record written before this
+// field existed — passes the real import-history rules and renders no
+// shortcut at all; that the ids the Router receives are the ones a real
 // subscribeToCollection mapping actually attached, not just an array literal
-// a mock handed back. The unit spec overrides nothing here — ImportHistory-
-// Component's own template and its own MatMenuModule import are what render.
+// a mock handed back; and that a record missing `totalIncome`/
+// `totalExpenses` and `totalsByCurrency` alike also passes the rules and
+// renders a zero through the real `CurrencyService`, never the `NaN` an
+// unguarded `Intl.NumberFormat` call would produce. The unit spec overrides
+// nothing here — ImportHistoryComponent's own template and its own
+// MatMenuModule import are what render.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -75,7 +79,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     // validate userId/importedAt/source/fileType/fileName/status on create,
     // and accept transactionIds only as a list when present) — no
     // ImportHistoryService call, no AI provider, no confirmImport run behind
-    // it. Three distinct fileNames so each test can find its own card
+    // it. Four distinct fileNames so each test can find its own card
     // without depending on query order.
     const legacy: Omit<ImportHistory, 'id'> = {
       userId: uid,
@@ -129,11 +133,30 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       status: 'completed',
       transactionIds: ['smoke-shortcut-a', 'smoke-shortcut-b', 'smoke-shortcut-c']
     };
+    const bareTotals: Omit<ImportHistory, 'id' | 'totalIncome' | 'totalExpenses'> = {
+      userId: uid,
+      importedAt: Timestamp.now(),
+      source: 'csv',
+      fileType: 'generic_csv',
+      fileName: 'smoke-bare-totals.csv',
+      fileSize: 1024,
+      transactionCount: 2,
+      successCount: 2,
+      skippedCount: 0,
+      errorCount: 0,
+      duplicatesSkipped: 0,
+      status: 'completed'
+      // totalIncome/totalExpenses/totalsByCurrency intentionally absent:
+      // `importCreateValid` requires only userId/importedAt/source/fileType/
+      // fileName/status, so this shape — older than either total scheme, a
+      // restore, or a write from outside the app — passes create as-is.
+    };
 
     await Promise.all([
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-legacy`), legacy),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-single`), single),
-      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-batch`), batch)
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-batch`), batch),
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-bare-totals`), bareTotals)
     ]);
   });
 
@@ -189,8 +212,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a legacy record renders no shortcut', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 3,
-      'all three seeded records');
+      () => fixture.componentInstance.importHistory().length === 4,
+      'all four seeded records');
 
     const card = cardFor('smoke-legacy-statement.csv');
     // Delete is always there; a legacy record with no transactionIds joins
@@ -200,8 +223,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a one-transaction record's button navigates with its stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 3,
-      'all three seeded records');
+      () => fixture.componentInstance.importHistory().length === 4,
+      'all four seeded records');
 
     const card = cardFor('smoke-single-receipt.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -219,8 +242,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a batch record's menu holds one entry per stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 3,
-      'all three seeded records');
+      () => fixture.componentInstance.importHistory().length === 4,
+      'all four seeded records');
 
     const card = cardFor('smoke-batch-receipts.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -240,5 +263,22 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       ['/transactions'],
       { queryParams: { tx: 'smoke-shortcut-c' } }
     );
+  }, 20000);
+
+  it('a record with neither total renders a zero, not NaN', async () => {
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 4,
+      'all four seeded records');
+
+    // The seeding `setDoc` already resolving is the proof the rules took
+    // the write; this is the other half — what the real CurrencyService
+    // does with what they let through.
+    const card = cardFor('smoke-bare-totals.csv');
+    const incomeValue = card.querySelector('.stat.income .value');
+    const expenseValue = card.querySelector('.stat.expense .value');
+
+    expect(incomeValue?.textContent).toContain('$0.00');
+    expect(expenseValue?.textContent).toContain('$0.00');
+    expect(card.textContent).not.toContain('NaN');
   }, 20000);
 });

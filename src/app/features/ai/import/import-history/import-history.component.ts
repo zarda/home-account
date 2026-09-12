@@ -223,7 +223,13 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
       .filter(total => total[kind] > 0)
       .map(total => this.currencyService.formatCurrency(total[kind], total.currency));
     if (perCurrency.length) return perCurrency;
-    const legacy = kind === 'income' ? item.totalIncome : item.totalExpenses;
+    // Required by the type, but not by `firestore.rules` — its create and
+    // update validators require only userId, importedAt, source, fileType,
+    // fileName and status. A record from before either total existed, a
+    // restore, or a write from outside the app can reach here with neither;
+    // every in-app writer seeds both, so this guards what the rules let
+    // through, not a shape this app produces.
+    const legacy = (kind === 'income' ? item.totalIncome : item.totalExpenses) ?? 0;
     return [this.currencyService.formatCurrency(item.totalsByCurrency ? 0 : legacy, base)];
   }
 
