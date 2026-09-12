@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { NO_ERRORS_SCHEMA, Signal, signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, Signal, WritableSignal, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of } from 'rxjs';
 
@@ -15,6 +15,8 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { SecurityLogService } from '../../../core/services/security-log.service';
 import { ReminderService } from '../../../core/services/reminder.service';
 import { WeeklyRecapService } from '../../../core/services/weekly-recap.service';
+import { CurrencyService } from '../../../core/services/currency.service';
+import { RateSource } from '../../../models';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -30,6 +32,10 @@ describe('ProfileSettingsComponent', () => {
   let mockSecurityLog: jasmine.SpyObj<SecurityLogService>;
   let mockReminders: jasmine.SpyObj<ReminderService>;
   let mockRecap: { enabled: Signal<boolean> };
+  let mockCurrencyService: {
+    rateSource: WritableSignal<RateSource | null>;
+    lastUpdated: WritableSignal<Date | null>;
+  };
 
   const mockUser = {
     displayName: 'Test User',
@@ -85,6 +91,13 @@ describe('ProfileSettingsComponent', () => {
 
     mockRecap = { enabled: signal(false) };
 
+    // Seeded on a rung rather than at null, which renders nothing: the mount
+    // test below needs the marker to actually draw a line.
+    mockCurrencyService = {
+      rateSource: signal<RateSource | null>('live'),
+      lastUpdated: signal<Date | null>(new Date(2026, 11, 31)),
+    };
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
@@ -104,7 +117,11 @@ describe('ProfileSettingsComponent', () => {
         { provide: ReminderService, useValue: mockReminders },
         // And the recap toggle its own two queries. The service is stubbed
         // rather than the component, so the real switch still renders here.
-        { provide: WeeklyRecapService, useValue: mockRecap }
+        { provide: WeeklyRecapService, useValue: mockRecap },
+        // The rate marker under Base Currency reads CurrencyService, whose
+        // real constructor walks the rate ladder and reaches fetch. These two
+        // signals are its whole surface.
+        { provide: CurrencyService, useValue: mockCurrencyService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -124,6 +141,19 @@ describe('ProfileSettingsComponent', () => {
     // NO_ERRORS_SCHEMA renders an unknown element as an empty tag, so the
     // switch inside it is what says the component was actually imported.
     expect(recap.querySelector('button[role="switch"]')).toBeTruthy();
+  });
+
+  it('should mount the exchange-rate marker under the currency field', () => {
+    const fields: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.setting-item')
+    );
+    // Found by its own label rather than by position, so a reordered grid
+    // fails on the marker instead of quietly checking the wrong field.
+    const currencyField = fields.find(field => field.textContent?.includes('settings.currency'));
+
+    // And as above: NO_ERRORS_SCHEMA renders an unknown element as an empty
+    // tag, so the rendered line is what says the panel is really there.
+    expect(currencyField?.querySelector('app-rate-status .rate-line')).toBeTruthy();
   });
 
   describe('initialization', () => {

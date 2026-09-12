@@ -5,7 +5,6 @@ import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 
@@ -24,6 +23,7 @@ import { AnalyticsSettingsComponent } from '../analytics-settings/analytics-sett
 import { ReminderSettingsComponent } from '../reminder-settings/reminder-settings.component';
 import { WeeklyRecapSettingsComponent } from '../weekly-recap-settings/weekly-recap-settings.component';
 import { AccessibilitySettingsComponent } from '../accessibility-settings/accessibility-settings.component';
+import { RateStatusComponent } from '../rate-status/rate-status.component';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 
 @Component({
@@ -35,7 +35,6 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
-    MatButtonModule,
     MatIconModule,
     MatButtonToggleModule,
     TranslatePipe,
@@ -45,6 +44,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     ReminderSettingsComponent,
     WeeklyRecapSettingsComponent,
     AccessibilitySettingsComponent,
+    RateStatusComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',

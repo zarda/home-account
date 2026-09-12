@@ -437,6 +437,21 @@ describe('ImportHistoryComponent', () => {
 
       expect(component.totalLines(oneWay, 'income')).toEqual(['TWD 0']);
     });
+
+    it('renders a zero on both sides for a record with neither total', () => {
+      // `firestore.rules` requires six keys on an import record, none of
+      // them a total: this shape — no `totalsByCurrency` and neither legacy
+      // field — is what a record from before either scheme, a restore, or a
+      // write from outside the app looks like. No in-app writer produces it.
+      const bare = {
+        ...mockHistory[0],
+        totalIncome: undefined,
+        totalExpenses: undefined
+      } as unknown as ImportHistory;
+
+      expect(component.totalLines(bare, 'income')).toEqual(['TWD 0']);
+      expect(component.totalLines(bare, 'expenses')).toEqual(['TWD 0']);
+    });
   });
 });
 

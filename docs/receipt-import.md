@@ -494,9 +494,41 @@ The processing step's line is the same arrangement one step earlier: the
 service names the step it is on and the wizard renders that name through the
 catalogs, so nothing on either step is a sentence a service wrote
 ([ADR 0118](ADR/0118-the-processing-step-names-its-step-and-the-write-owns-its-signals.md)).
+The camera dialog's line works the same way and through the same catalogs,
+from a `CaptureStatus` of its own — *analyzing*, *processingImages* carrying
+the photo count, *queueing* — a separate type because that door's steps are
+its own: it queues, which no wizard door does, and it never converts,
+categorizes or checks for duplicates. A fourth status it used to set was
+deleted rather than translated: the overlay renders under `isProcessing()`,
+which is raised in `processImage` and nowhere else, and the *Optimizing
+image...* write ran before that, so it could not paint on any path
+([ADR 0124](ADR/0124-the-camera-door-names-its-step-and-a-status-nobody-could-see-is-deleted.md)).
 When every row saved but the summary read-back fails, the wizard says so and
 moves on; the full record, including per-row errors, is on the Import History
 page.
+
+**No door leaves a bar behind it.** All six extraction doors clear the flag,
+the step and the bar together in one `endRun()`, so a run that has ended owns
+no bar and nothing can render between the flag going false and the bar going
+with it. The head reset stays per door: each sets its own floor — 10, 10, 5,
+10, 10 and 20, because the doors have different numbers of steps to spend a
+bar on — in the same synchronous block as the flag it raises, which is why a
+door's final 100 was invisible until the next run started
+([ADR 0125](ADR/0125-a-run-that-has-ended-owns-no-bar.md)). The confirm
+step's own bar is zeroed at the head of the write instead, for the flicker
+reason ADR 0118 records.
+
+**A step no door could paint has come off the type.** `converting` was set
+and overwritten inside one synchronous block on both doors that had it —
+Angular renders between tasks, not between statements — so the JSON door's
+line now reads reading → duplicates and the CSV door's reading →
+categorizing → duplicates, each without the bar position that sat under the
+step nobody saw. Giving the step a moment of its own was the other way out,
+and it is blocked by the three step indicators below the line: they key on
+the percentage rather than on the step's name, so a `converting` step at 30
+would announce *Categorizing transactions* underneath a line reading
+*Converting rows*
+([ADR 0126](ADR/0126-a-step-no-door-can-paint-comes-off-the-type.md)).
 
 **A date the scan cannot vouch for lands on today, and the row says so.** The
 date is graded like the amount is, on the same 0.7 bar; what is new is what

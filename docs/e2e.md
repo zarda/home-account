@@ -75,9 +75,15 @@ per-currency total surfaces it is any review card's category chip, where the
 caret now follows the name:
 `document.querySelector('.category-button .mdc-button__label + .dropdown-icon') !== null`
 is `true` on this branch and `false` on `2c35002`, where the caret projects
-through the leading slot instead. For another branch it is whatever
-that branch added. A stale `.angular/cache`, or a server started before the
-checkout switched, shows yesterday's app with today's confidence.
+through the leading slot instead. For the processing-signal and rate-rung
+surfaces it is the served catalog and the Settings line:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).settings.ratesLabel`
+is defined on this branch and `undefined` on `0139d46`, and
+`document.querySelector('app-rate-status') !== null` with Settings →
+Preferences open, where the line sits under the base-currency select. For
+another branch it is whatever that branch added. A stale `.angular/cache`, or
+a server started before the checkout switched, shows yesterday's app with
+today's confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
 page actually loaded and read the project id out of it:
@@ -218,19 +224,21 @@ only the difference counts.
 
 ## What a run may touch
 
-Three writes are authorised. Each is put back before the run ends, and the
-restore is *confirmed on screen*, not assumed. The last four rows write
-nothing at all and are listed with them anyway: two still cost the account
-a real provider call, one not even that, and the last leaves a notification
-standing in the operating system rather than anything on the account — what
-an import journey or a raised notification leaves behind is worth stating
-rather than leaving to be inferred.
+Three writes are authorised — two on the account, one on the device only.
+Each is put back before the run ends, and the restore is *confirmed on
+screen*, not assumed. The other five rows write nothing at all and are listed
+with them anyway: three still cost the account a real provider call, one not
+even that, and the last leaves a notification standing in the operating
+system rather than anything on the account — what an import journey or a
+raised notification leaves behind is worth stating rather than leaving to be
+inferred.
 
 | Action | What it writes | How it is put back |
 |---|---|---|
 | Translating a note | Nothing. A provider call under the account's own key; the answer lives in the component and the service's in-memory cache, and both are gone on reload | Nothing to undo |
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
+| Seeding or clearing the rate cache (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile, and one extra provider fetch on the next boot when the key is cleared | The value read before the change is written back verbatim, the page reloaded, and the Settings line read again to confirm the rung it reports is the one it reported at the start |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
 | Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
@@ -246,9 +254,12 @@ that handle is opened for receipt images and for nothing else. The confirm
 step is visited and left rather than avoided — journey 17 reads its summary —
 and it writes nothing either: its progress bar and the *Importing 1 of 2...*
 line under it are shown only while a write is running, and no run performs
-one. The processing step's line is read in passing on the way there, and the
-confirm step's own figures are one line per currency now rather than a
-single sum across them. The bulk currency switch journey 17 performs changes
+one — journey 20 counts the bars on it and finds none. The wizard's
+processing step and the camera dialog's status line are each no longer read
+in passing: journey 20 records the former and journey 18 the latter, each
+with an observer armed before the run starts, because each moves once and
+leaves. The confirm step's figures are one line per currency now rather than
+a single sum across them. The bulk currency switch journey 17 performs changes
 rows on the review step only, which is memory until Import is pressed, and
 Import never is.
 
@@ -441,6 +452,9 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 15 | Review: split and merge | Two cards born under a real pointer from one, both wearing the receipt badge, and the merge menu folding one back | `15-split-parts.png`, `15-merge-menu.png` |
 | 16 | Review: a row removed | A card leaving under a real pointer, focus landing on its neighbour, and the empty review step with Continue held | `16-row-removed.png`, `16-empty-review.png` |
 | 17 | Review: a fraction from a file | A CSV's fraction landing whole under a real parse, the Split trigger it earns, the confirm step's per-currency summary, and the snackbar a bulk currency switch raises over the row it blanks | `17-csv-fraction.png`, `17-confirm-summary.png`, `17-bulk-blanked.png` |
+| 18 | Camera: the capture status line | The dialog's own step line resolving from the catalogs while a real provider reads a real photo, and the thumbnail's bound `alt` | `18-camera-analyzing.png` |
+| 19 | Settings: which rate rung is loaded | Which rung a real boot actually lands on, and what the account is told about it | `19-rate-line.png` |
+| 20 | The wizard's processing step on a backup | The step line and the bar as a real render sequence, with no gap where a deleted step was, and nothing left standing afterwards | `20-processing-step.png`, `20-confirm-summary.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -555,7 +569,7 @@ the journey is skipped rather than faked.
 
 ### 8. Review: a receipt dated before today
 
-Open the wizard: the Add menu's **Import photos**, or `/import/file` typed in.
+Open the wizard: the Add menu's **Import from File**, or `/import/file` typed in.
 The route is a child of the layout route, a page of its own — `/ai` is the
 sibling settings page, not a parent of it.
 
@@ -851,7 +865,7 @@ One shot: the added card filled, with the hint gone.
 
 ### 13. Review: a backup row without a date
 
-Open the wizard as journey 8 does — the Add menu's **Import photos**, or
+Open the wizard as journey 8 does — the Add menu's **Import from File**, or
 `/import/file` typed in. This journey's file is a `.json` backup, which the
 picker takes since
 [ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)
@@ -1045,7 +1059,7 @@ the second.
 
 ### 17. Review: a fraction from a file
 
-Open the wizard as journey 8 does — the Add menu's **Import photos**, or
+Open the wizard as journey 8 does — the Add menu's **Import from File**, or
 `/import/file` typed in. This journey's file is `fraction.csv`, in through
 the hidden input like every other ([Fixtures](#fixtures)); the zone shows it
 with the table icon and the label *CSV*, and there is no *What are these
@@ -1104,6 +1118,149 @@ is unchanged and `/import/history` has no new run.
 
 Three shots: the review card with its three rows, the confirm step's
 summary, and the snackbar over the blanked row.
+
+### 18. Camera: the capture status line
+
+The other import door, and the one whose status line the wizard's specs say
+nothing about. Add menu → **Import from Camera** opens the capture dialog.
+
+Feed `jp.png` to the dialog's **library** input rather than its camera one —
+the capture area holds two hidden inputs and only the second omits
+`capture="environment"`, which is what lets a desktop browser answer at all:
+
+```js
+const blob = await (await fetch('http://127.0.0.1:8123/jp.png')).blob();
+const file = new File([blob], 'jp.png', { type: 'image/png' });
+const dt = new DataTransfer(); dt.items.add(file);
+const input = document.querySelectorAll('app-camera-capture input[type=file]')[1];
+input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+```
+
+The thumbnail appears with its number. Read its `alt` before going on: it is
+*Receipt image 1 of 1*, bound through `receiptImages.imageNumber` with both
+numbers placed by the catalog rather than by the template.
+
+The line itself is on screen for as long as the provider takes and then
+leaves with the dialog, so **arm an observer before pressing anything**:
+
+```js
+window.__j18 = [];
+const host = document.querySelector('app-camera-capture');
+new MutationObserver(() => {
+  const p = host.querySelector('.processing-overlay p');
+  const text = p ? p.textContent.trim() : null;
+  const last = window.__j18.at(-1);
+  if (!last || last.text !== text) window.__j18.push({ t: Math.round(performance.now()), text });
+}).observe(host, { childList: true, subtree: true, characterData: true });
+```
+
+Then **Process with AI**, and read `window.__j18` once the dialog has gone.
+
+**Pass:** the recorded sequence is one line and one disappearance — the
+catalog's own sentence for the app's locale (*Analyzing receipt…* in
+English, `ai.scanning`, the single-photo branch) standing from the moment the
+overlay appears until it goes, and `null` after. Nothing English appears
+under a non-English locale, and nothing names a processing *mode*: the five
+English mode labels that used to be interpolated into this line are gone,
+not translated. The overlay leaves with the processing flag, **before** the
+dialog closes onto the wizard's Review step — one provider call, no error
+card, and no new `error`-level console entry.
+
+One shot: the overlay with its line, while the provider is reading.
+
+The dialog hands off to `/import/file` at Review. Leave from there the way
+journey 9 does, by the wizard's back arrow; **Import is never pressed**, so
+the scan costs one provider call and, when analytics consent is on, one
+analytics event, and writes no document
+([What a run may touch](#what-a-run-may-touch)).
+
+### 19. Settings: which rate rung is loaded
+
+Settings → **Preferences** → the base-currency field, labelled *Currency*.
+The line under the select is the rate marker.
+
+Read the line, and read the rung behind it from the page console:
+
+```js
+ng.getComponent(document.querySelector('app-rate-status')).rateSource();
+```
+
+**Pass:** on any boot that follows another within twelve hours — which is
+nearly every boot — the rung is `'cached'` and the line still reads
+*Exchange rates updated {{date}}*, in the user's own date format, with no
+warning styling. That is the decision, not a slip: the ladder's first rung is
+the device cache, a fresh one is at most twelve hours of market data, and it
+makes the same claim about the table's age a live fetch does. A line that
+said *saved* there would report an ordinary boot as a degraded one.
+
+**The write half runs only on the user's explicit word**, and it is a device
+write, not an account one. Read `localStorage['home-account.exchangeRates']`
+and keep the string. Remove the key, reload: the ladder misses the cache,
+fetches, and the rung reads `'live'` — with the *same sentence* on screen,
+which is the thing being confirmed. Write the saved string back verbatim,
+reload again, and confirm on screen that the line and the rung are what they
+were at the start. The cost is one extra provider fetch on the boot in
+between; nothing on the account changes.
+
+`expired` and `fallback` are **not reachable here**. Both require a fetch
+that fails, which a read-only run against production cannot arrange — an
+expired cache alone simply goes to the network and succeeds. They stay where
+they can be arranged: `currency.service.spec.ts` for all four rungs, and
+`currency-fallback.smoke.spec.ts`, which pins `'expired'` beside the cached
+rate a real write converted through.
+
+One shot: the line under the currency select.
+
+### 20. The wizard's processing step on a backup
+
+Journey 13's fixture, read for what happens *before* the review step. Open
+the wizard and feed it `backup.json` as [Fixtures](#fixtures) describes.
+
+The processing step's line moves once and the card then leaves, so arm an
+observer on the wizard before pressing **Process with AI** — recording the
+line and the bar together, since the two are the pair that has to agree:
+
+```js
+window.__j20 = [];
+const host = document.querySelector('app-import-wizard');
+new MutationObserver(() => {
+  const p = host.querySelector('.processing-card .processing-status');
+  const bar = host.querySelector('.processing-card mat-progress-bar');
+  const text = p ? p.textContent.trim() : null;
+  const value = bar ? bar.getAttribute('aria-valuenow') : null;
+  const last = window.__j20.at(-1);
+  if (!last || last.text !== text || last.value !== value) window.__j20.push({ text, value });
+}).observe(host, { childList: true, subtree: true, characterData: true });
+```
+
+**Pass — the sequence.** Three entries and nothing else: *Reading the file…*
+at 20, *Checking for duplicates…* at 80, then the card gone with a null bar.
+The JSON door has two steps, and there is **no third entry between them** —
+that is the deleted `converting` step, which was set and overwritten inside
+one synchronous block and never had a frame of its own. No English sentence
+from the service appears at any point.
+
+**Continue** → Review: three cards, the header reading *3 / 3*. The dated
+row carries *Mar 15, 2026* and *-$12.50*; the dateless row landed on today
+and is asked about; the third is the categoryless one. **Continue** → the
+confirm step: *3 Transactions*, one expense line of *-$20.50* (all three
+rows are USD) and a single income line of zero in the account's own
+currency, since nothing here is income. No importing section, and
+
+```js
+document.querySelectorAll('mat-progress-bar').length;   // 0
+```
+
+— a bar belongs to a run in flight, and there is none: no door left one
+standing behind it and the confirm step has not begun.
+
+**Import is never pressed.** Leave by the wizard's back arrow, then read
+`/import/history`: the record count is what it was before the journey, no
+record names `backup.json`, and no card anywhere on the page contains the
+text `NaN` — a record that carries no totals of either kind renders a zero
+in the account's own currency.
+
+Two shots: the processing card mid-run, and the confirm step's summary.
 
 ## Evidence
 

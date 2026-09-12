@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 
 import { Router } from '@angular/router';
@@ -32,7 +32,6 @@ import { GoalProgressCardComponent } from './goal-progress-card/goal-progress-ca
   standalone: true,
   imports: [
     MatButtonModule,
-    MatDialogModule,
     MatIconModule,
     EmptyStateComponent,
     LoadingSpinnerComponent,

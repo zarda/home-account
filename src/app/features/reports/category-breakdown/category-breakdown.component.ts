@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, output, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 
-import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatExpansionModule } from '@angular/material/expansion';
@@ -37,7 +36,6 @@ interface CategoryBreakdown {
     CategoryChipComponent,
     SpendingChartComponent,
     CommonModule,
-    MatCardModule,
     MatIconModule,
     MatButtonToggleModule,
     MatExpansionModule,

@@ -3,12 +3,11 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { MatCardModule } from '@angular/material/card';
-import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
@@ -33,12 +32,10 @@ import { NotificationService } from '../../../../core/services/notification.serv
     PageHeaderComponent,
     CommonModule,
     MatCardModule,
-    MatListModule,
     MatIconModule,
     MatButtonModule,
     MatChipsModule,
     MatMenuModule,
-    MatDialogModule,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -223,7 +220,13 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
       .filter(total => total[kind] > 0)
       .map(total => this.currencyService.formatCurrency(total[kind], total.currency));
     if (perCurrency.length) return perCurrency;
-    const legacy = kind === 'income' ? item.totalIncome : item.totalExpenses;
+    // Required by the type, but not by `firestore.rules` — its create and
+    // update validators require only userId, importedAt, source, fileType,
+    // fileName and status. A record from before either total existed, a
+    // restore, or a write from outside the app can reach here with neither;
+    // every in-app writer seeds both, so this guards what the rules let
+    // through, not a shape this app produces.
+    const legacy = (kind === 'income' ? item.totalIncome : item.totalExpenses) ?? 0;
     return [this.currencyService.formatCurrency(item.totalsByCurrency ? 0 : legacy, base)];
   }
 

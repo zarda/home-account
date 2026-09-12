@@ -188,7 +188,6 @@ describe('AIImportService', () => {
       expect(service.isProcessing()).toBeFalse();
       expect(service.processingStep()).toBeNull();
       expect(service.processingProgress()).toBe(0);
-      expect(service.processingSource()).toBeNull();
     });
 
     it('isOfflineMode should reflect the inverse of pwa online state', () => {
@@ -1932,6 +1931,20 @@ describe('AIImportService', () => {
         .toBeGreaterThan(names.indexOf('categorizing'));
     });
 
+    it('sets no step that cannot reach the screen', async () => {
+      // Exhaustive, not toContain: a converting step used to sit between
+      // reading and categorizing, set and overwritten with no await between
+      // them, so it never painted (ADR 0118's known gap). A loose assertion
+      // would not notice if a step like that came back.
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const names = setSpy.calls.allArgs().map(([step]) => step?.name ?? null);
+      expect(names).toEqual(['reading', 'categorizing', 'duplicates', null]);
+    });
+
     it('clears the step when the door closes', async () => {
       exportService.importFromCSV.and.returnValue(csvRows());
 
@@ -1957,6 +1970,39 @@ describe('AIImportService', () => {
 
       expect(result.transactions[0].currencyFellBack).toBeTrue();
       expect('currencySuggestion' in result.transactions[0]).toBeFalse();
+    });
+
+    it('gives the bar back when the door closes', async () => {
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(service.processingProgress()).toBe(0);
+      expect(service.isProcessing()).toBeFalse();
+    });
+
+    it('gives the bar back even when the door rejects', async () => {
+      exportService.importFromCSV.and.rejectWith(new Error('parse failed'));
+
+      await expectAsync(service.importFromCSV(makeFile('data.csv', 'text/csv'))).toBeRejected();
+
+      expect(service.processingProgress()).toBe(0);
+      expect(service.isProcessing()).toBeFalse();
+    });
+
+    it('begins at its own floor and ends at zero, not the steps between', async () => {
+      const progressSpy = spyOn(service.processingProgress, 'set').and.callThrough();
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      // The middle is unpinned on purpose: it belongs to the door and moves
+      // with it. Only the ends are the contract — a fresh render can never
+      // catch the previous run's 100, because the run that left it takes it
+      // back to zero.
+      const args = progressSpy.calls.allArgs().map(([value]) => value);
+      expect(args[0]).toBe(10);
+      expect(args[args.length - 1]).toBe(0);
     });
   });
 
@@ -2147,6 +2193,57 @@ describe('AIImportService', () => {
       const result = await service.importFromJSON(file);
 
       expect(result.transactions[0].amount).toBe(12.35);
+    });
+
+    it('sets no step that cannot reach the screen', async () => {
+      // Exhaustive, not toContain: a converting step used to sit between
+      // reading and duplicates, set and overwritten by a synchronous
+      // Array.map with no await in sight, so it never painted (ADR 0118's
+      // known gap). A loose assertion would not notice if a step like that
+      // came back.
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
+      const backup = { transactions: [{ description: 'Rent', amount: -1200, type: 'expense' }] };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      await service.importFromJSON(file);
+
+      const names = setSpy.calls.allArgs().map(([step]) => step?.name ?? null);
+      expect(names).toEqual(['reading', 'duplicates', null]);
+    });
+
+    it('gives the bar back when the door closes', async () => {
+      const backup = { transactions: [{ description: 'Rent', amount: -1200, type: 'expense' }] };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      await service.importFromJSON(file);
+
+      expect(service.processingProgress()).toBe(0);
+      expect(service.isProcessing()).toBeFalse();
+    });
+
+    it('gives the bar back even when the door rejects', async () => {
+      const file = makeFile('bad.json', 'application/json', JSON.stringify({ foo: 'bar' }));
+
+      await expectAsync(service.importFromJSON(file)).toBeRejected();
+
+      expect(service.processingProgress()).toBe(0);
+      expect(service.isProcessing()).toBeFalse();
+    });
+
+    it('begins at its own floor and ends at zero, not the steps between', async () => {
+      const progressSpy = spyOn(service.processingProgress, 'set').and.callThrough();
+      const backup = { transactions: [{ description: 'Rent', amount: -1200, type: 'expense' }] };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      await service.importFromJSON(file);
+
+      // The middle is unpinned on purpose: it belongs to the door and moves
+      // with it. Only the ends are the contract — a fresh render can never
+      // catch the previous run's 100, because the run that left it takes it
+      // back to zero.
+      const args = progressSpy.calls.allArgs().map(([value]) => value);
+      expect(args[0]).toBe(20);
+      expect(args[args.length - 1]).toBe(0);
     });
   });
 

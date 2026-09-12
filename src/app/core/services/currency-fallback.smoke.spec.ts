@@ -179,6 +179,9 @@ describe('Currency fallback ladder (emulator smoke test)', () => {
     expect(row?.baseCurrency).toBe('USD');
     // The ladder was actually exercised — this was not the fresh-cache path.
     expect(fetchedUrls.some(url => url.startsWith(RATES_API_PREFIX))).toBeTrue();
+    // And the rung the service reports matches the rate it converted through:
+    // the same instance the write above went out on.
+    expect(TestBed.inject(CurrencyService).rateSource()).toBe('expired');
   }
 
   it('persists a row converted through the expired cache when the rates endpoint is down', async () => {

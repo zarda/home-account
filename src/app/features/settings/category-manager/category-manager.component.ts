@@ -7,7 +7,7 @@ import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
 
 import { CategoryService } from '../../../core/services/category.service';
@@ -34,7 +34,6 @@ import { NotificationService } from '../../../core/services/notification.service
     MatIconModule,
     MatButtonModule,
     MatButtonToggleModule,
-    MatDialogModule,
     MatMenuModule,
     TranslatePipe,
   ],

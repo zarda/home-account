@@ -73,12 +73,7 @@ describe('GoalsComponent', () => {
       schemas: [NO_ERRORS_SCHEMA]
     })
       .overrideComponent(GoalsComponent, {
-        set: {
-          template: '<div></div>',
-          // MatDialogModule in the component's own imports shadows the
-          // TestBed provider, so the mock must land at component level too.
-          providers: [{ provide: MatDialog, useValue: mockDialog }]
-        }
+        set: { template: '<div></div>' }
       })
       .compileComponents();
 
@@ -203,13 +198,6 @@ describe('GoalsComponent empty state CTA', () => {
         { provide: Router, useValue: router }
       ]
     })
-      .overrideComponent(GoalsComponent, {
-        set: {
-          // MatDialogModule in the component's own imports shadows the
-          // TestBed provider, so the mock must land at component level too.
-          providers: [{ provide: MatDialog, useValue: mockDialog }]
-        }
-      })
       .compileComponents();
 
     fixture = TestBed.createComponent(GoalsComponent);

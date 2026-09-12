@@ -144,6 +144,19 @@ seen. A record completed before the field existed carries none of it: its
 single `totalIncome`/`totalExpenses` pair is a raw sum across whatever the
 batch carried, meaningful only for a one-currency import
 ([ADR 0119](ADR/0119-a-batchs-totals-are-per-currency.md)).
+
+A record may carry **none of the three**. The type requires
+`totalIncome` and `totalExpenses`, but `firestore.rules` does not:
+`importCreateValid` names six keys with `hasAll` rather than `hasOnly`, and
+`importOptionalsValid` requires none of the three — its last clause
+validates `totalsByCurrency`'s shape as a list when the field is present,
+and says nothing about the legacy pair at all — so a document older than
+either field, or one written outside the app, passes the rules and reaches
+the component through an unchecked cast. Every in-app writer seeds both, so
+this is a shape the rules let through rather than one this app produces. The
+history card guards the legacy read at the call site and renders a zero in
+the account's own currency, never the word `NaN`
+([ADR 0127](ADR/0127-a-figure-the-app-cannot-vouch-for-says-so.md)).
 See [receipt-import.md](receipt-import.md#failure-surfacing).
 
 ## Photos

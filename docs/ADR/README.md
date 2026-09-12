@@ -41,7 +41,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0034](0034-a-correctness-read-enumerates-the-collection.md) | A correctness-bearing read enumerates the collection, never a listener's first emission | Accepted | 2026-08-11 |
 | [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted; the deploy gap closed by 0077 | 2026-08-12 |
 | [0036](0036-a-user-facing-string-lives-in-the-catalog.md) | A user-facing string lives in the catalog, and only English declines | Accepted | 2026-08-12 |
-| [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted | 2026-08-12 |
+| [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted; lastUpdated gap closed by 0127 | 2026-08-12 |
 | [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
 | [0039](0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md) | A share arrives typed, and the stash answers only to its owner | Accepted; amends 0019 | 2026-08-14 |
 | [0040](0040-the-native-seams-answer-to-xctest.md) | The native seams answer to XCTest, and the plugins stay shells | Accepted | 2026-08-14 |
@@ -69,7 +69,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted; amended by 0099 | 2026-08-22 |
 | [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted | 2026-08-22 |
 | [0064](0064-the-country-comes-off-the-paper-before-the-phone.md) | The country comes off the paper before it comes off the phone | Accepted; amended by 0068 | 2026-08-23 |
-| [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted | 2026-08-23 |
+| [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted; processingSource removed by 0125 | 2026-08-23 |
 | [0066](0066-an-answers-budget-follows-its-question.md) | An answer's budget follows its question, and a cut-off answer is read as far as it goes | Accepted | 2026-08-24 |
 | [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted | 2026-08-25 |
 | [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted; hand-editing gap closed by 0102 | 2026-08-26 |
@@ -122,12 +122,17 @@ reverse — why a thing is the way it is, not how to use it.
 | [0115](0115-a-failed-row-is-named-by-its-id.md) | A failed row is named by its id | Accepted; extends 0103; restates a boundary of 0060; deselected-rows gap closed by 0120 | 2026-09-11 |
 | [0116](0116-the-merged-count-has-one-producer.md) | The merged count has one producer | Accepted; applies 0048; closes a gap of 0106; narrows one of 0111 | 2026-09-11 |
 | [0117](0117-every-doors-figure-is-whole-in-its-currency.md) | Every door's figure is whole in its currency | Accepted; extends 0109; closes two gaps of 0109; bulk-switch gap closed by 0121 | 2026-09-11 |
-| [0118](0118-the-processing-step-names-its-step-and-the-write-owns-its-signals.md) | The processing step names its step, and the write owns its signals | Accepted; extends 0114; closes three gaps of 0114 | 2026-09-11 |
+| [0118](0118-the-processing-step-names-its-step-and-the-write-owns-its-signals.md) | The processing step names its step, and the write owns its signals | Accepted; extends 0114; closes three gaps of 0114; first gap closed by 0124, second by 0126, fourth by 0125, third still open | 2026-09-11 |
 | [0119](0119-a-batchs-totals-are-per-currency.md) | A batch's totals are per currency | Accepted; extends 0117 and 0059 | 2026-09-11 |
 | [0120](0120-a-partial-import-keeps-every-row-it-did-not-write.md) | A partial import keeps every row it did not write | Accepted; extends 0115; closes a gap of 0115 | 2026-09-11 |
 | [0121](0121-a-bulk-currency-switch-says-how-many-rows-it-blanked.md) | A bulk currency switch says how many rows it blanked | Accepted; extends 0117; closes a gap of 0117; amends 0108 | 2026-09-11 |
 | [0122](0122-the-chips-caret-trails-the-name-and-drops-at-phone-width.md) | The chip's caret trails the name, and drops at phone width | Accepted; extends 0010 and 0110; closes a note of 0110 | 2026-09-11 |
 | [0123](0123-the-unit-sweep-is-silent-on-a-normal-path.md) | The unit sweep is silent on a normal path | Accepted; corrects 0088; applies 0037 | 2026-09-11 |
+| [0124](0124-the-camera-door-names-its-step-and-a-status-nobody-could-see-is-deleted.md) | The camera door names its step, and a status nobody could see is deleted | Accepted; applies 0036 and 0048; closes a gap of 0118 | 2026-09-12 |
+| [0125](0125-a-run-that-has-ended-owns-no-bar.md) | A run that has ended owns no bar | Accepted; applies 0114 and 0048; closes a gap of 0118; removes a field of 0065 | 2026-09-12 |
+| [0126](0126-a-step-no-door-can-paint-comes-off-the-type.md) | A step no door can paint comes off the type | Accepted; closes a gap of 0118; rests on another | 2026-09-12 |
+| [0127](0127-a-figure-the-app-cannot-vouch-for-says-so.md) | A figure the app cannot vouch for says so | Accepted; applies 0037; closes a gap of 0037; extends 0119 | 2026-09-12 |
+| [0128](0128-a-material-module-a-template-never-uses-fails-the-build.md) | A Material module a template never uses fails the build | Accepted | 2026-09-12 |
 
 ## What belongs here
 

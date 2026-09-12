@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, inject } from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
-import { MatChipsModule } from '@angular/material/chips';
 import { Category } from '../../../models';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThemeService } from '../../../core/services/theme.service';
@@ -18,7 +17,7 @@ import { ThemeService } from '../../../core/services/theme.service';
 @Component({
   selector: 'app-category-chip',
   standalone: true,
-  imports: [MatIconModule, MatChipsModule, TranslatePipe],
+  imports: [MatIconModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (resolvedColor(); as color) {

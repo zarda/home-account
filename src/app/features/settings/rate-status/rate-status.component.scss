@@ -1,0 +1,28 @@
+// Sits directly under the currency select, inside its field. The outline
+// form field above reserves its own subscript row, so no separating margin
+// is added here.
+.rate-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.rate-line {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+// The two rungs where the fetch failed. The figures on screen are older than
+// they should be, or not market data at all, which carries more weight than
+// the healthy line — but it is still a note, not an alert: every amount
+// converts, and there is nothing here for the user to act on.
+.rate-line-stale {
+  color: var(--color-warning-text);
+}

@@ -50,6 +50,68 @@ Specs and smoke tests provide `provideAppCharts()` rather than their own
 registry. A spec that registered the full set would pass against pieces
 production does not ship.
 
+## What a component declares
+
+A Material module in a component's `imports: [...]` that its template never
+uses is dead weight nothing could see. It puts that module's directives into
+the component's template scope and its providers into the component's
+injector, and it makes a claim about the template — *this one renders
+chips* — that the next edit can falsify silently. Twenty such entries stood
+across eighteen components before anything looked.
+
+Nothing already in the repo could look. ESLint counts the symbol as used the
+moment it appears inside the array; Angular's own `unusedStandaloneImports`
+diagnostic is blind to NgModules by construction — it raises `NG8113` only
+for a standalone directive, component or pipe, so no `Mat*Module` ever
+reaches it.
+
+Two gates cover the two halves.
+
+**`npm run material:check`** (`scripts/check-material-imports.mjs`, a CI step
+after *Check direction*) parses each `@Component`'s `imports:` array and the
+template it declares, and fails when a listed Material module contributes no
+selector that template uses. What it proves is bounded on purpose:
+
+- A table maps **29 Material modules** to their full transitively-exported
+  selector sets, spelled as the installed `@angular/material` spells them.
+  `--self-test` (43 cases) asserts every string in it against the selectors
+  the installed package actually declares, plus the three re-export edges it
+  leans on (List → Divider, Input → FormField, Select → Option). A
+  Material upgrade that renames a selector fails the self-test, where the
+  fix is the table — not the app, where the fix would look like deleting a
+  live import.
+- Matching is lenient in every direction but one: an attribute selector
+  matches on its attribute alone, bare and bound spellings both count, and
+  commented-out markup counts as a use. Every leniency can only miss a dead
+  entry, never invent one, so a clean run is a floor rather than a proof.
+- What it skips is **counted and named in the output**: provider-only
+  modules (`MatNativeDateModule` exports no selector, so a template says
+  nothing about whether the component needs it) and any module not in the
+  table. A live run prints `Checked 293 Mat*Module entries across 89
+  components`, the skips, `No unparsed files.` and the findings. A file whose
+  `@Component(` count exceeds the decorators the parser could read is listed
+  as unparsed and fails the run: a component the gate cannot see is reported,
+  never silently skipped.
+
+**Adding a module to the table** is what you do the first time the app uses
+a Material module it has not used before: add its name with the selector set
+the package exports for it, and run `npm run material:check` — the self-test
+fails on a misspelling immediately. Until it is in the table, its entries are
+skipped and counted rather than checked, and the run says so by name.
+
+**`unusedStandaloneImports: "error"`** in `tsconfig.json`'s
+`angularCompilerOptions` covers the half Angular can see. It was measured at
+zero before being raised — and probed, since a silent zero is not evidence a
+check ran: a deliberately unused `RouterLink` raised `NG8113`, and the build
+was clean again once it was removed. `"error"` rather than the default
+warning breaks the **dev** build as well as CI, by design; a warning in an
+`ng serve` scrollback is exactly the state the NgModule half had been in all
+along. `tsconfig.spec.json` extends the root config, so spec test hosts are
+held to it too.
+
+The reasoning, and what each gate deliberately cannot see, is in
+[ADR 0128](ADR/0128-a-material-module-a-template-never-uses-fails-the-build.md).
+
 ## Change detection
 
 Every component declares `ChangeDetectionStrategy.OnPush`, enforced by

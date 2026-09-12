@@ -19,10 +19,11 @@
  *      members; ja and tc need no number agreement and stay plain strings.
  *      flatten() records the bare path either way, so the key sets stay
  *      comparable across shapes.
- *   3. A template must not hard-code `aria-label="…"` text: screen-reader
- *      users would hear English on every locale, and nothing else notices
- *      (#273). The bound forms pass — `[attr.aria-label]="'…' | translate"`
- *      (the convention), `[aria-label]="expr"`, and `aria-label="{{ … }}"`.
+ *   3. A template must not hard-code `aria-label="…"` or `alt="…"` text:
+ *      screen-reader users would hear English on every locale, and nothing
+ *      else notices (#273). The bound forms pass — `[attr.aria-label]="'…'
+ *      | translate"` (the convention), `[aria-label]="expr"`, `[alt]="'…'
+ *      | translate"`, and `aria-label="{{ … }}"` / `alt="{{ … }}"`.
  *
  * Key-set parity between locales is asserted in translation-keys.spec.ts,
  * which runs with the unit suite. Only literal keys can be checked; dynamic
@@ -54,6 +55,10 @@ const DYNAMIC_PIPE = /\|\s*translate/g;
  * its name continues past `label`.)
  */
 const STATIC_ARIA = /(?<![\w.[-])aria-label\s*=\s*"(?!\{\{)([^"]*)"/g;
+/** A literal `alt="…"` attribute — same shape as STATIC_ARIA, and read for
+ * the same reason: an `<img>`'s alt text reaches a screen reader exactly
+ * like aria-label does. */
+const STATIC_ALT = /(?<![\w.[-])alt\s*=\s*"(?!\{\{)([^"]+)"/g;
 
 const PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
 
@@ -127,15 +132,23 @@ function extractTCallKeys(text) {
   return { keys, dynamicCount };
 }
 
-/** Literal aria-label offences with their character index. */
-function findStaticAriaLabels(text) {
+/** Literal offences of a static-attribute regex, with their character index. */
+function findStaticAttrOffences(text, regex) {
   const offences = [];
-  STATIC_ARIA.lastIndex = 0;
+  regex.lastIndex = 0;
   let match;
-  while ((match = STATIC_ARIA.exec(text)) !== null) {
+  while ((match = regex.exec(text)) !== null) {
     offences.push({ index: match.index, value: match[1] });
   }
   return offences;
+}
+
+function findStaticAriaLabels(text) {
+  return findStaticAttrOffences(text, STATIC_ARIA);
+}
+
+function findStaticAltTexts(text) {
+  return findStaticAttrOffences(text, STATIC_ALT);
 }
 
 function lineOf(text, index) {
@@ -167,6 +180,7 @@ function run() {
   const referenced = new Map();
   let dynamicCount = 0;
   const ariaOffences = [];
+  const altOffences = [];
 
   for (const file of walk(SOURCE_DIR)) {
     const text = readFileSync(file, 'utf8');
@@ -199,6 +213,9 @@ function run() {
     if (file.endsWith('.html')) {
       for (const offence of findStaticAriaLabels(text)) {
         ariaOffences.push({ site: where(offence.index), value: offence.value });
+      }
+      for (const offence of findStaticAltTexts(text)) {
+        altOffences.push({ site: where(offence.index), value: offence.value });
       }
     }
   }
@@ -235,9 +252,17 @@ function run() {
     }
     console.error('\nBind it instead: [attr.aria-label]="\'some.key\' | translate" (see docs/i18n.md).');
   }
+  if (altOffences.length > 0) {
+    failed = true;
+    console.error(`\n${altOffences.length} hard-coded alt text(s) — screen readers hear English on every locale:\n`);
+    for (const { site, value } of altOffences.sort((a, b) => a.site.localeCompare(b.site))) {
+      console.error(`  ${site} alt="${value}"`);
+    }
+    console.error('\nBind it instead: [alt]="\'some.key\' | translate" (see docs/i18n.md).');
+  }
   if (failed) process.exit(1);
 
-  console.log('Every literal translation key resolves in every locale, and no template hard-codes an aria-label.');
+  console.log('Every literal translation key resolves in every locale, and no template hard-codes an aria-label or alt text.');
 }
 
 function selfTest() {
@@ -276,6 +301,13 @@ function selfTest() {
   check('allows a bound [aria-label]', findStaticAriaLabels('<div [aria-label]="label()">'), []);
   check('allows an interpolated aria-label', findStaticAriaLabels(`<div aria-label="{{ 'k.x' | translate }}">`), []);
   check('does not flag aria-labelledby', findStaticAriaLabels('<div aria-labelledby="title-id">'), []);
+
+  check('flags a static alt', findStaticAltTexts('<img alt="Profile">').map(o => o.value), ['Profile']);
+  check('allows [alt] bound through translate', findStaticAltTexts(`<img [alt]="'common.userMenu' | translate">`), []);
+  check('allows a bound [alt]', findStaticAltTexts('<img [alt]="label()">'), []);
+  check('allows an interpolated alt', findStaticAltTexts(`<img alt="{{ 'k.x' | translate }}">`), []);
+  check('allows an empty decorative alt', findStaticAltTexts('<img alt="">'), []);
+  check('does not flag a suffixed attribute name', findStaticAltTexts('<img data-alt="x">'), []);
 
   PIPE_KEY.lastIndex = 0;
   check('reads a pipe key', PIPE_KEY.exec(`{{ 'common.save' | translate }}`)?.[1], 'common.save');

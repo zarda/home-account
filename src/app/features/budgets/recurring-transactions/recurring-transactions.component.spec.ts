@@ -128,9 +128,7 @@ describe('RecurringTransactionsComponent', () => {
         set: {
           template: '<div></div>',
           providers: [
-        { provide: NotificationService, useValue: notifications },
-            { provide: MatDialog, useValue: mockDialog },
-            { provide: MatSnackBar, useValue: mockSnackBar },
+            { provide: NotificationService, useValue: notifications },
             { provide: TranslationService, useValue: mockTranslationService }
           ]
         }
@@ -425,15 +423,10 @@ describe('RecurringTransactionsComponent', () => {
           }
         ]
       })
-        // MatDialogModule/MatSnackBarModule (standalone imports of the
-        // component) provide their own MatDialog/MatSnackBar, which would
-        // shadow the TestBed mocks — pin the mocks at component level.
         .overrideComponent(RecurringTransactionsComponent, {
           add: {
             providers: [
-        { provide: NotificationService, useValue: notifications },
-              { provide: MatDialog, useValue: mockDialog },
-              { provide: MatSnackBar, useValue: mockSnackBar },
+              { provide: NotificationService, useValue: notifications },
               { provide: TranslationService, useValue: mockTranslationService }
             ]
           }

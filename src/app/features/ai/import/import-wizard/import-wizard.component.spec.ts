@@ -251,7 +251,6 @@ describe('ImportWizardComponent', () => {
     it('reads each step off the catalogs', () => {
       expect(resolve({ name: 'reading' })).toBe('import.readingFile');
       expect(resolve({ name: 'extracting' })).toBe('import.extractingData');
-      expect(resolve({ name: 'converting' })).toBe('import.convertingRows');
       expect(resolve({ name: 'categorizing' })).toBe('import.categorizingTransactions');
       expect(resolve({ name: 'duplicates' })).toBe('import.checkingDuplicates');
     });

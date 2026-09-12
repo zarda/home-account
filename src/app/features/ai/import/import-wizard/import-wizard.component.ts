@@ -7,7 +7,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 
 import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
@@ -46,7 +45,6 @@ import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/
     MatIconModule,
     MatProgressSpinnerModule,
     MatProgressBarModule,
-    MatCardModule,
     MatChipsModule,
     FileDropzoneComponent,
     TransactionPreviewTableComponent,
@@ -220,7 +218,6 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'reading': return this.t('import.readingFile');
       case 'readingImage': return this.t('import.readingImageOf', { done: step.done, total: step.total });
       case 'extracting': return this.t('import.extractingData');
-      case 'converting': return this.t('import.convertingRows');
       case 'categorizing': return this.t('import.categorizingTransactions');
       case 'duplicates': return this.t('import.checkingDuplicates');
       default: return '';

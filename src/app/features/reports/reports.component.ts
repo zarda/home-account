@@ -6,7 +6,7 @@ import { Subscription } from 'rxjs';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
@@ -52,7 +52,6 @@ export const REPORT_TABS = ['analysis', 'categories', 'monthly', 'insights', 'fo
     MatTabsModule,
     MatIconModule,
     MatButtonModule,
-    MatDialogModule,
     LoadingSpinnerComponent,
     SpendingAnalysisComponent,
     CategoryBreakdownComponent,

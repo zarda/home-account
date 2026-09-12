@@ -123,9 +123,21 @@ export class AIImportService {
   // is a structured fact rather than a sentence the service wrote (ADR 0114).
   processingRow = signal<{ done: number; total: number } | null>(null);
 
-  // New signals for processing
-  processingSource = signal<'cloud' | 'native' | null>(null);
   isOfflineMode = computed(() => !this.pwaService.isOnline());
+
+  /**
+   * A run that has ended owns no bar: the flag, the step and the bar are
+   * the tail every door shares, cleared together in one synchronous block
+   * so nothing can render between the flag going false and the bar going
+   * with it (ADR 0118's fourth gap). The head reset stays per-door — each
+   * door reaches its own floor through a different first await, so there
+   * is no shared moment before that to centralise it into.
+   */
+  private endRun(): void {
+    this.isProcessing.set(false);
+    this.processingStep.set(null);
+    this.processingProgress.set(0);
+  }
 
   /**
    * Main entry point: detect file type and route to appropriate handler
@@ -171,7 +183,6 @@ export class AIImportService {
     this.isProcessing.set(true);
     this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(10);
-    this.processingSource.set(null);
 
     try {
       const history = await this.groundingHistory.recent();
@@ -182,7 +193,6 @@ export class AIImportService {
         this.processingProgress.set(30);
 
         const strategyResult = await this.strategyService.processReceipt(file);
-        this.processingSource.set(strategyResult.source);
 
         if (strategyResult.transactions.length > 0) {
           this.processingStep.set({ name: 'categorizing' });
@@ -226,7 +236,6 @@ export class AIImportService {
 
       this.processingStep.set({ name: 'extracting' });
       this.processingProgress.set(30);
-      this.processingSource.set('cloud');
 
       const extractedTransactions = await this.withTimeout(
         signal => this.cloudLLMProvider.extractTransactionsFromImage(imageBase64, { signal }),
@@ -261,9 +270,7 @@ export class AIImportService {
 
       return result;
     } finally {
-      this.isProcessing.set(false);
-      this.processingStep.set(null);
-      this.processingSource.set(null);
+      this.endRun();
     }
   }
 
@@ -296,7 +303,6 @@ export class AIImportService {
     this.isProcessing.set(true);
     this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(10);
-    this.processingSource.set('cloud');
     // Stays null until a request is actually issued, the same discipline
     // AIStrategyService.runProcessing keeps: a failure in groundingHistory
     // or a page's own fileToBase64 is not the provider's doing, and must not
@@ -343,9 +349,7 @@ export class AIImportService {
     } catch (error) {
       throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
-      this.isProcessing.set(false);
-      this.processingStep.set(null);
-      this.processingSource.set(null);
+      this.endRun();
     }
   }
 
@@ -563,8 +567,7 @@ export class AIImportService {
     } catch (error) {
       throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
-      this.isProcessing.set(false);
-      this.processingStep.set(null);
+      this.endRun();
     }
   }
 
@@ -926,7 +929,6 @@ export class AIImportService {
     this.isProcessing.set(true);
     this.processingStep.set({ name: 'reading' });
     this.processingProgress.set(10);
-    this.processingSource.set('cloud');
 
     try {
       const history = await this.groundingHistory.recent();
@@ -976,9 +978,7 @@ export class AIImportService {
       }
       return result;
     } finally {
-      this.isProcessing.set(false);
-      this.processingStep.set(null);
-      this.processingSource.set(null);
+      this.endRun();
     }
   }
 
@@ -995,9 +995,6 @@ export class AIImportService {
 
       // Use existing CSV parser from export service
       const importedTransactions = await this.exportService.importFromCSV(file);
-
-      this.processingStep.set({ name: 'converting' });
-      this.processingProgress.set(30);
 
       this.processingStep.set({ name: 'categorizing' });
       this.processingProgress.set(50);
@@ -1053,8 +1050,7 @@ export class AIImportService {
 
       return this.buildImportResult(file, 'csv', 'generic_csv', markedTransactions, duplicates);
     } finally {
-      this.isProcessing.set(false);
-      this.processingStep.set(null);
+      this.endRun();
     }
   }
 
@@ -1073,9 +1069,6 @@ export class AIImportService {
       if (!data.transactions || !Array.isArray(data.transactions)) {
         throw new Error('Invalid backup format: missing transactions array');
       }
-
-      this.processingStep.set({ name: 'converting' });
-      this.processingProgress.set(50);
 
       const baseCurrency = baseCurrencyOf(this.authService.currentUser());
       const categorized: CategorizedImportTransaction[] = data.transactions.map(
@@ -1131,8 +1124,7 @@ export class AIImportService {
 
       return this.buildImportResult(file, 'json', 'backup_json', markedTransactions, duplicates);
     } finally {
-      this.isProcessing.set(false);
-      this.processingStep.set(null);
+      this.endRun();
     }
   }
 

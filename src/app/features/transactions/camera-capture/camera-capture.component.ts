@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 
+import { CaptureStatus } from '../../../models';
 import {
   AIImportService,
   AI_NO_PROVIDER,
@@ -67,7 +68,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   // Support for multiple captured images
   capturedImages = signal<CapturedImage[]>([]);
   isProcessing = signal(false);
-  processingStatus = signal('');
+  processingStatus = signal<CaptureStatus | null>(null);
   error = signal<string | null>(null);
 
   // Platform state
@@ -92,12 +93,21 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   imageCount = computed(() => this.capturedImages().length);
   canAddMore = computed(() => this.capturedImages().length < this.MAX_IMAGES);
 
-  // AI processing mode indicator
-  processingMode = computed(() => {
-    if (!this.isOnline()) return 'offline';
-    if (this.strategyService.canUseNative()) return 'native';
-    if (this.strategyService.canUseCloud()) return 'cloud';
-    return 'unavailable';
+  /**
+   * The capture step's line, resolved from the name this component set.
+   *
+   * A switch of literal keys rather than a lookup table, for the same reason
+   * as the wizard's processingStepText (ADR 0118): check-i18n.mjs walks
+   * literal `t(` arguments and is blind to a key held in a variable.
+   */
+  processingStatusText = computed(() => {
+    const status = this.processingStatus();
+    switch (status?.name) {
+      case 'analyzing': return this.translationService.t('ai.scanning');
+      case 'processingImages': return this.translationService.t('import.processingMultipleImages', { count: status.count });
+      case 'queueing': return this.translationService.t('import.savingForLater');
+      default: return '';
+    }
   });
 
   // Show if a cloud provider is available and will be used
@@ -169,11 +179,9 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       );
 
       if (accepted.length > 0) {
-        this.processingStatus.set('Optimizing image...');
         for (const file of accepted) {
           await this.addCapturedImage(file);
         }
-        this.processingStatus.set('');
       }
     }
 
@@ -289,12 +297,9 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       // One receiptId-aware pipeline for any photo count: several photos may
       // form one receipt, and a single photo may hold several receipts —
       // the dedicated single-image path had no receipt grouping.
-      const modeLabel = this.getProcessingModeLabel();
       const multiImage = files.length > 1;
       this.processingStatus.set(
-        multiImage
-          ? `Processing ${files.length} images (${modeLabel})...`
-          : `Analyzing image (${modeLabel})...`
+        multiImage ? { name: 'processingImages', count: files.length } : { name: 'analyzing' }
       );
 
       try {
@@ -303,24 +308,24 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         if (strategyResult.transactions.length === 0) {
           // Fall back to import service
           const result = await this.importService.importFromMultipleImages(files);
-          this.handleImportResult(result, multiImage, attempt);
+          this.handleImportResult(result, files.length, attempt);
           return;
         }
 
         const importResult = await this.convertStrategyResult(strategyResult, files);
-        this.handleImportResult(importResult, multiImage, attempt);
+        this.handleImportResult(importResult, files.length, attempt);
       } catch (strategyErr) {
         console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
         // Fall back to original import service
         const result = await this.importService.importFromMultipleImages(files);
-        this.handleImportResult(result, multiImage, attempt);
+        this.handleImportResult(result, files.length, attempt);
       }
     } catch (err) {
       this.error.set(this.describeError(err));
       attempt.failed(err);
     } finally {
       this.isProcessing.set(false);
-      this.processingStatus.set('');
+      this.processingStatus.set(null);
     }
   }
 
@@ -348,7 +353,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   }
 
   private async queueForLaterProcessing(files: File[], attempt: ReceiptAttempt): Promise<void> {
-    this.processingStatus.set('Saving for later processing...');
+    this.processingStatus.set({ name: 'queueing' });
 
     try {
       for (const file of files) {
@@ -363,30 +368,11 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       attempt.queued();
       this.dialogRef.close({ success: true, queued: true, count: files.length });
     } catch {
-      this.error.set('Failed to save images for later. Please try again.');
+      this.error.set(this.translationService.t('import.errorQueueWrite'));
       attempt.failed('queue_write');
     } finally {
       this.isProcessing.set(false);
-      this.processingStatus.set('');
-    }
-  }
-
-  /**
-   * Get human-readable processing mode label.
-   */
-  private getProcessingModeLabel(): string {
-    const mode = this.processingMode();
-    switch (mode) {
-      case 'offline':
-        return 'offline mode';
-      case 'native':
-        return 'native OCR';
-      case 'cloud':
-        return 'cloud AI';
-      case 'unavailable':
-        return 'AI unavailable';
-      default:
-        return 'AI';
+      this.processingStatus.set(null);
     }
   }
 
@@ -429,14 +415,11 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
    */
   private handleImportResult(
     result: import('../../../models').ImportResult,
-    isMultiImage: boolean,
+    imageCount: number,
     attempt: ReceiptAttempt
   ): void {
     if (result.transactions.length === 0) {
-      const message = isMultiImage
-        ? 'No transactions found in the images. Please try again with clearer photos.'
-        : 'No transactions found in the image. Please try again with a clearer photo.';
-      this.error.set(message);
+      this.error.set(this.translationService.t('import.noTransactionsInImages', { count: imageCount }));
       this.isProcessing.set(false);
       // Nothing extracted is a failed import from the user's point of view,
       // whatever the pipeline thinks: they photographed a receipt and got no
@@ -452,7 +435,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         importResult: result,
         fromCamera: true,
         door: 'camera',
-        multiImage: isMultiImage,
+        multiImage: imageCount > 1,
       }
     });
   }
