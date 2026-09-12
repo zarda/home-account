@@ -996,9 +996,6 @@ export class AIImportService {
       // Use existing CSV parser from export service
       const importedTransactions = await this.exportService.importFromCSV(file);
 
-      this.processingStep.set({ name: 'converting' });
-      this.processingProgress.set(30);
-
       this.processingStep.set({ name: 'categorizing' });
       this.processingProgress.set(50);
 
@@ -1072,9 +1069,6 @@ export class AIImportService {
       if (!data.transactions || !Array.isArray(data.transactions)) {
         throw new Error('Invalid backup format: missing transactions array');
       }
-
-      this.processingStep.set({ name: 'converting' });
-      this.processingProgress.set(50);
 
       const baseCurrency = baseCurrencyOf(this.authService.currentUser());
       const categorized: CategorizedImportTransaction[] = data.transactions.map(

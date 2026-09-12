@@ -292,7 +292,7 @@ export interface MultiImageMetadata {
  * One step also carries the figures its line interpolates.
  */
 export type ProcessingStep =
-  | { name: 'reading' | 'extracting' | 'converting' | 'categorizing' | 'duplicates' }
+  | { name: 'reading' | 'extracting' | 'categorizing' | 'duplicates' }
   | { name: 'readingImage'; done: number; total: number };
 
 /**

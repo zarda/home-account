@@ -1931,6 +1931,20 @@ describe('AIImportService', () => {
         .toBeGreaterThan(names.indexOf('categorizing'));
     });
 
+    it('sets no step that cannot reach the screen', async () => {
+      // Exhaustive, not toContain: a converting step used to sit between
+      // reading and categorizing, set and overwritten with no await between
+      // them, so it never painted (ADR 0118's known gap). A loose assertion
+      // would not notice if a step like that came back.
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const names = setSpy.calls.allArgs().map(([step]) => step?.name ?? null);
+      expect(names).toEqual(['reading', 'categorizing', 'duplicates', null]);
+    });
+
     it('clears the step when the door closes', async () => {
       exportService.importFromCSV.and.returnValue(csvRows());
 
@@ -2179,6 +2193,22 @@ describe('AIImportService', () => {
       const result = await service.importFromJSON(file);
 
       expect(result.transactions[0].amount).toBe(12.35);
+    });
+
+    it('sets no step that cannot reach the screen', async () => {
+      // Exhaustive, not toContain: a converting step used to sit between
+      // reading and duplicates, set and overwritten by a synchronous
+      // Array.map with no await in sight, so it never painted (ADR 0118's
+      // known gap). A loose assertion would not notice if a step like that
+      // came back.
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
+      const backup = { transactions: [{ description: 'Rent', amount: -1200, type: 'expense' }] };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      await service.importFromJSON(file);
+
+      const names = setSpy.calls.allArgs().map(([step]) => step?.name ?? null);
+      expect(names).toEqual(['reading', 'duplicates', null]);
     });
 
     it('gives the bar back when the door closes', async () => {

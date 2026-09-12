@@ -220,7 +220,6 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'reading': return this.t('import.readingFile');
       case 'readingImage': return this.t('import.readingImageOf', { done: step.done, total: step.total });
       case 'extracting': return this.t('import.extractingData');
-      case 'converting': return this.t('import.convertingRows');
       case 'categorizing': return this.t('import.categorizingTransactions');
       case 'duplicates': return this.t('import.checkingDuplicates');
       default: return '';
