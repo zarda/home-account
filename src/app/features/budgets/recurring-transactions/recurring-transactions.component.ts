@@ -6,7 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 
 import { RecurringService } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -32,7 +32,6 @@ import { NotificationService } from '../../../core/services/notification.service
     MatButtonModule,
     MatMenuModule,
     MatChipsModule,
-    MatDialogModule,
     EmptyStateComponent,
     LocaleDatePipe,
     TranslatePipe,

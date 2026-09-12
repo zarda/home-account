@@ -4,7 +4,6 @@ import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
-import { MatIconModule } from '@angular/material/icon';
 
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RecurringService } from '../../../core/services/recurring.service';
@@ -38,7 +37,6 @@ export type ForecastHorizon = 30 | 60 | 90;
     BaseChartDirective,
     MatButtonToggleModule,
     MatCardModule,
-    MatIconModule,
     EmptyStateComponent,
     TranslatePipe
   ],

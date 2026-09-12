@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { Firestore, clearIndexedDbPersistence, terminate } from '@angular/fire/firestore';
 
 import {
@@ -47,7 +47,6 @@ import { NotificationService } from '../../../core/services/notification.service
     MatIconModule,
     MatButtonModule,
     MatProgressBarModule,
-    MatDialogModule,
     LocaleDatePipe,
     TranslatePipe,
   ],

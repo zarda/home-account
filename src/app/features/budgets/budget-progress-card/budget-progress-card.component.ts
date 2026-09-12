@@ -5,7 +5,6 @@ import { MatCardModule } from '@angular/material/card';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatButtonModule } from '@angular/material/button';
 
 import { Budget, BudgetPeriod } from '../../../models';
@@ -26,7 +25,6 @@ import { CategoryChipComponent } from '../../../shared/components/category-chip/
     MatProgressBarModule,
     MatIconModule,
     MatMenuModule,
-    MatChipsModule,
     MatButtonModule,
     TranslatePipe
   ],

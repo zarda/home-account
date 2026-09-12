@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core
 import { Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
 import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, Category } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
@@ -18,7 +17,6 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     RouterLink,
     MatCardModule,
     MatIconModule,
-    MatButtonModule,
     EmptyStateComponent,
     TransactionRowComponent,
     TranslatePipe

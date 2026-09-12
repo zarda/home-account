@@ -7,7 +7,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 
 import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
@@ -46,7 +45,6 @@ import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/
     MatIconModule,
     MatProgressSpinnerModule,
     MatProgressBarModule,
-    MatCardModule,
     MatChipsModule,
     FileDropzoneComponent,
     TransactionPreviewTableComponent,

@@ -3,12 +3,11 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { MatCardModule } from '@angular/material/card';
-import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
@@ -33,12 +32,10 @@ import { NotificationService } from '../../../../core/services/notification.serv
     PageHeaderComponent,
     CommonModule,
     MatCardModule,
-    MatListModule,
     MatIconModule,
     MatButtonModule,
     MatChipsModule,
     MatMenuModule,
-    MatDialogModule,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

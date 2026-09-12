@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnDestroy, Out
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
@@ -14,7 +13,6 @@ import { looksLikeImageFile } from '../../../../core/utils/file.utils';
     CommonModule,
     MatIconModule,
     MatButtonModule,
-    MatProgressBarModule,
     DragDropModule,
     TranslatePipe
   ],

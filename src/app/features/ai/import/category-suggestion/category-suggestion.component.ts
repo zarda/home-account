@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
@@ -14,7 +13,6 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
   standalone: true,
   imports: [
     CommonModule,
-    MatChipsModule,
     MatIconModule,
     MatTooltipModule,
     MatMenuModule,
