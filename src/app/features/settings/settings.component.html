@@ -4,7 +4,7 @@
   <!-- User Card -->
   <div class="user-card">
     @if (userPhoto()) {
-      <img [src]="userPhoto()" alt="Profile" class="user-avatar">
+      <img [src]="userPhoto()" [alt]="'settings.profilePhotoAlt' | translate" class="user-avatar">
     } @else {
       <div class="user-avatar-placeholder">
         <mat-icon>person</mat-icon>

@@ -295,6 +295,16 @@ export type ProcessingStep =
   | { name: 'reading' | 'extracting' | 'converting' | 'categorizing' | 'duplicates' }
   | { name: 'readingImage'; done: number; total: number };
 
+/**
+ * What the camera-capture dialog is doing right now, resolved through the
+ * catalogs the same way ProcessingStep is (see above) — a separate type
+ * because this door's steps are its own, not the service's.
+ */
+export type CaptureStatus =
+  | { name: 'analyzing' }
+  | { name: 'processingImages'; count: number }
+  | { name: 'queueing' };
+
 export interface ImportResult {
   source: ImportSource;
   fileType: ImportFileType;

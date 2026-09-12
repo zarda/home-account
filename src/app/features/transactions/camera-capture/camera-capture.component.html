@@ -94,7 +94,7 @@
       <div class="multi-image-preview">
         @if (isProcessing()) {
           <div class="processing-overlay">
-            <app-loading-spinner size="lg" [message]="processingStatus()" />
+            <app-loading-spinner size="lg" [message]="processingStatusText()" />
           </div>
         }
 
@@ -105,7 +105,7 @@
               <div class="image-number">{{ i + 1 }}</div>
               <img
                 [src]="image.previewUrl"
-                alt="Captured photo {{ i + 1 }}"
+                [alt]="'receiptImages.imageNumber' | translate: { index: i + 1, total: capturedImages().length }"
                 class="thumbnail"
               />
               <div class="image-actions">

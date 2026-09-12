@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -138,22 +138,22 @@ describe('CameraCaptureComponent', () => {
       expect(component.canAddMore()).toBeFalse();
     });
 
-    it('derives the processing mode', () => {
-      // processingMode reads the (non-signal) strategy spies, so it settles
-      // per instance — build a fresh component for each availability scenario.
-      expect(build().componentInstance.processingMode()).toBe('cloud');
-
-      strategyService.canUseNative.and.returnValue(true);
-      expect(build().componentInstance.processingMode()).toBe('native');
-
-      strategyService.canUseNative.and.returnValue(false);
-      strategyService.canUseCloud.and.returnValue(false);
-      expect(build().componentInstance.processingMode()).toBe('unavailable');
-
-      pwaService.isOnline.and.returnValue(false);
+    it('resolves each capture status name through the catalog', () => {
       const component = build().componentInstance;
-      expect(component.processingMode()).toBe('offline');
-      expect(component.willUseCloudAI()).toBeFalse();
+      expect(component.processingStatusText()).toBe('');
+
+      component.processingStatus.set({ name: 'analyzing' });
+      expect(component.processingStatusText()).toBe('ai.scanning');
+
+      component.processingStatus.set({ name: 'processingImages', count: 2 });
+      expect(component.processingStatusText()).toBe('import.processingMultipleImages');
+      expect(translationService.t).toHaveBeenCalledWith('import.processingMultipleImages', { count: 2 });
+
+      component.processingStatus.set({ name: 'queueing' });
+      expect(component.processingStatusText()).toBe('import.savingForLater');
+
+      component.processingStatus.set(null);
+      expect(component.processingStatusText()).toBe('');
     });
 
     it('reads connectivity from PwaService rather than a local copy', () => {
@@ -164,6 +164,7 @@ describe('CameraCaptureComponent', () => {
       // back; nothing here should shadow it with navigator.onLine.
       pwaService.isOnline.and.returnValue(false);
       expect(component.isOnline()).toBeFalse();
+      expect(component.willUseCloudAI()).toBeFalse();
     });
 
     it('exposes legacy single-image accessors', () => {
@@ -220,6 +221,15 @@ describe('CameraCaptureComponent', () => {
       expect(component.imageCount()).toBe(10);
       expect(component.error()).toBe('import.maxPhotosReached');
       expect(translationService.t).toHaveBeenCalledWith('import.maxPhotosReached', { count: 10 });
+    });
+
+    it('onImageCaptured leaves processingStatus untouched', async () => {
+      // isProcessing only ever goes true inside processImage, so nothing
+      // set here can render.
+      const component = build().componentInstance;
+      spyOn(component as unknown as { compressImage: (f: File) => Promise<File> }, 'compressImage').and.resolveTo(file());
+      await component.onImageCaptured({ target: { files: [file()], value: '' } } as unknown as Event);
+      expect(component.processingStatus()).toBeNull();
     });
 
     it('removeImage removes by id and revokes its url', () => {
@@ -367,7 +377,8 @@ describe('CameraCaptureComponent', () => {
       const component = build().componentInstance;
       withImages(component, 1);
       await component.processImage();
-      expect(component.error()).toContain('No transactions found');
+      expect(component.error()).toBe('import.noTransactionsInImages');
+      expect(translationService.t).toHaveBeenCalledWith('import.noTransactionsInImages', { count: 1 });
     });
 
     describe('the attempt record', () => {
@@ -396,6 +407,7 @@ describe('CameraCaptureComponent', () => {
         withImages(again, 1);
         await again.processImage();
         expect(attempts.handle.failed).toHaveBeenCalledWith('queue_write');
+        expect(again.error()).toBe('import.errorQueueWrite');
       });
 
       it('reports no_provider when no engine is configured', async () => {
@@ -470,5 +482,90 @@ describe('CameraCaptureComponent', () => {
     const events = addEventListener.calls.allArgs().map(args => args[0]);
     expect(events).not.toContain('online');
     expect(events).not.toContain('offline');
+  });
+});
+
+// A sibling suite, not a nested describe: the outer file overrides the
+// template with a bare div (see its beforeEach above), so proving the
+// overlay's [message] binding needs its own TestBed with the real template.
+// Mirrors the technique import-history.component.spec.ts uses for its own
+// transaction-shortcut suite.
+describe('CameraCaptureComponent processing overlay', () => {
+  let fixture: ComponentFixture<CameraCaptureComponent>;
+  let component: CameraCaptureComponent;
+
+  // A real (1x1, transparent) data URI rather than the other suite's fake
+  // "blob:fake" string: this suite renders the real <img>, and a browser
+  // that actually tries to load an invalid blob URL logs a resource error
+  // the other suite, with its blanked template, never provokes.
+  const onePixelGif = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+  beforeEach(async () => {
+    const translationService = jasmine.createSpyObj('TranslationService', ['t']);
+    translationService.t.and.callFake((key: string) => key);
+
+    const strategyService = jasmine.createSpyObj('AIStrategyService', [
+      'canUseNative', 'canUseCloud', 'processReceipt', 'processMultipleImages', 'platform',
+    ]);
+    // Neither provider available: the mode-indicator falls to its "configure
+    // AI" branch, which is the only one that skips cloudProviderLabel() —
+    // this suite has no reason to stub what that computed reads.
+    strategyService.canUseNative.and.returnValue(false);
+    strategyService.canUseCloud.and.returnValue(false);
+
+    const pwaService = jasmine.createSpyObj('PwaService', ['isIOS', 'isStandalone', 'isOnline']);
+    pwaService.isIOS.and.returnValue(false);
+    pwaService.isStandalone.and.returnValue(false);
+    pwaService.isOnline.and.returnValue(true);
+
+    await TestBed.configureTestingModule({
+      imports: [CameraCaptureComponent],
+      providers: [
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: AIImportService, useValue: jasmine.createSpyObj('AIImportService', ['importFromImage', 'importFromMultipleImages', 'convertStrategyResultToCategories']) },
+        { provide: AIStrategyService, useValue: strategyService },
+        { provide: ReceiptAttemptService, useValue: attemptStub().service },
+        { provide: PwaService, useValue: pwaService },
+        { provide: OfflineQueueService, useValue: jasmine.createSpyObj('OfflineQueueService', ['queueImage']) },
+        { provide: TranslationService, useValue: translationService },
+        { provide: MatDialogRef, useValue: jasmine.createSpyObj('MatDialogRef', ['close']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        { provide: DuplicateDetectionService, useValue: jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']) },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(CameraCaptureComponent);
+    component = fixture.componentInstance;
+    component.capturedImages.set([
+      { id: 'i0', file: new File(['x'], 'r.jpg', { type: 'image/jpeg' }), previewUrl: onePixelGif },
+    ]);
+  });
+
+  function statusParagraph(): HTMLParagraphElement | null {
+    return fixture.nativeElement.querySelector('.processing-overlay p');
+  }
+
+  it('renders the resolved status text while processing', () => {
+    component.isProcessing.set(true);
+    component.processingStatus.set({ name: 'analyzing' });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.processing-overlay')).withContext('overlay present').toBeTruthy();
+    expect(statusParagraph()?.textContent?.trim()).toBe('ai.scanning');
+  });
+
+  it('renders no status paragraph for a null status, rather than an empty one', () => {
+    component.isProcessing.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.processing-overlay')).withContext('overlay present').toBeTruthy();
+    expect(statusParagraph()).toBeNull();
+  });
+
+  it('binds the thumbnail alt to the shared receipt-image key', () => {
+    fixture.detectChanges();
+
+    const thumbnail = fixture.nativeElement.querySelector('img.thumbnail') as HTMLImageElement;
+    expect(thumbnail.alt).toBe('receiptImages.imageNumber');
   });
 });

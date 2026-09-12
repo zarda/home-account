@@ -399,6 +399,7 @@
     "title": "Settings",
     "subtitle": "Manage your preferences and account",
     "profile": "Profile",
+    "profilePhotoAlt": "Profile photo",
     "preferences": "Preferences",
     "preferencesDescription": "Currency, theme, and display settings",
     "categories": "Categories",
@@ -1120,6 +1121,10 @@
     "failureUnknown": "Unknown error",
     "noTransactionsFound": "No Transactions Found",
     "noTransactionsFoundDescription": "Could not extract any transactions from this file. Please try a different file or ensure the image is clear and readable.",
+    "noTransactionsInImages": {
+      "one": "No transactions found in the image. Please try again with a clearer photo.",
+      "other": "No transactions found in the images. Please try again with clearer photos."
+    },
     "importFromFile": "Import from File",
     "importPhotos": "Import photos",
     "importFromCamera": "Import from Camera",
@@ -1151,6 +1156,7 @@
     "nativeOCR": "Native Vision OCR",
     "configureAI": "Configure API key in Settings",
     "iosInstallHint": "For the best camera experience, add this app to your Home Screen",
+    "savingForLater": "Saving for later processing...",
     "queuedForLater": {
       "one": "{{count}} image queued for processing when online",
       "other": "{{count}} images queued for processing when online"
@@ -1242,6 +1248,7 @@
     "errorCloudUnavailable": "Cloud AI could not be reached. Check your connection, or add an API key in Settings → AI Processing.",
     "errorQueuedOffline": "No connection, so this image was queued. It will be processed when you are back online.",
     "errorProcessingFailed": "Could not process the image. Please try again.",
+    "errorQueueWrite": "Could not save images for later. Please try again.",
     "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing.",
     "errorAnswerIncomplete": "The reader ran out of room before it finished this receipt. Try again, or with fewer photos at a time.",
     "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below, and add anything that is not here — Add a row under the list starts a blank one."
