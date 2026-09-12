@@ -552,4 +552,44 @@ describe('CurrencyService rate initialization', () => {
     expect(service.exchangeRates().get('USD')).toBe(1);
     expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(157, 4);
   });
+
+  // Which rung the table came from, as the Settings marker reads it. Each
+  // rung is written on exactly one path through initialization, so one spec
+  // per path is the whole contract — and the rate values above can no longer
+  // tell the fresh and expired cache rungs apart, since both restore the same
+  // table.
+  it('names the live rung when the fetch succeeds', async () => {
+    stubFetch({ result: 'success', rates: FETCHED_RATES });
+    const service = await buildService();
+
+    expect(service.rateSource()).toBe('live');
+    expect(service.lastUpdated()).toBeInstanceOf(Date);
+  });
+
+  it('names the cached rung when a fresh cache short-circuits the fetch', async () => {
+    const stamp = seedCache(CACHED_RATES, HOUR_MS);
+    const fetchSpy = stubFetch({ result: 'success', rates: FETCHED_RATES });
+    const service = await buildService();
+
+    expect(service.rateSource()).toBe('cached');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // The cache's own write time, not the wall clock this rung was chosen at.
+    expect(service.lastUpdated()?.getTime()).toBe(stamp);
+  });
+
+  it('names the expired rung when a stale cache covers a failed fetch', async () => {
+    seedCache(CACHED_RATES, 13 * HOUR_MS);
+    stubFetch('reject');
+    const service = await buildService();
+
+    expect(service.rateSource()).toBe('expired');
+  });
+
+  it('names the fallback rung when nothing was ever cached', async () => {
+    stubFetch('reject');
+    const service = await buildService();
+
+    expect(service.rateSource()).toBe('fallback');
+    expect(service.lastUpdated()).toBeNull();
+  });
 });

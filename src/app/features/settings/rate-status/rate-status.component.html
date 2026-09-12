@@ -1,0 +1,14 @@
+@if (rateSource(); as rung) {
+  <div class="rate-status">
+    <span class="section-label">{{ 'settings.ratesLabel' | translate }}</span>
+    <p class="rate-line" [class.rate-line-stale]="isStale()">
+      @if (rung === 'live' || rung === 'cached') {
+        {{ 'settings.ratesLive' | translate: dateParam() }}
+      } @else if (rung === 'expired') {
+        {{ 'settings.ratesExpired' | translate: dateParam() }}
+      } @else if (rung === 'fallback') {
+        {{ 'settings.ratesBuiltIn' | translate }}
+      }
+    </p>
+  </div>
+}

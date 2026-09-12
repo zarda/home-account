@@ -6,6 +6,7 @@ import {
   CurrencyInfo,
   ExchangeRates,
   CachedRates,
+  RateSource,
   SUPPORTED_CURRENCIES,
   currencyDecimalPlaces,
   currencyInfoFor,
@@ -31,6 +32,11 @@ export class CurrencyService {
   exchangeRates = signal<Map<string, number>>(new Map([['USD', 1]]));
   isLoading = signal<boolean>(false);
   lastUpdated = signal<Date | null>(null);
+  // Which rung the loaded table came from, beside the stamp that says how old
+  // it is. Null means the ladder has not settled yet — not a rung of its own:
+  // nothing has chosen, and a reader that guesses during initialization would
+  // report the placeholder table as though it were a source.
+  rateSource = signal<RateSource | null>(null);
   private ratesInitialized = signal<boolean>(false);
   private initPromise: Promise<void> | null = null;
 
@@ -53,14 +59,15 @@ export class CurrencyService {
 
     try {
       if (cached && !this.isExpired(cached.lastUpdated)) {
-        this.setRatesFromCache(cached);
+        this.setRatesFromCache(cached, 'cached');
         return;
       }
 
       await this.refreshRates();
     } catch {
       if (cached) {
-        this.setRatesFromCache(cached);
+        // Expired by construction: a fresh cache returned above.
+        this.setRatesFromCache(cached, 'expired');
       } else {
         this.setDefaultRates();
       }
@@ -178,6 +185,7 @@ export class CurrencyService {
       const rates = new Map<string, number>(Object.entries(data.rates));
       this.exchangeRates.set(rates);
       this.lastUpdated.set(new Date());
+      this.rateSource.set('live');
 
       this.cacheRates(data.rates);
     } finally {
@@ -294,12 +302,16 @@ export class CurrencyService {
     return now - updatedTime > CACHE_DURATION_MS;
   }
 
-  // Set rates from cache
-  private setRatesFromCache(cached: CachedRates): void {
+  // Set rates from cache. The rung is passed in rather than re-derived here:
+  // both call sites already know whether this cache was fresh or is standing
+  // in for a failed fetch, and a second isExpired() call would answer against
+  // a later clock than the decision it is meant to report.
+  private setRatesFromCache(cached: CachedRates, source: RateSource): void {
     const rates = new Map<string, number>(Object.entries(cached.rates));
     rates.set('USD', 1);
     this.exchangeRates.set(rates);
     this.lastUpdated.set(cached.lastUpdated.toDate());
+    this.rateSource.set(source);
   }
 
   // Get default rates as object (fallback when API is unavailable)
@@ -335,5 +347,6 @@ export class CurrencyService {
     const approximateRates = this.getDefaultRatesObject();
     const defaultRates = new Map<string, number>(Object.entries(approximateRates));
     this.exchangeRates.set(defaultRates);
+    this.rateSource.set('fallback');
   }
 }

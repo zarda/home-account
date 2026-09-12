@@ -149,3 +149,15 @@ export interface CachedRates {
   rates: ExchangeRates;
   lastUpdated: Timestamp;
 }
+
+/**
+ * Which rung of the exchange-rate fallback ladder produced the table that is
+ * loaded. Four rather than three: a device serving an expired cache and a
+ * device serving the compiled-in approximations have both failed to reach the
+ * provider, but only the second has never seen a real market rate, and only
+ * the first can say how old the figures on screen are. Collapsing them would
+ * hide a persistent failure on a device that does have a cache — the case
+ * worth reporting. `CurrencyService.initializeRates` settles on
+ * exactly one per app start; the ladder is in docs/exchange-rates.md.
+ */
+export type RateSource = 'live' | 'cached' | 'expired' | 'fallback';

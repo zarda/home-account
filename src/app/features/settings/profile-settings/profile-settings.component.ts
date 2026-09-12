@@ -24,6 +24,7 @@ import { AnalyticsSettingsComponent } from '../analytics-settings/analytics-sett
 import { ReminderSettingsComponent } from '../reminder-settings/reminder-settings.component';
 import { WeeklyRecapSettingsComponent } from '../weekly-recap-settings/weekly-recap-settings.component';
 import { AccessibilitySettingsComponent } from '../accessibility-settings/accessibility-settings.component';
+import { RateStatusComponent } from '../rate-status/rate-status.component';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 
 @Component({
@@ -45,6 +46,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     ReminderSettingsComponent,
     WeeklyRecapSettingsComponent,
     AccessibilitySettingsComponent,
+    RateStatusComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',
