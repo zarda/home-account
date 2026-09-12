@@ -15,7 +15,10 @@ figures handed to the AI summary — reads one in-memory table in
    for twelve hours; a table with fewer than two entries is refused as
    indistinguishable from the placeholder.
 4. **The compiled-in constants** — nineteen approximate rates for the
-   picker's curated currencies.
+   picker's curated currencies. They were written in `2a27991 feat: Core
+   services` (2025-12-30), the third commit of the repository, and no
+   commit since has changed the value of any of them, so read them as a
+   snapshot of that week rather than as "roughly current".
 
 The ladder, in order: a fresh cache is used as-is; otherwise the live fetch;
 if that fails, the cache **even when expired** — yesterday's market data
@@ -31,13 +34,38 @@ cache, so a good cache can never be overwritten by a bad response.
 
 What each rung stamps into `lastUpdated`: the fetch stamps now; the cache
 stamps its own write time; the constants stamp nothing — null means "never
-saw market data". Nothing binds the signal today, but it is the one place
-staleness is observable, so it is kept honest.
+saw market data".
+
+**Which rung settled is a value, not an inference.**
+`CurrencyService.rateSource` holds `live`, `cached`, `expired` or
+`fallback`, written on exactly the four paths that install a table, and
+`null` until the ladder settles.
+`setRatesFromCache(cached, source)` is told the rung rather than deriving
+one: a second expiry check inside would answer against a later clock than the
+decision it is reporting. The two failing rungs stay apart because they say
+different things — `expired` and `fallback` have both failed to reach the
+provider, but only `fallback` has never seen a real market rate, and only
+`expired` can say how old the figures are.
+
+Settings → Preferences reads it, in `RateStatusComponent`, on a line directly
+under the base-currency select — beside the currency whose conversions the
+table serves. Four rungs, three lines: `live` and `cached` share *Exchange
+rates updated {{date}}*, because a fresh cache is at most twelve hours old
+and makes the same claim about the table's age that a live fetch does. The
+cache is the ladder's *first* rung, so nearly every boot lands on `cached`;
+a line naming the provider there would report the ordinary case as a
+degraded one. `expired` and `fallback` carry warnings of their own — those are
+the two rungs that did not reach the provider, and that failure is the thing
+worth saying. `fallback` names no date, because it has none. The marker is
+passive: `refreshRates` is a rejecting API with no retry, so there is no
+refresh control to offer.
 
 The reasoning and the rejected loud-failure alternative are in
-[ADR 0037](ADR/0037-an-error-body-is-a-failed-fetch.md). What the writers
-behind `ensureRatesLoaded` assume about the table they convert through is in
-[money-snapshots.md](money-snapshots.md).
+[ADR 0037](ADR/0037-an-error-body-is-a-failed-fetch.md); what the marker
+chose to say and what it refused to say is in
+[ADR 0127](ADR/0127-a-figure-the-app-cannot-vouch-for-says-so.md). What the
+writers behind `ensureRatesLoaded` assume about the table they convert
+through is in [money-snapshots.md](money-snapshots.md).
 
 ## #251 — a 200 with an error body left every currency at 1:1
 
