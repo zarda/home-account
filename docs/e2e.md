@@ -238,7 +238,7 @@ inferred.
 | Translating a note | Nothing. A provider call under the account's own key; the answer lives in the component and the service's in-memory cache, and both are gone on reload | Nothing to undo |
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
-| Seeding or clearing the rate cache (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile, and one extra provider fetch on the next boot when the key is cleared | The value read before the change is written back verbatim, the page reloaded, and the Settings line read again to confirm the rung it reports is the one it reported at the start |
+| Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme classes it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the root element's classes restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
 | Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
@@ -453,7 +453,7 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 16 | Review: a row removed | A card leaving under a real pointer, focus landing on its neighbour, and the empty review step with Continue held | `16-row-removed.png`, `16-empty-review.png` |
 | 17 | Review: a fraction from a file | A CSV's fraction landing whole under a real parse, the Split trigger it earns, the confirm step's per-currency summary, and the snackbar a bulk currency switch raises over the row it blanks | `17-csv-fraction.png`, `17-confirm-summary.png`, `17-bulk-blanked.png` |
 | 18 | Camera: the capture status line | The dialog's own step line resolving from the catalogs while a real provider reads a real photo, and the thumbnail's bound `alt` | `18-camera-analyzing.png` |
-| 19 | Settings: which rate rung is loaded | Which rung a real boot actually lands on, and what the account is told about it | `19-rate-line.png` |
+| 19 | Settings: which rate rung is loaded | Which rung a real boot actually lands on, what the account is told about it, and the two failed-fetch rungs rendered in a real browser under both themes | `19-rate-line.png`, `19-expired-light.png`, `19-expired-dark.png`, `19-fallback-light.png`, `19-fallback-dark.png` |
 | 20 | The wizard's processing step on a backup | The step line and the bar as a real render sequence, with no gap where a deleted step was, and nothing left standing afterwards | `20-processing-step.png`, `20-confirm-summary.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
@@ -1179,6 +1179,8 @@ analytics event, and writes no document
 Settings → **Preferences** → the base-currency field, labelled *Currency*.
 The line under the select is the rate marker.
 
+#### The read half
+
 Read the line, and read the rung behind it from the page console:
 
 ```js
@@ -1193,23 +1195,178 @@ the device cache, a fresh one is at most twelve hours of market data, and it
 makes the same claim about the table's age a live fetch does. A line that
 said *saved* there would report an ordinary boot as a degraded one.
 
-**The write half runs only on the user's explicit word**, and it is a device
-write, not an account one. Read `localStorage['home-account.exchangeRates']`
-and keep the string. Remove the key, reload: the ladder misses the cache,
-fetches, and the rung reads `'live'` — with the *same sentence* on screen,
-which is the thing being confirmed. Write the saved string back verbatim,
-reload again, and confirm on screen that the line and the rung are what they
-were at the start. The cost is one extra provider fetch on the boot in
-between; nothing on the account changes.
+#### The write half
 
-`expired` and `fallback` are **not reachable here**. Both require a fetch
-that fails, which a read-only run against production cannot arrange — an
-expired cache alone simply goes to the network and succeeds. They stay where
-they can be arranged: `currency.service.spec.ts` for all four rungs, and
-`currency-fallback.smoke.spec.ts`, which pins `'expired'` beside the cached
-rate a real write converted through.
+**It runs only on the user's explicit word**, and every write in it is on the
+device: `localStorage['home-account.exchangeRates']` on this browser profile,
+nothing on the account ([What a run may touch](#what-a-run-may-touch)). Read
+the string first and keep it **outside the page** — copied down beside the
+run's notes, because every reload below clears anything left on `window`, and
+the restore at the end needs it verbatim.
 
-One shot: the line under the currency select.
+**A fresh cache.** Stamp the kept table with the current clock and reload:
+
+```js
+const kept = localStorage.getItem('home-account.exchangeRates');  // copy it down
+localStorage.setItem('home-account.exchangeRates', JSON.stringify({
+  ...JSON.parse(kept), lastUpdatedMs: Date.now()
+}));
+```
+
+The ladder's first rung takes it: the rung reads `'cached'` and the line reads
+the same sentence with today's date. That the boot asked for nothing is not
+read off the network log — that log may record same-origin requests only
+([Panes and viewports](#panes-and-viewports)), so the absence of a rates
+request there proves nothing.
+
+**No cache.** Remove the key and reload: the ladder misses the cache, fetches,
+and the rung reads `'live'` — with the *same sentence* on screen, which is the
+thing being confirmed. That boot costs one extra provider fetch.
+
+**The restore.** Write the copied string back verbatim with `setItem`, reload,
+and confirm on screen that the line and the rung are the ones they were at the
+start.
+
+#### The two rungs a boot cannot reach
+
+`expired` (a cache past the twelve-hour window and a failing fetch) and
+`fallback` (no cache and a failing fetch) both need the rates request to fail,
+and no arrangement of the cache alone makes it fail — an expired cache simply
+goes to the network and succeeds.
+
+Neither mechanism the issue offered reaches them:
+
+- **Request blocking on `open.er-api.com`.** The pane the protocol runs in
+  exposes no request blocking and no offline mode, so a failed fetch cannot be
+  arranged from outside the app.
+- **The seeded harness under [`docs/ui-audit/tools/`](ui-audit/tools/).** It
+  can stub `fetch` before the service is constructed, but it renders a demo
+  account against the emulators, and only after `.vscode/environment.ts` is
+  swapped and an uncommitted `app.config.ts` edit points the app at them.
+  There is no real session and no deployed rules behind it — which is the
+  whole reason this protocol exists beside it.
+
+The app offers no seam of its own either: the endpoint is a module constant,
+`fetch` is the global, there is no environment field naming it and no service
+worker sees it. What it does offer is the ladder. `CurrencyService` is
+root-provided, `RateStatusComponent` holds it as `private currencyService`,
+and `initializeRates()` is the exact method a boot runs — so the ladder can be
+re-entered on the running page with the fetch failing underneath it, and the
+line repaints through the same signal a boot writes.
+
+The access is journey 14's class, and it is worth naming rather than glossing:
+`private` is TypeScript's word, which the running page does not enforce, and a
+private method called from the console is diagnostic-grade. What it proves is
+the rung the ladder chooses and the line the component renders for it — not
+the boot sequence, which is why the journey ends with a real reload.
+
+The ladder's logic stays where it belongs: `currency.service.spec.ts` walks
+all four rungs and `rate-status.component.spec.ts` pins `rate-line-stale` on
+the two that failed. What this half adds is the one thing neither can — the
+line as a browser paints it, in the warning colour each theme gives it.
+
+**Keep the string, the real `fetch` and the theme classes, and fail only the
+rates host.** This half reloads nothing until it is over, so a page global
+holds all three across it:
+
+```js
+window.__j19 = {
+  cache: localStorage.getItem('home-account.exchangeRates'),
+  fetch: window.fetch,
+  theme: document.documentElement.className
+};
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input
+    : input instanceof URL ? input.href : input.url;
+  return url.startsWith('https://open.er-api.com/')
+    ? Promise.reject(new Error('journey 19'))
+    : window.__j19.fetch.call(window, input, init);
+};
+```
+
+Selective for the reason `currency-fallback.smoke.spec.ts` fakes it the same
+way: the Firestore transport and the auth token exchange ride `window.fetch`
+too, and a blanket rejection takes the session down with the rates.
+
+**`expired`** — age the kept table past the twelve-hour window and re-enter:
+
+```js
+const line = () => document.querySelector('app-rate-status .rate-line');
+const rates = ng.getComponent(document.querySelector('app-rate-status'))
+  .currencyService;
+localStorage.setItem('home-account.exchangeRates', JSON.stringify({
+  ...JSON.parse(window.__j19.cache), lastUpdatedMs: Date.now() - 13 * 3600e3
+}));
+await rates.initializeRates();
+[rates.rateSource(), line().textContent.trim(), line().className,
+  getComputedStyle(line()).color];
+```
+
+`'expired'`, the line reading *Could not update exchange rates — using saved
+rates from …* with the cache's **own** date in the user's date format, the
+class list carrying `rate-line-stale`, and the colour `rgb(180, 83, 9)` —
+`--color-warning-text` in light. In a pane the host is not showing, flush with
+`ng.applyChanges(ng.getComponent(document.querySelector('app-rate-status')))`
+before reading the text ([Panes and viewports](#panes-and-viewports)).
+
+**Dark**, for the same line:
+
+```js
+const root = document.documentElement;
+root.classList.add('dark-theme'); root.classList.remove('light-theme');
+getComputedStyle(line()).color;        // 'rgb(251, 191, 36)'
+root.className = window.__j19.theme;   // both classes back as they were
+```
+
+That is what `ThemeService.applyTheme` does to the root element and nothing
+besides. The Settings theme control is not used: that click writes
+`preferences.theme` on the user document, and this journey has no account
+write in it.
+
+**`fallback`** — remove the key and re-enter, with the fetch still failing:
+
+```js
+localStorage.removeItem('home-account.exchangeRates');
+await rates.initializeRates();
+[rates.rateSource(), line().textContent.trim(), line().className,
+  getComputedStyle(line()).color];
+```
+
+`'fallback'`, the line reading *Could not fetch exchange rates — using
+built-in approximate rates* with **no date on screen**, and the same warning
+colour — read in dark the same way, for `rgb(251, 191, 36)`.
+
+**Do not read `lastUpdated()` here.** `setDefaultRates()` installs the
+constants and names the rung, and it leaves that signal alone on purpose, so a
+re-entry that has already been through `expired` still carries the cache's
+date in it. Nothing on screen is wrong — the template's `fallback` branch
+takes no date and says *approximate* in words — so the criterion here is the
+sentence and the rung, never a null stamp. The null belongs to a service built
+with no cache at all, and that is where `currency-fallback.smoke.spec.ts` pins
+it, beside the `1/149.5` constant a real write converted through.
+
+**The restore.** Put the real `fetch` and the kept string back, and re-enter
+once more:
+
+```js
+window.fetch = window.__j19.fetch;
+localStorage.setItem('home-account.exchangeRates', window.__j19.cache);
+await rates.initializeRates();
+[rates.rateSource(), line().textContent.trim()];
+```
+
+The rung and the line are the ones the journey started on. Then **reload**:
+the wrapper goes with the page, the boot walks the ladder the ordinary way,
+and the line reads the same — which is what says the restore is real rather
+than a signal that was told so.
+
+**Pass:** both unreachable rungs read on screen, each with its own sentence,
+`rate-line-stale` and `--color-warning-text` in both themes; the theme classes
+and the cache back as they were; and the starting rung and line confirmed
+after a real reload, with no new `error`-level console entry across it.
+
+Five shots: the line under the currency select at the start, and each warning
+line in light and dark.
 
 ### 20. The wizard's processing step on a backup
 

@@ -184,6 +184,29 @@ describe('Currency fallback ladder (emulator smoke test)', () => {
     expect(TestBed.inject(CurrencyService).rateSource()).toBe('expired');
   }
 
+  function expectConstantsRateSnapshot(row: Transaction | undefined): void {
+    // The mirror of the snapshot above: 1/149.5 is the constants rung, and
+    // 1/157 — the cached table — is what a device with no cache must not be
+    // able to produce.
+    expect(row?.exchangeRate).toBeCloseTo(1 / 149.5, 6);
+    expect(row?.exchangeRate).not.toBeCloseTo(1 / 157, 6);
+    expect(row?.exchangeRate).not.toBe(1);
+    expect(row?.amountInBaseCurrency).toBeCloseTo(1000 / 149.5, 4);
+    expect(row?.amountInBaseCurrency).not.toBe(1000);
+    expect(row?.baseCurrency).toBe('USD');
+    // The ladder was actually exercised — the fetch ran and failed before
+    // constants took over, not skipped outright.
+    expect(fetchedUrls.some(url => url.startsWith(RATES_API_PREFIX))).toBeTrue();
+
+    const currency = TestBed.inject(CurrencyService);
+    // And the rung the service reports matches the rate it converted through:
+    // the same instance the write above went out on.
+    expect(currency.rateSource()).toBe('fallback');
+    // Approximations carry no date, and this instance has no cache stamp to
+    // keep either: it was built with the key already gone.
+    expect(currency.lastUpdated()).toBeNull();
+  }
+
   it('persists a row converted through the expired cache when the rates endpoint is down', async () => {
     ratesFailure = 'reject';
     const service = buildTransactionService();
@@ -200,5 +223,19 @@ describe('Currency fallback ladder (emulator smoke test)', () => {
     const row = await addYenRow(service);
 
     expectCachedRateSnapshot(row);
+  }, 30000);
+
+  it('persists a row converted through the compiled-in constants when this device has never cached a table', async () => {
+    // The last rung is only reachable with nothing cached, and the seeded
+    // 13-hour table above would take the write to the rung before it. Cleared
+    // here rather than in the seeding block because the service reads the key
+    // once, in its constructor, and injection is what runs that.
+    localStorage.removeItem(RATES_CACHE_KEY);
+    ratesFailure = 'reject';
+    const service = buildTransactionService();
+
+    const row = await addYenRow(service);
+
+    expectConstantsRateSnapshot(row);
   }, 30000);
 });
