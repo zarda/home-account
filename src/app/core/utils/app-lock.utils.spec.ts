@@ -1,10 +1,13 @@
 import {
   MAX_PIN_ATTEMPTS,
   appLockStorageKey,
+  clearBiometricOptIn,
   clearPinRecord,
+  readBiometricOptIn,
   readPinRecord,
   shouldRelock,
   unlockBackoffMs,
+  writeBiometricOptIn,
   writePinRecord,
 } from './app-lock.utils';
 import { PinRecord } from './pin-hash.utils';
@@ -73,6 +76,52 @@ describe('app-lock.utils', () => {
       spyOn(localStorage, 'setItem').and.throwError('QuotaExceededError');
 
       expect(writePinRecord('user-1', RECORD)).toBe(false);
+    });
+  });
+
+  describe('biometric opt-in storage', () => {
+    const KEY = 'homeaccount.app-lock.user-1.biometric';
+
+    afterEach(() => {
+      localStorage.removeItem(KEY);
+    });
+
+    it('reads false when nothing is stored', () => {
+      expect(readBiometricOptIn('user-1')).toBe(false);
+    });
+
+    it('reads true only for the exact stored flag', () => {
+      localStorage.setItem(KEY, '1');
+
+      expect(readBiometricOptIn('user-1')).toBe(true);
+    });
+
+    it('reads false for garbage', () => {
+      localStorage.setItem(KEY, 'true');
+
+      expect(readBiometricOptIn('user-1')).toBe(false);
+    });
+
+    it('writes and clears under the documented key', () => {
+      writeBiometricOptIn('user-1', true);
+      expect(localStorage.getItem(KEY)).toBe('1');
+      expect(readBiometricOptIn('user-1')).toBe(true);
+
+      writeBiometricOptIn('user-1', false);
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('clears the flag', () => {
+      writeBiometricOptIn('user-1', true);
+      clearBiometricOptIn('user-1');
+
+      expect(readBiometricOptIn('user-1')).toBe(false);
+    });
+
+    it('reads false when storage throws', () => {
+      spyOn(localStorage, 'getItem').and.throwError('boom');
+
+      expect(readBiometricOptIn('user-1')).toBe(false);
     });
   });
 
