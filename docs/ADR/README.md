@@ -133,6 +133,9 @@ reverse — why a thing is the way it is, not how to use it.
 | [0126](0126-a-step-no-door-can-paint-comes-off-the-type.md) | A step no door can paint comes off the type | Accepted; closes a gap of 0118; rests on another | 2026-09-12 |
 | [0127](0127-a-figure-the-app-cannot-vouch-for-says-so.md) | A figure the app cannot vouch for says so | Accepted; applies 0037; closes a gap of 0037; extends 0119 | 2026-09-12 |
 | [0128](0128-a-material-module-a-template-never-uses-fails-the-build.md) | A Material module a template never uses fails the build | Accepted | 2026-09-12 |
+| [0129](0129-a-receipt-photo-is-read-through-a-lens-and-the-image-is-the-original.md) | A receipt photo is read through a lens, and the image is the original | Accepted; applies 0095; closes the last gap of 0095 | 2026-09-13 |
+| [0130](0130-biometry-unlocks-the-app-and-the-pin-is-still-the-credential.md) | Biometry unlocks the app, and the PIN is still the credential | Accepted; applies 0040; first record of the app lock | 2026-09-13 |
+| [0131](0131-a-rung-a-boot-cannot-reach-is-reached-by-re-entering-the-ladder.md) | A rung a boot cannot reach is reached by re-entering the ladder | Accepted; extends 0127; a rejection of 0127 stands | 2026-09-13 |
 
 ## What belongs here
 

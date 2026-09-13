@@ -130,9 +130,9 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full
 window, and a pane behaves differently enough to cost a run before it is
-understood. None of these is a property of the app bar the seventh, which
-is the app's own timing; six of the nine have produced a false failure,
-the seventh cost a run a second provider call, the eighth stops a run
+understood. None of these is a property of the app bar the ninth, which
+is the app's own timing; eight of the eleven have produced a false failure,
+the ninth cost a run a second provider call, the tenth stops a run
 before it starts, and the last is a door nothing in a pane opens — its
 only control on the page is a switch with a write behind it.
 
@@ -180,6 +180,23 @@ only control on the page is a switch with a write behind it.
   to a third-party host and can be missing from the log entirely, so its
   absence proves nothing. The translated text on screen is the proof the
   provider answered.
+- **A pane's Escape key reaches no dialog.** The key tool's Escape lands
+  somewhere the CDK overlay's own keydown handler never sees: the receipt
+  viewer and the note dialog both stay open with focus inside and nothing in
+  the console, which reads exactly like a dialog that has stopped honouring
+  Escape. The app honours it — a synthetic `keydown` (`key: 'Escape'`,
+  `keyCode: 27`) dispatched on the open dialog closes it, which is how this
+  was settled — so close dialogs through their own Close or Cancel control,
+  which every journey does anyway, and never conclude an Escape defect from a
+  pane.
+- **A pane clears viewport emulation between turns.** A width set for a phone
+  journey is gone by the next turn, and any measurement that crosses that
+  boundary describes a layout that no longer exists — one run read a
+  zero-size box before the image had loaded and came back to find the dialog
+  apparently gone, which is the pane's reset and not the app. Set the width
+  and take every measurement of it inside one turn. The app is not upset by
+  the change either way: an open viewer watched through a mobile→desktop swap
+  stayed open while the table re-rendered underneath it.
 - **The wizard's back arrow navigates asynchronously.** The click returns
   before the route has changed, so a file handed to the dropzone's input in
   the same breath goes to the wizard the run thought it had left and joins
@@ -226,8 +243,8 @@ only the difference counts.
 
 Three writes are authorised — two on the account, one on the device only.
 Each is put back before the run ends, and the restore is *confirmed on
-screen*, not assumed. The other five rows write nothing at all and are listed
-with them anyway: three still cost the account a real provider call, one not
+screen*, not assumed. The other six rows write nothing at all and are listed
+with them anyway: four still cost the account a real provider call, one not
 even that, and the last leaves a notification standing in the operating
 system rather than anything on the account — what an import journey or a
 raised notification leaves behind is worth stating rather than leaving to be
@@ -236,6 +253,7 @@ inferred.
 | Action | What it writes | How it is put back |
 |---|---|---|
 | Translating a note | Nothing. A provider call under the account's own key; the answer lives in the component and the service's in-memory cache, and both are gone on reload | Nothing to undo |
+| Translating a receipt photo | Nothing. One provider call under the account's own key, the answer in the component and the service's in-memory cache; the stored image is downloaded and read, never rewritten, and the transaction is untouched | Nothing to undo |
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme classes it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the root element's classes restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
@@ -455,6 +473,9 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 18 | Camera: the capture status line | The dialog's own step line resolving from the catalogs while a real provider reads a real photo, and the thumbnail's bound `alt` | `18-camera-analyzing.png` |
 | 19 | Settings: which rate rung is loaded | Which rung a real boot actually lands on, what the account is told about it, and the two failed-fetch rungs rendered in a real browser under both themes | `19-rate-line.png`, `19-expired-light.png`, `19-expired-dark.png`, `19-fallback-light.png`, `19-fallback-dark.png` |
 | 20 | The wizard's processing step on a backup | The step line and the bar as a real render sequence, with no gap where a deleted step was, and nothing left standing afterwards | `20-processing-step.png`, `20-confirm-summary.png` |
+| 21 | Receipt lens, desktop, from the list icon | A real stored photo decoded and laid out under the dialog's cap, and the real vision prompt coming back as a receipt rather than a summary of one | `21-viewer-open.png`, `21-translating.png`, `21-translated.png`, `21-cached.png` |
+| 22 | The viewer at phone width | The only door a phone has to a receipt, and a photograph fitting a 375px viewport with its controls still reachable | `22-viewer-phone.png` |
+| 23 | The viewer over the edit form | Two Material dialogs stacked by a real router-free overlay, and the form surviving underneath unsubmitted | `23-form-thumbnail.png`, `23-viewer-over-form.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1418,6 +1439,136 @@ text `NaN` — a record that carries no totals of either kind renders a zero
 in the account's own currency.
 
 Two shots: the processing card mid-run, and the confirm step's summary.
+
+### 21. Receipt lens, desktop, from the list icon
+
+Desktop width — at least 1024px, for the reason journey 2 gives: the receipt
+icon lives in the table, and below `min-width: 768px` it does not exist.
+
+A row with a stored receipt **printed in a script the app's current language
+does not read** — the whole point is a photograph the account holder cannot
+read off the paper.
+
+Transactions → the row's receipt icon (`.receipt-icon-button`, `receipt_long`,
+with the image count as a badge past one) → the viewer.
+
+**Pass — what opens.** A dialog, not a tab: the transaction's description as
+a subtitle, the stored photo itself, and *Translate receipt* enabled. A
+one-image transaction shows no arrows. The photo is the stored one at its own
+resolution, laid out inside the dialog's cap — read both from the page:
+
+```js
+const img = document.querySelector('.receipt-image');
+[img.naturalWidth, img.naturalHeight, img.getBoundingClientRect().height,
+  innerHeight * 0.6];
+```
+
+the natural size is the upload's, and the rendered height is at or under
+`60dvh`. The actions row still carries *Open in new tab* with
+`rel="noopener"`.
+
+**Translate receipt** → the spinner → the panel.
+
+**Pass — the wire.** The marker reads *Translated from …* naming the language
+the receipt was printed in, the panel is `role="status"`, and the reading is
+the **receipt**, not a summary of one: every printed line in order, as
+`white-space: pre-wrap`, with every figure intact — item prices, the
+discount, the amount paid and the printed timestamps all identical to the
+photo beside them. Count the lines and read a few figures back rather than
+eyeballing it. The photo is still in the DOM: nothing was replaced.
+
+A provider call does not have to appear in the network log — it goes to a
+third-party host, and the log may record same-origin requests only
+([Panes and viewports](#panes-and-viewports)). The translated text is the
+proof it answered.
+
+**Pass — focus.** After the answer, `document.activeElement` is the
+**Hide translation** button, not `<body>`. That matters more here than on the
+note lens: this is a modal, and focus on `<body>` inside one leaves a keyboard
+reader with no way back to the dialog short of tabbing the whole surface.
+
+**Hide translation** → the panel goes, *Translate receipt* is back, and focus
+is on it. Press it again.
+
+**Pass — the cache.** The panel returns in well under a second with **no
+spinner**: the service caches by transaction, slot, locale and answering
+provider for the session, so a second look at the same photo costs nothing. A
+spinner here means the account is paying twice for one answer.
+
+Close through the dialog's own **Close** button — the pane's Escape key
+reaches no dialog, which is a pane artefact and not a finding
+([Panes and viewports](#panes-and-viewports)). The list underneath is
+unchanged: same row count, same row.
+
+Four shots: the viewer as it opens, the spinner, the translation beside the
+photo, and the cached second answer.
+
+### 22. The viewer at phone width
+
+375px wide, at the pane's **own** width where possible — pointer input stalls
+under emulation, and this journey is a menu and a dialog
+([Panes and viewports](#panes-and-viewports)). Take every measurement in the
+same turn that sets the width: a pane clears the emulation between turns.
+
+Below `min-width: 768px` the table is gone and the list is
+`app-transaction-row` elements. The row's receipt mark is an **indicator**,
+not a control, so the door is the trailing overflow menu (⋮) →
+**View receipt** — this is the only door a phone has to a stored receipt.
+
+**Pass — the menu.** With a receipt on the row and a note on it, the menu
+reads *View note*, *View receipt*, *Edit*, *Delete*, in that order.
+
+**Pass — the fit.** With the viewer open, from the console:
+
+```js
+const r = sel => document.querySelector(sel).getBoundingClientRect();
+[r('.receipt-image'), r('mat-dialog-container'),
+  r('.translate-button').height, innerWidth];
+```
+
+The image's box and the dialog's both sit inside the viewport width with
+nothing negative and nothing past the right edge; the Translate control is at
+least 40px tall. Then the page-level check journey 4 uses:
+
+```js
+document.documentElement.scrollWidth === document.documentElement.clientWidth;
+```
+
+`true`. A tall receipt photographed in portrait is the case that pushes a
+dialog wide, so use one.
+
+Leave by **Close**.
+
+One shot: the viewer at 375px with the photo and the Translate control both
+on screen.
+
+### 23. The viewer over the edit form
+
+Desktop. Click a row **with a stored receipt** → the edit dialog → the
+receipt strip under the receipt controls.
+
+**Pass — the thumbnail is a control.** Each stored image is a
+`<button type="button">` with a bound `alt` reading *Receipt image n of N*,
+and there is no `target="_blank"` anchor left anywhere in the strip:
+
+```js
+document.querySelectorAll('.receipt-strip a[target="_blank"]').length;   // 0
+```
+
+Click a thumbnail → the viewer opens **over** the form.
+
+**Pass — the stack.** Two dialog containers on the page, the form still
+mounted underneath, and the viewer showing that thumbnail's own slot — not
+the transaction's first image. **Close** → the viewer is gone and the form is
+still open, still unsubmitted, with the values it had.
+
+Leave the form by **Cancel**. Never Save.
+
+**Pass — nothing left behind.** No dialog containers remain, the list has the
+row count it started with, and the row is the one it was: the viewer reads a
+transaction and writes nothing to it.
+
+Two shots: the receipt strip in the form, and the viewer stacked over it.
 
 ## Evidence
 

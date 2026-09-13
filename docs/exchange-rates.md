@@ -67,6 +67,47 @@ chose to say and what it refused to say is in
 writers behind `ensureRatesLoaded` assume about the table they convert
 through is in [money-snapshots.md](money-snapshots.md).
 
+## Seeing a rung you did not land on
+
+Three of the four rungs a device can land on are easy to arrange and one is
+not. A fresh cache is nearly every boot; removing the device key forces
+`live`; but `expired` and `fallback` both need the **fetch** to fail, and an
+expired cache on its own just goes to the network and succeeds.
+
+There is no seam for that. The endpoint is a module constant, `fetch` is the
+global, no environment field names it and no service worker sees it — and
+[ADR 0131](ADR/0131-a-rung-a-boot-cannot-reach-is-reached-by-re-entering-the-ladder.md)
+records why none of those was added.
+
+**In a browser: re-enter the ladder.** `CurrencyService` is root-provided and
+`initializeRates()` is the exact method a boot runs, so the rung can be chosen
+a second time on the page that is already showing the line —
+`ng.getComponent(document.querySelector('app-rate-status')).currencyService`,
+with `window.fetch` wrapped to reject `open.er-api.com` and pass everything
+else through. The full procedure, its restore, and the authorisation it needs
+are journey 19 in [e2e.md](e2e.md#19-settings-which-rate-rung-is-loaded);
+what it is for is the line as a browser paints it — the sentence from the
+catalogs, `rate-line-stale` from the stylesheet, and
+`--color-warning-text` in whichever theme is on.
+
+Two traps, both worth knowing before reading anything off a re-entry:
+
+- **Wrap `fetch` selectively.** Firestore's transport and the auth token
+  exchange ride the same global; a blanket rejection takes the session down
+  with the rates.
+- **Do not read `lastUpdated()` after a re-entry.** `setDefaultRates()` names
+  the rung and deliberately leaves that signal alone, so a run that has
+  already been through `expired` still holds the cache's date when it lands on
+  `fallback`. Nothing on screen is wrong — the `fallback` line reads no date —
+  so the criterion is the sentence and the rung.
+
+**Under the emulators:** `currency-fallback.smoke.spec.ts` builds the service
+against each rung and lets a real `addTransaction` write through it, so the
+persisted `exchangeRate` says which table answered — `1/157` from a cached
+table thirteen hours old, `1/149.5` from the constants. The `fallback` case
+is the one that can assert the null stamp, because its service was built with
+no cache at all.
+
 ## #251 — a 200 with an error body left every currency at 1:1
 
 **Symptom.** With the provider rate-limiting (HTTP 200,

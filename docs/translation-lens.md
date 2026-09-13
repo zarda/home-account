@@ -1,29 +1,50 @@
-# The note translation lens
+# The translation lens
 
-A note saved with a transaction can be read back in the app's own language, on
-demand. The stored note never changes: what appears is a **view** of it, and
-it is gone when the page reloads.
+A note saved with a transaction, and a receipt photo stored against one, can
+each be read back in the app's own language, on demand. Neither record
+changes: what appears is a **view** of it, and it is gone when the page
+reloads.
 
-This exists because notes are deliberately stored in the script they were
-printed in. Every receipt extraction prompt reproduces the body exactly as
-printed rather than translating it, because a translated extraction throws the
-evidence away and nothing downstream can tell that it happened
+This exists because the app keeps what it was given in the script it was given
+in. A photographed receipt is stored as it was photographed, and a note taken
+off one reproduces the body exactly as printed rather than translating it,
+because a translated extraction throws the evidence away and nothing
+downstream can tell that it happened
 ([ADR 0008](ADR/0008-universal-receipt-language-support.md)). The cost is a
-trip abroad that fills the ledger with notes their owner cannot read, and this
-is what pays it back.
+trip abroad that fills the ledger with notes and photographs their owner
+cannot read, and this is what pays it back.
 
 Why nothing is persisted, why the app's own providers answer rather than a
 translation API, and what was rejected on the way, is in
-[ADR 0095](ADR/0095-a-translation-is-a-lens-never-a-write.md). This document is
-the part you need when using it, working out why a translation did or did not
-arrive, or changing the lens.
+[ADR 0095](ADR/0095-a-translation-is-a-lens-never-a-write.md). Why the photo
+needed a viewer before it could have a lens, and why its panel never replaces
+the image, is in
+[ADR 0129](ADR/0129-a-receipt-photo-is-read-through-a-lens-and-the-image-is-the-original.md).
+This document is the part you need when using either one, working out why a
+translation did or did not arrive, or changing them.
 
 `TranslationService` is **not** this. That is the i18n resolver, which turns a
 dotted key into a UI string and has nothing to do with user data
-([i18n.md](i18n.md)). This is `NoteTranslationService`, and the two are
-neighbours in `core/services`.
+([i18n.md](i18n.md)). This is `NoteTranslationService` and
+`ReceiptTranslationService`, and all three are neighbours in `core/services`.
 
-## Where the controls are
+## Two surfaces
+
+| Surface | Where it lives | Service | Prompt |
+|---|---|---|---|
+| A stored note | `<app-note-translation>`, placed in three hosts | `NoteTranslationService` | `translateNote` |
+| A stored receipt photo | the receipt viewer dialog | `ReceiptTranslationService` | `translateReceiptImage` |
+
+They share the answer shape, the failure vocabulary, the analytics event, the
+provider preference and the rule that a cut-off answer is refused. They are
+**not** one component — see
+[Changing the lens](#changing-the-lens) for why, and for what you have to
+change twice.
+
+Everything down to *What is never written* is the note. The photo starts at
+[The receipt photo](#the-receipt-photo).
+
+## Where the note's controls are
 
 | Door | Where | What it opens |
 |---|---|---|
@@ -156,7 +177,9 @@ the same question twice, and in the form it happens routinely.
 
 Nothing. There is no field, no migration, no cache on disk.
 
-- Not on the transaction — `Transaction.note` is untouched.
+- Not on the transaction — `Transaction.note` is untouched, and so are
+  `receiptUrl` and `receiptUrls`. The stored image is downloaded, sent and
+  forgotten; nothing is ever uploaded back over it.
 - Not in the JSON backup or the CSV export
   ([backup-restore.md](backup-restore.md), [csv-format.md](csv-format.md)).
 - Not in `localStorage` or IndexedDB.
@@ -166,24 +189,152 @@ Nothing. There is no field, no migration, no cache on disk.
 The translation lives in the component and in the session cache, and both are
 gone on reload. Nothing in account deletion has to sweep it.
 
-## The photo half
+## The receipt photo
 
-Not built. #157 asked for two lenses — a note and a receipt image — and this
-is the note one.
+The second surface. A stored receipt opens **in the app**, and the reading
+hangs underneath it.
 
-Translating a receipt photo needs somewhere to show it first: receipt images
-have no in-app viewer at all today, and every one opens in a browser tab. That
-viewer is the larger part of the work, and the issue stays open for it.
+### The viewer
+
+`ReceiptViewerDialogComponent`, opened through the exported
+`openReceiptViewer(dialog, { transaction, slot })` — never `dialog.open`
+directly, so the width is decided in one place. It is a dialog rather than a
+route: a photo does not belong in the browser's history, and closing it
+returns to whatever asked for it.
+
+- **One image at a time**, addressed by its storage **slot**. A slot is not a
+  position — a removed image leaves a tombstone rather than renumbering
+  ([ADR 0006](ADR/0006-multi-image-receipt-storage.md)) — and a caller holding
+  a slot that has since been cleared opens on the transaction's first stored
+  image instead of on nothing.
+- **Arrows only when there is more than one**, with a counter between them
+  that is `aria-hidden`: the image's own `alt` already reads
+  *Receipt image 1 of 3*.
+  Moving between images clears the panel, the error and the spinner — each
+  photo is its own question.
+- **The image is capped at `60dvh`** and the rest is a scroll away inside the
+  dialog. *Open in new tab* is still in the actions row, which is where zoom
+  lives: the viewer has none.
+
+`receiptImageSlots(transaction)` is the model helper that lists live images
+with their slots. Use it rather than walking `receiptUrls`, which carries
+positional tombstones.
+
+### The doors
+
+| Door | Where | Opens on |
+|---|---|---|
+| The receipt icon | A transactions **table** row, with the image count as a badge | The transaction's first stored image |
+| *View receipt* | Both action menus — the desktop row's ⋮ and the mobile row's overflow | The first stored image |
+| A thumbnail in the receipt strip | The transaction form, under the receipt controls | That thumbnail's own slot |
+| A tile | The receipt image manager | That tile's own slot |
+
+The table starts at `min-width: 768px`, so the icon is a desktop door. On a
+phone the row's receipt mark is an **indicator**, not a control: the door
+there is *View receipt* in the overflow menu.
+
+### What is sent, and when
+
+Only on a press, and only ever the image.
+
+- **The bytes of one stored image**, downloaded through
+  `ReceiptImageService.loadAsDataUrl` and sent as a data URL on the vision
+  transport. The prompt itself carries no image — it is the instruction that
+  travels with one.
+- **Nothing else.** No description, amount, date, category, tag, id or note.
+- The same target-language sentence every user-facing prompt carries, and the
+  same `{ translation, sourceLanguage }` answer the note prompt asks for.
+
+### The provider has to be able to see
+
+This is the one thing the note lens does not have to check. A configured
+provider is not necessarily a vision-capable one — Gemini can be configured
+for text with no vision model — so three seams sit in front of the call:
+
+- `hasVisionProvider` — true when at least one configured provider takes
+  images. The Translate button reads it: with nothing that can see, the button
+  is **shown and disabled** with a hint naming Settings → AI Processing.
+- `resolveVisionProvider('translation')` — the `translation` preference when
+  it can see, else the first of `gemini → openai → claude` that can, else
+  null. The same fallback order every resolver in the façade uses, from one
+  shared helper.
+- `translateReceiptImage` throws *Translating a receipt image needs a
+  vision-capable provider* when nothing qualifies.
+
+### The cache
+
+The same idea as the note's, keyed on the image rather than the text:
+
+```
+{UI locale} \0 {answering provider} \0 {transaction id} \0 {slot}
+```
+
+The **answering** provider, for the same reason the note cache uses it — the
+vision fallback means the preference is not necessarily who replies. The slot
+is in the key because one transaction can hold several photos, each a
+different receipt to read. The bytes are not: replacing a receipt writes a new
+slot rather than editing one.
+
+Emptied on any change of account, like the note cache. A photograph of a
+receipt carries at least what a note carries.
+
+### The panel, and the focus rule
+
+An arrived translation renders below the image: the marker *Translated from
+{language}*, the text as `pre-wrap` so the receipt's lines stay lines, and a
+**Hide translation** button. `role="status"`, so it is announced without
+stealing focus.
+
+The image never goes away, which is why the control says *Hide translation*
+and not *Show original* — there is nothing to restore.
+
+Focus moves on each press, because each press removes the control that was
+pressed: Translate → the spinner, so focus lands on Hide translation when the
+answer arrives (or on Retry when it fails); Hide translation → back to
+Translate; an arrow pressed at either end of the strip disables itself, so
+focus goes to the other arrow. It is only moved when it was actually
+abandoned — on `<body>`, or still inside the dialog — so a pointer user's
+caret stays where they put it.
+
+### When it fails
+
+The five classes in the table above, plus one this lens can hit and the note
+lens cannot:
+
+| Failure | Key | What it says |
+|---|---|---|
+| The image could not be downloaded | `receiptViewer.failedDownload` | Suggests opening it in a new tab instead |
+
+`ReceiptTranslationService.failureKey` answers that one and delegates every
+other to `NoteTranslationService.failureKey`, so the two lenses classify a
+model failure through one switch rather than two that can drift. A failed
+download is usually a storage bucket without CORS configuration
+([storage-cors-setup.md](storage-cors-setup.md)).
 
 ## Changing the lens
 
-- The prompt lives in `src/app/core/prompts/translation.prompts.ts` and is
-  rendered once in `CloudLLMProviderBase`, so all three providers are covered
-  by construction. `npm run prompts:check` fails on a language list written as
-  quoted tags; spelled out as prose it would pass the check, and review is the
-  other guard.
-- New user-facing copy goes in all three catalogs under `noteTranslation.*`
-  ([i18n.md](i18n.md)).
-- A new door means placing `<app-note-translation>` and deciding whether the
-  host hides its own copy of the note — that is what the two-way
+- **Both prompts live in
+  `src/app/core/prompts/translation.prompts.ts`** — `renderTranslateNote` and
+  `renderTranslateReceiptImage` — and both are rendered once in
+  `CloudLLMProviderBase`, so all three providers are covered by construction.
+  `npm run prompts:check` fails on a language list written as quoted tags;
+  spelled out as prose it would pass the check, and review is the other guard.
+- **The answer is mapped in one place.** `mapTranslationResponse` in the base
+  turns a provider response into `NoteTranslation` for both, and it is where
+  the refusal lives: a truncated answer, or one whose `translation` is missing
+  or blank, throws rather than returning half a reading. Change it and you
+  change both lenses, which is the point.
+- New user-facing copy goes in all three catalogs — `noteTranslation.*` for
+  the note, `receiptViewer.*` for the photo ([i18n.md](i18n.md)).
+- **A new note door** means placing `<app-note-translation>` and deciding
+  whether the host hides its own copy of the note — that is what the two-way
   `showingTranslation` is for.
+- **A new receipt door** means calling `openReceiptViewer` with the
+  transaction and, where the door knows one, the slot it was pressed on.
+  Gate it on the transaction actually having an image; the viewer's
+  empty-state guard is defensive, not a path a door should take.
+- The two lenses are deliberately separate components. The note lens stands
+  its answer in for the text and reports `showingTranslation` outward; this
+  one adds a panel beside an image that never moves, and resets per image
+  rather than per edit. One component serving both would be a component with
+  two modes.
