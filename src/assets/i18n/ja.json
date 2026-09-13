@@ -1359,7 +1359,15 @@
     "pinSaveFailed": "このデバイスにPINを保存できませんでした",
     "disclaimer": "PINはデバイスごとに設定され、アプリへのアクセスを制限します。保存されたデータの暗号化は行いません。",
     "timeoutMinute": "1分後",
-    "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。"
+    "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。",
+    "unlockWithBiometry": "{{biometry}}でロック解除",
+    "faceId": "Face ID",
+    "touchId": "Touch ID",
+    "biometricReason": "家計簿のロックを解除",
+    "biometricLockedOut": "{{biometry}}がロックされています。PINを入力してください。",
+    "biometricFailed": "{{biometry}}で認証できませんでした。もう一度試すか、PINを入力してください。",
+    "useBiometry": "{{biometry}}でロック解除",
+    "useBiometryHint": "PINはそのまま有効です。{{biometry}}は、このデバイスでロックをより速く解除する方法にすぎません。"
   },
   "reminders": {
     "billDue": "{{name}} は今日が支払日です",

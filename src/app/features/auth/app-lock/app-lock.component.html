@@ -4,6 +4,19 @@
     <h1 class="lock-title">{{ 'appLock.title' | translate }}</h1>
     <p class="lock-subtitle">{{ 'appLock.subtitle' | translate }}</p>
 
+    @if (showBiometricButton()) {
+      <button
+        mat-stroked-button
+        type="button"
+        class="biometric-button"
+        [disabled]="isChecking()"
+        (click)="promptBiometric()"
+      >
+        <mat-icon aria-hidden="true">{{ biometryIcon() }}</mat-icon>
+        {{ 'appLock.unlockWithBiometry' | translate: { biometry: (biometryKey() | translate) } }}
+      </button>
+    }
+
     <form (ngSubmit)="submit()">
       <mat-form-field appearance="outline" class="pin-field">
         <mat-label>{{ 'appLock.pinLabel' | translate }}</mat-label>
@@ -20,7 +33,7 @@
       </mat-form-field>
 
       @if (errorKey(); as key) {
-        <p class="lock-error" role="alert">{{ key | translate }}</p>
+        <p class="lock-error" role="alert">{{ key | translate: errorParams() }}</p>
       }
 
       @if (isBlocked()) {
