@@ -94,11 +94,10 @@
           <div class="receipt-strip">
             @for (stored of storedReceipts(); track stored.slot; let i = $index) {
               <div class="stored-receipt">
-                <a
-                  class="receipt-preview receipt-link"
-                  [href]="stored.url"
-                  target="_blank"
-                  rel="noopener"
+                <button
+                  type="button"
+                  class="receipt-preview"
+                  (click)="openReceipt(stored)"
                   [matTooltip]="'transactions.viewReceipt' | translate"
                 >
                   <img
@@ -110,7 +109,7 @@
                       <app-loading-spinner [message]="'receiptImages.converting' | translate" />
                     </div>
                   }
-                </a>
+                </button>
                 <div class="existing-receipt-actions">
                   <button
                     mat-icon-button

@@ -44,11 +44,10 @@
           <div class="image-tiles">
             @for (image of group.images; track image.slot; let i = $index) {
               <div class="image-tile">
-                <a
+                <button
+                  type="button"
                   class="thumbnail-link"
-                  [href]="image.url"
-                  target="_blank"
-                  rel="noopener"
+                  (click)="openReceipt(group, image)"
                   [matTooltip]="'receiptImages.viewImage' | translate"
                 >
                   <img
@@ -57,7 +56,7 @@
                     [alt]="'receiptImages.imageNumber' | translate: { index: i + 1, total: group.images.length }"
                     loading="lazy"
                   />
-                </a>
+                </button>
 
                 <div class="tile-actions">
                   @if (isBusy(group.transaction.id, image.slot)) {

@@ -62,6 +62,12 @@
                 <span>{{ 'transactions.viewNote' | translate }}</span>
               </button>
             }
+            @if (transaction.receiptUrl) {
+              <button mat-menu-item type="button" (click)="openReceipt(transaction)">
+                <mat-icon>receipt_long</mat-icon>
+                <span>{{ 'transactions.viewReceipt' | translate }}</span>
+              </button>
+            }
             <button mat-menu-item (click)="edit.emit(transaction)">
               <mat-icon>edit</mat-icon>
               <span>{{ 'common.edit' | translate }}</span>
@@ -175,12 +181,11 @@
             </button>
           }
           @if (transaction.receiptUrl) {
-            <a
-              class="receipt-icon-link"
-              [href]="transaction.receiptUrl"
-              target="_blank"
-              rel="noopener"
-              (click)="$event.stopPropagation()"
+            <button
+              type="button"
+              class="receipt-icon-button"
+              [attr.aria-label]="'transactions.viewReceipt' | translate"
+              (click)="$event.stopPropagation(); openReceipt(transaction)"
               [matTooltip]="receiptCount(transaction) > 1
                 ? ('receiptImages.countBadge' | translate: { count: receiptCount(transaction) })
                 : ('transactions.viewReceipt' | translate)"
@@ -189,7 +194,7 @@
               @if (receiptCount(transaction) > 1) {
                 <span class="receipt-count-badge">{{ receiptCount(transaction) }}</span>
               }
-            </a>
+            </button>
           }
         </td>
       </ng-container>
@@ -235,6 +240,12 @@
               <button mat-menu-item (click)="openNote(transaction)">
                 <mat-icon>notes</mat-icon>
                 <span>{{ 'transactions.viewNote' | translate }}</span>
+              </button>
+            }
+            @if (transaction.receiptUrl) {
+              <button mat-menu-item type="button" (click)="openReceipt(transaction)">
+                <mat-icon>receipt_long</mat-icon>
+                <span>{{ 'transactions.viewReceipt' | translate }}</span>
               </button>
             }
             <button mat-menu-item (click)="edit.emit(transaction)">

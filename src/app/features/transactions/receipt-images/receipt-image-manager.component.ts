@@ -18,6 +18,7 @@ import {
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
@@ -117,6 +118,11 @@ export class ReceiptImageManagerComponent implements OnInit {
 
   dateOf(group: ReceiptGroup): Date {
     return group.transaction.date.toDate();
+  }
+
+  /** Open the in-app viewer on one image, at the slot its thumbnail sits in. */
+  openReceipt(group: ReceiptGroup, image: ReceiptImage): void {
+    openReceiptViewer(this.dialog, { transaction: group.transaction, slot: image.slot });
   }
 
   async removeImage(group: ReceiptGroup, image: ReceiptImage): Promise<void> {

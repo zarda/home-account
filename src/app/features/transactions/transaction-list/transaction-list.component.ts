@@ -43,6 +43,7 @@ import { TransactionRowComponent } from '../../../shared/components/transaction-
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { NoteDialogComponent, NoteDialogData } from '../note-dialog/note-dialog.component';
+import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
@@ -280,6 +281,18 @@ export class TransactionListComponent {
         description: transaction.description,
       } as NoteDialogData,
     });
+  }
+
+  /**
+   * Open the receipt viewer for one transaction.
+   *
+   * One handler behind three doors — the icon in the description cell, the
+   * desktop actions menu and the phone's trailing menu — same as `openNote`.
+   * `slot` is only ever passed by a caller that already knows which image it
+   * means; the icon and both menus mean "the transaction", not one image.
+   */
+  openReceipt(transaction: Transaction, slot?: number): void {
+    openReceiptViewer(this.dialog, { transaction, slot });
   }
 
   confirmDelete(transaction: Transaction): void {

@@ -89,6 +89,9 @@
   min-height: 40px;
 }
 
+// Tailwind preflight already strips a button's padding, border, background
+// and cursor, so only the inline layout survives: the thumbnail still has to
+// sit flush like the link it replaced.
 .thumbnail-link {
   flex-shrink: 0;
   line-height: 0;

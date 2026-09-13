@@ -4,6 +4,7 @@ import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
 import { ReceiptImageManagerComponent } from './receipt-image-manager.component';
+import { ReceiptViewerDialogComponent } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import {
@@ -96,6 +97,21 @@ describe('ReceiptImageManagerComponent', () => {
     expect(component.groups()[1].images).toEqual([{ url: 'https://x/2.jpg', slot: 0 }]);
     expect(component.isLoading()).toBeFalse();
     expect(quota.refreshCount).toHaveBeenCalled();
+  });
+
+  // Template is blanked in this suite (no thumbnail to click), so the door
+  // is proved at method level — the DOM click is the list spec's job.
+  it('opens the receipt viewer on the image the thumbnail belongs to', async () => {
+    const component = build();
+    await component.ngOnInit();
+    const group = component.groups()[0];
+
+    component.openReceipt(group, group.images[1]);
+
+    expect(dialog.open).toHaveBeenCalledWith(
+      ReceiptViewerDialogComponent,
+      jasmine.objectContaining({ data: { transaction: group.transaction, slot: 1 } })
+    );
   });
 
   it('removes one image by slot and keeps its siblings and group', async () => {
