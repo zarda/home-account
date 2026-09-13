@@ -49,6 +49,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera is used to scan receipts for transaction import</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID is used to unlock the app without entering your PIN.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Location is used to record where a transaction happened. It is optional.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -11,8 +11,8 @@ import Capacitor
 /// `registerPluginInstance(_:)` carries no such guard, so it is the supported entry point.
 ///
 /// Main.storyboard has to point at this class; if it instantiates `CAPBridgeViewController`
-/// directly again, both plugins silently go missing and every call to them rejects with
-/// `Unimplemented`.
+/// directly again, the plugins registered here silently go missing and every call to them
+/// rejects with `Unimplemented`.
 class MainViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -22,5 +22,6 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(VisionOCRPlugin())
         bridge?.registerPluginInstance(AppleIntelligencePlugin())
         bridge?.registerPluginInstance(ShareIntakePlugin())
+        bridge?.registerPluginInstance(BiometricAuthPlugin())
     }
 }
