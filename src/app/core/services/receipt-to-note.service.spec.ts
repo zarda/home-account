@@ -8,17 +8,15 @@ import {
 } from './receipt-to-note.service';
 import { TransactionService } from './transaction.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
-import { StorageService } from './storage.service';
-import { AuthService } from './auth.service';
+import { ReceiptImageService, RECEIPT_IMAGE_DOWNLOAD_FAILED } from './receipt-image.service';
 import { ParsedReceipt } from './gemini.service';
-import { createTransaction, MockAuthService } from './testing';
+import { createTransaction } from './testing';
 
 describe('ReceiptToNoteService', () => {
   let service: ReceiptToNoteService;
   let transactionMock: jasmine.SpyObj<TransactionService>;
   let cloudMock: jasmine.SpyObj<CloudLLMProviderService>;
-  let storageMock: jasmine.SpyObj<StorageService>;
-  let fetchSpy: jasmine.Spy;
+  let receiptImageMock: jasmine.SpyObj<ReceiptImageService>;
 
   const receipt = (overrides: Partial<ParsedReceipt> = {}): ParsedReceipt => ({
     merchant: 'Cafe',
@@ -55,56 +53,38 @@ describe('ReceiptToNoteService', () => {
     cloudMock.hasAnyCloudProvider.and.returnValue(true);
     cloudMock.parseReceipt.and.resolveTo(receipt());
 
-    storageMock = jasmine.createSpyObj<StorageService>('StorageService', ['downloadReceipt']);
-    storageMock.downloadReceipt.and.resolveTo(new Blob(['img'], { type: 'image/jpeg' }));
-
-    fetchSpy = spyOn(window, 'fetch').and.resolveTo(
-      new Response(new Blob(['img'], { type: 'image/jpeg' }), { status: 200 })
-    );
+    receiptImageMock = jasmine.createSpyObj<ReceiptImageService>('ReceiptImageService', [
+      'loadAsDataUrl',
+    ]);
+    receiptImageMock.loadAsDataUrl.and.resolveTo('data:image/jpeg;base64,aW1n');
 
     TestBed.configureTestingModule({
       providers: [
         ReceiptToNoteService,
         { provide: TransactionService, useValue: transactionMock },
         { provide: CloudLLMProviderService, useValue: cloudMock },
-        { provide: StorageService, useValue: storageMock },
-        { provide: AuthService, useClass: MockAuthService },
+        { provide: ReceiptImageService, useValue: receiptImageMock },
       ],
     });
 
-    (TestBed.inject(AuthService) as unknown as MockAuthService).setAuthenticated(true);
     service = TestBed.inject(ReceiptToNoteService);
   });
 
   it('writes the receipt details to the note, then removes the image', async () => {
+    const transaction = transactionWithReceipt();
     const callOrder: string[] = [];
     transactionMock.updateTransaction.and.callFake(async () => { callOrder.push('update'); });
     transactionMock.removeReceiptAt.and.callFake(async () => { callOrder.push('remove'); });
 
-    const note = await service.convertReceiptToNote(transactionWithReceipt());
+    const note = await service.convertReceiptToNote(transaction);
 
     expect(note).toBe('Latte — 5.00\nBagel — 7.00\nTotal 12.00');
-    // Downloaded through the Storage SDK — a plain fetch of the download
-    // URL would hit the browser's CORS-header-less cached <img> response
-    expect(storageMock.downloadReceipt).toHaveBeenCalledWith('test-user-123', 'txn-1', 0);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(cloudMock.parseReceipt).toHaveBeenCalledWith(jasmine.stringMatching(/^data:image\//));
+    expect(receiptImageMock.loadAsDataUrl).toHaveBeenCalledWith(transaction, 0);
+    expect(cloudMock.parseReceipt).toHaveBeenCalledWith('data:image/jpeg;base64,aW1n');
     expect(transactionMock.updateTransaction).toHaveBeenCalledWith('txn-1', { note });
     expect(transactionMock.removeReceiptAt).toHaveBeenCalledWith('txn-1', 0);
     // The note must be persisted before the image is deleted
     expect(callOrder).toEqual(['update', 'remove']);
-  });
-
-  it('falls back to a cache-bypassing fetch when the SDK download fails', async () => {
-    storageMock.downloadReceipt.and.rejectWith(new Error('storage/object-not-found'));
-
-    const note = await service.convertReceiptToNote(transactionWithReceipt());
-
-    expect(note).toBe('Latte — 5.00\nBagel — 7.00\nTotal 12.00');
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://storage.example.com/receipt.jpg',
-      { cache: 'no-store' }
-    );
   });
 
   it('appends the details after an existing note', async () => {
@@ -141,9 +121,8 @@ describe('ReceiptToNoteService', () => {
     expect(transactionMock.removeReceiptAt).not.toHaveBeenCalled();
   });
 
-  it('rejects with the download error when both download paths fail', async () => {
-    storageMock.downloadReceipt.and.rejectWith(new Error('storage/object-not-found'));
-    fetchSpy.and.resolveTo(new Response(null, { status: 404 }));
+  it('rejects with the download error when the loader fails', async () => {
+    receiptImageMock.loadAsDataUrl.and.rejectWith(new Error(RECEIPT_IMAGE_DOWNLOAD_FAILED));
 
     await expectAsync(service.convertReceiptToNote(transactionWithReceipt()))
       .toBeRejectedWithError(RECEIPT_TO_NOTE_DOWNLOAD_FAILED);
@@ -155,36 +134,6 @@ describe('ReceiptToNoteService', () => {
       .toBeRejectedWithError(RECEIPT_TO_NOTE_NO_DETAILS);
   });
 
-  it('converts the requested slot of a multi-image transaction', async () => {
-    const transaction = transactionWithReceipt({
-      receiptUrl: 'https://storage.example.com/u0.jpg',
-      receiptUrls: ['https://storage.example.com/u0.jpg', 'https://storage.example.com/u1.jpg'],
-      receiptCount: 2,
-    });
-
-    await service.convertReceiptToNote(transaction, 1);
-
-    // Slot 1 is downloaded and slot 1 is removed; slot 0 is never touched.
-    expect(storageMock.downloadReceipt).toHaveBeenCalledWith('test-user-123', 'txn-1', 1);
-    expect(transactionMock.removeReceiptAt).toHaveBeenCalledWith('txn-1', 1);
-  });
-
-  it('uses the requested slot\'s stored URL for the fallback fetch', async () => {
-    storageMock.downloadReceipt.and.rejectWith(new Error('storage/object-not-found'));
-    const transaction = transactionWithReceipt({
-      receiptUrl: 'https://storage.example.com/u0.jpg',
-      receiptUrls: ['https://storage.example.com/u0.jpg', 'https://storage.example.com/u1.jpg'],
-      receiptCount: 2,
-    });
-
-    await service.convertReceiptToNote(transaction, 1);
-
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://storage.example.com/u1.jpg',
-      { cache: 'no-store' }
-    );
-  });
-
   it('defaults to the first live image when the first slot is tombstoned', async () => {
     const transaction = transactionWithReceipt({
       receiptUrl: 'https://storage.example.com/u1.jpg',
@@ -194,7 +143,7 @@ describe('ReceiptToNoteService', () => {
 
     await service.convertReceiptToNote(transaction);
 
-    expect(storageMock.downloadReceipt).toHaveBeenCalledWith('test-user-123', 'txn-1', 1);
+    expect(receiptImageMock.loadAsDataUrl).toHaveBeenCalledWith(transaction, 1);
     expect(transactionMock.removeReceiptAt).toHaveBeenCalledWith('txn-1', 1);
   });
 });

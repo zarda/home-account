@@ -23,7 +23,7 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { Transaction } from '../../../models';
+import { Transaction, receiptImageSlots } from '../../../models';
 
 /** One stored image of a transaction, addressed by its storage slot. */
 interface ReceiptImage {
@@ -100,7 +100,7 @@ export class ReceiptImageManagerComponent implements OnInit {
       ]);
       this.groups.set(transactions.map(transaction => ({
         transaction,
-        images: this.imagesOf(transaction),
+        images: receiptImageSlots(transaction),
       })));
     } catch {
       this.notifications.error(this.translationService.t('common.error'));
@@ -200,17 +200,6 @@ export class ReceiptImageManagerComponent implements OnInit {
 
   close(): void {
     this.dialogRef.close();
-  }
-
-  /**
-   * A transaction's images as {url, slot} pairs: the slot is the entry's
-   * index in receiptUrls (a legacy row's single receiptUrl is slot 0);
-   * tombstones are skipped but survivors keep their original slots.
-   */
-  private imagesOf(transaction: Transaction): ReceiptImage[] {
-    const slots = transaction.receiptUrls
-      ?? (transaction.receiptUrl ? [transaction.receiptUrl] : []);
-    return slots.map((url, slot) => ({ url, slot })).filter(image => !!image.url);
   }
 
   private convertErrorMessage(error: unknown): string {

@@ -1,4 +1,9 @@
-import { firstReceiptSlot, receiptImageCount, receiptImageUrls } from './transaction.model';
+import {
+  firstReceiptSlot,
+  receiptImageCount,
+  receiptImageSlots,
+  receiptImageUrls,
+} from './transaction.model';
 
 describe('receiptImageCount', () => {
   it('counts the live entries of the array when there is one', () => {
@@ -54,6 +59,25 @@ describe('receiptImageUrls', () => {
     expect(receiptImageUrls({})).toEqual([]);
     expect(receiptImageUrls(null)).toEqual([]);
     expect(receiptImageUrls({ receiptUrls: [] })).toEqual([]);
+  });
+});
+
+describe('receiptImageSlots', () => {
+  it('pairs each live entry with its index in the array', () => {
+    expect(receiptImageSlots({ receiptUrls: ['', 'b', '', 'd'] })).toEqual([
+      { url: 'b', slot: 1 },
+      { url: 'd', slot: 3 },
+    ]);
+    expect(receiptImageSlots({ receiptUrls: ['', ''] })).toEqual([]);
+  });
+
+  it('wraps a legacy single-image row as slot 0', () => {
+    expect(receiptImageSlots({ receiptUrl: 'u' })).toEqual([{ url: 'u', slot: 0 }]);
+  });
+
+  it('returns nothing for an imageless row', () => {
+    expect(receiptImageSlots({})).toEqual([]);
+    expect(receiptImageSlots(null)).toEqual([]);
   });
 });
 
