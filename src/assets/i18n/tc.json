@@ -955,6 +955,16 @@
     "failedOffline": "翻譯需要網路連線，請檢查連線後再試。",
     "failedIncomplete": "翻譯結果被截斷，請重試。"
   },
+  "receiptViewer": {
+    "title": "收據",
+    "previous": "上一張圖片",
+    "next": "下一張圖片",
+    "openInNewTab": "在新分頁開啟",
+    "translate": "翻譯收據",
+    "hideTranslation": "隱藏翻譯",
+    "noVisionProvider": "翻譯照片需要能讀取圖片的供應商。請在「設定 → AI 處理」中新增。",
+    "failedDownload": "無法下載收據圖片，請改以新分頁開啟。"
+  },
   "import": {
     "title": "智慧匯入",
     "smartImport": "AI 智慧匯入",

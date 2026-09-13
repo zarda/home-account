@@ -1000,6 +1000,16 @@
     "failedOffline": "Translation needs a connection. Check your network and try again.",
     "failedIncomplete": "The translation came back cut short. Please try again."
   },
+  "receiptViewer": {
+    "title": "Receipt",
+    "previous": "Previous image",
+    "next": "Next image",
+    "openInNewTab": "Open in new tab",
+    "translate": "Translate receipt",
+    "hideTranslation": "Hide translation",
+    "noVisionProvider": "Translating a photo needs a provider that can read images. Add one in Settings → AI Processing.",
+    "failedDownload": "The receipt image could not be downloaded. Open it in a new tab instead."
+  },
   "import": {
     "title": "Smart Import",
     "smartImport": "AI-Powered Import",
