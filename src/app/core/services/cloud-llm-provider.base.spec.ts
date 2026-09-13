@@ -30,6 +30,8 @@ class StubProvider extends CloudLLMProviderBase {
   readonly imagesSent: string[][] = [];
   /** Every rendered prompt sendText was handed, in order. */
   readonly renderedSent: RenderedPrompt[] = [];
+  /** Every prompt id assertVisionTransport was called with, in order. */
+  readonly visionAsserted: PromptId[] = [];
 
   clientPresent = true;
   response: ProviderResponse = { text: '', truncated: false };
@@ -55,7 +57,8 @@ class StubProvider extends CloudLLMProviderBase {
     }
   }
 
-  protected assertVisionTransport(): void {
+  protected assertVisionTransport(promptId: PromptId): void {
+    this.visionAsserted.push(promptId);
     this.assertTextTransport();
   }
 
@@ -936,6 +939,46 @@ describe('CloudLLMProviderBase', () => {
       provider.failWith = new Error('model unavailable');
       await expectAsync(provider.translateText('おにぎり 150')).toBeRejected();
       expect(provider.isProcessing()).toBeFalse();
+    });
+  });
+
+  describe('translateReceiptImage', () => {
+    const answer = (translation: string, sourceLanguage = 'Japanese') =>
+      JSON.stringify({ translation, sourceLanguage });
+
+    it('asserts the vision transport, then sends the one image', async () => {
+      provider.response = { text: answer('Rice ball 150'), truncated: false };
+
+      await provider.translateReceiptImage('img');
+
+      expect(provider.visionAsserted).toEqual(['translateReceiptImage']);
+      expect(provider.sent).toEqual(['translateReceiptImage']);
+      expect(provider.imagesSent).toEqual([['img']]);
+    });
+
+    it('reads the translation and the language it was printed in', async () => {
+      provider.response = { text: answer('Rice ball 150\nTotal 480'), truncated: false };
+
+      const translated = await provider.translateReceiptImage('img');
+
+      expect(translated.text).toBe('Rice ball 150\nTotal 480');
+      expect(translated.sourceLanguage).toBe('Japanese');
+    });
+
+    it('refuses a cut-off answer instead of showing what arrived', async () => {
+      provider.response = { text: answer('Rice ball 150'), truncated: true };
+
+      await expectAsync(provider.translateReceiptImage('img')).toBeRejectedWithError(
+        AI_ANSWER_INCOMPLETE
+      );
+    });
+
+    it('refuses an answer with no translation in it', async () => {
+      provider.response = { text: '{"sourceLanguage":"Japanese"}', truncated: false };
+
+      await expectAsync(provider.translateReceiptImage('img')).toBeRejectedWithError(
+        AI_ANSWER_INCOMPLETE
+      );
     });
   });
 });

@@ -86,6 +86,7 @@ A list the user owns is not a list in source. `suggestTags` asks the model to ta
 | `financialAdvice` | insights | claude, gemini, openai | 1.17.93 | Two or three sentences of advice over the period totals |
 | `searchQuery` | search | claude, gemini, openai | 1.17.93 | A natural-language question → a structured filter or aggregate command |
 | `translateNote` | translation | claude, gemini, openai | 26.9.152 | A stored note → the same note in the app's language, line for line, plus the language it was written in |
+| `translateReceiptImage` | translation | claude, gemini, openai | 26.9.160 | A receipt photo → the same receipt in the app's language, line for line, plus the language it was printed in |
 
 <!-- prompt-registry:end -->
 

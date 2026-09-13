@@ -107,6 +107,9 @@ const SAMPLE_INPUT: { [K in PromptId]: Parameters<(typeof PROMPTS)[K]['render']>
     text: 'セブン-イレブン\nおにぎり 150\n合計 480',
     languageInstruction: languageInstruction('en'),
   },
+  translateReceiptImage: {
+    languageInstruction: languageInstruction('en'),
+  },
 };
 
 function render(id: PromptId): string {
@@ -489,6 +492,42 @@ describe('prompt registry', () => {
 
     it('pins the JSON answer to the two fields the lens reads', () => {
       const prompt = render('translateNote');
+      expect(prompt).toContain('"translation"');
+      expect(prompt).toContain('"sourceLanguage"');
+      expect(prompt).toContain('Answer with ONLY this JSON object');
+    });
+  });
+
+  describe('translateReceiptImage', () => {
+    it('pins the generation settings the lens needs', () => {
+      expect(PROMPTS.translateReceiptImage.since).toMatch(/^\d+\.\d+\.\d+$/);
+      const prompt = renderPrompt('translateReceiptImage', SAMPLE_INPUT.translateReceiptImage);
+      expect(prompt.expects).toBe('json');
+      expect(prompt.temperature).toBe(0);
+      expect(prompt.maxOutputTokens).toBe(4096);
+    });
+
+    it('names the target language through the shared sentence, never a list', () => {
+      // Same reasoning as translateNote: naming the languages the app can
+      // translate into would be a ceiling on its own locales.
+      const prompt = renderPrompt('translateReceiptImage', {
+        languageInstruction: languageInstruction('ja'),
+      }).user;
+      expect(prompt).toContain('Respond in Japanese (日本語).');
+      expect(prompt).not.toMatch(COUNTRY_CODE_RUN);
+    });
+
+    it('asks for a reproduction rather than a retelling', () => {
+      // A receipt is lines in order, the same as a note. A model left to its
+      // own judgement summarises rather than transcribes.
+      const prompt = render('translateReceiptImage');
+      expect(prompt).toContain('Reproduce every line, in the order it is printed');
+      expect(prompt).toContain('Never summarise, merge, omit or add a line');
+      expect(prompt).toContain('Keep numbers, currency symbols, dates and codes exactly as printed');
+    });
+
+    it('pins the JSON answer to the two fields the lens reads', () => {
+      const prompt = render('translateReceiptImage');
       expect(prompt).toContain('"translation"');
       expect(prompt).toContain('"sourceLanguage"');
       expect(prompt).toContain('Answer with ONLY this JSON object');

@@ -42,6 +42,22 @@ export class CloudLLMProviderService {
     return status.gemini || status.openai || status.claude;
   });
 
+  /**
+   * True when at least one configured provider can also take images — as
+   * opposed to `hasAnyCloudProvider`, which says nothing about vision. Gemini
+   * can be configured for text with no vision model, so this cannot be read
+   * off provider count alone.
+   */
+  hasVisionProvider = computed(() => {
+    const status = this.providerStatus();
+    const adapters = this.adapters();
+    return (
+      (status.gemini && adapters.gemini.capabilities.vision) ||
+      (status.openai && adapters.openai.capabilities.vision) ||
+      (status.claude && adapters.claude.capabilities.vision)
+    );
+  });
+
   availableProviders = computed(() => {
     const status = this.providerStatus();
     const providers: LLMProvider[] = [];
@@ -167,7 +183,8 @@ export class CloudLLMProviderService {
    *
    * Public because the answer is user-visible: the capture dialog told everyone
    * their receipt was going to Gemini, having no way to ask. Preference and
-   * availability both matter and the fallback order lives here, so a caller
+   * availability both matter; the fallback order itself lives one level down,
+   * in PROVIDER_FALLBACK_ORDER and firstEligibleProvider, so a caller
    * reconstructing it from getPreferredProvider and isProviderAvailable would
    * be duplicating that order rather than sharing it.
    */
@@ -176,26 +193,57 @@ export class CloudLLMProviderService {
   }
 
   /**
-   * Get the best available provider for a feature, falling back if preferred is unavailable.
+   * The vision-only twin of resolveProvider: the preferred provider for
+   * `feature` when it can also see, else the first of the fallback order that
+   * can, else null. Public for the same reason resolveProvider is — a
+   * receipt-image translation is only worth offering when this answers
+   * something other than null, and that answer is user-visible.
    */
-  private getBestAvailableProvider(feature: AIFeatureType): LLMProvider | null {
-    const preferred = this.getPreferredProvider(feature);
+  resolveVisionProvider(feature: AIFeatureType): LLMProvider | null {
     const status = this.providerStatus();
+    const adapters = this.adapters();
+    return this.firstEligibleProvider(
+      feature,
+      provider => status[provider] && adapters[provider].capabilities.vision
+    );
+  }
 
-    // Try preferred provider first
-    if (status[preferred]) {
+  /** Preference first, then this order — every fallback in this class shares it. */
+  private static readonly PROVIDER_FALLBACK_ORDER: LLMProvider[] = ['gemini', 'openai', 'claude'];
+
+  /**
+   * The preferred provider for `feature` when `isEligible` accepts it, else
+   * the first of the fixed fallback order that does, else null.
+   *
+   * Shared by getBestAvailableProvider (eligible = configured) and
+   * resolveVisionProvider (eligible = configured and can see), so the two
+   * routes cannot carry two copies of the fallback order that quietly drift
+   * apart from each other.
+   */
+  private firstEligibleProvider(
+    feature: AIFeatureType,
+    isEligible: (provider: LLMProvider) => boolean
+  ): LLMProvider | null {
+    const preferred = this.getPreferredProvider(feature);
+    if (isEligible(preferred)) {
       return preferred;
     }
 
-    // Fallback order: gemini -> openai -> claude
-    const fallbackOrder: LLMProvider[] = ['gemini', 'openai', 'claude'];
-    for (const provider of fallbackOrder) {
-      if (status[provider]) {
+    for (const provider of CloudLLMProviderService.PROVIDER_FALLBACK_ORDER) {
+      if (isEligible(provider)) {
         return provider;
       }
     }
 
     return null;
+  }
+
+  /**
+   * Get the best available provider for a feature, falling back if preferred is unavailable.
+   */
+  private getBestAvailableProvider(feature: AIFeatureType): LLMProvider | null {
+    const status = this.providerStatus();
+    return this.firstEligibleProvider(feature, provider => status[provider]);
   }
 
   /**
@@ -238,6 +286,18 @@ export class CloudLLMProviderService {
     const provider = this.getBestAvailableProvider(feature);
     if (!provider) {
       throw new Error(`No cloud AI provider available for ${feature}`);
+    }
+    return this.adapters()[provider];
+  }
+
+  /**
+   * The vision-only twin of resolve, for the one caller — translateReceiptImage
+   * — that needs a provider able to see rather than merely configured.
+   */
+  private resolveVision(feature: AIFeatureType): CloudLLMProviderAdapter {
+    const provider = this.resolveVisionProvider(feature);
+    if (!provider) {
+      throw new Error('Translating a receipt image needs a vision-capable provider');
     }
     return this.adapters()[provider];
   }
@@ -410,6 +470,18 @@ export class CloudLLMProviderService {
     return this.resolve('translation').translateText(text);
   }
 
+  /**
+   * Read a receipt photo back in the app's own language.
+   *
+   * Needs a provider that can see, the way extractStatementTransactions does
+   * — a photo cannot be handed to a text-only configuration.
+   */
+  async translateReceiptImage(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<NoteTranslation> {
+    return this.resolveVision('translation').translateReceiptImage(imageBase64, options);
+  }
 
   // ============================================================
   // Status and Info

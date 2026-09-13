@@ -830,23 +830,62 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         languageInstruction: this.getLanguageInstruction(),
       });
       const response = await this.sendText('translateNote', rendered);
-      if (response.truncated) {
-        throw new Error(AI_ANSWER_INCOMPLETE);
-      }
-
-      const parsed = JSON.parse(this.extractJson(response.text));
-      if (typeof parsed?.translation !== 'string' || parsed.translation.trim() === '') {
-        throw new Error(AI_ANSWER_INCOMPLETE);
-      }
-      return {
-        text: parsed.translation,
-        // The source language is what the answer is labelled with, so an
-        // absent one costs a label rather than the translation.
-        sourceLanguage: typeof parsed.sourceLanguage === 'string' ? parsed.sourceLanguage : '',
-      };
+      return this.mapTranslationResponse(response);
     } finally {
       this.isProcessing.set(false);
     }
+  }
+
+  /**
+   * Read a receipt photo back in the app's own language.
+   *
+   * The vision twin of `translateText`, sharing its bookkeeping and its
+   * answer mapping — only the transport and the prompt differ, because a
+   * photo carries no text to hand the model directly.
+   */
+  async translateReceiptImage(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<NoteTranslation> {
+    this.assertVisionTransport('translateReceiptImage');
+
+    this.isProcessing.set(true);
+    try {
+      const rendered = renderPrompt('translateReceiptImage', {
+        languageInstruction: this.getLanguageInstruction(),
+      });
+      const response = await this.sendVision(
+        'translateReceiptImage',
+        rendered,
+        [imageBase64],
+        options
+      );
+      return this.mapTranslationResponse(response);
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  /**
+   * The `{ translation, sourceLanguage }` mapping both translation methods
+   * share — refused, per translateText's docblock above, rather than
+   * salvaged when the answer is cut short or carries no translation.
+   */
+  private mapTranslationResponse(response: ProviderResponse): NoteTranslation {
+    if (response.truncated) {
+      throw new Error(AI_ANSWER_INCOMPLETE);
+    }
+
+    const parsed = JSON.parse(this.extractJson(response.text));
+    if (typeof parsed?.translation !== 'string' || parsed.translation.trim() === '') {
+      throw new Error(AI_ANSWER_INCOMPLETE);
+    }
+    return {
+      text: parsed.translation,
+      // The source language is what the answer is labelled with, so an
+      // absent one costs a label rather than the translation.
+      sourceLanguage: typeof parsed.sourceLanguage === 'string' ? parsed.sourceLanguage : '',
+    };
   }
 
   /**
