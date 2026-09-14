@@ -119,6 +119,24 @@ export function receiptImageUrls(
 }
 
 /**
+ * Every stored receipt image paired with the slot it lives at, tombstones
+ * excluded. The raw receiptUrls array carries positional tombstones (see its
+ * doc comment), so this is the sanctioned way to enumerate a transaction's
+ * images together with their slots — the sibling receiptImageUrls() drops
+ * the slots when only the URLs are needed.
+ */
+export function receiptImageSlots(
+  transaction: ReceiptFields | null | undefined
+): { url: string; slot: number }[] {
+  if (!transaction) return [];
+  const slots = transaction.receiptUrls
+    ?? (transaction.receiptUrl ? [transaction.receiptUrl] : []);
+  return slots
+    .map((url, slot) => ({ url, slot }))
+    .filter(image => !!image.url);
+}
+
+/**
  * Storage slot of the first live image, or 0 when none exist. Callers that
  * act on "the" image of a transaction (the pointer in receiptUrl) need the
  * slot its object actually lives at, which after a first-image removal is

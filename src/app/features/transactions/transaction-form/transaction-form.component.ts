@@ -34,6 +34,7 @@ import {
   RECEIPT_TO_NOTE_DOWNLOAD_FAILED,
 } from '../../../core/services/receipt-to-note.service';
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
+import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -1233,6 +1234,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.printedLocationCountry = null;
       this.scanCountry = null;
     }
+  }
+
+  /** Open the in-app viewer on one stored image, at the slot its thumbnail sits in. */
+  openReceipt(stored: { url: string; slot: number }): void {
+    const transaction = this.data.transaction;
+    if (!transaction) return;
+    openReceiptViewer(this.dialog, { transaction, slot: stored.slot });
   }
 
   /**

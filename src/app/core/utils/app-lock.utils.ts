@@ -56,6 +56,39 @@ export function clearPinRecord(userId: string): void {
   }
 }
 
+function biometricOptInStorageKey(userId: string): string {
+  return `${appLockStorageKey(userId)}.biometric`;
+}
+
+/** Whether this device is allowed to skip the PIN in favor of biometry. */
+export function readBiometricOptIn(userId: string): boolean {
+  try {
+    return localStorage.getItem(biometricOptInStorageKey(userId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeBiometricOptIn(userId: string, on: boolean): void {
+  try {
+    if (on) {
+      localStorage.setItem(biometricOptInStorageKey(userId), '1');
+    } else {
+      localStorage.removeItem(biometricOptInStorageKey(userId));
+    }
+  } catch {
+    // Storage refusing the write only costs the opt-in surviving a reload.
+  }
+}
+
+export function clearBiometricOptIn(userId: string): void {
+  try {
+    localStorage.removeItem(biometricOptInStorageKey(userId));
+  } catch {
+    // Nothing to do.
+  }
+}
+
 /** Failed-attempt state, kept across reloads. */
 export interface AttemptState {
   failed: number;

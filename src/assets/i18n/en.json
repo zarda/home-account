@@ -1000,6 +1000,16 @@
     "failedOffline": "Translation needs a connection. Check your network and try again.",
     "failedIncomplete": "The translation came back cut short. Please try again."
   },
+  "receiptViewer": {
+    "title": "Receipt",
+    "previous": "Previous image",
+    "next": "Next image",
+    "openInNewTab": "Open in new tab",
+    "translate": "Translate receipt",
+    "hideTranslation": "Hide translation",
+    "noVisionProvider": "Translating a photo needs a provider that can read images. Add one in Settings → AI Processing.",
+    "failedDownload": "The receipt image could not be downloaded. Open it in a new tab instead."
+  },
   "import": {
     "title": "Smart Import",
     "smartImport": "AI-Powered Import",
@@ -1443,7 +1453,15 @@
     "pinSaveFailed": "Could not save the PIN on this device",
     "disclaimer": "The PIN is set per device and controls access to the app. It does not encrypt your stored data.",
     "timeoutMinute": "1 minute",
-    "forgotPin": "Forgot your PIN? Signing out clears it on this device — your data is safe, and you can set a new PIN after signing back in."
+    "forgotPin": "Forgot your PIN? Signing out clears it on this device — your data is safe, and you can set a new PIN after signing back in.",
+    "unlockWithBiometry": "Unlock with {{biometry}}",
+    "faceId": "Face ID",
+    "touchId": "Touch ID",
+    "biometricReason": "Unlock Home Account",
+    "biometricLockedOut": "{{biometry}} is locked. Enter your PIN.",
+    "biometricFailed": "{{biometry}} didn't recognize you. Try again or enter your PIN.",
+    "useBiometry": "Unlock with {{biometry}}",
+    "useBiometryHint": "Your PIN stays set and still works. {{biometry}} is only a faster way past the lock on this device."
   },
   "reminders": {
     "billDue": "{{name}} is due today",

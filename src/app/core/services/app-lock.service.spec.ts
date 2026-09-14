@@ -4,20 +4,34 @@ import { Router } from '@angular/router';
 
 import { AppLockService } from './app-lock.service';
 import { AuthService } from './auth.service';
+import { BiometricAuthService, BiometricOutcome } from './biometric-auth.service';
+import { Biometry } from '../plugins/biometric-auth.plugin';
 import {
   APP_LOCK_STORAGE_PREFIX,
   appLockStorageKey,
   clearAttemptState,
+  clearBiometricOptIn,
   MAX_PIN_ATTEMPTS,
+  readBiometricOptIn,
+  writeBiometricOptIn,
 } from '../utils/app-lock.utils';
 import { derivePinRecord } from '../utils/pin-hash.utils';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { createMockUser } from './testing/mock-auth.service';
 
+/** A stand-in for BiometricAuthService — the real one guards a Capacitor plugin proxy that must never be reached from a unit spec. */
+interface BiometricAuthDouble {
+  available: ReturnType<typeof signal<boolean>>;
+  biometry: ReturnType<typeof signal<Biometry>>;
+  authenticate: jasmine.Spy<(reason: string) => Promise<BiometricOutcome>>;
+  detectAvailability: jasmine.Spy<() => Promise<void>>;
+}
+
 describe('AppLockService', () => {
   let service: AppLockService;
   let auth: jasmine.SpyObj<AuthService>;
   let router: jasmine.SpyObj<Router>;
+  let biometric: BiometricAuthDouble;
   let userId: ReturnType<typeof signal<string | null>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
 
@@ -41,6 +55,8 @@ describe('AppLockService', () => {
     localStorage.removeItem(appLockStorageKey('user-1'));
     clearAttemptState('user-1');
     clearAttemptState('user-2');
+    clearBiometricOptIn('user-1');
+    clearBiometricOptIn('user-2');
 
     userId = signal<string | null>('user-1');
     currentUser = signal<User | null>(
@@ -55,11 +71,19 @@ describe('AppLockService', () => {
     router = jasmine.createSpyObj<Router>('Router', ['navigate'], { url: '/dashboard' });
     router.navigate.and.resolveTo(true);
 
+    biometric = {
+      available: signal(false),
+      biometry: signal<Biometry>('none'),
+      authenticate: jasmine.createSpy('authenticate').and.resolveTo('success' as BiometricOutcome),
+      detectAvailability: jasmine.createSpy('detectAvailability').and.resolveTo(undefined),
+    };
+
     TestBed.configureTestingModule({
       providers: [
         AppLockService,
         { provide: AuthService, useValue: auth },
         { provide: Router, useValue: router },
+        { provide: BiometricAuthService, useValue: biometric },
       ],
     });
 
@@ -69,6 +93,8 @@ describe('AppLockService', () => {
   afterEach(() => {
     localStorage.removeItem(appLockStorageKey('user-1'));
     clearAttemptState('user-1');
+    clearBiometricOptIn('user-1');
+    clearBiometricOptIn('user-2');
     clearAttemptState('user-2');
   });
 
@@ -286,6 +312,7 @@ describe('AppLockService', () => {
           AppLockService,
           { provide: AuthService, useValue: auth },
           { provide: Router, useValue: router },
+          { provide: BiometricAuthService, useValue: biometric },
         ],
       });
       const fresh = TestBed.inject(AppLockService);
@@ -307,6 +334,7 @@ describe('AppLockService', () => {
           AppLockService,
           { provide: AuthService, useValue: auth },
           { provide: Router, useValue: router },
+          { provide: BiometricAuthService, useValue: biometric },
         ],
       });
       const fresh = TestBed.inject(AppLockService);
@@ -356,6 +384,155 @@ describe('AppLockService', () => {
       service.rememberRedirect('/lock');
 
       expect(service.consumeRedirect()).toBe('/dashboard');
+    });
+  });
+
+  describe('biometric method', () => {
+    it('stays none with no PIN even when opted in and available', () => {
+      setPreferences({ enableAppLock: true });
+      writeBiometricOptIn('user-1', true);
+      biometric.available.set(true);
+
+      expect(service.method()).toBe('none');
+    });
+
+    it('prefers biometric when opted in and available', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      writeBiometricOptIn('user-1', true);
+      biometric.available.set(true);
+
+      expect(service.method()).toBe('biometric');
+    });
+
+    it('falls back to pin when opted in but unavailable', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      writeBiometricOptIn('user-1', true);
+      biometric.available.set(false);
+
+      expect(service.method()).toBe('pin');
+    });
+
+    it('stays pin without the opt-in even when available', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      biometric.available.set(true);
+
+      expect(service.method()).toBe('pin');
+    });
+  });
+
+  describe('unlockWithBiometrics', () => {
+    beforeEach(async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      writeBiometricOptIn('user-1', true);
+      biometric.available.set(true);
+    });
+
+    it('marks unlocked and clears attempts on success', async () => {
+      await service.unlockWithPin('000000');
+      expect(service.failedAttempts()).toBe(1);
+      biometric.authenticate.and.resolveTo('success');
+
+      await expectAsync(service.unlockWithBiometrics('reason')).toBeResolvedTo(true);
+
+      expect(service.isLocked()).toBe(false);
+      expect(service.failedAttempts()).toBe(0);
+    });
+
+    // A cancelled or failed prompt is not a wrong PIN — the OS owns biometric lockout.
+    // Three failures (not one) so the backoff is actually running before the
+    // prompt fires — a single failure leaves blockedForMs() structurally 0 and
+    // the assertion could not tell a preserved throttle from a reset one.
+    it('stays locked and leaves the PIN throttle untouched on cancel', async () => {
+      const frozen = Date.now();
+      spyOn(Date, 'now').and.returnValue(frozen);
+
+      await service.unlockWithPin('000000');
+      await service.unlockWithPin('000000');
+      await service.unlockWithPin('000000');
+      const failedBefore = service.failedAttempts();
+      const blockedBefore = service.blockedForMs();
+      expect(failedBefore).toBe(3);
+      expect(blockedBefore).toBeGreaterThan(0);
+
+      biometric.authenticate.and.resolveTo('cancelled');
+      await expectAsync(service.unlockWithBiometrics('reason')).toBeResolvedTo(false);
+
+      expect(service.isLocked()).toBe(true);
+      expect(service.failedAttempts()).toBe(failedBefore);
+      expect(service.blockedForMs()).toBe(blockedBefore);
+    });
+
+    it('returns false when the outcome is unavailable', async () => {
+      biometric.authenticate.and.resolveTo('unavailable');
+
+      await expectAsync(service.unlockWithBiometrics('reason')).toBeResolvedTo(false);
+      expect(service.isLocked()).toBe(true);
+    });
+
+    it('refuses without calling the plugin when the method is not biometric', async () => {
+      biometric.available.set(false);
+
+      await expectAsync(service.unlockWithBiometrics('reason')).toBeResolvedTo(false);
+      expect(biometric.authenticate).not.toHaveBeenCalled();
+    });
+
+    // A 'lockedOut' from one account must not survive into the next account's
+    // lock screen — or word a lockout that no longer applies once relocked.
+    it('clears the remembered outcome on lockNow', async () => {
+      biometric.authenticate.and.resolveTo('lockedOut');
+      await service.unlockWithBiometrics('reason');
+      expect(service.lastBiometricOutcome()).toBe('lockedOut');
+
+      service.lockNow();
+
+      expect(service.lastBiometricOutcome()).toBeNull();
+    });
+
+    it('clears the remembered outcome on a user change', async () => {
+      biometric.authenticate.and.resolveTo('lockedOut');
+      await service.unlockWithBiometrics('reason');
+      expect(service.lastBiometricOutcome()).toBe('lockedOut');
+
+      userId.set('user-2');
+      currentUser.set(
+        createMockUser('user-2', {
+          preferences: { ...DEFAULT_USER_PREFERENCES, enableAppLock: true },
+        })
+      );
+      TestBed.tick();
+
+      expect(service.lastBiometricOutcome()).toBeNull();
+    });
+  });
+
+  describe('setBiometricOptIn', () => {
+    it('bumps the method once a PIN and availability exist', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      biometric.available.set(true);
+      expect(service.method()).toBe('pin');
+
+      service.setBiometricOptIn(true);
+
+      expect(service.method()).toBe('biometric');
+    });
+  });
+
+  describe('clearCredential', () => {
+    it('clears the biometric opt-in as well', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      service.setBiometricOptIn(true);
+      biometric.available.set(true);
+      expect(service.method()).toBe('biometric');
+
+      service.clearCredential();
+
+      expect(readBiometricOptIn('user-1')).toBe(false);
     });
   });
 });

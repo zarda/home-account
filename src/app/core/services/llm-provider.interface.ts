@@ -275,4 +275,13 @@ export interface CloudLLMProviderAdapter {
    * any business travelling with it.
    */
   translateText(text: string): Promise<NoteTranslation>;
+  /**
+   * Read a photographed receipt back in the app's own language.
+   *
+   * The `translateText` twin for the image case: the receipt never leaves
+   * the photo, so nothing here reads it into a string first. Needs a
+   * vision-capable provider, which `CloudLLMProviderService` checks before
+   * resolving one.
+   */
+  translateReceiptImage(imageBase64: string, options?: AIRequestOptions): Promise<NoteTranslation>;
 }

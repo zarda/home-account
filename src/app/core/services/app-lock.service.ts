@@ -2,26 +2,31 @@ import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { AuthService } from './auth.service';
+import { BiometricAuthService, BiometricOutcome } from './biometric-auth.service';
 import {
   APP_LOCK_STORAGE_PREFIX,
   MAX_PIN_ATTEMPTS,
   clearAttemptState,
+  clearBiometricOptIn,
   clearPinRecord,
   readAttemptState,
+  readBiometricOptIn,
   readPinRecord,
   shouldRelock,
   unlockBackoffMs,
   writeAttemptState,
+  writeBiometricOptIn,
   writePinRecord
 } from '../utils/app-lock.utils';
 import { derivePinRecord, verifyPin } from '../utils/pin-hash.utils';
 import { appLockEnabled, effectiveAppLockTimeoutMinutes } from '../../models';
 
 /**
- * How this device can satisfy the lock. Biometry is not wired yet — the native
- * plugin is tracked separately — so today this is 'pin' or 'none'.
+ * How this device can satisfy the lock: a biometric prompt when the device
+ * offers one and the account has opted in, the PBKDF2 PIN otherwise, or
+ * 'none' when this device has no PIN at all.
  */
-export type AppLockMethod = 'pin' | 'none';
+export type AppLockMethod = 'biometric' | 'pin' | 'none';
 
 const DEFAULT_REDIRECT = '/dashboard';
 
@@ -36,11 +41,13 @@ const DEFAULT_REDIRECT = '/dashboard';
 export class AppLockService {
   private auth = inject(AuthService);
   private router = inject(Router);
+  private biometric = inject(BiometricAuthService);
 
   private credentialVersion = signal(0);
   private unlockedAt = signal<number | null>(null);
   private failed = signal(0);
   private blockedUntil = signal(0);
+  private lastOutcome = signal<BiometricOutcome | null>(null);
 
   private backgroundedAt: number | null = null;
   private redirectUrl: string | null = null;
@@ -48,6 +55,8 @@ export class AppLockService {
 
   readonly failedAttempts = this.failed.asReadonly();
   readonly attemptsExhausted = computed(() => this.failed() >= MAX_PIN_ATTEMPTS);
+  /** The most recent biometric prompt result, so the lock screen can word a lockout. */
+  readonly lastBiometricOutcome = this.lastOutcome.asReadonly();
 
   readonly isEnabled = computed(() => appLockEnabled(this.auth.currentUser()?.preferences));
   readonly timeoutMinutes = computed(() =>
@@ -62,7 +71,9 @@ export class AppLockService {
   readonly method = computed<AppLockMethod>(() => {
     this.credentialVersion();
     const userId = this.auth.userId();
-    return userId && readPinRecord(userId) ? 'pin' : 'none';
+    if (!userId || !readPinRecord(userId)) return 'none';
+    if (readBiometricOptIn(userId) && this.biometric.available()) return 'biometric';
+    return 'pin';
   });
 
   readonly canEngage = computed(() => this.isEnabled() && this.method() !== 'none');
@@ -81,9 +92,13 @@ export class AppLockService {
 
     // Never carry one account's unlocked state into the next. The throttle is
     // restored from storage rather than reset, so a reload cannot clear it.
+    // The remembered biometric outcome has no such record to restore from, so
+    // it is simply cleared — a 'lockedOut' from one account must not survive
+    // into the next account's lock screen.
     effect(() => {
       const userId = this.auth.userId();
       this.unlockedAt.set(null);
+      this.lastOutcome.set(null);
 
       const attempts = userId ? readAttemptState(userId) : { failed: 0, blockedUntil: 0 };
       this.failed.set(attempts.failed);
@@ -92,12 +107,14 @@ export class AppLockService {
   }
 
   /**
-   * Attach lifecycle listeners. Awaited from the app initializer so the lock
-   * state is settled before the first guarded navigation — if this is ever
-   * made non-blocking, a cold start can slip past the lock.
+   * Attach lifecycle listeners and kick off the biometric probe: fired and
+   * forgotten from the app initializer — the lock state is settled
+   * synchronously, and the probe races its own deadline rather than being
+   * allowed to delay the first guarded navigation.
    */
   init(): void {
     this.attachLifecycle();
+    void this.biometric.detectAvailability();
   }
 
   private attachLifecycle(): void {
@@ -139,6 +156,7 @@ export class AppLockService {
 
   lockNow(): void {
     this.unlockedAt.set(null);
+    this.lastOutcome.set(null);
   }
 
   private markUnlocked(): void {
@@ -177,6 +195,28 @@ export class AppLockService {
     return false;
   }
 
+  /**
+   * A cancelled or failed prompt is not a wrong PIN attempt — the OS owns
+   * biometric lockout — so this never touches `failedAttempts` or the
+   * backoff, only the PIN path does.
+   */
+  async unlockWithBiometrics(reason: string): Promise<boolean> {
+    // Deliberately blind to the PIN backoff and the exhausted-attempts state —
+    // the OS owns biometric lockout, and a face is not brute-forceable from the
+    // keyboard — and reads `method()` fresh because `available()` can flip
+    // false->true after the lock screen has painted, moving it from 'pin' to
+    // 'biometric' underneath this call.
+    if (this.method() !== 'biometric') return false;
+
+    const outcome = await this.biometric.authenticate(reason);
+    this.lastOutcome.set(outcome);
+
+    if (outcome !== 'success') return false;
+
+    this.markUnlocked();
+    return true;
+  }
+
   /** Store a new PIN for this device. False when storage refused the write. */
   async setPin(pin: string): Promise<boolean> {
     const userId = this.auth.userId();
@@ -195,9 +235,17 @@ export class AppLockService {
     if (userId) {
       clearPinRecord(userId);
       clearAttemptState(userId);
+      clearBiometricOptIn(userId);
     }
     this.failed.set(0);
     this.blockedUntil.set(0);
+    this.credentialVersion.update(v => v + 1);
+  }
+
+  /** Opt this device's PIN in or out of the biometric shortcut. */
+  setBiometricOptIn(on: boolean): void {
+    const userId = this.auth.userId();
+    if (userId) writeBiometricOptIn(userId, on);
     this.credentialVersion.update(v => v + 1);
   }
 

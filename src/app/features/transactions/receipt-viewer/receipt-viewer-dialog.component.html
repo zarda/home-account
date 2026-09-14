@@ -1,0 +1,109 @@
+<app-dialog-header titleKey="receiptViewer.title" icon="receipt_long" (closed)="close()" />
+
+<mat-dialog-content class="viewer-content">
+  @if (current(); as image) {
+    <p class="viewer-subtitle">{{ data.transaction.description }}</p>
+
+    <img
+      class="receipt-image"
+      [src]="image.url"
+      [alt]="'receiptImages.imageNumber' | translate: { index: index() + 1, total: total }"
+    />
+
+    @if (total > 1) {
+      <div class="image-nav">
+        <button
+          #previousButton
+          mat-icon-button
+          type="button"
+          class="previous-button"
+          [disabled]="index() === 0"
+          [attr.aria-label]="'receiptViewer.previous' | translate"
+          (click)="previous()"
+        >
+          <mat-icon aria-hidden="true">chevron_left</mat-icon>
+        </button>
+        <span class="image-counter" aria-hidden="true">
+          {{ 'receiptImages.imageNumber' | translate: { index: index() + 1, total: total } }}
+        </span>
+        <button
+          #nextButton
+          mat-icon-button
+          type="button"
+          class="next-button"
+          [disabled]="index() === total - 1"
+          [attr.aria-label]="'receiptViewer.next' | translate"
+          (click)="next()"
+        >
+          <mat-icon aria-hidden="true">chevron_right</mat-icon>
+        </button>
+      </div>
+    }
+
+    <div class="receipt-lens">
+      @if (isLoading()) {
+        <app-loading-spinner size="sm" [message]="'noteTranslation.translating' | translate" />
+      } @else if (translation(); as result) {
+        <div class="translation-panel" role="status">
+          <p class="translation-marker">
+            {{ 'noteTranslation.marker' | translate: { language: result.sourceLanguage } }}
+          </p>
+          <p class="translated-text">{{ result.text }}</p>
+          <button
+            #hideTranslationButton
+            mat-button
+            type="button"
+            class="hide-translation-button"
+            (click)="hideTranslation()"
+          >
+            {{ 'receiptViewer.hideTranslation' | translate }}
+          </button>
+        </div>
+      } @else if (errorKey(); as key) {
+        <p class="translation-error" role="alert">{{ key | translate }}</p>
+        <button
+          #retryButton
+          mat-button
+          type="button"
+          class="retry-button"
+          [disabled]="!available()"
+          (click)="translateReceipt()"
+        >
+          {{ 'noteTranslation.retry' | translate }}
+        </button>
+      } @else {
+        <button
+          #translateButton
+          mat-button
+          type="button"
+          class="translate-button"
+          [disabled]="!available()"
+          (click)="translateReceipt()"
+        >
+          <mat-icon aria-hidden="true">translate</mat-icon>
+          {{ 'receiptViewer.translate' | translate }}
+        </button>
+        @if (!available()) {
+          <p class="no-provider-hint">{{ 'receiptViewer.noVisionProvider' | translate }}</p>
+        }
+      }
+    </div>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  @if (current(); as image) {
+    <a
+      mat-button
+      class="open-in-new-tab-link"
+      [href]="image.url"
+      target="_blank"
+      rel="noopener"
+    >
+      {{ 'receiptViewer.openInNewTab' | translate }}
+    </a>
+  }
+  <button mat-button type="button" class="close-button" (click)="close()">
+    {{ 'common.close' | translate }}
+  </button>
+</mat-dialog-actions>

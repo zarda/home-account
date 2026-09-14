@@ -13,6 +13,7 @@
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		AA10000000000000000000A3 /* VisionOCRPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A2 /* VisionOCRPlugin.swift */; };
 		AA10000000000000000000A5 /* AppleIntelligencePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A4 /* AppleIntelligencePlugin.swift */; };
+		AA10000000000000000000A9 /* BiometricAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A8 /* BiometricAuthPlugin.swift */; };
 		AA10000000000000000000A7 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000A6 /* MainViewController.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
@@ -23,9 +24,12 @@
 		BB20000000000000000000C2 /* ShareIntakePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B6 /* ShareIntakePlugin.swift */; };
 		BB20000000000000000000C3 /* ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B1 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CC30000000000000000000A2 /* ShareIntakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A1 /* ShareIntakeStore.swift */; };
+		AA10000000000000000000AB /* BiometricOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AA /* BiometricOutcome.swift */; };
 		CC30000000000000000000A4 /* DataURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A3 /* DataURL.swift */; };
+		AA10000000000000000000AE /* BiometricOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AD /* BiometricOutcomeTests.swift */; };
 		CC30000000000000000000C1 /* ShareSeamsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000B2 /* ShareSeamsTests.swift */; };
 		CC30000000000000000000C2 /* ShareIntakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A1 /* ShareIntakeStore.swift */; };
+		AA10000000000000000000AC /* BiometricOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AA /* BiometricOutcome.swift */; };
 		CC30000000000000000000C3 /* DataURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A3 /* DataURL.swift */; };
 		CC30000000000000000000C4 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B2 /* ShareViewController.swift */; };
 /* End PBXBuildFile section */
@@ -89,6 +93,7 @@
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		AA10000000000000000000A2 /* VisionOCRPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionOCRPlugin.swift; sourceTree = "<group>"; };
 		AA10000000000000000000A4 /* AppleIntelligencePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleIntelligencePlugin.swift; sourceTree = "<group>"; };
+		AA10000000000000000000A8 /* BiometricAuthPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthPlugin.swift; sourceTree = "<group>"; };
 		AA10000000000000000000A6 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		DCAFA1432F449F3F0032BC8B /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		BB20000000000000000000B1 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -98,8 +103,10 @@
 		BB20000000000000000000B5 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		BB20000000000000000000B6 /* ShareIntakePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareIntakePlugin.swift; sourceTree = "<group>"; };
 		CC30000000000000000000A1 /* ShareIntakeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareIntakeStore.swift; sourceTree = "<group>"; };
+		AA10000000000000000000AA /* BiometricOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricOutcome.swift; sourceTree = "<group>"; };
 		CC30000000000000000000A3 /* DataURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataURL.swift; sourceTree = "<group>"; };
 		CC30000000000000000000B1 /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA10000000000000000000AD /* BiometricOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricOutcomeTests.swift; sourceTree = "<group>"; };
 		CC30000000000000000000B2 /* ShareSeamsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSeamsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -153,6 +160,7 @@
 		CC30000000000000000000D1 /* AppTests */ = {
 			isa = PBXGroup;
 			children = (
+				AA10000000000000000000AD /* BiometricOutcomeTests.swift */,
 				CC30000000000000000000B2 /* ShareSeamsTests.swift */,
 			);
 			path = AppTests;
@@ -191,6 +199,8 @@
 			isa = PBXGroup;
 			children = (
 				AA10000000000000000000A4 /* AppleIntelligencePlugin.swift */,
+				AA10000000000000000000A8 /* BiometricAuthPlugin.swift */,
+				AA10000000000000000000AA /* BiometricOutcome.swift */,
 				CC30000000000000000000A3 /* DataURL.swift */,
 				BB20000000000000000000B6 /* ShareIntakePlugin.swift */,
 				CC30000000000000000000A1 /* ShareIntakeStore.swift */,
@@ -338,6 +348,8 @@
 				AA10000000000000000000A7 /* MainViewController.swift in Sources */,
 				AA10000000000000000000A3 /* VisionOCRPlugin.swift in Sources */,
 				AA10000000000000000000A5 /* AppleIntelligencePlugin.swift in Sources */,
+				AA10000000000000000000A9 /* BiometricAuthPlugin.swift in Sources */,
+				AA10000000000000000000AB /* BiometricOutcome.swift in Sources */,
 				BB20000000000000000000C2 /* ShareIntakePlugin.swift in Sources */,
 				CC30000000000000000000A2 /* ShareIntakeStore.swift in Sources */,
 				CC30000000000000000000A4 /* DataURL.swift in Sources */,
@@ -348,9 +360,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA10000000000000000000AE /* BiometricOutcomeTests.swift in Sources */,
 				CC30000000000000000000C1 /* ShareSeamsTests.swift in Sources */,
 				CC30000000000000000000C2 /* ShareIntakeStore.swift in Sources */,
 				CC30000000000000000000C3 /* DataURL.swift in Sources */,
+				AA10000000000000000000AC /* BiometricOutcome.swift in Sources */,
 				CC30000000000000000000C4 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

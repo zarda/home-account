@@ -130,9 +130,9 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full
 window, and a pane behaves differently enough to cost a run before it is
-understood. None of these is a property of the app bar the seventh, which
-is the app's own timing; six of the nine have produced a false failure,
-the seventh cost a run a second provider call, the eighth stops a run
+understood. None of these is a property of the app bar the ninth, which
+is the app's own timing; eight of the eleven have produced a false failure,
+the ninth cost a run a second provider call, the tenth stops a run
 before it starts, and the last is a door nothing in a pane opens — its
 only control on the page is a switch with a write behind it.
 
@@ -180,6 +180,23 @@ only control on the page is a switch with a write behind it.
   to a third-party host and can be missing from the log entirely, so its
   absence proves nothing. The translated text on screen is the proof the
   provider answered.
+- **A pane's Escape key reaches no dialog.** The key tool's Escape lands
+  somewhere the CDK overlay's own keydown handler never sees: the receipt
+  viewer and the note dialog both stay open with focus inside and nothing in
+  the console, which reads exactly like a dialog that has stopped honouring
+  Escape. The app honours it — a synthetic `keydown` (`key: 'Escape'`,
+  `keyCode: 27`) dispatched on the open dialog closes it, which is how this
+  was settled — so close dialogs through their own Close or Cancel control,
+  which every journey does anyway, and never conclude an Escape defect from a
+  pane.
+- **A pane clears viewport emulation between turns.** A width set for a phone
+  journey is gone by the next turn, and any measurement that crosses that
+  boundary describes a layout that no longer exists — one run read a
+  zero-size box before the image had loaded and came back to find the dialog
+  apparently gone, which is the pane's reset and not the app. Set the width
+  and take every measurement of it inside one turn. The app is not upset by
+  the change either way: an open viewer watched through a mobile→desktop swap
+  stayed open while the table re-rendered underneath it.
 - **The wizard's back arrow navigates asynchronously.** The click returns
   before the route has changed, so a file handed to the dropzone's input in
   the same breath goes to the wizard the run thought it had left and joins
@@ -226,8 +243,8 @@ only the difference counts.
 
 Three writes are authorised — two on the account, one on the device only.
 Each is put back before the run ends, and the restore is *confirmed on
-screen*, not assumed. The other five rows write nothing at all and are listed
-with them anyway: three still cost the account a real provider call, one not
+screen*, not assumed. The other six rows write nothing at all and are listed
+with them anyway: four still cost the account a real provider call, one not
 even that, and the last leaves a notification standing in the operating
 system rather than anything on the account — what an import journey or a
 raised notification leaves behind is worth stating rather than leaving to be
@@ -236,9 +253,10 @@ inferred.
 | Action | What it writes | How it is put back |
 |---|---|---|
 | Translating a note | Nothing. A provider call under the account's own key; the answer lives in the component and the service's in-memory cache, and both are gone on reload | Nothing to undo |
+| Translating a receipt photo | Nothing. One provider call under the account's own key, the answer in the component and the service's in-memory cache; the stored image is downloaded and read, never rewritten, and the transaction is untouched | Nothing to undo |
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
-| Seeding or clearing the rate cache (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile, and one extra provider fetch on the next boot when the key is cleared | The value read before the change is written back verbatim, the page reloaded, and the Settings line read again to confirm the rung it reports is the one it reported at the start |
+| Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme classes it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the root element's classes restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
 | Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
@@ -453,8 +471,11 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 16 | Review: a row removed | A card leaving under a real pointer, focus landing on its neighbour, and the empty review step with Continue held | `16-row-removed.png`, `16-empty-review.png` |
 | 17 | Review: a fraction from a file | A CSV's fraction landing whole under a real parse, the Split trigger it earns, the confirm step's per-currency summary, and the snackbar a bulk currency switch raises over the row it blanks | `17-csv-fraction.png`, `17-confirm-summary.png`, `17-bulk-blanked.png` |
 | 18 | Camera: the capture status line | The dialog's own step line resolving from the catalogs while a real provider reads a real photo, and the thumbnail's bound `alt` | `18-camera-analyzing.png` |
-| 19 | Settings: which rate rung is loaded | Which rung a real boot actually lands on, and what the account is told about it | `19-rate-line.png` |
+| 19 | Settings: which rate rung is loaded | Which rung a real boot actually lands on, what the account is told about it, and the two failed-fetch rungs rendered in a real browser under both themes | `19-rate-line.png`, `19-expired-light.png`, `19-expired-dark.png`, `19-fallback-light.png`, `19-fallback-dark.png` |
 | 20 | The wizard's processing step on a backup | The step line and the bar as a real render sequence, with no gap where a deleted step was, and nothing left standing afterwards | `20-processing-step.png`, `20-confirm-summary.png` |
+| 21 | Receipt lens, desktop, from the list icon | A real stored photo decoded and laid out under the dialog's cap, and the real vision prompt coming back as a receipt rather than a summary of one | `21-viewer-open.png`, `21-translating.png`, `21-translated.png`, `21-cached.png` |
+| 22 | The viewer at phone width | The only door a phone has to a receipt, and a photograph fitting a 375px viewport with its controls still reachable | `22-viewer-phone.png` |
+| 23 | The viewer over the edit form | Two Material dialogs stacked by a real router-free overlay, and the form surviving underneath unsubmitted | `23-form-thumbnail.png`, `23-viewer-over-form.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1179,6 +1200,8 @@ analytics event, and writes no document
 Settings → **Preferences** → the base-currency field, labelled *Currency*.
 The line under the select is the rate marker.
 
+#### The read half
+
 Read the line, and read the rung behind it from the page console:
 
 ```js
@@ -1193,23 +1216,178 @@ the device cache, a fresh one is at most twelve hours of market data, and it
 makes the same claim about the table's age a live fetch does. A line that
 said *saved* there would report an ordinary boot as a degraded one.
 
-**The write half runs only on the user's explicit word**, and it is a device
-write, not an account one. Read `localStorage['home-account.exchangeRates']`
-and keep the string. Remove the key, reload: the ladder misses the cache,
-fetches, and the rung reads `'live'` — with the *same sentence* on screen,
-which is the thing being confirmed. Write the saved string back verbatim,
-reload again, and confirm on screen that the line and the rung are what they
-were at the start. The cost is one extra provider fetch on the boot in
-between; nothing on the account changes.
+#### The write half
 
-`expired` and `fallback` are **not reachable here**. Both require a fetch
-that fails, which a read-only run against production cannot arrange — an
-expired cache alone simply goes to the network and succeeds. They stay where
-they can be arranged: `currency.service.spec.ts` for all four rungs, and
-`currency-fallback.smoke.spec.ts`, which pins `'expired'` beside the cached
-rate a real write converted through.
+**It runs only on the user's explicit word**, and every write in it is on the
+device: `localStorage['home-account.exchangeRates']` on this browser profile,
+nothing on the account ([What a run may touch](#what-a-run-may-touch)). Read
+the string first and keep it **outside the page** — copied down beside the
+run's notes, because every reload below clears anything left on `window`, and
+the restore at the end needs it verbatim.
 
-One shot: the line under the currency select.
+**A fresh cache.** Stamp the kept table with the current clock and reload:
+
+```js
+const kept = localStorage.getItem('home-account.exchangeRates');  // copy it down
+localStorage.setItem('home-account.exchangeRates', JSON.stringify({
+  ...JSON.parse(kept), lastUpdatedMs: Date.now()
+}));
+```
+
+The ladder's first rung takes it: the rung reads `'cached'` and the line reads
+the same sentence with today's date. That the boot asked for nothing is not
+read off the network log — that log may record same-origin requests only
+([Panes and viewports](#panes-and-viewports)), so the absence of a rates
+request there proves nothing.
+
+**No cache.** Remove the key and reload: the ladder misses the cache, fetches,
+and the rung reads `'live'` — with the *same sentence* on screen, which is the
+thing being confirmed. That boot costs one extra provider fetch.
+
+**The restore.** Write the copied string back verbatim with `setItem`, reload,
+and confirm on screen that the line and the rung are the ones they were at the
+start.
+
+#### The two rungs a boot cannot reach
+
+`expired` (a cache past the twelve-hour window and a failing fetch) and
+`fallback` (no cache and a failing fetch) both need the rates request to fail,
+and no arrangement of the cache alone makes it fail — an expired cache simply
+goes to the network and succeeds.
+
+Neither mechanism the issue offered reaches them:
+
+- **Request blocking on `open.er-api.com`.** The pane the protocol runs in
+  exposes no request blocking and no offline mode, so a failed fetch cannot be
+  arranged from outside the app.
+- **The seeded harness under [`docs/ui-audit/tools/`](ui-audit/tools/).** It
+  can stub `fetch` before the service is constructed, but it renders a demo
+  account against the emulators, and only after `.vscode/environment.ts` is
+  swapped and an uncommitted `app.config.ts` edit points the app at them.
+  There is no real session and no deployed rules behind it — which is the
+  whole reason this protocol exists beside it.
+
+The app offers no seam of its own either: the endpoint is a module constant,
+`fetch` is the global, there is no environment field naming it and no service
+worker sees it. What it does offer is the ladder. `CurrencyService` is
+root-provided, `RateStatusComponent` holds it as `private currencyService`,
+and `initializeRates()` is the exact method a boot runs — so the ladder can be
+re-entered on the running page with the fetch failing underneath it, and the
+line repaints through the same signal a boot writes.
+
+The access is journey 14's class, and it is worth naming rather than glossing:
+`private` is TypeScript's word, which the running page does not enforce, and a
+private method called from the console is diagnostic-grade. What it proves is
+the rung the ladder chooses and the line the component renders for it — not
+the boot sequence, which is why the journey ends with a real reload.
+
+The ladder's logic stays where it belongs: `currency.service.spec.ts` walks
+all four rungs and `rate-status.component.spec.ts` pins `rate-line-stale` on
+the two that failed. What this half adds is the one thing neither can — the
+line as a browser paints it, in the warning colour each theme gives it.
+
+**Keep the string, the real `fetch` and the theme classes, and fail only the
+rates host.** This half reloads nothing until it is over, so a page global
+holds all three across it:
+
+```js
+window.__j19 = {
+  cache: localStorage.getItem('home-account.exchangeRates'),
+  fetch: window.fetch,
+  theme: document.documentElement.className
+};
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input
+    : input instanceof URL ? input.href : input.url;
+  return url.startsWith('https://open.er-api.com/')
+    ? Promise.reject(new Error('journey 19'))
+    : window.__j19.fetch.call(window, input, init);
+};
+```
+
+Selective for the reason `currency-fallback.smoke.spec.ts` fakes it the same
+way: the Firestore transport and the auth token exchange ride `window.fetch`
+too, and a blanket rejection takes the session down with the rates.
+
+**`expired`** — age the kept table past the twelve-hour window and re-enter:
+
+```js
+const line = () => document.querySelector('app-rate-status .rate-line');
+const rates = ng.getComponent(document.querySelector('app-rate-status'))
+  .currencyService;
+localStorage.setItem('home-account.exchangeRates', JSON.stringify({
+  ...JSON.parse(window.__j19.cache), lastUpdatedMs: Date.now() - 13 * 3600e3
+}));
+await rates.initializeRates();
+[rates.rateSource(), line().textContent.trim(), line().className,
+  getComputedStyle(line()).color];
+```
+
+`'expired'`, the line reading *Could not update exchange rates — using saved
+rates from …* with the cache's **own** date in the user's date format, the
+class list carrying `rate-line-stale`, and the colour `rgb(180, 83, 9)` —
+`--color-warning-text` in light. In a pane the host is not showing, flush with
+`ng.applyChanges(ng.getComponent(document.querySelector('app-rate-status')))`
+before reading the text ([Panes and viewports](#panes-and-viewports)).
+
+**Dark**, for the same line:
+
+```js
+const root = document.documentElement;
+root.classList.add('dark-theme'); root.classList.remove('light-theme');
+getComputedStyle(line()).color;        // 'rgb(251, 191, 36)'
+root.className = window.__j19.theme;   // both classes back as they were
+```
+
+That is what `ThemeService.applyTheme` does to the root element and nothing
+besides. The Settings theme control is not used: that click writes
+`preferences.theme` on the user document, and this journey has no account
+write in it.
+
+**`fallback`** — remove the key and re-enter, with the fetch still failing:
+
+```js
+localStorage.removeItem('home-account.exchangeRates');
+await rates.initializeRates();
+[rates.rateSource(), line().textContent.trim(), line().className,
+  getComputedStyle(line()).color];
+```
+
+`'fallback'`, the line reading *Could not fetch exchange rates — using
+built-in approximate rates* with **no date on screen**, and the same warning
+colour — read in dark the same way, for `rgb(251, 191, 36)`.
+
+**Do not read `lastUpdated()` here.** `setDefaultRates()` installs the
+constants and names the rung, and it leaves that signal alone on purpose, so a
+re-entry that has already been through `expired` still carries the cache's
+date in it. Nothing on screen is wrong — the template's `fallback` branch
+takes no date and says *approximate* in words — so the criterion here is the
+sentence and the rung, never a null stamp. The null belongs to a service built
+with no cache at all, and that is where `currency-fallback.smoke.spec.ts` pins
+it, beside the `1/149.5` constant a real write converted through.
+
+**The restore.** Put the real `fetch` and the kept string back, and re-enter
+once more:
+
+```js
+window.fetch = window.__j19.fetch;
+localStorage.setItem('home-account.exchangeRates', window.__j19.cache);
+await rates.initializeRates();
+[rates.rateSource(), line().textContent.trim()];
+```
+
+The rung and the line are the ones the journey started on. Then **reload**:
+the wrapper goes with the page, the boot walks the ladder the ordinary way,
+and the line reads the same — which is what says the restore is real rather
+than a signal that was told so.
+
+**Pass:** both unreachable rungs read on screen, each with its own sentence,
+`rate-line-stale` and `--color-warning-text` in both themes; the theme classes
+and the cache back as they were; and the starting rung and line confirmed
+after a real reload, with no new `error`-level console entry across it.
+
+Five shots: the line under the currency select at the start, and each warning
+line in light and dark.
 
 ### 20. The wizard's processing step on a backup
 
@@ -1261,6 +1439,136 @@ text `NaN` — a record that carries no totals of either kind renders a zero
 in the account's own currency.
 
 Two shots: the processing card mid-run, and the confirm step's summary.
+
+### 21. Receipt lens, desktop, from the list icon
+
+Desktop width — at least 1024px, for the reason journey 2 gives: the receipt
+icon lives in the table, and below `min-width: 768px` it does not exist.
+
+A row with a stored receipt **printed in a script the app's current language
+does not read** — the whole point is a photograph the account holder cannot
+read off the paper.
+
+Transactions → the row's receipt icon (`.receipt-icon-button`, `receipt_long`,
+with the image count as a badge past one) → the viewer.
+
+**Pass — what opens.** A dialog, not a tab: the transaction's description as
+a subtitle, the stored photo itself, and *Translate receipt* enabled. A
+one-image transaction shows no arrows. The photo is the stored one at its own
+resolution, laid out inside the dialog's cap — read both from the page:
+
+```js
+const img = document.querySelector('.receipt-image');
+[img.naturalWidth, img.naturalHeight, img.getBoundingClientRect().height,
+  innerHeight * 0.6];
+```
+
+the natural size is the upload's, and the rendered height is at or under
+`60dvh`. The actions row still carries *Open in new tab* with
+`rel="noopener"`.
+
+**Translate receipt** → the spinner → the panel.
+
+**Pass — the wire.** The marker reads *Translated from …* naming the language
+the receipt was printed in, the panel is `role="status"`, and the reading is
+the **receipt**, not a summary of one: every printed line in order, as
+`white-space: pre-wrap`, with every figure intact — item prices, the
+discount, the amount paid and the printed timestamps all identical to the
+photo beside them. Count the lines and read a few figures back rather than
+eyeballing it. The photo is still in the DOM: nothing was replaced.
+
+A provider call does not have to appear in the network log — it goes to a
+third-party host, and the log may record same-origin requests only
+([Panes and viewports](#panes-and-viewports)). The translated text is the
+proof it answered.
+
+**Pass — focus.** After the answer, `document.activeElement` is the
+**Hide translation** button, not `<body>`. That matters more here than on the
+note lens: this is a modal, and focus on `<body>` inside one leaves a keyboard
+reader with no way back to the dialog short of tabbing the whole surface.
+
+**Hide translation** → the panel goes, *Translate receipt* is back, and focus
+is on it. Press it again.
+
+**Pass — the cache.** The panel returns in well under a second with **no
+spinner**: the service caches by transaction, slot, locale and answering
+provider for the session, so a second look at the same photo costs nothing. A
+spinner here means the account is paying twice for one answer.
+
+Close through the dialog's own **Close** button — the pane's Escape key
+reaches no dialog, which is a pane artefact and not a finding
+([Panes and viewports](#panes-and-viewports)). The list underneath is
+unchanged: same row count, same row.
+
+Four shots: the viewer as it opens, the spinner, the translation beside the
+photo, and the cached second answer.
+
+### 22. The viewer at phone width
+
+375px wide, at the pane's **own** width where possible — pointer input stalls
+under emulation, and this journey is a menu and a dialog
+([Panes and viewports](#panes-and-viewports)). Take every measurement in the
+same turn that sets the width: a pane clears the emulation between turns.
+
+Below `min-width: 768px` the table is gone and the list is
+`app-transaction-row` elements. The row's receipt mark is an **indicator**,
+not a control, so the door is the trailing overflow menu (⋮) →
+**View receipt** — this is the only door a phone has to a stored receipt.
+
+**Pass — the menu.** With a receipt on the row and a note on it, the menu
+reads *View note*, *View receipt*, *Edit*, *Delete*, in that order.
+
+**Pass — the fit.** With the viewer open, from the console:
+
+```js
+const r = sel => document.querySelector(sel).getBoundingClientRect();
+[r('.receipt-image'), r('mat-dialog-container'),
+  r('.translate-button').height, innerWidth];
+```
+
+The image's box and the dialog's both sit inside the viewport width with
+nothing negative and nothing past the right edge; the Translate control is at
+least 40px tall. Then the page-level check journey 4 uses:
+
+```js
+document.documentElement.scrollWidth === document.documentElement.clientWidth;
+```
+
+`true`. A tall receipt photographed in portrait is the case that pushes a
+dialog wide, so use one.
+
+Leave by **Close**.
+
+One shot: the viewer at 375px with the photo and the Translate control both
+on screen.
+
+### 23. The viewer over the edit form
+
+Desktop. Click a row **with a stored receipt** → the edit dialog → the
+receipt strip under the receipt controls.
+
+**Pass — the thumbnail is a control.** Each stored image is a
+`<button type="button">` with a bound `alt` reading *Receipt image n of N*,
+and there is no `target="_blank"` anchor left anywhere in the strip:
+
+```js
+document.querySelectorAll('.receipt-strip a[target="_blank"]').length;   // 0
+```
+
+Click a thumbnail → the viewer opens **over** the form.
+
+**Pass — the stack.** Two dialog containers on the page, the form still
+mounted underneath, and the viewer showing that thumbnail's own slot — not
+the transaction's first image. **Close** → the viewer is gone and the form is
+still open, still unsubmitted, with the values it had.
+
+Leave the form by **Cancel**. Never Save.
+
+**Pass — nothing left behind.** No dialog containers remain, the list has the
+row count it started with, and the row is the one it was: the viewer reads a
+transaction and writes nothing to it.
+
+Two shots: the receipt strip in the form, and the viewer stacked over it.
 
 ## Evidence
 

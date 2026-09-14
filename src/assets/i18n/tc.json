@@ -955,6 +955,16 @@
     "failedOffline": "翻譯需要網路連線，請檢查連線後再試。",
     "failedIncomplete": "翻譯結果被截斷，請重試。"
   },
+  "receiptViewer": {
+    "title": "收據",
+    "previous": "上一張圖片",
+    "next": "下一張圖片",
+    "openInNewTab": "在新分頁開啟",
+    "translate": "翻譯收據",
+    "hideTranslation": "隱藏翻譯",
+    "noVisionProvider": "翻譯照片需要能讀取圖片的供應商。請在「設定 → AI 處理」中新增。",
+    "failedDownload": "無法下載收據圖片，請改以新分頁開啟。"
+  },
   "import": {
     "title": "智慧匯入",
     "smartImport": "AI 智慧匯入",
@@ -1359,7 +1369,15 @@
     "pinSaveFailed": "無法在此裝置儲存 PIN 碼",
     "disclaimer": "PIN 碼以裝置為單位設定，用於限制應用程式存取，並不會加密您儲存的資料。",
     "timeoutMinute": "1 分鐘",
-    "forgotPin": "忘記 PIN 碼？登出即可清除此裝置的 PIN 碼；您的資料不會遺失，重新登入後可設定新的 PIN 碼。"
+    "forgotPin": "忘記 PIN 碼？登出即可清除此裝置的 PIN 碼；您的資料不會遺失，重新登入後可設定新的 PIN 碼。",
+    "unlockWithBiometry": "以 {{biometry}} 解鎖",
+    "faceId": "Face ID",
+    "touchId": "Touch ID",
+    "biometricReason": "解鎖家庭記帳",
+    "biometricLockedOut": "{{biometry}} 已鎖定，請輸入 PIN 碼。",
+    "biometricFailed": "{{biometry}} 無法辨識您，請再試一次或輸入 PIN 碼。",
+    "useBiometry": "以 {{biometry}} 解鎖",
+    "useBiometryHint": "PIN 碼仍會保留並可正常使用，{{biometry}} 只是在此裝置上更快解鎖的方式。"
   },
   "reminders": {
     "billDue": "{{name}} 今天到期",

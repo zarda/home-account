@@ -18,7 +18,7 @@ import {
   renderStatementTransactions,
 } from './receipt.prompts';
 import { renderSearchQuery } from './search.prompts';
-import { renderTranslateNote } from './translation.prompts';
+import { renderTranslateNote, renderTranslateReceiptImage } from './translation.prompts';
 
 /**
  * Every prompt the app sends to a model, in one place.
@@ -122,6 +122,11 @@ export const PROMPTS = {
     since: '26.9.152',
     feature: 'translation',
     render: renderTranslateNote,
+  },
+  translateReceiptImage: {
+    since: '26.9.160',
+    feature: 'translation',
+    render: renderTranslateReceiptImage,
   },
 } as const;
 

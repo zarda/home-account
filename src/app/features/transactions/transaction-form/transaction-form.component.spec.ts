@@ -11,6 +11,7 @@ import { GoalService } from '../../../core/services/goal.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
+import { ReceiptViewerDialogComponent } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { AIImportService } from '../../../core/services/ai-import.service';
@@ -844,6 +845,20 @@ describe('TransactionFormComponent', () => {
 
       expect(component.storedReceipts().length).toBe(1);
       expect(notifications.error).toHaveBeenCalledWith('receiptImages.convertFailedNoDetails');
+    });
+
+    // Template is blanked in this suite (no thumbnail to click), so the door
+    // is proved at method level — the DOM click is the list spec's job.
+    it('opens the receipt viewer on the image the thumbnail belongs to', () => {
+      const transaction = multiImageTxn();
+      const component = build({ mode: 'edit', transaction }).componentInstance;
+
+      component.openReceipt({ url: 'https://storage.example.com/r1.jpg', slot: 1 });
+
+      expect(dialog.open).toHaveBeenCalledWith(
+        ReceiptViewerDialogComponent,
+        jasmine.objectContaining({ data: { transaction, slot: 1 } })
+      );
     });
   });
 

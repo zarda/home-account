@@ -955,6 +955,16 @@
     "failedOffline": "翻訳には接続が必要です。ネットワークを確認して再試行してください。",
     "failedIncomplete": "翻訳が途中で切れています。もう一度お試しください。"
   },
+  "receiptViewer": {
+    "title": "レシート",
+    "previous": "前の画像",
+    "next": "次の画像",
+    "openInNewTab": "新しいタブで開く",
+    "translate": "レシートを翻訳",
+    "hideTranslation": "翻訳を閉じる",
+    "noVisionProvider": "写真の翻訳には画像を読み取れるプロバイダーが必要です。設定 → AI処理 で追加してください。",
+    "failedDownload": "レシート画像をダウンロードできませんでした。新しいタブで開いてご確認ください。"
+  },
   "import": {
     "title": "スマートインポート",
     "smartImport": "AIスマートインポート",
@@ -1359,7 +1369,15 @@
     "pinSaveFailed": "このデバイスにPINを保存できませんでした",
     "disclaimer": "PINはデバイスごとに設定され、アプリへのアクセスを制限します。保存されたデータの暗号化は行いません。",
     "timeoutMinute": "1分後",
-    "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。"
+    "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。",
+    "unlockWithBiometry": "{{biometry}}でロック解除",
+    "faceId": "Face ID",
+    "touchId": "Touch ID",
+    "biometricReason": "家計簿のロックを解除",
+    "biometricLockedOut": "{{biometry}}がロックされています。PINを入力してください。",
+    "biometricFailed": "{{biometry}}で認証できませんでした。もう一度試すか、PINを入力してください。",
+    "useBiometry": "{{biometry}}でロック解除",
+    "useBiometryHint": "PINはそのまま有効です。{{biometry}}は、このデバイスでロックをより速く解除する方法にすぎません。"
   },
   "reminders": {
     "billDue": "{{name}} は今日が支払日です",

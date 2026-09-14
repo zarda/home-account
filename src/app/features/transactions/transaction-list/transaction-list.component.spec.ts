@@ -18,6 +18,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { NoteDialogComponent } from '../note-dialog/note-dialog.component';
+import { ReceiptViewerDialogComponent } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { Transaction } from '../../../models';
 import { createTransaction, createUser } from '../../../core/services/testing';
 
@@ -340,6 +341,7 @@ describe('TransactionListComponent mobile row wiring', () => {
       amount: 30,
       description: 'Banana',
       note: 'Ripe by Friday\nfrom the corner stall',
+      receiptUrl: 'https://storage.example.com/r.jpg',
     }),
     createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
   ];
@@ -460,6 +462,32 @@ describe('TransactionListComponent mobile row wiring', () => {
       })
     );
   });
+
+  // The desktop table's icon door has no touch equivalent either, so the
+  // trailing menu is the receipt's only route on a phone too.
+  it('offers the receipt in the trailing menu of a row that has one', () => {
+    openRowMenu(0);
+
+    expect(menuLabels().some(label => label.includes('transactions.viewReceipt')))
+      .withContext('the phone route to the receipt')
+      .toBeTrue();
+  });
+
+  it('leaves the receipt entry out of a row with nothing to view', () => {
+    openRowMenu(1);
+
+    expect(menuLabels().some(label => label.includes('transactions.viewReceipt'))).toBeFalse();
+  });
+
+  it('opens the receipt viewer from the trailing menu', () => {
+    openRowMenu(0);
+    menuItems().find(item => item.textContent!.includes('transactions.viewReceipt'))!.click();
+
+    expect(dialog.open).toHaveBeenCalledWith(
+      ReceiptViewerDialogComponent,
+      jasmine.objectContaining({ data: jasmine.objectContaining({ transaction: txns[0] }) })
+    );
+  });
 });
 
 /**
@@ -479,6 +507,7 @@ describe('TransactionListComponent desktop note doors', () => {
     amount: 30,
     description: 'Banana',
     note: 'Ripe by Friday\nfrom the corner stall',
+    receiptUrl: 'https://storage.example.com/r.jpg',
   });
   const withoutNote = createTransaction({ id: 'b', amount: 10, description: 'Apple' });
   const txns: Transaction[] = [withNote, withoutNote];
@@ -602,5 +631,136 @@ describe('TransactionListComponent desktop note doors', () => {
     openActionsMenu(1);
 
     expect(menuItems().some(el => el.textContent!.includes('transactions.viewNote'))).toBeFalse();
+  });
+
+  it('offers the receipt in the actions menu of a row that has one', () => {
+    openActionsMenu(0);
+
+    const item = menuItems().find(el => el.textContent!.includes('transactions.viewReceipt'));
+    expect(item).withContext('the menu route to the receipt').toBeDefined();
+
+    item!.click();
+
+    expect(dialog.open).toHaveBeenCalledWith(ReceiptViewerDialogComponent, jasmine.any(Object));
+  });
+
+  it('leaves the receipt entry out of a row with nothing to view', () => {
+    openActionsMenu(1);
+
+    expect(menuItems().some(el => el.textContent!.includes('transactions.viewReceipt'))).toBeFalse();
+  });
+});
+
+/**
+ * The description cell's receipt icon — the desktop table's only route to a
+ * stored photo, and the one door proved against the real template rather
+ * than at method level (the form and manager specs blank theirs).
+ */
+describe('TransactionListComponent desktop receipt doors', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+
+  const withReceipt = createTransaction({
+    id: 'a',
+    amount: 30,
+    description: 'Banana',
+    receiptUrl: 'https://storage.example.com/r0.jpg',
+  });
+  const withMultipleReceipts = createTransaction({
+    id: 'b',
+    amount: 20,
+    description: 'Cherry',
+    receiptUrl: 'https://storage.example.com/r1.jpg',
+    receiptUrls: ['https://storage.example.com/r1.jpg', 'https://storage.example.com/r2.jpg'],
+    receiptCount: 2,
+  });
+  const withoutReceipt = createTransaction({ id: 'c', amount: 10, description: 'Apple' });
+  const txns: Transaction[] = [withReceipt, withMultipleReceipts, withoutReceipt];
+
+  function receiptButtons(): HTMLElement[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('.receipt-icon-button'));
+  }
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat.formatDate.and.returnValue('date');
+    dateFormat.formatRelativeDate.and.returnValue('rel');
+    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+      'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+    ]);
+    categoryHelper.getCategoryName.and.returnValue('Cat');
+    categoryHelper.getCategoryIcon.and.returnValue('icon');
+    categoryHelper.getCategoryColor.and.returnValue('#000');
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((k: string) => k);
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: createMockWindowSource() },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: dateFormat },
+        { provide: CategoryHelperService, useValue: categoryHelper },
+        { provide: TranslationService, useValue: translation },
+        { provide: MatDialog, useValue: dialog },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  });
+
+  it('renders a real button for a row with a receipt, never a link', () => {
+    const buttons = receiptButtons();
+    expect(buttons.length).withContext('one button per row that has a receipt').toBeGreaterThan(0);
+    for (const button of buttons) {
+      expect(button.tagName).toBe('BUTTON');
+      expect(button.getAttribute('aria-label')).toBe('transactions.viewReceipt');
+    }
+    expect(fixture.nativeElement.querySelector('a.receipt-icon-link')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.receipt-icon-button[target]')).toBeNull();
+  });
+
+  it('shows no receipt control on a row with nothing stored', () => {
+    // Two of the three rows carry a receipt; a count past that would mean
+    // the row with nothing stored grew a button of its own.
+    expect(receiptButtons().length).toBe(2);
+  });
+
+  it('still renders the image count badge past one image', () => {
+    const badges = fixture.nativeElement.querySelectorAll('.receipt-count-badge');
+    expect(badges.length).withContext('only the multi-image row gets a badge').toBe(1);
+    expect((badges[0] as HTMLElement).textContent!.trim()).toBe('2');
+  });
+
+  it('opens the receipt viewer with the row it belongs to', () => {
+    receiptButtons()[0].click();
+
+    expect(dialog.open).toHaveBeenCalledWith(
+      ReceiptViewerDialogComponent,
+      jasmine.objectContaining({ data: jasmine.objectContaining({ transaction: withReceipt }) })
+    );
+  });
+
+  it('does not open the editor behind the receipt viewer', () => {
+    const component = fixture.componentInstance;
+    const editSpy = jasmine.createSpy('edit');
+    component.edit.subscribe(editSpy);
+
+    // Same hazard as the note button: it sits inside the row's own click
+    // target, so without stopPropagation the editor opens under the viewer.
+    receiptButtons()[0].click();
+
+    expect(editSpy).not.toHaveBeenCalled();
   });
 });

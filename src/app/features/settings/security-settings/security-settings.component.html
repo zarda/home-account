@@ -31,6 +31,21 @@
         }
       </mat-select>
     </mat-form-field>
+
+    @if (biometricAvailable()) {
+      <div class="setting-row">
+        <mat-slide-toggle
+          class="biometric-toggle"
+          [checked]="biometricOn()"
+          (change)="onBiometricToggle($event.checked)"
+        >
+          {{ 'appLock.useBiometry' | translate: { biometry: (biometryKey() | translate) } }}
+        </mat-slide-toggle>
+        <p class="section-description">
+          {{ 'appLock.useBiometryHint' | translate: { biometry: (biometryKey() | translate) } }}
+        </p>
+      </div>
+    }
   }
 
   @if (isSettingPin()) {

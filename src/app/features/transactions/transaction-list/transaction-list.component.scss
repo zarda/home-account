@@ -213,7 +213,10 @@
   @apply text-primary-600 dark:text-primary-400;
 }
 
-.receipt-icon-link {
+// Tailwind preflight already strips a button's padding, border, background
+// and cursor, so only the inline layout survives: the bare icon glyph still
+// has to sit and size like the link it replaced.
+.receipt-icon-button {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
@@ -291,7 +294,7 @@
   vertical-align: middle;
 }
 
-.receipt-icon-link:hover .receipt-icon {
+.receipt-icon-button:hover .receipt-icon {
   @apply text-primary-600 dark:text-primary-400;
 }
 

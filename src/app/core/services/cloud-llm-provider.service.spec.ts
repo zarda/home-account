@@ -29,6 +29,7 @@ function makeProviderSpy(name: string): jasmine.SpyObj<GeminiService> {
     'generateSpendingSummary',
     'getFinancialAdvice',
     'translateText',
+    'translateReceiptImage',
   ]);
   spy.isAvailableSignal.and.returnValue(false);
   spy.isAvailable.and.returnValue(false);
@@ -126,6 +127,17 @@ describe('CloudLLMProviderService', () => {
       gemini.isAvailableSignal.and.returnValue(true);
       expect(service.isProviderAvailable('gemini')).toBeTrue();
       expect(service.isProviderAvailable('openai')).toBeFalse();
+    });
+
+    it('hasVisionProvider is false when the only configured provider cannot see', () => {
+      // Gemini can be configured for text with no vision model, which is not
+      // the same state as no provider being configured at all.
+      gemini.isAvailableSignal.and.returnValue(true);
+      (gemini as unknown as { capabilities: ProviderCapabilities }).capabilities = {
+        vision: false,
+      };
+      expect(service.hasAnyCloudProvider()).toBeTrue();
+      expect(service.hasVisionProvider()).toBeFalse();
     });
   });
 
@@ -284,6 +296,28 @@ describe('CloudLLMProviderService', () => {
       expect(service.getPreferredProvider('search')).toBe('gemini');
       expect(service.getPreferredProvider('translation')).toBe('gemini');
       expect(service.getPreferredProvider('insights')).toBe('openai');
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // resolveVisionProvider
+  // ----------------------------------------------------------------
+  describe('resolveVisionProvider', () => {
+    it('skips a preferred text-only provider for a vision-capable fallback', () => {
+      const prefs: LLMProviderPreferences = {
+        receiptScanning: 'gemini', categorization: 'gemini', insights: 'gemini', search: 'gemini',
+        translation: 'gemini',
+      };
+      auth.currentUser.and.returnValue(createMockUser('u', {
+        preferences: { ...createMockUser().preferences, llmProviderPreferences: prefs },
+      }));
+      gemini.isAvailableSignal.and.returnValue(true);
+      (gemini as unknown as { capabilities: ProviderCapabilities }).capabilities = {
+        vision: false,
+      };
+      (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
+
+      expect(service.resolveVisionProvider('translation')).toBe('openai');
     });
   });
 
@@ -672,6 +706,21 @@ describe('CloudLLMProviderService', () => {
     it('throws when no provider is available', async () => {
       await expectAsync(service.translateText('おにぎり 150'))
         .toBeRejectedWithError(/No cloud AI provider available for translation/);
+    });
+  });
+
+  describe('translateReceiptImage', () => {
+    it('throws the vision-gate sentence when nothing can see', async () => {
+      // Available but text-only: proves the vision gate itself, not the
+      // separate "no provider configured" path resolve() already covers.
+      gemini.isAvailableSignal.and.returnValue(true);
+      (gemini as unknown as { capabilities: ProviderCapabilities }).capabilities = {
+        vision: false,
+      };
+
+      await expectAsync(service.translateReceiptImage('img')).toBeRejectedWithError(
+        'Translating a receipt image needs a vision-capable provider'
+      );
     });
   });
 

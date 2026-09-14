@@ -18,12 +18,13 @@ import {
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { Transaction } from '../../../models';
+import { Transaction, receiptImageSlots } from '../../../models';
 
 /** One stored image of a transaction, addressed by its storage slot. */
 interface ReceiptImage {
@@ -100,7 +101,7 @@ export class ReceiptImageManagerComponent implements OnInit {
       ]);
       this.groups.set(transactions.map(transaction => ({
         transaction,
-        images: this.imagesOf(transaction),
+        images: receiptImageSlots(transaction),
       })));
     } catch {
       this.notifications.error(this.translationService.t('common.error'));
@@ -117,6 +118,11 @@ export class ReceiptImageManagerComponent implements OnInit {
 
   dateOf(group: ReceiptGroup): Date {
     return group.transaction.date.toDate();
+  }
+
+  /** Open the in-app viewer on one image, at the slot its thumbnail sits in. */
+  openReceipt(group: ReceiptGroup, image: ReceiptImage): void {
+    openReceiptViewer(this.dialog, { transaction: group.transaction, slot: image.slot });
   }
 
   async removeImage(group: ReceiptGroup, image: ReceiptImage): Promise<void> {
@@ -200,17 +206,6 @@ export class ReceiptImageManagerComponent implements OnInit {
 
   close(): void {
     this.dialogRef.close();
-  }
-
-  /**
-   * A transaction's images as {url, slot} pairs: the slot is the entry's
-   * index in receiptUrls (a legacy row's single receiptUrl is slot 0);
-   * tombstones are skipped but survivors keep their original slots.
-   */
-  private imagesOf(transaction: Transaction): ReceiptImage[] {
-    const slots = transaction.receiptUrls
-      ?? (transaction.receiptUrl ? [transaction.receiptUrl] : []);
-    return slots.map((url, slot) => ({ url, slot })).filter(image => !!image.url);
   }
 
   private convertErrorMessage(error: unknown): string {

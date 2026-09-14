@@ -11,6 +11,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 import { AppLockService } from '../../../core/services/app-lock.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { BiometricAuthService } from '../../../core/services/biometric-auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { PIN_LENGTH, isValidPin } from '../../../core/utils/pin-hash.utils';
@@ -38,6 +39,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class SecuritySettingsComponent {
   private appLock = inject(AppLockService);
   private authService = inject(AuthService);
+  private biometric = inject(BiometricAuthService);
   private notifications = inject(NotificationService);
   private translation = inject(TranslationService);
 
@@ -57,6 +59,18 @@ export class SecuritySettingsComponent {
 
   /** The account asked for a lock but this device has no PIN to satisfy it. */
   readonly needsCredential = computed(() => this.enabled() && !this.hasCredential());
+
+  /** The toggle itself: web never offers this, since it has no biometry to opt into. */
+  readonly biometricAvailable = computed(() => this.biometric.available());
+  /**
+   * AppLockService exposes no dedicated opt-in read — method() already folds
+   * the flag together with device availability, and 'biometric' cannot be
+   * true without the opt-in being on.
+   */
+  readonly biometricOn = computed(() => this.appLock.method() === 'biometric');
+  readonly biometryKey = computed(() =>
+    this.biometric.biometry() === 'faceId' ? 'appLock.faceId' : 'appLock.touchId'
+  );
 
   get canSavePin(): boolean {
     return isValidPin(this.newPin) && this.newPin === this.confirmPin;
@@ -106,6 +120,11 @@ export class SecuritySettingsComponent {
   async onTimeoutChange(minutes: number): Promise<void> {
     this.timeoutMinutes.set(minutes);
     await this.persist({ appLockTimeoutMinutes: minutes });
+  }
+
+  /** Device-only shortcut: no account preference to write, unlike the toggles above. */
+  onBiometricToggle(on: boolean): void {
+    this.appLock.setBiometricOptIn(on);
   }
 
   private async persist(patch: Record<string, unknown>): Promise<void> {

@@ -1,0 +1,90 @@
+.viewer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-block-start: 16px;
+}
+
+.viewer-subtitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.receipt-image {
+  display: block;
+  margin-inline: auto;
+  max-width: 100%;
+
+  // Capped against the visible viewport, not the largest one: the dialog
+  // already gives the chrome and the lens their share of a short screen, and
+  // a photo sized in vh would push the actions row off an iOS viewport whose
+  // toolbars are showing. The rest of the receipt is a scroll away inside
+  // the content area, and the full-size image is one tap away in a new tab.
+  max-height: 60dvh;
+  object-fit: contain;
+}
+
+.image-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.image-counter {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.receipt-lens {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.translate-button mat-icon {
+  margin-inline-end: 4px;
+}
+
+.no-provider-hint,
+.translation-error,
+.translation-marker {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: start;
+}
+
+.translation-error {
+  color: var(--color-error);
+}
+
+.translation-panel {
+  inline-size: 100%;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+
+.translated-text {
+  margin-block: 4px 0;
+  font-size: var(--text-sm);
+  text-align: start;
+
+  // A receipt's line structure is the content: read as one paragraph it is
+  // not the receipt any more. Nothing truncates it either — a reading the
+  // reader cannot finish is worse than the photo they could not read
+  // (docs/ui-overflow.md).
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.hide-translation-button {
+  margin-block-start: 4px;
+  margin-inline-start: -8px;
+}
