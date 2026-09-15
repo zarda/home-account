@@ -83,11 +83,12 @@
   font-size: var(--text-2xl);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  // A truncated amount reads as a different number, so never ellipsize.
-  // Amount strings have no break opportunities (displayValue pins the one
-  // after a leading minus); break-word only engages once the amount alone
-  // no longer fits beside the icon.
-  overflow-wrap: break-word;
+  // A truncated amount reads as a different number, so never ellipsize —
+  // and never break between digits either. appFitText scales the value down
+  // to the 12px floor before it lets a line break at all, wrapping only past
+  // that; nowrap is what the directive needs to see on the host, since it
+  // writes no style of its own while the value already fits.
+  white-space: nowrap;
 
   &.tone-neutral {
     color: var(--text-primary);

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 
 import { MatIconModule } from '@angular/material/icon';
 import { pinLeadingMinus } from '../../../core/utils/money-display.utils';
+import { FitTextDirective } from '../../directives/fit-text.directive';
 import { LocaleNumberPipe } from '../../pipes/locale-number.pipe';
 
 export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative';
@@ -15,7 +16,7 @@ export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative
 @Component({
   selector: 'app-stat-card',
   standalone: true,
-  imports: [MatIconModule, LocaleNumberPipe],
+  imports: [MatIconModule, LocaleNumberPipe, FitTextDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './stat-card.component.html',
   styleUrl: './stat-card.component.scss',
