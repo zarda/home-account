@@ -90,6 +90,22 @@ struct WidgetSnapshot: Codable, Equatable {
         return decode(data)
     }
 
+    /// The provider's own timeline: an entry dated now and one dated at the
+    /// next month boundary, both meant to carry the same loaded snapshot. A
+    /// reload the app requests always lands promptly, but iOS may run the
+    /// widget's *own* scheduled reload late, so without an entry dated
+    /// exactly at the turn the display would keep evaluating last month's
+    /// figures as "this month" until that late reload finally happens — the
+    /// boundary entry's `display(now:calendar:)` call turns stale on its own,
+    /// no reload required. Gregorian and the caller's time zone, the same
+    /// rule `display(now:calendar:)` uses to read `monthKey`.
+    static func timelineDates(now: Date, timeZone: TimeZone) -> (entries: [Date], reloadAt: Date) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let boundary = calendar.dateInterval(of: .month, for: now)?.end ?? now.addingTimeInterval(3600)
+        return (entries: [now, boundary], reloadAt: boundary)
+    }
+
     /// Validated before the disk is touched, so a payload the widget could not
     /// read never replaces one it can. Atomic, because the widget's process may
     /// read at any moment and must see the old snapshot or the new one, never a

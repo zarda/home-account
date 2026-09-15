@@ -219,4 +219,27 @@ final class WidgetSnapshotTests: XCTestCase {
         let signedOut = try XCTUnwrap(WidgetSnapshot.decode(payload(state: "signedOut", monthKey: "2026-08", figures: nil)))
         XCTAssertEqual(signedOut.display(now: instant("2026-10-15T04:00:00Z"), calendar: taipei), .signedOut)
     }
+
+    // MARK: Timeline dates
+
+    /// The provider schedules two entries, not one: the second must land
+    /// exactly on the month boundary in the caller's time zone, and that
+    /// entry must itself read as stale so a late reload is never the only
+    /// thing standing between the widget and last month's figures.
+    func testTimelineDatesBracketsTheMonthBoundaryAndTheBoundaryEntryIsStale() throws {
+        let now = instant("2026-08-31T15:30:00Z") // 23:30 in Taipei
+        let boundary = instant("2026-08-31T16:00:00Z") // 2026-09-01 00:00 in Taipei
+        let (dates, reloadAt) = WidgetSnapshot.timelineDates(now: now, timeZone: taipei.timeZone)
+        XCTAssertEqual(dates, [now, boundary])
+        XCTAssertEqual(reloadAt, boundary)
+
+        // A December instant rolls the boundary into the next year.
+        let december = instant("2026-12-25T10:00:00Z")
+        let (_, decemberReloadAt) = WidgetSnapshot.timelineDates(now: december, timeZone: taipei.timeZone)
+        XCTAssertEqual(decemberReloadAt, instant("2026-12-31T16:00:00Z")) // 2027-01-01 00:00 in Taipei
+
+        // At the boundary itself, an August snapshot has already turned stale.
+        let august = try XCTUnwrap(WidgetSnapshot.decode(payload(monthKey: "2026-08")))
+        XCTAssertEqual(august.display(now: boundary, calendar: taipei), .stale)
+    }
 }
