@@ -26,6 +26,7 @@ import { InsightSnapshotService } from '../../core/services/insight-snapshot.ser
 import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
+import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
 import { BudgetAlert, Category, RecurringOccurrence, Transaction, User } from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
 import {
@@ -100,6 +101,7 @@ describe('DashboardComponent', () => {
   let translation: jasmine.SpyObj<TranslationService>;
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
+  let widgetSnapshots: jasmine.SpyObj<WidgetSnapshotService>;
 
   function build() {
     return TestBed.createComponent(DashboardComponent);
@@ -157,6 +159,9 @@ describe('DashboardComponent', () => {
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);
     router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     router.navigate.and.returnValue(Promise.resolve(true));
+    // Root-provided and reaches AppLockService, which throws on this suite's
+    // userId-less AuthService double — doubled here rather than left real.
+    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish']);
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -174,6 +179,7 @@ describe('DashboardComponent', () => {
         { provide: AnnouncerService, useValue: announcer },
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
+        { provide: WidgetSnapshotService, useValue: widgetSnapshots },
       ],
     })
       .overrideComponent(DashboardComponent, { set: { imports: [], template: '' } })
@@ -847,6 +853,167 @@ describe('DashboardComponent', () => {
     });
   });
 
+  describe('widget snapshot publishing', () => {
+    // Every case flushes the constructor effect with TestBed.tick(): the
+    // signal writes below happen outside a template binding, so nothing else
+    // schedules it.
+    it('publishes the figures once the this-month window loads', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      transactionService.transactions.set([
+        createTransaction({ type: 'income', amount: 1000 }),
+        createTransaction({ type: 'expense', amount: 400 }),
+      ]);
+      const budgets = [{ id: 'b1' } as never];
+      budgetService.activeBudgets.set(budgets);
+      const rent: RecurringOccurrence = {
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+      };
+      const upcoming = [rent];
+      recurringService.getNextOccurrences.and.returnValue(of(upcoming));
+
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+
+      // Literal figures, not the component's own signals: income 1000 minus
+      // expense 400 seeded above.
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets,
+        upcoming,
+      });
+    });
+
+    it('does not publish again when the rows that arrive belong to another period', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      const next$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(next$);
+      fixture.componentInstance.onPeriodSelection(selection(
+        'lastMonth', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+      next$.next([]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+    });
+
+    // The `publishedPeriodOption() !== 'thisMonth'` guard is what
+    // stops a budget or occurrence change from republishing while parked on
+    // another period. Switching periods alone touches none of the effect's
+    // tracked signals, so the case above never runs the effect again to
+    // exercise it — this one changes activeBudgets and upcomingOccurrences
+    // directly, after the switch, to force that.
+    it('does not republish when tracked signals change while parked on another period', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const occurrences$ = new Subject<RecurringOccurrence[]>();
+      recurringService.getNextOccurrences.and.returnValue(occurrences$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+
+      const next$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(next$);
+      fixture.componentInstance.onPeriodSelection(selection(
+        'lastMonth', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+      next$.next([]);
+      TestBed.tick();
+      expect(fixture.componentInstance.publishedPeriodOption()).toBe('lastMonth');
+
+      budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+      TestBed.tick();
+
+      const rent: RecurringOccurrence = {
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+      };
+      occurrences$.next([rent]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('publishes nothing when the first load errors', () => {
+      transactionService.getByDateRange.and.returnValue(throwError(() => new Error('offline')));
+      const fixture = build();
+      fixture.detectChanges();
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+    });
+
+    // The publishing effect's own rule: a write to the shared signal must not be
+    // mistaken for a paint of this component's own window.
+    it('a foreign write to the shared transactions signal does not republish', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      transactionService.transactions.set([{ id: 'foreign' } as never]);
+      fixture.detectChanges();
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+    });
+
+    it('republishes when the active budgets change while on this month', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('republishes on a second successful emission of the period stream', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      window$.next([]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('spending-chart drill-down', () => {
     it('hands the category and the shown period to the transactions page', () => {
       const component = build().componentInstance;
@@ -899,7 +1066,6 @@ describe('DashboardComponent', () => {
           { provide: TransactionService, useValue: transactionService },
           { provide: BudgetService, useValue: budgetService },
           { provide: GoalService, useValue: goalService },
-        { provide: GoalService, useValue: goalService },
           { provide: CategoryService, useValue: categoryService },
           { provide: RecurringService, useValue: recurringService },
           { provide: InsightSnapshotService, useValue: insightSnapshotService },
@@ -908,6 +1074,7 @@ describe('DashboardComponent', () => {
           { provide: TranslationService, useValue: translation },
           { provide: MatSnackBar, useValue: snackBar },
           { provide: AnnouncerService, useValue: announcer },
+          { provide: WidgetSnapshotService, useValue: widgetSnapshots },
         ],
       })
         .overrideComponent(DashboardComponent, {

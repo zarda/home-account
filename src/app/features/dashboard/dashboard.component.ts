@@ -16,6 +16,7 @@ import { RecurringService } from '../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
+import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
 import {
   Transaction,
   Category,
@@ -96,6 +97,7 @@ export class DashboardComponent implements OnInit {
   private insightSnapshots = inject(InsightSnapshotService);
   private translationService = inject(TranslationService);
   private pendingFilters = inject(PendingFiltersService);
+  private widgetSnapshots = inject(WidgetSnapshotService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
 
@@ -130,6 +132,13 @@ export class DashboardComponent implements OnInit {
   // change-detection pass. Long enough for the summary to describe last month
   // using this month's data, and to cache the answer under the new key.
   publishedPeriodOption = signal<string>(defaultPeriodSelection().option);
+
+  // Counts this-month paints of the window above, and only those — not the
+  // shared transactions signal, which other code can write and which must
+  // not trigger a publish to the widget. publishedPeriodOption alone cannot
+  // gate the publishing effect below: it already starts at 'thisMonth', so a
+  // change to it can't be told apart from the initial, still-unloaded state.
+  private thisMonthPaints = signal(0);
 
   // User info
   userName = computed(() => {
@@ -272,6 +281,24 @@ export class DashboardComponent implements OnInit {
       }
       untracked(() => this.loadHistoricalBaseline(months));
     });
+
+    // Hands the widget the figures this page already holds, each time it
+    // repaints for this month — the dashboard is the landing route, so this
+    // is every app open and every live change. Keyed on the paint counter,
+    // not publishedPeriodOption — see its declaration above for why.
+    effect(() => {
+      const paints = this.thisMonthPaints();
+      this.activeBudgets();
+      this.upcomingOccurrences();
+      if (paints === 0 || untracked(() => this.publishedPeriodOption()) !== 'thisMonth') return;
+      untracked(() => this.widgetSnapshots.publish({
+        spent: this.totalExpenses(),
+        net: this.balance(),
+        baseCurrency: this.baseCurrency(),
+        budgets: this.activeBudgets(),
+        upcoming: this.upcomingOccurrences(),
+      }));
+    });
   }
 
   ngOnInit(): void {
@@ -345,6 +372,11 @@ export class DashboardComponent implements OnInit {
           // getByDateRange's tap writes the shared signal in, so the AI summary
           // sees a matching pair and runs once per period change.
           this.publishedPeriodOption.set(this.currentPeriod().option);
+          // Only a this-month paint feeds the widget; a switch to another
+          // period must not republish it with rows that belong elsewhere.
+          if (this.currentPeriod().option === 'thisMonth') {
+            this.thisMonthPaints.update(count => count + 1);
+          }
         },
         error: () => {
           this.isLoading.set(false);
