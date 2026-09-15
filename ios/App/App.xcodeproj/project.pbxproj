@@ -32,6 +32,8 @@
 		AA10000000000000000000AC /* BiometricOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AA /* BiometricOutcome.swift */; };
 		CC30000000000000000000C3 /* DataURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A3 /* DataURL.swift */; };
 		CC30000000000000000000C4 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B2 /* ShareViewController.swift */; };
+		DD40000000000000000000C1 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000A1 /* WidgetSnapshot.swift */; };
+		DD40000000000000000000C2 /* WidgetSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000A2 /* WidgetSnapshotTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -108,6 +110,8 @@
 		CC30000000000000000000B1 /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA10000000000000000000AD /* BiometricOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricOutcomeTests.swift; sourceTree = "<group>"; };
 		CC30000000000000000000B2 /* ShareSeamsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSeamsTests.swift; sourceTree = "<group>"; };
+		DD40000000000000000000A1 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
+		DD40000000000000000000A2 /* WidgetSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,6 +146,7 @@
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				BB20000000000000000000D1 /* ShareExtension */,
+				DD40000000000000000000D1 /* HomeAccountWidget */,
 				CC30000000000000000000D1 /* AppTests */,
 				504EC3051FED79650016851F /* Products */,
 			);
@@ -162,6 +167,7 @@
 			children = (
 				AA10000000000000000000AD /* BiometricOutcomeTests.swift */,
 				CC30000000000000000000B2 /* ShareSeamsTests.swift */,
+				DD40000000000000000000A2 /* WidgetSnapshotTests.swift */,
 			);
 			path = AppTests;
 			sourceTree = "<group>";
@@ -174,6 +180,14 @@
 				BB20000000000000000000B4 /* ShareExtension.entitlements */,
 			);
 			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		DD40000000000000000000D1 /* HomeAccountWidget */ = {
+			isa = PBXGroup;
+			children = (
+				DD40000000000000000000A1 /* WidgetSnapshot.swift */,
+			);
+			path = HomeAccountWidget;
 			sourceTree = "<group>";
 		};
 		504EC3061FED79650016851F /* App */ = {
@@ -366,6 +380,8 @@
 				CC30000000000000000000C3 /* DataURL.swift in Sources */,
 				AA10000000000000000000AC /* BiometricOutcome.swift in Sources */,
 				CC30000000000000000000C4 /* ShareViewController.swift in Sources */,
+				DD40000000000000000000C1 /* WidgetSnapshot.swift in Sources */,
+				DD40000000000000000000C2 /* WidgetSnapshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
