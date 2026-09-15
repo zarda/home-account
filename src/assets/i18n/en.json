@@ -100,7 +100,9 @@
     "upcomingBills": "Upcoming Bills",
     "upcomingNet": "Scheduled net",
     "noUpcomingBills": "Nothing scheduled",
-    "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring."
+    "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring.",
+    "customize": "Customize dashboard",
+    "noCardsShown": "No cards are shown on the dashboard."
   },
   "transactions": {
     "title": "Transactions",

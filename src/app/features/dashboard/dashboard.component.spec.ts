@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { Router } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { of, Subject, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
@@ -33,6 +33,7 @@ import {
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
 import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
+import { dashboardGridAreas } from './dashboard-layout.utils';
 
 function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
   return { option, start, end, label: '' };
@@ -459,6 +460,52 @@ describe('DashboardComponent', () => {
     });
   });
 
+  describe('card arrangement', () => {
+    it('defaults to the four cards before budgets, with no active budget', () => {
+      expect(build().componentInstance.arrangedCards())
+        .toEqual(['recent', 'upcoming', 'chart', 'insights']);
+    });
+
+    it('adds budgets once there is an active budget', () => {
+      budgetService.activeBudgets.set([{} as never]);
+      expect(build().componentInstance.arrangedCards())
+        .toEqual(['recent', 'upcoming', 'chart', 'insights', 'budgets']);
+    });
+
+    it('follows a stored layout, dropping the hidden card', () => {
+      budgetService.activeBudgets.set([{} as never]);
+      authService.currentUser.set(createUser({
+        preferences: {
+          dashboardLayout: {
+            order: ['budgets', 'chart', 'recent', 'upcoming', 'insights'],
+            hidden: ['insights'],
+          },
+        } as User['preferences'],
+      }));
+
+      expect(build().componentInstance.arrangedCards())
+        .toEqual(['budgets', 'chart', 'recent', 'upcoming']);
+    });
+
+    it('computes grid areas from the arranged cards', () => {
+      const component = build().componentInstance;
+      expect(component.gridAreas()).toBe(dashboardGridAreas(component.arrangedCards()));
+    });
+
+    it('is empty when only budgets is arranged and there is no active budget', () => {
+      authService.currentUser.set(createUser({
+        preferences: {
+          dashboardLayout: {
+            order: ['budgets'],
+            hidden: ['recent', 'upcoming', 'chart', 'insights'],
+          },
+        } as User['preferences'],
+      }));
+
+      expect(build().componentInstance.arrangedCards()).toEqual([]);
+    });
+  });
+
   describe('historical baseline window', () => {
     function baselineRange() {
       const args = transactionService.getExpensesInRange.calls.mostRecent().args;
@@ -530,6 +577,44 @@ describe('DashboardComponent', () => {
       const fixture = build();
       fixture.detectChanges();
       expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+
+    // Hidden means composing nothing, not just an unrendered card (#87): a
+    // level that would otherwise ground insights must still skip the query
+    // and drop any listener it already opened.
+    it('never queries the baseline while insights is hidden', () => {
+      setLevel({ ragInsightsLevel: 'standard', dashboardLayout: { order: [], hidden: ['insights'] } });
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+
+    it('releases an open baseline listener when insights is hidden', () => {
+      setLevel({ ragInsightsLevel: 'standard' });
+      const baseline$ = new Subject<Transaction[]>();
+      transactionService.getExpensesInRange.and.returnValue(baseline$);
+      const fixture = build();
+      fixture.detectChanges();
+      expect(baseline$.observed).toBeTrue();
+
+      setLevel({ ragInsightsLevel: 'standard', dashboardLayout: { order: [], hidden: ['insights'] } });
+      fixture.detectChanges();
+
+      expect(baseline$.observed).toBeFalse();
+      expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+
+    it('queries the baseline again once insights is shown again', () => {
+      setLevel({ ragInsightsLevel: 'standard', dashboardLayout: { order: [], hidden: ['insights'] } });
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).not.toHaveBeenCalled();
+
+      setLevel({ ragInsightsLevel: 'standard' });
+      fixture.detectChanges();
+
+      expect(transactionService.getExpensesInRange).toHaveBeenCalled();
     });
   });
 
@@ -810,6 +895,7 @@ describe('DashboardComponent', () => {
         imports: [DashboardComponent],
         providers: [
           provideNoopAnimations(),
+          provideRouter([]),
           { provide: TransactionService, useValue: transactionService },
           { provide: BudgetService, useValue: budgetService },
           { provide: GoalService, useValue: goalService },
@@ -935,6 +1021,73 @@ describe('DashboardComponent', () => {
       expect(stub.upcoming()).toEqual([rent]);
       expect(stub.baseCurrency()).toBe('JPY');
       expect(stub.categories().get('food')).toBeTruthy();
+    });
+
+    it('renders the grid children in the account default order', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const tags = Array.from(fixture.nativeElement.querySelectorAll('.dashboard-grid > *'))
+        .map((el) => (el as Element).tagName.toLowerCase());
+      // No active budget in this suite's default fixture, so the fifth card
+      // never joins the arrangement — see the "card arrangement" describe.
+      expect(tags).toEqual([
+        'app-recent-transactions',
+        'app-upcoming-bills',
+        'app-spending-chart',
+        'app-ai-summary',
+      ]);
+    });
+
+    it('omits app-ai-summary entirely when insights is hidden', () => {
+      // A contextually-typed local, not an inline `as` cast: an empty array
+      // literal inside an assertion widens to never[] and no longer overlaps
+      // DashboardCardId[].
+      const preferences: Partial<User['preferences']> = { dashboardLayout: { order: [], hidden: ['insights'] } };
+      authService.currentUser.set(createUser({ preferences: preferences as User['preferences'] }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('app-ai-summary')).toBeNull();
+    });
+
+    it('binds the computed grid areas as a custom property', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const grid: HTMLElement = fixture.nativeElement.querySelector('.dashboard-grid');
+      expect(grid.style.getPropertyValue('--dashboard-areas')).toBe(fixture.componentInstance.gridAreas());
+    });
+
+    it('links the customize anchor to the dashboard panel in settings', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const link = fixture.nativeElement.querySelector('.customize-link');
+      expect(link.getAttribute('href')).toBe('/settings?panel=dashboard');
+      expect(link.textContent).toContain('dashboard.customize');
+    });
+
+    it('shows the empty state instead of the grid when nothing is arranged', () => {
+      authService.currentUser.set(createUser({
+        preferences: {
+          dashboardLayout: {
+            order: ['budgets'],
+            hidden: ['recent', 'upcoming', 'chart', 'insights'],
+          },
+        } as User['preferences'],
+      }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.dashboard-grid')).toBeNull();
+      const empty = fixture.nativeElement.querySelector('.dashboard-empty');
+      expect(empty).toBeTruthy();
+      expect(empty.textContent).toContain('dashboard.noCardsShown');
+      const link = empty.querySelector('.customize-link');
+      expect(link.getAttribute('href')).toBe('/settings?panel=dashboard');
     });
   });
 });

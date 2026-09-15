@@ -100,7 +100,9 @@
     "upcomingBills": "今後の予定",
     "upcomingNet": "予定の増減",
     "noUpcomingBills": "予定はありません",
-    "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。"
+    "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。",
+    "customize": "ダッシュボードをカスタマイズ",
+    "noCardsShown": "ダッシュボードに表示するカードがありません。"
   },
   "transactions": {
     "title": "取引履歴",
