@@ -204,8 +204,9 @@ describe('SettingsComponent', () => {
       expect(dataCard?.textContent).toContain('data.title');
     });
 
-    it('keeps preferences and categories in the accordion', () => {
+    it('keeps preferences, the dashboard and categories in the accordion', () => {
       expect(panelTitles().some(title => title.includes('settings.preferences'))).toBe(true);
+      expect(panelTitles().some(title => title.includes('settings.dashboard'))).toBe(true);
       expect(panelTitles().some(title => title.includes('settings.categories'))).toBe(true);
     });
 
@@ -255,11 +256,26 @@ describe('SettingsComponent', () => {
       expect(component.preferencesExpanded).toBe(false);
     });
 
+    it('opens the dashboard panel and closes preferences when the dashboard links at it', async () => {
+      const component = await build('dashboard');
+
+      expect(component.dashboardExpanded).toBe(true);
+      expect(component.preferencesExpanded).toBe(false);
+      expect(component.categoriesExpanded).toBe(false);
+    });
+
+    it('leaves the dashboard panel closed when the link asks for categories', async () => {
+      const component = await build('categories');
+
+      expect(component.dashboardExpanded).toBe(false);
+    });
+
     it('falls back to the default shape for a panel it does not have', async () => {
       const component = await build('nonsense');
 
       expect(component.preferencesExpanded).toBe(true);
       expect(component.categoriesExpanded).toBe(false);
+      expect(component.dashboardExpanded).toBe(false);
     });
   });
 });

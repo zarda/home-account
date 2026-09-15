@@ -653,7 +653,14 @@
     "highContrast": "High contrast",
     "highContrastHint": "Increases the contrast between text and backgrounds throughout the app.",
     "reducedMotion": "Reduce motion",
-    "reducedMotionHint": "Turns off non-essential animations and transitions."
+    "reducedMotionHint": "Turns off non-essential animations and transitions.",
+    "dashboard": "Dashboard",
+    "dashboardDescription": "Choose which cards appear and in what order",
+    "dashboardMoveUp": "Move {{card}} up",
+    "dashboardMoveDown": "Move {{card}} down",
+    "dashboardCardMoved": "{{card}} moved to position {{position}} of {{total}}",
+    "dashboardReset": "Reset to default",
+    "dashboardLayoutSaveFailed": "Couldn't save the dashboard layout"
   },
   "data": {
     "title": "Your Data",

@@ -611,7 +611,14 @@
     "highContrast": "ハイコントラスト",
     "highContrastHint": "アプリ全体でテキストと背景のコントラストを高めます。",
     "reducedMotion": "モーションを減らす",
-    "reducedMotionHint": "不要なアニメーションや画面切り替えの動きをオフにします。"
+    "reducedMotionHint": "不要なアニメーションや画面切り替えの動きをオフにします。",
+    "dashboard": "ダッシュボード",
+    "dashboardDescription": "表示するカードとその順番を選びます",
+    "dashboardMoveUp": "「{{card}}」を上へ移動",
+    "dashboardMoveDown": "「{{card}}」を下へ移動",
+    "dashboardCardMoved": "「{{card}}」を{{position}}番目に移動しました（全{{total}}件）",
+    "dashboardReset": "デフォルトに戻す",
+    "dashboardLayoutSaveFailed": "ダッシュボードのレイアウトを保存できませんでした"
   },
   "data": {
     "title": "データ",

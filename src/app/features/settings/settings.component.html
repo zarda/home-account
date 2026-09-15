@@ -36,6 +36,20 @@
       <app-profile-settings />
     </mat-expansion-panel>
 
+    <!-- Dashboard Layout -->
+    <mat-expansion-panel [expanded]="dashboardExpanded">
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <mat-icon class="section-icon">dashboard_customize</mat-icon>
+          {{ 'settings.dashboard' | translate }}
+        </mat-panel-title>
+        <mat-panel-description>
+          {{ 'settings.dashboardDescription' | translate }}
+        </mat-panel-description>
+      </mat-expansion-panel-header>
+      <app-dashboard-layout-settings />
+    </mat-expansion-panel>
+
     <!-- AI Settings Link Card -->
     <div class="settings-link-card" routerLink="/ai">
       <div class="link-card-icon ai-icon">

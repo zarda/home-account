@@ -1,0 +1,52 @@
+<div class="dashboard-layout-settings">
+  <div cdkDropList class="card-list" (cdkDropListDropped)="onDrop($event)">
+    @for (id of layout().order; track id; let first = $first, last = $last) {
+      <div class="card-row" cdkDrag [attr.data-card]="id">
+        <div class="drag-handle" cdkDragHandle>
+          <mat-icon aria-hidden="true">drag_indicator</mat-icon>
+        </div>
+
+        <mat-icon class="card-icon" aria-hidden="true">{{ icons[id] }}</mat-icon>
+
+        <span class="card-title" id="dashboard-card-{{ id }}-title">{{ titleKeys[id] | translate }}</span>
+
+        <div class="row-controls">
+          <mat-slide-toggle
+            [checked]="!layout().hidden.includes(id)"
+            (change)="onToggle(id, $event)"
+            aria-labelledby="dashboard-card-{{ id }}-title"
+          />
+
+          <button
+            mat-icon-button
+            type="button"
+            class="move-button"
+            data-move="up"
+            [disabled]="first"
+            (click)="move(id, -1)"
+            [attr.aria-label]="'settings.dashboardMoveUp' | translate: { card: (titleKeys[id] | translate) }"
+          >
+            <mat-icon>arrow_upward</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="move-button"
+            data-move="down"
+            [disabled]="last"
+            (click)="move(id, 1)"
+            [attr.aria-label]="'settings.dashboardMoveDown' | translate: { card: (titleKeys[id] | translate) }"
+          >
+            <mat-icon>arrow_downward</mat-icon>
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
+  <div class="layout-actions">
+    <button mat-stroked-button type="button" data-reset [disabled]="!customized()" (click)="reset()">
+      {{ 'settings.dashboardReset' | translate }}
+    </button>
+  </div>
+</div>
