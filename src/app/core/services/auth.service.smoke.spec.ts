@@ -25,7 +25,7 @@ import { AccessibilityService } from './accessibility.service';
 import { SecurityLogService } from './security-log.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
-import { DEFAULT_USER_PREFERENCES } from '../../models';
+import { DEFAULT_USER_PREFERENCES, DashboardLayout } from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -235,6 +235,31 @@ describe('AuthService (emulator smoke test)', () => {
       expect(written['baseCurrency']).toBe('EUR');
       expect(written['theme']).toBe('dark');
       expect(service.currentUser()!.preferences).toEqual({ ...before, baseCurrency: 'EUR' });
+    });
+
+    it('clearUserPreferences deletes the dashboard layout without clobbering a concurrent write, and the signal only drops the cleared key', async () => {
+      const service = await authedService();
+      const dashboardLayout: DashboardLayout = {
+        order: ['budgets', 'chart', 'recent', 'upcoming', 'insights'],
+        hidden: ['insights'],
+      };
+      await service.updateUserPreferences({ dashboardLayout });
+      const before = service.currentUser()!.preferences;
+
+      // An edit from "another device", landing after the layout write above.
+      await updateDoc(userRef(), { 'preferences.theme': 'dark' });
+
+      await service.clearUserPreferences(['dashboardLayout']);
+
+      const written = (await getDoc(userRef())).data()!['preferences'] as Record<string, unknown>;
+      expect('dashboardLayout' in written).toBeFalse();
+      expect(written['theme']).toBe('dark');
+
+      // The service has no document listener, so the signal never picks up
+      // the other device's theme — only the field this call itself deleted.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { dashboardLayout: _removed, ...rest } = before as unknown as Record<string, unknown>;
+      expect(service.currentUser()!.preferences).toEqual(rest as unknown as typeof before);
     });
 
     it('lands the language write the Google heal issues, in the document and in the signal', async () => {
