@@ -507,6 +507,38 @@ export class AuthService {
   }
 
   /**
+   * Delete stored preference keys rather than write a value over them, so a
+   * reset account picks up whatever a later build defaults it to instead of
+   * freezing today's default in the document. Field-level deletes for the
+   * same racing-write reason as clearStoredProviderApiKeys below; the
+   * empty-list check runs before the doc reference is built so a no-op call
+   * never touches Firestore.
+   */
+  async clearUserPreferences(keys: readonly (keyof UserPreferences)[]): Promise<void> {
+    const user = this.currentUser();
+    if (!user) {
+      throw new Error('No authenticated user');
+    }
+    if (keys.length === 0) return;
+
+    const userRef = doc(this.firestore, 'users', user.id);
+    const fieldUpdates: Record<string, unknown> = {};
+    for (const key of keys) {
+      fieldUpdates[`preferences.${key}`] = deleteField();
+    }
+    await updateDoc(userRef, fieldUpdates);
+
+    // A dynamic-key view over the copy, the same shape
+    // ai-model-migrations.ts uses: the keys removed here are not all
+    // individually optional on UserPreferences.
+    const preferences = { ...user.preferences } as Record<string, unknown>;
+    for (const key of keys) {
+      delete preferences[key];
+    }
+    this.currentUser.set({ ...user, preferences: preferences as unknown as UserPreferences });
+  }
+
+  /**
    * Drop the provider API keys older builds stored on the preferences map.
    *
    * Field-level deletes rather than a whole-map rewrite, so a preference edit

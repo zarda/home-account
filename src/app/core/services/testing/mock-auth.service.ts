@@ -22,6 +22,7 @@ export class MockAuthService {
   signInWithGoogleSpy = jasmine.createSpy('signInWithGoogle');
   signOutSpy = jasmine.createSpy('signOut');
   updateUserPreferencesSpy = jasmine.createSpy('updateUserPreferences');
+  clearUserPreferencesSpy = jasmine.createSpy('clearUserPreferences');
   updateUserProfileSpy = jasmine.createSpy('updateUserProfile');
 
   // Set a mock user for testing
@@ -47,6 +48,7 @@ export class MockAuthService {
     this.signInWithGoogleSpy.calls.reset();
     this.signOutSpy.calls.reset();
     this.updateUserPreferencesSpy.calls.reset();
+    this.clearUserPreferencesSpy.calls.reset();
     this.updateUserProfileSpy.calls.reset();
   }
 
@@ -70,6 +72,18 @@ export class MockAuthService {
         ...user,
         preferences: { ...user.preferences, ...prefs }
       });
+    }
+  }
+
+  async clearUserPreferences(keys: readonly (keyof UserPreferences)[]): Promise<void> {
+    this.clearUserPreferencesSpy(keys);
+    const user = this.currentUser();
+    if (user) {
+      const preferences = { ...user.preferences } as Record<string, unknown>;
+      for (const key of keys) {
+        delete preferences[key];
+      }
+      this.currentUser.set({ ...user, preferences: preferences as unknown as UserPreferences });
     }
   }
 

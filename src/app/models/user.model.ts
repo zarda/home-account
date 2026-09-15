@@ -75,6 +75,18 @@ export const DEFAULT_LLM_PROVIDER_PREFERENCES: LLMProviderPreferences = {
   translation: 'gemini',
 };
 
+/** The five dashboard cards, in the fixed phone order (#87). */
+export type DashboardCardId = 'recent' | 'upcoming' | 'chart' | 'insights' | 'budgets';
+
+export const DASHBOARD_CARD_IDS: readonly DashboardCardId[] =
+  ['recent', 'upcoming', 'chart', 'insights', 'budgets'];
+
+/** An account's dashboard arrangement. `hidden` cards are not rendered at all. */
+export interface DashboardLayout {
+  order: DashboardCardId[];
+  hidden: DashboardCardId[];
+}
+
 export interface UserPreferences {
   baseCurrency: string;          // ISO 4217 code (e.g., 'USD', 'THB')
   language: string;              // 'en', 'zh-Hant', 'ja'
@@ -103,6 +115,7 @@ export interface UserPreferences {
                                   // generated for it are per-device, so each
                                   // device gets its own look at the same week.
   onboardingCompleted?: boolean;  // Absent = not yet completed; the first-run welcome is offered.
+  dashboardLayout?: DashboardLayout; // Absent = the default order, nothing hidden.
 }
 
 /** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */
@@ -144,6 +157,44 @@ export function effectiveFontScale(prefs: UserPreferences | null | undefined): n
     return stored;
   }
   return DEFAULT_FONT_SCALE;
+}
+
+function isDashboardCardId(id: unknown): id is DashboardCardId {
+  return typeof id === 'string' && (DASHBOARD_CARD_IDS as readonly string[]).includes(id);
+}
+
+/** Drop unknown and repeated ids, keeping the first occurrence's position. */
+function knownDashboardCardIds(ids: unknown): DashboardCardId[] {
+  if (!Array.isArray(ids)) return [];
+  const seen = new Set<DashboardCardId>();
+  const result: DashboardCardId[] = [];
+  for (const id of ids) {
+    if (isDashboardCardId(id) && !seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
+}
+
+/**
+ * Resolve the dashboard arrangement, tolerating the same kinds of drift
+ * effectiveFontScale tolerates: a non-array degrades to the default, and
+ * unknown or repeated ids are dropped. A known card missing from the stored
+ * order is appended in default order, so a card a later build adds still
+ * appears for an account that saved before it existed.
+ */
+export function effectiveDashboardLayout(prefs: UserPreferences | null | undefined): DashboardLayout {
+  const stored = prefs?.dashboardLayout;
+
+  const order = knownDashboardCardIds(stored?.order);
+  for (const id of DASHBOARD_CARD_IDS) {
+    if (!order.includes(id)) {
+      order.push(id);
+    }
+  }
+
+  return { order, hidden: knownDashboardCardIds(stored?.hidden) };
 }
 
 /** Whether the account asked for a higher-contrast palette. Absent means off. */

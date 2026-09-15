@@ -236,6 +236,36 @@ describe('AuthService', () => {
     });
   });
 
+  describe('clearUserPreferences', () => {
+    it('rejects when no user is signed in', async () => {
+      await expectAsync(
+        service.clearUserPreferences(['dashboardLayout'])
+      ).toBeRejectedWithError('No authenticated user');
+    });
+
+    it('resolves without touching Firestore for an empty key list', async () => {
+      service.currentUser.set({
+        id: 'test-user-123',
+        email: 'test@example.com',
+        displayName: 'Test User',
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        preferences: {
+          baseCurrency: 'USD',
+          language: 'en',
+          dateFormat: 'MM/DD/YYYY',
+          theme: 'system',
+          defaultCategories: []
+        }
+      });
+      const before = service.currentUser();
+
+      await expectAsync(service.clearUserPreferences([])).toBeResolved();
+
+      expect(service.currentUser()).toEqual(before);
+    });
+  });
+
   describe('signed-out guards', () => {
     it('updateUserProfile rejects when no user is signed in', async () => {
       await expectAsync(

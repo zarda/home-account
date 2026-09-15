@@ -1,7 +1,10 @@
 import {
+  DASHBOARD_CARD_IDS,
   DEFAULT_FONT_SCALE,
   DEFAULT_LLM_PROVIDER_PREFERENCES,
   DEFAULT_USER_PREFERENCES,
+  DashboardCardId,
+  DashboardLayout,
   RAG_INSIGHTS_LEVELS,
   RAG_TIER_CONFIGS,
   RagInsightsLevel,
@@ -9,6 +12,7 @@ import {
   UserPreferences,
   baseCurrencyOf,
   canDisableUsageAnalytics,
+  effectiveDashboardLayout,
   effectiveFontScale,
   effectiveRagLevel,
   highContrastEnabled,
@@ -83,6 +87,58 @@ describe('effectiveFontScale', () => {
   it('should tolerate junk written by another build', () => {
     const corrupt = prefs({ fontScale: 'large' as unknown as number });
     expect(effectiveFontScale(corrupt)).toBe(DEFAULT_FONT_SCALE);
+  });
+});
+
+describe('effectiveDashboardLayout', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+  const defaultOrder: DashboardCardId[] = ['recent', 'upcoming', 'chart', 'insights', 'budgets'];
+
+  it('defaults to the fixed phone order with nothing hidden when absent', () => {
+    expect(effectiveDashboardLayout(undefined)).toEqual({ order: defaultOrder, hidden: [] });
+    expect(effectiveDashboardLayout(null)).toEqual({ order: defaultOrder, hidden: [] });
+    expect(effectiveDashboardLayout(prefs({}))).toEqual({ order: defaultOrder, hidden: [] });
+  });
+
+  it('appends cards missing from a partial order, in default order', () => {
+    const layout = effectiveDashboardLayout(
+      prefs({ dashboardLayout: { order: ['chart', 'recent'], hidden: [] } })
+    );
+    expect(layout.order).toEqual(['chart', 'recent', 'upcoming', 'insights', 'budgets']);
+  });
+
+  it('drops an unknown id and a duplicate from the stored order', () => {
+    const corrupt = {
+      order: ['chart', 'bogus', 'chart', 'recent'],
+      hidden: []
+    } as unknown as DashboardLayout;
+    const layout = effectiveDashboardLayout(prefs({ dashboardLayout: corrupt }));
+    expect(layout.order).toEqual(['chart', 'recent', 'upcoming', 'insights', 'budgets']);
+  });
+
+  it('falls back to the default order when the stored order is not an array', () => {
+    const corrupt = { order: 'nonsense', hidden: [] } as unknown as DashboardLayout;
+    const layout = effectiveDashboardLayout(prefs({ dashboardLayout: corrupt }));
+    expect(layout.order).toEqual(defaultOrder);
+  });
+
+  it('drops an unknown id and a duplicate from hidden', () => {
+    const corrupt = {
+      order: [],
+      hidden: ['insights', 'x', 'insights']
+    } as unknown as DashboardLayout;
+    const layout = effectiveDashboardLayout(prefs({ dashboardLayout: corrupt }));
+    expect(layout.hidden).toEqual(['insights']);
+  });
+
+  it('never aliases DASHBOARD_CARD_IDS', () => {
+    const layout = effectiveDashboardLayout(undefined);
+    layout.order.push('recent');
+    layout.hidden.push('chart');
+    expect(DASHBOARD_CARD_IDS).toEqual(['recent', 'upcoming', 'chart', 'insights', 'budgets']);
   });
 });
 
