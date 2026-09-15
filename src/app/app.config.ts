@@ -33,6 +33,7 @@ import { AppDirectionality } from './core/services/app-directionality';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 import { AppLockService } from './core/services/app-lock.service';
 import { ReminderService } from './core/services/reminder.service';
+import { WidgetSnapshotService } from './core/services/widget-snapshot.service';
 import { ShareIntakeService } from './core/services/share-intake.service';
 import { AnalyticsService } from './core/services/analytics.service';
 import { GlobalErrorHandler } from './core/services/global-error-handler';
@@ -258,6 +259,13 @@ export const appConfig: ApplicationConfig = {
       // them. It stays inert — no listener, no notification — until an
       // account whose preference is switched on has loaded.
       inject(ReminderService);
+    }),
+    provideAppInitializer(() => {
+      // Construct the widget snapshot service at startup so the lock and
+      // sign-out writes exist without a page having to reach them. It stays
+      // inert on the web, where the plugin token is null and nothing is
+      // composed or written.
+      inject(WidgetSnapshotService);
     }),
     provideAppInitializer(() => {
       // Construct the service at startup so screen views follow the stored

@@ -1525,5 +1525,16 @@
     "sectionNavigate": "移動先",
     "sectionActions": "操作",
     "resultCount": "{{count}} 件の結果"
+  },
+  "widget": {
+    "spent": "支出",
+    "topBudget": "最も使った予算",
+    "nextScheduled": "次の予定",
+    "noBudgets": "有効な予算はありません",
+    "locked": "今月の数字を見るにはアプリのロックを解除してください",
+    "signedOut": "今月の数字を見るにはサインインしてください",
+    "stale": "今月の数字を更新するにはアプリを開いてください",
+    "updated": "{{date}}更新",
+    "budgetDetail": "{{spent}} / {{limit}}"
   }
 }

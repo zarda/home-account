@@ -1525,5 +1525,16 @@
     "sectionNavigate": "前往",
     "sectionActions": "操作",
     "resultCount": "{{count}} 個結果"
+  },
+  "widget": {
+    "spent": "支出",
+    "topBudget": "使用最多的預算",
+    "nextScheduled": "下一筆排程",
+    "noBudgets": "沒有進行中的預算",
+    "locked": "解鎖應用程式以查看本月數字",
+    "signedOut": "登入以查看本月數字",
+    "stale": "開啟應用程式以更新本月數字",
+    "updated": "更新於{{date}}",
+    "budgetDetail": "{{spent}} / {{limit}}"
   }
 }

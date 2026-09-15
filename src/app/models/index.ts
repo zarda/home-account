@@ -15,3 +15,4 @@ export * from './insight-snapshot.model';
 export * from './category-memory.model';
 export * from './tag-memory.model';
 export * from './search-answer.model';
+export * from './widget-snapshot.model';

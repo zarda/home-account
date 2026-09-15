@@ -1633,5 +1633,16 @@
       "one": "{{count}} result",
       "other": "{{count}} results"
     }
+  },
+  "widget": {
+    "spent": "Spent",
+    "topBudget": "Top budget",
+    "nextScheduled": "Next scheduled",
+    "noBudgets": "No active budgets",
+    "locked": "Unlock the app to see this month",
+    "signedOut": "Sign in to see this month",
+    "stale": "Open the app to update this month",
+    "updated": "Updated {{date}}",
+    "budgetDetail": "{{spent}} of {{limit}}"
   }
 }
