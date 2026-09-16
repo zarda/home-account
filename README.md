@@ -18,7 +18,7 @@ This project demonstrates modern Angular development practices with a focus on:
 
 ## Features
 
-- **Dashboard** - Financial overview with income/expense summary and spending charts, plus an opt-in weekly recap: last week's spending, where it went, and what is still due, once a week until you close it — with a Monday notification on the installed app and an optional AI write-up — see [docs/weekly-recap.md](docs/weekly-recap.md)
+- **Dashboard** - Financial overview with income/expense summary and spending charts, plus an opt-in weekly recap: last week's spending, where it went, and what is still due, once a week until you close it — with a Monday notification on the installed app and an optional AI write-up — see [docs/weekly-recap.md](docs/weekly-recap.md). Five of its cards can be moved, hidden and reset per account, from Settings — see [docs/dashboard.md](docs/dashboard.md)
 - **Transactions** - Multi-currency support with filtering, tags, and location tracking; typo-tolerant search with saved and recent searches, plus insight quick-filter chips (unusual amounts, new and top categories) computed locally from your data. A note kept in a receipt's own script can be shown translated into your language on demand — the stored note is never touched and the translation is never saved — see [docs/translation-lens.md](docs/translation-lens.md)
 - **Smart Search** - Ask questions in plain language from the app header ("how much did I spend on groceries last month"); the AI only translates the question into filters or an aggregate operation — every number shown is computed locally from your transactions, and it degrades to keyword search offline
 - **Budgets** - Period-based budget limits with recurring transactions management
@@ -39,6 +39,7 @@ This project demonstrates modern Angular development practices with a focus on:
 | **Camera** | Browser API | Native Camera | File picker |
 | **Offline** | Offline queue in IndexedDB; no caching worker | Offline queue in IndexedDB | Offline queue in IndexedDB |
 | **Donate Link** | Visible | Hidden (App Store guidelines) | Hidden (App Store guidelines) |
+| **Home-screen widget** | Not available | This month's spend, net, top budget and next bill, from the dashboard's last paint — see [docs/widget.md](docs/widget.md) | Not available |
 | **Installation** | Add to Home Screen | App Store | App Store / runs the iOS app ("Designed for iPad") |
 
 On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence is available (macOS 26+ / iOS 26+ with the Foundation Models framework), receipts are processed fully on device: Vision OCR recognizes the text and Apple's foundation model structures it into transactions — no API key or network needed. Browsers cannot access Apple's model, so the Mac app is the way to use it; without Apple Intelligence, Macs fall back to the configured cloud models (Gemini 3.5 / Gemma 4) and then to the basic Vision OCR parser. Building the Apple Intelligence plugin requires Xcode 26 (it compiles to an unavailable stub on older SDKs).
@@ -249,9 +250,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/recurring.md](docs/recurring.md) | Recurring rules: frequencies, the clamp and the anchor, the catch-up engine, pause/resume, the reminder lead, the Upcoming card, and the validity floor |
 | [docs/reminders.md](docs/reminders.md) | Bill and budget reminders: the opt-in, when a sweep runs, the per-device dedup keys, and the web/native delivery split |
 | [docs/weekly-recap.md](docs/weekly-recap.md) | The weekly recap: the opt-in, which week and its key, where the figures come from, the card's lifetime, the Monday nudge, the narrative gate, and the device-local state |
+| [docs/dashboard.md](docs/dashboard.md) | The dashboard: its fixed parts and its five arranged cards, what each card reads, the layout preference and its resolver, the desktop areas rule, and the editor |
 | [docs/smart-search.md](docs/smart-search.md) | Natural-language search: one interpretation call, local aggregation, keyword fallback, and the persisted answer history |
 | [docs/account-deletion.md](docs/account-deletion.md) | Account deletion: the client-side cascade, its ordering, partial-failure semantics, and the rules it needed |
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |
+| [docs/widget.md](docs/widget.md) | The iOS home-screen widget: the snapshot contract, when it is written and deduplicated, the four states, the plugin and target, and verifying it on the simulator |
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
 | [docs/forecast.md](docs/forecast.md) | The cash-flow forecast: zero-at-today baseline, the catch-up seam, horizons, and what never projects |
 | [docs/csv-format.md](docs/csv-format.md) | The CSV export and import contract: columns, escaping, and what round-trips |

@@ -241,7 +241,7 @@ only the difference counts.
 
 ## What a run may touch
 
-Three writes are authorised — two on the account, one on the device only.
+Four writes are authorised — three on the account, one on the device only.
 Each is put back before the run ends, and the restore is *confirmed on
 screen*, not assumed. The other six rows write nothing at all and are listed
 with them anyway: four still cost the account a real provider call, one not
@@ -256,6 +256,7 @@ inferred.
 | Translating a receipt photo | Nothing. One provider call under the account's own key, the answer in the component and the service's in-memory cache; the stored image is downloaded and read, never rewritten, and the transaction is untouched | Nothing to undo |
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
+| The dashboard layout editor | `preferences.dashboardLayout` | Reset, then reloaded and read back absent |
 | Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme classes it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the root element's classes restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
@@ -476,6 +477,9 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 21 | Receipt lens, desktop, from the list icon | A real stored photo decoded and laid out under the dialog's cap, and the real vision prompt coming back as a receipt rather than a summary of one | `21-viewer-open.png`, `21-translating.png`, `21-translated.png`, `21-cached.png` |
 | 22 | The viewer at phone width | The only door a phone has to a receipt, and a photograph fitting a 375px viewport with its controls still reachable | `22-viewer-phone.png` |
 | 23 | The viewer over the edit form | Two Material dialogs stacked by a real router-free overlay, and the form surviving underneath unsubmitted | `23-form-thumbnail.png`, `23-viewer-over-form.png` |
+| 24 | Dashboard: the account's arrangement | One DOM order painting as computed desktop grid areas and as a single phone column, with no divergence between the two | `24-desktop-areas.png`, `24-phone-stack.png` |
+| 25 | The dashboard layout editor: hide, move, reset | A hidden card composing nothing in the running page, a keyboard move landing with the announcer's own words, a real reload holding the arrangement, and Reset deleting the account's preference rather than freezing today's default | `25-hide.png`, `25-moved.png`, `25-reset.png` |
+| 26 | The dashboard layout editor at phone width, in both themes | Every row, switch and move control inside a 390px viewport, and the selected and disabled states distinct in light and dark | `26-phone-editor.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1569,6 +1573,134 @@ row count it started with, and the row is the one it was: the viewer reads a
 transaction and writes nothing to it.
 
 Two shots: the receipt strip in the form, and the viewer stacked over it.
+
+### 24. Dashboard: the account's arrangement
+
+`/dashboard`, desktop width — at least 1024px, the breakpoint the grid areas
+below apply from.
+
+Read the stored preference and the rendered order together, from the
+console:
+
+```js
+ng.getComponent(document.querySelector('app-dashboard')).authService.currentUser()
+  ?.preferences?.dashboardLayout;
+[...document.querySelectorAll('.dashboard-grid > *')].map(el => el.tagName);
+```
+
+**Pass — the default account.** `dashboardLayout` is `undefined` and the DOM
+order is Recent Transactions, Upcoming Bills, Spending by Category, AI
+Insights, Budget Progress — `DASHBOARD_CARD_IDS`' own order, unmodified.
+Then, in the console:
+
+```js
+const grid = document.querySelector('.dashboard-grid');
+[grid.style.getPropertyValue('--dashboard-areas'),
+  getComputedStyle(grid).gridTemplateAreas.replace(/'/g, '"')];
+```
+
+Both read `"chart recent" "insights upcoming" "insights budgets"` (quotes
+normalised per [Panes and viewports](#panes-and-viewports) — the computed
+value comes back double-quoted). That is `dashboardGridAreas()` fed the
+default order: `chart` and `insights` form the main column, the rail is
+`recent`, `upcoming`, `budgets`, and the areas pair main row *i* with rail
+row *i*.
+
+At 390px, or the pane's own width — see
+[Panes and viewports](#panes-and-viewports):
+
+```js
+document.querySelector('.dashboard-grid').style.getPropertyValue('--dashboard-areas');
+document.documentElement.scrollWidth === document.documentElement.clientWidth;
+```
+
+**Pass — the phone.** No named areas apply below the desktop breakpoint (the
+custom property is still set, but nothing in the mobile stylesheet reads it),
+the grid is one column, and the card elements appear in the same order top to
+bottom as the DOM order read above — reading order and drawing order are the
+same list. `true` on the width check.
+
+Two shots: the desktop grid with its computed areas, and the phone stack.
+
+### 25. The dashboard layout editor: hide, move, reset
+
+The one journey in this section with a real write:
+`preferences.dashboardLayout` on the account, restored to what it held
+before the run — absent, for an account that has never customized the
+dashboard, which is the case this journey is written against. An account
+that already has a stored layout should read and keep that value aside first,
+the way journey 19 keeps the exchange-rate cache, and write it back verbatim
+at the end instead of relying on Reset to reach the same absent state.
+
+Open the editor from the dashboard's own **Customize dashboard** link, or
+`/settings?panel=dashboard` directly. The Dashboard panel is expanded and
+Preferences is not.
+
+**Pass — the starting rows.** Five rows in default order, each named by its
+own title (`aria-labelledby`, not a bound `aria-label` — the house idiom),
+all five switches on, **Reset** disabled (nothing stored yet).
+
+**Hide.** Turn the **AI Insights** switch off.
+
+**Pass — the write, and what it does not do.** The switch's own row reads
+`aria-checked="false"`, the other four stay `true`, and **Reset** enables.
+On `/dashboard`, `app-ai-summary` is gone from the grid, the remaining four
+cards keep the account's order, and the areas recompute: a shortened main
+column now repeats `chart` down the rows the rail still has, per
+`dashboardGridAreas()`'s own rule. Read `sessionStorage`'s key count before
+and after navigating to the dashboard with the card hidden — unchanged: a
+hidden AI Insights card never ran the query that would have cached an
+answer, which is the whole point of "a hidden card composes nothing."
+
+**Move.** Back on the editor, press **Move up** on Upcoming Bills once.
+
+**Pass — order, focus and the announcement.** The row moves ahead of Recent
+Transactions; the live region reads *Upcoming Bills moved to position 1 of
+5* (or the account's language for it); and because that press disabled
+*that* row's own **Move up** (nothing left above it), focus lands on the
+*same* row's **Move down** rather than staying on a button that just
+disappeared under the pointer.
+
+**Reload**, and read the stored preference again.
+
+**Pass — persistence.** `preferences.dashboardLayout` survived the reload
+with the order and the hidden set the two steps above produced, and the
+dashboard renders that same arrangement.
+
+**Reset.** Back on the editor, press **Reset**.
+
+**Pass — a delete, not a write.** `dashboardLayout` is a document read that
+comes back `undefined` — not the default order written out — **Reset**
+disables again, and every row and switch is back to where journey 24 found
+them. Reload once more and confirm the same absence.
+
+Three shots: the AI Insights switch off with the dashboard beside it, the
+moved row with its live-region text visible in the accessibility tree, and
+the editor after Reset.
+
+### 26. The dashboard layout editor at phone width, in both themes
+
+390px, or the pane's own width where already narrower — see
+[Panes and viewports](#panes-and-viewports). `/settings?panel=dashboard`.
+
+**Pass — the fit.** Every row sits inside the viewport with no horizontal
+page overflow (`scrollWidth === clientWidth` on the document element, as
+journey 4 checks it); each row's drag handle, each **Move up**/**Move
+down** and **Reset** measure at least 40px tall; each switch's touch target
+does too.
+
+**Pass — the themes.** Swap the root element's theme class the way journey
+19 does —
+`root.classList.add('dark-theme'); root.classList.remove('light-theme')`
+is exactly what `ThemeService.applyTheme` does and nothing besides, never
+the Settings theme control itself — and read a selected
+switch's track and handle colour against an unselected one's, and an
+enabled move button's colour against a disabled one's, in both dark and
+light. Selected reads distinctly from unselected, and enabled distinctly
+from disabled, in both themes. Restore the root's original classes when
+done.
+
+One shot: the editor at 390px, with every control's box visible.
 
 ## Evidence
 

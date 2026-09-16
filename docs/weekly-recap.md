@@ -114,7 +114,10 @@ that it was answered and the next visit reads nothing.
 
 The card sits above the period grid rather than in it. Its window is fixed at
 last week; every card below follows the period selector, and one that did not
-would read as a filtered figure ignoring the filter.
+would read as a filtered figure ignoring the filter. It is not one of the
+five cards the account can move or hide either — the dashboard layout
+editor's rows never include it, so rearranging or hiding cards leaves the
+recap exactly where it is ([dashboard.md](dashboard.md)).
 
 **See last week's transactions** opens the transactions list with exactly that
 window applied, through the same pending-filters hand-off the spending chart

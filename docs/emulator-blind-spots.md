@@ -177,6 +177,7 @@ actually runs.
 | Storage `update` unreachable by upload | a metadata-update case, plus a named post-deploy check on the live project | `storage.service.smoke.spec.ts`, [receipt-quota.md](receipt-quota.md) |
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
 | Nothing renders, and no journey crosses a page | the driven browser journeys — a protocol, not a gate | [e2e.md](e2e.md), by hand, twice per branch |
+| The iOS App Group container and the widget extension | a signed simulator build, its file cross-checked against the app's own screens by hand | [widget.md](widget.md) |
 
 ## When you add another one
 

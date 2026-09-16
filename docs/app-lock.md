@@ -57,6 +57,12 @@ the biometric opt-in together.
 lives in memory and starts null, so a cold start is locked by construction —
 there is no "locked" flag on disk to keep in sync or to edit.
 
+`canEngage()` alone — a lock configured on this device, not whether the app
+happens to be locked right now — is also what the iOS home-screen widget
+reads before it will write a figure to disk; a process that can only read a
+file has no way to see `isLocked()`'s in-memory timestamp at all. See
+[widget.md](widget.md).
+
 ## What is stored, and where
 
 All of it in `localStorage`, all of it per device, all of it namespaced by the
