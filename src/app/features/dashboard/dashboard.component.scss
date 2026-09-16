@@ -33,21 +33,16 @@
   border-radius: var(--radius-full);
 }
 
-// One grid, reordered per breakpoint. Mobile: single column, recent
-// transactions before the chart (deliberate content order). Desktop:
-// asymmetric two-column — main column (chart + AI insights) beside a
-// narrower right rail (recent + budgets). Rows auto-size so a short recent
-// list leaves no dead zone.
+// One grid, reordered per breakpoint by the account's own arrangement (#87).
+// Mobile: single column with NO named areas — auto-placement follows DOM
+// order, which is the arrangement itself, so reading and focus order match
+// what is on screen. Desktop: an asymmetric two-column layout, areas computed
+// by dashboardGridAreas() and bound as --dashboard-areas. Rows auto-size so a
+// short rail leaves no dead zone.
 .dashboard-grid {
   display: grid;
   gap: 24px;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    'recent'
-    'upcoming'
-    'chart'
-    'insights'
-    'budgets';
 
   // Let children shrink below intrinsic content width inside the grid.
   > * {
@@ -59,32 +54,43 @@
 @include bp.desktop {
   .dashboard-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    grid-template-areas:
-      'chart    recent'
-      'insights upcoming'
-      'insights budgets';
+    grid-template-areas: var(--dashboard-areas);
     align-items: start;
+  }
+
+  .area-insights {
+    grid-area: insights;
+  }
+
+  .area-chart {
+    grid-area: chart;
+  }
+
+  .area-recent {
+    grid-area: recent;
+  }
+
+  .area-upcoming {
+    grid-area: upcoming;
+  }
+
+  .area-budgets {
+    grid-area: budgets;
   }
 }
 
-.area-insights {
-  grid-area: insights;
+// The door to the editor: a one-line link under the grid, or standing in as
+// the empty state's only interactive content when nothing is arranged.
+.customize-link {
+  align-self: flex-start;
 }
 
-.area-chart {
-  grid-area: chart;
-}
-
-.area-recent {
-  grid-area: recent;
-}
-
-.area-upcoming {
-  grid-area: upcoming;
-}
-
-.area-budgets {
-  grid-area: budgets;
+.dashboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 32px 0;
 }
 
 @include bp.tablet-up {

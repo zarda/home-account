@@ -14,6 +14,7 @@ import { PageHeaderComponent } from '../../shared/components/page-header/page-he
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ProfileSettingsComponent } from './profile-settings/profile-settings.component';
 import { CategoryManagerComponent } from './category-manager/category-manager.component';
+import { DashboardLayoutSettingsComponent } from './dashboard-layout-settings/dashboard-layout-settings.component';
 
 @Component({
   selector: 'app-settings',
@@ -27,6 +28,7 @@ import { CategoryManagerComponent } from './category-manager/category-manager.co
     MatExpansionModule,
     ProfileSettingsComponent,
     CategoryManagerComponent,
+    DashboardLayoutSettingsComponent,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,7 +56,8 @@ export class SettingsComponent {
   private panel = inject(ActivatedRoute).snapshot.queryParamMap.get('panel');
 
   readonly categoriesExpanded = this.panel === 'categories';
-  readonly preferencesExpanded = !this.categoriesExpanded;
+  readonly dashboardExpanded = this.panel === 'dashboard';
+  readonly preferencesExpanded = !this.categoriesExpanded && !this.dashboardExpanded;
 
   // Sign Out lives on the profile card (and the header user menu), no longer
   // buried in the destructive Danger Zone alongside delete-all-data.

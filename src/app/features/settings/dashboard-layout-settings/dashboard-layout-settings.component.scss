@@ -1,0 +1,86 @@
+.dashboard-layout-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-block-start: 8px;
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+// Wraps rather than squeezing the title: at phone widths the switch and the
+// two 40px buttons take most of the row, so they drop to their own line.
+.card-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+
+  &.cdk-drag-preview {
+    box-shadow: var(--shadow-overlay);
+  }
+
+  &.cdk-drag-placeholder {
+    opacity: 0.3;
+  }
+}
+
+// The 40px tap-target floor (docs/ui-overflow.md), on the handle's own box
+// rather than the 24px glyph inside it.
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 40px;
+  min-block-size: 40px;
+  color: var(--text-muted);
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.card-icon {
+  color: var(--text-secondary);
+}
+
+.card-title {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.row-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+
+// Pinned to the 40px tap-target floor (docs/ui-overflow.md) rather than left
+// to the theme density, which would shrink the button's own box with it.
+.move-button {
+  --mat-icon-button-state-layer-size: 40px;
+}
+
+.layout-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cdk-drag-animating {
+  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.card-list.cdk-drop-list-dragging .card-row:not(.cdk-drag-placeholder) {
+  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}

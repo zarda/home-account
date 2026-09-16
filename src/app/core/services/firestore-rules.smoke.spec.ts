@@ -1597,6 +1597,36 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts the dotted update the dashboard editor writes', async () => {
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), {
+          'preferences.dashboardLayout': {
+            order: ['budgets', 'chart', 'recent', 'upcoming', 'insights'],
+            hidden: ['insights'],
+          },
+        }),
+        'dashboardLayout dotted update'
+      );
+    });
+
+    it('accepts the field delete a dashboard reset writes', async () => {
+      // The seeded profile has no layout, so a bare delete would touch
+      // nothing and prove nothing — write one first, then delete it.
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), {
+          'preferences.dashboardLayout': {
+            order: ['budgets', 'chart', 'recent', 'upcoming', 'insights'],
+            hidden: ['insights'],
+          },
+        }),
+        'dashboardLayout write before reset'
+      );
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), { 'preferences.dashboardLayout': deleteField() }),
+        'dashboardLayout field delete'
+      );
+    });
+
     it('accepts the whole provider map the note-translation picker writes', async () => {
       // The shape the picker really sends: it hands updateUserPreferences the
       // entire llmProviderPreferences object, which becomes one dotted update

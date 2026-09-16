@@ -100,7 +100,9 @@
     "upcomingBills": "近期排程",
     "upcomingNet": "排定淨額",
     "noUpcomingBills": "沒有排定項目",
-    "noUpcomingBillsHint": "即將到期的定期收入與支出會顯示於此。請在預算 → 定期建立規則。"
+    "noUpcomingBillsHint": "即將到期的定期收入與支出會顯示於此。請在預算 → 定期建立規則。",
+    "customize": "自訂儀表板",
+    "noCardsShown": "儀表板上沒有顯示任何卡片。"
   },
   "transactions": {
     "title": "交易紀錄",
@@ -609,7 +611,14 @@
     "highContrast": "高對比",
     "highContrastHint": "提高整個應用程式中文字與背景的對比度。",
     "reducedMotion": "減少動態效果",
-    "reducedMotionHint": "關閉非必要的動畫與畫面轉場效果。"
+    "reducedMotionHint": "關閉非必要的動畫與畫面轉場效果。",
+    "dashboard": "儀表板",
+    "dashboardDescription": "選擇要顯示的卡片及其順序",
+    "dashboardMoveUp": "將{{card}}上移",
+    "dashboardMoveDown": "將{{card}}下移",
+    "dashboardCardMoved": "已將{{card}}移至第{{position}}位（共{{total}}項）",
+    "dashboardReset": "恢復預設",
+    "dashboardLayoutSaveFailed": "無法儲存儀表板版面配置"
   },
   "data": {
     "title": "您的資料",
@@ -1516,5 +1525,16 @@
     "sectionNavigate": "前往",
     "sectionActions": "操作",
     "resultCount": "{{count}} 個結果"
+  },
+  "widget": {
+    "spent": "支出",
+    "topBudget": "使用最多的預算",
+    "nextScheduled": "下一筆排程",
+    "noBudgets": "沒有進行中的預算",
+    "locked": "解鎖應用程式以查看本月數字",
+    "signedOut": "登入以查看本月數字",
+    "stale": "開啟應用程式以更新本月數字",
+    "updated": "更新於{{date}}",
+    "budgetDetail": "{{spent}} / {{limit}}"
   }
 }

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 
 import { MatIconModule } from '@angular/material/icon';
 import { pinLeadingMinus } from '../../../core/utils/money-display.utils';
+import { FitTextDirective } from '../../directives/fit-text.directive';
 import { LocaleNumberPipe } from '../../pipes/locale-number.pipe';
 
 export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative';
@@ -15,7 +16,7 @@ export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative
 @Component({
   selector: 'app-stat-card',
   standalone: true,
-  imports: [MatIconModule, LocaleNumberPipe],
+  imports: [MatIconModule, LocaleNumberPipe, FitTextDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './stat-card.component.html',
   styleUrl: './stat-card.component.scss',
@@ -43,6 +44,14 @@ export class StatCardComponent {
   /** Optional small third line under the value. */
   detail = input('');
   detailTone = input<'neutral' | 'positive' | 'negative'>('neutral');
+
+  /**
+   * The arrow states which way the figure went, so the figure beside it
+   * states size only. A screen reader never meets that arrow — Material
+   * hides a mat-icon from assistive tech unless the caller says otherwise —
+   * so the signed figure stays in the chip, visually hidden.
+   */
+  deltaMagnitude = computed(() => Math.abs(this.delta() ?? 0));
 
   deltaIsPositive = computed(() => {
     const delta = this.delta();

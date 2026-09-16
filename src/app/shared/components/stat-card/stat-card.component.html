@@ -12,7 +12,7 @@
         <span class="stat-label-suffix">{{ labelSuffix() }}</span>
       }
     </span>
-    <span class="stat-value" [class]="'tone-' + tone()">{{ displayValue() }}</span>
+    <span class="stat-value" appFitText [class]="'tone-' + tone()">{{ displayValue() }}</span>
     @if (detail()) {
       <span class="stat-detail" [class]="'detail-' + detailTone()">{{ detail() }}</span>
     }
@@ -22,7 +22,8 @@
     <div class="stat-delta">
       <span class="delta-chip" [class.positive]="deltaIsPositive()" [class.negative]="!deltaIsPositive()">
         <mat-icon>{{ delta()! >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
-        {{ delta()! | localeNumber:'1.1-1' }}%
+        <span class="delta-figure" aria-hidden="true">{{ deltaMagnitude() | localeNumber:'1.1-1' }}%</span>
+        <span class="delta-sr">{{ delta()! | localeNumber:'1.1-1' }}%</span>
       </span>
       @if (deltaCaption()) {
         <span class="delta-caption">{{ deltaCaption() }}</span>

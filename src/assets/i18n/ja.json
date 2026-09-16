@@ -100,7 +100,9 @@
     "upcomingBills": "今後の予定",
     "upcomingNet": "予定の増減",
     "noUpcomingBills": "予定はありません",
-    "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。"
+    "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。",
+    "customize": "ダッシュボードをカスタマイズ",
+    "noCardsShown": "ダッシュボードに表示するカードがありません。"
   },
   "transactions": {
     "title": "取引履歴",
@@ -609,7 +611,14 @@
     "highContrast": "ハイコントラスト",
     "highContrastHint": "アプリ全体でテキストと背景のコントラストを高めます。",
     "reducedMotion": "モーションを減らす",
-    "reducedMotionHint": "不要なアニメーションや画面切り替えの動きをオフにします。"
+    "reducedMotionHint": "不要なアニメーションや画面切り替えの動きをオフにします。",
+    "dashboard": "ダッシュボード",
+    "dashboardDescription": "表示するカードとその順番を選びます",
+    "dashboardMoveUp": "「{{card}}」を上へ移動",
+    "dashboardMoveDown": "「{{card}}」を下へ移動",
+    "dashboardCardMoved": "「{{card}}」を{{position}}番目に移動しました（全{{total}}件）",
+    "dashboardReset": "デフォルトに戻す",
+    "dashboardLayoutSaveFailed": "ダッシュボードのレイアウトを保存できませんでした"
   },
   "data": {
     "title": "データ",
@@ -1516,5 +1525,16 @@
     "sectionNavigate": "移動先",
     "sectionActions": "操作",
     "resultCount": "{{count}} 件の結果"
+  },
+  "widget": {
+    "spent": "支出",
+    "topBudget": "最も使った予算",
+    "nextScheduled": "次の予定",
+    "noBudgets": "有効な予算はありません",
+    "locked": "今月の数字を見るにはアプリのロックを解除してください",
+    "signedOut": "今月の数字を見るにはサインインしてください",
+    "stale": "今月の数字を更新するにはアプリを開いてください",
+    "updated": "{{date}}更新",
+    "budgetDetail": "{{spent}} / {{limit}}"
   }
 }

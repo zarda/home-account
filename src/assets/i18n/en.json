@@ -100,7 +100,9 @@
     "upcomingBills": "Upcoming Bills",
     "upcomingNet": "Scheduled net",
     "noUpcomingBills": "Nothing scheduled",
-    "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring."
+    "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring.",
+    "customize": "Customize dashboard",
+    "noCardsShown": "No cards are shown on the dashboard."
   },
   "transactions": {
     "title": "Transactions",
@@ -651,7 +653,14 @@
     "highContrast": "High contrast",
     "highContrastHint": "Increases the contrast between text and backgrounds throughout the app.",
     "reducedMotion": "Reduce motion",
-    "reducedMotionHint": "Turns off non-essential animations and transitions."
+    "reducedMotionHint": "Turns off non-essential animations and transitions.",
+    "dashboard": "Dashboard",
+    "dashboardDescription": "Choose which cards appear and in what order",
+    "dashboardMoveUp": "Move {{card}} up",
+    "dashboardMoveDown": "Move {{card}} down",
+    "dashboardCardMoved": "{{card}} moved to position {{position}} of {{total}}",
+    "dashboardReset": "Reset to default",
+    "dashboardLayoutSaveFailed": "Couldn't save the dashboard layout"
   },
   "data": {
     "title": "Your Data",
@@ -1624,5 +1633,16 @@
       "one": "{{count}} result",
       "other": "{{count}} results"
     }
+  },
+  "widget": {
+    "spent": "Spent",
+    "topBudget": "Top budget",
+    "nextScheduled": "Next scheduled",
+    "noBudgets": "No active budgets",
+    "locked": "Unlock the app to see this month",
+    "signedOut": "Sign in to see this month",
+    "stale": "Open the app to update this month",
+    "updated": "Updated {{date}}",
+    "budgetDetail": "{{spent}} of {{limit}}"
   }
 }

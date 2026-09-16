@@ -136,6 +136,9 @@ reverse — why a thing is the way it is, not how to use it.
 | [0129](0129-a-receipt-photo-is-read-through-a-lens-and-the-image-is-the-original.md) | A receipt photo is read through a lens, and the image is the original | Accepted; applies 0095; closes the last gap of 0095 | 2026-09-13 |
 | [0130](0130-biometry-unlocks-the-app-and-the-pin-is-still-the-credential.md) | Biometry unlocks the app, and the PIN is still the credential | Accepted; applies 0040; first record of the app lock | 2026-09-13 |
 | [0131](0131-a-rung-a-boot-cannot-reach-is-reached-by-re-entering-the-ladder.md) | A rung a boot cannot reach is reached by re-entering the ladder | Accepted; extends 0127; a rejection of 0127 stands | 2026-09-13 |
+| [0132](0132-the-dashboard-is-arranged-by-the-account-and-a-hidden-card-composes-nothing.md) | The dashboard is arranged by the account, and a hidden card composes nothing | Accepted | 2026-09-16 |
+| [0133](0133-the-home-screen-widget-shows-the-dashboards-last-this-month-paint-and-nothing-a-lock-hides.md) | The home-screen widget shows the dashboard's last this-month paint, and nothing a lock hides | Accepted | 2026-09-16 |
+| [0134](0134-an-emulator-run-carries-no-provider-key.md) | An emulator run carries no provider key | Accepted; corrects a gap of 0131 | 2026-09-16 |
 
 ## What belongs here
 

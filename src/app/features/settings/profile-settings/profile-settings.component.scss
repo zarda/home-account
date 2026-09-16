@@ -22,6 +22,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+
+  // What decides whether three labelled options fit is this section's own
+  // width, not the viewport: the settings panel is narrower than the window
+  // by a fixed amount, and a probe can only clip the container. A named
+  // container the rule below queries keeps both honest.
+  container: theme-toggle / inline-size;
 }
 
 .section-label {
@@ -50,6 +56,27 @@
     .mat-button-toggle-label-content {
       color: var(--color-accent);
       font-weight: 600;
+    }
+  }
+}
+
+// A third of a phone's settings panel cannot hold a checkmark, an icon and a
+// word once the account asks for large text — and the word is the only part
+// that carries the meaning, so the two glyphs go and the label wraps rather
+// than losing its end (G3, G4). The tinted fill and the bolder weight still
+// mark the selection without colour alone. The threshold is in px because a
+// rem one would grow with the very font size this rule answers.
+@container theme-toggle (max-width: 420px) {
+  .theme-toggle {
+    mat-button-toggle mat-icon,
+    ::ng-deep .mat-button-toggle-checkbox-wrapper {
+      display: none;
+    }
+
+    ::ng-deep .mat-button-toggle-label-content {
+      padding: 0 6px;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
   }
 }

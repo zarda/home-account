@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { Router } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { of, Subject, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
@@ -26,6 +26,7 @@ import { InsightSnapshotService } from '../../core/services/insight-snapshot.ser
 import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
+import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
 import { BudgetAlert, Category, RecurringOccurrence, Transaction, User } from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
 import {
@@ -33,6 +34,7 @@ import {
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
 import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
+import { dashboardGridAreas } from './dashboard-layout.utils';
 
 function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
   return { option, start, end, label: '' };
@@ -99,6 +101,7 @@ describe('DashboardComponent', () => {
   let translation: jasmine.SpyObj<TranslationService>;
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
+  let widgetSnapshots: jasmine.SpyObj<WidgetSnapshotService>;
 
   function build() {
     return TestBed.createComponent(DashboardComponent);
@@ -156,6 +159,9 @@ describe('DashboardComponent', () => {
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);
     router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     router.navigate.and.returnValue(Promise.resolve(true));
+    // Root-provided and reaches AppLockService, which throws on this suite's
+    // userId-less AuthService double — doubled here rather than left real.
+    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish']);
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -173,6 +179,7 @@ describe('DashboardComponent', () => {
         { provide: AnnouncerService, useValue: announcer },
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
+        { provide: WidgetSnapshotService, useValue: widgetSnapshots },
       ],
     })
       .overrideComponent(DashboardComponent, { set: { imports: [], template: '' } })
@@ -459,6 +466,52 @@ describe('DashboardComponent', () => {
     });
   });
 
+  describe('card arrangement', () => {
+    it('defaults to the four cards before budgets, with no active budget', () => {
+      expect(build().componentInstance.arrangedCards())
+        .toEqual(['recent', 'upcoming', 'chart', 'insights']);
+    });
+
+    it('adds budgets once there is an active budget', () => {
+      budgetService.activeBudgets.set([{} as never]);
+      expect(build().componentInstance.arrangedCards())
+        .toEqual(['recent', 'upcoming', 'chart', 'insights', 'budgets']);
+    });
+
+    it('follows a stored layout, dropping the hidden card', () => {
+      budgetService.activeBudgets.set([{} as never]);
+      authService.currentUser.set(createUser({
+        preferences: {
+          dashboardLayout: {
+            order: ['budgets', 'chart', 'recent', 'upcoming', 'insights'],
+            hidden: ['insights'],
+          },
+        } as User['preferences'],
+      }));
+
+      expect(build().componentInstance.arrangedCards())
+        .toEqual(['budgets', 'chart', 'recent', 'upcoming']);
+    });
+
+    it('computes grid areas from the arranged cards', () => {
+      const component = build().componentInstance;
+      expect(component.gridAreas()).toBe(dashboardGridAreas(component.arrangedCards()));
+    });
+
+    it('is empty when only budgets is arranged and there is no active budget', () => {
+      authService.currentUser.set(createUser({
+        preferences: {
+          dashboardLayout: {
+            order: ['budgets'],
+            hidden: ['recent', 'upcoming', 'chart', 'insights'],
+          },
+        } as User['preferences'],
+      }));
+
+      expect(build().componentInstance.arrangedCards()).toEqual([]);
+    });
+  });
+
   describe('historical baseline window', () => {
     function baselineRange() {
       const args = transactionService.getExpensesInRange.calls.mostRecent().args;
@@ -530,6 +583,44 @@ describe('DashboardComponent', () => {
       const fixture = build();
       fixture.detectChanges();
       expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+
+    // Hidden means composing nothing, not just an unrendered card (#87): a
+    // level that would otherwise ground insights must still skip the query
+    // and drop any listener it already opened.
+    it('never queries the baseline while insights is hidden', () => {
+      setLevel({ ragInsightsLevel: 'standard', dashboardLayout: { order: [], hidden: ['insights'] } });
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+
+    it('releases an open baseline listener when insights is hidden', () => {
+      setLevel({ ragInsightsLevel: 'standard' });
+      const baseline$ = new Subject<Transaction[]>();
+      transactionService.getExpensesInRange.and.returnValue(baseline$);
+      const fixture = build();
+      fixture.detectChanges();
+      expect(baseline$.observed).toBeTrue();
+
+      setLevel({ ragInsightsLevel: 'standard', dashboardLayout: { order: [], hidden: ['insights'] } });
+      fixture.detectChanges();
+
+      expect(baseline$.observed).toBeFalse();
+      expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+
+    it('queries the baseline again once insights is shown again', () => {
+      setLevel({ ragInsightsLevel: 'standard', dashboardLayout: { order: [], hidden: ['insights'] } });
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).not.toHaveBeenCalled();
+
+      setLevel({ ragInsightsLevel: 'standard' });
+      fixture.detectChanges();
+
+      expect(transactionService.getExpensesInRange).toHaveBeenCalled();
     });
   });
 
@@ -762,6 +853,167 @@ describe('DashboardComponent', () => {
     });
   });
 
+  describe('widget snapshot publishing', () => {
+    // Every case flushes the constructor effect with TestBed.tick(): the
+    // signal writes below happen outside a template binding, so nothing else
+    // schedules it.
+    it('publishes the figures once the this-month window loads', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      transactionService.transactions.set([
+        createTransaction({ type: 'income', amount: 1000 }),
+        createTransaction({ type: 'expense', amount: 400 }),
+      ]);
+      const budgets = [{ id: 'b1' } as never];
+      budgetService.activeBudgets.set(budgets);
+      const rent: RecurringOccurrence = {
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+      };
+      const upcoming = [rent];
+      recurringService.getNextOccurrences.and.returnValue(of(upcoming));
+
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+
+      // Literal figures, not the component's own signals: income 1000 minus
+      // expense 400 seeded above.
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets,
+        upcoming,
+      });
+    });
+
+    it('does not publish again when the rows that arrive belong to another period', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      const next$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(next$);
+      fixture.componentInstance.onPeriodSelection(selection(
+        'lastMonth', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+      next$.next([]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+    });
+
+    // The `publishedPeriodOption() !== 'thisMonth'` guard is what
+    // stops a budget or occurrence change from republishing while parked on
+    // another period. Switching periods alone touches none of the effect's
+    // tracked signals, so the case above never runs the effect again to
+    // exercise it — this one changes activeBudgets and upcomingOccurrences
+    // directly, after the switch, to force that.
+    it('does not republish when tracked signals change while parked on another period', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const occurrences$ = new Subject<RecurringOccurrence[]>();
+      recurringService.getNextOccurrences.and.returnValue(occurrences$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+
+      const next$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(next$);
+      fixture.componentInstance.onPeriodSelection(selection(
+        'lastMonth', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+      next$.next([]);
+      TestBed.tick();
+      expect(fixture.componentInstance.publishedPeriodOption()).toBe('lastMonth');
+
+      budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+      TestBed.tick();
+
+      const rent: RecurringOccurrence = {
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+      };
+      occurrences$.next([rent]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('publishes nothing when the first load errors', () => {
+      transactionService.getByDateRange.and.returnValue(throwError(() => new Error('offline')));
+      const fixture = build();
+      fixture.detectChanges();
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+    });
+
+    // The publishing effect's own rule: a write to the shared signal must not be
+    // mistaken for a paint of this component's own window.
+    it('a foreign write to the shared transactions signal does not republish', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      transactionService.transactions.set([{ id: 'foreign' } as never]);
+      fixture.detectChanges();
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+    });
+
+    it('republishes when the active budgets change while on this month', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('republishes on a second successful emission of the period stream', () => {
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      widgetSnapshots.publish.calls.reset();
+
+      window$.next([]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('spending-chart drill-down', () => {
     it('hands the category and the shown period to the transactions page', () => {
       const component = build().componentInstance;
@@ -810,10 +1062,10 @@ describe('DashboardComponent', () => {
         imports: [DashboardComponent],
         providers: [
           provideNoopAnimations(),
+          provideRouter([]),
           { provide: TransactionService, useValue: transactionService },
           { provide: BudgetService, useValue: budgetService },
           { provide: GoalService, useValue: goalService },
-        { provide: GoalService, useValue: goalService },
           { provide: CategoryService, useValue: categoryService },
           { provide: RecurringService, useValue: recurringService },
           { provide: InsightSnapshotService, useValue: insightSnapshotService },
@@ -822,6 +1074,7 @@ describe('DashboardComponent', () => {
           { provide: TranslationService, useValue: translation },
           { provide: MatSnackBar, useValue: snackBar },
           { provide: AnnouncerService, useValue: announcer },
+          { provide: WidgetSnapshotService, useValue: widgetSnapshots },
         ],
       })
         .overrideComponent(DashboardComponent, {
@@ -935,6 +1188,73 @@ describe('DashboardComponent', () => {
       expect(stub.upcoming()).toEqual([rent]);
       expect(stub.baseCurrency()).toBe('JPY');
       expect(stub.categories().get('food')).toBeTruthy();
+    });
+
+    it('renders the grid children in the account default order', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const tags = Array.from(fixture.nativeElement.querySelectorAll('.dashboard-grid > *'))
+        .map((el) => (el as Element).tagName.toLowerCase());
+      // No active budget in this suite's default fixture, so the fifth card
+      // never joins the arrangement — see the "card arrangement" describe.
+      expect(tags).toEqual([
+        'app-recent-transactions',
+        'app-upcoming-bills',
+        'app-spending-chart',
+        'app-ai-summary',
+      ]);
+    });
+
+    it('omits app-ai-summary entirely when insights is hidden', () => {
+      // A contextually-typed local, not an inline `as` cast: an empty array
+      // literal inside an assertion widens to never[] and no longer overlaps
+      // DashboardCardId[].
+      const preferences: Partial<User['preferences']> = { dashboardLayout: { order: [], hidden: ['insights'] } };
+      authService.currentUser.set(createUser({ preferences: preferences as User['preferences'] }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('app-ai-summary')).toBeNull();
+    });
+
+    it('binds the computed grid areas as a custom property', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const grid: HTMLElement = fixture.nativeElement.querySelector('.dashboard-grid');
+      expect(grid.style.getPropertyValue('--dashboard-areas')).toBe(fixture.componentInstance.gridAreas());
+    });
+
+    it('links the customize anchor to the dashboard panel in settings', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const link = fixture.nativeElement.querySelector('.customize-link');
+      expect(link.getAttribute('href')).toBe('/settings?panel=dashboard');
+      expect(link.textContent).toContain('dashboard.customize');
+    });
+
+    it('shows the empty state instead of the grid when nothing is arranged', () => {
+      authService.currentUser.set(createUser({
+        preferences: {
+          dashboardLayout: {
+            order: ['budgets'],
+            hidden: ['recent', 'upcoming', 'chart', 'insights'],
+          },
+        } as User['preferences'],
+      }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.dashboard-grid')).toBeNull();
+      const empty = fixture.nativeElement.querySelector('.dashboard-empty');
+      expect(empty).toBeTruthy();
+      expect(empty.textContent).toContain('dashboard.noCardsShown');
+      const link = empty.querySelector('.customize-link');
+      expect(link.getAttribute('href')).toBe('/settings?panel=dashboard');
     });
   });
 });

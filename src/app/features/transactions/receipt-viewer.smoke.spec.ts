@@ -55,8 +55,8 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { StorageService } from '../../core/services/storage.service';
 import { ReceiptTranslationService } from '../../core/services/receipt-translation.service';
 import { MockAuthService, createMockUser } from '../../core/services/testing';
-import { environment } from '../../../environments/environment';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
+import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
 /**
  * A viewport width standing in for the device, so a spec can rotate a phone.
@@ -118,6 +118,7 @@ function receiptFile(): File {
 
 jasmine.getEnv().configure({ random: false });
 silenceFirebaseWarnings();
+stripProviderKeys();
 
 describe('Receipt viewer doors and lens (emulator smoke test)', () => {
   const AUTH_URL = 'http://127.0.0.1:9099';
@@ -203,20 +204,7 @@ describe('Receipt viewer doors and lens (emulator smoke test)', () => {
     });
   }
 
-  // A developer machine's gitignored environment can carry a real Gemini key
-  // — the only provider key the build-time environment ever carries — which
-  // would make the lens honestly report a provider instead of the disabled,
-  // hinted state the first describe exists to prove. The key must be absent
-  // for the suite's duration no matter what machine runs it.
-  const env = environment as { geminiApiKey?: string };
-  let savedKey: string | undefined;
-  let hadKey = false;
-
   beforeAll(async () => {
-    hadKey = 'geminiApiKey' in env;
-    savedKey = env.geminiApiKey;
-    delete env.geminiApiKey;
-
     app = initializeApp(
       {
         apiKey: 'fake-api-key',
@@ -288,9 +276,6 @@ describe('Receipt viewer doors and lens (emulator smoke test)', () => {
   });
 
   afterAll(async () => {
-    if (hadKey) {
-      env.geminiApiKey = savedKey;
-    }
     await deleteApp(app).catch(() => undefined);
   });
 

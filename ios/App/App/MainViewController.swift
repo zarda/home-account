@@ -23,5 +23,6 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(AppleIntelligencePlugin())
         bridge?.registerPluginInstance(ShareIntakePlugin())
         bridge?.registerPluginInstance(BiometricAuthPlugin())
+        bridge?.registerPluginInstance(WidgetSnapshotPlugin())
     }
 }

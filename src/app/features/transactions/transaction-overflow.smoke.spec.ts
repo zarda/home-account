@@ -41,9 +41,11 @@ import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { MockAuthService, createMockUser } from '../../core/services/testing';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
+import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
 jasmine.getEnv().configure({ random: false });
 silenceFirebaseWarnings();
+stripProviderKeys();
 
 describe('Transaction overflow (emulator smoke test)', () => {
   const AUTH_URL = 'http://127.0.0.1:9099';

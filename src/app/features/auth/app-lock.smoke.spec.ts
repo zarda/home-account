@@ -54,11 +54,12 @@ import {
 import { APP_LOCK_STORAGE_PREFIX } from '../../core/utils/app-lock.utils';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { MockAuthService, createMockUser } from '../../core/services/testing';
-import { environment } from '../../../environments/environment';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
+import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
 jasmine.getEnv().configure({ random: false });
 silenceFirebaseWarnings();
+stripProviderKeys();
 
 describe('App lock biometric door (emulator smoke test)', () => {
   const AUTH_URL = 'http://127.0.0.1:9099';
@@ -140,19 +141,7 @@ describe('App lock biometric door (emulator smoke test)', () => {
     await new Promise(resolve => setTimeout(resolve, 300));
   }
 
-  // A developer machine's gitignored environment can carry a real Gemini key
-  // — reaching /dashboard here constructs GeminiService, whose constructor
-  // logs an initializing line the moment a key is present. The key must be
-  // absent for the suite's duration no matter what machine runs it.
-  const env = environment as { geminiApiKey?: string };
-  let savedKey: string | undefined;
-  let hadKey = false;
-
   beforeAll(async () => {
-    hadKey = 'geminiApiKey' in env;
-    savedKey = env.geminiApiKey;
-    delete env.geminiApiKey;
-
     app = initializeApp(
       {
         apiKey: 'fake-api-key',
@@ -186,9 +175,6 @@ describe('App lock biometric door (emulator smoke test)', () => {
   });
 
   afterAll(async () => {
-    if (hadKey) {
-      env.geminiApiKey = savedKey;
-    }
     // Normally already deleted at the end of the last spec; this is the
     // safety net if a spec failed before reaching it.
     await deleteApp(app).catch(() => undefined);

@@ -32,6 +32,13 @@
 		AA10000000000000000000AC /* BiometricOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000AA /* BiometricOutcome.swift */; };
 		CC30000000000000000000C3 /* DataURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A3 /* DataURL.swift */; };
 		CC30000000000000000000C4 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B2 /* ShareViewController.swift */; };
+		DD40000000000000000000C1 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000A1 /* WidgetSnapshot.swift */; };
+		DD40000000000000000000C2 /* WidgetSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000A2 /* WidgetSnapshotTests.swift */; };
+		DD40000000000000000000C3 /* HomeAccountWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000B2 /* HomeAccountWidget.swift */; };
+		DD40000000000000000000C4 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000A1 /* WidgetSnapshot.swift */; };
+		DD40000000000000000000C5 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000A1 /* WidgetSnapshot.swift */; };
+		DD40000000000000000000C6 /* WidgetSnapshotPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000B5 /* WidgetSnapshotPlugin.swift */; };
+		DD40000000000000000000C7 /* HomeAccountWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000B1 /* HomeAccountWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,6 +48,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = BB20000000000000000000E1;
 			remoteInfo = ShareExtension;
+		};
+		DD40000000000000000000E6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DD40000000000000000000E1;
+			remoteInfo = HomeAccountWidget;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -52,6 +66,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				BB20000000000000000000C3 /* ShareExtension.appex in Embed App Extensions */,
+				DD40000000000000000000C7 /* HomeAccountWidget.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -108,6 +123,13 @@
 		CC30000000000000000000B1 /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA10000000000000000000AD /* BiometricOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricOutcomeTests.swift; sourceTree = "<group>"; };
 		CC30000000000000000000B2 /* ShareSeamsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSeamsTests.swift; sourceTree = "<group>"; };
+		DD40000000000000000000A1 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
+		DD40000000000000000000A2 /* WidgetSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotTests.swift; sourceTree = "<group>"; };
+		DD40000000000000000000B1 /* HomeAccountWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HomeAccountWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DD40000000000000000000B2 /* HomeAccountWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAccountWidget.swift; sourceTree = "<group>"; };
+		DD40000000000000000000B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		DD40000000000000000000B4 /* HomeAccountWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HomeAccountWidget.entitlements; sourceTree = "<group>"; };
+		DD40000000000000000000B5 /* WidgetSnapshotPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -133,6 +155,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DD40000000000000000000E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -142,6 +171,7 @@
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				BB20000000000000000000D1 /* ShareExtension */,
+				DD40000000000000000000D1 /* HomeAccountWidget */,
 				CC30000000000000000000D1 /* AppTests */,
 				504EC3051FED79650016851F /* Products */,
 			);
@@ -152,6 +182,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				BB20000000000000000000B1 /* ShareExtension.appex */,
+				DD40000000000000000000B1 /* HomeAccountWidget.appex */,
 				CC30000000000000000000B1 /* AppTests.xctest */,
 			);
 			name = Products;
@@ -162,6 +193,7 @@
 			children = (
 				AA10000000000000000000AD /* BiometricOutcomeTests.swift */,
 				CC30000000000000000000B2 /* ShareSeamsTests.swift */,
+				DD40000000000000000000A2 /* WidgetSnapshotTests.swift */,
 			);
 			path = AppTests;
 			sourceTree = "<group>";
@@ -174,6 +206,17 @@
 				BB20000000000000000000B4 /* ShareExtension.entitlements */,
 			);
 			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		DD40000000000000000000D1 /* HomeAccountWidget */ = {
+			isa = PBXGroup;
+			children = (
+				DD40000000000000000000A1 /* WidgetSnapshot.swift */,
+				DD40000000000000000000B2 /* HomeAccountWidget.swift */,
+				DD40000000000000000000B3 /* Info.plist */,
+				DD40000000000000000000B4 /* HomeAccountWidget.entitlements */,
+			);
+			path = HomeAccountWidget;
 			sourceTree = "<group>";
 		};
 		504EC3061FED79650016851F /* App */ = {
@@ -205,6 +248,7 @@
 				BB20000000000000000000B6 /* ShareIntakePlugin.swift */,
 				CC30000000000000000000A1 /* ShareIntakeStore.swift */,
 				AA10000000000000000000A2 /* VisionOCRPlugin.swift */,
+				DD40000000000000000000B5 /* WidgetSnapshotPlugin.swift */,
 			);
 			path = Plugins;
 			sourceTree = "<group>";
@@ -226,6 +270,7 @@
 			);
 			dependencies = (
 				BB20000000000000000000E7 /* PBXTargetDependency */,
+				DD40000000000000000000E7 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -250,6 +295,23 @@
 			name = ShareExtension;
 			productName = ShareExtension;
 			productReference = BB20000000000000000000B1 /* ShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		DD40000000000000000000E1 /* HomeAccountWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DD40000000000000000000F1 /* Build configuration list for PBXNativeTarget "HomeAccountWidget" */;
+			buildPhases = (
+				DD40000000000000000000E2 /* Sources */,
+				DD40000000000000000000E3 /* Frameworks */,
+				DD40000000000000000000E4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HomeAccountWidget;
+			productName = HomeAccountWidget;
+			productReference = DD40000000000000000000B1 /* HomeAccountWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 		CC30000000000000000000E1 /* AppTests */ = {
@@ -286,6 +348,10 @@
 						CreatedOnToolsVersion = 15.0;
 						ProvisioningStyle = Automatic;
 					};
+					DD40000000000000000000E1 = {
+						CreatedOnToolsVersion = 15.0;
+						ProvisioningStyle = Automatic;
+					};
 					CC30000000000000000000E1 = {
 						CreatedOnToolsVersion = 15.0;
 						ProvisioningStyle = Automatic;
@@ -310,6 +376,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				BB20000000000000000000E1 /* ShareExtension */,
+				DD40000000000000000000E1 /* HomeAccountWidget */,
 				CC30000000000000000000E1 /* AppTests */,
 			);
 		};
@@ -337,6 +404,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DD40000000000000000000E4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -353,6 +427,8 @@
 				BB20000000000000000000C2 /* ShareIntakePlugin.swift in Sources */,
 				CC30000000000000000000A2 /* ShareIntakeStore.swift in Sources */,
 				CC30000000000000000000A4 /* DataURL.swift in Sources */,
+				DD40000000000000000000C5 /* WidgetSnapshot.swift in Sources */,
+				DD40000000000000000000C6 /* WidgetSnapshotPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -366,6 +442,8 @@
 				CC30000000000000000000C3 /* DataURL.swift in Sources */,
 				AA10000000000000000000AC /* BiometricOutcome.swift in Sources */,
 				CC30000000000000000000C4 /* ShareViewController.swift in Sources */,
+				DD40000000000000000000C1 /* WidgetSnapshot.swift in Sources */,
+				DD40000000000000000000C2 /* WidgetSnapshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -377,6 +455,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DD40000000000000000000E2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DD40000000000000000000C3 /* HomeAccountWidget.swift in Sources */,
+				DD40000000000000000000C4 /* WidgetSnapshot.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -384,6 +471,11 @@
 			isa = PBXTargetDependency;
 			target = BB20000000000000000000E1 /* ShareExtension */;
 			targetProxy = BB20000000000000000000E6 /* PBXContainerItemProxy */;
+		};
+		DD40000000000000000000E7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DD40000000000000000000E1 /* HomeAccountWidget */;
+			targetProxy = DD40000000000000000000E6 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -616,6 +708,56 @@
 			};
 			name = Release;
 		};
+		DD40000000000000000000F2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeAccountWidget/HomeAccountWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q2C43G5K74;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HomeAccountWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeaccount.app.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DD40000000000000000000F3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeAccountWidget/HomeAccountWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q2C43G5K74;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HomeAccountWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeaccount.app.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		CC30000000000000000000F2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -685,6 +827,15 @@
 			buildConfigurations = (
 				BB20000000000000000000F2 /* Debug */,
 				BB20000000000000000000F3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DD40000000000000000000F1 /* Build configuration list for PBXNativeTarget "HomeAccountWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD40000000000000000000F2 /* Debug */,
+				DD40000000000000000000F3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

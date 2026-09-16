@@ -44,6 +44,7 @@ import { MockAuthService, createMockUser } from '../../core/services/testing';
 import { BottomNavComponent } from '../../shared/layout/bottom-nav/bottom-nav.component';
 import { DeviceService } from '../../core/services/device.service';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
+import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
 /**
  * A viewport width standing in for the device, so a spec can rotate a phone.
@@ -91,6 +92,7 @@ class FakeMediaMatcher {
 
 jasmine.getEnv().configure({ random: false });
 silenceFirebaseWarnings();
+stripProviderKeys();
 
 describe('Add entry points (emulator smoke test)', () => {
   const AUTH_URL = 'http://127.0.0.1:9099';

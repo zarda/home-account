@@ -37,51 +37,75 @@
       [previousExpenses]="previousPeriodData()?.expense ?? null"
     />
 
-    <!-- One DOM tree, reordered per breakpoint via grid-template-areas:
-         desktop is an asymmetric main column (chart + AI insights) beside a
-         right rail (recent transactions + budgets); mobile stacks them with
-         recent transactions first. -->
-    <div class="dashboard-grid" [class.has-budgets]="activeBudgets().length > 0">
-      <app-ai-summary
-        class="area-insights"
-        [transactions]="transactions()"
-        [period]="publishedPeriodOption()"
-        [baseCurrency]="baseCurrency()"
-        [previousPeriodData]="previousPeriodData()"
-        [previousPeriodByCategory]="previousPeriodByCategory()"
-        [historicalExpenses]="historicalExpenses()"
-        [budgets]="activeBudgets()"
-        [goals]="activeGoals()"
-      />
+    <!-- One DOM tree in the account's own order (#87), reordered per
+         breakpoint via grid-template-areas computed from that same order:
+         desktop pairs a main column (chart, insights) against a rail
+         (recent, upcoming, budgets); mobile stacks them in DOM order, so
+         reading and focus order match what is on screen. -->
+    @if (arrangedCards().length > 0) {
+      <div class="dashboard-grid" [style.--dashboard-areas]="gridAreas()">
+        @for (card of arrangedCards(); track card) {
+          @switch (card) {
+            @case ('insights') {
+              <app-ai-summary
+                class="area-insights"
+                [transactions]="transactions()"
+                [period]="publishedPeriodOption()"
+                [baseCurrency]="baseCurrency()"
+                [previousPeriodData]="previousPeriodData()"
+                [previousPeriodByCategory]="previousPeriodByCategory()"
+                [historicalExpenses]="historicalExpenses()"
+                [budgets]="activeBudgets()"
+                [goals]="activeGoals()"
+              />
+            }
+            @case ('chart') {
+              <app-spending-chart
+                class="area-chart"
+                [categoryTotals]="categoryTotals()"
+                [categories]="categories()"
+                (categoryActivated)="onCategoryActivated($event)"
+              />
+            }
+            @case ('recent') {
+              <app-recent-transactions
+                class="area-recent"
+                [transactions]="recentTransactions()"
+                [categories]="categoriesMap()"
+              />
+            }
+            @case ('upcoming') {
+              <app-upcoming-bills
+                class="area-upcoming"
+                [occurrences]="upcomingOccurrences()"
+                [categories]="categoriesMap()"
+                [baseCurrency]="baseCurrency()"
+                [net]="upcomingNet()"
+              />
+            }
+            @case ('budgets') {
+              <app-budget-progress
+                class="area-budgets"
+                [budgets]="activeBudgets()"
+                [categories]="categoriesMap()"
+              />
+            }
+          }
+        }
+      </div>
 
-      <app-spending-chart
-        class="area-chart"
-        [categoryTotals]="categoryTotals()"
-        [categories]="categories()"
-        (categoryActivated)="onCategoryActivated($event)"
-      />
-
-      <app-recent-transactions
-        class="area-recent"
-        [transactions]="recentTransactions()"
-        [categories]="categoriesMap()"
-      />
-
-      <app-upcoming-bills
-        class="area-upcoming"
-        [occurrences]="upcomingOccurrences()"
-        [categories]="categoriesMap()"
-        [baseCurrency]="baseCurrency()"
-        [net]="upcomingNet()"
-      />
-
-      @if (activeBudgets().length > 0) {
-        <app-budget-progress
-          class="area-budgets"
-          [budgets]="activeBudgets()"
-          [categories]="categoriesMap()"
-        />
-      }
-    </div>
+      <a mat-button routerLink="/settings" [queryParams]="{ panel: 'dashboard' }" class="customize-link">
+        <mat-icon>tune</mat-icon>
+        {{ 'dashboard.customize' | translate }}
+      </a>
+    } @else {
+      <div class="dashboard-empty">
+        <p class="text-gray-500 dark:text-gray-400 text-sm">{{ 'dashboard.noCardsShown' | translate }}</p>
+        <a mat-button routerLink="/settings" [queryParams]="{ panel: 'dashboard' }" class="customize-link">
+          <mat-icon>tune</mat-icon>
+          {{ 'dashboard.customize' | translate }}
+        </a>
+      </div>
+    }
   }
 </div>
