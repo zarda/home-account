@@ -45,6 +45,14 @@ export class StatCardComponent {
   detail = input('');
   detailTone = input<'neutral' | 'positive' | 'negative'>('neutral');
 
+  /**
+   * The arrow states which way the figure went, so the figure beside it
+   * states size only. A screen reader never meets that arrow — Material
+   * hides a mat-icon from assistive tech unless the caller says otherwise —
+   * so the signed figure stays in the chip, visually hidden.
+   */
+  deltaMagnitude = computed(() => Math.abs(this.delta() ?? 0));
+
   deltaIsPositive = computed(() => {
     const delta = this.delta();
     if (delta === null) return false;

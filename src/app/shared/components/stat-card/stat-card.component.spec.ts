@@ -132,6 +132,66 @@ class NarrowHostComponent {
   value = signal('-NT$9,316');
 }
 
+/**
+ * The arrow already says which way the figure went, so the number beside it
+ * carries its size only — "↓ 48.6%", not "↓ -48.6%".
+ *
+ * Material hides a mat-icon from assistive tech by default (icon.mjs sets
+ * aria-hidden on the host unless the caller declares it), so the sign in the
+ * number was the only direction a screen reader ever got. Dropping it from
+ * the visible text would take that away, which is why the signed figure stays
+ * in a visually hidden span and the visible one is hidden from AT instead.
+ */
+describe('StatCardComponent delta chip', () => {
+  let fixture: ComponentFixture<HostComponent>;
+  let host: HostComponent;
+
+  const el = <T extends HTMLElement>(selector: string): T | null =>
+    fixture.nativeElement.querySelector(selector);
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [HostComponent] }).compileComponents();
+    fixture = TestBed.createComponent(HostComponent);
+    host = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('shows a fall as its size beside the arrow, with no second minus', () => {
+    host.delta.set(-48.6);
+    fixture.detectChanges();
+
+    const visible = el('.delta-figure')!;
+    expect(visible.textContent).toContain('48.6%');
+    expect(visible.textContent).not.toContain('-');
+    expect(el('.delta-chip')!.textContent).toContain('arrow_downward');
+  });
+
+  it('keeps the signed figure for a screen reader, and reads it only once', () => {
+    host.delta.set(-48.6);
+    fixture.detectChanges();
+
+    expect(el('.delta-sr')!.textContent).toContain('-48.6%');
+    expect(el('.delta-figure')!.getAttribute('aria-hidden')).toBe('true');
+    expect(el('.delta-chip mat-icon')!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('leaves a rise reading the same in both places', () => {
+    host.delta.set(12.34);
+    fixture.detectChanges();
+
+    expect(el('.delta-figure')!.textContent).toContain('12.3%');
+    expect(el('.delta-sr')!.textContent).toContain('12.3%');
+  });
+
+  it('shows zero as zero', () => {
+    host.delta.set(0);
+    fixture.detectChanges();
+
+    expect(el('.delta-figure')!.textContent).toContain('0.0%');
+    expect(el('.delta-chip')!.textContent).toContain('arrow_upward');
+  });
+});
+
 describe('StatCardComponent real layout: an amount narrower than its box', () => {
   let fixture: ComponentFixture<NarrowHostComponent>;
   let host: HTMLElement;
