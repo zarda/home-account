@@ -299,6 +299,17 @@ describe('BackupRestoreService', () => {
       expect('recurringId' in dto).toBeFalse();
     });
 
+    // The field alone says "part of a split"; the composer carries it back
+    // in the same shape as recurringId, so the group survives a restore.
+    it('restores the group id of a row that was part of a split purchase', async () => {
+      await service.restore(backup({
+        transactions: [transaction({ splitGroupId: 'txn-1' })],
+      }));
+
+      const [dto] = transactions.addTransaction.calls.mostRecent().args;
+      expect(dto.splitGroupId).toBe('txn-1');
+    });
+
     it('carries the budget period a backed-up transaction was saved with', async () => {
       await service.restore(backup({
         transactions: [transaction({ period: 'monthly' })],

@@ -4,7 +4,8 @@ import {
   TransactionService,
   RECEIPT_IMAGE_LIMIT_ERROR,
   RECEIPT_ATTACH_FAILED,
-  GOAL_LINK_INVALID
+  GOAL_LINK_INVALID,
+  SPLIT_REFUSED
 } from './transaction.service';
 import { CreateTransactionDTO, Goal, Transaction } from '../../models';
 import { FirestoreService } from './firestore.service';
@@ -12,6 +13,7 @@ import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
+import { BudgetService } from './budget.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { MockStorageService } from './testing/mock-storage.service';
@@ -253,6 +255,24 @@ describe('TransactionService', () => {
       // Not `period: undefined` — the SDK rejects the whole write for that.
       const written = mockFirestore.addDocumentSpy.mostRecent()?.args[1] as Record<string, unknown>;
       expect('period' in written).toBeFalse();
+    });
+
+    // A restore rebuilds a stored row's DTO field by field (recurringId's
+    // shape) rather than sourcing this from a split write, so the composer
+    // has to carry it through the plain path too.
+    it('carries splitGroupId onto the row the way recurringId does', async () => {
+      await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Restored split part',
+        date: new Date(),
+        splitGroupId: 'g1'
+      });
+
+      const written = mockFirestore.addDocumentSpy.mostRecent()?.args[1] as Record<string, unknown>;
+      expect(written['splitGroupId']).toBe('g1');
     });
 
     it('should set isLoading during operation', async () => {
@@ -2407,5 +2427,274 @@ describe('TransactionService when the rates API answers with an error body', () 
     const goal = await mockFirestore.getDocument<Record<string, unknown>>(`${GOALS}/g1`);
     expect(goal?.['linkedAmount']).toBeCloseTo(6.69, 2);
     expect(goal?.['linkedAmount']).not.toBe(1000);
+  });
+});
+
+// Its own top-level harness (the JPY describe's own precedent above): the
+// main suite's budget case lets the real BudgetService run against the
+// mock and asserts on the budget document that produces, so a spy there
+// would silently stop proving what that case exists to prove.
+describe('TransactionService addSplitTransaction', () => {
+  const TX = 'users/test-user-123/transactions';
+
+  let service: TransactionService;
+  let mockFirestore: MockFirestoreService;
+  let mockAuth: MockAuthService;
+  let mockStorage: MockStorageService;
+  let mockQuota: jasmine.SpyObj<ReceiptQuotaService>;
+  let mockBudget: jasmine.SpyObj<BudgetService>;
+  let currencyService: CurrencyService;
+
+  function dto(
+    amount: number,
+    categoryId: string,
+    overrides: Partial<CreateTransactionDTO> = {}
+  ): CreateTransactionDTO {
+    return {
+      type: 'expense',
+      amount,
+      currency: 'USD',
+      categoryId,
+      description: 'Weekend shopping',
+      date: new Date('2026-06-01'),
+      note: 'Paid by card',
+      tags: ['errand'],
+      period: 'monthly',
+      location: { name: 'Costco' },
+      ...overrides
+    };
+  }
+
+  beforeEach(() => {
+    localStorage.removeItem('home-account.exchangeRates');
+
+    mockQuota = jasmine.createSpyObj<ReceiptQuotaService>('ReceiptQuotaService', [
+      'canAddImages', 'noteImagesAdded', 'noteImagesRemoved', 'invalidateCount',
+    ]);
+    mockQuota.canAddImages.and.resolveTo(true);
+    mockBudget = jasmine.createSpyObj<BudgetService>('BudgetService', ['recalculateBudgetsForCategory']);
+    mockBudget.recalculateBudgetsForCategory.and.resolveTo();
+
+    spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
+
+    TestBed.configureTestingModule({
+      providers: [
+        TransactionService,
+        CurrencyService,
+        { provide: FirestoreService, useClass: MockFirestoreService },
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: StorageService, useClass: MockStorageService },
+        { provide: ReceiptQuotaService, useValue: mockQuota },
+        { provide: BudgetService, useValue: mockBudget }
+      ]
+    });
+
+    mockFirestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
+    mockAuth = TestBed.inject(AuthService) as unknown as MockAuthService;
+    mockStorage = TestBed.inject(StorageService) as unknown as MockStorageService;
+    currencyService = TestBed.inject(CurrencyService);
+    service = TestBed.inject(TransactionService);
+
+    mockAuth.setAuthenticated(true);
+    currencyService.exchangeRates.set(new Map([['USD', 1], ['EUR', 0.92], ['THB', 34.5]]));
+    spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+  });
+
+  afterEach(() => {
+    mockFirestore.clearMocks();
+    mockAuth.clearMocks();
+    mockStorage.clearMocks();
+  });
+
+  it("writes the remainder and each part as sibling rows sharing the first row's id, in one transaction", async () => {
+    await service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: 'cat-home', amount: 30 }]);
+
+    expect(mockFirestore.runTransactionSpy.calls.length).toBe(1);
+    expect(mockFirestore.txSetSpy.calls.length).toBe(2);
+
+    const [firstPath, firstRow] = mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+    const [, secondRow] = mockFirestore.txSetSpy.calls[1].args as [string, Record<string, unknown>];
+    const firstId = firstPath.split('/').pop();
+
+    expect(firstRow['amount']).toBe(70);
+    expect(firstRow['categoryId']).toBe('cat-food');
+    expect(firstRow['splitGroupId']).toBe(firstId);
+    expect(firstRow['note']).toBe('Paid by card');
+
+    expect(secondRow['amount']).toBe(30);
+    expect(secondRow['categoryId']).toBe('cat-home');
+    expect(secondRow['splitGroupId']).toBe(firstId);
+    expect('note' in secondRow).toBeFalse();
+
+    for (const field of
+      ['type', 'currency', 'exchangeRate', 'baseCurrency', 'description', 'date', 'tags', 'location', 'period'] as const
+    ) {
+      expect(secondRow[field]).toEqual(firstRow[field]);
+    }
+  });
+
+  it('returns the ids in write order, first row first', async () => {
+    const ids = await service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: 'cat-home', amount: 30 }]);
+
+    const paths = mockFirestore.txSetSpy.calls.map(call => (call.args[0] as string));
+    expect(ids).toEqual(paths.map(path => path.split('/').pop() as string));
+    expect(ids.length).toBe(2);
+  });
+
+  it("converts each row's amount into the base currency at the purchase's own rate", async () => {
+    // The mock account's base currency is USD by default; switch it so the
+    // seeded USD rate below is not the trivial 1:1 case.
+    const user = mockAuth.currentUser();
+    mockAuth.setMockUser({ ...user!, preferences: { ...user!.preferences, baseCurrency: 'EUR' } });
+    currencyService.exchangeRates.set(new Map([['USD', 1], ['EUR', 1.5]]));
+
+    await service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: 'cat-home', amount: 30 }]);
+
+    const [, firstRow] = mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+    const [, secondRow] = mockFirestore.txSetSpy.calls[1].args as [string, Record<string, unknown>];
+    expect(firstRow['amountInBaseCurrency']).toBe(105);
+    expect(secondRow['amountInBaseCurrency']).toBe(45);
+  });
+
+  it('recalculates budgets once per distinct expense category', async () => {
+    await service.addSplitTransaction(dto(100, 'cat-food'), [
+      { categoryId: 'cat-home', amount: 30 },
+      { categoryId: 'cat-transport', amount: 10 },
+      // Duplicates the first row's own category: four category ids across
+      // the rows, but only three distinct ones.
+      { categoryId: 'cat-food', amount: 5 }
+    ]);
+
+    expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledTimes(3);
+    expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledWith('cat-food');
+    expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledWith('cat-home');
+    expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledWith('cat-transport');
+  });
+
+  it('does not recalculate budgets for an income split', async () => {
+    await service.addSplitTransaction(
+      dto(100, 'cat-salary', { type: 'income' }),
+      [{ categoryId: 'cat-bonus', amount: 30 }]
+    );
+
+    expect(mockBudget.recalculateBudgetsForCategory).not.toHaveBeenCalled();
+  });
+
+  it('notes the receipt quota after the rows commit even when the budget recompute rejects', async () => {
+    const file = new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
+    mockBudget.recalculateBudgetsForCategory.and.rejectWith(new Error('budget recompute failed'));
+
+    await expectAsync(
+      service.addSplitTransaction(
+        { ...dto(100, 'cat-food'), receiptFiles: [file] },
+        [{ categoryId: 'cat-home', amount: 30 }]
+      )
+    ).toBeRejectedWithError('budget recompute failed');
+
+    expect(mockFirestore.runTransactionSpy.calls.length).toBe(1);
+    expect(mockQuota.noteImagesAdded).toHaveBeenCalledWith(1);
+  });
+
+  it("uploads receipts to the first row's id, leaves the parts clean, and notes the quota after commit", async () => {
+    const file = new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const ids = await service.addSplitTransaction(
+      { ...dto(100, 'cat-food'), receiptFiles: [file] },
+      [{ categoryId: 'cat-home', amount: 30 }]
+    );
+
+    expect(mockStorage.uploadReceiptSpy.calls.length).toBe(1);
+    expect(mockStorage.uploadReceiptSpy.calls[0].args).toEqual(['test-user-123', ids[0], file, 0]);
+
+    const [, firstRow] = mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+    const [, secondRow] = mockFirestore.txSetSpy.calls[1].args as [string, Record<string, unknown>];
+    expect(firstRow['receiptCount']).toBe(1);
+    expect(firstRow['receiptUrl']).toBeDefined();
+    expect(firstRow['receiptUrls']).toEqual([firstRow['receiptUrl']]);
+    expect('receiptUrl' in secondRow).toBeFalse();
+    expect('receiptUrls' in secondRow).toBeFalse();
+    expect('receiptCount' in secondRow).toBeFalse();
+
+    expect(mockQuota.noteImagesAdded).toHaveBeenCalledWith(1);
+  });
+
+  it('rejects over the receipt quota and writes nothing', async () => {
+    mockQuota.canAddImages.and.resolveTo(false);
+    const file = new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
+
+    await expectAsync(
+      service.addSplitTransaction(
+        { ...dto(100, 'cat-food'), receiptFiles: [file] },
+        [{ categoryId: 'cat-home', amount: 30 }]
+      )
+    ).toBeRejectedWithError(RECEIPT_IMAGE_LIMIT_ERROR);
+
+    expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
+    expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+  });
+
+  it('refuses a split naming a goal, before any write', async () => {
+    await expectAsync(
+      service.addSplitTransaction(
+        dto(100, 'cat-food', { goalId: 'g1' }),
+        [{ categoryId: 'cat-home', amount: 30 }]
+      )
+    ).toBeRejectedWithError(SPLIT_REFUSED);
+
+    expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+  });
+
+  it('refuses parts that leave no positive remainder', async () => {
+    await expectAsync(
+      service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: 'cat-home', amount: 100 }])
+    ).toBeRejectedWithError(SPLIT_REFUSED);
+
+    expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+  });
+
+  it('deletes uploaded slots best-effort when the commit fails after a successful upload', async () => {
+    const file = new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
+    spyOn(mockFirestore, 'runTransaction').and.rejectWith(new Error('offline'));
+
+    await expectAsync(
+      service.addSplitTransaction(
+        { ...dto(100, 'cat-food'), receiptFiles: [file] },
+        [{ categoryId: 'cat-home', amount: 30 }]
+      )
+    ).toBeRejectedWithError('offline');
+
+    expect(mockQuota.noteImagesAdded).not.toHaveBeenCalled();
+    expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(1);
+    expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args[2]).toEqual([0]);
+  });
+
+  it('marks every part as not itself the posting of a rule, whatever the purchase was', async () => {
+    await service.addSplitTransaction(
+      dto(100, 'cat-food', { isRecurring: true, recurringId: 'rule-1' }),
+      [{ categoryId: 'cat-home', amount: 30 }]
+    );
+
+    const [, firstRow] = mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+    const [, secondRow] = mockFirestore.txSetSpy.calls[1].args as [string, Record<string, unknown>];
+    expect(firstRow['isRecurring']).toBe(true);
+    expect(secondRow['isRecurring']).toBe(false);
+    expect('recurringId' in secondRow).toBeFalse();
+  });
+
+  it("records one add mutation at the first row's id", async () => {
+    const ids = await service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: 'cat-home', amount: 30 }]);
+
+    expect(service.lastMutation()).toEqual(jasmine.objectContaining({
+      kind: 'add',
+      id: ids[0],
+      date: Timestamp.fromDate(new Date('2026-06-01'))
+    }));
+  });
+
+  it('writes at the expected document paths', async () => {
+    const ids = await service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: 'cat-home', amount: 30 }]);
+
+    const paths = mockFirestore.txSetSpy.calls.map(call => call.args[0]);
+    expect(paths).toEqual([`${TX}/${ids[0]}`, `${TX}/${ids[1]}`]);
   });
 });
