@@ -23,8 +23,48 @@
   color: var(--text-secondary);
 }
 
+.font-scale-row {
+  // What decides whether three labelled options fit is this row's own
+  // width, not the viewport — mirrors .theme-section's container query
+  // (profile-settings.component.scss). The other two .setting-rows wrap
+  // slide toggles, so they get no container context.
+  container: font-scale-toggle / inline-size;
+}
+
 .font-scale-toggle {
   max-width: 480px;
+
+  mat-button-toggle {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+// A third of a phone's settings panel cannot hold a checkmark and a word
+// once the account asks for large text — the word is the only part that
+// carries the meaning, so the checkmark goes and the label wraps rather
+// than losing its end.
+@container font-scale-toggle (max-width: 420px) {
+  .font-scale-toggle ::ng-deep .mat-button-toggle-label-content {
+    white-space: normal;
+    line-height: 1.2;
+    padding-block: 6px;
+    // "Default" carries no space to wrap on, unlike the other two options —
+    // without this, one label alone can still push past its segment.
+    overflow-wrap: anywhere;
+  }
+
+  .font-scale-toggle ::ng-deep .mat-button-toggle-checkbox-wrapper {
+    display: none;
+  }
+
+  // Material still reserves the checkmark's own inline space on the
+  // checked segment (button:has(.mat-button-toggle-checkbox-wrapper)) even
+  // once that wrapper is display:none — the same empty-strip defect this
+  // container query exists to close, just on the selected segment.
+  .font-scale-toggle ::ng-deep .mat-button-toggle-checked.mat-button-toggle-appearance-standard .mat-button-toggle-button {
+    padding-inline-start: 0;
+  }
 }
 
 .setting-hint {
