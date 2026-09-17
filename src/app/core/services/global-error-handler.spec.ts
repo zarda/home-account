@@ -47,6 +47,25 @@ describe('GlobalErrorHandler', () => {
     expect(logSpy.calls.mostRecent().args).toContain(cause);
   });
 
+  it('logs but does not notify for a plugin call with no native implementation', () => {
+    spyOn(console, 'error');
+
+    handler.handleError({ code: 'UNIMPLEMENTED', message: '"X.y()" is not implemented on ios' });
+
+    expect(console.error).toHaveBeenCalled();
+    expect(notifications.error).not.toHaveBeenCalled();
+  });
+
+  it('logs but does not notify for a zone-wrapped unimplemented plugin rejection', () => {
+    const logSpy = spyOn(console, 'error');
+    const cause = { code: 'UNIMPLEMENTED', message: '"X.y()" is not implemented on ios' };
+
+    handler.handleError({ rejection: cause, message: 'Uncaught (in promise)' });
+
+    expect(logSpy.calls.mostRecent().args).toContain(cause);
+    expect(notifications.error).not.toHaveBeenCalled();
+  });
+
   it('throttles the notification but never the log', () => {
     spyOn(console, 'error');
 

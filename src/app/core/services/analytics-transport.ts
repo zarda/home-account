@@ -203,8 +203,21 @@ interface NativeAnalyticsPlugin {
  * once the stored preference resolves.
  */
 export class NativeAnalyticsTransport implements AnalyticsTransport {
-  private plugin: Promise<NativeAnalyticsPlugin> | null = null;
+  // Never Promise<NativeAnalyticsPlugin>: registerPlugin()'s Proxy answers
+  // any unrecognised property — 'then' included — with a callable wrapper
+  // for a same-named native method, so a promise resolving TO the plugin
+  // gets adopted as a thenable, calls the wrapped "then" native method, and
+  // hangs forever (that wrapper never invokes the resolve/reject it is
+  // given). A plain box the promise carries has no 'then' of its own, so it
+  // settles normally.
+  private plugin: Promise<{ plugin: NativeAnalyticsPlugin }> | null = null;
   private enabled = false;
+
+  constructor(
+    private readonly loadModule: () => Promise<{
+      FirebaseAnalytics: unknown;
+    }> = () => import('@capacitor-firebase/analytics')
+  ) {}
 
   /**
    * The plugin's iOS isEnabled() is unimplemented, and the native flag
@@ -219,7 +232,7 @@ export class NativeAnalyticsTransport implements AnalyticsTransport {
       return;
     }
     this.enabled = enabled;
-    const plugin = await this.load();
+    const { plugin } = await this.load();
     await plugin.setEnabled({ enabled });
   }
 
@@ -227,7 +240,7 @@ export class NativeAnalyticsTransport implements AnalyticsTransport {
     if (!this.enabled) {
       return;
     }
-    const plugin = await this.load();
+    const { plugin } = await this.load();
     await plugin.logEvent({ name, params: { ...params } });
   }
 
@@ -235,7 +248,7 @@ export class NativeAnalyticsTransport implements AnalyticsTransport {
     if (!this.enabled) {
       return;
     }
-    const plugin = await this.load();
+    const { plugin } = await this.load();
     // setCurrentScreen is the plugin's screen_view: it logs the reserved event
     // with screen_name and screen_class. The web transport adds the
     // firebase_-prefixed aliases on top, which gtag maps; the native SDK
@@ -247,10 +260,10 @@ export class NativeAnalyticsTransport implements AnalyticsTransport {
     });
   }
 
-  private load(): Promise<NativeAnalyticsPlugin> {
-    this.plugin ??= import('@capacitor-firebase/analytics').then(
-      m => m.FirebaseAnalytics as unknown as NativeAnalyticsPlugin
-    );
+  private load(): Promise<{ plugin: NativeAnalyticsPlugin }> {
+    this.plugin ??= this.loadModule().then(m => ({
+      plugin: m.FirebaseAnalytics as unknown as NativeAnalyticsPlugin,
+    }));
     return this.plugin;
   }
 }

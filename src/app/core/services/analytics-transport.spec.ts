@@ -1,6 +1,6 @@
 import { EnvironmentInjector, createEnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { WebAnalyticsTransport } from './analytics-transport';
+import { NativeAnalyticsTransport, WebAnalyticsTransport } from './analytics-transport';
 
 /**
  * isConfigured() stands in for a real GA4 measurement id, and checkSupported()
@@ -105,5 +105,87 @@ describe('WebAnalyticsTransport', () => {
     // The resolved memo holds: only the very first resolve() call — here,
     // setEnabled's — ever reaches checkSupported().
     expect(transport.checkSupportedCalls).toBe(1);
+  });
+});
+
+describe('NativeAnalyticsTransport', () => {
+  /**
+   * Mimics registerPlugin()'s real Proxy: a known method name answers with
+   * the spy, and every other property name — including 'then' — answers
+   * with a function that rejects UNIMPLEMENTED, exactly like a plugin method
+   * Capacitor never registered. Returning undefined for 'then' here would
+   * hide the defect this suite exists to catch.
+   */
+  function fakeNativePlugin(spy: jasmine.Spy): unknown {
+    return new Proxy(
+      {},
+      {
+        get: (_target, prop) =>
+          prop === 'setEnabled' || prop === 'logEvent' || prop === 'setCurrentScreen'
+            ? spy
+            : () =>
+                Promise.reject(
+                  Object.assign(
+                    new Error(`"FirebaseAnalytics.${String(prop)}()" is not implemented on ios`),
+                    { code: 'UNIMPLEMENTED' }
+                  )
+                ),
+      }
+    );
+  }
+
+  function timeout(ms: number): Promise<'hung'> {
+    return new Promise(resolve => setTimeout(() => resolve('hung'), ms));
+  }
+
+  let nativeCall: jasmine.Spy;
+  let loadModule: jasmine.Spy;
+  let transport: NativeAnalyticsTransport;
+
+  beforeEach(() => {
+    nativeCall = jasmine.createSpy('nativeCall').and.resolveTo(undefined);
+    loadModule = jasmine
+      .createSpy('loadModule')
+      .and.resolveTo({ FirebaseAnalytics: fakeNativePlugin(nativeCall) });
+    transport = new NativeAnalyticsTransport(loadModule);
+  });
+
+  it('resolves setEnabled instead of hanging on the plugin proxy adopting as a thenable', async () => {
+    const race = await Promise.race([
+      transport.setEnabled(true).then(() => 'resolved' as const),
+      timeout(200),
+    ]);
+
+    expect(race).toBe('resolved');
+    expect(nativeCall).toHaveBeenCalledWith({ enabled: true });
+  });
+
+  it('forwards logEvent once enabled', async () => {
+    await transport.setEnabled(true);
+    nativeCall.calls.reset();
+
+    await transport.logEvent('purchase_added', { amount: 5 });
+
+    expect(nativeCall).toHaveBeenCalledWith({ name: 'purchase_added', params: { amount: 5 } });
+  });
+
+  it('forwards logScreenView', async () => {
+    await transport.setEnabled(true);
+    nativeCall.calls.reset();
+
+    await transport.logScreenView({ screenName: 'dashboard', screenClass: 'DashboardComponent' });
+
+    expect(nativeCall).toHaveBeenCalledWith({
+      screenName: 'dashboard',
+      screenClassOverride: 'DashboardComponent',
+    });
+  });
+
+  it('imports the module once across calls', async () => {
+    await transport.setEnabled(true);
+    await transport.logEvent('e', {});
+    await transport.logScreenView({ screenName: 's', screenClass: 'c' });
+
+    expect(loadModule).toHaveBeenCalledTimes(1);
   });
 });
