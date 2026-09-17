@@ -2556,6 +2556,15 @@ describe('TransactionService addSplitTransaction', () => {
     expect(secondRow['amountInBaseCurrency']).toBe(45);
   });
 
+  it("rounds a part to its currency's minor unit, matching what splitRemainder already subtracted", async () => {
+    await service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: 'cat-home', amount: 10.005 }]);
+
+    const [, firstRow] = mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+    const [, secondRow] = mockFirestore.txSetSpy.calls[1].args as [string, Record<string, unknown>];
+    expect(secondRow['amount']).toBe(10.01);
+    expect(firstRow['amount']).toBe(89.99);
+  });
+
   it('recalculates budgets once per distinct expense category', async () => {
     await service.addSplitTransaction(dto(100, 'cat-food'), [
       { categoryId: 'cat-home', amount: 30 },
@@ -2696,5 +2705,195 @@ describe('TransactionService addSplitTransaction', () => {
 
     const paths = mockFirestore.txSetSpy.calls.map(call => call.args[0]);
     expect(paths).toEqual([`${TX}/${ids[0]}`, `${TX}/${ids[1]}`]);
+  });
+
+  describe('splitTransaction', () => {
+    function seedRow(overrides: Partial<Transaction> = {}): void {
+      mockFirestore.setMockDocument(`${TX}/tx-1`, createTransaction({
+        amount: 100,
+        currency: 'USD',
+        exchangeRate: 1.5,
+        amountInBaseCurrency: 150,
+        categoryId: 'cat-food',
+        note: 'n',
+        tags: ['t'],
+        ...overrides
+      }));
+    }
+
+    it("shrinks the stored row to its remainder and creates each part, in one transaction", async () => {
+      const date = Timestamp.fromDate(new Date('2026-06-01'));
+      seedRow({
+        location: { name: 'Market' },
+        period: 'monthly',
+        baseCurrency: 'EUR',
+        date,
+        description: 'Weekend market run'
+      });
+
+      const ids = await service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 30 }]);
+
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(1);
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(1);
+      expect(mockFirestore.txSetSpy.calls.length).toBe(1);
+
+      const [updatePath, updateData] =
+        mockFirestore.txUpdateSpy.calls[0].args as [string, Record<string, unknown>];
+      expect(updatePath).toBe(`${TX}/tx-1`);
+      expect(Object.keys(updateData).sort())
+        .toEqual(['amount', 'amountInBaseCurrency', 'splitGroupId', 'updatedAt'].sort());
+      expect(updateData['amount']).toBe(70);
+      expect(updateData['amountInBaseCurrency']).toBe(105);
+      expect(updateData['splitGroupId']).toBe('tx-1');
+
+      const [partPath, partRow] =
+        mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+      expect(partRow['amount']).toBe(30);
+      expect(partRow['amountInBaseCurrency']).toBe(45);
+      expect(partRow['categoryId']).toBe('cat-home');
+      expect(partRow['splitGroupId']).toBe('tx-1');
+      expect(partRow['isRecurring']).toBe(false);
+      expect('note' in partRow).toBeFalse();
+      expect('receiptUrl' in partRow).toBeFalse();
+      expect('receiptUrls' in partRow).toBeFalse();
+      expect('goalId' in partRow).toBeFalse();
+      expect('recurringId' in partRow).toBeFalse();
+
+      // Identity copies from the row being split, never re-derived: type,
+      // currency, rate, base currency, description, date, tags, location,
+      // period (the exclusions above cover note/receipts/goal/recurring).
+      expect(partRow['type']).toBe('expense');
+      expect(partRow['currency']).toBe('USD');
+      expect(partRow['exchangeRate']).toBe(1.5);
+      expect(partRow['baseCurrency']).toBe('EUR');
+      expect(partRow['description']).toBe('Weekend market run');
+      expect((partRow['date'] as Timestamp).toMillis()).toBe(date.toMillis());
+      expect(partRow['tags']).toEqual(['t']);
+      expect(partRow['location']).toEqual({ name: 'Market' });
+      expect(partRow['period']).toBe('monthly');
+
+      expect(ids).toEqual([partPath.split('/').pop() as string]);
+    });
+
+    it("rounds a part to its currency's minor unit, matching what splitRemainder already subtracted", async () => {
+      seedRow();
+
+      await service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 10.005 }]);
+
+      const [, updateData] = mockFirestore.txUpdateSpy.calls[0].args as [string, Record<string, unknown>];
+      const [, partRow] = mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+      expect(partRow['amount']).toBe(10.01);
+      expect(updateData['amount']).toBe(89.99);
+    });
+
+    it('joins the group a row is already part of, without rewriting the field', async () => {
+      seedRow({ splitGroupId: 'tx-0' });
+
+      await service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 30 }]);
+
+      const [, updateData] = mockFirestore.txUpdateSpy.calls[0].args as [string, Record<string, unknown>];
+      expect('splitGroupId' in updateData).toBeFalse();
+
+      const [, partRow] = mockFirestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
+      expect(partRow['splitGroupId']).toBe('tx-0');
+    });
+
+    it('computes the remainder from a fresh read, not the caller\'s stale view', async () => {
+      seedRow();
+      mockFirestore.beforeTransaction = () => seedRow({ amount: 40, amountInBaseCurrency: 60 });
+
+      await service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 30 }]);
+
+      const [, updateData] = mockFirestore.txUpdateSpy.calls[0].args as [string, Record<string, unknown>];
+      expect(updateData['amount']).toBe(10);
+    });
+
+    it('refuses a fresh-read amount the parts cannot fit under, even though the stale view had room', async () => {
+      seedRow();
+      mockFirestore.beforeTransaction = () => seedRow({ amount: 40, amountInBaseCurrency: 60 });
+
+      await expectAsync(
+        service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 50 }])
+      ).toBeRejectedWithError(SPLIT_REFUSED);
+
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
+      expect(mockFirestore.txSetSpy.calls.length).toBe(0);
+    });
+
+    it('refuses to split a row linked to a goal, before any write', async () => {
+      seedRow({ goalId: 'g1', goalAmount: 92 });
+
+      await expectAsync(
+        service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 30 }])
+      ).toBeRejectedWithError(SPLIT_REFUSED);
+
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
+      expect(mockFirestore.txSetSpy.calls.length).toBe(0);
+    });
+
+    it('rejects a row that no longer exists', async () => {
+      await expectAsync(
+        service.splitTransaction('does-not-exist', [{ categoryId: 'cat-home', amount: 30 }])
+      ).toBeRejectedWithError('Transaction not found');
+
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
+      expect(mockFirestore.txSetSpy.calls.length).toBe(0);
+    });
+
+    it('refuses parts that leave no positive remainder', async () => {
+      seedRow();
+
+      await expectAsync(
+        service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 100 }])
+      ).toBeRejectedWithError(SPLIT_REFUSED);
+
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
+      expect(mockFirestore.txSetSpy.calls.length).toBe(0);
+    });
+
+    it('recalculates budgets once per distinct expense category', async () => {
+      seedRow();
+
+      await service.splitTransaction('tx-1', [
+        { categoryId: 'cat-home', amount: 20 },
+        { categoryId: 'cat-transport', amount: 10 },
+        // Duplicates the row's own category: four category ids across the
+        // update and its parts, but only three distinct ones.
+        { categoryId: 'cat-food', amount: 5 }
+      ]);
+
+      expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledTimes(3);
+      expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledWith('cat-food');
+      expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledWith('cat-home');
+      expect(mockBudget.recalculateBudgetsForCategory).toHaveBeenCalledWith('cat-transport');
+    });
+
+    it('does not recalculate budgets for an income row', async () => {
+      mockFirestore.setMockDocument(`${TX}/tx-1`, createTransaction({
+        type: 'income',
+        amount: 100,
+        currency: 'USD',
+        exchangeRate: 1.5,
+        amountInBaseCurrency: 150,
+        categoryId: 'cat-salary'
+      }));
+
+      await service.splitTransaction('tx-1', [{ categoryId: 'cat-bonus', amount: 30 }]);
+
+      expect(mockBudget.recalculateBudgetsForCategory).not.toHaveBeenCalled();
+    });
+
+    it('records one update mutation at the split row\'s id', async () => {
+      const date = Timestamp.fromDate(new Date('2026-06-01'));
+      seedRow({ date });
+
+      await service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 30 }]);
+
+      expect(service.lastMutation()).toEqual(jasmine.objectContaining({
+        kind: 'update',
+        id: 'tx-1',
+        date
+      }));
+    });
   });
 });

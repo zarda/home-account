@@ -57,7 +57,8 @@ import {
   Goal,
   SplitPart,
   receiptImageCount,
-  baseCurrencyOf
+  baseCurrencyOf,
+  roundToMinorUnit
 } from '../../models';
 import { roundMoney } from '../utils/transaction-aggregation.utils';
 import { splitRemainder } from '../utils/split-purchase.utils';
@@ -471,6 +472,8 @@ export class TransactionService {
    * rate applied to the part, never re-resolved (docs/money-snapshots.md).
    * Receipts stay on the first row — storage is keyed by row id, and a part
    * has no row of its own to key against until this transaction commits.
+   * Returns every id this call wrote, first row first, then each part in
+   * the order given.
    */
   async addSplitTransaction(data: CreateTransactionDTO, parts: SplitPart[]): Promise<string[]> {
     this.isLoading.set(true);
@@ -524,13 +527,17 @@ export class TransactionService {
           ? { receiptUrl: uploadedUrls[0], receiptUrls: uploadedUrls, receiptCount: uploadedUrls.length }
           : {})
       };
-      const partRows: Omit<Transaction, 'id'>[] = parts.map(part =>
-        ({
+      const partRows: Omit<Transaction, 'id'>[] = parts.map(part => {
+        // splitRemainder already rounded this figure when it subtracted the
+        // part from the total; writing the raw part.amount here would leave
+        // the group summing to more (or less) than the purchase it split.
+        const amount = roundToMinorUnit(part.amount, data.currency);
+        return {
           ...this.composeRow(
             userId,
             {
               ...data,
-              amount: part.amount,
+              amount,
               categoryId: part.categoryId,
               note: undefined,
               recurringId: undefined,
@@ -538,12 +545,12 @@ export class TransactionService {
               // a rule — true regardless of what the purchase being split was.
               isRecurring: false
             },
-            conversion(part.amount),
+            conversion(amount),
             createdAt
           ),
           splitGroupId: firstId
-        })
-      );
+        };
+      });
 
       try {
         await this.firestoreService.runTransaction(async tx => {
@@ -583,6 +590,106 @@ export class TransactionService {
 
       this.noteMutation('add', firstId, firstRow.date);
       return [firstId, ...partIds];
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * Shrink a stored row to its remainder and write its parts as sibling
+   * rows, in one Firestore transaction that starts with its own tx.get —
+   * never a pre-read — so a rival write between the caller's optimistic
+   * view and this commit decides the remainder, not the other way round.
+   * No side effects inside the callback: the SDK re-runs it on contention,
+   * so budgets and the mutation note both happen after the commit.
+   * A row already in a group keeps its group id and the parts join it,
+   * matching addSplitTransaction's own exclusions (note, receipts, goal
+   * link, recurring link never copy to a part).
+   * Returns only the parts' ids; the row being split keeps its own.
+   */
+  async splitTransaction(id: string, parts: SplitPart[]): Promise<string[]> {
+    this.isLoading.set(true);
+
+    try {
+      const userId = this.authService.userId();
+      if (!userId) throw new Error('User not authenticated');
+
+      const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
+      // Pre-generated, like the recurring claim and addSplitTransaction:
+      // the callback itself must do no id-bearing side effect, since a
+      // contended commit replays it.
+      const partIds = parts.map(() => this.firestoreService.generateId(this.userTransactionsPath));
+      const createdAt = this.firestoreService.getTimestamp();
+
+      let row!: Transaction;
+
+      await this.firestoreService.runTransaction(async tx => {
+        const snapshot = await tx.get(rowRef);
+        if (!snapshot.exists()) throw new Error('Transaction not found');
+        row = snapshot.data() as Transaction;
+
+        // A contribution is a whole-purchase notion; N counter moves on one
+        // goal is the contention stageGoalTransition exists to avoid.
+        if (row.goalId) throw new Error(SPLIT_REFUSED);
+
+        const remainder = splitRemainder(row.amount, parts, row.currency);
+        if (remainder === null) throw new Error(SPLIT_REFUSED);
+
+        const groupId = row.splitGroupId ?? id;
+
+        tx.update(rowRef, {
+          amount: remainder,
+          amountInBaseCurrency: remainder * row.exchangeRate,
+          updatedAt: this.firestoreService.getTimestamp(),
+          // Only stamped the first time this row is split — a row already
+          // in a group keeps it, so the field alone still says "which
+          // group", never a second one layered on top.
+          ...(row.splitGroupId ? {} : { splitGroupId: id })
+        });
+
+        // A row written before base-currency stamping carries no base of its
+        // own; the account's current base is the only value available for
+        // its part.
+        const baseCurrency = row.baseCurrency ?? baseCurrencyOf(this.authService.currentUser());
+        partIds.forEach((partId, i) => {
+          const part = parts[i];
+          // Same rounding splitRemainder already applied when it subtracted
+          // this part from the row's amount, so the group still sums to it.
+          const amount = roundToMinorUnit(part.amount, row.currency);
+          const partData: CreateTransactionDTO = {
+            type: row.type,
+            currency: row.currency,
+            description: row.description,
+            date: row.date.toDate(),
+            categoryId: part.categoryId,
+            amount,
+            isRecurring: false,
+            splitGroupId: groupId,
+            ...(row.tags?.length ? { tags: row.tags } : {}),
+            ...(row.location ? { location: row.location } : {}),
+            ...(row.period ? { period: row.period } : {})
+          };
+          tx.set(
+            this.firestoreService.getDocRef(`${this.userTransactionsPath}/${partId}`),
+            this.composeRow(
+              userId,
+              partData,
+              { baseCurrency, exchangeRate: row.exchangeRate, amountInBaseCurrency: amount * row.exchangeRate },
+              createdAt
+            )
+          );
+        });
+      });
+
+      if (row.type === 'expense') {
+        const categoryIds = new Set([row.categoryId, ...parts.map(part => part.categoryId)]);
+        for (const categoryId of categoryIds) {
+          await this.updateAffectedBudgets(categoryId);
+        }
+      }
+
+      this.noteMutation('update', id, row.date);
+      return partIds;
     } finally {
       this.isLoading.set(false);
     }
