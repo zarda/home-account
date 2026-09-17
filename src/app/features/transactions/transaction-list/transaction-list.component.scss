@@ -178,6 +178,18 @@
   @apply text-gray-700 dark:text-gray-300;
 }
 
+// The box is the row's own .receipt-indicator (transaction-row.component.scss),
+// not this file's own .receipt-icon; the colour is this cell's own muted
+// text, so the two surfaces share a shape but not a token.
+.split-indicator {
+  font-size: var(--text-sm);
+  width: 1em;
+  height: 1em;
+  line-height: 1em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 // anywhere, not break-word: only `anywhere` lowers the element's min-content
 // size, and a pasted URL that refuses to shrink is what pushed the amount and
 // the menu past the card edge in the first place.

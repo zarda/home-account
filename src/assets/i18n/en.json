@@ -204,7 +204,9 @@
     "splitPartNotice": "One part of a split purchase. Its other parts are edited on their own.",
     "splitFailed": "Couldn't split this purchase",
     "splitOffline": "Splitting needs a connection",
-    "splitOfflineHint": "Splitting needs a connection — reconnect, or save this purchase to one category."
+    "splitOfflineHint": "Splitting needs a connection — reconnect, or save this purchase to one category.",
+    "splitPart": "Part of a split purchase",
+    "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay."
   },
   "budget": {
     "title": "Budget",

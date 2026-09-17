@@ -125,6 +125,15 @@
               />
             </div>
             <span class="category-name">{{ getCategoryName(transaction.categoryId) }}</span>
+            <!-- Same field, same badge as the mobile row: no query backs it,
+                 so the desktop table costs nothing extra to mark a part. -->
+            @if (transaction.splitGroupId) {
+              <!-- MatIcon hides itself from assistive technology unless the
+                   template carries a literal aria-hidden — a bound attribute
+                   does not count, so this is the only way the label above is
+                   ever read. -->
+              <mat-icon class="split-indicator" role="img" aria-hidden="false" [attr.aria-label]="'transactions.splitPart' | translate">call_split</mat-icon>
+            }
           </div>
         </td>
       </ng-container>

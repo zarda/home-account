@@ -74,6 +74,17 @@
               }
             </span>
           }
+          <!-- No query backs this: splitGroupId on the row is the whole
+               signal, so the badge costs nothing past what the list already
+               fetched. Informative, not decorative — it is the only way a
+               screen reader learns this row is one part of a larger purchase. -->
+          @if (transaction().splitGroupId) {
+            <!-- MatIcon hides itself from assistive technology unless the
+                 template carries a literal aria-hidden — a bound attribute
+                 does not count, so this is the only way the label above is
+                 ever read. -->
+            <mat-icon class="split-indicator" role="img" aria-hidden="false" [attr.aria-label]="'transactions.splitPart' | translate">call_split</mat-icon>
+          }
         </span>
         <!-- appFitText rather than a truncation: a shortened amount reads as
              a different number, so it scales to fit and keeps every digit. -->

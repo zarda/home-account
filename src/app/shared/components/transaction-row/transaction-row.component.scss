@@ -120,6 +120,15 @@ app-category-chip {
   flex-shrink: 0;
 }
 
+.split-indicator {
+  font-size: var(--text-sm);
+  width: 1em;
+  height: 1em;
+  line-height: 1em;
+  color: var(--text-disabled);
+  flex-shrink: 0;
+}
+
 // Image count next to the icon, only shown past one image
 .receipt-count-badge {
   font-size: var(--text-xs);

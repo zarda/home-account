@@ -201,7 +201,9 @@
     "splitPartNotice": "分割された買い物の1件です。ほかの内訳は個別に編集します。",
     "splitFailed": "この買い物を分割できませんでした",
     "splitOffline": "分割には接続が必要です",
-    "splitOfflineHint": "分割には接続が必要です。再接続するか、1つのカテゴリで保存してください。"
+    "splitOfflineHint": "分割には接続が必要です。再接続するか、1つのカテゴリで保存してください。",
+    "splitPart": "分割した支出の一部",
+    "deleteSplitPartMessage": "「{{description}}」のこの部分を削除しますか？他の部分はそのまま残ります。"
   },
   "budget": {
     "title": "予算",

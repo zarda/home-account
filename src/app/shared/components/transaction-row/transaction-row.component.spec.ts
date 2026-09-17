@@ -88,6 +88,22 @@ describe('TransactionRowComponent', () => {
     expect(fixture.nativeElement.querySelector('.receipt-indicator')).toBeNull();
   });
 
+  it('shows the split indicator only when the row is part of a split', () => {
+    setTransaction({ splitGroupId: 'group-1' } as Partial<Transaction>);
+    const indicator = fixture.nativeElement.querySelector('.split-indicator');
+    expect(indicator).not.toBeNull();
+    // Informative, not decorative: the field is the only signal a screen
+    // reader has that this row is one part of a larger purchase.
+    expect(indicator!.getAttribute('role')).toBe('img');
+    expect(indicator!.getAttribute('aria-label')).toBe('transactions.splitPart');
+    // MatIcon hides itself from assistive technology unless the template
+    // says otherwise; without a literal override the label above is never read.
+    expect(indicator!.getAttribute('aria-hidden')).toBe('false');
+
+    setTransaction({});
+    expect(fixture.nativeElement.querySelector('.split-indicator')).toBeNull();
+  });
+
   it('badges the indicator with the image count only past one image', () => {
     setTransaction({
       receiptUrl: 'https://example.com/r0.png',
