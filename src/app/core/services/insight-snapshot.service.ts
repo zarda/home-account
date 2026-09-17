@@ -166,24 +166,38 @@ export class InsightSnapshotService {
    * yields an under-counted month, and there is nothing to detect that against —
    * countDocuments is server-only. Freezing a wrong month that then looks
    * authoritative is worse than deferring it to the next online open.
+   *
+   * Which months are missing is decided from a server read, not from
+   * `watch()`'s listener: under the persistent local cache, the listener's
+   * first emission is whatever this device last cached, and that can lag a
+   * month another device already wrote. A lag reads as "missing," and
+   * reissuing that month at revision 1 is refused outright — a stored month
+   * only ever advances its revision, never restarts it.
    */
   generateClosedMonths(now: Date = new Date()): Promise<InsightSnapshot[]> {
     if (this.generateInFlight) {
       return this.generateInFlight;
     }
-    if (!this.authService.userId() || !this.pwa.isOnline()) {
+    // A session still loading or running on the in-memory fallback profile
+    // cannot read its own snapshots yet; the retry effect swaps the real
+    // profile in and the next open generates.
+    const userId = this.authService.userId();
+    if (!userId || this.authService.isLoading() ||
+        this.authService.profileDegraded() || !this.pwa.isOnline()) {
       return Promise.resolve([]);
     }
 
     this.generateInFlight = (async () => {
       this.generating.set(true);
       try {
-        await firstValueFrom(this.watch());
+        const stored = await this.firestoreService.getCollectionFromServer<InsightSnapshot>(
+          this.path(userId), { orderBy: [{ field: 'monthKey', direction: 'desc' }] });
+        const existingMonths = new Set(stored.map(row => row.monthKey));
         // Read once for the whole run rather than per month: a backfill writes
         // up to SNAPSHOT_BACKFILL_MONTHS documents and each already issues two
         // range queries of its own.
         const rules = await this.recurringService.listAll();
-        return await this.writeMissingMonths(now, rules);
+        return await this.writeMissingMonths(now, rules, existingMonths);
       } catch (error) {
         // History accumulating is never a precondition for using the app.
         console.error('[InsightSnapshot] Generation failed:', error);
@@ -200,14 +214,14 @@ export class InsightSnapshotService {
   private async writeMissingMonths(
     now: Date,
     rules: RecurringTransaction[],
+    existingMonths: Set<string>,
   ): Promise<InsightSnapshot[]> {
     const lastClosed = startOfMonth(addMonths(now, -1));
     const earliest = startOfMonth(addMonths(lastClosed, -(SNAPSHOT_BACKFILL_MONTHS - 1)));
-    const existing = new Set(this.snapshotState().map(snapshot => snapshot.monthKey));
 
     const written: InsightSnapshot[] = [];
     for (const month of monthKeysBetween(earliest, lastClosed)) {
-      if (existing.has(month)) {
+      if (existingMonths.has(month)) {
         continue;
       }
       const snapshot = await this.buildAndWrite(month, 1, null, rules);
