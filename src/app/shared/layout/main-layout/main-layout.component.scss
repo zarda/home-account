@@ -7,6 +7,22 @@
   background-color: var(--surface-background);
 }
 
+// The header paints its own safe-area band but hides on scroll by
+// translating itself off-screen, taking that band with it — so the shell
+// paints a second one here that never moves. One z-index under the header:
+// above the docked sidebar and the content, below the header, backdrop and
+// drawer. Zero height on web, where --safe-top is 0px.
+:host::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  inset-inline: 0;
+  height: var(--safe-top);
+  background: var(--surface-card);
+  pointer-events: none;
+  z-index: calc(var(--z-header) - 1);
+}
+
 // Docked sidebar (desktop): a layout column, not an overlay — no backdrop,
 // no shadow, content shifts right instead of being covered.
 .sidebar-docked {
