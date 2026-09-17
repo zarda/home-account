@@ -2661,6 +2661,14 @@ describe('TransactionService addSplitTransaction', () => {
     expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
   });
 
+  it('refuses a part with no category, before any write', async () => {
+    await expectAsync(
+      service.addSplitTransaction(dto(100, 'cat-food'), [{ categoryId: '', amount: 30 }])
+    ).toBeRejectedWithError(SPLIT_REFUSED);
+
+    expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+  });
+
   it('deletes uploaded slots best-effort when the commit fails after a successful upload', async () => {
     const file = new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
     spyOn(mockFirestore, 'runTransaction').and.rejectWith(new Error('offline'));
@@ -2845,6 +2853,17 @@ describe('TransactionService addSplitTransaction', () => {
 
       await expectAsync(
         service.splitTransaction('tx-1', [{ categoryId: 'cat-home', amount: 100 }])
+      ).toBeRejectedWithError(SPLIT_REFUSED);
+
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
+      expect(mockFirestore.txSetSpy.calls.length).toBe(0);
+    });
+
+    it('refuses a part with no category, before any write', async () => {
+      seedRow();
+
+      await expectAsync(
+        service.splitTransaction('tx-1', [{ categoryId: '', amount: 30 }])
       ).toBeRejectedWithError(SPLIT_REFUSED);
 
       expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);

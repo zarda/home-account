@@ -1,0 +1,63 @@
+.split-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-block-end: 16px;
+}
+
+.split-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+// The category carries a name, the amount a handful of digits.
+.split-category {
+  flex: 2 1 0;
+  min-inline-size: 0;
+}
+
+.split-amount {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+// Aligned with the field boxes rather than their labels, and never smaller
+// than the 40px tap floor whatever the Material density resolves to.
+.split-remove {
+  flex: 0 0 auto;
+  margin-block-start: 8px;
+  min-inline-size: 40px;
+  min-block-size: 40px;
+}
+
+.split-add {
+  align-self: flex-start;
+  min-block-size: 40px;
+
+  mat-icon {
+    margin-inline-end: 8px;
+  }
+}
+
+.split-remainder {
+  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+
+  &.invalid {
+    color: var(--color-error);
+  }
+}
+
+.category-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.category-option mat-icon {
+  font-size: var(--text-xl);
+  width: 1em;
+  height: 1em;
+}

@@ -186,6 +186,12 @@
             </mat-select>
           </mat-form-field>
         </div>
+
+        <!-- Reading a part costs no query: the row carries the group id, and
+             nothing here counts its siblings. -->
+        @if (data.transaction?.splitGroupId) {
+          <p class="split-part-notice">{{ 'transactions.splitPartNotice' | translate }}</p>
+        }
       </div>
 
       <!-- Category -->
@@ -213,6 +219,23 @@
           <mat-error>{{ 'transactions.categoryRequired' | translate }}</mat-error>
         }
       </mat-form-field>
+
+      <!-- Split across categories. A goal link is a whole-purchase notion, so
+           the two exclude each other: a linked row is never offered the split,
+           and adding a part hides the goal field below. -->
+      @if (!goalIdSignal() && !data.transaction?.goalId) {
+        <app-split-parts
+          [categories]="filteredCategories()"
+          [currency]="formCurrency()"
+          [total]="splitTotal()"
+          [(parts)]="splitParts"
+        />
+        @if (splitParts().length && !pwa.isOnline()) {
+          <p class="split-offline-hint" role="alert">
+            {{ 'transactions.splitOfflineHint' | translate }}
+          </p>
+        }
+      }
 
       <!-- Description -->
       <mat-form-field appearance="outline" class="full-width">
@@ -314,8 +337,9 @@
         </mat-select>
       </mat-form-field>
 
-      <!-- Goal (Optional) — hidden when there is nothing to link to -->
-      @if (goalOptions().length > 0) {
+      <!-- Goal (Optional) — hidden when there is nothing to link to, and
+           while the purchase is being split (one goal, N counter moves). -->
+      @if (goalOptions().length > 0 && !splitParts().length) {
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>{{ 'transactions.goal' | translate }}</mat-label>
           <mat-select formControlName="goalId">
@@ -425,7 +449,7 @@
         mat-flat-button
         color="primary"
         type="submit"
-        [disabled]="form.invalid || isSubmitting()"
+        [disabled]="form.invalid || isSubmitting() || !canSubmit()"
         class="submit-button"
       >
         @if (isSubmitting()) {

@@ -6,7 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFormComponent } from './transaction-form.component';
-import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR, RECEIPT_ATTACH_FAILED, GOAL_LINK_INVALID } from '../../../core/services/transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR, RECEIPT_ATTACH_FAILED, GOAL_LINK_INVALID, SPLIT_REFUSED } from '../../../core/services/transaction.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
@@ -28,6 +28,7 @@ import { GroundingHistoryService } from '../../../core/services/grounding-histor
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
+import { PwaService } from '../../../core/services/pwa.service';
 import { Transaction, Category, Goal, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -69,6 +70,9 @@ describe('TransactionFormComponent', () => {
     getGoals: jasmine.Spy;
   };
   let attempts: ReturnType<typeof attemptStub>;
+  // The real root service registers window and service-worker listeners in
+  // its constructor; the split's offline refusal only needs the signal.
+  let isOnline: ReturnType<typeof signal<boolean>>;
 
   /** One receipt photo, as the strategy service hands it back. */
   function scanResult(
@@ -109,8 +113,11 @@ describe('TransactionFormComponent', () => {
   beforeEach(async () => {
     transactionService = jasmine.createSpyObj('TransactionService', [
       'addTransaction', 'updateTransaction', 'removeReceiptAt', 'removeAllReceipts', 'getTransactionDatesForMonth',
+      'addSplitTransaction', 'splitTransaction',
     ]);
     transactionService.addTransaction.and.resolveTo('new-id');
+    transactionService.addSplitTransaction.and.resolveTo(['new-id', 'part-id']);
+    transactionService.splitTransaction.and.resolveTo(['part-id']);
     transactionService.updateTransaction.and.resolveTo(undefined);
     transactionService.removeReceiptAt.and.resolveTo(undefined);
     transactionService.removeAllReceipts.and.resolveTo(undefined);
@@ -158,6 +165,7 @@ describe('TransactionFormComponent', () => {
       getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
     };
     attempts = attemptStub();
+    isOnline = signal(true);
 
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
@@ -190,6 +198,7 @@ describe('TransactionFormComponent', () => {
         { provide: GoalService, useValue: goalService },
         { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
+        { provide: PwaService, useValue: { isOnline } },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -241,6 +250,17 @@ describe('TransactionFormComponent', () => {
       component.form.get('type')?.setValue('income');
       expect(component.form.get('categoryId')?.value).toBe('');
     });
+
+    it('drops split parts the new type has no categories for', () => {
+      const component = build().componentInstance;
+      component.splitParts.set([{ categoryId: 'food', amount: 5 }]);
+
+      component.form.get('type')?.setValue('income');
+
+      // The rows would render as blank selects while still naming an expense
+      // category, and nothing holds the submit — the parts would be written.
+      expect(component.splitParts()).toEqual([]);
+    });
   });
 
   describe('goal picker', () => {
@@ -288,6 +308,14 @@ describe('TransactionFormComponent', () => {
       expect(component.goalLabel(goalOf())).toBe('Emergency fund');
       expect(component.goalLabel(goalOf({ currency: 'EUR' })))
         .toBe('Emergency fund (EUR)');
+    });
+
+    it('mirrors the goal control into a signal, the categoryIdSignal pattern', () => {
+      const component = build().componentInstance;
+
+      component.form.patchValue({ goalId: 'g1' });
+
+      expect(component.goalIdSignal()).toBe('g1');
     });
   });
 
@@ -742,6 +770,107 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
       expect(dialog.open).toHaveBeenCalledWith(ReceiptLimitDialogComponent, jasmine.any(Object));
       expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    describe('with split parts', () => {
+      const parts = [{ categoryId: 'cat-home', amount: 5 }];
+
+      it('writes the purchase and its parts through the split seam', async () => {
+        const component = build().componentInstance;
+        validForm(component);
+        component.splitParts.set(parts);
+
+        await component.onSubmit();
+
+        expect(transactionService.addSplitTransaction).toHaveBeenCalledWith(
+          jasmine.objectContaining({ amount: 15.5, categoryId: 'food' }),
+          parts
+        );
+        expect(transactionService.addTransaction).not.toHaveBeenCalled();
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      // The analytics façade has no split event; a split add still reports
+      // the one add the form has always sent, exactly once.
+      it('still reports one transaction_add', async () => {
+        const component = build().componentInstance;
+        validForm(component);
+        component.splitParts.set(parts);
+
+        await component.onSubmit();
+
+        expect(analytics.trackTransactionAdd).toHaveBeenCalledTimes(1);
+      });
+
+      it('saves the edit first, then takes the stored row apart', async () => {
+        const calls: string[] = [];
+        transactionService.updateTransaction.and.callFake(async () => { calls.push('update'); });
+        transactionService.splitTransaction.and.callFake(async () => { calls.push('split'); return []; });
+        const txn = createTransaction({ id: 'e1' });
+        const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+        validForm(component);
+        component.splitParts.set(parts);
+
+        await component.onSubmit();
+
+        expect(calls).toEqual(['update', 'split']);
+        expect(transactionService.splitTransaction).toHaveBeenCalledWith('e1', parts);
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('keeps the dialog open when the split fails after the edit landed', async () => {
+        transactionService.splitTransaction.and.rejectWith(new Error(SPLIT_REFUSED));
+        const txn = createTransaction({ id: 'e1' });
+        const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+        validForm(component);
+        component.splitParts.set(parts);
+
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction).toHaveBeenCalled();
+        expect(notifications.error).toHaveBeenCalledWith('transactions.splitFailed');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+      });
+
+      it('names the split when the add seam refuses it, rather than the generic error', async () => {
+        transactionService.addSplitTransaction.and.rejectWith(new Error(SPLIT_REFUSED));
+        const component = build().componentInstance;
+        validForm(component);
+        component.splitParts.set(parts);
+
+        await component.onSubmit();
+
+        expect(notifications.error).toHaveBeenCalledWith('transactions.splitFailed');
+        expect(notifications.error).not.toHaveBeenCalledWith('common.error');
+      });
+
+      // runTransaction rejects offline, and the entry is still in the form:
+      // nothing is attempted, so nothing half-lands.
+      it('refuses to submit while offline and writes nothing', async () => {
+        isOnline.set(false);
+        const component = build().componentInstance;
+        validForm(component);
+        component.splitParts.set(parts);
+
+        await component.onSubmit();
+
+        expect(notifications.error).toHaveBeenCalledWith('transactions.splitOffline');
+        expect(transactionService.addSplitTransaction).not.toHaveBeenCalled();
+        expect(transactionService.addTransaction).not.toHaveBeenCalled();
+        expect(dialogRef.close).not.toHaveBeenCalled();
+        expect(component.isSubmitting()).toBeFalse();
+      });
+
+      it('lets a plain purchase through while offline', async () => {
+        isOnline.set(false);
+        const component = build().componentInstance;
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction).toHaveBeenCalled();
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
     });
   });
 

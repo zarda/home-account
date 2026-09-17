@@ -190,7 +190,18 @@
     "clearCoordinates": "移除座標",
     "attachScanPosition": "將目前位置附加為這張收據的地點",
     "useSuggestedCategory": "使用建議分類 {{category}}",
-    "countryFilter": "國家"
+    "countryFilter": "國家",
+    "splitAcross": "分拆至多個類別",
+    "splitPartCategory": "類別",
+    "splitPartAmount": "金額",
+    "splitRemovePart": "移除此筆分拆",
+    "splitRemainder": "{{amount}}將留在主要類別",
+    "splitRemainderInvalid": "每筆分拆都需要金額，且合計必須為主要類別留下餘額",
+    "splitPartCategoryRequired": "每個部分都需要選擇類別",
+    "splitPartNotice": "這是分拆消費的其中一筆，其他分拆需個別編輯。",
+    "splitFailed": "無法分拆此筆消費",
+    "splitOffline": "分拆需要網路連線",
+    "splitOfflineHint": "分拆需要網路連線，請重新連線，或先以單一類別儲存。"
   },
   "budget": {
     "title": "預算",

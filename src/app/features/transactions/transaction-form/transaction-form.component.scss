@@ -461,3 +461,17 @@
     height: 18px;
   }
 }
+
+// One part of a split purchase: stated under the amount, since the amount is
+// the part's own, not the purchase's.
+.split-part-notice {
+  margin: 8px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.split-offline-hint {
+  margin: 0 0 16px;
+  font-size: var(--text-sm);
+  color: var(--color-error);
+}
