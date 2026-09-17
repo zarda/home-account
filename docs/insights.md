@@ -122,6 +122,23 @@ from the same pure functions the live tab uses. Model in
   alone rather than reported as a failure. See
   [backup-restore.md](backup-restore.md).
 
+### Generation waits for a loaded profile, and asks the server what exists
+
+Beyond a signed-in `userId`, generation also returns early while
+`authService.isLoading()` or `authService.profileDegraded()` is true. A boot
+running on the in-memory fallback profile (see [docs/auth.md](auth.md))
+cannot read its own snapshots, so it defers rather than writing a month the
+rules will refuse the moment the real profile lands — the account gets its
+backfill at the next open the profile loads cleanly.
+
+Deciding *which* months are missing is also answered by a server read
+(`getCollectionFromServer`), never by `watch()`'s listener: under the
+persistent local cache, a listener's first emission is whatever this device
+last cached, which can lag another device's writes and make an
+already-written month look missing. Reissuing that month would be refused
+outright — see [docs/one-shot-reads.md](one-shot-reads.md#the-snapshot-generators-missing-month-check-426)
+for the full account of why a cache-served guess is not enough here.
+
 ### Generation requires connectivity — a deliberate deviation from #117
 
 The issue suggests generation can read the local Firestore cache. It cannot

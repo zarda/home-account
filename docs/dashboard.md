@@ -142,6 +142,14 @@ drag handle does not offer," in the component's own words. Each move:
   destroyed-injector guard (the house idiom,
   `transaction-preview-table.component.ts:808-836`).
 
+That first announcement is optimistic — it names the position the move
+asked for, before the write behind it has settled. **A write that fails
+announces a second time**, once the rows fall back to the account's
+last-known order: *"Couldn't save. {card} is back at position {position} of
+{total}"*, read right after the existing error notification. Without it, a
+screen-reader user had already been told where the card landed and had no
+way to learn that it had not.
+
 Each `mat-slide-toggle` is named `aria-labelledby` pointing at the row's own
 visible title span, never a bound `aria-label` — the house idiom
 (`security-settings.component.html:9`): the inner `button[role=switch]`

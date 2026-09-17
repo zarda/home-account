@@ -201,6 +201,17 @@ Notes:
   the web bundle. `provideAppAnalytics()` withholds the `Analytics` token
   entirely on native, because a gtag hit from inside the WKWebView would be
   attributed to the *web* data stream rather than the iOS one.
+- **The loaded native plugin is cached in a box, `{ plugin }`, never as the
+  plugin object itself.** `registerPlugin()`'s proxy answers any
+  unrecognised property — `then` included — with a callable wrapper for a
+  same-named native method, so a promise that resolves *with* the plugin
+  gets its `then` read as a plugin call instead of a normal promise
+  callback, and never settles: every native analytics call hung silently
+  from the day this transport was written until that was found and fixed
+  ([ADR 0138](ADR/0138-a-plugin-call-nothing-implements-is-the-developers-failure-not-the-users.md)).
+  Native analytics on iOS has only been reaching the bridge since that
+  change — an install built before it never sent a native event, whatever
+  the consent state said.
 - Analytics is skipped unless `environment.firebase.measurementId` looks like a
   real id (`G-` followed by the property code). The committed templates ship
   `YOUR_MEASUREMENT_ID` and CI writes `ci-stub`; both are non-empty, so the

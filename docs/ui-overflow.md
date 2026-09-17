@@ -61,6 +61,33 @@ number line-collection sees. `transaction-row.component.scss` shipped the first
 of these and put its category tile alone on a line whenever a description ran
 long.
 
+**A `mat-button-toggle-group`'s own segments need the same declaration, and
+a label that cannot shrink further needs somewhere else to go.** Material
+renders each `mat-button-toggle` at its own min-content width by default, so
+a group with a fixed number of labelled options does not share its row
+evenly — the widest label's segment crowds out the others, or the whole
+group overflows its container. `mat-button-toggle { flex: 1; min-width: 0 }`
+fixes the distribution the ordinary way, on both groups this app currently
+has: the theme toggle (`profile-settings.component.scss`) and the
+accessibility settings' font-size toggle
+(`accessibility-settings.component.scss`).
+
+Equal distribution alone still fails once the account's own font scale
+makes a label wider than an even share can hold — three segments cannot
+each shrink a checkmark and a whole word past a point where the word stops
+being legible. Both groups answer this with a container query of their own
+(`container: … / inline-size` on the row, not the viewport, because a
+component does not know how wide its own container will be at the point it
+renders): below 420px, the option's label wraps onto a second line instead
+of overflowing. Only the font-size group also stops Material's checkmark
+from reserving the inline space it would otherwise still claim on the
+checked segment, by zeroing that segment's `padding-inline-start`
+(`accessibility-settings.component.scss`); the theme toggle hides the
+checkmark's wrapper the same way but leaves that padding in place
+(`profile-settings.component.scss`), so its checked segment still carries
+the empty strip. `overflow-wrap: anywhere` is part of the same rule for the
+one label with no space to wrap on at all.
+
 ---
 
 ### G2 — `1fr` is never written bare, and `minmax(0, 1fr)` is not always the fix

@@ -139,6 +139,10 @@ reverse — why a thing is the way it is, not how to use it.
 | [0132](0132-the-dashboard-is-arranged-by-the-account-and-a-hidden-card-composes-nothing.md) | The dashboard is arranged by the account, and a hidden card composes nothing | Accepted | 2026-09-16 |
 | [0133](0133-the-home-screen-widget-shows-the-dashboards-last-this-month-paint-and-nothing-a-lock-hides.md) | The home-screen widget shows the dashboard's last this-month paint, and nothing a lock hides | Accepted | 2026-09-16 |
 | [0134](0134-an-emulator-run-carries-no-provider-key.md) | An emulator run carries no provider key | Accepted; corrects a gap of 0131 | 2026-09-16 |
+| [0135](0135-a-purchase-split-across-categories-is-stored-as-sibling-rows-sharing-a-group.md) | A purchase split across categories is stored as sibling rows sharing a group | Accepted | 2026-09-17 |
+| [0136](0136-the-shell-paints-the-status-bar-band-and-the-header-may-leave.md) | The shell paints the status-bar band, and the header may leave | Accepted | 2026-09-17 |
+| [0137](0137-a-closed-month-is-generated-only-against-a-loaded-profile-and-the-servers-own-list.md) | A closed month is generated only against a loaded profile and the server's own list | Accepted | 2026-09-17 |
+| [0138](0138-a-plugin-call-nothing-implements-is-the-developers-failure-not-the-users.md) | A plugin call nothing implements is the developer's failure, not the user's | Accepted | 2026-09-17 |
 
 ## What belongs here
 

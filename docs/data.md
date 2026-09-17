@@ -60,12 +60,17 @@ A row shows one of three things:
 - **nothing** — the kind has no countable collection. API keys are one
   document holding encrypted keys, not a collection of records.
 
-Two counts are worth reading carefully:
+A few counts are worth reading carefully:
 
 - **Categories** counts what is *stored*, and the built-in categories are not.
   `CategoryService.loadCategories` merges stored documents with code-defined
   defaults, so a fresh account reads 0 while the category list is full. It is
   the only kind with this shape.
+- **Transactions counts rows, not purchases.** A purchase split across
+  categories (see [docs/splits.md](splits.md)) writes several documents that
+  share one field, and each is a row like any other — the count on this page
+  rises by however many parts a split produced, the same as every other "N
+  transactions" figure in the app.
 - The counts are a snapshot taken when the page opened. Deleting records on
   the page a row links to leaves the number stale until the next visit.
 
