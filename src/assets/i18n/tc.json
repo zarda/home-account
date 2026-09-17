@@ -630,6 +630,7 @@
     "dashboardMoveUp": "將{{card}}上移",
     "dashboardMoveDown": "將{{card}}下移",
     "dashboardCardMoved": "已將{{card}}移至第{{position}}位（共{{total}}項）",
+    "dashboardCardMoveReverted": "無法儲存。{{card}}已回到第{{position}}位（共{{total}}項）",
     "dashboardReset": "恢復預設",
     "dashboardLayoutSaveFailed": "無法儲存儀表板版面配置"
   },

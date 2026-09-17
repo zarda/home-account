@@ -630,6 +630,7 @@
     "dashboardMoveUp": "「{{card}}」を上へ移動",
     "dashboardMoveDown": "「{{card}}」を下へ移動",
     "dashboardCardMoved": "「{{card}}」を{{position}}番目に移動しました（全{{total}}件）",
+    "dashboardCardMoveReverted": "保存できませんでした。「{{card}}」は{{position}}番目に戻りました（全{{total}}件）",
     "dashboardReset": "デフォルトに戻す",
     "dashboardLayoutSaveFailed": "ダッシュボードのレイアウトを保存できませんでした"
   },

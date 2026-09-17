@@ -672,6 +672,7 @@
     "dashboardMoveUp": "Move {{card}} up",
     "dashboardMoveDown": "Move {{card}} down",
     "dashboardCardMoved": "{{card}} moved to position {{position}} of {{total}}",
+    "dashboardCardMoveReverted": "Couldn't save. {{card}} is back at position {{position}} of {{total}}",
     "dashboardReset": "Reset to default",
     "dashboardLayoutSaveFailed": "Couldn't save the dashboard layout"
   },

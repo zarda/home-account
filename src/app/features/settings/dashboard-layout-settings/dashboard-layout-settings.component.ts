@@ -95,6 +95,9 @@ export class DashboardLayoutSettingsComponent {
   /** Switches pressed since the current run of saves began. */
   private pressedSwitches = new Map<DashboardCardId, MatSlideToggleChange['source']>();
 
+  /** Set only by a move, so a rejected toggle never gets a second announcement. */
+  private pendingMove: { id: DashboardCardId } | null = null;
+
   /** Whether a layout is stored at all — a stored default is still resettable. */
   readonly customized = computed(
     () => this.auth.currentUser()?.preferences?.dashboardLayout !== undefined
@@ -111,6 +114,7 @@ export class DashboardLayoutSettingsComponent {
 
     const position = next.order.indexOf(id) + 1;
     const total = next.order.length;
+    this.pendingMove = { id };
     this.apply(next);
 
     const card = this.translation.t(CARD_TITLE_KEYS[id]);
@@ -166,10 +170,14 @@ export class DashboardLayoutSettingsComponent {
           await this.auth.updateUserPreferences({ dashboardLayout: this.layout() });
         }
       }
+      // A move already announced the optimistic position; once every write it
+      // rode along with has landed, that position is the truth again.
+      this.pendingMove = null;
     } catch {
       // A queued change was built on the write that failed, so it goes too.
       this.queuedWrite = null;
       this.notifications.error(this.translation.t('settings.dashboardLayoutSaveFailed'));
+      this.announceMoveReverted();
       this.revertSwitches();
     } finally {
       // Ends the hold, so the rows become the account's layout again.
@@ -191,6 +199,25 @@ export class DashboardLayoutSettingsComponent {
     for (const [id, toggle] of this.pressedSwitches) {
       toggle.checked = !account.hidden.includes(id);
     }
+  }
+
+  /**
+   * The optimistic move announcement said a position that a failed write
+   * never made true, so a screen-reader user is told where the card really
+   * landed once the rows fall back to the account's order.
+   */
+  private announceMoveReverted(): void {
+    if (!this.pendingMove) return;
+    const { id } = this.pendingMove;
+    this.pendingMove = null;
+
+    const account = this.accountLayout();
+    const card = this.translation.t(CARD_TITLE_KEYS[id]);
+    const position = account.order.indexOf(id) + 1;
+    const total = account.order.length;
+    this.announcer.announce(
+      this.translation.t('settings.dashboardCardMoveReverted', { card, position, total })
+    );
   }
 
   /**
