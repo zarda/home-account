@@ -20,6 +20,15 @@
  * flag the cure; asserting the outcome catches every mechanism that kills a
  * ban, including ones not invented yet.
  *
+ * A second, unrelated rule rides the same mechanism: no-restricted-syntax
+ * bans firstValueFrom over a TransactionService listener (docs/one-shot-reads.md,
+ * #427) — a warm cache's first emission is a plausible-looking subset, not
+ * the collection. That ban lives in its own files/ignores block, so it
+ * cannot be silently replaced by the import bans above; what it can lose
+ * silently is a listener the alternation forgets, which is why this check
+ * also re-derives the census straight from TransactionService and asserts
+ * every name it finds is named in the selector.
+ *
  * `--self-test` exercises the extraction and diff helpers against known
  * shapes and exits non-zero if the checker itself is broken; npm's
  * lint-guards:check chains it first, as i18n:check and prompts:check do.
@@ -32,12 +41,22 @@
  *     see one either.
  *   - Whether the rule would actually fire on a banned import. This proves
  *     the ban is in force for the file, not that ESLint works.
+ *   - A listener held in a variable and passed as an identifier — `const rows$ =
+ *     this.transactionService.getTransactions(); await firstValueFrom(rows$)`
+ *     — the argument is an Identifier, not a CallExpression, so neither selector
+ *     matches.
+ *   - A double-chained pipe — `x.getTransactions(...).pipe(a).pipe(b)` — the
+ *     outer `.pipe`'s object is the inner `.pipe` call, whose property name is
+ *     `pipe`, so selector 2 does not match.
+ *   - Another service's listeners. The census walks TransactionService only;
+ *     a warm-cache read through a different service is outside it.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { ESLint } from 'eslint';
 
 const RULE_KEY = '@typescript-eslint/no-restricted-imports';
+const SYNTAX_RULE_KEY = 'no-restricted-syntax';
 
 const ANALYTICS_PATHS = ['@angular/fire/analytics', '@capacitor-firebase/analytics'];
 const ANALYTICS_PATTERNS = ['firebase/analytics', 'firebase/analytics/*', '@firebase/analytics'];
@@ -78,6 +97,39 @@ const POPULATIONS = [
   },
 ];
 
+// The alternation of TransactionService listener methods the syntax ban
+// names — kept here as a plain string, not imported, so a drift between this
+// file and eslint.config.js shows up as a resolved-selector mismatch below
+// rather than disappearing behind a shared constant.
+const LISTENER_METHOD_ALTERNATION =
+  'getTransactions|getTransactionById|getTransactionsInRange|getTransactionsWithReceipts|' +
+  'getRecentTransactions|getExpensesInRange|getPeriodTotals|getPeriodCategoryTotals|' +
+  'getTransactionDatesForMonth|getByDateRange|getByCategory|getMonthlyTotals|' +
+  'subscribeToCollection|subscribeToDocument|watch';
+
+const DIRECT_LISTENER_SELECTOR =
+  `CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child` +
+  `[callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`;
+
+const PIPED_LISTENER_SELECTOR =
+  `CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child` +
+  `[callee.property.name='pipe'][callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`;
+
+const SYNTAX_POPULATIONS = [
+  {
+    label: 'app code under the firstValueFrom-listener ban',
+    files: [
+      'src/app/core/services/insight-snapshot.service.ts',
+      'src/app/features/transactions/transactions.component.ts',
+    ],
+    expectedSelectors: [DIRECT_LISTENER_SELECTOR, PIPED_LISTENER_SELECTOR],
+  },
+];
+
+// Specs are exempt (a spec double is not a warm cache), so the rule must
+// resolve to nothing at all here, not to an empty rule.
+const SYNTAX_EXEMPT_FILES = ['src/app/core/services/insight-snapshot.service.spec.ts'];
+
 /**
  * Normalize a resolved rule entry to bare specifier lists. Accepts every
  * shape the rule schema allows — paths as {name, message} objects or bare
@@ -108,6 +160,74 @@ export function diffSets(actual, expected) {
     missing: [...want].filter(entry => !have.has(entry)),
     unexpected: [...have].filter(entry => !want.has(entry)),
   };
+}
+
+/**
+ * Normalize a resolved no-restricted-syntax entry to its selector strings.
+ * Same defensiveness as extractRestrictions: severity as a number or its
+ * string alias, and any number of {selector, message} option objects.
+ * Returns null when the rule is absent — the shape a spec-exempt file must
+ * resolve to.
+ */
+export function extractSyntaxSelectors(entry) {
+  if (!entry) return null;
+  const [rawSeverity, ...options] = Array.isArray(entry) ? entry : [entry];
+  const severityMap = { off: 0, warn: 1, error: 2 };
+  const severity =
+    typeof rawSeverity === 'number' ? rawSeverity : (severityMap[rawSeverity] ?? 0);
+  const selectors = options.map(option =>
+    typeof option === 'string' ? option : option.selector
+  );
+  return { severity, selectors };
+}
+
+/**
+ * The names of every TransactionService method whose declaration line ends
+ * in `): Observable<` — the census the firstValueFrom selector must cover.
+ * A signature can wrap across lines (params one per line), so this tracks
+ * paren depth from each method-start line rather than matching a single
+ * line; it stops accumulating the moment the parameter list's parens
+ * rebalance to zero, which is exactly where `): Observable<` would sit.
+ */
+export function observableMethods(source) {
+  const startPattern =
+    /^\s{2}(?:public\s+|private\s+|protected\s+|static\s+|async\s+)*([a-zA-Z_$][\w$]*)\s*\(/;
+  const names = [];
+
+  let pendingName = null;
+  let buffer = '';
+  let depth = 0;
+
+  for (const line of source.split('\n')) {
+    if (pendingName === null) {
+      const match = line.match(startPattern);
+      if (!match) continue;
+      pendingName = match[1];
+      buffer = '';
+      depth = 0;
+    }
+
+    for (const ch of line) {
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+    }
+    buffer += `${line}\n`;
+
+    if (depth <= 0) {
+      if (/\)\s*:\s*Observable</.test(buffer)) {
+        names.push(pendingName);
+      }
+      pendingName = null;
+    }
+  }
+
+  return names;
+}
+
+/** The alternation names out of a selector built like DIRECT_LISTENER_SELECTOR. */
+export function selectorNames(selector) {
+  const match = selector.match(/\/\^\(([^)]+)\)\$\//);
+  return match ? match[1].split('|') : [];
 }
 
 async function run() {
@@ -152,8 +272,65 @@ async function run() {
     }
   }
 
+  for (const population of SYNTAX_POPULATIONS) {
+    for (const file of population.files) {
+      fileCount += 1;
+
+      if (!existsSync(file)) {
+        fail(`${file} (${population.label}) — representative file is gone; update SYNTAX_POPULATIONS in this script`);
+        continue;
+      }
+
+      const config = await eslint.calculateConfigForFile(file);
+      const resolved = extractSyntaxSelectors(config.rules?.[SYNTAX_RULE_KEY]);
+
+      if (resolved === null) {
+        fail(`${file} (${population.label}) — ${SYNTAX_RULE_KEY} does not resolve at all`);
+        continue;
+      }
+      if (resolved.severity !== 2) {
+        fail(`${file} (${population.label}) — ${SYNTAX_RULE_KEY} resolves at severity ${resolved.severity}, not error`);
+      }
+
+      const diff = diffSets(resolved.selectors, population.expectedSelectors);
+      for (const entry of diff.missing) {
+        fail(`${file} (${population.label}) — expected selector is missing from the resolved config: ${entry}`);
+      }
+      for (const entry of diff.unexpected) {
+        fail(`${file} (${population.label}) — unexpected selector resolves here: ${entry}`);
+      }
+    }
+  }
+
+  for (const file of SYNTAX_EXEMPT_FILES) {
+    fileCount += 1;
+
+    if (!existsSync(file)) {
+      fail(`${file} (spec exemption) — representative file is gone; update SYNTAX_EXEMPT_FILES in this script`);
+      continue;
+    }
+
+    const config = await eslint.calculateConfigForFile(file);
+    if (config.rules?.[SYNTAX_RULE_KEY]) {
+      fail(`${file} (spec exemption) — ${SYNTAX_RULE_KEY} resolves here but specs are exempt`);
+    }
+  }
+
+  const census = observableMethods(
+    readFileSync('src/app/core/services/transaction.service.ts', 'utf8')
+  );
+  const named = new Set(selectorNames(DIRECT_LISTENER_SELECTOR));
+  for (const method of census) {
+    if (!named.has(method)) {
+      fail(
+        `transaction.service.ts's ${method}(...) returns an Observable but is not named in the firstValueFrom selector's alternation`
+      );
+    }
+  }
+
   console.log(
-    `Resolved ${RULE_KEY} for ${fileCount} files across ${POPULATIONS.length} populations.`
+    `Resolved ${RULE_KEY} for ${fileCount} files across ${POPULATIONS.length} populations, ` +
+      `plus ${SYNTAX_RULE_KEY} against a ${census.length}-method listener census.`
   );
 
   if (failures.length > 0) {
@@ -172,7 +349,7 @@ async function run() {
   console.log('Every import ban resolves for exactly the files it governs.');
 }
 
-function selfTest() {
+async function selfTest() {
   const results = [];
   const check = (name, actual, expected) => {
     results.push({
@@ -221,6 +398,89 @@ function selfTest() {
     { missing: ['b'], unexpected: ['x'] }
   );
 
+  check(
+    'a bare-string selector reads back',
+    extractSyntaxSelectors([2, 'A', 'B']).selectors,
+    ['A', 'B']
+  );
+  check(
+    'an {selector, message} option reads back',
+    extractSyntaxSelectors(['error', { selector: 'A', message: 'm' }]).selectors,
+    ['A']
+  );
+  check('a missing syntax rule resolves to null', extractSyntaxSelectors(undefined), null);
+
+  const observableMethodsFixture = [
+    '  getTransactions(filters?: TransactionFilters): Observable<Transaction[]> {',
+    '    return x;',
+    '  }',
+    '',
+    '  getMonthlyTotals(',
+    '    year: number,',
+    '    month: number',
+    '  ): Observable<MonthlyTotal> {',
+    '    return y;',
+    '  }',
+    '',
+    '  helperNotObservable(x: number): number {',
+    '    return x;',
+    '  }',
+  ].join('\n');
+  check(
+    'observableMethods finds a single-line and a wrapped signature, skips a non-Observable method',
+    observableMethods(observableMethodsFixture),
+    ['getTransactions', 'getMonthlyTotals']
+  );
+
+  check(
+    'selectorNames recovers every name in the alternation',
+    selectorNames(DIRECT_LISTENER_SELECTOR),
+    LISTENER_METHOD_ALTERNATION.split('|')
+  );
+
+  const fixtureEslint = new ESLint();
+  const fixturePath = 'src/app/core/services/one-shot-fixture.ts';
+  const countSyntaxMessages = lintResults =>
+    lintResults.flatMap(result => result.messages).filter(m => m.ruleId === SYNTAX_RULE_KEY)
+      .length;
+
+  const directBad = await fixtureEslint.lintText(
+    'declare const firstValueFrom: any;\n' +
+      'class X {\n' +
+      '  transactionService: any;\n' +
+      '  async f() {\n' +
+      '    return firstValueFrom(this.transactionService.getTransactionsInRange(1, 2));\n' +
+      '  }\n' +
+      '}\n',
+    { filePath: fixturePath }
+  );
+  check('a direct firstValueFrom over a listener fails the rule once', countSyntaxMessages(directBad), 1);
+
+  const pipedBad = await fixtureEslint.lintText(
+    'declare const firstValueFrom: any;\n' +
+      'declare const map: any;\n' +
+      'class X {\n' +
+      '  transactionService: any;\n' +
+      '  async f() {\n' +
+      '    return firstValueFrom(this.transactionService.getTransactionsInRange(1, 2).pipe(map(x => x)));\n' +
+      '  }\n' +
+      '}\n',
+    { filePath: fixturePath }
+  );
+  check('a piped firstValueFrom over a listener fails the rule once', countSyntaxMessages(pipedBad), 1);
+
+  const good = await fixtureEslint.lintText(
+    'declare const firstValueFrom: any;\n' +
+      'class X {\n' +
+      '  transactionService: any;\n' +
+      '  async f() {\n' +
+      '    return firstValueFrom(this.transactionService.getTransactionsInRangeOnce(1, 2));\n' +
+      '  }\n' +
+      '}\n',
+    { filePath: fixturePath }
+  );
+  check('firstValueFrom over a …Once method passes the rule', countSyntaxMessages(good), 0);
+
   let failed = 0;
   for (const result of results) {
     if (result.ok) {
@@ -241,7 +501,7 @@ function selfTest() {
 }
 
 if (process.argv.includes('--self-test')) {
-  selfTest();
+  await selfTest();
 } else {
   await run();
 }

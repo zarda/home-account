@@ -31,6 +31,28 @@ const ANALYTICS_IMPORT_PATTERNS = [
       "Use AnalyticsService. It owns the consent gate, the no-op paths and the parameter allowlist.",
   },
 ];
+// Ban method names that read from Firestore listeners (ADR 0034,
+// docs/one-shot-reads.md, #427): firstValueFrom over one of these takes the
+// listener's first emission, which under the persistent cache is whatever
+// window the session happened to browse before — a plausible-looking
+// subset, not the collection. The names are TransactionService's Observable
+// methods plus subscribeToCollection, subscribeToDocument, and watch — this
+// selector flags them wherever they are called, not just on TransactionService.
+// Every production call site now goes through a `…Once`/`…FromServer` sibling
+// that resolves once against the server; this bans the shape that read directly
+// from the listener so it cannot come back. scripts/check-lint-guards.mjs
+// re-derives the method list from TransactionService itself and fails the build
+// if the alternation falls behind it.
+const LISTENER_METHOD_ALTERNATION =
+  "getTransactions|getTransactionById|getTransactionsInRange|getTransactionsWithReceipts|" +
+  "getRecentTransactions|getExpensesInRange|getPeriodTotals|getPeriodCategoryTotals|" +
+  "getTransactionDatesForMonth|getByDateRange|getByCategory|getMonthlyTotals|" +
+  "subscribeToCollection|subscribeToDocument|watch";
+const FIRST_VALUE_FROM_LISTENER_MESSAGE =
+  "firstValueFrom takes a listener's first emission, which the persistent " +
+  "cache can answer from a stale subset (docs/one-shot-reads.md). Use the " +
+  "…Once/…FromServer sibling instead.";
+
 const MODEL_IMPORT_PATHS = [
   {
     name: "@google/generative-ai",
@@ -138,6 +160,33 @@ module.exports = defineConfig([
         {
           paths: [...ANALYTICS_IMPORT_PATHS],
           patterns: [...ANALYTICS_IMPORT_PATTERNS],
+        },
+      ],
+    },
+  },
+  {
+    // Bans firstValueFrom over a TransactionService listener across app
+    // code (see the alternation's comment above). Specs are ignored here,
+    // not just left unmatched by `files`, because a fixture double calling
+    // a listener method by the same name is not a warm cache — the rule has
+    // nothing to say about a spec's own stand-in.
+    files: ["src/app/**/*.ts"],
+    ignores: ["**/*.spec.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child" +
+            `[callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`,
+          message: FIRST_VALUE_FROM_LISTENER_MESSAGE,
+        },
+        {
+          selector:
+            "CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child" +
+            "[callee.property.name='pipe']" +
+            `[callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`,
+          message: FIRST_VALUE_FROM_LISTENER_MESSAGE,
         },
       ],
     },
