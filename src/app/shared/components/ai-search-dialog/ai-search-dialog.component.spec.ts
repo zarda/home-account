@@ -37,7 +37,7 @@ describe('AiSearchDialogComponent', () => {
     refreshAnswer: jasmine.Spy;
     deleteAnswer: jasmine.Spy;
   };
-  let goalService: { goals: jasmine.Spy; exportAll: jasmine.Spy };
+  let goalService: { goals: jasmine.Spy; listAll: jasmine.Spy };
 
   async function searchWith(result: NlSearchResult): Promise<void> {
     nlSearch.search.and.resolveTo(result);
@@ -70,7 +70,7 @@ describe('AiSearchDialogComponent', () => {
     // goal-chip suite warms the signal or resolves the fallback per test.
     goalService = {
       goals: jasmine.createSpy('goals').and.returnValue([]),
-      exportAll: jasmine.createSpy('exportAll').and.resolveTo([]),
+      listAll: jasmine.createSpy('listAll').and.resolveTo([]),
     };
 
     const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
@@ -204,7 +204,7 @@ describe('AiSearchDialogComponent', () => {
       });
 
       it('fetches the goals once when the signal is cold, then names the goal', async () => {
-        goalService.exportAll.and.resolveTo([trip]);
+        goalService.listAll.and.resolveTo([trip]);
 
         await searchWith({ kind: 'filter', filters: { goalId: 'goal-japan' } });
         await fixture.whenStable();
@@ -214,11 +214,11 @@ describe('AiSearchDialogComponent', () => {
           fixture.nativeElement.querySelectorAll('.summary-chip'),
           (el) => (el as HTMLElement).textContent?.trim());
         expect(chips).toEqual(['Japan Trip']);
-        expect(goalService.exportAll).toHaveBeenCalledTimes(1);
+        expect(goalService.listAll).toHaveBeenCalledTimes(1);
 
         // A second interpretation does not pay for a second read.
         await searchWith({ kind: 'filter', filters: { goalId: 'goal-japan' } });
-        expect(goalService.exportAll).toHaveBeenCalledTimes(1);
+        expect(goalService.listAll).toHaveBeenCalledTimes(1);
       });
 
       it('leaves the one-shot read alone while the signal is warm', async () => {
@@ -226,7 +226,7 @@ describe('AiSearchDialogComponent', () => {
 
         await searchWith({ kind: 'filter', filters: { goalId: 'goal-japan' } });
 
-        expect(goalService.exportAll).not.toHaveBeenCalled();
+        expect(goalService.listAll).not.toHaveBeenCalled();
       });
 
       it('falls back to the raw id when no loaded goal matches', async () => {

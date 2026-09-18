@@ -438,4 +438,21 @@ describe('CategoryService', () => {
       expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(2);
     });
   });
+
+  describe('exportAll', () => {
+    const path = 'users/test-user-123/categories';
+
+    it('reads the server, not the cache', async () => {
+      const rows = [createCategory({ id: 'c1' }), createCategory({ id: 'c2' })];
+      mockFirestore.setMockCollection(path, rows);
+
+      const result = await service.exportAll();
+
+      expect(result).toEqual(rows);
+      expect(mockFirestore.getCollectionFromServerSpy.calls.map(c => c.args)).toEqual([
+        [path, { orderBy: [{ field: 'order', direction: 'asc' }] }]
+      ]);
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
+    });
+  });
 });

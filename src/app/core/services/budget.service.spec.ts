@@ -81,6 +81,7 @@ describe('BudgetService', () => {
       'deleteDocument',
       'getDocument',
       'getCollection',
+      'getCollectionFromServer',
       'dateToTimestamp',
       'getTimestamp'
     ]);
@@ -864,6 +865,21 @@ describe('BudgetService', () => {
       expect(count).toBe(2);
       expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(path);
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('exportAll', () => {
+    const path = 'users/user123/budgets';
+
+    it('reads the server, not the cache', async () => {
+      mockFirestoreService.getCollectionFromServer.and.resolveTo(mockBudgets);
+
+      const result = await service.exportAll();
+
+      expect(result).toEqual(mockBudgets);
+      expect(mockFirestoreService.getCollectionFromServer).toHaveBeenCalledWith(
+        path, { orderBy: [{ field: 'name', direction: 'asc' }] });
+      expect(mockFirestoreService.getCollection).not.toHaveBeenCalled();
     });
   });
 });

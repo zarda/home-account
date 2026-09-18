@@ -622,11 +622,12 @@ describe('InsightSnapshotService', () => {
   });
 
   describe('exportAll and nextDueMonth', () => {
-    it('reads every snapshot once for the backup', async () => {
-      firestoreService.getCollection.and.returnValue(
+    it('reads every snapshot once from the server for the backup', async () => {
+      firestoreService.getCollectionFromServer.and.returnValue(
         Promise.resolve([stored('2026-01'), stored('2026-03')]));
       const rows = await service.exportAll();
       expect(rows.map(s => s.monthKey)).toEqual(['2026-03', '2026-01']);
+      expect(firestoreService.getCollection).not.toHaveBeenCalled();
     });
 
     it('names the month that is due', async () => {

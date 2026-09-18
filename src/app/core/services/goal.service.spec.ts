@@ -40,6 +40,7 @@ describe('GoalService', () => {
       'updateDocument',
       'deleteDocument',
       'getCollection',
+      'getCollectionFromServer',
       'getDocument',
       'getDocRef',
       'runTransaction',
@@ -319,6 +320,30 @@ describe('GoalService', () => {
         [`${PATH}/g2`]
       ]);
       expect(service.goals()).toEqual([]);
+    });
+  });
+
+  describe('listAll and exportAll', () => {
+    it('listAll reads the cache-capable collection', async () => {
+      mockFirestoreService.getCollection.and.resolveTo(mockGoals);
+
+      const result = await service.listAll();
+
+      expect(result).toEqual(mockGoals);
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(
+        PATH, { orderBy: [{ field: 'name', direction: 'asc' }] });
+      expect(mockFirestoreService.getCollectionFromServer).not.toHaveBeenCalled();
+    });
+
+    it('exportAll reads the server, not the cache', async () => {
+      mockFirestoreService.getCollectionFromServer.and.resolveTo(mockGoals);
+
+      const result = await service.exportAll();
+
+      expect(result).toEqual(mockGoals);
+      expect(mockFirestoreService.getCollectionFromServer).toHaveBeenCalledWith(
+        PATH, { orderBy: [{ field: 'name', direction: 'asc' }] });
+      expect(mockFirestoreService.getCollection).not.toHaveBeenCalled();
     });
   });
 

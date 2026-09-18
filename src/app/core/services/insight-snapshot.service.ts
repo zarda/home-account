@@ -415,13 +415,13 @@ export class InsightSnapshotService {
     return 'written';
   }
 
-  /** One-shot read for the backup export. */
+  /** One-shot read for the backup export. Server-only. */
   async exportAll(): Promise<InsightSnapshot[]> {
     const userId = this.authService.userId();
     if (!userId) {
       return [];
     }
-    const rows = await this.firestoreService.getCollection<InsightSnapshot>(
+    const rows = await this.firestoreService.getCollectionFromServer<InsightSnapshot>(
       this.path(userId), { orderBy: [{ field: 'monthKey', direction: 'desc' }] });
     return sortSnapshotsDescending(rows);
   }
