@@ -22,6 +22,7 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { TabStripScrollDirective } from '../../shared/directives/tab-strip-scroll.directive';
 import { AccessibilityService } from '../../core/services/accessibility.service';
 import { tabIndexFromParam } from '../../core/utils/tab-query-param.utils';
 
@@ -37,6 +38,7 @@ export const BUDGET_TABS = ['budgets', 'recurring', 'goals'] as const;
     MatButtonModule,
     MatIconModule,
     MatTabsModule,
+    TabStripScrollDirective,
     BudgetOverviewComponent,
     RecurringTransactionsComponent,
     GoalsComponent,

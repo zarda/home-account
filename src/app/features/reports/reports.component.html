@@ -15,6 +15,7 @@
   } @else {
     <!-- Tabs Navigation -->
     <mat-tab-group
+      appTabStripScroll
       [(selectedIndex)]="selectedTabIndex"
       (selectedTabChange)="onTabChange($event.index)"
       class="reports-tabs"

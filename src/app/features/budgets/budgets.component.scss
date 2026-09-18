@@ -5,7 +5,7 @@
 // Tab styling
 .budget-tabs {
   ::ng-deep .mat-mdc-tab-header {
-    @apply border-b border-gray-200 dark:border-gray-700 mb-0;
+    @apply mb-0;
   }
 
   ::ng-deep .mat-mdc-tab {

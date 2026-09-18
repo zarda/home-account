@@ -39,17 +39,12 @@
   overflow: hidden;
 
   ::ng-deep {
-    .mat-mdc-tab-header {
-      border-bottom: 1px solid var(--border-primary);
-    }
-
     .mat-mdc-tab {
       min-width: 120px;
     }
 
-    /* Four tabs at 120px each overflow a 375px viewport and Material falls
-       back to pagination arrows. The short labels already fit; the floor is
-       what pushes them over. */
+    /* Five tabs at 120px each overflow a 375px viewport several times over.
+       The short labels already fit; the floor is what pushes them over. */
     @media (max-width: 767px) {
       .mat-mdc-tab {
         min-width: 0;
