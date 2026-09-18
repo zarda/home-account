@@ -7,7 +7,10 @@ pushed out of reach.
 
 Why it is that rule rather than an ellipsis, and what was rejected on the way,
 is in [ADR 0010](ADR/0010-nothing-truncates.md). Why a strip may scroll instead
-of reflowing is in [ADR 0012](ADR/0012-a-strip-scrolls-rather-than-growing-the-row.md).
+of reflowing is in [ADR 0012](ADR/0012-a-strip-scrolls-rather-than-growing-the-row.md),
+and why a Material tab strip is one of those strips — along with what a walk of
+every route at the account's own font scale found — is in
+[ADR 0140](ADR/0140-the-tab-strips-scroll-natively-and-a-layout-holds-at-the-scale-and-the-width-that-broke-it.md).
 This document is the part you need when adding a screen.
 
 ## The seven invariants
@@ -37,8 +40,15 @@ Say which one it is:
 **Corollary.** In any row with an unshrinkable trailing control, the sum of
 everything that will not yield — fixed widths, gaps, caps — must be under the
 narrowest container the row ships in. Write the arithmetic in a comment; see
-the top of `transaction-row.component.scss`, which shows where its 7rem floor
+the top of `transaction-row.component.scss`, which shows where its 112px floor
 comes from.
+
+**Scale.** That arithmetic is in px, so the floor it produces has to be in px
+too. A floor in `rem` grows with the account's own font scale — the very
+thing it exists to resist — so at Extra-large (1.3) a `7rem` description floor
+consumed a 243px budget that had not moved, and the four-digit amount beside
+it wrapped. Mixing the two units is the defect; either budget and floor are
+both scale-relative, or neither is.
 
 **In a wrapping row, write `flex: 1 1 0`, not `flex: 1 1 auto`.** Declaring the
 minimum is not enough on its own, and this is the part that is easy to get
@@ -52,14 +62,22 @@ that description, the line breaks early, and the item to its *left* is pushed
 onto a line of its own. Shrinking later cannot undo a line break already made.
 
 ```scss
-.details { flex: 1 1 auto; min-width: 7rem; }  // measured at max-content — breaks the line
-.details { flex: 1 1 0;    min-width: 7rem; }  // measured at 7rem, then grows into the rest
+.details { flex: 1 1 auto; min-width: 112px; }  // measured at max-content — breaks the line
+.details { flex: 1 1 0;    min-width: 112px; }  // measured at 112px, then grows into the rest
 ```
 
 The floor is what the zero basis is clamped up to, so it is still the only
 number line-collection sees. `transaction-row.component.scss` shipped the first
 of these and put its category tile alone on a line whenever a description ran
 long.
+
+**A `max-width` cap and a zero basis do different jobs, and a growing item may
+need both.** The zero basis decides where the line breaks; `max-width` binds
+only during the *grow* phase, after the lines are already collected. An item
+with `flex-grow: 1` and a zero basis will otherwise expand into all the free
+space a wide row has — the period selector's toggle group reached 836px on a
+900px row — so where an item should take up slack on a narrow row but never
+exceed its own content on a wide one, cap it with `max-width: max-content`.
 
 **A `mat-button-toggle-group`'s own segments need the same declaration, and
 a label that cannot shrink further needs somewhere else to go.** Material
@@ -108,7 +126,29 @@ Getting that backwards makes things worse, and the app has a worked example.
 own padding. `minmax(0, 1fr)` gives 41.6px tracks and clips every button.
 `auto-fill` drops a column instead, and the button keeps its touch target.
 
+**And `minmax()` cannot be the max of another `minmax()`.**
+`repeat(3, minmax(0, minmax(0, 1fr)))` is not a stricter version of the fix,
+it is invalid grammar: the browser drops the whole declaration at parse time
+and the cascade falls back to whatever came before it — usually the mobile
+single-column default. Nothing errors, nothing logs, and the page simply
+renders one column on the widths the rule existed for. Eleven of these shipped
+at once, written by the commit that first applied the rule above, and six
+pages had been single-column on tablet and desktop ever since. Two of them
+were base rules with nothing underneath, so those grids declared no columns at
+all.
+
 **Check:**
+
+```bash
+npm run grid:check
+```
+
+`scripts/check-grid-tracks.mjs` scans `src/**/*.scss` for the nested shape,
+masked for comments, with a `--self-test` proving it hits the nested form (and
+the nested form under a `@media` line) and misses `repeat(3, minmax(0, 1fr))`,
+`repeat(auto-fill, minmax(100px, 1fr))`, and either shape inside a comment. CI
+runs it between the truncation check and the direction check. The bare-`1fr`
+half is still a grep:
 
 ```bash
 grep -rn "grid-template-columns" src --include='*.scss' | grep "1fr" | grep -v "minmax("
@@ -205,6 +245,39 @@ indicator, and no interactive element sits in the clipped region.
   off the edge.
 - An overflow indicator (`+3`, a fade) gets `flex-shrink: 0`. It has to outlive
   the things it counts, or a visible truncation becomes a silent one.
+
+**A control is not reachable if its target is under 40px, and the ink is not
+the target.** Where the glyph can grow, grow it — the budget card's menu
+button went from `w-7` to `w-10`. Where it cannot, because the row or the
+table cell it sits in is built around a 32px (or an 18px) glyph, the hit box
+overhangs the ink instead, in the form
+[ADR 0110](ADR/0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md)
+settled on:
+
+```scss
+.note-button {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    top: min(0px, calc((100% - 40px) / 2));
+    bottom: min(0px, calc((100% - 40px) / 2));
+    inset-inline: min(0px, calc((100% - 40px) / 2));
+  }
+}
+```
+
+`min(0px, …)` is what makes it safe to apply without measuring: a control
+already 40px or wider gets an overhang of zero rather than a negative inset
+that would shrink its target. The insets are logical, so two adjacent
+overhangs do not land on top of each other under `dir="rtl"` — see
+[rtl.md](rtl.md) for the pair whose physical spelling would have.
+
+Two things to know before adding one. Material's `mat-icon-button` already
+ships a 48px `.mat-mdc-button-touch-target` span of its own, so an overhang
+on one of those is belt-and-braces rather than the fix. A plain `<button>`
+wrapped around a bare `mat-icon` has no target at all, and measures the
+icon's own em box — which is where this earns its keep.
 
 **Check:** no `scrollbar-width: none` or `::-webkit-scrollbar { display: none }`
 on a scrolling element.
@@ -304,6 +377,15 @@ and a scroller.
 .tag-chip { flex-shrink: 0; }       // chips queue, they do not squash
 ```
 
+Every scrolling strip also keeps a 12px gutter under its content
+(`padding-block-end: 12px`, never `padding-bottom` — taller than an overlay bar, which paints bottom-aligned in the gutter and would otherwise sit on the content) so the bar it never hides
+(G4) is drawn below the labels, chips or segments instead of over them — the
+tab strips, `.quick-filters`, `.insight-chips` and the period toggle all
+carry it. On the period toggle the scroller and the pill are two different
+elements (`.period-toggle-scroller` wraps `.period-toggle`): the gutter lives
+on the scroller, outside the pill's rounded border, so the pill's own height
+still matches its segments' instead of growing a blank band inside the frame.
+
 Three things that are easy to miss:
 
 - **The overflow indicator has to be pinned, not just present.** `+2` as the
@@ -320,6 +402,34 @@ Three things that are easy to miss:
 - **`overflow-x: auto` makes the box a vertical scroll container too** (G4).
   Harmless on a single nowrap line, but it is the same rule that broke paging
   from `.dashboard-container`, so check nothing walks the tree looking for one.
+
+**A strip of tabs is a strip.** Material's `mat-tab-group` is the exception
+that had to be made into the rule: it clips its label container and pages it
+with a `transform`, driven only by the chevron buttons, which carry
+`touch-action: none` and own the only pointer listeners. A finger on the
+titles moves nothing, a trackpad moves nothing, and a tab behind a chevron is
+a destination most readers never find. `TabStripScrollDirective`
+(`mat-tab-group[appTabStripScroll]`) opts a group into the ordinary treatment:
+it sets `disablePagination` so the chevrons are never shown, and one global
+rule in `src/styles.scss`, keyed on the directive's own attribute, gives the
+label container `overflow-x: auto`, `overscroll-behavior-x: contain` and
+`scrollbar-width: thin` — the same three declarations as the chip strip above;
+the same rule set puts the strip's divider on `.mat-mdc-tab-list` rather than
+the header, so the active tab's underline rests on the line and the bar sits
+below it in its gutter. A group that has not opted in keeps Material's
+behaviour.
+
+Two things that will bite the next one:
+
+- **`disablePagination` alone makes it worse.** It takes the chevrons away and
+  leaves `overflow: hidden`, so the later tabs become unreachable by any
+  means. The scroller is the half that matters.
+- **Material resets the scroll on every focus change.** `_setTabFocus` writes
+  `scrollLeft = 0` after each change of focus index — arrow key *and* click —
+  and the group emits `focusChange` synchronously *before* that write. A
+  reveal called from that subscription is undone immediately; queue it in a
+  microtask and it lands after. The first selection is silent altogether, so
+  the landing tab is revealed from `afterNextRender` instead.
 
 Prose does not get this treatment. A description behind a horizontal scrubber
 means scrolling sideways to read what you bought — 689px of it, measured on the
@@ -350,11 +460,19 @@ swipe keeps a non-gesture route — the pinned menu.
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |
 | `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
 | `scripts/check-truncation.mjs` | G3 across the whole source, `npm run truncation:check` |
+| `shared/directives/tab-strip-scroll.directive.spec.ts` | the strip mechanics on a 300px host: no chevrons on an overflowing strip, a label container that really scrolls, a newly selected tab brought into view, the tab the arrow keys walk to kept in view, and a clicked tab staying put after the reader scrolled to it — the case Material's focus reset breaks |
+| `features/budgets/budgets.overflow.spec.ts`, `features/reports/reports.overflow.spec.ts` | the two opted-in pages: the chevrons never appear, and a `?tab=` deep link opens on its tab already in view |
+| `features/reports/<name>/<name>.overflow.spec.ts` for category-breakdown, monthly-comparison and spending-analysis, `features/settings/profile-settings/profile-settings.overflow.spec.ts`, and cases in `ai-settings-page.component.spec.ts` and `transaction-filters.component.spec.ts` | G2 as rendered: the column count of each repaired grid. Karma's window is 756px, so the three whose rules start at 768px or 1024px cannot be read as layout — those pin the repaired *declaration* through the CSSOM instead, where an invalid value serialises as an empty string |
+| `scripts/check-grid-tracks.mjs` | G2's nested shape across the whole source, `npm run grid:check` |
+| `shared/layout/bottom-nav/bottom-nav.overflow.spec.ts`, `shared/components/period-selector/period-selector.overflow.spec.ts` | the two rows the account's own font scale breaks: a gutter between two fitted nav labels at 1.3 and at the default, and the calendar button staying beside the toggle group at 1.3 while the group stops at its content width on a desktop row |
+| `shared/layout/sidebar/sidebar.overflow.spec.ts`, `shared/layout/header/header.overflow.spec.ts` | the drawer never scrolls sideways to reach a nav row; the header avatar falls back to its placeholder on a load failure and recovers when the URL changes (the settings card's own case is in `settings.component.spec.ts`) |
+| `features/settings/ai-settings-page/ai-settings-page.overflow.spec.ts` | the longest catalog model name wraps in the select trigger instead of ellipsizing, at both font scales |
+| cases in `transaction-list.component.spec.ts`, `budget-progress-card.component.spec.ts`, `import-history.component.spec.ts` | the 40px targets — the note button, the receipt icon and the row actions trigger reaching it through the overhang while their glyph boxes stay 32px and unsized, and the budget card's menu trigger reaching it by its own box — plus the desktop table fitting its floor width without a sideways scrollbar, and an attachment id and an error message carrying a URL wrapping inside their cards |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 
 Every row but the harness runs in CI: the unit specs through `test:ci`, the
-smoke spec through `npm run smoke`, and the source check through
-`npm run truncation:check`. The harness needs a dev server and the emulators,
+smoke spec through `npm run smoke`, and the source checks through
+`npm run truncation:check` and `npm run grid:check`. The harness needs a dev server and the emulators,
 so it is a before/after instrument for UI pull requests, like
 `capture-dialogs.mjs`.
 

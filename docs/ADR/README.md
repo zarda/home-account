@@ -143,6 +143,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0136](0136-the-shell-paints-the-status-bar-band-and-the-header-may-leave.md) | The shell paints the status-bar band, and the header may leave | Accepted | 2026-09-17 |
 | [0137](0137-a-closed-month-is-generated-only-against-a-loaded-profile-and-the-servers-own-list.md) | A closed month is generated only against a loaded profile and the server's own list | Accepted | 2026-09-17 |
 | [0138](0138-a-plugin-call-nothing-implements-is-the-developers-failure-not-the-users.md) | A plugin call nothing implements is the developer's failure, not the user's | Accepted | 2026-09-17 |
+| [0139](0139-a-transaction-read-acted-on-once-names-its-source-and-a-listeners-first-value-is-banned.md) | A transaction read acted on once names its source, and a listener's first value is banned | Accepted; applies 0034; extends 0137 | 2026-09-18 |
+| [0140](0140-the-tab-strips-scroll-natively-and-a-layout-holds-at-the-scale-and-the-width-that-broke-it.md) | The tab strips scroll natively, and a layout holds at the scale and the width that broke it | Accepted; extends 0010 and 0012; closes a gap of 0102 | 2026-09-18 |
 
 ## What belongs here
 

@@ -154,6 +154,8 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
+  // Gutter under the buttons so the kept scrollbar draws below them, not over.
+  padding-block-end: 12px;
 }
 
 .quick-btn {
@@ -283,7 +285,7 @@
 
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, minmax(0, 1fr)));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -344,13 +346,13 @@
   }
 
   .filter-grid {
-    grid-template-columns: repeat(3, minmax(0, minmax(0, 1fr)));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1024px) {
   .filter-grid {
-    grid-template-columns: repeat(6, minmax(0, minmax(0, 1fr)));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 

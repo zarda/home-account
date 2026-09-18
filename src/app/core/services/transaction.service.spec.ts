@@ -7,7 +7,7 @@ import {
   GOAL_LINK_INVALID,
   SPLIT_REFUSED
 } from './transaction.service';
-import { CreateTransactionDTO, Goal, Transaction } from '../../models';
+import { CreateTransactionDTO, Goal, Transaction, TransactionFilters } from '../../models';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
@@ -704,6 +704,35 @@ describe('TransactionService', () => {
 
       await expectAsync(service.hasTransaction('txn-1')).toBeResolvedTo(true);
       await expectAsync(service.hasTransaction('txn-404')).toBeResolvedTo(false);
+    });
+  });
+
+  describe('getTransactionOnce', () => {
+    it('reads through getDocument at the transaction path, never subscribeToDocument', async () => {
+      const txn = createTransaction({ id: 'txn-1' });
+      mockFirestore.setMockDocument('users/test-user-123/transactions/txn-1', txn);
+
+      const result = await service.getTransactionOnce('txn-1');
+
+      expect(result).toEqual(txn);
+      expect(mockFirestore.getDocumentSpy.mostRecent()?.args[0])
+        .toBe('users/test-user-123/transactions/txn-1');
+      expect(mockFirestore.subscribeToDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('maps a missing document to null', async () => {
+      const result = await service.getTransactionOnce('txn-404');
+
+      expect(result).toBeNull();
+    });
+
+    it('resolves null signed out without touching the database', async () => {
+      mockAuth.setMockUser(null);
+
+      const result = await service.getTransactionOnce('txn-1');
+
+      expect(result).toBeNull();
+      expect(mockFirestore.getDocumentSpy.calls.length).toBe(0);
     });
   });
 
@@ -1536,6 +1565,46 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('getTransactionsInRangeFromServer', () => {
+    const path = 'users/test-user-123/transactions';
+    const start = new Date(2026, 7, 1);
+    const end = new Date(2026, 7, 31);
+
+    it('reads through the server-only variant, never getCollection', async () => {
+      const rows = [createTransaction({ id: 'txn-a' })];
+      mockFirestore.setMockCollection(path, rows);
+
+      const result = await service.getTransactionsInRangeFromServer(start, end);
+
+      expect(result).toEqual(rows);
+      expect(mockFirestore.getCollectionFromServerSpy.calls.length).toBe(1);
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
+    });
+
+    // One options builder feeds the listener and both one-shot variants so
+    // none of the three queries can drift apart.
+    it('queries the same window as the live listener and the cache-tolerant one-shot', async () => {
+      mockFirestore.setMockCollection(path, []);
+
+      await service.getTransactionsInRangeFromServer(start, end);
+      await service.getTransactionsInRangeOnce(start, end);
+      service.getTransactionsInRange(start, end).subscribe().unsubscribe();
+
+      const serverOptions = mockFirestore.getCollectionFromServerSpy.mostRecent()?.args[1];
+      expect(serverOptions).toEqual(mockFirestore.getCollectionSpy.mostRecent()?.args[1]);
+      expect(serverOptions).toEqual(mockFirestore.subscribeToCollectionSpy.mostRecent()?.args[1]);
+    });
+
+    it('resolves empty signed out without touching the database', async () => {
+      mockAuth.setMockUser(null);
+
+      const result = await service.getTransactionsInRangeFromServer(start, end);
+
+      expect(result).toEqual([]);
+      expect(mockFirestore.getCollectionFromServerSpy.calls.length).toBe(0);
+    });
+  });
+
   describe('goal links', () => {
     const TX = 'users/test-user-123/transactions';
     const GOALS = 'users/test-user-123/goals';
@@ -2078,6 +2147,54 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('getTransactionsOnce', () => {
+    const path = 'users/test-user-123/transactions';
+
+    // One options builder feeds getTransactions and this one-shot sibling,
+    // so a caller that persists or counts the result reads exactly the query
+    // the listener would have opened.
+    it('queries the same path and options as the live listener', async () => {
+      mockFirestore.setMockCollection(path, []);
+      const filters: TransactionFilters = {
+        startDate: new Date(2026, 7, 1),
+        endDate: new Date(2026, 7, 31),
+        type: 'expense',
+        categoryId: 'food_restaurants'
+      };
+
+      await service.getTransactionsOnce(filters);
+      service.getTransactions(filters).subscribe().unsubscribe();
+
+      const onceCall = mockFirestore.getCollectionSpy.mostRecent();
+      const liveCall = mockFirestore.subscribeToCollectionSpy.mostRecent();
+      expect(onceCall?.args[0]).toBe(path);
+      expect(onceCall?.args).toEqual(liveCall?.args);
+    });
+
+    it('applies the same client-side filters as the live listener', async () => {
+      const rows = [
+        createTransaction({ id: 'txn-a', amount: 10 }),
+        createTransaction({ id: 'txn-b', amount: 500 })
+      ];
+      mockFirestore.setMockCollection(path, rows);
+
+      const result = await service.getTransactionsOnce({ minAmount: 100 });
+
+      // The amount filter is client-side (applyClientTransactionFilters);
+      // the low-amount row must be dropped, not just excluded server-side.
+      expect(result).toEqual([rows[1]]);
+    });
+
+    it('resolves empty signed out without touching the database', async () => {
+      mockAuth.setMockUser(null);
+
+      const result = await service.getTransactionsOnce();
+
+      expect(result).toEqual([]);
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
+    });
+  });
+
   describe('getByDateRange', () => {
     it('should call getTransactions with date filters', (done) => {
       const start = new Date(2024, 0, 1);
@@ -2171,6 +2288,48 @@ describe('TransactionService', () => {
         expect(service.transactions()).toEqual([]);
         done();
       });
+    });
+  });
+
+  describe('getTransactionsWithReceiptsOnce', () => {
+    const path = 'users/test-user-123/transactions';
+
+    it('queries the same where clause as the live listener', async () => {
+      mockFirestore.setMockCollection(path, []);
+
+      await service.getTransactionsWithReceiptsOnce();
+      service.getTransactionsWithReceipts().subscribe().unsubscribe();
+
+      expect(mockFirestore.getCollectionSpy.mostRecent()?.args[1])
+        .toEqual(mockFirestore.subscribeToCollectionSpy.mostRecent()?.args[1]);
+    });
+
+    it('sorts newest first like the listener, regardless of storage order', async () => {
+      const older = createTransaction({
+        id: 'txn-old',
+        date: Timestamp.fromDate(new Date(2026, 0, 1)),
+        receiptUrl: 'https://storage.example.com/old.jpg'
+      });
+      const newer = createTransaction({
+        id: 'txn-new',
+        date: Timestamp.fromDate(new Date(2026, 5, 1)),
+        receiptUrl: 'https://storage.example.com/new.jpg'
+      });
+      // Seeded oldest-first, out of the order the read must return.
+      mockFirestore.setMockCollection(path, [older, newer]);
+
+      const result = await service.getTransactionsWithReceiptsOnce();
+
+      expect(result).toEqual([newer, older]);
+    });
+
+    it('resolves empty signed out without touching the database', async () => {
+      mockAuth.setMockUser(null);
+
+      const result = await service.getTransactionsWithReceiptsOnce();
+
+      expect(result).toEqual([]);
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
     });
   });
 

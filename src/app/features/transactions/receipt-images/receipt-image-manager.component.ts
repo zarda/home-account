@@ -96,7 +96,7 @@ export class ReceiptImageManagerComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     try {
       const [transactions] = await Promise.all([
-        firstValueFrom(this.transactionService.getTransactionsWithReceipts()),
+        this.transactionService.getTransactionsWithReceiptsOnce(),
         this.quota.refreshCount().catch(() => null),
       ]);
       this.groups.set(transactions.map(transaction => ({

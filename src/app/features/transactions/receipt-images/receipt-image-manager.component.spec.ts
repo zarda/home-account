@@ -41,9 +41,9 @@ describe('ReceiptImageManagerComponent', () => {
 
   beforeEach(async () => {
     transactionService = jasmine.createSpyObj('TransactionService', [
-      'getTransactionsWithReceipts', 'removeReceiptAt', 'removeAllReceipts',
+      'getTransactionsWithReceiptsOnce', 'removeReceiptAt', 'removeAllReceipts',
     ]);
-    transactionService.getTransactionsWithReceipts.and.returnValue(of(transactions));
+    transactionService.getTransactionsWithReceiptsOnce.and.resolveTo(transactions);
     transactionService.removeReceiptAt.and.resolveTo(undefined);
     transactionService.removeAllReceipts.and.resolveTo(undefined);
 
@@ -97,6 +97,15 @@ describe('ReceiptImageManagerComponent', () => {
     expect(component.groups()[1].images).toEqual([{ url: 'https://x/2.jpg', slot: 0 }]);
     expect(component.isLoading()).toBeFalse();
     expect(quota.refreshCount).toHaveBeenCalled();
+  });
+
+  it('loads with no live listener to fall back to', async () => {
+    // The mock stubs only the one-shot method; a regression to the listener
+    // would call an undefined spy and throw before ngOnInit resolves.
+    const component = build();
+    await component.ngOnInit();
+
+    expect(component.groups().length).toBe(2);
   });
 
   // Template is blanked in this suite (no thumbnail to click), so the door

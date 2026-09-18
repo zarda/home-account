@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { deleteField } from '@angular/fire/firestore';
 import { Observable, map, of } from 'rxjs';
-import { FirestoreService } from './firestore.service';
+import { FirestoreService, QueryOptions } from './firestore.service';
 import { AuthService } from './auth.service';
 import { roundMoney } from '../utils/transaction-aggregation.utils';
 import { CreateGoalDTO, Goal, Transaction } from '../../models';
@@ -62,9 +62,7 @@ export class GoalService {
 
     this.isLoading.set(true);
     return this.firestoreService
-      .subscribeToCollection<Goal>(this.userGoalsPath, {
-        orderBy: [{ field: 'name', direction: 'asc' }]
-      })
+      .subscribeToCollection<Goal>(this.userGoalsPath, this.goalQueryOptions())
       .pipe(
         map(goals => {
           this.goals.set(goals);
@@ -74,12 +72,30 @@ export class GoalService {
       );
   }
 
-  /** One-shot read for the backup export. */
-  async exportAll(): Promise<Goal[]> {
+  private goalQueryOptions(): QueryOptions {
+    return { orderBy: [{ field: 'name', direction: 'asc' }] };
+  }
+
+  /**
+   * Every goal, enumerated once for a name rendered off the live signal
+   * (a search chip that opens before anything subscribed). The value is
+   * corrected the moment the signal warms, so a cached name showing offline
+   * beats an empty chip — unlike `exportAll`'s backup, nothing here is a
+   * figure that must match the server.
+   */
+  async listAll(): Promise<Goal[]> {
     const userId = this.authService.userId();
     if (!userId) return [];
     return this.firestoreService.getCollection<Goal>(
-      this.userGoalsPath, { orderBy: [{ field: 'name', direction: 'asc' }] });
+      this.userGoalsPath, this.goalQueryOptions());
+  }
+
+  /** One-shot read for the backup export. Server-only. */
+  async exportAll(): Promise<Goal[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<Goal>(
+      this.userGoalsPath, this.goalQueryOptions());
   }
 
   /**

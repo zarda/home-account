@@ -279,3 +279,129 @@ describe('overflow guard: the theme toggle', () => {
     });
   });
 });
+
+describe('overflow guard: profile-settings grid tracks (#450)', () => {
+  let fixture: ComponentFixture<ProfileSettingsComponent>;
+  let host: HTMLElement;
+
+  beforeEach(async () => {
+    const mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences', 'updateUserProfile'], {
+      currentUser: signal({
+        displayName: 'Test User',
+        preferences: { baseCurrency: 'USD', theme: 'light', dateFormat: 'MM/DD/YYYY', language: 'en' },
+      }),
+      userId: signal('user-1'),
+    });
+    mockAuthService.updateUserPreferences.and.returnValue(Promise.resolve());
+    mockAuthService.updateUserProfile.and.returnValue(Promise.resolve());
+
+    const mockTranslationService = jasmine.createSpyObj('TranslationService', ['setLocale', 't'], {
+      currentLocale: signal('en'),
+      languages: [{ code: 'en', name: 'English', nativeName: 'English' }],
+    });
+    mockTranslationService.setLocale.and.returnValue(Promise.resolve());
+    mockTranslationService.t.and.callFake((key: string) => key);
+
+    const mockThemeService = jasmine.createSpyObj('ThemeService', ['setTheme'], { currentTheme: signal('light') });
+    const mockGeminiService = jasmine.createSpyObj('GeminiService', ['reinitialize', 'isAvailable']);
+    mockGeminiService.isAvailable.and.returnValue(true);
+    const mockTransactionService = jasmine.createSpyObj('TransactionService', ['resnapshotBaseCurrency']);
+    mockTransactionService.resnapshotBaseCurrency.and.returnValue(Promise.resolve(0));
+    const mockSecurityLog = jasmine.createSpyObj('SecurityLogService', ['watchRecent', 'record']);
+    mockSecurityLog.watchRecent.and.returnValue(of([]));
+    const mockReminders = jasmine.createSpyObj('ReminderService', ['requestPermission', 'sweep'], {
+      enabled: signal(false),
+    });
+    const mockRecap: { enabled: WritableSignal<boolean> } = { enabled: signal(false) };
+    const mockCurrencyService = {
+      rateSource: signal<RateSource | null>('live'),
+      lastUpdated: signal<Date | null>(new Date(2026, 11, 31)),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [ProfileSettingsComponent, NoopAnimationsModule],
+      providers: [
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: ThemeService, useValue: mockThemeService },
+        { provide: GeminiService, useValue: mockGeminiService },
+        { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
+        { provide: TransactionService, useValue: mockTransactionService },
+        { provide: SecurityLogService, useValue: mockSecurityLog },
+        { provide: ReminderService, useValue: mockReminders },
+        { provide: WeeklyRecapService, useValue: mockRecap },
+        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackSettingsChange']) },
+        { provide: CurrencyService, useValue: mockCurrencyService },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ProfileSettingsComponent);
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    host?.remove();
+  });
+
+  it('keeps the settings grid single-column at the Karma window', () => {
+    // #450's fix here sits entirely inside a >=768px rule, which this
+    // window never reaches (see check-grid-tracks.mjs, the viewport-
+    // independent gate that actually proves that rule parses). Karma
+    // staying under 768px is what makes the unconditional base rule — one
+    // column — the rule this pins, not the >=768px 2-column override,
+    // which the CSSOM read below pins instead.
+    expect(window.innerWidth)
+      .withContext('Karma window stays under 768px, so the base single-column rule is what renders here')
+      .toBeLessThan(768);
+
+    const grid = host.querySelector('.settings-grid') as HTMLElement;
+    expect(grid).withContext('settings-grid rendered').not.toBeNull();
+    expect(getComputedStyle(grid).gridTemplateColumns.split(' ').length)
+      .withContext('.settings-grid computed column count; pins the unconditional base rule (the >=768px rule is unreachable here)')
+      .toBe(1);
+  });
+
+  /**
+   * `.settings-grid`'s two-column rule lives entirely inside a >=768px
+   * media query that Karma's window never reaches as rendered layout (see
+   * above), so `getComputedStyle` cannot distinguish the fixed declaration
+   * from the broken one it replaced. The declaration is still walkable
+   * through the CSSOM once Angular injects the component's own emulated-
+   * encapsulation `<style>` element: an unparseable `minmax(minmax())`
+   * serialises as the empty string (confirmed as the RED by temporarily
+   * restoring the broken value and rerunning this spec), a parseable one
+   * as its exact resolved value.
+   */
+  function settingsGridRuleUnderMinWidth768(): string | null {
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue; // cross-origin sheet; nothing this app injects is one
+      }
+      for (const rule of Array.from(rules)) {
+        if (!(rule instanceof CSSMediaRule) || !rule.conditionText.includes('min-width: 768px')) {
+          continue;
+        }
+        for (const inner of Array.from(rule.cssRules)) {
+          if (inner instanceof CSSStyleRule && inner.selectorText.includes('.settings-grid')) {
+            return inner.style.gridTemplateColumns;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  it('parses the two-column rule under >=768px (unobservable as layout at the Karma window)', () => {
+    expect(settingsGridRuleUnderMinWidth768())
+      .withContext('.settings-grid >=768px grid-template-columns, read via CSSOM since Karma never renders this rule')
+      .toBe('repeat(2, minmax(0px, 1fr))');
+  });
+});

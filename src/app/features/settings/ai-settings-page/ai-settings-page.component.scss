@@ -403,7 +403,7 @@
   }
 
   @media (min-width: 600px) {
-    grid-template-columns: repeat(3, minmax(0, minmax(0, 1fr)));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -422,7 +422,7 @@
   gap: 16px;
 
   @media (min-width: 600px) {
-    grid-template-columns: repeat(2, minmax(0, minmax(0, 1fr)));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -524,4 +524,15 @@
 
 .model-field {
   width: 100%;
+
+  // Material's own trigger CSS, not a rule this file wrote: nowrap plus an
+  // ellipsis, on both the value box and its text span. truncation:check scans
+  // for text-overflow declarations in this codebase's own stylesheets, so a
+  // vendor rule reachable only through ::ng-deep is invisible to it — a long
+  // model name still ends in "…" unless it is overridden here.
+  ::ng-deep .mat-mdc-select-value,
+  ::ng-deep .mat-mdc-select-value-text {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }

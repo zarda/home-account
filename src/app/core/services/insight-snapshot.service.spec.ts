@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, throwError } from 'rxjs';
+import { of } from 'rxjs';
 import {
   InsightSnapshotService,
   SNAPSHOT_BACKFILL_MONTHS,
@@ -65,11 +65,15 @@ describe('InsightSnapshotService', () => {
 
   /** Serve each month's range query from a single flat history. */
   function serveHistory(history: Transaction[]): void {
-    transactionService.getTransactionsInRange.and.callFake((start: Date, end: Date) =>
-      of(history.filter(t => {
+    const inRange = (start: Date, end: Date): Transaction[] =>
+      history.filter(t => {
         const date = t.date.toDate();
         return date >= start && date <= end;
-      })));
+      });
+    transactionService.getTransactionsInRangeFromServer.and.callFake(
+      (start: Date, end: Date) => Promise.resolve(inRange(start, end)));
+    transactionService.getTransactionsInRangeOnce.and.callFake(
+      (start: Date, end: Date) => Promise.resolve(inRange(start, end)));
   }
 
   /** Serve the missing-month check's server read with these stored snapshots. */
@@ -98,8 +102,11 @@ describe('InsightSnapshotService', () => {
       Timestamp.fromDate(new Date(2026, 6, 15)));
 
     transactionService = jasmine.createSpyObj<TransactionService>(
-      'TransactionService', ['getTransactionsInRange']);
+      'TransactionService',
+      ['getTransactionsInRange', 'getTransactionsInRangeFromServer', 'getTransactionsInRangeOnce']);
     transactionService.getTransactionsInRange.and.returnValue(of([]));
+    transactionService.getTransactionsInRangeFromServer.and.resolveTo([]);
+    transactionService.getTransactionsInRangeOnce.and.resolveTo([]);
 
     // The signal deliberately stays empty in every test: the writer must read
     // the collection, because generateClosedMonths runs with no ordering
@@ -304,9 +311,9 @@ describe('InsightSnapshotService', () => {
     });
 
     it('reports a failed read as no snapshots', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(
-        throwError(() => new Error('offline')));
+      transactionService.getTransactionsInRangeFromServer.and.rejectWith(new Error('offline'));
       expect(await service.generateClosedMonths(now)).toEqual([]);
+      expect(firestoreService.setDocument).not.toHaveBeenCalled();
     });
 
     it('reports a failed missing-month check as no snapshots', async () => {
@@ -462,6 +469,14 @@ describe('InsightSnapshotService', () => {
       expect(await service.regenerate('2026-13')).toBeNull();
       expect(firestoreService.setDocument).not.toHaveBeenCalled();
     });
+
+    it('reads the month and the window from the server, never the listener', async () => {
+      await service.watch().toPromise();
+      await service.regenerate('2026-05');
+
+      expect(transactionService.getTransactionsInRangeFromServer).toHaveBeenCalledTimes(2);
+      expect(transactionService.getTransactionsInRange).not.toHaveBeenCalled();
+    });
   });
 
   // The rules treat a non-merge write over an existing document as an update,
@@ -567,10 +582,18 @@ describe('InsightSnapshotService', () => {
       expect(result?.reasons).toContain('transactionsChanged');
     });
 
+    it('reads the month once from the cache, never the listener', async () => {
+      await service.watch().toPromise();
+      serveHistory(monthOf(4, 6));
+      await service.staleness('2026-05');
+
+      expect(transactionService.getTransactionsInRangeOnce).toHaveBeenCalledTimes(1);
+      expect(transactionService.getTransactionsInRange).not.toHaveBeenCalled();
+    });
+
     it('claims nothing when the month cannot be read', async () => {
       await service.watch().toPromise();
-      transactionService.getTransactionsInRange.and.returnValue(
-        throwError(() => new Error('offline')));
+      transactionService.getTransactionsInRangeOnce.and.rejectWith(new Error('offline'));
       const result = await service.staleness('2026-05');
       expect(result?.isStale).toBeFalse();
       expect(result?.currentFingerprint).toBeNull();
@@ -599,11 +622,12 @@ describe('InsightSnapshotService', () => {
   });
 
   describe('exportAll and nextDueMonth', () => {
-    it('reads every snapshot once for the backup', async () => {
-      firestoreService.getCollection.and.returnValue(
+    it('reads every snapshot once from the server for the backup', async () => {
+      firestoreService.getCollectionFromServer.and.returnValue(
         Promise.resolve([stored('2026-01'), stored('2026-03')]));
       const rows = await service.exportAll();
       expect(rows.map(s => s.monthKey)).toEqual(['2026-03', '2026-01']);
+      expect(firestoreService.getCollection).not.toHaveBeenCalled();
     });
 
     it('names the month that is due', async () => {

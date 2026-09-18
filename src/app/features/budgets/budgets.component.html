@@ -1,9 +1,10 @@
 <div class="budgets-page p-4 md:p-6">
   <app-page-header titleKey="budget.title" class="block mb-6" />
 
-  <!-- Tabs: natural width, left-aligned (two tabs no longer stretch across
+  <!-- Tabs: natural width, left-aligned (three tabs no longer stretch across
        the full page). -->
   <mat-tab-group
+    appTabStripScroll
     class="budget-tabs"
     [animationDuration]="tabAnimationDuration()"
     [mat-stretch-tabs]="false"

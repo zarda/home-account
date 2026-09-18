@@ -1,6 +1,5 @@
 import { Injectable, inject } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
-import { firstValueFrom } from 'rxjs';
 import { TransactionService } from './transaction.service';
 import { Transaction, CategorizedImportTransaction, DuplicateCheck } from '../../models';
 import { normalizeMerchantKey } from '../utils/merchant-key.utils';
@@ -44,9 +43,9 @@ export class DuplicateDetectionService {
     maxDate.setDate(maxDate.getDate() + 2);
 
     // Load only transactions within the relevant date range
-    const existingTxns = await firstValueFrom(
-      this.transactionService.getTransactions({ startDate: minDate, endDate: maxDate })
-    );
+    const existingTxns = await this.transactionService.getTransactionsOnce({
+      startDate: minDate, endDate: maxDate
+    });
 
     if (existingTxns.length === 0) {
       return transactions.map(txn => ({

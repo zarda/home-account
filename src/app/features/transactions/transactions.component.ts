@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
-import { Subscription, firstValueFrom } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService, WindowSortDirection } from '../../core/services/transaction-window.service';
 import { PeriodTotalsService } from '../../core/services/period-totals.service';
@@ -402,11 +402,11 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   }
 
   // Opens the transaction named by the tx query param (the import-history
-  // shortcut) once the window it lands in is settled. getTransactionById
-  // emits null for a deleted doc — an explicit tap earns an explicit toast,
+  // shortcut) once the window it lands in is settled. getTransactionOnce
+  // returns null for a deleted doc — an explicit tap earns an explicit toast,
   // unlike the silent-skip precedent for passive lists.
   private async openLinkedTransaction(id: string): Promise<void> {
-    const transaction = await firstValueFrom(this.transactionService.getTransactionById(id));
+    const transaction = await this.transactionService.getTransactionOnce(id);
     if (!transaction) {
       this.notifications.info(this.translationService.t('import.linkedTransactionGone'));
       return;

@@ -397,4 +397,28 @@ describe('BudgetProgressCardComponent', () => {
       expect(menuButton).toBeTruthy();
     });
   });
+
+  describe('hit boxes', () => {
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.componentRef.setInput('category', mockCategory);
+      host = fixture.nativeElement as HTMLElement;
+      host.style.width = '320px';
+      document.body.appendChild(host);
+      fixture.detectChanges();
+    });
+
+    afterEach(() => {
+      host?.remove();
+    });
+
+    it('gives the overflow-menu trigger a 40px tap target, not just its 32px glyph box', () => {
+      const menuButton = host.querySelector('.menu-btn') as HTMLElement;
+      const rect = menuButton.getBoundingClientRect();
+      expect(rect.width).withContext('menu button width vs the 40px floor').toBeGreaterThanOrEqual(40);
+      expect(rect.height).withContext('menu button height vs the 40px floor').toBeGreaterThanOrEqual(40);
+    });
+  });
 });

@@ -144,11 +144,11 @@ export class BudgetService {
       .finally(() => this.spentRecalcsInFlight.delete(budgetId));
   }
 
-  /** One-shot read for the backup export. */
+  /** One-shot read for the backup export. Server-only. */
   async exportAll(): Promise<Budget[]> {
     const userId = this.authService.userId();
     if (!userId) return [];
-    return this.firestoreService.getCollection<Budget>(
+    return this.firestoreService.getCollectionFromServer<Budget>(
       this.userBudgetsPath, { orderBy: [{ field: 'name', direction: 'asc' }] });
   }
 

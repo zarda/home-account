@@ -65,6 +65,12 @@
   mat-card-subtitle {
     @apply text-gray-500 dark:text-gray-400;
   }
+
+  // fileName is a share-sheet attachment id: one unbroken run with no space to wrap at (G3).
+  mat-card-title,
+  mat-card-subtitle {
+    overflow-wrap: anywhere;
+  }
 }
 
 // Stats Grid
@@ -147,6 +153,8 @@ mat-chip {
   padding: 12px;
   margin-top: 12px;
   @apply bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800;
+  // a thrown message can carry a URL or a bare code with no space to break on (G3)
+  overflow-wrap: anywhere;
 
   .error-title {
     font-weight: 500;

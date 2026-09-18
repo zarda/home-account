@@ -1,6 +1,5 @@
 import { TestBed } from '@angular/core/testing';
 import { Timestamp } from '@angular/fire/firestore';
-import { of } from 'rxjs';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { TransactionService } from './transaction.service';
 import { createTransaction } from './testing/test-data';
@@ -38,8 +37,8 @@ describe('DuplicateDetectionService', () => {
     });
 
   beforeEach(() => {
-    mockTransactionService = jasmine.createSpyObj('TransactionService', ['getTransactions']);
-    mockTransactionService.getTransactions.and.returnValue(of([]));
+    mockTransactionService = jasmine.createSpyObj<TransactionService>('TransactionService', ['getTransactionsOnce']);
+    mockTransactionService.getTransactionsOnce.and.resolveTo([]);
 
     TestBed.configureTestingModule({
       providers: [
@@ -55,24 +54,31 @@ describe('DuplicateDetectionService', () => {
     expect(service).toBeTruthy();
   });
 
+  it('reads with no live listener to fall back to', async () => {
+    // The mock stubs only the one-shot method; a regression to the listener
+    // would call an undefined spy and throw before this resolves.
+    const result = await service.checkDuplicates([importTxn({ date: new Date(2024, 5, 15) })]);
+    expect(result.length).toBe(1);
+  });
+
   describe('checkDuplicates', () => {
     it('should return an empty array for empty input', async () => {
       const result = await service.checkDuplicates([]);
       expect(result).toEqual([]);
-      expect(mockTransactionService.getTransactions).not.toHaveBeenCalled();
+      expect(mockTransactionService.getTransactionsOnce).not.toHaveBeenCalled();
     });
 
     it('one unreadable date does not fail or poison the batch', async () => {
       // NaN used to win Math.min/Math.max, ride into the Firestore filter,
       // and reject every row with "Invalid time value" on serialisation.
-      mockTransactionService.getTransactions.and.returnValue(of([existing()]));
+      mockTransactionService.getTransactionsOnce.and.resolveTo([existing()]);
 
       const result = await service.checkDuplicates([
         importTxn({ id: 'good', date: new Date(2024, 5, 15) }),
         importTxn({ id: 'bad', date: new Date('2024-06-31') }),
       ]);
 
-      const filters = mockTransactionService.getTransactions.calls.mostRecent().args[0] as {
+      const filters = mockTransactionService.getTransactionsOnce.calls.mostRecent().args[0] as {
         startDate: Date;
         endDate: Date;
       };
@@ -95,7 +101,7 @@ describe('DuplicateDetectionService', () => {
         importTxn({ id: 'bad-2', date: new Date(NaN) }),
       ]);
 
-      expect(mockTransactionService.getTransactions).not.toHaveBeenCalled();
+      expect(mockTransactionService.getTransactionsOnce).not.toHaveBeenCalled();
       expect(result.length).toBe(2);
       expect(result.every(c => !c.isDuplicate && c.matchType === 'none')).toBeTrue();
     });
@@ -103,7 +109,7 @@ describe('DuplicateDetectionService', () => {
     it('should query existing transactions within a padded date range', async () => {
       await service.checkDuplicates([importTxn({ date: new Date(2024, 5, 15) })]);
 
-      const filters = mockTransactionService.getTransactions.calls.mostRecent().args[0] as {
+      const filters = mockTransactionService.getTransactionsOnce.calls.mostRecent().args[0] as {
         startDate: Date;
         endDate: Date;
       };
@@ -113,7 +119,7 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should mark everything as not-duplicate when there are no existing transactions', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([]));
+      mockTransactionService.getTransactionsOnce.and.resolveTo([]);
 
       const result = await service.checkDuplicates([
         importTxn({ id: 'a' }),
@@ -127,9 +133,9 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should detect an exact duplicate (same day, amount and similar description)', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
         existing({ id: 'existing-1' })
-      ]));
+      ]);
 
       const [result] = await service.checkDuplicates([importTxn({ id: 'imp' })]);
 
@@ -142,7 +148,7 @@ describe('DuplicateDetectionService', () => {
     it('should treat an existing transaction with a Date (not Timestamp) date field', async () => {
       const withDate = existing({ id: 'existing-date' });
       (withDate as unknown as { date: Date }).date = new Date(2024, 5, 15);
-      mockTransactionService.getTransactions.and.returnValue(of([withDate]));
+      mockTransactionService.getTransactionsOnce.and.resolveTo([withDate]);
 
       const [result] = await service.checkDuplicates([importTxn()]);
 
@@ -151,9 +157,9 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should detect a likely duplicate (same day + amount + type, different description)', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
         existing({ id: 'existing-2', description: 'Completely Unrelated Vendor' })
-      ]));
+      ]);
 
       const [result] = await service.checkDuplicates([
         importTxn({ id: 'imp', description: 'Zzz Different Name' })
@@ -166,13 +172,13 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should detect a possible duplicate (adjacent day + amount + type)', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
         existing({
           id: 'existing-3',
           description: 'Another Vendor Entirely',
           date: Timestamp.fromDate(new Date(2024, 5, 16))
         })
-      ]));
+      ]);
 
       const [result] = await service.checkDuplicates([
         importTxn({ id: 'imp', description: 'Mismatch Name Xyz', date: new Date(2024, 5, 15) })
@@ -185,9 +191,9 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should not flag a duplicate when amounts differ', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
         existing({ id: 'existing-4', amount: 999 })
-      ]));
+      ]);
 
       const [result] = await service.checkDuplicates([importTxn({ id: 'imp', amount: 5 })]);
 
@@ -196,9 +202,9 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should not flag a likely/possible duplicate when the type differs', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
         existing({ id: 'existing-5', type: 'income', description: 'Unrelated Vendor Name' })
-      ]));
+      ]);
 
       const [result] = await service.checkDuplicates([
         importTxn({ id: 'imp', type: 'expense', description: 'Different Vendor Name Q' })
@@ -209,9 +215,9 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should match descriptions that are substrings of each other', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
         existing({ id: 'existing-6', description: 'Starbucks Coffee Downtown Location' })
-      ]));
+      ]);
 
       const [result] = await service.checkDuplicates([
         importTxn({ id: 'imp', description: 'Starbucks' })
@@ -222,9 +228,9 @@ describe('DuplicateDetectionService', () => {
     });
 
     it('should process multiple import transactions and return one result each', async () => {
-      mockTransactionService.getTransactions.and.returnValue(of([
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
         existing({ id: 'existing-7' })
-      ]));
+      ]);
 
       const results = await service.checkDuplicates([
         importTxn({ id: 'dup', description: 'Coffee Shop' }),
@@ -248,9 +254,7 @@ describe('DuplicateDetectionService', () => {
         // They still match as 'likely', which is the same-day/same-amount rule
         // and is description-independent by design. What changes is that the
         // descriptions no longer claim to be the same.
-        mockTransactionService.getTransactions.and.returnValue(
-          of([existing({ description: 'セブンイレブン' })])
-        );
+        mockTransactionService.getTransactionsOnce.and.resolveTo([existing({ description: 'セブンイレブン' })]);
 
         const results = await service.checkDuplicates([
           importTxn({ id: 'other-merchant', description: '全家便利商店' }),
@@ -261,9 +265,7 @@ describe('DuplicateDetectionService', () => {
       });
 
       it('still matches the same CJK merchant on the same day and amount', async () => {
-        mockTransactionService.getTransactions.and.returnValue(
-          of([existing({ description: 'セブンイレブン' })])
-        );
+        mockTransactionService.getTransactionsOnce.and.resolveTo([existing({ description: 'セブンイレブン' })]);
 
         const results = await service.checkDuplicates([
           importTxn({ id: 'same-merchant', description: 'セブンイレブン' }),
@@ -274,9 +276,7 @@ describe('DuplicateDetectionService', () => {
       });
 
       it('ignores punctuation and spacing inside a CJK name', async () => {
-        mockTransactionService.getTransactions.and.returnValue(
-          of([existing({ description: 'スターバックス 渋谷店' })])
-        );
+        mockTransactionService.getTransactionsOnce.and.resolveTo([existing({ description: 'スターバックス 渋谷店' })]);
 
         const results = await service.checkDuplicates([
           importTxn({ id: 'punctuated', description: 'スターバックス（渋谷店）' }),
@@ -294,9 +294,9 @@ describe('DuplicateDetectionService', () => {
         // The subscription price on the receipt and the figure the rule posts
         // routinely differ — a price rise, a proration, a partial refund. The
         // rule is the identity here, so the amount ladder must not get a veto.
-        mockTransactionService.getTransactions.and.returnValue(of([
+        mockTransactionService.getTransactionsOnce.and.resolveTo([
           posted({ date: Timestamp.fromDate(new Date(2024, 5, 14)) })
-        ]));
+        ]);
 
         const [result] = await service.checkDuplicates([
           importTxn({ id: 'imp', recurringMatch: { id: 'rule-1', name: 'Netflix' } })
@@ -311,9 +311,9 @@ describe('DuplicateDetectionService', () => {
       it('says nothing about a row that was offered no rule', async () => {
         // Same pair of rows, minus the offer: the amount ladder answers alone,
         // and 5 against 99 is not a duplicate by any of its rungs.
-        mockTransactionService.getTransactions.and.returnValue(of([
+        mockTransactionService.getTransactionsOnce.and.resolveTo([
           posted({ date: Timestamp.fromDate(new Date(2024, 5, 14)) })
-        ]));
+        ]);
 
         const [result] = await service.checkDuplicates([importTxn({ id: 'imp' })]);
 
@@ -324,9 +324,9 @@ describe('DuplicateDetectionService', () => {
       it('does not reach past the window the check already loads', async () => {
         // Three days out is outside the ±1 day the candidate index covers, so
         // the rule's occurrence that month is not this row's occurrence.
-        mockTransactionService.getTransactions.and.returnValue(of([
+        mockTransactionService.getTransactionsOnce.and.resolveTo([
           posted({ date: Timestamp.fromDate(new Date(2024, 5, 12)) })
-        ]));
+        ]);
 
         const [result] = await service.checkDuplicates([
           importTxn({ id: 'imp', recurringMatch: { id: 'rule-1', name: 'Netflix' } })

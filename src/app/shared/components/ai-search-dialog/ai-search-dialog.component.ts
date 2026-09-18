@@ -297,14 +297,14 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
    * The goals signal is only published by getGoals() subscriptions (ADR
    * 0009), and this dialog opens from pages that never subscribe — after a
    * goal search there, goals() is still empty and the chip would show a
-   * bare id. One uncached read fills a local fallback instead; the template
-   * reads both signals through goalName, so the chip re-renders when the
-   * names land.
+   * bare id. A cache-capable read (`listAll`) fills a local fallback
+   * instead; the template reads both signals through goalName, so the chip
+   * renders from cache and is corrected when the live signal warms.
    */
   private warmUpGoalNames(): void {
     if (this.goalService.goals().length > 0 || this.goalNamesRequested) return;
     this.goalNamesRequested = true;
-    void this.goalService.exportAll()
+    void this.goalService.listAll()
       .then(goals => this.fallbackGoals.set(goals))
       .catch(error => console.error('[AiSearchDialog] Loading goal names failed:', error));
   }

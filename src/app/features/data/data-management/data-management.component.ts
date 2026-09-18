@@ -112,13 +112,12 @@ export class DataManagementComponent {
   async exportFullBackup(): Promise<boolean> {
     this.isExporting.set(true);
     try {
-      // Every section is read one-shot from the database, never from a live
-      // signal — a signal only holds whatever a subscription happened to
-      // deliver, which is not a backup. Transactions are read first and
-      // server-only: offline, that read rejects and the whole export fails
-      // before anything is written, so the deletion gate below holds. The
-      // sibling exportAll() reads can still be served from cache, which is
-      // safe only while they run after this one.
+      // Every section is read one-shot from the database, server-only, never
+      // from a live signal or the cache — a signal only holds whatever a
+      // subscription happened to deliver, and a cache hit is not a backup.
+      // Transactions still go first: offline, that read rejects and the
+      // whole export fails before anything is written, so the deletion gate
+      // below holds.
       const transactions = await this.transactionService.exportAll();
       const categories = await this.categoryService.exportAll();
       const insightSnapshots = await this.insightSnapshots.exportAll();

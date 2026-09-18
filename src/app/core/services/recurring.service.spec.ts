@@ -1756,4 +1756,29 @@ describe('RecurringService', () => {
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('listAll and exportAll', () => {
+    const path = 'users/user123/recurring';
+    const options = { orderBy: [{ field: 'nextOccurrence', direction: 'asc' as const }] };
+
+    it('listAll still reads the cache-capable collection', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 'r1' }]);
+
+      const result = await service.listAll();
+
+      expect(result).toEqual([{ id: 'r1' }] as unknown as RecurringTransaction[]);
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(path, options);
+      expect(mockFirestoreService.getCollectionFromServer).not.toHaveBeenCalled();
+    });
+
+    it('exportAll reads the server, not the cache', async () => {
+      mockFirestoreService.getCollectionFromServer.and.resolveTo([{ id: 'r1' }]);
+
+      const result = await service.exportAll();
+
+      expect(result).toEqual([{ id: 'r1' }] as unknown as RecurringTransaction[]);
+      expect(mockFirestoreService.getCollectionFromServer).toHaveBeenCalledWith(path, options);
+      expect(mockFirestoreService.getCollection).not.toHaveBeenCalled();
+    });
+  });
 });

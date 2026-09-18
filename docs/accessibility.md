@@ -184,11 +184,27 @@ and read `reducedMotion()` — nothing sweeps for the ones that do not.
 - `firestore-rules.smoke.spec.ts` pins that the dotted update of all three
   fields is accepted — no rules change was needed, and that is asserted rather
   than assumed.
+- `tab-strip-scroll.directive.spec.ts` pins the tab strips' keyboard
+  behaviour: the arrow keys walk focus along the strip and each tab they reach
+  is scrolled into view, rather than sitting behind a chevron a keyboard user
+  has no way to press. Material's header resets the strip's scroll after every
+  focus change, so this is the assertion that would fail first if the
+  correction were dropped. Both opted-in pages have their own case for a
+  `?tab=` deep link opening on its tab in view.
+- The 40px tap-target floor is measured where the glyph is smaller than the
+  target: `transaction-list.component.spec.ts` reads the note button, the
+  receipt icon and the row actions trigger — each a 32px (or unsized) glyph box
+  with a 40px hit box through the `::after` overhang — and
+  `budget-progress-card.component.spec.ts` reads the card's menu trigger, which
+  meets the floor by its own box. See
+  [ui-overflow.md](ui-overflow.md) for the idiom.
 
 ## Known gaps
 
-- **Only navigation has been audited.** Tab strips, segmented controls and the
-  period selector express selection visually and have not been.
+- **Only navigation has been audited.** Segmented controls and the period
+  selector express selection visually and have not been; the tab strips are
+  audited for reachability and keyboard travel only, not for how selection is
+  announced.
 - **No landmark structure beyond `nav`.** The two navigation surfaces are
   indistinguishable to a user listing landmarks.
 - **No automated accessibility check in CI.** Everything above is pinned by

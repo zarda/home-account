@@ -1,5 +1,5 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
-import { Observable, firstValueFrom, of } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
@@ -261,8 +261,11 @@ export class InsightSnapshotService {
     }
 
     const { start: monthStart, end: monthEnd } = monthWindow(parsed);
-    const monthTransactions = await firstValueFrom(
-      this.transactionService.getTransactionsInRange(monthStart, monthEnd));
+    // Enumerated, not taken from the live listener's first emission: this
+    // read feeds a stored figure, and a cache-served emission is whatever
+    // window this device happened to browse. See docs/one-shot-reads.md.
+    const monthTransactions = await this.transactionService.getTransactionsInRangeFromServer(
+      monthStart, monthEnd);
 
     // An empty month is not worth a document; it would only clutter the
     // timeline with months the user was not using the app.
@@ -272,8 +275,8 @@ export class InsightSnapshotService {
 
     // A point-in-time record looks back from its own month, not from today.
     const windowStart = startOfMonth(addMonths(monthEnd, -INSIGHT_WINDOW_MONTHS));
-    const windowTransactions = await firstValueFrom(
-      this.transactionService.getTransactionsInRange(windowStart, monthEnd));
+    const windowTransactions = await this.transactionService.getTransactionsInRangeFromServer(
+      windowStart, monthEnd);
 
     const baseCurrency = this.baseCurrency();
     const timeZone = this.timeZone();
@@ -349,8 +352,7 @@ export class InsightSnapshotService {
     }
     try {
       const { start, end } = monthWindow(parsed);
-      const transactions = await firstValueFrom(
-        this.transactionService.getTransactionsInRange(start, end));
+      const transactions = await this.transactionService.getTransactionsInRangeOnce(start, end);
       return {
         tx: transactionFingerprint(transactions),
         count: transactions.length,
@@ -413,13 +415,13 @@ export class InsightSnapshotService {
     return 'written';
   }
 
-  /** One-shot read for the backup export. */
+  /** One-shot read for the backup export. Server-only. */
   async exportAll(): Promise<InsightSnapshot[]> {
     const userId = this.authService.userId();
     if (!userId) {
       return [];
     }
-    const rows = await this.firestoreService.getCollection<InsightSnapshot>(
+    const rows = await this.firestoreService.getCollectionFromServer<InsightSnapshot>(
       this.path(userId), { orderBy: [{ field: 'monthKey', direction: 'desc' }] });
     return sortSnapshotsDescending(rows);
   }

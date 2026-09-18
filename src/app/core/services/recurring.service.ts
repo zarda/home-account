@@ -112,9 +112,10 @@ export class RecurringService {
    *
    * A correctness-bearing read, so it does not come off `recurringTransactions`
    * (ADR 0034, docs/one-shot-reads.md). Two callers depend on completeness: the
-   * backup export, and the snapshot generator, whose recurring figures depend on
-   * which rules exist and which runs at dashboard open with no ordering against
-   * the listener that fills the signal.
+   * snapshot generator, whose recurring figures depend on which rules exist and
+   * which runs at dashboard open with no ordering against the listener that
+   * fills the signal, and the import, which offers each row the active rule it
+   * looks like and needs the same completeness to find one on a cold page.
    */
   async listAll(): Promise<RecurringTransaction[]> {
     const userId = this.authService.userId();
@@ -123,9 +124,12 @@ export class RecurringService {
       this.userRecurringPath, this.recurringQueryOptions());
   }
 
-  /** One-shot read for the backup export. */
+  /** One-shot read for the backup export. Server-only. */
   async exportAll(): Promise<RecurringTransaction[]> {
-    return this.listAll();
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<RecurringTransaction>(
+      this.userRecurringPath, this.recurringQueryOptions());
   }
 
   /**

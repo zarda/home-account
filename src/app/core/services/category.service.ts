@@ -86,6 +86,8 @@ export class CategoryService {
 
   /**
    * One-shot read of the account's own categories, for the backup export.
+   * Server-only: cache-served categories are safe for the app but not for a
+   * backup, which must reflect what is actually stored.
    *
    * Not the `categories` signal: that holds the built-in defaults merged in,
    * and only whatever a subscription happened to deliver.
@@ -93,7 +95,7 @@ export class CategoryService {
   async exportAll(): Promise<Category[]> {
     const userId = this.authService.userId();
     if (!userId) return [];
-    return this.firestoreService.getCollection<Category>(
+    return this.firestoreService.getCollectionFromServer<Category>(
       this.userCategoriesPath, { orderBy: [{ field: 'order', direction: 'asc' }] });
   }
 

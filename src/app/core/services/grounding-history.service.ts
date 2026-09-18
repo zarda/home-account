@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
 import { TransactionService } from './transaction.service';
 import { AuthService } from './auth.service';
 import { Transaction, effectiveRagLevel } from '../../models';
@@ -26,7 +25,7 @@ export class GroundingHistoryService {
     try {
       const startDate = new Date();
       startDate.setMonth(startDate.getMonth() - GROUNDING_HISTORY_MONTHS);
-      return await firstValueFrom(this.transactionService.getTransactions({ startDate }));
+      return await this.transactionService.getTransactionsOnce({ startDate });
     } catch (error) {
       console.warn('[GroundingHistory] Could not load recent transactions:', error);
       return [];

@@ -31,11 +31,12 @@
       class="user-menu-button"
       [attr.aria-label]="'common.userMenu' | translate"
     >
-      @if (user.photoURL) {
+      @if (user.photoURL && !avatarFailed()) {
         <img
           [src]="user.photoURL"
           [alt]="user.displayName"
           class="user-avatar"
+          (error)="avatarFailed.set(true)"
         />
       } @else {
         <mat-icon>account_circle</mat-icon>

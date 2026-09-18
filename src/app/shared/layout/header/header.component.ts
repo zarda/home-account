@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, HostBinding, Input, NgZone, OnDestroy, OnInit, Output, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, HostBinding, Input, NgZone, OnDestroy, OnInit, Output, computed, inject, linkedSignal, signal } from '@angular/core';
 
 import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
@@ -57,6 +57,10 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
 
   currentUser = computed(() => this.authService.currentUser());
   isVisible = signal(true);
+
+  // Resets to unfailed whenever the photo URL itself changes, so a stale
+  // failure never survives a sign-in as a different account.
+  avatarFailed = linkedSignal({ source: () => this.currentUser()?.photoURL, computation: () => false });
 
   @HostBinding('class.hidden')
   get isHidden(): boolean {

@@ -11,12 +11,21 @@ point — the dashboard renders instantly on a plane and heals itself on wifi.
 The trap is taking **one** value from a listener: `firstValueFrom` grabs the
 cached emission and unsubscribes before the correction arrives. The cache
 holds whatever narrow windows the session happened to browse, so the value is
-a plausible-looking subset. Four shipped defects came from exactly this, and
-this page is the registry of the reads that must never do it.
+a plausible-looking subset. Eight issues' worth of shipped defects came from
+exactly this, and this page is the registry of the reads that must never do
+it.
+
+Precisely: the SDK raises a cached first snapshot to a new listener whenever
+the local store holds any matching document, unless the listener was built
+with `waitForSyncWhenOnline` — and that option is set only on the internal
+listeners `getDoc()` and `getDocs()` build for themselves. An ordinary
+`onSnapshot` always gets the cached answer first if there is one.
 
 The reasoning and the rejected alternatives are in
-[ADR 0034](ADR/0034-a-correctness-read-enumerates-the-collection.md). The
-first instance of the class was #160, fixed before the rule had a name.
+[ADR 0034](ADR/0034-a-correctness-read-enumerates-the-collection.md) and, for
+the naming rule and the lint gate below,
+[ADR 0139](ADR/0139-a-transaction-read-acted-on-once-names-its-source-and-a-listeners-first-value-is-banned.md).
+The first instance of the class was #160, fixed before the rule had a name.
 
 ## Deleting the account's transactions (#160)
 
@@ -40,12 +49,13 @@ before erasing the real thing. Offline, the export now fails loudly — the
 error notification shows, `exportFullBackup` resolves false, and the deletion
 flow stops.
 
-Ordering note: transactions are read first among the backup's sections, and
-the other five (`categories`, `budgets`, `recurring`, `goals`, insight
-snapshots) use plain one-shot `exportAll()` reads that *would* serve the cache
-offline. They are safe today only because the transactions read runs first and
-its rejection aborts the whole export. Do not reorder these reads without
-converting the siblings to `getCollectionFromServer`.
+The other five sections (`categories`, `budgets`, `recurring`, `goals`,
+insight snapshots) are server-only too, since #427. They used to be plain
+one-shot `exportAll()` reads that would have served the cache offline, safe
+only because the transactions read runs first and its rejection aborts the
+whole export — a correctness argument that rested entirely on statement
+order, in a method nobody would think twice about reordering. Each section
+now rejects on its own account, and the ordering is back to being a detail.
 
 ## The budget recalculation's work list (#247)
 
@@ -91,8 +101,10 @@ a double-counted total nothing would ever report as stale.
 
 Read once per generation run rather than per month: a backfill writes up to
 twelve documents, each already issuing two range queries, and the rule set
-cannot change between them. `exportAll()` is the same enumeration and now
-delegates to `listAll()`, so the backup and the generator cannot drift apart.
+cannot change between them. `exportAll()` is the same enumeration with the
+stricter source the backup section above describes, and the two share one
+private query-options builder, so the backup and the generator cannot drift
+apart.
 
 The **live** Insights tab is the other question, and it takes the other answer:
 it reads the signal, recomputes when the signal changes, and persists nothing.
@@ -177,6 +189,65 @@ already complete. The proof that the source changed lives in the unit spec,
 seeded the way the defect presents — rows in the collection, nothing in the
 listener's first emission.
 
+## The rows a snapshot is frozen from (#427)
+
+[ADR 0137](ADR/0137-a-closed-month-is-generated-only-against-a-loaded-profile-and-the-servers-own-list.md)
+moved the generator's *list of missing months* to the server. It left the
+rows those months are built from on the live listener:
+`InsightSnapshotService.buildAndWrite` took `firstValueFrom` over
+`getTransactionsInRange` twice — once for the month it is freezing, once for
+the longer window the frozen facts look back over — and both figures are
+written to Firestore and never recomputed.
+
+Both now read `getTransactionsInRangeFromServer`, the strict variant. A month
+frozen from a cached subset is a wrong total the account keeps: it renders as
+authoritative, it is what a later month compares itself against, and the only
+way out of it is a regeneration somebody has to ask for. Generation already
+runs behind an online check and the server-only month list, so a rejection
+here defers a backfill that was never going to run offline anyway.
+
+`currentInputs`, which feeds the Insights tab's stale badge, is the same read
+with the other answer: `getTransactionsInRangeOnce`, cache-capable. It
+recomputes a figure to compare against the stored one and persists nothing —
+the same reasoning `NlSearchService.computeAggregate` uses.
+
+## The window a duplicate is looked for in (#427)
+
+`DuplicateDetectionService` asks whether an incoming import row already exists
+in the account, and it asked a live listener for the candidate rows. A twin
+outside whatever window this session had cached came back as *no duplicate*,
+and the import wrote a second copy of a row the account already held — a
+verdict acted on once, in the plainest form the class takes.
+
+`getTransactionsOnce` with the same filters, cache-capable rather than
+server-only: an import should not fail because the network is down, this
+device's own just-written rows are in the cache through latency compensation,
+and the review step's duplicate banner is shown to a person who can overrule
+it either way. Offline the check is weaker than online, which is the honest
+trade; offline it is not *absent*.
+
+## Three reads that are re-derived, and take the plain one-shot (#427)
+
+- `GroundingHistoryService` assembles the rows a model is grounded on
+  (`getTransactionsOnce` with a start date). A short set makes a weaker
+  answer, not a stored wrong one.
+- The receipt manager enumerates the transactions carrying a receipt
+  (`getTransactionsWithReceiptsOnce`) to show what is attached. It used to
+  filter the signal, so a session that had not browsed the right window saw
+  fewer receipts than exist.
+- The transactions page resolves the single row a `?transactionIds=` deep
+  link lands on (`getTransactionOnce`). This one is a document read, not a
+  query, so the cached-subset argument never applied to it — it was converted
+  so that the rule, and the lint selector below, read the same at every call
+  site.
+
+## The backup's other five sections (#427)
+
+Described under [#244](#the-backup-and-csv-exports-244) above: `categories`,
+`budgets`, `recurring`, `goals` and insight snapshots each read through
+`getCollectionFromServer` now, rather than resting on being sequenced after
+the transactions read.
+
 ## The deliberate live readers
 
 These are not exceptions to the rule — they are the other question. The
@@ -186,19 +257,78 @@ paint stale-then-correct, stay subscribed, and never persist what they read.
 If one of them ever starts writing its value down, it moves into the registry
 above.
 
+**`GoalService.listAll()` exists because the rule points both ways.** The
+smart-search dialog warms up its goal *chip names* when it opens, and it used
+to get them from `exportAll()`. Making that read server-only for the backup's
+sake would have taken the chip names away from an offline dialog, to no
+purpose: a rendered name is rendered-and-corrected, exactly what the cache is
+good for. So the goal service has two enumerations — `listAll()`
+(`getCollection`) for the caller that paints, `exportAll()`
+(`getCollectionFromServer`) for the caller that writes a file the deletion
+gate trusts — sharing one options builder. `nl-search`'s own fallbacks stay
+server-only, because they already sit behind a connectivity gate.
+
+Tightening a shared read is where this comes up: check every caller before
+moving a method to the strict variant, because one of them may be painting.
+
 ## Summary
 
 | Read | Feeds | Mechanism | Offline |
 |---|---|---|---|
 | `deleteAllTransactions` | the account wipe | `getCollection` | queues deletes against the cache |
 | `exportAll` (transactions) | backup + CSV files, the deletion gate | `getCollectionFromServer` | **rejects; export reports failure** |
-| sibling `exportAll()`s | the backup's other five sections | `getCollection` | cache fallback — safe only because transactions read first |
+| sibling `exportAll()`s | the backup's other five sections | `getCollectionFromServer` | **rejects; export reports failure** |
 | `recalculateBudgetsForCategory` | the recalculation work list | `getCollection` | cache, incl. latency-compensated writes |
 | `getExpensesInRangeOnce` | the persisted `spent` sum | `getCollection` | cache, incl. latency-compensated writes |
 | `listAll` (recurring) | a frozen month's recurring figures | `getCollection` | cache, incl. latency-compensated writes |
 | snapshot generator's missing-month check | which closed months get written | `getCollectionFromServer` | **rejects; deferred to the next online open** |
 | catch-up work list (recurring) | posted occurrences + budget recalcs | `getCollectionFromServer` | **rejects; deferred to the next online open** |
 | `getTransactionsInRangeOnce` | a stored smart-search answer's figures | `getCollection` | cache, incl. latency-compensated writes |
+| `getTransactionsInRangeFromServer` ×2 | a frozen month's totals and its window's facts | `getCollectionFromServer` | **rejects; deferred to the next online open** |
+| `getTransactionsInRangeOnce` (stale badge) | the Insights tab's recomputed-vs-stored comparison | `getCollection` | cache, incl. latency-compensated writes |
+| `getTransactionsOnce` (duplicates) | the import's duplicate verdict | `getCollection` | cache, incl. latency-compensated writes |
+| `getTransactionsOnce` (grounding) | the rows a model is grounded on | `getCollection` | cache, incl. latency-compensated writes |
+| `getTransactionsWithReceiptsOnce` | the receipt manager's list | `getCollection` | cache, incl. latency-compensated writes |
+| `getTransactionOnce` | the row a `?transactionIds=` link lands on | `getDocument` | cache |
+| `listAll` (goals) | the search dialog's chip names | `getCollection` | cache — a rendered value, deliberately |
+
+## The gate
+
+The registry above is a list of reads somebody already found. Since #427 the
+*shape* is banned outright, so the next one fails before it is committed.
+
+`eslint.config.js` carries two `no-restricted-syntax` selectors over
+`src/app/**/*.ts` (specs exempt): one matching `firstValueFrom(x.method(...))`
+directly, one matching the `firstValueFrom(x.method(...).pipe(...))` form.
+They key on the **method name**, on any receiver, against an alternation of
+the twelve `Observable`-returning methods `TransactionService` has today plus
+`subscribeToCollection`, `subscribeToDocument` and `watch`. `npm run lint`
+runs them.
+
+A hand-written list of names goes stale the moment a thirteenth listener is
+added, so `scripts/check-lint-guards.mjs` re-derives the census from the
+service's own source — signatures ending in `): Observable<`, with paren depth
+tracked so a wrapped signature still counts — and fails if any name is missing
+from the alternation. It also proves both selectors resolve at severity error
+against real files and against none in a spec, and its `--self-test` lints
+three fixtures through ESLint itself: the direct form, the piped form, and a
+`...Once` call that must pass. `npm run lint-guards:check` runs both halves;
+CI runs it with the other static gates.
+
+**What it cannot see**, and what therefore still needs a reader:
+
+- a listener held in a variable and passed as an identifier —
+  `const rows$ = svc.getTransactions(); await firstValueFrom(rows$)` — the
+  argument is no longer a call expression;
+- a double-chained `.pipe(a).pipe(b)`, where the outer `.pipe`'s object is
+  another `.pipe` call rather than the listener;
+- another service's listeners. The census is `TransactionService`'s, plus the
+  three generic `FirestoreService` methods.
+
+Four `firstValueFrom` call sites remain in `src/app`, all deliberate and none
+over a listener: two `MatDialog.afterClosed()`s in the receipt manager, an
+`HttpClient` request in the translation service, and a `filter` + `timeout`
+wait on an import record.
 
 ## When you add another one
 
@@ -221,8 +351,30 @@ include another device's writes, or the rows a warm cache never fetched. If
 the value must reflect the account rather than the session, only the
 collection read does that — and only the server read does it offline.
 
+**Name it after its source.** A method ending `...Once` reads through
+`getCollection` (or `getDocument`); a method ending `...FromServer` reads
+through `getCollectionFromServer` and rejects offline. The name is the only
+thing a call site shows a reader, so it has to be the thing that differs, and
+a pair of variants shares one private query-options builder so the two queries
+cannot drift apart.
+
 In specs, prove the source, not just the result: seed the collection with the
-signal left empty (the mock now records `subscribeToCollection` and
-`getCollectionFromServer` on their own spies), and remember the emulator has
-no persistent cache — a smoke test proves enumeration, not the cached-first
-emission itself.
+signal left empty (the mock records `subscribeToCollection`,
+`subscribeToDocument` and `getCollectionFromServer` on their own spies, so a
+read through `getDocument` can be told from a document listener).
+
+**A smoke test needs two clients to show this at all.** The emulator has no
+persistent cache, and — more to the point — *a client's own acknowledged
+writes land in its own local cache*. A suite that seeds its fixtures through
+the client it then reads with has a complete cache before it starts, so no
+listener it opens can ever be caught short, and the spec passes on the broken
+code. Every smoke file in this repo written before #427 seeds that way.
+
+Use a `writer` client that seeds and stays out of the way, and a `reader`
+client created afterwards, arriving cold, holding only what its own warm
+listener fetched. Both sign in as the same account **by email and password** —
+anonymous sign-in mints a second uid and fails `isOwner`.
+`insight-snapshot-source.smoke.spec.ts` and `duplicate-detection.smoke.spec.ts`
+are the two worked examples, and against the pre-#427 services they fail
+exactly as the defect predicts: 3 rows counted of 6, a total of 66 instead of
+231, and a twin outside the warmed window reported as no duplicate.

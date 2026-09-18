@@ -76,6 +76,36 @@ button.mat-mdc-icon-button {
   justify-content: center;
 }
 
+/* Tab strips scroll like every other strip in the app (G7). Material clips
+   the label container and pages it by transform from the chevron buttons, so
+   a finger on the titles moves nothing; TabStripScrollDirective turns that
+   pagination off and this is the scroller that replaces it. Keyed on the
+   directive's attribute, so a tab group that has not opted in keeps
+   Material's behaviour. The scrollbar stays — it is the only thing telling
+   the reader there are more tabs off to the side, the same call
+   .quick-filters and the period selector make. Material's shorthand leaves
+   overflow-y hidden here, so this axis alone becomes scrollable. The 6px
+   gutter under the labels is where the bar is drawn, so it never sits on
+   top of the active tab's underline. The divider lives on the tab list
+   itself, not the header both pages used to draw it on: the list is
+   flex-grow: 1, so the line spans the full container when the tabs fit and
+   the whole scrollable content when they overflow, scrolling with the
+   labels. That puts it directly under the labels, so the active tab's
+   underline rests on it and the scrollbar sits below the line in its
+   gutter. Both pages read the same --border-primary token, so there is one
+   line to keep in sync, not two. Material's own header draws no divider of
+   its own (verified by spec), so there is nothing to zero here. */
+mat-tab-group[appTabStripScroll] .mat-mdc-tab-label-container {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  padding-block-end: 12px;
+}
+
+mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
+  border-block-end: 1px solid var(--border-primary);
+}
+
 /* CSS Variables for Theming */
 :root {
   // Surface colors

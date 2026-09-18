@@ -16,6 +16,7 @@ import { AnalyticsService } from '../../core/services/analytics.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { TabStripScrollDirective } from '../../shared/directives/tab-strip-scroll.directive';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import {
   PeriodSelectorComponent,
@@ -50,6 +51,7 @@ export const REPORT_TABS = ['analysis', 'categories', 'monthly', 'insights', 'fo
     PeriodSelectorComponent,
     CommonModule,
     MatTabsModule,
+    TabStripScrollDirective,
     MatIconModule,
     MatButtonModule,
     LoadingSpinnerComponent,

@@ -37,6 +37,7 @@ export class MockFirestoreService {
   private _getCollectionSpy = new SimpleSpy();
   private _getCollectionFromServerSpy = new SimpleSpy();
   private _subscribeToCollectionSpy = new SimpleSpy();
+  private _subscribeToDocumentSpy = new SimpleSpy();
   private _getPageSpy = new SimpleSpy();
   private _addDocumentSpy = new SimpleSpy();
   private _setDocumentSpy = new SimpleSpy();
@@ -50,6 +51,7 @@ export class MockFirestoreService {
   get getCollectionSpy() { return this._getCollectionSpy; }
   get getCollectionFromServerSpy() { return this._getCollectionFromServerSpy; }
   get subscribeToCollectionSpy() { return this._subscribeToCollectionSpy; }
+  get subscribeToDocumentSpy() { return this._subscribeToDocumentSpy; }
   get getPageSpy() { return this._getPageSpy; }
   get addDocumentSpy() { return this._addDocumentSpy; }
   get setDocumentSpy() { return this._setDocumentSpy; }
@@ -86,6 +88,7 @@ export class MockFirestoreService {
     this._getCollectionSpy.reset();
     this._getCollectionFromServerSpy.reset();
     this._subscribeToCollectionSpy.reset();
+    this._subscribeToDocumentSpy.reset();
     this._getPageSpy.reset();
     this._addDocumentSpy.reset();
     this._setDocumentSpy.reset();
@@ -180,7 +183,7 @@ export class MockFirestoreService {
   }
 
   subscribeToDocument<T>(path: string): Observable<T | null> {
-    this._getDocumentSpy.call(path);
+    this._subscribeToDocumentSpy.call(path);
     const data = (this.mockData.get(path) as T) ?? null;
     return of(data);
   }

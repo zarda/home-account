@@ -85,13 +85,15 @@
 }
 
 /* min-width is the floor the columns need, not a fixed size — width: 100%
-   still fills anything wider. 720px is the content width at 768px, the
-   viewport that first shows this view, so the table is never narrower than
-   the screen that introduced it and the scrollbar appears only once the
-   description cell's own content pushes past that. */
+   still fills anything wider. 768px, the viewport that first shows this
+   view, less the shell's 24px padding on each side is 720px of content —
+   but wherever the vertical scrollbar on .main-container is classic rather
+   than overlaid it takes up to 16px more, so 720 is not itself a safe
+   floor. 704px leaves room for that scrollbar too; the table is never
+   narrower than the screen that introduced it can actually offer it. */
 .desktop-table {
   width: 100%;
-  min-width: 720px;
+  min-width: 704px;
 }
 
 ::ng-deep .desktop-table .mat-mdc-header-row {
@@ -203,6 +205,8 @@
 // The note is a control now, not a decoration, so the gap belongs to the
 // button around the glyph — 32px like the row's own actions button, which is
 // as small as an inline target in a table cell gets without disappearing.
+// The visible box stays 32; the ::after overhang below carries the actual
+// tap target to the 40px floor without fattening the glyph.
 .note-button {
   width: 32px !important;
   height: 32px !important;
@@ -212,6 +216,15 @@
   justify-content: center !important;
   margin-inline-start: 4px;
   vertical-align: middle;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: min(0px, calc((100% - 40px) / 2));
+    bottom: min(0px, calc((100% - 40px) / 2));
+    inset-inline: min(0px, calc((100% - 40px) / 2));
+  }
 }
 
 .note-icon {
@@ -225,15 +238,29 @@
   @apply text-primary-600 dark:text-primary-400;
 }
 
-// Tailwind preflight already strips a button's padding, border, background
-// and cursor, so only the inline layout survives: the bare icon glyph still
-// has to sit and size like the link it replaced.
+// Sized like .note-button: a 32px visible box (the glyph inside keeps its own
+// size from .receipt-icon) so its ::after overhang only needs -4px to clear the
+// 40px floor, the same reach as the note button's own overhang — the two
+// meet inside the 4px gap between them instead of crossing into either
+// button's visible box.
 .receipt-icon-button {
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   vertical-align: middle;
   margin-left: 4px;
   line-height: 1;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: min(0px, calc((100% - 40px) / 2));
+    bottom: min(0px, calc((100% - 40px) / 2));
+    inset-inline: min(0px, calc((100% - 40px) / 2));
+  }
 }
 
 // Image count next to the icon, only shown past one image
@@ -352,6 +379,9 @@
   flex-shrink: 0;
 }
 
+// Glyph box stays 32, the desktop table's own inline-target floor (the row's
+// note and receipt buttons above match it); the ::after overhang carries the
+// tap target the rest of the way to 40, same idiom as those two.
 .action-btn {
   width: 32px !important;
   height: 32px !important;
@@ -360,6 +390,15 @@
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: min(0px, calc((100% - 40px) / 2));
+    bottom: min(0px, calc((100% - 40px) / 2));
+    inset-inline: min(0px, calc((100% - 40px) / 2));
+  }
 }
 
 .action-btn mat-icon {

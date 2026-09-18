@@ -26,6 +26,9 @@ nav {
 }
 
 .nav-item {
+  // Material's own .mat-mdc-list-item sets width: 100%; left at auto the
+  // row sizes to the nav minus these margins instead of the nav plus them.
+  width: auto;
   margin: 0 8px 4px 8px;
   border-radius: var(--radius-sm);
 }

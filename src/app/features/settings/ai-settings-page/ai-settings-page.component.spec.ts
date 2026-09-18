@@ -445,4 +445,46 @@ describe('AiSettingsPageComponent', () => {
       expect(component.clearingTagMemory()).toBeFalse();
     });
   });
+
+  describe('grid tracks (#450)', () => {
+    // Both grids switch at 600px; Karma's headless window is what makes the
+    // switched rule (not the single-column default) the one under test.
+    let configuredHost: HTMLElement | undefined;
+
+    afterEach(() => {
+      configuredHost?.remove();
+      configuredHost = undefined;
+    });
+
+    function columnsOf(host: HTMLElement, selector: string): number {
+      const grid = host.querySelector(selector) as HTMLElement;
+      return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+    }
+
+    it('lays the provider-preferences grid out in three columns', () => {
+      expect(window.innerWidth)
+        .withContext('Karma window; the >=600px provider-preferences-grid rule is what renders')
+        .toBeGreaterThanOrEqual(600);
+
+      cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+      const configured = TestBed.createComponent(AiSettingsPageComponent);
+      configuredHost = configured.nativeElement as HTMLElement;
+      document.body.appendChild(configuredHost);
+      configured.detectChanges();
+
+      expect(columnsOf(configured.nativeElement, '.provider-preferences-grid'))
+        .withContext('.provider-preferences-grid computed column count at >=600px')
+        .toBe(3);
+    });
+
+    it('lays the info-cards grid out in two columns', () => {
+      expect(window.innerWidth)
+        .withContext('Karma window; the >=600px info-cards-grid rule is what renders')
+        .toBeGreaterThanOrEqual(600);
+
+      expect(columnsOf(fixture.nativeElement, '.info-cards-grid'))
+        .withContext('.info-cards-grid computed column count at >=600px')
+        .toBe(2);
+    });
+  });
 });
