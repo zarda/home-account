@@ -170,18 +170,9 @@ export class TransactionService {
     const userId = this.authService.userId();
     if (!userId) return of([]);
 
-    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
-      orderBy: [{ field: 'date', direction: 'desc' }]
-    };
-
-    const whereConditions = buildTransactionWhere(filters);
-    if (whereConditions) {
-      options.where = whereConditions;
-    }
-
     return this.firestoreService.subscribeToCollection<Transaction>(
       this.userTransactionsPath,
-      options
+      this.transactionsOptions(filters)
     ).pipe(
       map(transactions => {
         // Amount range and text search cannot be expressed on this Firestore
@@ -194,9 +185,58 @@ export class TransactionService {
     );
   }
 
+  /**
+   * One-shot sibling of getTransactions, sharing its options builder and
+   * client-side filter pass so the two queries cannot drift apart. For a
+   * caller that acts on the result once — persists it, counts it, or gates
+   * a decision on it — rather than rendering it and letting a listener
+   * correct it: a listener's first emission here is whatever narrow window
+   * this session happened to cache, not necessarily the account's actual
+   * rows for these filters.
+   */
+  async getTransactionsOnce(filters?: TransactionFilters): Promise<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+
+    const transactions = await this.firestoreService.getCollection<Transaction>(
+      this.userTransactionsPath,
+      this.transactionsOptions(filters)
+    );
+    return applyClientTransactionFilters(transactions, filters);
+  }
+
+  // Shared by the live and one-shot variants so the two queries cannot drift.
+  private transactionsOptions(filters?: TransactionFilters): QueryOptions {
+    const options: QueryOptions = {
+      orderBy: [{ field: 'date', direction: 'desc' }]
+    };
+
+    const whereConditions = buildTransactionWhere(filters);
+    if (whereConditions) {
+      options.where = whereConditions;
+    }
+
+    return options;
+  }
+
   // Get a single transaction by ID
   getTransactionById(id: string): Observable<Transaction | null> {
     return this.firestoreService.subscribeToDocument<Transaction>(
+      `${this.userTransactionsPath}/${id}`
+    );
+  }
+
+  /**
+   * One-shot sibling of getTransactionById: a caller with nothing to keep a
+   * subscription alive for gets this row's current data once, without
+   * opening a listener. Maps a missing document to null the same way the
+   * listener does.
+   */
+  async getTransactionOnce(id: string): Promise<Transaction | null> {
+    const userId = this.authService.userId();
+    if (!userId) return null;
+
+    return this.firestoreService.getDocument<Transaction>(
       `${this.userTransactionsPath}/${id}`
     );
   }
@@ -1684,7 +1724,24 @@ export class TransactionService {
     );
   }
 
-  // Shared by the live and one-shot variants so the two queries cannot drift.
+  /**
+   * Server-only sibling of getTransactionsInRangeOnce, for a figure that
+   * will be stored: the cache is not an acceptable answer for a value that
+   * gets written down and then acted on, rather than refreshed by hand.
+   * Offline it rejects instead of quietly answering from whatever window a
+   * warm cache happens to remember.
+   */
+  async getTransactionsInRangeFromServer(start: Date, end: Date): Promise<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+
+    return this.firestoreService.getCollectionFromServer<Transaction>(
+      this.userTransactionsPath,
+      this.transactionsInRangeOptions(start, end)
+    );
+  }
+
+  // Shared by the live and one-shot variants so the three queries cannot drift.
   private transactionsInRangeOptions(start: Date, end: Date): QueryOptions {
     return {
       orderBy: [{ field: 'date', direction: 'desc' }],
@@ -1739,17 +1796,41 @@ export class TransactionService {
 
     return this.firestoreService.subscribeToCollection<Transaction>(
       this.userTransactionsPath,
-      // Filters on receiptUrl, which stays a string even once a transaction
-      // can hold several images — it points at the first one. An inequality
-      // against a field that can hold an array would match every document,
-      // since Firestore orders arrays after strings. Ordering on the
-      // inequality field is implicit, so sort by date client-side instead.
-      { where: [{ field: 'receiptUrl', op: '>', value: '' }] }
+      this.receiptsOptions()
     ).pipe(
-      map(transactions =>
-        [...transactions].sort((a, b) => b.date.toMillis() - a.date.toMillis())
-      )
+      map(transactions => this.newestFirst(transactions))
     );
+  }
+
+  /**
+   * One-shot sibling of getTransactionsWithReceipts, sharing its query and
+   * sort so a count taken once cannot drift from what the live manager
+   * renders. For a caller that needs the current set once rather than a
+   * live, self-correcting list.
+   */
+  async getTransactionsWithReceiptsOnce(): Promise<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+
+    const transactions = await this.firestoreService.getCollection<Transaction>(
+      this.userTransactionsPath,
+      this.receiptsOptions()
+    );
+    return this.newestFirst(transactions);
+  }
+
+  // Shared by the live and one-shot variants so the two queries cannot drift.
+  // Filters on receiptUrl, which stays a string even once a transaction can
+  // hold several images — it points at the first one. An inequality against
+  // a field that can hold an array would match every document, since
+  // Firestore orders arrays after strings. Ordering on the inequality field
+  // is implicit, so sort by date client-side instead.
+  private receiptsOptions(): QueryOptions {
+    return { where: [{ field: 'receiptUrl', op: '>', value: '' }] };
+  }
+
+  private newestFirst(transactions: Transaction[]): Transaction[] {
+    return [...transactions].sort((a, b) => b.date.toMillis() - a.date.toMillis());
   }
 
   // Get recent transactions
