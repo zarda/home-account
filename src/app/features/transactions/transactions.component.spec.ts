@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, throwError, Subject, EMPTY } from 'rxjs';
+import { of, Subject, EMPTY } from 'rxjs';
 import { TransactionsComponent } from './transactions.component';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService } from '../../core/services/transaction-window.service';
@@ -54,7 +54,7 @@ describe('TransactionsComponent', () => {
     isLoading: ReturnType<typeof signal<boolean>>;
     lastMutation: ReturnType<typeof signal<TransactionMutation | null>>;
     deleteTransaction: jasmine.Spy;
-    getTransactionById: jasmine.Spy;
+    getTransactionOnce: jasmine.Spy;
   };
   let windowSource: ReturnType<typeof createMockWindowSource>;
   let periodTotals: ReturnType<typeof createMockPeriodTotals>;
@@ -88,7 +88,7 @@ describe('TransactionsComponent', () => {
       isLoading: signal(false),
       lastMutation: signal<TransactionMutation | null>(null),
       deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
-      getTransactionById: jasmine.createSpy('getTransactionById').and.returnValue(of(null)),
+      getTransactionOnce: jasmine.createSpy('getTransactionOnce').and.resolveTo(null),
     };
     windowSource = createMockWindowSource();
     periodTotals = createMockPeriodTotals();
@@ -254,7 +254,7 @@ describe('TransactionsComponent', () => {
   describe('the tx query param', () => {
     it('opens, scrolls to and edits the transaction named by the tx query param after the first window seed', fakeAsync(() => {
       const txn = createTransaction({ id: 'tx-9' });
-      transactionService.getTransactionById.and.returnValue(of(txn));
+      transactionService.getTransactionOnce.and.resolveTo(txn);
       windowSource.isInLoadedRange.and.returnValue(false);
       routeSnapshotParams = { tx: 'tx-9' };
 
@@ -263,7 +263,7 @@ describe('TransactionsComponent', () => {
       fixture.componentInstance.onFiltersChanged({});
       tick();
 
-      expect(transactionService.getTransactionById).toHaveBeenCalledWith('tx-9');
+      expect(transactionService.getTransactionOnce).toHaveBeenCalledWith('tx-9');
       expect(windowSource.jumpTo).toHaveBeenCalledWith(txn.date);
       expect(windowSource.requestScrollTo).toHaveBeenCalledWith('tx-9');
       expect(dialog.open).toHaveBeenCalledWith(TransactionFormComponent, jasmine.objectContaining({
@@ -273,7 +273,7 @@ describe('TransactionsComponent', () => {
 
     it('keeps the window in place when the target is already in range', fakeAsync(() => {
       const txn = createTransaction({ id: 'tx-5' });
-      transactionService.getTransactionById.and.returnValue(of(txn));
+      transactionService.getTransactionOnce.and.resolveTo(txn);
       windowSource.isInLoadedRange.and.returnValue(true);
       routeSnapshotParams = { tx: 'tx-5' };
 
@@ -290,7 +290,7 @@ describe('TransactionsComponent', () => {
     }));
 
     it('toasts and opens nothing when the linked transaction is gone', fakeAsync(() => {
-      transactionService.getTransactionById.and.returnValue(of(null));
+      transactionService.getTransactionOnce.and.resolveTo(null);
       routeSnapshotParams = { tx: 'tx-missing' };
 
       const fixture = build();
@@ -305,7 +305,7 @@ describe('TransactionsComponent', () => {
     }));
 
     it('toasts a generic error when the linked-transaction fetch rejects', fakeAsync(() => {
-      transactionService.getTransactionById.and.returnValue(throwError(() => new Error('offline')));
+      transactionService.getTransactionOnce.and.rejectWith(new Error('offline'));
       routeSnapshotParams = { tx: 'tx-err' };
 
       const fixture = build();
@@ -320,7 +320,7 @@ describe('TransactionsComponent', () => {
 
     it('consumes the tx param once', fakeAsync(() => {
       const txn = createTransaction({ id: 'tx-1' });
-      transactionService.getTransactionById.and.returnValue(of(txn));
+      transactionService.getTransactionOnce.and.resolveTo(txn);
       routeSnapshotParams = { tx: 'tx-1' };
 
       const fixture = build();
@@ -330,12 +330,27 @@ describe('TransactionsComponent', () => {
       expect(dialog.open).toHaveBeenCalledTimes(1);
 
       dialog.open.calls.reset();
-      transactionService.getTransactionById.calls.reset();
+      transactionService.getTransactionOnce.calls.reset();
       fixture.componentInstance.onFiltersChanged({ type: 'expense' });
       tick();
 
-      expect(transactionService.getTransactionById).not.toHaveBeenCalled();
+      expect(transactionService.getTransactionOnce).not.toHaveBeenCalled();
       expect(dialog.open).not.toHaveBeenCalled();
+    }));
+
+    it('resolves the tx target with no live listener to fall back to', fakeAsync(() => {
+      // The mock stubs only the one-shot method; a regression to the
+      // listener would call an undefined spy and throw before this settles.
+      const txn = createTransaction({ id: 'tx-42' });
+      transactionService.getTransactionOnce.and.resolveTo(txn);
+      routeSnapshotParams = { tx: 'tx-42' };
+
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onFiltersChanged({});
+      tick();
+
+      expect(windowSource.requestScrollTo).toHaveBeenCalledWith('tx-42');
     }));
 
     it('widens to all dates when arriving with a tx target', () => {

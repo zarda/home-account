@@ -89,7 +89,7 @@ describe('AIImportService', () => {
       'failImport',
       'getImportById'
     ]);
-    transactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'getTransactions']);
+    transactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'getTransactionsOnce']);
     budgetService = jasmine.createSpyObj('BudgetService', ['recalculateBudgetsForCategory']);
     budgetService.recalculateBudgetsForCategory.and.resolveTo();
     authService = jasmine.createSpyObj('AuthService', [], {
@@ -139,7 +139,7 @@ describe('AIImportService', () => {
     categoryMemory.ensureLoaded.and.resolveTo(undefined);
     categoryMemory.lookup.and.returnValue(null);
     categoryMemory.rememberAll.and.resolveTo(undefined);
-    transactionService.getTransactions.and.returnValue(of([]));
+    transactionService.getTransactionsOnce.and.resolveTo([]);
     ragContext.buildCategorizationGrounding.and.returnValue('');
     tagSuggestions.suggest.and.callFake(async (rows: readonly unknown[]) => rows.map(() => []));
     // A bare spy answers undefined, and tagVocabulary spreads what it gets.
@@ -712,7 +712,7 @@ describe('AIImportService', () => {
         'How this user usually categorizes these merchants:\n- STARBUCKS → Coffee (food_coffee)'
       );
       // An empty history is, by design, nothing to ground in.
-      transactionService.getTransactions.and.returnValue(of([createTransaction()]));
+      transactionService.getTransactionsOnce.and.resolveTo([createTransaction()]);
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -740,7 +740,7 @@ describe('AIImportService', () => {
       authService.currentUser.and.returnValue({
         preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
       } as never);
-      transactionService.getTransactions.and.returnValue(throwError(() => new Error('offline')));
+      transactionService.getTransactionsOnce.and.rejectWith(new Error('offline'));
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -828,7 +828,7 @@ describe('AIImportService', () => {
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
       expect(tagSuggestions.suggest.calls.mostRecent().args[1]).toEqual([]);
-      expect(transactionService.getTransactions).not.toHaveBeenCalled();
+      expect(transactionService.getTransactionsOnce).not.toHaveBeenCalled();
       expect(cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[1]).toBeUndefined();
     });
 
@@ -837,14 +837,14 @@ describe('AIImportService', () => {
         preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
       } as never);
       const history = [createTransaction()];
-      transactionService.getTransactions.and.returnValue(of(history));
+      transactionService.getTransactionsOnce.and.resolveTo(history);
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
       expect(tagSuggestions.suggest.calls.mostRecent().args[1]).toEqual(history);
       // One read for both groundings, not one each.
-      expect(transactionService.getTransactions).toHaveBeenCalledTimes(1);
+      expect(transactionService.getTransactionsOnce).toHaveBeenCalledTimes(1);
     });
 
     it('offers tags on a receipt the strategy service read', async () => {
@@ -971,7 +971,7 @@ describe('AIImportService', () => {
         preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
       } as never);
       const history = [createTransaction()];
-      transactionService.getTransactions.and.returnValue(of(history));
+      transactionService.getTransactionsOnce.and.resolveTo(history);
       tagSuggestions.vocabularyFrom.and.returnValue(['coffee', 'work']);
 
       const vocabulary = await service.tagVocabulary(taggedRows(['Coffee '], ['reimbursable', 'work']));
@@ -1863,7 +1863,7 @@ describe('AIImportService', () => {
         'How this user usually categorizes these merchants:\n- Coffee → Coffee (food_coffee)'
       );
       // An empty history is, by design, nothing to ground in.
-      transactionService.getTransactions.and.returnValue(of([createTransaction()]));
+      transactionService.getTransactionsOnce.and.resolveTo([createTransaction()]);
       exportService.importFromCSV.and.returnValue(csvRows());
 
       const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
