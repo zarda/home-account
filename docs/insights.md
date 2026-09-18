@@ -131,6 +131,13 @@ cannot read its own snapshots, so it defers rather than writing a month the
 rules will refuse the moment the real profile lands — the account gets its
 backfill at the next open the profile loads cleanly.
 
+**The rows a month is frozen from come from the server too.** Both reads in
+`buildAndWrite` — the month being frozen, and the longer window its facts look
+back over — go through `TransactionService.getTransactionsInRangeFromServer`,
+never a live listener's first emission, because a frozen total is the one
+figure here that is never re-derived; the registry entry is in
+[docs/one-shot-reads.md](one-shot-reads.md#the-rows-a-snapshot-is-frozen-from-427).
+
 Deciding *which* months are missing is also answered by a server read
 (`getCollectionFromServer`), never by `watch()`'s listener: under the
 persistent local cache, a listener's first emission is whatever this device

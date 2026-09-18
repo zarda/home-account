@@ -189,6 +189,15 @@ only control on the page is a switch with a write behind it.
   was settled — so close dialogs through their own Close or Cancel control,
   which every journey does anyway, and never conclude an Escape defect from a
   pane.
+
+  Two things about a key the run constructs itself, since the same trick is
+  what drives the tab strips. The pane's Chromium leaves `keyCode` at 0 on a
+  `new KeyboardEvent(...)` unless it is passed explicitly, and code still
+  reading `keyCode` sees nothing. And Material's tab header listens for
+  keydown on the **label container**, not on the header element — so an arrow
+  key dispatched on the header, or on the group, reaches no key manager and
+  reads exactly like a strip that ignores the keyboard. Dispatch from the
+  focused tab.
 - **A pane clears viewport emulation between turns.** A width set for a phone
   journey is gone by the next turn, and any measurement that crosses that
   boundary describes a layout that no longer exists — one run read a
@@ -483,6 +492,11 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 26 | The dashboard layout editor at phone width, in both themes | Every row, switch and move control inside a 390px viewport, and the selected and disabled states distinct in light and dark | `26-phone-editor.png` |
 | 27 | The transaction form: a purchase split across categories | A held submit while the split cannot stand, a remainder that recomputes with every part, three real rows sharing one group id, the badge reaching assistive technology, and the dashboard chart crediting each category | `27-split-form.png`, `27-parts-listed.png`, `27-part-confirm.png` |
 | 28 | Settings: the accessibility toggle-groups share their row | The font-size group's three segments distributed as evenly as the theme toggle beside them, at the group's own capped width | `28-font-scale-toggle.png` |
+| 29 | The repaired grids at tablet and desktop | Declarations a browser was silently dropping now producing real columns, on the widths a 756px Karma window cannot see | `29-reports-grids-768.png`, `29-reports-grids-1280.png`, `29-settings-ai-grids-1280.png`, `29-filter-grid-1280.png` |
+| 30 | The tab strips scroll | A strip driven by a real scroll, a real click and real arrow keys, with no chevrons anywhere in it | `30-budgets-strip-375.png`, `30-reports-strip-375.png`, `30-reports-strip-1280.png` |
+| 31 | Every route at the account's own font scale | The layouts at 1.3 as the account actually renders them, against the same page at 1.0 | `31-nav-labels-375.png`, `31-amounts-375.png`, `31-model-selects-375.png`, `31-period-picker-375.png` |
+| 32 | The papercuts: targets, floors and a fallback | Tap targets and a table floor measured in a real layout, and Material's own touch target underneath two of them | `32-table-floor-768.png`, `32-sidebar-nav-1280.png`, `32-budget-menu-375.png`, `32-avatar-fallback.png` |
+| 33 | Import review: the duplicate check reads the account | A twin outside anything this session browsed, found by a real import against a real cache | `33-duplicate-banner.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1812,6 +1826,171 @@ and [docs/ui-overflow.md](ui-overflow.md) for what it pins and why a spec
 rather than this protocol is where it belongs.
 
 One shot: the two toggle groups side by side at their default width.
+
+### 29. The repaired grids at tablet and desktop
+
+Any account. Eleven grid declarations were invalid and dropped at parse time,
+so six pages rendered one column wherever the rule applied. The rules start at
+600, 768 and 1024px; Karma's window is 756px, so three of them cannot be read
+as layout in a spec at all — this is where the render is proved.
+
+The pane is narrower than 1024px, so set the width and read the DOM inside the
+one turn ([Panes and viewports](#panes-and-viewports)). For each grid:
+
+```js
+getComputedStyle(document.querySelector('.summary-cards')).gridTemplateColumns;
+```
+
+**Pass — Reports.** At 768px: `.summary-cards` 3 tracks, `.stats-grid` 4,
+`.summary-stats` 2. At 1280px: 3, 4 and 4 — the last is the one whose 1024px
+rule no spec can see.
+
+**Pass — Settings and AI.** At 1280px, `/settings` `.settings-grid` reads 2
+tracks; `/ai` reads 3 on `.provider-preferences-grid` and 2 on
+`.info-cards-grid`.
+
+**Pass — Transactions.** The filter panel opens through its own signal
+(`ng.getComponent(document.querySelector('app-transaction-filters'))
+.expanded.set(true)`) rather than a click, because the grid is what is being
+read, not the trigger. `.filter-grid` reads 6 tracks at 1280px and 3 at 768px.
+
+A track count of 1 anywhere above is the defect: the declaration was dropped
+and the mobile default is what is painting.
+
+Four shots: Reports at both widths, the two settings pages at 1280, and the
+open filter panel.
+
+### 30. The tab strips scroll
+
+`/budgets` (three tabs) and `/reports` (five) at the pane's own 375px width.
+Pointer input stalls under emulation ([Panes and viewports](#panes-and-viewports)),
+so the scroll itself is set by script; the keys are real and are sent from the
+focused tab, because Material's keydown listener sits on the label container
+and an event dispatched on the header element never reaches it.
+
+```js
+const strip = document.querySelector('.mat-mdc-tab-label-container');
+getComputedStyle(strip).overflowX;                         // 'auto'
+getComputedStyle(document.querySelector('.mat-mdc-tab-header')).transform;
+document.querySelectorAll('.mat-mdc-tab-header-pagination').length;
+```
+
+**Pass — no pagination.** The chevrons compute to `display: none` and the
+header carries no pagination class; the header's own `transform` reads `none`,
+so nothing is being paged. `scrollbar-width` is `thin`, not `none`.
+
+**Pass — it scrolls, and a selection is revealed.** Setting `scrollLeft = 200`
+on budgets lands at 183.5, the strip's own maximum — it really is a scroller
+with a real end. Selecting the last tab (Goals) brings it into view, and a
+click on the last tab after scrolling to the end leaves it in view rather than
+snapping back to 0. On reports, selecting Forecast reveals it at 405.5.
+
+**Pass — the keyboard.** Four `ArrowRight` presses from the focused tab move
+focus 1 → 4, each landing tab inside the strip's box, with `scrollLeft`
+0 → 111 → 258 → 406. This is the case Material's own focus reset breaks: it
+writes `scrollLeft = 0` after every focus change, so without the microtask
+correction the strip would return to the start on each press.
+
+**Pass — desktop at the account's scale.** Reports at 1280px and scale 1.3:
+the label list measures 1170px inside a 968px container — genuinely
+overflowing — with still no chevrons, and the strip scrolls.
+
+Three shots: both strips at 375px mid-scroll, and the reports strip
+overflowing at 1280.
+
+### 31. Every route at the account's own font scale
+
+The account's own `--app-font-scale` is 1.3, which is what a reload renders.
+Compare against 1.0 by overriding the inline variable on `documentElement`
+inside the same turn — it persists nothing:
+
+```js
+document.documentElement.style.setProperty('--app-font-scale', '1.0');
+```
+
+Walk `/dashboard`, `/transactions`, `/budgets`, `/reports`, `/settings`, `/ai`
+and `/import/history` at 375px, at both scales, in both themes.
+
+**Pass — the nav labels keep a gutter.** At 1.3 the three gaps between the
+bottom nav's labels measure 8, 61.3 and 20.1px, with every label inside its
+own item's box and one of them fitted down to 14.7px by `appFitText`. At 1.0
+the gaps are 18.4, 73 and 37.4px and no label is fitted. The number that
+matters is that the smallest gap is not zero: before the gutter, two fitted
+labels sat flush.
+
+**Pass — a four-digit amount stays on the row.** Four rows carrying
+four-digit amounts render them unwrapped beside their descriptions at both
+scales. A wrapped amount here means the description's floor is in `rem` again.
+
+**Pass — the model names wrap whole.** On `/ai`, all four select triggers wrap
+to two lines with no ellipsis, each value's `scrollWidth` equal to its
+`clientWidth` (227/227).
+
+**Pass — the period picker keeps its row.** On `/dashboard` at 1.3 the toggle
+group (271px), the 8px gap and the calendar button (56px) total 335 and share
+one row; at 1.0 the toggle sits at its own content width (240px) rather than
+stretching to fill.
+
+Four shots: the nav at 375/1.3, a list of four-digit amounts, the AI selects
+wrapped, and the period row at 1.3.
+
+### 32. The papercuts: targets, floors and a fallback
+
+`/transactions` at 768px, `/budgets` and `/settings` at 375px, the sidebar at
+1280px. Read boxes, not pictures.
+
+**Pass — the desktop table fits.** `.table-scroll` reads `scrollWidth` equal to
+`clientWidth` (712/712). The 712 is the *pane's* number, not the app's: the
+pane's `.main-container` is 760px of a 768px viewport, an 8px scrollbar. The
+stylesheet's floor is 704, which leaves room for a classic 16px scrollbar too,
+so it fits here and on the platforms that draw a wider one.
+
+**Pass — the sidebar does not scroll sideways.** At 1280px the nav reads
+255/255 with each row 239px wide. Before `width: auto`, Material's own
+`width: 100%` sized the row to the nav *plus* its margins.
+
+**Pass — the targets.** The budget card's menu button measures 52×52 at the
+account's 1.3 (`w-10` is rem-based, so 40 at 1.0) — met by its own box. In the
+table, the note button and the actions trigger each have a 32px glyph box and
+a 40px `::after` hit box, *and* a `.mat-mdc-button-touch-target` span that
+Material ships at 48×48 with `display: block` — so those two already had a
+target and the overhang is belt-and-braces. The receipt icon is the real gain:
+an 18px glyph on a plain `<button>` with no Material target at all.
+
+**Pass — the avatar falls back.** Dispatch an `error` event on the photo in
+the header and again on the settings card: each swaps to its placeholder,
+and resetting the source signal puts the image back. Flush each component
+(`ng.applyChanges(ng.getComponent(el))`) before reading — a hidden pane paints
+nothing on its own.
+
+Four shots: the table at its floor, the sidebar at 1280, the budget card's
+menu button at 1.3, and both avatars fallen back.
+
+### 33. Import review: the duplicate check reads the account
+
+`/import`, with the session deliberately *not* having browsed the window the
+twin lives in. Build a one-row CSV in the page that copies a real expense from
+three months back — the same date, description and amount — and hand it to the
+dropzone's hidden input as a `File` ([Fixtures](#fixtures)); a pane cannot open
+a file picker.
+
+The point is the cache. A listener's first emission holds whatever this
+session browsed, and the twin is outside it — so before #427 this row came
+back clean and the import would have written a second copy.
+
+**Pass — the banner stands and Continue is held.** Processing resolves one
+row, and the review step raises the duplicate banner with **Exclude all
+duplicates** and **Include anyway**, holding Continue until one is chosen.
+
+**Pass — nothing is written.** Leave by the back arrow, not by continuing; no
+confirmation dialog appears. `/transactions` still shows the same count it did
+before the journey, and `/import/history` still shows its previous record
+count with the same newest entry. Like every other import journey this one
+leaves before Import, so what it costs the account is the CSV door's own
+categorization call and nothing else — see
+[What a run may touch](#what-a-run-may-touch).
+
+One shot: the review step with the duplicate banner standing.
 
 ## Evidence
 
