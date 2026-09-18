@@ -154,6 +154,14 @@ default.
 | 1.3 | goals |
 | 1.4 | goal links on transactions |
 
+Not every field a transaction later gains needs a row here. A field rides
+across a restore for free the moment it is added to `CreateTransactionDTO`
+and the restore's own field-by-field rebuild copies it across — a version
+bump is only for a field that needs something recomputed from it once it is
+back. `splitGroupId` (see [docs/splits.md](splits.md)) took the first path:
+it joined the DTO and the restore's copy so a split purchase's rows keep
+their shared id coming back in, with nothing to recompute and no bump.
+
 ## Privacy
 
 The file is written to wherever you save it and never leaves the device on its

@@ -26,8 +26,9 @@ import { TagSuggestionService } from '../../../core/services/tag-suggestion.serv
 import { NotificationService } from '../../../core/services/notification.service';
 import { NoteTranslationService } from '../../../core/services/note-translation.service';
 import { NoteTranslationComponent } from '../../../shared/components/note-translation/note-translation.component';
-import { Category, User } from '../../../models';
-import { createCategory, createUser } from '../../../core/services/testing';
+import { PwaService } from '../../../core/services/pwa.service';
+import { Category, Goal, Transaction, User } from '../../../models';
+import { createCategory, createTransaction, createUser } from '../../../core/services/testing';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 
 function attemptStub() {
@@ -49,6 +50,11 @@ function attemptStub() {
 describe('TransactionFormComponent suggestion chips', () => {
   const expense = createCategory({ id: 'food', type: 'expense', name: 'categoryNames.food' });
 
+  // The real PwaService registers window and service-worker listeners from
+  // its constructor; the split's offline hint only needs the signal.
+  let isOnline: ReturnType<typeof signal<boolean>>;
+  let activeGoals: ReturnType<typeof signal<Goal[]>>;
+
   function build() {
     const fixture = TestBed.createComponent(TransactionFormComponent);
     fixture.componentInstance.ngOnInit();
@@ -57,6 +63,8 @@ describe('TransactionFormComponent suggestion chips', () => {
   }
 
   beforeEach(async () => {
+    isOnline = signal(true);
+    activeGoals = signal<Goal[]>([]);
     const transactionService = jasmine.createSpyObj('TransactionService', [
       'addTransaction', 'updateTransaction', 'removeReceiptAt', 'removeAllReceipts',
       'getTransactionDatesForMonth',
@@ -77,9 +85,14 @@ describe('TransactionFormComponent suggestion chips', () => {
     strategy.canProcessNow.and.returnValue(true);
     strategy.canUseCloud.and.returnValue(true);
 
-    const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
+    const currency = jasmine.createSpyObj('CurrencyService', [
+      'getSupportedCurrencies', 'getCurrencyInfo', 'formatCurrency',
+    ]);
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
     currency.getCurrencyInfo.and.callFake((code: string) => ({ code, nameKey: code, symbol: code }));
+    // The split's remainder line is money; the real formatter resolves a
+    // locale off TranslationService, which is a spy here.
+    currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
 
     // Echoes the key and its params, so a test can tell an accessible name
     // built from the right key apart from one that merely has text in it.
@@ -142,9 +155,10 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: ReceiptAttemptService, useValue: attemptStub().service },
         { provide: GoalService, useValue: {
           goals: signal([]),
-          activeGoals: signal([]),
+          activeGoals,
           getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
         } },
+        { provide: PwaService, useValue: { isOnline } },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     }).compileComponents();
@@ -293,6 +307,119 @@ describe('TransactionFormComponent suggestion chips', () => {
       fixture.detectChanges();
 
       expect(mounted()).toBe('おにぎり 150');
+    });
+  });
+  /**
+   * The split section, rendered. The component's main spec overrides the
+   * template away, so only here can anything see whether the section, the
+   * goal field and the notice actually appear when they should.
+   */
+  describe('the split section', () => {
+    const section = (fixture: ComponentFixture<TransactionFormComponent>): Element | null =>
+      fixture.nativeElement.querySelector('app-split-parts');
+
+    const goalField = (fixture: ComponentFixture<TransactionFormComponent>): Element | null =>
+      fixture.nativeElement.querySelector('mat-select[formControlName="goalId"]');
+
+    const submitButton = (fixture: ComponentFixture<TransactionFormComponent>): HTMLButtonElement =>
+      fixture.nativeElement.querySelector('.submit-button');
+
+    function validForm(fixture: ComponentFixture<TransactionFormComponent>): void {
+      fixture.componentInstance.form.patchValue({
+        type: 'expense', amount: '100', currency: 'USD', categoryId: 'food',
+        description: 'Weekly shop', date: new Date(2026, 0, 1),
+      });
+    }
+
+    function editing(transaction: Partial<Transaction>) {
+      TestBed.overrideProvider(MAT_DIALOG_DATA, {
+        useValue: { mode: 'edit', transaction: createTransaction(transaction) },
+      });
+      return build();
+    }
+
+    it('is offered on a new purchase', () => {
+      const fixture = build();
+
+      expect(section(fixture)).not.toBeNull();
+    });
+
+    it('goes away once a goal is chosen', () => {
+      activeGoals.set([{ id: 'g1', name: 'Trip', currency: 'USD' } as Goal]);
+      const fixture = build();
+
+      fixture.componentInstance.form.patchValue({ goalId: 'g1' });
+      fixture.detectChanges();
+
+      expect(section(fixture)).toBeNull();
+    });
+
+    it('takes the goal field away once a part is added', () => {
+      activeGoals.set([{ id: 'g1', name: 'Trip', currency: 'USD' } as Goal]);
+      const fixture = build();
+      expect(goalField(fixture)).withContext('offered before the split').not.toBeNull();
+
+      fixture.componentInstance.splitParts.set([{ categoryId: 'food', amount: 30 }]);
+      fixture.detectChanges();
+
+      expect(goalField(fixture)).toBeNull();
+    });
+
+    it('is not offered on a row already linked to a goal', () => {
+      const fixture = editing({ id: 'e1', goalId: 'g1' });
+
+      expect(section(fixture)).toBeNull();
+    });
+
+    it('says so on a row that is already one part of a split', () => {
+      const fixture = editing({ id: 'e1', splitGroupId: 'grp-1' });
+
+      const notice: HTMLElement = fixture.nativeElement.querySelector('.split-part-notice');
+      expect(notice).not.toBeNull();
+      expect(notice.textContent).toContain('transactions.splitPartNotice');
+      // Splitting further joins the same group, so the section stays.
+      expect(section(fixture)).not.toBeNull();
+    });
+
+    it('holds the submit while the parts cannot stand', () => {
+      const fixture = build();
+      validForm(fixture);
+      fixture.detectChanges();
+      expect(submitButton(fixture).disabled).withContext('a plain purchase saves').toBeFalse();
+
+      fixture.componentInstance.splitParts.set([{ categoryId: 'food', amount: 100 }]);
+      fixture.detectChanges();
+      expect(submitButton(fixture).disabled).toBeTrue();
+
+      fixture.componentInstance.splitParts.set([{ categoryId: 'food', amount: 40 }]);
+      fixture.detectChanges();
+      expect(submitButton(fixture).disabled).toBeFalse();
+    });
+
+    it('holds the submit while a row has no category, even with a valid amount', () => {
+      const fixture = build();
+      validForm(fixture);
+      fixture.detectChanges();
+
+      fixture.componentInstance.splitParts.set([{ categoryId: '', amount: 40 }]);
+      fixture.detectChanges();
+
+      expect(submitButton(fixture).disabled).toBeTrue();
+    });
+
+    it('warns that a split needs a connection', () => {
+      const fixture = build();
+      const hint = (): Element | null => fixture.nativeElement.querySelector('.split-offline-hint');
+
+      fixture.componentInstance.splitParts.set([{ categoryId: 'food', amount: 30 }]);
+      fixture.detectChanges();
+      expect(hint()).withContext('nothing to warn about while online').toBeNull();
+
+      isOnline.set(false);
+      fixture.detectChanges();
+
+      expect(hint()!.textContent).toContain('transactions.splitOfflineHint');
+      expect(hint()!.getAttribute('role')).toBe('alert');
     });
   });
 });

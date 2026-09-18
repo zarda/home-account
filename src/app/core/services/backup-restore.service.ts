@@ -221,6 +221,9 @@ export class BackupRestoreService {
           // Without it the detector reads engine-posted history as untagged
           // charges and re-offers subscriptions already declared.
           ...(transaction.recurringId ? { recurringId: transaction.recurringId } : {}),
+          // Restored the same way: the field alone says "part of a split",
+          // and nothing here recomputes from it.
+          ...(transaction.splitGroupId ? { splitGroupId: transaction.splitGroupId } : {}),
         };
         // Receipt fields are deliberately not *sourced* from the file: a backup
         // holds no storage objects, so a restored receiptUrl would point at a

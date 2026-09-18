@@ -168,6 +168,37 @@ describe('DashboardLayoutSettingsComponent', () => {
       expect(notifications.error).toHaveBeenCalledOnceWith('settings.dashboardLayoutSaveFailed');
       expect(switchFor('insights').getAttribute('aria-checked')).toBe('true');
       expect(component.layout().hidden).toEqual([]);
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a failed move', () => {
+    it('says so, then announces the position the card fell back to', async () => {
+      auth.updateUserPreferences.and.rejectWith(new Error('offline'));
+      render();
+
+      moveButton('recent', 'down').click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('settings.dashboardLayoutSaveFailed');
+      expect(announcer.announce.calls.allArgs()).toEqual([
+        [
+          t('settings.dashboardCardMoved', {
+            card: 'dashboard.recentTransactions',
+            position: 2,
+            total: 5,
+          }),
+        ],
+        [
+          t('settings.dashboardCardMoveReverted', {
+            card: 'dashboard.recentTransactions',
+            position: 1,
+            total: 5,
+          }),
+        ],
+      ]);
+      expect(rows()).toEqual(defaultOrder);
     });
   });
 

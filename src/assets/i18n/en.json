@@ -193,7 +193,20 @@
     "clearCoordinates": "Remove coordinates",
     "attachScanPosition": "Attach where you are now as this receipt's location",
     "useSuggestedCategory": "Use suggested category {{category}}",
-    "countryFilter": "Country"
+    "countryFilter": "Country",
+    "splitAcross": "Split across categories",
+    "splitPartCategory": "Category",
+    "splitPartAmount": "Amount",
+    "splitRemovePart": "Remove this part",
+    "splitRemainder": "{{amount}} stays on the main category",
+    "splitRemainderInvalid": "Each part needs an amount, and together they must leave something for the main category",
+    "splitPartCategoryRequired": "Every part needs a category",
+    "splitPartNotice": "One part of a split purchase. Its other parts are edited on their own.",
+    "splitFailed": "Couldn't split this purchase",
+    "splitOffline": "Splitting needs a connection",
+    "splitOfflineHint": "Splitting needs a connection — reconnect, or save this purchase to one category.",
+    "splitPart": "Part of a split purchase",
+    "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay."
   },
   "budget": {
     "title": "Budget",
@@ -659,6 +672,7 @@
     "dashboardMoveUp": "Move {{card}} up",
     "dashboardMoveDown": "Move {{card}} down",
     "dashboardCardMoved": "{{card}} moved to position {{position}} of {{total}}",
+    "dashboardCardMoveReverted": "Couldn't save. {{card}} is back at position {{position}} of {{total}}",
     "dashboardReset": "Reset to default",
     "dashboardLayoutSaveFailed": "Couldn't save the dashboard layout"
   },

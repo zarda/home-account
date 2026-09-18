@@ -197,6 +197,20 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a transaction carrying a split group id', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ splitGroupId: 'tx-1' })),
+        'create with splitGroupId'
+      );
+    });
+
+    it('rejects a split group id that is not a string', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ splitGroupId: 7 })),
+        'numeric splitGroupId'
+      );
+    });
+
     it('rejects a zero amount', async () => {
       await expectDenied(
         setDoc(doc(firestore, path('transactions')), validTransaction({ amount: 0 })),

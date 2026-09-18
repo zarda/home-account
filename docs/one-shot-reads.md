@@ -98,6 +98,34 @@ The **live** Insights tab is the other question, and it takes the other answer:
 it reads the signal, recomputes when the signal changes, and persists nothing.
 A rule saved with the tab open has to move the total immediately.
 
+## The snapshot generator's missing-month check (#426)
+
+Before it writes anything, `generateClosedMonths` has to know which closed
+months already have a document — and it used to answer that from
+`firstValueFrom(this.watch())`, the trap in its plainest form. Under the
+persistent local cache, a listener's first emission on a device that has not
+opened Reports recently is whatever this session last cached, and that can
+lag behind a month the same account already wrote elsewhere. A lagging
+emission reads as "missing," `buildAndWrite` reissues that month at revision
+1, and the rules refuse it outright: an `insightSnapshots` update must carry
+a strictly higher `revision` than what is stored (`firestore.rules`, the
+`insightSnapshots` match block). A fresh install hit this on its very first
+generation — the cache held nothing yet, every closed month looked missing,
+and the months the account already held on the server turned the write into
+a `permission-denied`.
+
+The fix reads `getCollectionFromServer`, the strict variant. A month either
+has a document or it does not, and the answer decides which months get a
+write — acted on once, not rendered and corrected — so a cache-served guess
+is not an acceptable substitute for the truth. It costs one query for the
+whole run, the same shape as the rule read beside it. Offline, the read
+rejects into the method's own catch; that is no new loss, since the
+connectivity gate already keeps this from running offline in the first
+place, and a connection that drops mid-run just defers the whole backfill
+to the next online open. The listener itself still exists for what it is
+good at — the Insights tab opens its own subscription to render the stored
+list and correct it live, and never persists what it reads from it.
+
 ## The recurring catch-up's work list (#298)
 
 `RecurringService.catchUpRecurringTransactions` posts every occurrence that
@@ -168,6 +196,7 @@ above.
 | `recalculateBudgetsForCategory` | the recalculation work list | `getCollection` | cache, incl. latency-compensated writes |
 | `getExpensesInRangeOnce` | the persisted `spent` sum | `getCollection` | cache, incl. latency-compensated writes |
 | `listAll` (recurring) | a frozen month's recurring figures | `getCollection` | cache, incl. latency-compensated writes |
+| snapshot generator's missing-month check | which closed months get written | `getCollectionFromServer` | **rejects; deferred to the next online open** |
 | catch-up work list (recurring) | posted occurrences + budget recalcs | `getCollectionFromServer` | **rejects; deferred to the next online open** |
 | `getTransactionsInRangeOnce` | a stored smart-search answer's figures | `getCollection` | cache, incl. latency-compensated writes |
 

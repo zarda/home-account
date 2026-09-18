@@ -24,8 +24,8 @@ the account's own key.
 
 That is the point of it — nothing else in the repo exercises the wire — and it
 is the reason for every constraint below. Read the whole thing as one rule:
-**the run is a reader with exactly three permitted writes, and it puts all
-three back.**
+**the run is a reader with exactly four permitted writes, and it puts all
+four back.**
 
 The seeded alternative is [`docs/ui-audit/tools/`](ui-audit/tools/), which
 renders a demo account against the emulators and is the right instrument for
@@ -241,7 +241,7 @@ only the difference counts.
 
 ## What a run may touch
 
-Four writes are authorised — three on the account, one on the device only.
+Five writes are authorised — four on the account, one on the device only.
 Each is put back before the run ends, and the restore is *confirmed on
 screen*, not assumed. The other six rows write nothing at all and are listed
 with them anyway: four still cost the account a real provider call, one not
@@ -257,6 +257,7 @@ inferred.
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | The dashboard layout editor | `preferences.dashboardLayout` | Reset, then reloaded and read back absent |
+| A purchase split in the form | Three transaction documents — a remainder row and two parts, sharing one `splitGroupId` and one `createdAt` — where an unsplit add would have written one | Each of the three deleted through the list, and a search for the journey's own description confirmed to return none |
 | Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme classes it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the root element's classes restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
@@ -480,6 +481,8 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 24 | Dashboard: the account's arrangement | One DOM order painting as computed desktop grid areas and as a single phone column, with no divergence between the two | `24-desktop-areas.png`, `24-phone-stack.png` |
 | 25 | The dashboard layout editor: hide, move, reset | A hidden card composing nothing in the running page, a keyboard move landing with the announcer's own words, a real reload holding the arrangement, and Reset deleting the account's preference rather than freezing today's default | `25-hide.png`, `25-moved.png`, `25-reset.png` |
 | 26 | The dashboard layout editor at phone width, in both themes | Every row, switch and move control inside a 390px viewport, and the selected and disabled states distinct in light and dark | `26-phone-editor.png` |
+| 27 | The transaction form: a purchase split across categories | A held submit while the split cannot stand, a remainder that recomputes with every part, three real rows sharing one group id, the badge reaching assistive technology, and the dashboard chart crediting each category | `27-split-form.png`, `27-parts-listed.png`, `27-part-confirm.png` |
+| 28 | Settings: the accessibility toggle-groups share their row | The font-size group's three segments distributed as evenly as the theme toggle beside them, at the group's own capped width | `28-font-scale-toggle.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1701,6 +1704,114 @@ from disabled, in both themes. Restore the root's original classes when
 done.
 
 One shot: the editor at 390px, with every control's box visible.
+
+### 27. The transaction form: a purchase split across categories
+
+`/transactions`, the add-transaction dialog, any width. Expense, amount
+NT$3, category Food & Drinks, description `e2e-27 split` — a description
+nothing else in the account uses, so the restore step below can search on it
+safely.
+
+Press **Split across categories**.
+
+**Pass — the first row.** One part row appears with its category unset and
+its amount blank; the Goal field below the category picker is no longer
+rendered, and the footer under the split section reads *"Every part needs a
+category"* with `role="alert"`.
+
+Set the row's category to **Home & Garden** and its amount to **1**.
+
+**Pass — the remainder.** The footer switches to *"NT$2 stays on the main
+category"*.
+
+Press **Split across categories** again and set the second row to
+**Transport**, amount **1**.
+
+**Pass — the remainder recomputes.** The footer now reads *"NT$1 stays on
+the main category"*.
+
+Change the second row's amount to **3**.
+
+**Pass — the invalid state, and the held submit.** The footer switches to
+the invalid line, `role="alert"`, and the dialog's primary button disables
+— a split that would leave nothing on the main category cannot be saved,
+whole-purchase math or not.
+
+Set the second row's amount back to **1**, then remove both rows.
+
+**Pass — the goal field returns.** With no parts left, the Goal field is
+back where it was and the footer is gone.
+
+Add the two rows again — Home & Garden 1, Transport 1 — leaving NT$1 on
+Food & Drinks, and press the dialog's submit.
+
+**Pass — the write** (the one this journey is authorised to make; see
+[What a run may touch](#what-a-run-may-touch)). The three new rows read
+back — from the list or the console — as three NT$1 transactions: the
+remainder row on Food & Drinks and two parts, all three sharing one
+`splitGroupId` (the remainder row's own id) and one `createdAt`. The list
+shows three new entries, each carrying the split badge next to its category
+— `aria-label` *"Part of a split purchase"*, with `aria-hidden="false"`
+written literally on the icon rather than only bound, which is the only way
+`MatIcon` lets that label reach a screen reader. The dashboard's Spending
+by Category chart credits Food & Drinks one more unit and shows a new Home
+& Garden slice for the amount just added.
+
+Open one of the parts for edit.
+
+**Pass — the notice.** The row reads *"One part of a split purchase. Its
+other parts are edited on their own,"* and the rest of the form still edits
+that one row's own fields normally.
+
+Delete each of the three rows through the list, one at a time.
+
+**Pass — the confirmation, and the restore.** Each delete reads *"Delete
+this part of \"e2e-27 split\"? Its other parts stay,"* naming the purchase
+rather than the ordinary delete message. After the third, the list shows no
+row for the description, the dashboard chart reads what it did before the
+journey started, and the console shows no errors.
+
+Three shots: the split section mid-entry with the remainder line showing,
+the list with all three parts and their badges, and one delete confirmation
+with its part-specific message.
+
+### 28. Settings: the accessibility toggle-groups share their row
+
+`/settings?panel=preferences`, the Accessibility group, default account,
+default font scale.
+
+Read the three `mat-button-toggle` segments of `.font-scale-toggle` and the
+group itself from the console:
+
+```js
+const group = document.querySelector('.font-scale-toggle');
+[...group.querySelectorAll('mat-button-toggle')].map(el => el.getBoundingClientRect());
+group.getBoundingClientRect();
+```
+
+**Pass — the distribution.** The three segments' widths agree to within
+about a pixel of each other — the sub-pixel remainder a shared divider
+border leaves between adjacent `flex: 1` segments, not a gap in the fix —
+and the last segment's right edge sits at the group's own right edge. Read
+`scrollWidth` against `clientWidth` on the group: equal, so no label is
+clipped or pushed onto a scrollbar.
+
+**Pass — the theme toggle beside it.** The same measurement taken on
+`.theme-section`'s own `mat-button-toggle-group` shows the same equal
+distribution — both toggle-groups this app has share their row identically,
+not only the one this fix touched first.
+
+This journey is not where the Extra-large label wrap and the checkmark's
+removal below 420px are proven — a pane resized that narrow is exactly the
+case [Panes and viewports](#panes-and-viewports) warns is unreliable under a
+hidden pane, and both groups' container queries need a container width no
+ordinary run reaches. `accessibility-settings.overflow.spec.ts` measures
+that case directly, at the two host widths the group has to fit inside
+across all three font catalogs — see [docs/accessibility.md](accessibility.md)
+and [docs/ui-overflow.md](ui-overflow.md) for what it pins and why a spec
+rather than this protocol is where it belongs.
+
+One shot: the two toggle groups side by side at their default width.
 
 ## Evidence
 

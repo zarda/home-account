@@ -40,6 +40,14 @@ export const INVALID_AMOUNT_ERROR = 'INVALID_TRANSACTION_AMOUNT';
  * state, and a vanished goal never blocks an unlink or a delete.
  */
 export const GOAL_LINK_INVALID = 'GOAL_LINK_INVALID';
+
+/**
+ * Thrown when a split cannot be written: the purchase names a goal (a
+ * contribution is a whole-purchase notion, and N counter moves on one goal
+ * is the contention stageGoalTransition exists to avoid) or the parts do
+ * not leave a positive remainder on the purchase's own category.
+ */
+export const SPLIT_REFUSED = 'SPLIT_REFUSED';
 import {
   Transaction,
   TransactionFilters,
@@ -47,10 +55,13 @@ import {
   MonthlyTotal,
   CategoryTotal,
   Goal,
+  SplitPart,
   receiptImageCount,
-  baseCurrencyOf
+  baseCurrencyOf,
+  roundToMinorUnit
 } from '../../models';
 import { roundMoney } from '../utils/transaction-aggregation.utils';
+import { splitRemainder } from '../utils/split-purchase.utils';
 import {
   applyClientTransactionFilters,
   buildTransactionWhere
@@ -286,27 +297,12 @@ export class TransactionService {
         amountInBaseCurrency = data.amount * exchangeRate;
       }
 
-      const transaction: Omit<Transaction, 'id'> = {
+      const transaction: Omit<Transaction, 'id'> = this.composeRow(
         userId,
-        type: data.type,
-        amount: data.amount,
-        currency: data.currency,
-        amountInBaseCurrency,
-        exchangeRate,
-        baseCurrency,
-        categoryId: data.categoryId,
-        description: data.description,
-        date: this.firestoreService.dateToTimestamp(data.date),
-        createdAt: options?.createdAt ?? this.firestoreService.getTimestamp(),
-        updatedAt: this.firestoreService.getTimestamp(),
-        isRecurring: data.isRecurring ?? false,
-        // Only include optional fields if they have values (Firestore rejects undefined)
-        ...(data.note ? { note: data.note } : {}),
-        ...(data.tags?.length ? { tags: data.tags } : {}),
-        ...(data.recurringId ? { recurringId: data.recurringId } : {}),
-        ...(data.period ? { period: data.period } : {}),
-        ...(data.location ? { location: data.location } : {})
-      };
+        data,
+        { baseCurrency, exchangeRate, amountInBaseCurrency },
+        options?.createdAt ?? this.firestoreService.getTimestamp()
+      );
 
       if (options?.goalSnapshot) {
         // Refused rather than resolved by precedence, like receipts+id below.
@@ -394,6 +390,44 @@ export class TransactionService {
   }
 
   /**
+   * The row literal shared by every write path: a plain add, a restore
+   * (whose DTO carries its own splitGroupId), and the split seams below
+   * (which carry theirs via a synthesized DTO per row, never the caller's).
+   * Takes the conversion pre-resolved so callers that skip currency work
+   * (a restore's stored snapshot) and callers that split one purchase's
+   * amount across several rows can each pass their own figures.
+   */
+  private composeRow(
+    userId: string,
+    data: CreateTransactionDTO,
+    conversion: { baseCurrency: string; exchangeRate: number; amountInBaseCurrency: number },
+    createdAt: Timestamp
+  ): Omit<Transaction, 'id'> {
+    return {
+      userId,
+      type: data.type,
+      amount: data.amount,
+      currency: data.currency,
+      amountInBaseCurrency: conversion.amountInBaseCurrency,
+      exchangeRate: conversion.exchangeRate,
+      baseCurrency: conversion.baseCurrency,
+      categoryId: data.categoryId,
+      description: data.description,
+      date: this.firestoreService.dateToTimestamp(data.date),
+      createdAt,
+      updatedAt: this.firestoreService.getTimestamp(),
+      isRecurring: data.isRecurring ?? false,
+      // Only include optional fields if they have values (Firestore rejects undefined)
+      ...(data.note ? { note: data.note } : {}),
+      ...(data.tags?.length ? { tags: data.tags } : {}),
+      ...(data.recurringId ? { recurringId: data.recurringId } : {}),
+      ...(data.splitGroupId ? { splitGroupId: data.splitGroupId } : {}),
+      ...(data.period ? { period: data.period } : {}),
+      ...(data.location ? { location: data.location } : {})
+    };
+  }
+
+  /**
    * Write a new linked row and its goal's counter in one Firestore
    * transaction (the contribute() precedent): the link cannot land without
    * the counter moving, and two devices linking rows to the same goal both
@@ -426,6 +460,239 @@ export class TransactionService {
         updatedAt: this.firestoreService.getTimestamp()
       });
     });
+  }
+
+  /**
+   * Write a purchase's remainder and its parts as sibling rows sharing the
+   * first row's id, in one Firestore transaction — no reads, since every
+   * part is brand new. Parts copy the purchase's identity (type, currency,
+   * rate, base currency, description, date, tags, location, period) but
+   * never its note, receipts, goal link or recurring link (splitImportRow's
+   * exclusions); each part's own amountInBaseCurrency is the purchase's own
+   * rate applied to the part, never re-resolved (docs/money-snapshots.md).
+   * Receipts stay on the first row — storage is keyed by row id, and a part
+   * has no row of its own to key against until this transaction commits.
+   * Returns every id this call wrote, first row first, then each part in
+   * the order given.
+   */
+  async addSplitTransaction(data: CreateTransactionDTO, parts: SplitPart[]): Promise<string[]> {
+    this.isLoading.set(true);
+
+    try {
+      const userId = this.authService.userId();
+      if (!userId) throw new Error('User not authenticated');
+
+      // A contribution is a whole-purchase notion; the form hides the goal
+      // field for a split, so reaching this is a caller bug, not user input.
+      if (data.goalId) throw new Error(SPLIT_REFUSED);
+
+      const remainder = splitRemainder(data.amount, parts, data.currency);
+      if (remainder === null) throw new Error(SPLIT_REFUSED);
+
+      const baseCurrency = baseCurrencyOf(this.authService.currentUser());
+      // Same guard as the plain add: never against the not-yet-loaded 1:1
+      // fallback table.
+      await this.currencyService.ensureRatesLoaded();
+      const exchangeRate = this.currencyService.getExchangeRate(data.currency, baseCurrency);
+      const createdAt = this.firestoreService.getTimestamp();
+
+      // Every id up front: the first keys the receipts and names the group,
+      // and a transaction with pre-generated ids needs no read to place its
+      // sibling writes (the recurring claim's own pattern).
+      const firstId = this.firestoreService.generateId(this.userTransactionsPath);
+      const partIds = parts.map(() => this.firestoreService.generateId(this.userTransactionsPath));
+
+      const receiptFiles = data.receiptFiles ?? [];
+      let uploadedUrls: string[] = [];
+      if (receiptFiles.length > 0) {
+        if (receiptFiles.length > MAX_RECEIPTS_PER_TRANSACTION) {
+          throw new Error(RECEIPT_ATTACH_FAILED);
+        }
+        if (!(await this.receiptQuota.canAddImages(receiptFiles.length))) {
+          throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
+        }
+        uploadedUrls = await this.uploadReceiptBatch(userId, firstId, receiptFiles, 0);
+      }
+
+      const conversion = (amount: number) => ({
+        baseCurrency,
+        exchangeRate,
+        amountInBaseCurrency: amount * exchangeRate
+      });
+
+      const firstRow: Omit<Transaction, 'id'> = {
+        ...this.composeRow(userId, { ...data, amount: remainder }, conversion(remainder), createdAt),
+        splitGroupId: firstId,
+        ...(uploadedUrls.length > 0
+          ? { receiptUrl: uploadedUrls[0], receiptUrls: uploadedUrls, receiptCount: uploadedUrls.length }
+          : {})
+      };
+      const partRows: Omit<Transaction, 'id'>[] = parts.map(part => {
+        // splitRemainder already rounded this figure when it subtracted the
+        // part from the total; writing the raw part.amount here would leave
+        // the group summing to more (or less) than the purchase it split.
+        const amount = roundToMinorUnit(part.amount, data.currency);
+        return {
+          ...this.composeRow(
+            userId,
+            {
+              ...data,
+              amount,
+              categoryId: part.categoryId,
+              note: undefined,
+              recurringId: undefined,
+              // A part is a brand-new manual row, never itself the posting of
+              // a rule — true regardless of what the purchase being split was.
+              isRecurring: false
+            },
+            conversion(amount),
+            createdAt
+          ),
+          splitGroupId: firstId
+        };
+      });
+
+      try {
+        await this.firestoreService.runTransaction(async tx => {
+          tx.set(this.firestoreService.getDocRef(`${this.userTransactionsPath}/${firstId}`), firstRow);
+          partIds.forEach((id, i) => {
+            tx.set(this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`), partRows[i]);
+          });
+        });
+      } catch (error) {
+        // uploadReceiptBatch's own rollback only covers a failure during the
+        // upload itself; this covers the window after it succeeded but
+        // before the row that references it ever committed, so the objects
+        // it left behind would otherwise outlive every row that names them.
+        if (uploadedUrls.length > 0) {
+          await this.storageService.deleteReceiptSlots(
+            userId,
+            firstId,
+            uploadedUrls.map((_, i) => i)
+          );
+        }
+        throw error;
+      }
+
+      // The rows and their receipt objects are already committed at this
+      // point, so the quota must learn of them regardless of what the
+      // budget recompute below does — matching addTransaction's own order.
+      if (uploadedUrls.length > 0) {
+        this.receiptQuota.noteImagesAdded(uploadedUrls.length);
+      }
+
+      if (data.type === 'expense') {
+        const categoryIds = new Set([data.categoryId, ...parts.map(part => part.categoryId)]);
+        for (const categoryId of categoryIds) {
+          await this.updateAffectedBudgets(categoryId);
+        }
+      }
+
+      this.noteMutation('add', firstId, firstRow.date);
+      return [firstId, ...partIds];
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * Shrink a stored row to its remainder and write its parts as sibling
+   * rows, in one Firestore transaction that starts with its own tx.get —
+   * never a pre-read — so a rival write between the caller's optimistic
+   * view and this commit decides the remainder, not the other way round.
+   * No side effects inside the callback: the SDK re-runs it on contention,
+   * so budgets and the mutation note both happen after the commit.
+   * A row already in a group keeps its group id and the parts join it,
+   * matching addSplitTransaction's own exclusions (note, receipts, goal
+   * link, recurring link never copy to a part).
+   * Returns only the parts' ids; the row being split keeps its own.
+   */
+  async splitTransaction(id: string, parts: SplitPart[]): Promise<string[]> {
+    this.isLoading.set(true);
+
+    try {
+      const userId = this.authService.userId();
+      if (!userId) throw new Error('User not authenticated');
+
+      const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
+      // Pre-generated, like the recurring claim and addSplitTransaction:
+      // the callback itself must do no id-bearing side effect, since a
+      // contended commit replays it.
+      const partIds = parts.map(() => this.firestoreService.generateId(this.userTransactionsPath));
+      const createdAt = this.firestoreService.getTimestamp();
+
+      let row!: Transaction;
+
+      await this.firestoreService.runTransaction(async tx => {
+        const snapshot = await tx.get(rowRef);
+        if (!snapshot.exists()) throw new Error('Transaction not found');
+        row = snapshot.data() as Transaction;
+
+        // A contribution is a whole-purchase notion; N counter moves on one
+        // goal is the contention stageGoalTransition exists to avoid.
+        if (row.goalId) throw new Error(SPLIT_REFUSED);
+
+        const remainder = splitRemainder(row.amount, parts, row.currency);
+        if (remainder === null) throw new Error(SPLIT_REFUSED);
+
+        const groupId = row.splitGroupId ?? id;
+
+        tx.update(rowRef, {
+          amount: remainder,
+          amountInBaseCurrency: remainder * row.exchangeRate,
+          updatedAt: this.firestoreService.getTimestamp(),
+          // Only stamped the first time this row is split — a row already
+          // in a group keeps it, so the field alone still says "which
+          // group", never a second one layered on top.
+          ...(row.splitGroupId ? {} : { splitGroupId: id })
+        });
+
+        // A row written before base-currency stamping carries no base of its
+        // own; the account's current base is the only value available for
+        // its part.
+        const baseCurrency = row.baseCurrency ?? baseCurrencyOf(this.authService.currentUser());
+        partIds.forEach((partId, i) => {
+          const part = parts[i];
+          // Same rounding splitRemainder already applied when it subtracted
+          // this part from the row's amount, so the group still sums to it.
+          const amount = roundToMinorUnit(part.amount, row.currency);
+          const partData: CreateTransactionDTO = {
+            type: row.type,
+            currency: row.currency,
+            description: row.description,
+            date: row.date.toDate(),
+            categoryId: part.categoryId,
+            amount,
+            isRecurring: false,
+            splitGroupId: groupId,
+            ...(row.tags?.length ? { tags: row.tags } : {}),
+            ...(row.location ? { location: row.location } : {}),
+            ...(row.period ? { period: row.period } : {})
+          };
+          tx.set(
+            this.firestoreService.getDocRef(`${this.userTransactionsPath}/${partId}`),
+            this.composeRow(
+              userId,
+              partData,
+              { baseCurrency, exchangeRate: row.exchangeRate, amountInBaseCurrency: amount * row.exchangeRate },
+              createdAt
+            )
+          );
+        });
+      });
+
+      if (row.type === 'expense') {
+        const categoryIds = new Set([row.categoryId, ...parts.map(part => part.categoryId)]);
+        for (const categoryId of categoryIds) {
+          await this.updateAffectedBudgets(categoryId);
+        }
+      }
+
+      this.noteMutation('update', id, row.date);
+      return partIds;
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 
   /**

@@ -24,6 +24,7 @@ import {
   RECEIPT_IMAGE_LIMIT_ERROR,
   RECEIPT_ATTACH_FAILED,
   GOAL_LINK_INVALID,
+  SPLIT_REFUSED,
 } from '../../../core/services/transaction.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
@@ -56,6 +57,7 @@ import {
   CurrencySuggestionReason,
   FieldConfidence,
   Goal,
+  SplitPart,
   VERIFY_FIELD_THRESHOLD,
   baseCurrencyOf
 } from '../../../models';
@@ -80,6 +82,9 @@ import {
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { PwaService } from '../../../core/services/pwa.service';
+import { splitRemainder } from '../../../core/utils/split-purchase.utils';
+import { SplitPartsComponent } from './split-parts/split-parts.component';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -93,6 +98,7 @@ interface DialogData {
     LoadingSpinnerComponent,
     DialogHeaderComponent,
     NoteTranslationComponent,
+    SplitPartsComponent,
     CommonModule,
     ReactiveFormsModule,
     MatDialogModule,
@@ -139,6 +145,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private receiptAttempts = inject(ReceiptAttemptService);
   private currencySession = inject(CurrencyChoiceSessionService);
   private localeFormat = inject(LocaleFormatService);
+  pwa = inject(PwaService);
   private destroyRef = inject(DestroyRef);
   /** True from a scan that fell back until the user settles the currency; what makes a hand edit worth remembering. */
   private scanCurrencyFellBack = false;
@@ -291,7 +298,36 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   // The form's current currency, mirrored into a signal (the categoryIdSignal
   // pattern) so goal option labels can react to it under OnPush.
-  private formCurrency = signal<string>('');
+  readonly formCurrency = signal<string>('');
+
+  // Same mirror for the goal control: the split section's @if reads this
+  // rather than form.get('goalId')?.value, which would not re-run the
+  // template under OnPush when the control changes on its own.
+  readonly goalIdSignal = signal<string | null>(null);
+
+  /**
+   * The amounts taken off this purchase, one per added row. Empty is not a
+   * split — the purchase is written the way it always was.
+   */
+  readonly splitParts = signal<SplitPart[]>([]);
+
+  /**
+   * What the parts are taken off, mirrored the way the currency is: the
+   * remainder is computed from it, and a computed cannot read a FormControl.
+   */
+  readonly splitTotal = signal<number>(0);
+
+  /**
+   * Whether the split, if there is one, lets the entry be saved: parts that
+   * leave no positive remainder would only be refused by the service, so the
+   * submit is held here instead. `form.invalid` is not folded in — it is not
+   * a signal, and the button's binding already reads it.
+   */
+  readonly canSubmit = computed(() => {
+    const parts = this.splitParts();
+    return parts.length === 0
+      || splitRemainder(this.splitTotal(), parts, this.formCurrency()) !== null;
+  });
 
   /**
    * The note as it currently stands, for the lens beneath the field. Mirrored
@@ -552,6 +588,18 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.formCurrency.set(currency || '');
     });
 
+    // Same mirror for the amount, which the split's remainder is taken from.
+    this.splitTotal.set(Number(transaction?.amount) || 0);
+    this.form.get('amount')?.valueChanges.subscribe((amount) => {
+      this.splitTotal.set(Number(amount) || 0);
+    });
+
+    // Same mirror for the goal link, which the split section's @if reads.
+    this.goalIdSignal.set(transaction?.goalId || null);
+    this.form.get('goalId')?.valueChanges.subscribe((goalId) => {
+      this.goalIdSignal.set(goalId || null);
+    });
+
     // Seeded from the control rather than from the transaction: on edit the
     // lens has to offer a translation of the stored note before anything is
     // typed, and valueChanges alone never fires for the value it started with.
@@ -565,12 +613,18 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.transactionType.set(type);
       // Reset category if it doesn't match the type
       const currentCategoryId = this.form.get('categoryId')?.value;
+      const validCategories = this.filteredCategories();
       if (currentCategoryId) {
-        const validCategories = this.filteredCategories();
         if (!validCategories.some(c => c.id === currentCategoryId)) {
           this.form.patchValue({ categoryId: '' });
         }
       }
+      // Same for the split's own rows, which the picker no longer offers: a
+      // part naming a category of the other type renders as a blank select
+      // and would still be written.
+      this.splitParts.update(parts =>
+        parts.filter(part => validCategories.some(c => c.id === part.categoryId))
+      );
     });
 
     // Watch for category changes to update the trigger display
@@ -595,6 +649,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   async onSubmit(): Promise<void> {
     if (this.form.invalid || this.isSubmitting()) return;
+
+    const splitParts = this.splitParts();
+    // A split is one runTransaction and Firestore rejects those offline.
+    // Refused before anything is attempted, and with its own message: the
+    // generic failure would say nothing the user could act on, and the entry
+    // is still in the form to save whole or to retry on a connection.
+    if (splitParts.length && !this.pwa.isOnline()) {
+      this.notifications.error(this.translationService.t('transactions.splitOffline'));
+      return;
+    }
 
     this.isSubmitting.set(true);
 
@@ -637,7 +701,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       };
 
       if (this.data.mode === 'add') {
-        await this.transactionService.addTransaction(transactionData);
+        if (splitParts.length) {
+          await this.transactionService.addSplitTransaction(transactionData, splitParts);
+        } else {
+          await this.transactionService.addTransaction(transactionData);
+        }
         // Tagged here rather than in TransactionService.addTransaction: that
         // chokepoint also serves backup restore and offline replay, which
         // would report thousands of events for one user action and none of
@@ -664,6 +732,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           this.data.transaction.id,
           transactionData
         );
+        // After the update, never with it: the split shrinks the stored row
+        // to its remainder, so it has to read the amount this edit just
+        // wrote rather than the one it replaced.
+        if (splitParts.length) {
+          await this.transactionService.splitTransaction(this.data.transaction.id, splitParts);
+        }
       }
 
       this.dialogRef.close(true);
@@ -678,6 +752,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         // The chosen goal vanished or was deactivated under the open form;
         // nothing was saved, and the entry is still here to re-aim.
         this.notifications.error(this.translationService.t('transactions.goalLinkInvalid'));
+      } else if (error instanceof Error && error.message === SPLIT_REFUSED) {
+        // The service refused the parts — nothing of the split was written.
+        // On an edit the amount change did land, which is why this is a
+        // message and not a close: the parts are still here to correct.
+        this.notifications.error(this.translationService.t('transactions.splitFailed'));
       } else {
         // A rules rejection, a failed rates load, a network error — the
         // dialog is disableClose, so without this the user pressed Add,

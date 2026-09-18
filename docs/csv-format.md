@@ -65,6 +65,13 @@ holds none. A JSON restore therefore cannot bring a receipt back — but it does
 not destroy the ones already on a row it writes over, because it merges rather
 than replaces. See [backup-restore.md](backup-restore.md).
 
+**A split purchase exports as plain rows.** Neither CSV format has a column
+for the group a split's parts share — each part is just another row, with
+its own category and amount, and nothing in the file says the three came
+from one purchase. The group id is JSON-only: the full backup carries it,
+because that export writes every field a transaction has. See
+[docs/splits.md](splits.md).
+
 For a full-fidelity copy, use **Data Management → Export full backup** (JSON),
 which carries the whole document, categories included.
 

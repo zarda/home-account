@@ -65,6 +65,26 @@ silently.
 appending to it would break the match between accessible name and visible text.
 That is what `aria-current` is for.
 
+## Announcements
+
+A live-region announcement made before a write settles is a claim, and a
+failed write has to correct it — not just show a visual error toast, which a
+screen-reader user reading the announcement has no reason to go looking for.
+
+The dashboard layout editor's keyboard move is the instance of this:
+pressing **Move up** or **Move down** announces the position it moved to
+immediately, optimistically, before the account's preference write has
+landed — reading that wait as lag would be worse than the small chance of
+being wrong. A write that then fails announces again, once the rows fall
+back to the account's last-known order, naming where the card actually
+ended up. See [docs/dashboard.md](dashboard.md) for the exact strings and
+[ADR 0132](ADR/0132-the-dashboard-is-arranged-by-the-account-and-a-hidden-card-composes-nothing.md)
+for the optimistic-write pattern this follows.
+
+The rule generalizes beyond that one control: anywhere an announcement is
+made ahead of a write rather than after it, a failure path needs its own
+announcement, not only its own visual notification.
+
 ## Accessibility settings
 
 Three preferences under **Settings → Preferences**, in an *Accessibility* group

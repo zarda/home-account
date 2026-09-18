@@ -296,11 +296,16 @@ export class TransactionListComponent {
   }
 
   confirmDelete(transaction: Transaction): void {
+    // A split part deletes just that row — the group is never queried, so
+    // the confirm can only say so because the field rides the row itself.
+    const messageKey = transaction.splitGroupId
+      ? 'transactions.deleteSplitPartMessage'
+      : 'transactions.deleteConfirmMessage';
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       width: '400px',
       data: {
         title: this.translationService.t('transactions.deleteTransaction'),
-        message: this.translationService.t('transactions.deleteConfirmMessage', { description: transaction.description }),
+        message: this.translationService.t(messageKey, { description: transaction.description }),
         confirmLabel: this.translationService.t('common.delete'),
         cancelLabel: this.translationService.t('common.cancel'),
         confirmColor: 'warn',

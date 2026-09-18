@@ -19,6 +19,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { NoteDialogComponent } from '../note-dialog/note-dialog.component';
 import { ReceiptViewerDialogComponent } from '../receipt-viewer/receipt-viewer-dialog.component';
+import { ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { Transaction } from '../../../models';
 import { createTransaction, createUser } from '../../../core/services/testing';
 
@@ -245,6 +246,45 @@ describe('TransactionListComponent', () => {
       component.delete.subscribe(spy);
       component.confirmDelete(txns[0]);
       expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('names a split part in the confirm message, not the whole-purchase wording', () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+      const part = createTransaction({ description: 'Groceries', splitGroupId: 'group-1' });
+
+      component.confirmDelete(part);
+
+      expect(translation.t).toHaveBeenCalledWith(
+        'transactions.deleteSplitPartMessage',
+        { description: 'Groceries' }
+      );
+      expect(translation.t).not.toHaveBeenCalledWith(
+        'transactions.deleteConfirmMessage',
+        jasmine.anything()
+      );
+      const [, splitOptions] = dialog.open.calls.mostRecent().args as [unknown, { data: ConfirmDialogData }];
+      expect(splitOptions.data.message).toBe(
+        translation.t('transactions.deleteSplitPartMessage', { description: 'Groceries' })
+      );
+    });
+
+    it('keeps the whole-purchase wording for a row that is not a split part', () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+
+      component.confirmDelete(txns[0]);
+
+      expect(translation.t).toHaveBeenCalledWith(
+        'transactions.deleteConfirmMessage',
+        { description: txns[0].description }
+      );
+      expect(translation.t).not.toHaveBeenCalledWith(
+        'transactions.deleteSplitPartMessage',
+        jasmine.anything()
+      );
+      const [, plainOptions] = dialog.open.calls.mostRecent().args as [unknown, { data: ConfirmDialogData }];
+      expect(plainOptions.data.message).toBe(
+        translation.t('transactions.deleteConfirmMessage', { description: txns[0].description })
+      );
     });
   });
 
@@ -762,5 +802,71 @@ describe('TransactionListComponent desktop receipt doors', () => {
     receiptButtons()[0].click();
 
     expect(editSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The category cell — the desktop table's stand-in for the mobile row's
+ * description badge — since no query backs the group, the badge is driven
+ * purely by the field the row already carries.
+ */
+describe('TransactionListComponent desktop category cell', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+
+  const part = createTransaction({ id: 'a', amount: 30, description: 'Banana', splitGroupId: 'group-1' });
+  const whole = createTransaction({ id: 'b', amount: 10, description: 'Apple' });
+  const txns: Transaction[] = [part, whole];
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat.formatDate.and.returnValue('date');
+    dateFormat.formatRelativeDate.and.returnValue('rel');
+    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+      'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+    ]);
+    categoryHelper.getCategoryName.and.returnValue('Cat');
+    categoryHelper.getCategoryIcon.and.returnValue('icon');
+    categoryHelper.getCategoryColor.and.returnValue('#000');
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((k: string) => k);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: createMockWindowSource() },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: dateFormat },
+        { provide: CategoryHelperService, useValue: categoryHelper },
+        { provide: TranslationService, useValue: translation },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  });
+
+  it('marks a split part in the category cell, and leaves a whole purchase unmarked', () => {
+    const cells: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.category-cell'));
+    expect(cells.length).toBe(2);
+
+    const indicator = cells[0].querySelector('.split-indicator');
+    expect(indicator).not.toBeNull();
+    expect(indicator!.getAttribute('role')).toBe('img');
+    expect(indicator!.getAttribute('aria-label')).toBe('transactions.splitPart');
+    // MatIcon hides itself from assistive technology unless the template
+    // says otherwise; without a literal override the label above is never read.
+    expect(indicator!.getAttribute('aria-hidden')).toBe('false');
+
+    expect(cells[1].querySelector('.split-indicator')).toBeNull();
   });
 });

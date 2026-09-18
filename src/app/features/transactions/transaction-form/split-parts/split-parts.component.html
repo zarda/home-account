@@ -1,0 +1,69 @@
+<div class="split-parts">
+  @for (part of parts(); track $index) {
+    <div class="split-row" [attr.data-split-row]="$index">
+      <mat-form-field appearance="outline" class="split-category">
+        <mat-label>{{ 'transactions.splitPartCategory' | translate }}</mat-label>
+        <mat-select [value]="part.categoryId" (selectionChange)="setCategory($index, $event.value)">
+          @for (cat of categories(); track cat.id) {
+            <mat-option [value]="cat.id">
+              <div class="category-option">
+                <mat-icon aria-hidden="true" [style.color]="cat.color">{{ cat.icon }}</mat-icon>
+                <span>{{ cat.name | translate }}</span>
+              </div>
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="split-amount">
+        <mat-label>{{ 'transactions.splitPartAmount' | translate }}</mat-label>
+        <input
+          matInput
+          type="number"
+          inputmode="decimal"
+          step="0.01"
+          min="0"
+          [value]="amountValue(part)"
+          (change)="setAmount($index, $any($event.target).value)"
+        >
+      </mat-form-field>
+
+      <button
+        mat-icon-button
+        type="button"
+        class="split-remove"
+        data-split-remove
+        [attr.aria-label]="'transactions.splitRemovePart' | translate"
+        (click)="removePart($index)"
+      >
+        <mat-icon aria-hidden="true">close</mat-icon>
+      </button>
+    </div>
+  }
+
+  <button mat-stroked-button type="button" class="split-add" data-split-add (click)="addPart()">
+    <mat-icon aria-hidden="true">call_split</mat-icon>
+    {{ 'transactions.splitAcross' | translate }}
+  </button>
+
+  @if (parts().length) {
+    @if (missingCategory()) {
+      <!-- Takes precedence over the amount message: a blank select is the
+           more specific thing to fix first, and naming both would just be
+           noise while the amount itself may already be fine. -->
+      <p class="split-remainder invalid" data-split-footer role="alert">
+        {{ 'transactions.splitPartCategoryRequired' | translate }}
+      </p>
+    } @else if (remainderLabel(); as amount) {
+      <p class="split-remainder" data-split-footer>
+        {{ 'transactions.splitRemainder' | translate: { amount } }}
+      </p>
+    } @else {
+      <!-- The one state that has to reach a screen reader unprompted: the
+           submit is held and nothing else says why. -->
+      <p class="split-remainder invalid" data-split-footer role="alert">
+        {{ 'transactions.splitRemainderInvalid' | translate }}
+      </p>
+    }
+  }
+</div>

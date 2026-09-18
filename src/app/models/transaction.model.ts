@@ -77,6 +77,12 @@ export interface Transaction {
    * and unlink cannot strand a remainder in the goal.
    */
   goalAmount?: number;
+  /**
+   * Id of the group's first row, when this row is one part of a split
+   * purchase. The first row carries it too, so the field alone says "part
+   * of a split"; nothing ever queries it.
+   */
+  splitGroupId?: string;
 }
 
 type ReceiptFields = Pick<Transaction, 'receiptUrl' | 'receiptUrls' | 'receiptCount'>;
@@ -247,6 +253,18 @@ export interface CreateTransactionDTO {
    * convention), while an absent key leaves the link alone.
    */
   goalId?: string;
+  /**
+   * Id of the group's first row, when this row is one part of a split
+   * purchase. Set by the split service seams and by a backup restore
+   * rebuilding a stored row — the form never sets it.
+   */
+  splitGroupId?: string;
+}
+
+/** One category and amount taken off a purchase to form a split part. */
+export interface SplitPart {
+  categoryId: string;
+  amount: number;
 }
 
 export interface MonthlyTotal {

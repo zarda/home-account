@@ -33,6 +33,7 @@ import { ReceiptQuotaService } from '../../core/services/receipt-quota.service';
 import { AIStrategyService } from '../../core/services/ai-strategy.service';
 import { AIImportService } from '../../core/services/ai-import.service';
 import { ReceiptToNoteService } from '../../core/services/receipt-to-note.service';
+import { PwaService } from '../../core/services/pwa.service';
 import { Transaction } from '../../models';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
@@ -178,6 +179,9 @@ describe('TransactionFormComponent tags and location (emulator smoke test)', () 
           provide: MatDialogRef,
           useValue: { close: () => undefined, afterClosed: () => of(undefined) }
         },
+        // The form asks whether a split can be written at all; the real
+        // service would register window and service-worker listeners here.
+        { provide: PwaService, useValue: { isOnline: () => true } },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } }
       ],
       // Keep the module (and its injector) alive after each spec — see the

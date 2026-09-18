@@ -63,6 +63,40 @@ describe('MainLayoutComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  describe('status-bar band (#426 part 1)', () => {
+    // The header hides on scroll and takes its own painted band with it
+    // (transform: translateY(-100%)); this host paints a second, fixed band
+    // that never moves, so the shell keeps covering the notch/clock while
+    // the header is off-screen.
+    it('paints a fixed band sized to --safe-top, one z-index under the header', () => {
+      const hostEl = fixture.nativeElement as HTMLElement;
+      hostEl.style.setProperty('--safe-top', '44px');
+      fixture.detectChanges();
+
+      expect(hostEl.isConnected).toBeTrue();
+      const before = getComputedStyle(hostEl, '::before');
+      const expectedZIndex = String(
+        Number(getComputedStyle(document.documentElement).getPropertyValue('--z-header').trim()) -
+          1,
+      );
+
+      expect(before.position).toBe('fixed');
+      expect(before.height).toBe('44px');
+      expect(before.pointerEvents).toBe('none');
+      expect(before.top).toBe('0px');
+      expect(before.zIndex).toBe(expectedZIndex);
+    });
+
+    it('collapses to zero height when --safe-top is unset (web)', () => {
+      const hostEl = fixture.nativeElement as HTMLElement;
+      hostEl.style.removeProperty('--safe-top');
+      fixture.detectChanges();
+
+      const before = getComputedStyle(hostEl, '::before');
+      expect(before.height).toBe('0px');
+    });
+  });
+
   it('docks the sidebar on desktop without opening a modal drawer', () => {
     expect(component.isDesktop()).toBeTrue();
     expect(component.isOverlayMode()).toBeFalse();

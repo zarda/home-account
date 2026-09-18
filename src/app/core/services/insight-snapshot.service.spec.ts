@@ -29,6 +29,8 @@ describe('InsightSnapshotService', () => {
   let userId: ReturnType<typeof signal<string | null>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
   let isOnline: ReturnType<typeof signal<boolean>>;
+  let isLoading: ReturnType<typeof signal<boolean>>;
+  let profileDegraded: ReturnType<typeof signal<boolean>>;
 
   /** June closed relative to this, so 2026-06 is the newest due month. */
   const now = new Date(2026, 6, 15, 9, 0);
@@ -70,19 +72,27 @@ describe('InsightSnapshotService', () => {
       })));
   }
 
+  /** Serve the missing-month check's server read with these stored snapshots. */
+  function serveServer(snapshots: InsightSnapshot[]): void {
+    firestoreService.getCollectionFromServer.and.returnValue(Promise.resolve(snapshots));
+  }
+
   beforeEach(() => {
     userId = signal<string | null>('u1');
     currentUser = signal<User | null>(createUser());
     isOnline = signal(true);
+    isLoading = signal(false);
+    profileDegraded = signal(false);
 
     firestoreService = jasmine.createSpyObj<FirestoreService>(
       'FirestoreService',
-      ['subscribeToCollection', 'setDocument', 'getCollection', 'getDocument',
-        'deleteDocument', 'getTimestamp']);
+      ['subscribeToCollection', 'setDocument', 'getCollection', 'getCollectionFromServer',
+        'getDocument', 'deleteDocument', 'getTimestamp']);
     firestoreService.subscribeToCollection.and.returnValue(of([]));
     firestoreService.setDocument.and.returnValue(Promise.resolve());
     firestoreService.getDocument.and.returnValue(Promise.resolve(null));
     firestoreService.getCollection.and.returnValue(Promise.resolve([]));
+    firestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([]));
     firestoreService.deleteDocument.and.returnValue(Promise.resolve());
     firestoreService.getTimestamp.and.returnValue(
       Timestamp.fromDate(new Date(2026, 6, 15)));
@@ -105,7 +115,7 @@ describe('InsightSnapshotService', () => {
         { provide: TransactionService, useValue: transactionService },
         { provide: RecurringService, useValue: recurringService },
         { provide: PwaService, useValue: { isOnline } },
-        { provide: AuthService, useValue: { userId, currentUser } },
+        { provide: AuthService, useValue: { userId, currentUser, isLoading, profileDegraded } },
         {
           provide: CurrencyService,
           useValue: {
@@ -187,10 +197,36 @@ describe('InsightSnapshotService', () => {
 
     it('skips months that already have a snapshot', async () => {
       firestoreService.subscribeToCollection.and.returnValue(of([stored('2026-05')]));
+      serveServer([stored('2026-05')]);
       serveHistory([...monthOf(4), ...monthOf(5)]);
 
       const written = await service.generateClosedMonths(now);
       expect(written.map(s => s.monthKey)).toEqual(['2026-06']);
+    });
+
+    it('does not rewrite a month the server holds, even when the cached listener lacks it', async () => {
+      // The listener stays empty, as a device that has not opened Reports
+      // recently would see it; the server already has June from elsewhere.
+      serveServer([stored('2026-06')]);
+      serveHistory([...monthOf(4), ...monthOf(5)]);
+
+      const written = await service.generateClosedMonths(now);
+
+      expect(written.map(s => s.monthKey)).toEqual(['2026-05']);
+      expect(firestoreService.setDocument).toHaveBeenCalledTimes(1);
+      expect(firestoreService.setDocument.calls.first().args[0])
+        .toBe('users/u1/insightSnapshots/2026-05');
+    });
+
+    it('writes a month the server lacks even when the cached listener happens to hold it', async () => {
+      // The server is the answer both ways: a stale cached emission cannot
+      // excuse a month the server does not actually have.
+      firestoreService.subscribeToCollection.and.returnValue(of([stored('2026-06')]));
+      serveServer([]);
+      serveHistory([...monthOf(4), ...monthOf(5)]);
+
+      const written = await service.generateClosedMonths(now);
+      expect(written.map(s => s.monthKey)).toEqual(['2026-05', '2026-06']);
     });
 
     it('skips a month with no transactions rather than writing an empty one', async () => {
@@ -230,6 +266,26 @@ describe('InsightSnapshotService', () => {
       expect(firestoreService.setDocument).not.toHaveBeenCalled();
     });
 
+    it('does nothing while auth is still loading', async () => {
+      isLoading.set(true);
+      serveHistory(monthOf(5));
+      expect(await service.generateClosedMonths(now)).toEqual([]);
+      expect(firestoreService.getCollection).not.toHaveBeenCalled();
+      expect(firestoreService.getCollectionFromServer).not.toHaveBeenCalled();
+      expect(firestoreService.subscribeToCollection).not.toHaveBeenCalled();
+      expect(firestoreService.setDocument).not.toHaveBeenCalled();
+    });
+
+    it('does nothing on the in-memory fallback profile', async () => {
+      profileDegraded.set(true);
+      serveHistory(monthOf(5));
+      expect(await service.generateClosedMonths(now)).toEqual([]);
+      expect(firestoreService.getCollection).not.toHaveBeenCalled();
+      expect(firestoreService.getCollectionFromServer).not.toHaveBeenCalled();
+      expect(firestoreService.subscribeToCollection).not.toHaveBeenCalled();
+      expect(firestoreService.setDocument).not.toHaveBeenCalled();
+    });
+
     it('shares one in-flight run across concurrent callers', async () => {
       serveHistory(monthOf(5));
       const [a, b] = await Promise.all([
@@ -251,6 +307,16 @@ describe('InsightSnapshotService', () => {
       transactionService.getTransactionsInRange.and.returnValue(
         throwError(() => new Error('offline')));
       expect(await service.generateClosedMonths(now)).toEqual([]);
+    });
+
+    it('reports a failed missing-month check as no snapshots', async () => {
+      spyOn(console, 'error');
+      firestoreService.getCollectionFromServer.and.returnValue(
+        Promise.reject(new Error('unavailable')));
+      serveHistory(monthOf(5));
+
+      expect(await service.generateClosedMonths(now)).toEqual([]);
+      expect(firestoreService.setDocument).not.toHaveBeenCalled();
     });
   });
 
