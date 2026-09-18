@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
 
 import { TransactionRowComponent } from './components/transaction-row/transaction-row.component';
@@ -142,6 +142,9 @@ class OverflowProbeComponent {
 
 describe('overflow guard', () => {
   let host: HTMLElement;
+  let fixture: ComponentFixture<OverflowProbeComponent>;
+  let component: OverflowProbeComponent;
+  let currentUser: ReturnType<typeof signal<User | null>>;
 
   beforeEach(async () => {
     const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
@@ -151,8 +154,8 @@ describe('overflow guard', () => {
     // room the description gets, so an unrealistically wide amount would
     // manufacture a reflow that no user would ever see.
     currency.formatCurrency.and.callFake((amount: number, code: string) => {
-      const symbol = { USD: '$', JPY: '¥', EUR: '€' }[code] ?? `${code} `;
-      const digits = code === 'JPY' ? 0 : 2;
+      const symbol = { USD: '$', JPY: '¥', EUR: '€', TWD: 'NT$' }[code] ?? `${code} `;
+      const digits = code === 'JPY' || code === 'TWD' ? 0 : 2;
       return `${symbol}${amount.toLocaleString('en-US', {
         minimumFractionDigits: digits,
         maximumFractionDigits: digits,
@@ -161,7 +164,7 @@ describe('overflow guard', () => {
     currency.amountInBase.and.callFake(
       (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
     );
-    const currentUser = signal<User | null>(
+    currentUser = signal<User | null>(
       createUser({ preferences: { baseCurrency: 'USD' } as User['preferences'] })
     );
 
@@ -173,7 +176,8 @@ describe('overflow guard', () => {
       ],
     }).compileComponents();
 
-    const fixture = TestBed.createComponent(OverflowProbeComponent);
+    fixture = TestBed.createComponent(OverflowProbeComponent);
+    component = fixture.componentInstance;
     host = fixture.nativeElement as HTMLElement;
     document.body.appendChild(host);
     fixture.detectChanges();
@@ -437,6 +441,59 @@ describe('overflow guard', () => {
     it('holds the same height bound with no menu to pin', () => {
       expect(el('.bare', '.transaction-row').getBoundingClientRect().height)
         .toBeLessThanOrEqual(88);
+    });
+  });
+
+  describe('at the Extra large font scale', () => {
+    // Matches AccessibilityService.applyFontScale: 16 * 1.3 = 20.8px root
+    // font-size, via the same custom property the html rule reads.
+    beforeEach(() => {
+      document.documentElement.style.setProperty('--app-font-scale', '1.3');
+    });
+
+    afterEach(() => {
+      document.documentElement.style.removeProperty('--app-font-scale');
+    });
+
+    it('keeps a four-digit amount beside the description instead of dropping it to a line of its own', () => {
+      // Same base currency as the transaction so no ≈ conversion line joins
+      // the head — the head line is the whole budget this guards.
+      currentUser.set(
+        createUser({ preferences: { baseCurrency: 'TWD' } as User['preferences'] })
+      );
+      component.ordinary.set(
+        createTransaction({
+          categoryId: 'food',
+          type: 'expense',
+          currency: 'TWD',
+          amount: 1320,
+          description: 'Whole Foods Market',
+          tags: ['groceries'],
+        } as Partial<Transaction>)
+      );
+      fixture.detectChanges();
+      TestBed.inject(FitTextRegistry).flush();
+
+      const description = el('.typical', '.row-description');
+      const amount = el('.typical', '.row-amount');
+      expect(Math.abs(amount.getBoundingClientRect().top - description.getBoundingClientRect().top))
+        .withContext('amount top vs description top: beside the title, not under it')
+        .toBeLessThanOrEqual(1);
+    });
+
+    it('still pins the overflow menu to the top-right corner', () => {
+      fixture.detectChanges();
+      TestBed.inject(FitTextRegistry).flush();
+
+      const menu = el('.typical', '.menu-probe').getBoundingClientRect();
+      const row = el('.typical', '.transaction-row').getBoundingClientRect();
+
+      expect(Math.abs(menu.right - (row.right - 8)))
+        .withContext('menu right edge at the row content edge')
+        .toBeLessThanOrEqual(1);
+      expect(Math.abs(menu.top - (row.top + 8)))
+        .withContext('menu at the top of the row')
+        .toBeLessThanOrEqual(1);
     });
   });
 });

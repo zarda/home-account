@@ -12,8 +12,11 @@
    16px of row padding, leaves 327. The tile (32) and its 8px gap claim 40 and
    never yield, so 287 belongs to the text stack. On its first line a
    projected menu reserves a 44px corner (see .row-actions below), leaving 243
-   shared by the description (flex: 1 1 0 against a 7rem floor) and the
-   amount (appFitText).
+   shared by the description (flex: 1 1 0 against a 112px floor) and the
+   amount (appFitText). The floor is stated in px rather than rem because the
+   243px budget it divides is itself in px — a rem floor grows with the very
+   font scale it is meant to resist, and at 1.3 the old 7rem floor left no
+   room for a four-digit amount to share the line.
 
    Height belongs to the text stack too: 8 + head (~24) + 2 + strip (~20) +
    2 + meta (~17) + 8 ≈ 81px on an ordinary row, bounded at 88 by
@@ -94,7 +97,7 @@ app-category-chip {
    go on refusing to shrink and push the amount off the row. */
 .row-description {
   flex: 1 1 0;
-  min-width: 7rem;
+  min-width: 112px;
   display: flex;
   align-items: center;
   gap: 4px;
