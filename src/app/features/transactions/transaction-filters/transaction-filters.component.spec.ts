@@ -1242,4 +1242,22 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  describe('grid tracks (#450)', () => {
+    it('lays the filter grid out in three columns once expanded', () => {
+      // The 640px rule is what renders here; the 1024px, 6-column rule above
+      // it is not observable in Karma's window.
+      expect(window.innerWidth)
+        .withContext('Karma window; the >=640px filter-grid rule is what renders')
+        .toBeGreaterThanOrEqual(640);
+
+      component.expanded.set(true);
+      fixture.detectChanges();
+
+      const grid = fixture.nativeElement.querySelector('.filter-grid') as HTMLElement;
+      expect(getComputedStyle(grid).gridTemplateColumns.split(' ').length)
+        .withContext('.filter-grid computed column count at >=640px')
+        .toBe(3);
+    });
+  });
+
 });

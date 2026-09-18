@@ -111,6 +111,6 @@
   // Two columns keep the four fields as a tidy 2×2 grid (three columns left
   // Language orphaned on its own row).
   .settings-grid {
-    grid-template-columns: repeat(2, minmax(0, minmax(0, 1fr)));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

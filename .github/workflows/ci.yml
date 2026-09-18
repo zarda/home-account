@@ -148,6 +148,12 @@ jobs:
       - name: Check truncation
         run: npm run truncation:check
 
+      # A minmax() nested inside another minmax() is invalid CSS; a browser
+      # drops the whole declaration rather than clamp it, so this reads the
+      # source instead of trusting a screenshot taken at the wrong width.
+      - name: Check grid tracks
+        run: npm run grid:check
+
       # The physical direction still in the tree is frozen per file in the
       # script's baseline; it may only shrink. Above the line is a new
       # margin-left, below it is a ratchet that stopped ratcheting, and both
