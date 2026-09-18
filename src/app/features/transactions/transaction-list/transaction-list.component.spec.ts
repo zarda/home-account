@@ -870,3 +870,205 @@ describe('TransactionListComponent desktop category cell', () => {
     expect(cells[1].querySelector('.split-indicator')).toBeNull();
   });
 });
+
+/**
+ * The three inline controls a table cell can carry are all glyph-sized (32,
+ * 32, 18), too small on their own for the 40px floor. Each carries a
+ * clamped `::after` overhang instead of fattening the glyph box itself — the
+ * same idiom as transaction-preview-table.overflow.spec.ts, reconstructed
+ * the same way, since a pseudo-element has no rect of its own to measure.
+ * The fixture is attached to the document so the pseudo box has geometry;
+ * detached elements never get layout.
+ */
+describe('TransactionListComponent desktop hit boxes', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let host: HTMLElement;
+
+  const withNote = createTransaction({
+    id: 'a',
+    amount: 30,
+    description: 'Banana',
+    note: 'Ripe by Friday',
+    receiptUrl: 'https://storage.example.com/r.jpg',
+  });
+  const withoutNote = createTransaction({ id: 'b', amount: 10, description: 'Apple' });
+  const txns: Transaction[] = [withNote, withoutNote];
+
+  function hitBox(el: HTMLElement): { width: number; height: number } {
+    const rect = el.getBoundingClientRect();
+    const after = getComputedStyle(el, '::after');
+    return {
+      width: rect.width
+        - parseFloat(after.getPropertyValue('inset-inline-start'))
+        - parseFloat(after.getPropertyValue('inset-inline-end')),
+      height: rect.height - parseFloat(after.top) - parseFloat(after.bottom),
+    };
+  }
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat.formatDate.and.returnValue('date');
+    dateFormat.formatRelativeDate.and.returnValue('rel');
+    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+      'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+    ]);
+    categoryHelper.getCategoryName.and.returnValue('Cat');
+    categoryHelper.getCategoryIcon.and.returnValue('icon');
+    categoryHelper.getCategoryColor.and.returnValue('#000');
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((k: string) => k);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: createMockWindowSource() },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: dateFormat },
+        { provide: CategoryHelperService, useValue: categoryHelper },
+        { provide: TranslationService, useValue: translation },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    host?.remove();
+  });
+
+  it('reaches 40px on the note button through the overhang while the glyph box stays 32', () => {
+    const button = host.querySelector('.note-button') as HTMLElement;
+    const box = button.getBoundingClientRect();
+    expect(box.width).withContext('note button glyph box width unchanged').toBeCloseTo(32, 0);
+    expect(box.height).withContext('note button glyph box height unchanged').toBeCloseTo(32, 0);
+
+    const hit = hitBox(button);
+    expect(hit.width).withContext('note button hit area width').toBeGreaterThanOrEqual(40);
+    expect(hit.height).withContext('note button hit area height').toBeGreaterThanOrEqual(40);
+  });
+
+  it('reaches 40px on the receipt icon through the overhang while the visible box stays 32', () => {
+    const button = host.querySelector('.receipt-icon-button') as HTMLElement;
+    const box = button.getBoundingClientRect();
+    expect(box.width).withContext('receipt icon visible box width unchanged').toBeCloseTo(32, 0);
+    expect(box.height).withContext('receipt icon visible box height unchanged').toBeCloseTo(32, 0);
+
+    const hit = hitBox(button);
+    expect(hit.width).withContext('receipt icon hit area width').toBeGreaterThanOrEqual(40);
+    expect(hit.height).withContext('receipt icon hit area height').toBeGreaterThanOrEqual(40);
+  });
+
+  it("keeps the receipt icon's overhang out of the note button's visible box", () => {
+    const note = host.querySelector('.note-button') as HTMLElement;
+    const receipt = host.querySelector('.receipt-icon-button') as HTMLElement;
+    const noteRect = note.getBoundingClientRect();
+    const receiptRect = receipt.getBoundingClientRect();
+    const receiptAfter = getComputedStyle(receipt, '::after');
+    const receiptHitLeft = receiptRect.left + parseFloat(receiptAfter.getPropertyValue('inset-inline-start'));
+
+    expect(receiptHitLeft)
+      .withContext("receipt hit box must not reach left of the note button's visible right edge")
+      .toBeGreaterThanOrEqual(noteRect.right);
+  });
+
+  it('reaches 40px on the row actions trigger through the overhang while the glyph box stays 32', () => {
+    const button = host.querySelectorAll('.action-btn')[0] as HTMLElement;
+    const box = button.getBoundingClientRect();
+    expect(box.width).withContext('action button glyph box width unchanged').toBeCloseTo(32, 0);
+    expect(box.height).withContext('action button glyph box height unchanged').toBeCloseTo(32, 0);
+
+    const hit = hitBox(button);
+    expect(hit.width).withContext('action button hit area width').toBeGreaterThanOrEqual(40);
+    expect(hit.height).withContext('action button hit area height').toBeGreaterThanOrEqual(40);
+  });
+});
+
+/**
+ * 704px is the floor .desktop-table's own comment derives: 720 (the content
+ * width at the 768px breakpoint) less up to 16px a classic scrollbar takes
+ * from .main-container. Below that floor the table would need its own
+ * horizontal scrollbar just to clear a scrollbar one level up.
+ */
+describe('TransactionListComponent desktop table width floor', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let host: HTMLElement;
+
+  const txns: Transaction[] = [createTransaction({ id: 'a', amount: 10, description: 'Apple' })];
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat.formatDate.and.returnValue('date');
+    dateFormat.formatRelativeDate.and.returnValue('rel');
+    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+      'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+    ]);
+    categoryHelper.getCategoryName.and.returnValue('Cat');
+    categoryHelper.getCategoryIcon.and.returnValue('icon');
+    categoryHelper.getCategoryColor.and.returnValue('#000');
+    // Real header text, not the raw keys the other suites in this file get
+    // away with: table-layout is auto, so an unrealistically long header
+    // string (the key itself) stretches a column past what real English
+    // ever asks of it, and the floor this measures would come out wrong.
+    const HEADER_LABELS: Record<string, string> = {
+      'transactions.date': 'Date',
+      'transactions.category': 'Category',
+      'transactions.description': 'Description',
+      'transactions.amount': 'Amount',
+      'common.moreActions': 'More actions',
+    };
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((k: string) => HEADER_LABELS[k] ?? k);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: createMockWindowSource() },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: dateFormat },
+        { provide: CategoryHelperService, useValue: categoryHelper },
+        { provide: TranslationService, useValue: translation },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = '704px';
+    document.body.appendChild(host);
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    host?.remove();
+  });
+
+  it('fits the desktop table at its floor width without a sideways scrollbar', () => {
+    const scroll = host.querySelector('.table-scroll') as HTMLElement;
+    expect(scroll.scrollWidth)
+      .withContext('table-scroll scrollWidth vs clientWidth at the 704px floor')
+      .toBeLessThanOrEqual(scroll.clientWidth + 1);
+  });
+});
