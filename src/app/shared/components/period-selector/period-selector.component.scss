@@ -7,7 +7,7 @@
   flex-wrap: wrap;
 }
 
-.period-toggle {
+.period-toggle-scroller {
   align-self: flex-start;
   // Shrinks before the calendar button gives up its row (G7): the toggle
   // already scrolls its own overflow, so it can give up width first. The
@@ -20,6 +20,16 @@
   min-width: 0;
   max-width: max-content;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  // Gutter under the segments so the kept scrollbar draws below them, not
+  // over. It lives on this wrapper, outside the pill's rounded border, so
+  // the pill itself keeps its own height instead of growing a blank band.
+  padding-block-end: 12px;
+}
+
+.period-toggle {
+  // The wrapper scrolls it; the pill itself never shrinks.
+  width: max-content;
   background: var(--surface-card);
 
   // Primary-tinted fill for the selected segment in both themes (the
@@ -38,11 +48,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  // Fixed-size sibling to .period-toggle's flex: 1 — it never gives up the
-  // width that keeps it out of a second row. align-self matches
-  // .period-toggle's own: the group is taller than this row's 40px button
-  // at the large scale, and centering against that height would read as a
-  // second, lower row even while both stay on one line.
+  // Fixed-size sibling to .period-toggle-scroller's flex: 1 — it never gives
+  // up the width that keeps it out of a second row. align-self matches
+  // .period-toggle-scroller's own: the group is taller than this row's 40px
+  // button at the large scale, and centering against that height would read
+  // as a second, lower row even while both stay on one line.
   flex-shrink: 0;
   align-self: flex-start;
 

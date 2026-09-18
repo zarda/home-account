@@ -63,6 +63,10 @@ describe('overflow guard: the period selector', () => {
     return host.querySelector('.period-toggle') as HTMLElement;
   }
 
+  function scroller(): HTMLElement {
+    return host.querySelector('.period-toggle-scroller') as HTMLElement;
+  }
+
   function pickerButton(): HTMLElement {
     return host.querySelector('.picker-btn') as HTMLElement;
   }
@@ -87,6 +91,12 @@ describe('overflow guard: the period selector', () => {
         .withContext(`segment "${segment.textContent?.trim()}" top vs group top`)
         .toBeLessThanOrEqual(1);
     }
+
+    // The pill may be wider than the scroller's own box (it scrolls), but it
+    // can never spill past what the scroller actually gives its content.
+    expect(toggleGroup().getBoundingClientRect().width)
+      .withContext('pill width vs scroller.scrollWidth — the pill never spills past its scroller')
+      .toBeLessThanOrEqual(scroller().scrollWidth + 1);
   });
 
   it('stops the toggle group at its content width on a desktop row, at the default scale', async () => {
@@ -95,24 +105,47 @@ describe('overflow guard: the period selector', () => {
     fixture.detectChanges();
 
     const toggle = toggleGroup();
-    const toggleRect = toggle.getBoundingClientRect();
+    const scrollerEl = scroller();
+    const scrollerRect = scrollerEl.getBoundingClientRect();
     const buttonRect = pickerButton().getBoundingClientRect();
 
-    // #452 P2: `flex: 1 1 0` grows the toggle into the whole row's free space
-    // (836px measured at a 900px host) instead of stopping at its own
+    // #452 P2: `flex: 1 1 0` grows the scroller into the whole row's free
+    // space (836px measured at a 900px host) instead of stopping at its own
     // content — a regression from the content-sized basis this replaced.
-    expect(toggle.scrollWidth)
-      .withContext('toggle scrollWidth vs clientWidth — no internal overflow left uncapped')
-      .toBe(toggle.clientWidth);
-    expect(toggleRect.width)
-      .withContext('toggle width ballooning to fill the desktop row (#452 P2 regression)')
+    expect(scrollerEl.scrollWidth)
+      .withContext('scroller scrollWidth vs clientWidth — no internal overflow left uncapped')
+      .toBe(scrollerEl.clientWidth);
+    expect(scrollerRect.width)
+      .withContext('scroller width ballooning to fill the desktop row (#452 P2 regression)')
       .toBeLessThan(450);
 
-    expect(buttonRect.left - toggleRect.right)
-      .withContext('gap between toggle group and calendar button on the desktop row')
+    expect(buttonRect.left - scrollerRect.right)
+      .withContext('gap between the scroller and calendar button on the desktop row')
       .toBeGreaterThanOrEqual(7);
-    expect(buttonRect.left - toggleRect.right)
-      .withContext('gap between toggle group and calendar button on the desktop row')
+    expect(buttonRect.left - scrollerRect.right)
+      .withContext('gap between the scroller and calendar button on the desktop row')
       .toBeLessThanOrEqual(9);
+
+    expect(getComputedStyle(scrollerEl).paddingBlockEnd)
+      .withContext('.period-toggle-scroller: padding-block-end — the gutter the kept scrollbar is drawn in')
+      .toBe('12px');
+
+    // The gutter moved outside the pill's rounded border: the pill itself
+    // carries none, and its own height matches a segment's — no blank band.
+    expect(getComputedStyle(toggle).paddingBlockEnd)
+      .withContext('.period-toggle: padding-block-end — the pill carries no gutter of its own')
+      .toBe('0px');
+
+    // The pill's own border (1px top + 1px bottom, drawn outside the
+    // content box) is the frame, not the band — strip it before comparing
+    // so what's left is purely the pill's content height against a
+    // segment's own rendered height.
+    const segment = toggle.querySelector('.mat-button-toggle') as HTMLElement;
+    const toggleStyle = getComputedStyle(toggle);
+    const toggleBorderBlock = parseFloat(toggleStyle.borderTopWidth) + parseFloat(toggleStyle.borderBottomWidth);
+    const toggleContentHeight = toggle.getBoundingClientRect().height - toggleBorderBlock;
+    expect(Math.abs(toggleContentHeight - segment.getBoundingClientRect().height))
+      .withContext('pill content height vs a segment\'s own height — no blank band left under the fill')
+      .toBeLessThanOrEqual(1);
   });
 });

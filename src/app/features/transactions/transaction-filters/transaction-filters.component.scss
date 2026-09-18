@@ -154,6 +154,8 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
+  // Gutter under the buttons so the kept scrollbar draws below them, not over.
+  padding-block-end: 12px;
 }
 
 .quick-btn {

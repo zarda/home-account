@@ -90,4 +90,19 @@ describe('InsightChipsComponent', () => {
     expect(emitted).toEqual(source.filters);
     expect(emitted).not.toBe(source.filters);
   });
+
+  it('gives the chip strip a gutter for its kept scrollbar', () => {
+    chipsSignal.set([chip()]);
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+
+    const strip = host.querySelector('.insight-chips') as HTMLElement;
+    expect(getComputedStyle(strip).paddingBlockEnd)
+      .withContext('.insight-chips: padding-block-end — the gutter the kept scrollbar is drawn in')
+      .toBe('12px');
+
+    host.remove();
+  });
 });

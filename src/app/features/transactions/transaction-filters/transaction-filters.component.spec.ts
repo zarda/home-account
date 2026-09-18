@@ -1127,6 +1127,18 @@ describe('TransactionFiltersComponent', () => {
       const filterPanel = compiled.querySelector('.filter-panel');
       expect(filterPanel).toBeFalsy();
     });
+
+    it('gives the quick-filters strip a gutter for its kept scrollbar', () => {
+      const host = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(host);
+
+      const strip = host.querySelector('.quick-filters') as HTMLElement;
+      expect(getComputedStyle(strip).paddingBlockEnd)
+        .withContext('.quick-filters: padding-block-end — the gutter the kept scrollbar is drawn in')
+        .toBe('12px');
+
+      host.remove();
+    });
   });
 
   describe('presetFilters input', () => {

@@ -4,7 +4,8 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  // Gutter under the chips so the kept scrollbar draws below them, not over.
+  padding-block-end: 12px;
   -webkit-overflow-scrolling: touch;
 }
 

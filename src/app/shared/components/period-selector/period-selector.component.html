@@ -1,26 +1,28 @@
 <div class="period-controls">
-  <mat-button-toggle-group
-    [value]="isCustomPeriod() ? null : selectedPeriod()"
-    (change)="onToggleChange($event.value)"
-    class="period-toggle"
-  >
-    <mat-button-toggle value="thisMonth">
-      <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>
-      <span class="desktop-label">{{ 'dashboard.thisMonth' | translate }}</span>
-    </mat-button-toggle>
-    <mat-button-toggle value="lastMonth">
-      <span class="mobile-label">{{ 'dashboard.lastMonthShort' | translate }}</span>
-      <span class="desktop-label">{{ 'dashboard.lastMonth' | translate }}</span>
-    </mat-button-toggle>
-    <mat-button-toggle value="last3Months">
-      <span class="mobile-label">{{ 'dashboard.last3MonthsShort' | translate }}</span>
-      <span class="desktop-label">{{ 'dashboard.last3Months' | translate }}</span>
-    </mat-button-toggle>
-    <mat-button-toggle value="thisYear">
-      <span class="mobile-label">{{ 'dashboard.thisYearShort' | translate }}</span>
-      <span class="desktop-label">{{ 'dashboard.thisYear' | translate }}</span>
-    </mat-button-toggle>
-  </mat-button-toggle-group>
+  <div class="period-toggle-scroller">
+    <mat-button-toggle-group
+      [value]="isCustomPeriod() ? null : selectedPeriod()"
+      (change)="onToggleChange($event.value)"
+      class="period-toggle"
+    >
+      <mat-button-toggle value="thisMonth">
+        <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>
+        <span class="desktop-label">{{ 'dashboard.thisMonth' | translate }}</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="lastMonth">
+        <span class="mobile-label">{{ 'dashboard.lastMonthShort' | translate }}</span>
+        <span class="desktop-label">{{ 'dashboard.lastMonth' | translate }}</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="last3Months">
+        <span class="mobile-label">{{ 'dashboard.last3MonthsShort' | translate }}</span>
+        <span class="desktop-label">{{ 'dashboard.last3Months' | translate }}</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="thisYear">
+        <span class="mobile-label">{{ 'dashboard.thisYearShort' | translate }}</span>
+        <span class="desktop-label">{{ 'dashboard.thisYear' | translate }}</span>
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+  </div>
 
   <!-- Custom Period Picker -->
   <div class="custom-period-picker">
