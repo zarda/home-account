@@ -9,7 +9,16 @@
 
 .period-toggle {
   align-self: flex-start;
-  max-width: 100%;
+  // Shrinks before the calendar button gives up its row (G7): the toggle
+  // already scrolls its own overflow, so it can give up width first. The
+  // zero basis (G1) is what lets it collect into the row before shrinking —
+  // but with flex-grow: 1 that same basis also lets it grow past its own
+  // content into whatever free space the row has. max-content caps the
+  // growth there: it still expands to take up slack beside the picker on a
+  // narrow row, but never past what its own labels need on a wide one.
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: max-content;
   overflow-x: auto;
   background: var(--surface-card);
 
@@ -29,6 +38,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  // Fixed-size sibling to .period-toggle's flex: 1 — it never gives up the
+  // width that keeps it out of a second row. align-self matches
+  // .period-toggle's own: the group is taller than this row's 40px button
+  // at the large scale, and centering against that height would read as a
+  // second, lower row even while both stay on one line.
+  flex-shrink: 0;
+  align-self: flex-start;
 
   .picker-btn {
     border: 1px solid var(--border-primary);

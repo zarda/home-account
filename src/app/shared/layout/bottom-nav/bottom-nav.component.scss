@@ -26,6 +26,10 @@
   flex: 1;
   max-width: 88px;
   height: 52px;
+  // appFitText fits the label to this content box, so at a large font scale
+  // it fits two neighbouring labels flush against each other. The gutter is
+  // what keeps them apart.
+  padding-inline: 4px;
   color: var(--text-muted);
   text-decoration: none;
   border-radius: var(--radius-sm);
