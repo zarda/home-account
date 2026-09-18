@@ -218,6 +218,62 @@ describe('SettingsComponent', () => {
     });
   });
 
+  // Same real-template rationale as 'sections' above: the avatar swap has to
+  // be observed in the DOM, which the blank-template default fixture cannot host.
+  describe('avatar', () => {
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SettingsComponent, NoopAnimationsModule],
+        providers: [
+          provideRouter([]),
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: MatDialog, useValue: mockDialog },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(SettingsComponent, {
+          set: {
+            imports: [
+              CommonModule,
+              MatButtonModule,
+              MatExpansionModule,
+              MatIconModule,
+              PageHeaderComponent,
+              RouterLink,
+              TranslatePipe
+            ],
+            schemas: [NO_ERRORS_SCHEMA]
+          }
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(SettingsComponent);
+      fixture.detectChanges();
+    });
+
+    const avatarImg = (): HTMLImageElement | null => fixture.nativeElement.querySelector('.user-avatar');
+    const avatarPlaceholder = (): Element | null => fixture.nativeElement.querySelector('.user-avatar-placeholder');
+
+    it('falls back to the placeholder when the photo fails to load, and recovers on a new URL', () => {
+      expect(avatarImg()).withContext('avatar img before any error').toBeTruthy();
+      expect(avatarPlaceholder()).withContext('placeholder before any error').toBeFalsy();
+
+      avatarImg()!.dispatchEvent(new Event('error'));
+      fixture.detectChanges();
+
+      expect(avatarImg()).withContext('avatar img after the photo fails').toBeFalsy();
+      expect(avatarPlaceholder()).withContext('placeholder after the photo fails').toBeTruthy();
+
+      mockAuthService.currentUser.set({ ...mockUser, photoURL: 'https://example.com/new.jpg' });
+      fixture.detectChanges();
+
+      expect(avatarImg()).withContext('avatar img after a new photo URL arrives').toBeTruthy();
+      expect(avatarPlaceholder()).withContext('placeholder after a new photo URL arrives').toBeFalsy();
+    });
+  });
+
   describe('?panel=', () => {
     const build = async (panel: string | null): Promise<SettingsComponent> => {
       TestBed.resetTestingModule();

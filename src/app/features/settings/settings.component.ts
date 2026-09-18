@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
@@ -43,6 +43,10 @@ export class SettingsComponent {
   userName = computed(() => this.authService.currentUser()?.displayName || 'User');
   userEmail = computed(() => this.authService.currentUser()?.email || '');
   userPhoto = computed(() => this.authService.currentUser()?.photoURL || '');
+
+  // Resets to unfailed whenever the photo URL itself changes, so a stale
+  // failure never survives a sign-in as a different account.
+  avatarFailed = linkedSignal({ source: () => this.userPhoto(), computation: () => false });
 
   /**
    * Which panel a ?panel= link opens on, read once at arrival. The accordion

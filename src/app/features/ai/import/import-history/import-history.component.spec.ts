@@ -561,3 +561,95 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/transactions'], { queryParams: { tx: 'tx-2' } });
   });
 });
+
+// A third sibling suite, for the same reason as the one above: this needs
+// the real template laid out at a phone width, not present-but-unstyled.
+describe('ImportHistoryComponent overflow', () => {
+  let fixture: ComponentFixture<ImportHistoryComponent>;
+  let historyService: jasmine.SpyObj<ImportHistoryService>;
+  let host: HTMLElement;
+
+  /** #451's narrowest reported width. */
+  const HOST_WIDTH_PX = 343;
+
+  const recordNamed = (fileName: string): ImportHistory => ({
+    id: 'import1',
+    userId: 'user1',
+    importedAt: { seconds: 1704067200, nanoseconds: 0, toDate: () => new Date(1704067200 * 1000) } as Timestamp,
+    source: 'csv',
+    fileType: 'generic_csv',
+    fileName,
+    fileSize: 2048,
+    transactionCount: 1,
+    successCount: 1,
+    skippedCount: 0,
+    errorCount: 0,
+    totalIncome: 0,
+    totalExpenses: 10,
+    duplicatesSkipped: 0,
+    status: 'completed'
+  });
+
+  beforeEach(async () => {
+    historyService = jasmine.createSpyObj('ImportHistoryService', ['getImportHistory']);
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((key: string) => key);
+
+    await TestBed.configureTestingModule({
+      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      providers: [
+        { provide: ImportHistoryService, useValue: historyService },
+        { provide: TranslationService, useValue: translation },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
+        { provide: CurrencyService, useValue: currencyStub },
+        { provide: AuthService, useValue: authStub }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ImportHistoryComponent);
+    host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = `${HOST_WIDTH_PX}px`;
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    host?.remove();
+  });
+
+  it('wraps a share-sheet attachment id instead of carrying the card past its own width', () => {
+    historyService.getImportHistory.and.returnValue(of([recordNamed('x'.repeat(60))]));
+    fixture.detectChanges();
+
+    const card = host.querySelector('.history-item') as HTMLElement;
+    const title = host.querySelector('.history-item mat-card-title') as HTMLElement;
+
+    expect(card.scrollWidth)
+      .withContext(`card scrollWidth vs clientWidth at ${HOST_WIDTH_PX}px`)
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+    expect(title.getBoundingClientRect().right)
+      .withContext('title right edge vs card right edge')
+      .toBeLessThanOrEqual(card.getBoundingClientRect().right + 1);
+  });
+
+  it('wraps an error message carrying an unbroken URL instead of carrying the card past its own width', () => {
+    const longUrl = `https://${'a'.repeat(82)}`;
+    const record = recordNamed('receipt.jpg');
+    record.errors = [{ message: `Error fetching from ${longUrl}` }];
+    historyService.getImportHistory.and.returnValue(of([record]));
+    fixture.detectChanges();
+
+    const card = host.querySelector('.history-item') as HTMLElement;
+    const errorItem = host.querySelector('.errors li') as HTMLElement;
+
+    expect(card.scrollWidth)
+      .withContext(`card scrollWidth vs clientWidth at ${HOST_WIDTH_PX}px`)
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+    expect(errorItem.getBoundingClientRect().right)
+      .withContext('error li right edge vs card right edge')
+      .toBeLessThanOrEqual(card.getBoundingClientRect().right + 1);
+  });
+});
