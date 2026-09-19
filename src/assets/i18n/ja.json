@@ -101,6 +101,7 @@
     "upcomingNet": "予定の増減",
     "noUpcomingBills": "予定はありません",
     "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。",
+    "upcomingOlderHidden": "{{count}}件の期限切れの予定は表示されていません",
     "customize": "ダッシュボードをカスタマイズ",
     "noCardsShown": "ダッシュボードに表示するカードがありません。"
   },

@@ -101,6 +101,10 @@
     "upcomingNet": "Scheduled net",
     "noUpcomingBills": "Nothing scheduled",
     "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring.",
+    "upcomingOlderHidden": {
+      "one": "{{count}} older occurrence is overdue and not shown",
+      "other": "{{count}} older occurrences are overdue and not shown"
+    },
     "customize": "Customize dashboard",
     "noCardsShown": "No cards are shown on the dashboard."
   },

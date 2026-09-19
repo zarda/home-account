@@ -18,7 +18,9 @@ import {
   RecurringTransaction,
   RecurringFrequency,
   CreateRecurringDTO,
-  Transaction
+  RecurringOccurrence,
+  Transaction,
+  UpcomingSchedule
 } from '../../models';
 
 describe('RecurringService', () => {
@@ -1271,6 +1273,26 @@ describe('RecurringService', () => {
         }
       });
 
+      // The claim reads `endDate` through the same seam as the walk above,
+      // but on the fresh server document rather than the enumerated copy —
+      // an unreadable bound there must not stop the backlog from posting.
+      it('posts the backlog through a claim whose end date cannot be read', async () => {
+        spyOn(console, 'warn');
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = createRecurring({
+          id: 'bad-end',
+          startDate: anchor(),
+          endDate: { seconds: 1, nanoseconds: 0 } as unknown as Timestamp,
+          nextOccurrence: Timestamp.fromDate(due)
+        });
+        seedServerRule(rule);
+
+        await expectAsync(service.processRecurringTransactions([rule])).toBeResolved();
+
+        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-bad-end-${due.getTime()}`]);
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      });
+
       it('a repair that does not land leaves the rule for the next run', async () => {
         const warn = spyOn(console, 'warn');
         mockFirestoreService.updateDocument.and.returnValue(
@@ -1562,6 +1584,127 @@ describe('RecurringService', () => {
           expect(occ.date.getTime()).toBeLessThanOrEqual(endDate.getTime());
         }
         done();
+      });
+    });
+
+    /**
+     * The walk used to start at the stored pointer with no lower bound, so a
+     * rule that stopped paying years ago handed the card one row per day from
+     * then to the horizon. The floor mirrors the horizon: as many whole local
+     * days behind today as the window draws ahead of it.
+     */
+    describe('window floor', () => {
+      const TODAY = new Date(2027, 4, 20, 9, 30);
+
+      /**
+       * A daily rule whose pointer stands `back` whole days behind today, run
+       * through both readers with the clock frozen so the floor and the
+       * horizon are fixed rather than taken from the day the suite runs.
+       */
+      const walk = (
+        back: number,
+        days: number,
+        overrides: Partial<RecurringTransaction> = {}
+      ): { schedule: UpcomingSchedule; occurrences: RecurringOccurrence[] } => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(TODAY);
+          const pointer = addDays(startOfDay(TODAY), -back);
+          mockFirestoreService.subscribeToCollection.and.returnValue(of([
+            createRecurring({
+              id: 'dormant',
+              frequency: { type: 'daily', interval: 1 },
+              startDate: Timestamp.fromDate(pointer),
+              nextOccurrence: Timestamp.fromDate(pointer),
+              ...overrides
+            })
+          ]));
+
+          let schedule: UpcomingSchedule = { occurrences: [], olderCount: -1 };
+          service.getUpcomingSchedule(days).subscribe(s => (schedule = s));
+          let occurrences: RecurringOccurrence[] = [];
+          service.getNextOccurrences(days).subscribe(o => (occurrences = o));
+          return { schedule, occurrences };
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      };
+
+      const keyAt = (offset: number): string => dayKey(addDays(startOfDay(TODAY), offset));
+
+      it('counts the occurrences older than the floor instead of returning them', () => {
+        const { schedule } = walk(20, 14);
+
+        // Days -20 to -15 are below the floor; -14 to +14 are the 29 rows
+        // the card draws.
+        expect(schedule.olderCount).toBe(6);
+        expect(schedule.occurrences.length).toBe(29);
+        expect(dayKey(schedule.occurrences[0].date)).toBe(keyAt(-14));
+        expect(dayKey(schedule.occurrences[28].date)).toBe(keyAt(14));
+      });
+
+      // A few days overdue is the ordinary failed-catch-up case the card
+      // exists to surface, so the floor must not swallow it (ADR 0091).
+      it('still returns an overdue occurrence inside the floor', () => {
+        const { schedule } = walk(3, 14);
+
+        expect(schedule.olderCount).toBe(0);
+        expect(dayKey(schedule.occurrences[0].date)).toBe(keyAt(-3));
+      });
+
+      it('getNextOccurrences keeps its shape and takes the floor', () => {
+        const { schedule, occurrences } = walk(20, 14);
+
+        expect(occurrences).toEqual(schedule.occurrences);
+      });
+
+      // The count is exact and uncapped: a cap that stopped the walk would
+      // leave the pointer below the floor and drop the in-window rows too.
+      it('counts exactly, however far back the pointer is', () => {
+        const { schedule } = walk(800, 14);
+
+        expect(schedule.olderCount).toBe(786);
+        expect(schedule.occurrences.length).toBe(29);
+        expect(dayKey(schedule.occurrences[0].date)).toBe(keyAt(-14));
+      });
+
+      // The walk-break cases below `getNextOccurrences` (`stops collecting
+      // occurrences when the frequency cannot advance`, `stops collecting
+      // when a negative interval walks backwards`) all pin a pointer ahead of
+      // today, so they exercise the break in the collecting loop only. This
+      // one starts the pointer behind the floor so the count loop hits the
+      // same break: it counts the pointer once, cannot advance, and stops —
+      // never reaching the collecting loop at all.
+      it('stops the count loop when the frequency cannot advance', () => {
+        const { schedule } = walk(800, 14, {
+          frequency: { type: 'daily', interval: 0 }
+        });
+
+        expect(schedule.olderCount).toBe(1);
+        expect(schedule.occurrences).toEqual([]);
+      });
+
+      it('stops counting at an end date older than the floor', () => {
+        const { schedule } = walk(20, 14, {
+          endDate: Timestamp.fromDate(addDays(startOfDay(TODAY), -18))
+        });
+
+        expect(schedule.olderCount).toBe(3);
+        expect(schedule.occurrences).toEqual([]);
+      });
+
+      // An end date is read through the same seam as the rest of the rule's
+      // dates, so a malformed one leaves the rule running rather than
+      // throwing out of the walk. `toDate` returns null for a shape that has
+      // no `toDate` method at all — the old direct `.toDate()` call threw on
+      // exactly this shape, taking the whole walk down with it.
+      it('walks a rule whose end date cannot be read as one with no end', () => {
+        const { schedule } = walk(3, 14, {
+          endDate: { seconds: 1, nanoseconds: 0 } as unknown as Timestamp
+        });
+
+        expect(schedule.olderCount).toBe(0);
+        expect(schedule.occurrences.length).toBe(18);
       });
     });
 

@@ -101,6 +101,7 @@
     "upcomingNet": "排定淨額",
     "noUpcomingBills": "沒有排定項目",
     "noUpcomingBillsHint": "即將到期的定期收入與支出會顯示於此。請在預算 → 定期建立規則。",
+    "upcomingOlderHidden": "另有 {{count}} 筆逾期項目未顯示",
     "customize": "自訂儀表板",
     "noCardsShown": "儀表板上沒有顯示任何卡片。"
   },

@@ -14,6 +14,7 @@ import {
   RecurringOccurrence,
   Transaction,
   TransactionType,
+  UpcomingSchedule,
   baseCurrencyOf
 } from '../../models';
 
@@ -522,9 +523,11 @@ export class RecurringService {
       const anchor = schedule.start;
 
       // Occurrences that came due BEFORE the end date must still be posted
-      // even when the end date itself has passed.
-      const endDate = rule.endDate?.toDate();
-      const endDatePassed = endDate !== undefined && endDate < now;
+      // even when the end date itself has passed. An end date the engine
+      // cannot read is treated as no end at all, so the rule keeps posting
+      // rather than being deactivated on a value nobody can interpret.
+      const endDate = toDate(rule.endDate);
+      const endDatePassed = endDate !== null && endDate < now;
       const postUntil = endDatePassed ? endDate : now;
 
       const postedIds: string[] = [];
@@ -602,59 +605,122 @@ export class RecurringService {
     };
   }
 
-  // Get upcoming occurrences for the next N days
+  /**
+   * Occurrences inside the next N days, for a reader that wants the rows and
+   * nothing else. The floor below applies here too: the reminder sweep
+   * already drops anything dated before today, and the forecast's first
+   * bucket is today, so neither loses a row it would have drawn.
+   */
   getNextOccurrences(days: number): Observable<RecurringOccurrence[]> {
     return this.getRecurring().pipe(
-      map(recurring => {
-        const now = new Date();
-        // Close on the last millisecond of the final day the chart draws, not
-        // `days × 24h` from this instant. The series builder walks whole local
-        // calendar days, so a window measured in raw milliseconds disagreed
-        // with it from the current time of day to the end of that final day —
-        // and across a DST fall-back it fell short of the day entirely.
-        const endDate = endOfDay(addDays(startOfDay(now), days));
-        const occurrences: RecurringOccurrence[] = [];
-
-        for (const r of recurring) {
-          if (!r.isActive) continue;
-
-          // A rule the engine cannot read is left out of the forecast rather
-          // than erroring the stream, which would blank the chart for every
-          // rule the user owns. Repairing belongs to the catch-up, which can
-          // write; this is a projection.
-          const schedule = this.readSchedule(r);
-          if (!schedule?.pointer) continue;
-
-          let nextDate = schedule.pointer;
-
-          // Collect all occurrences within the date range
-          while (nextDate <= endDate) {
-            if (r.endDate && nextDate > r.endDate.toDate()) break;
-
-            occurrences.push({
-              recurringId: r.id,
-              name: r.name,
-              type: r.type,
-              amount: r.amount,
-              currency: r.currency,
-              categoryId: r.categoryId,
-              date: new Date(nextDate),
-              // `!= null` because zero is a lead time, not an absent one
-              ...(r.remindDaysBefore != null ? { remindDaysBefore: r.remindDaysBefore } : {})
-            });
-
-            const next = this.calculateNextOccurrenceFromDate(
-              nextDate, r.frequency, schedule.start
-            );
-            // Safety: a non-advancing frequency must not spin forever
-            if (!(next.getTime() > nextDate.getTime())) break;
-            nextDate = next;
-          }
-        }
-
-        return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
-      })
+      map(recurring => this.walkSchedule(recurring, days, new Date()).occurrences)
     );
+  }
+
+  /**
+   * The same walk with its count, for the dashboard card — which is the one
+   * reader that can say how much of the schedule it is not showing.
+   */
+  getUpcomingSchedule(days: number): Observable<UpcomingSchedule> {
+    return this.getRecurring().pipe(
+      map(recurring => this.walkSchedule(recurring, days, new Date()))
+    );
+  }
+
+  /**
+   * Walk every active rule across the window and split what it finds.
+   *
+   * The window has a floor as well as a horizon, and the floor mirrors it:
+   * as many whole local days behind today as the window reaches ahead. A few
+   * days overdue is the failed-catch-up case the card exists to surface, so
+   * those rows still come back; a rule that stopped paying years ago used to
+   * come back as one row per day from then to the horizon, burying everything
+   * genuinely upcoming underneath it. ADR 0091 recorded "no lower bound" as a
+   * decision on the strength of the overdue case alone; ADR 0141 revisits it.
+   *
+   * The count of what the floor left out is exact and uncapped. Stopping the
+   * first loop early would leave the pointer short of the floor, and the
+   * collecting loop after it would then either start below the floor or not
+   * run at all — the rule's in-window occurrences would be the price of the
+   * cap. The walk costs one `calculateNextOccurrenceFromDate` per step, the
+   * same arithmetic a rule's creation already pays.
+   */
+  private walkSchedule(
+    rules: RecurringTransaction[],
+    days: number,
+    now: Date
+  ): UpcomingSchedule {
+    const today = startOfDay(now);
+    // Close on the last millisecond of the final day the chart draws, not
+    // `days × 24h` from this instant. The series builder walks whole local
+    // calendar days, so a window measured in raw milliseconds disagreed
+    // with it from the current time of day to the end of that final day —
+    // and across a DST fall-back it fell short of the day entirely.
+    const horizon = endOfDay(addDays(today, days));
+    const floor = startOfDay(addDays(today, -days));
+    const occurrences: RecurringOccurrence[] = [];
+    let olderCount = 0;
+
+    for (const r of rules) {
+      if (!r.isActive) continue;
+
+      // A rule the engine cannot read is left out of the forecast rather
+      // than erroring the stream, which would blank the chart for every
+      // rule the user owns. Repairing belongs to the catch-up, which can
+      // write; this is a projection.
+      const schedule = this.readSchedule(r);
+      if (!schedule?.pointer) continue;
+
+      // A rule whose end date is not a date the engine can read is walked as
+      // one with no end: an unreadable bound is not a bound.
+      const ruleEnd = toDate(r.endDate);
+
+      let nextDate = schedule.pointer;
+
+      // Everything behind the floor is counted, not carried.
+      while (nextDate < floor) {
+        if (ruleEnd && nextDate > ruleEnd) break;
+        olderCount++;
+
+        const next = this.calculateNextOccurrenceFromDate(
+          nextDate, r.frequency, schedule.start
+        );
+        // Safety: a non-advancing frequency must not spin forever
+        if (!(next.getTime() > nextDate.getTime())) break;
+        nextDate = next;
+      }
+
+      // A pointer still short of the floor means the loop above broke rather
+      // than reached it, so there is nothing inside the window to collect.
+      if (nextDate < floor) continue;
+
+      // Collect all occurrences within the date range
+      while (nextDate <= horizon) {
+        if (ruleEnd && nextDate > ruleEnd) break;
+
+        occurrences.push({
+          recurringId: r.id,
+          name: r.name,
+          type: r.type,
+          amount: r.amount,
+          currency: r.currency,
+          categoryId: r.categoryId,
+          date: new Date(nextDate),
+          // `!= null` because zero is a lead time, not an absent one
+          ...(r.remindDaysBefore != null ? { remindDaysBefore: r.remindDaysBefore } : {})
+        });
+
+        const next = this.calculateNextOccurrenceFromDate(
+          nextDate, r.frequency, schedule.start
+        );
+        // Safety: a non-advancing frequency must not spin forever
+        if (!(next.getTime() > nextDate.getTime())) break;
+        nextDate = next;
+      }
+    }
+
+    occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return { occurrences, olderCount };
   }
 
   /**

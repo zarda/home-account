@@ -27,11 +27,12 @@ describe('UpcomingBillsComponent', () => {
   let component: UpcomingBillsComponent;
   let currency: jasmine.SpyObj<CurrencyService>;
 
-  function render(occurrences: RecurringOccurrence[], net = 0): void {
+  function render(occurrences: RecurringOccurrence[], net = 0, olderCount = 0): void {
     fixture.componentRef.setInput('occurrences', occurrences);
     fixture.componentRef.setInput('categories', new Map<string, Category>());
     fixture.componentRef.setInput('baseCurrency', 'USD');
     fixture.componentRef.setInput('net', net);
+    fixture.componentRef.setInput('olderCount', olderCount);
     fixture.detectChanges();
   }
 
@@ -140,6 +141,34 @@ describe('UpcomingBillsComponent', () => {
     expect(emptyState).toBeTruthy();
     expect(emptyState.textContent).toContain('dashboard.noUpcomingBills');
     expect(fixture.nativeElement.querySelector('.net-footer')).toBeNull();
+  });
+
+  // The window has a floor now, so occurrences older than it never reach the
+  // card. Saying how many there are is the difference between a card that
+  // looks up to date and one that admits a stalled rule. The `t` stub returns
+  // the raw key, so the assertion is on the key, not the plural string —
+  // translation-keys.spec.ts owns that.
+  it('names the occurrences older than the window', () => {
+    render([occurrence()], 0, 3);
+
+    const notes = fixture.nativeElement.querySelectorAll('.older-note');
+    expect(notes.length).toBe(1);
+    expect(notes[0].textContent).toContain('dashboard.upcomingOlderHidden');
+  });
+
+  it('says nothing when nothing is older', () => {
+    render([occurrence()], 0, 0);
+
+    expect(fixture.nativeElement.querySelector('.older-note')).toBeNull();
+  });
+
+  // Nothing inside the window and a stalled rule behind it is exactly the
+  // state the note is for, so it must survive the empty branch.
+  it('the note stands with the empty state', () => {
+    render([], 0, 2);
+
+    expect(fixture.nativeElement.querySelector('.empty-container app-empty-state')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.older-note')).toBeTruthy();
   });
 
   it('links the header through to the recurring rules', () => {

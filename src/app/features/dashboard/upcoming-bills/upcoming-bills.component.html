@@ -18,6 +18,11 @@
           [title]="'dashboard.noUpcomingBills' | translate"
           [description]="'dashboard.noUpcomingBillsHint' | translate"
         />
+        @if (olderCount() > 0) {
+          <p class="older-note">
+            {{ 'dashboard.upcomingOlderHidden' | translate: { count: olderCount() } }}
+          </p>
+        }
       </div>
     } @else {
       <div class="day-list">
@@ -51,6 +56,12 @@
           </div>
         }
       </div>
+
+      @if (olderCount() > 0) {
+        <p class="older-note">
+          {{ 'dashboard.upcomingOlderHidden' | translate: { count: olderCount() } }}
+        </p>
+      }
 
       <div class="net-footer">
         <span class="net-label">{{ 'dashboard.upcomingNet' | translate }}</span>
