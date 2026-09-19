@@ -5,7 +5,9 @@ import { of } from 'rxjs';
 import {
   RecurringService,
   MAX_OCCURRENCES_PER_CLAIM,
-  INVALID_FREQUENCY_ERROR
+  INVALID_FREQUENCY_ERROR,
+  UNREADABLE_SCHEDULE_ERROR,
+  RULE_ENDED_ERROR
 } from './recurring.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -519,6 +521,61 @@ describe('RecurringService', () => {
       await service.updateRecurring('rec1', { name: 'x' });
       expect(service.isLoading()).toBeFalse();
     });
+
+    it("drops the stored dayOfMonth when the update's frequency omits it", async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        const current = createRecurring({
+          startDate: Timestamp.fromDate(new Date(2024, 0, 20)),
+          nextOccurrence: Timestamp.fromDate(new Date(2024, 0, 20)),
+          frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 }
+        });
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(current));
+
+        await service.updateRecurring('rec1', { frequency: { type: 'monthly', interval: 1 } });
+
+        const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        const record = data as Record<string, unknown>;
+        expect(record['frequency']).toEqual({ type: 'monthly', interval: 1 });
+        // The dropped dayOfMonth must not linger: the recompute lands on the
+        // start's own day (the 20th), not the discarded 15th.
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 8, 20));
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('recalculates from a submitted start date on a rule whose stored start cannot be read', async () => {
+      // A submitted startDate is the repair itself, so it must not be
+      // refused for the unreadable value it is about to overwrite.
+      spyOn(console, 'warn');
+      const unreadable = { toDate: () => new Date(NaN) } as unknown as Timestamp;
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ startDate: unreadable })
+      ));
+
+      await service.updateRecurring('rec1', { startDate: new Date(2024, 6, 1) });
+
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      const record = data as Record<string, unknown>;
+      expect((record['startDate'] as Timestamp).toDate()).toEqual(new Date(2024, 6, 1));
+      expect(record['nextOccurrence']).toBeDefined();
+    });
+
+    it('rejects a recalculation when the stored start date cannot be read and none is submitted', async () => {
+      spyOn(console, 'warn');
+      const unreadable = { toDate: () => new Date(NaN) } as unknown as Timestamp;
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ startDate: unreadable })
+      ));
+
+      await expectAsync(
+        service.updateRecurring('rec1', { frequency: { type: 'monthly', interval: 2 } })
+      ).toBeRejectedWithError(UNREADABLE_SCHEDULE_ERROR);
+
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
   });
 
   // A frequency that cannot advance is the interval-0 hang in its stored
@@ -616,22 +673,174 @@ describe('RecurringService', () => {
       expect(record['nextOccurrence']).toBeDefined();
     });
 
-    // Resume deliberately does not reject a stored frequency the way create
-    // and update do — the button has nowhere to show an error, and a rule
-    // already saved with a bad interval has to stay recoverable. What it must
-    // not do is hang while recalculating the pointer from today.
-    it('resumes a rule whose stored frequency cannot advance without spinning', async () => {
+    it('refuses to resume a rule whose interval cannot advance', async () => {
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
         createRecurring({ id: 'r1', frequency: { type: 'daily', interval: 0 } })
       ));
 
-      await service.resumeRecurring('r1');
+      await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
 
-      const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
-      expect(path).toBe('users/user123/recurring/r1');
-      const record = data as Record<string, unknown>;
-      expect(record['isActive']).toBeTrue();
-      expect(record['nextOccurrence']).toEqual(jasmine.any(Timestamp));
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('refuses to resume a rule whose interval is not finite', async () => {
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ id: 'r1', frequency: { type: 'daily', interval: NaN } })
+      ));
+
+      await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('refuses to resume a rule whose frequency type cannot advance', async () => {
+      // validateFrequency only checks the interval; a type outside the four
+      // known kinds is the other way a stored frequency can never advance,
+      // and it slips past that guard.
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'fortnightly' as never, interval: 1 },
+            startDate: Timestamp.fromDate(new Date(2024, 0, 15))
+          })
+        ));
+
+        await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it("anchors the resumed pointer on the rule's start date, not today", async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1 },
+            startDate: Timestamp.fromDate(new Date(2024, 0, 15))
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        expect(path).toBe('users/user123/recurring/r1');
+        const record = data as Record<string, unknown>;
+        expect(record['isActive']).toBeTrue();
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 9, 15));
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('resumes a rule whose start is in the future onto the start', async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        const futureStart = new Date(2027, 0, 1);
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1 },
+            startDate: Timestamp.fromDate(futureStart)
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        const record = data as Record<string, unknown>;
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(futureStart);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it("clamps the day the rule names to the month's last day", async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1, dayOfMonth: 31 },
+            startDate: Timestamp.fromDate(new Date(2024, 0, 31))
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        const record = data as Record<string, unknown>;
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 8, 30));
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('refuses to resume a rule it cannot read', async () => {
+      spyOn(console, 'warn');
+      const unreadable = { toDate: () => new Date(NaN) } as unknown as Timestamp;
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ id: 'r1', startDate: unreadable })
+      ));
+
+      await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(UNREADABLE_SCHEDULE_ERROR);
+
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('refuses to resume a rule whose end date has passed', async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 20));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1, dayOfMonth: 6 },
+            startDate: Timestamp.fromDate(new Date(2026, 0, 5)),
+            endDate: Timestamp.fromDate(new Date(2026, 2, 18))
+          })
+        ));
+
+        await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(RULE_ENDED_ERROR);
+
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('resumes a rule whose end date is still ahead', async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 20));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1, dayOfMonth: 6 },
+            startDate: Timestamp.fromDate(new Date(2026, 0, 5)),
+            endDate: Timestamp.fromDate(new Date(2027, 0, 1))
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        expect(path).toBe('users/user123/recurring/r1');
+        const record = data as Record<string, unknown>;
+        expect(record['isActive']).toBeTrue();
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 9, 6));
+      } finally {
+        jasmine.clock().uninstall();
+      }
     });
   });
 

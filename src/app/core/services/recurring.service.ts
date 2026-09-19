@@ -51,6 +51,23 @@ export const MAX_OCCURRENCES_PER_CLAIM = 400;
  */
 export const INVALID_FREQUENCY_ERROR = 'INVALID_RECURRING_FREQUENCY';
 
+/**
+ * Thrown when a rule's stored start date is not one `readSchedule` can read.
+ * Every caller that reaches this — resume included — has no start to anchor
+ * a recomputed pointer on and no substitute ADR 0014 allows it to invent, so
+ * it refuses rather than re-dating the rule. The edit form is where such a
+ * rule is repaired (a new start date) or deleted.
+ */
+export const UNREADABLE_SCHEDULE_ERROR = 'RECURRING_SCHEDULE_UNREADABLE';
+
+/**
+ * Thrown when a resumed rule's recomputed pointer lands past its own end
+ * date: the rule can never post again, so resuming it would leave the list
+ * showing an active rule with an unreachable next date. The edit form is
+ * where the end date moves.
+ */
+export const RULE_ENDED_ERROR = 'RECURRING_RULE_ENDED';
+
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
   private firestoreService = inject(FirestoreService);
@@ -291,14 +308,31 @@ export class RecurringService {
         );
 
         if (current) {
+          // Read through the same seam every other caller does: a stored
+          // start date need not honour its declared type. An unreadable
+          // stored start only blocks the write when nothing here replaces
+          // it — a submitted startDate is exactly the repair this call
+          // exists to make, so it must not be refused for the value it is
+          // overwriting.
+          const schedule = this.readSchedule(current);
+          if (!schedule && data.startDate === undefined) {
+            throw new Error(UNREADABLE_SCHEDULE_ERROR);
+          }
+
           const frequencyChanged = data.frequency !== undefined &&
             !this.isSameFrequency(data.frequency, current.frequency);
+          // A missing stored start counts as changed: there is no prior
+          // value a submitted startDate could match, so schedule?.start
+          // reads as undefined and the comparison always differs.
           const startDateChanged = data.startDate !== undefined &&
-            data.startDate.getTime() !== current.startDate.toDate().getTime();
+            data.startDate.getTime() !== schedule?.start.getTime();
 
           if (frequencyChanged || startDateChanged) {
             const frequency = data.frequency ?? current.frequency;
-            const startDate = data.startDate ?? current.startDate.toDate();
+            // schedule is only null here when data.startDate is defined
+            // (the guard above throws for the other case), so the fallback
+            // is never actually read.
+            const startDate = data.startDate ?? schedule!.start;
             const nextOccurrence = this.calculateNextOccurrence(startDate, frequency);
             updateData.nextOccurrence = this.firestoreService.dateToTimestamp(nextOccurrence);
           }
@@ -343,13 +377,44 @@ export class RecurringService {
 
     if (!recurring) return;
 
-    // No frequency check here, unlike create and update: a rule already stored
-    // with an interval that cannot advance has to stay resumable, and this
-    // path has no way to show the user why it refused. The guard inside
-    // calculateNextOccurrence is what keeps that safe.
+    // Unlike the old behaviour, this refusal now reaches the user: the
+    // toggle in RecurringTransactionsComponent catches it and tells them why
+    // instead of the resume silently doing nothing useful (ADR 0141).
+    this.validateFrequency(recurring.frequency);
 
-    // Recalculate next occurrence from today
-    const nextOccurrence = this.calculateNextOccurrence(new Date(), recurring.frequency);
+    const schedule = this.readSchedule(recurring);
+    if (!schedule) throw new Error(UNREADABLE_SCHEDULE_ERROR);
+
+    // Anchored on the rule's own start, not on today: the same walk
+    // calculateNextOccurrence already does for a fresh create, so a resumed
+    // rule lands on the day its schedule actually names instead of restarting
+    // the count from the moment it happened to be resumed.
+    const nextOccurrence = this.calculateNextOccurrence(schedule.start, recurring.frequency);
+
+    // validateFrequency only catches an interval that can never advance; a
+    // stored frequency.type outside the four known kinds falls through
+    // calculateNextOccurrenceFromDate's switch unchanged and answers the
+    // start back too. A start already due that comes back unmoved is that
+    // failure, not a legitimate answer — calculateNextOccurrence's own
+    // future-start branch is the only other case that returns the start
+    // unchanged, and it is excluded here because that date has not arrived,
+    // so nothing was skipped.
+    if (
+      schedule.start.getTime() <= Date.now() &&
+      !(nextOccurrence.getTime() > schedule.start.getTime())
+    ) {
+      throw new Error(INVALID_FREQUENCY_ERROR);
+    }
+
+    // A resume that recomputes a pointer past the rule's own end date would
+    // write isActive: true and a date the walker can never reach — the list
+    // would show it Active forever with nothing left to post. An unreadable
+    // end is treated as no end, the same as everywhere else this field is
+    // read.
+    const end = toDate(recurring.endDate);
+    if (end && nextOccurrence > end) {
+      throw new Error(RULE_ENDED_ERROR);
+    }
 
     await this.firestoreService.updateDocument(
       `${this.userRecurringPath}/${id}`,
@@ -767,13 +832,13 @@ export class RecurringService {
     try {
       this.validateFrequency(rule.frequency);
     } catch {
-      console.warn('[Recurring] Leaving a pointer unrepaired, the frequency cannot advance:', rule.id);
+      console.warn('[Recurring] Leaving a pointer unrepaired, the interval cannot advance:', rule.id);
       return;
     }
 
     const next = this.calculateNextOccurrence(start, rule.frequency);
     if (!(next.getTime() > start.getTime())) {
-      console.warn('[Recurring] Leaving a pointer unrepaired, the frequency cannot advance:', rule.id);
+      console.warn('[Recurring] Leaving a pointer unrepaired, the computed next date does not move past the start:', rule.id);
       return;
     }
 
@@ -790,7 +855,7 @@ export class RecurringService {
           { isActive: false }
         );
       } catch (error) {
-        console.warn('[Recurring] A pointer repair did not land:', rule.id, error);
+        console.warn('[Recurring] A rule\'s deactivation past its end date did not land:', rule.id, error);
       }
       return;
     }

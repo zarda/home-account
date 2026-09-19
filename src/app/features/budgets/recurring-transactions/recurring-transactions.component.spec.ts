@@ -8,7 +8,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { RecurringTransactionsComponent } from './recurring-transactions.component';
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
-import { RecurringService } from '../../../core/services/recurring.service';
+import { RecurringService, INVALID_FREQUENCY_ERROR, RULE_ENDED_ERROR } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
@@ -95,6 +95,11 @@ describe('RecurringTransactionsComponent', () => {
         'settings.recurringCreated': 'Recurring transaction created',
         'settings.recurringUpdated': 'Recurring transaction updated',
         'settings.recurringUpdateFailed': 'Failed to update recurring transaction',
+        'settings.recurringResumeFailed': 'Failed to resume recurring transaction',
+        'settings.recurringResumeInvalidFrequency':
+          "Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1.",
+        'settings.recurringResumeEnded':
+          "Cannot resume: this rule's end date has passed. Edit the end date first.",
         'settings.recurringDeleted': 'Recurring transaction deleted',
         'settings.deleteRecurringTitle': 'Delete Recurring Transaction',
         'settings.deleteRecurringMessage': 'Are you sure?',
@@ -239,6 +244,43 @@ describe('RecurringTransactionsComponent', () => {
 
       expect(mockRecurringService.resumeRecurring).toHaveBeenCalledWith('rec1');
       expect(notifications.success).toHaveBeenCalledWith('Recurring transaction resumed');
+    }));
+
+    it('tells the user when a resume is refused for its interval', fakeAsync(() => {
+      const pausedRecurring = { ...mockRecurring[0], isActive: false };
+      mockRecurringService.resumeRecurring.and.rejectWith(new Error(INVALID_FREQUENCY_ERROR));
+
+      component.toggleActive(pausedRecurring);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith(
+        "Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1."
+      );
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
+
+    it('tells the user when a resume is refused because the rule has ended', fakeAsync(() => {
+      const pausedRecurring = { ...mockRecurring[0], isActive: false };
+      mockRecurringService.resumeRecurring.and.rejectWith(new Error(RULE_ENDED_ERROR));
+
+      component.toggleActive(pausedRecurring);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith(
+        "Cannot resume: this rule's end date has passed. Edit the end date first."
+      );
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
+
+    it('tells the user when a resume fails for any other reason', fakeAsync(() => {
+      const pausedRecurring = { ...mockRecurring[0], isActive: false };
+      mockRecurringService.resumeRecurring.and.rejectWith(new Error('x'));
+
+      component.toggleActive(pausedRecurring);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith('Failed to resume recurring transaction');
+      expect(notifications.success).not.toHaveBeenCalled();
     }));
   });
 
