@@ -611,6 +611,46 @@ describe('AuthService', () => {
       expect(service.profileDegraded()).toBeTrue();
       expect(service.currentUser()!.preferences.language).toBe('ja');
     });
+
+    it('re-arms for the account that replaced the one whose read it abandoned', async () => {
+      startRetryFor(UID);
+
+      signedInAs(OTHER_UID);
+      service.firebaseUser.set({ uid: OTHER_UID } as FirebaseUser);
+      TestBed.tick();
+      expect(readStarted).toHaveBeenCalledTimes(1);
+
+      readStarted.and.returnValue(new Promise(() => undefined));
+      resolveRead(storedProfile(UID));
+      await settle();
+      TestBed.tick();
+
+      expect(readStarted).toHaveBeenCalledTimes(2);
+      expect(readStarted.calls.mostRecent().args[0].uid).toBe(OTHER_UID);
+      expect(pwa.isOnline()).toBeTrue();
+    });
+
+    it('does not re-arm after a failed read', async () => {
+      startRetryFor(UID);
+
+      rejectRead(new Error('x'));
+      await settle();
+      TestBed.tick();
+
+      expect(readStarted).toHaveBeenCalledTimes(1);
+
+      pwa.isOnline.set(false);
+      pwa.isOnline.set(true);
+      TestBed.tick();
+
+      expect(readStarted).toHaveBeenCalledTimes(2);
+
+      // The flip's own read rejects too, and its handler is three turns down
+      // the chain: without this the rejection is reported after the case has
+      // ended and the console spy has been restored, so the failure surfaces
+      // in whichever case runs next.
+      await settle();
+    });
   });
 
   /**

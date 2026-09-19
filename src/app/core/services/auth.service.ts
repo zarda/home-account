@@ -92,6 +92,12 @@ export class AuthService {
    */
   profileDegraded = signal<boolean>(false);
   private profileRetryInFlight = false;
+  /**
+   * Bumped only when a retry's own read is abandoned for a session that
+   * replaced the one it started for, so the retry effect re-runs and gives
+   * the new session its own read without waiting on a connectivity flip.
+   */
+  private retryArm = signal(0);
 
   // Computed signals
   isAuthenticated = computed(() => !!this.currentUser());
@@ -138,10 +144,15 @@ export class AuthService {
    * until the next flip. A successful re-read never runs the create path
    * (setDoc only follows a successful getDoc that found nothing), so a
    * legitimate first sign-in is created and an existing profile is loaded,
-   * never overwritten.
+   * never overwritten. `retryArm` re-runs this effect when a read was
+   * abandoned for a session that replaced the one it was started for, so the
+   * new session gets its own read without waiting on a connectivity flip. A
+   * failed read never bumps it — a persistent failure would otherwise loop
+   * this effect with nothing to stop it.
    */
   private setupProfileRetryEffect(): void {
     effect(() => {
+      this.retryArm();
       const online = this.pwa.isOnline();
       const degraded = this.profileDegraded();
       const firebaseUser = this.firebaseUser();
@@ -156,6 +167,7 @@ export class AuthService {
       if (!this.stillSignedInAs(startedFor)) return;
 
       this.profileRetryInFlight = true;
+      let abandoned = false;
       void runInInjectionContext(this.injector, () => this.getOrCreateUser(firebaseUser))
         .then(user => {
           // A profile read outlives the session that asked for it — served
@@ -167,7 +179,10 @@ export class AuthService {
           // deliberately left as it stands — clearing it on behalf of a
           // session that has ended hands the next one a not-degraded flag
           // over a fallback profile, with nothing left to trigger a re-read.
-          if (!this.stillSignedInAs(startedFor)) return;
+          if (!this.stillSignedInAs(startedFor)) {
+            abandoned = true;
+            return;
+          }
           this.currentUser.set(user);
           this.profileDegraded.set(false);
         })
@@ -176,6 +191,12 @@ export class AuthService {
         })
         .finally(() => {
           this.profileRetryInFlight = false;
+          // Only a read abandoned for a replaced session re-arms: that
+          // session's own listener callback already lost its answer, and
+          // nothing else asks again until the next connectivity flip. A
+          // failed read leaves `abandoned` false, on purpose — bumping the
+          // arm here would loop this effect against a persistent failure.
+          if (abandoned) this.retryArm.update(n => n + 1);
         });
     });
   }
