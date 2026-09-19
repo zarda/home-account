@@ -1337,6 +1337,7 @@
     "queueCleared": "Queue cleared",
     "queueSyncFailed": "Failed to sync queue",
     "queueClearFailed": "Failed to clear queue",
+    "queueClosedReload": "The queue was closed so another tab could update it. Reload this page to see it again.",
     "invalidModelSelection": "Invalid model selection",
     "textModelUpdated": "Text model updated to {{model}}",
     "textModelUpdateFailed": "Failed to update text model. Please try again.",

@@ -87,7 +87,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
 
       const file = await this.queue.getQueuedImageAsFile(id);
       if (!file) {
-        await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue');
+        this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue'));
         return;
       }
 
@@ -102,7 +102,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
           // keeps the image in the queue for the retries the queue already
           // bounds, and leaves it in the failed count once they run out.
           attempt.failed('nothing_extracted');
-          await this.queue.updateImageStatus(id, 'failed', 'No transaction could be read from this receipt');
+          this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', 'No transaction could be read from this receipt'));
           return;
         }
 
@@ -112,7 +112,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
           file,
         );
         attempt.succeeded(result);
-        await this.queue.updateImageStatus(id, 'completed');
+        this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'completed'));
         // One snackbar either way: this fires unattended, and a second toast
         // for the losses would arrive with nothing to click and no idea which
         // receipt it belonged to. A row the ledger refused and a photo it
@@ -132,7 +132,14 @@ export class OfflineQueueProcessorService implements OnDestroy {
         throw error;
       }
     } catch (error) {
-      await this.queue.updateImageStatus(id, 'failed', this.errorMessage(error));
+      this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', this.errorMessage(error)));
+    }
+  }
+
+  /** A `completed`/`failed` write the closed queue dropped still needs saying. */
+  private warnIfDropped(id: string, recorded: boolean): void {
+    if (!recorded) {
+      console.warn('[OfflineQueueProcessor] Outcome not recorded; the queue is closed', id);
     }
   }
 

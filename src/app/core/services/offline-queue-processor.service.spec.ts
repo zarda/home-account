@@ -98,7 +98,7 @@ describe('OfflineQueueProcessorService', () => {
       'peekQueuedImage',
       'updateImageStatus',
     ]);
-    queue.updateImageStatus.and.resolveTo();
+    queue.updateImageStatus.and.resolveTo(true);
     queue.peekQueuedImage.and.resolveTo(undefined);
 
     userId = signal<string | null>('user-a');
@@ -683,6 +683,21 @@ describe('OfflineQueueProcessorService', () => {
       await waitFor(() => queue.updateImageStatus.calls.any());
 
       expect('currencyFellBack' in transactions.addTransaction.calls.mostRecent().args[0]).toBeFalse();
+    });
+
+    it('warns when the closed queue could not record the outcome', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+      queue.updateImageStatus.and.resolveTo(false);
+      const consoleWarnSpy = spyOn(console, 'warn');
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The rows still landed — only recording the outcome failed.
+      expect(transactions.addTransaction).toHaveBeenCalled();
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(jasmine.stringContaining('[OfflineQueueProcessor]'), 'img_1');
     });
   });
 

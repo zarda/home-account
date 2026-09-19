@@ -59,10 +59,12 @@ describe('AiSettingsPageComponent', () => {
 
     offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',
+      'closedForUpgrade',
       'syncQueue',
       'clearAll',
     ]);
     offlineQueueServiceMock.pendingCount.and.returnValue(0);
+    offlineQueueServiceMock.closedForUpgrade.and.returnValue(false);
     offlineQueueServiceMock.syncQueue.and.returnValue(Promise.resolve({ success: 0, failed: 0 }));
     offlineQueueServiceMock.clearAll.and.returnValue(Promise.resolve());
 
@@ -273,6 +275,66 @@ describe('AiSettingsPageComponent', () => {
       offlineQueueServiceMock.clearAll.and.returnValue(Promise.reject(new Error('offline')));
       await component.clearQueue();
       expect(notifications.error).toHaveBeenCalledWith('aiPage.queueClearFailed');
+    });
+
+    // pendingQueueCount() already disables Sync at zero, so both cases below
+    // set it above zero first — a fresh component instance, because the
+    // mock's pendingCount is a plain spy rather than a signal, and the
+    // computed that reads it never recomputes after its first read.
+    function renderWithQueue(pendingCount: number, closedForUpgrade: boolean): ComponentFixture<AiSettingsPageComponent> {
+      offlineQueueServiceMock.pendingCount.and.returnValue(pendingCount);
+      offlineQueueServiceMock.closedForUpgrade.and.returnValue(closedForUpgrade);
+      const localFixture = TestBed.createComponent(AiSettingsPageComponent);
+      localFixture.detectChanges();
+      return localFixture;
+    }
+
+    function findSyncButton(localFixture: ComponentFixture<AiSettingsPageComponent>): HTMLButtonElement {
+      const buttons: HTMLButtonElement[] = Array.from(localFixture.nativeElement.querySelectorAll('button'));
+      const syncButton = buttons.find(b => b.textContent?.includes('aiPage.syncNow'));
+      if (!syncButton) throw new Error('sync button not found');
+      return syncButton;
+    }
+
+    function findClearButton(localFixture: ComponentFixture<AiSettingsPageComponent>): HTMLButtonElement {
+      const buttons: HTMLButtonElement[] = Array.from(localFixture.nativeElement.querySelectorAll('button'));
+      const clearButton = buttons.find(b => b.textContent?.includes('aiPage.clearQueue'));
+      if (!clearButton) throw new Error('clear button not found');
+      return clearButton;
+    }
+
+    it('asks for a reload and disables Sync when the queue closed for an upgrade', () => {
+      const localFixture = renderWithQueue(3, true);
+      const note: HTMLElement | null = localFixture.nativeElement.querySelector('.queue-note');
+      expect(note?.textContent).toContain('aiPage.queueClosedReload');
+      expect(findSyncButton(localFixture).disabled).toBeTrue();
+    });
+
+    it('shows no note and leaves Sync enabled while the queue is open', () => {
+      const localFixture = renderWithQueue(3, false);
+      expect(localFixture.nativeElement.querySelector('.queue-note')).toBeNull();
+      expect(findSyncButton(localFixture).disabled).toBeFalse();
+    });
+
+    it('disables Clear when the queue closed for an upgrade', () => {
+      const localFixture = renderWithQueue(3, true);
+      expect(findClearButton(localFixture).disabled).toBeTrue();
+    });
+
+    it('leaves Clear enabled while the queue is open', () => {
+      const localFixture = renderWithQueue(3, false);
+      expect(findClearButton(localFixture).disabled).toBeFalse();
+    });
+
+    it('does not report a queue it cannot reach as cleared', async () => {
+      // The disabled button is not the guard: a keyboard activation racing
+      // the close, or any other caller, still reaches the method.
+      const closed = renderWithQueue(3, true).componentInstance;
+
+      await closed.clearQueue();
+
+      expect(offlineQueueServiceMock.clearAll).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
     });
   });
 

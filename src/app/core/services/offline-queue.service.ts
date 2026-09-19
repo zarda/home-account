@@ -22,6 +22,14 @@ export type QueueStatus = 'pending' | 'processing' | 'completed' | 'failed';
 /** Thrown when something tries to queue an item with nobody signed in. */
 export const QUEUE_NOT_SIGNED_IN = 'QUEUE_NOT_SIGNED_IN';
 
+/**
+ * Thrown when a write arrives after another tab took the database for a
+ * newer version. Distinct from the handle simply not being open yet: before
+ * the first open there is nothing on the device to act on, while here the
+ * rows are still there and untouched by whatever was asked for.
+ */
+export const QUEUE_CLOSED_FOR_UPGRADE = 'QUEUE_CLOSED_FOR_UPGRADE';
+
 export interface QueuedImage {
   id: string;
   /**
@@ -88,6 +96,7 @@ export class OfflineQueueService implements OnDestroy {
   private _isSyncing = signal<boolean>(false);
   private _lastSyncTime = signal<number | null>(null);
   private _syncProgress = signal<number>(0);
+  private _closedForUpgrade = signal<boolean>(false);
 
   // Public computed signals
   isReady = computed(() => this._isReady());
@@ -96,6 +105,8 @@ export class OfflineQueueService implements OnDestroy {
   lastSyncTime = computed(() => this._lastSyncTime());
   syncProgress = computed(() => this._syncProgress());
   hasPendingItems = computed(() => this._pendingCount() > 0);
+  /** Set once `blocking` closes the handle; nothing in this tab reopens it. */
+  closedForUpgrade = computed(() => this._closedForUpgrade());
 
   constructor() {
     this.initializeDB();
@@ -169,14 +180,7 @@ export class OfflineQueueService implements OnDestroy {
         blocked: () => {
           console.warn('[OfflineQueue] Upgrade blocked by another open tab');
         },
-        blocking: () => {
-          // Another tab wants a newer version. Close, or it waits forever and
-          // that tab's queue never initializes.
-          console.warn('[OfflineQueue] Closing so a newer version can open');
-          this.db?.close();
-          this.db = null;
-          this._isReady.set(false);
-        },
+        blocking: () => this.closeForUpgrade(),
       });
 
       await this.reclaimInterruptedWork();
@@ -186,6 +190,23 @@ export class OfflineQueueService implements OnDestroy {
     } catch (error) {
       console.error('[OfflineQueue] Failed to initialize database:', error);
     }
+  }
+
+  /**
+   * Another tab wants a newer version. Close, or it waits forever and that
+   * tab's queue never initializes. This tab cannot reopen at the old
+   * version, so the writes whose answer is acted on say what became of
+   * them: `queueImage` and `clearAll` throw and `updateImageStatus` answers
+   * false. `removeImage`, `clearCompleted` and `clearFailed` still return
+   * silently — nothing reads their outcome yet — and `closedForUpgrade` is
+   * what the screen reads to explain any of it.
+   */
+  private closeForUpgrade(): void {
+    console.warn('[OfflineQueue] Closing so a newer version can open');
+    this.db?.close();
+    this.db = null;
+    this._isReady.set(false);
+    this._closedForUpgrade.set(true);
   }
 
   /**
@@ -370,20 +391,32 @@ export class OfflineQueueService implements OnDestroy {
 
   /**
    * Update image status.
+   *
+   * Returns false when the write was dropped — the database is closed, or
+   * the record is already gone (a queue drained mid-write is the normal way
+   * that happens) — a caller told the status has changed, and silently doing
+   * nothing about it looks identical to success.
    */
-  async updateImageStatus(id: string, status: QueueStatus, error?: string): Promise<void> {
-    if (!this.db) return;
+  async updateImageStatus(id: string, status: QueueStatus, error?: string): Promise<boolean> {
+    if (!this.db) {
+      console.warn('[OfflineQueue] Status write dropped: the database is closed', id, status);
+      return false;
+    }
 
     const image = await this.db.get('pending-images', id);
-    if (image) {
-      image.status = status;
-      if (error) {
-        image.lastError = error;
-        image.retryCount += 1;
-      }
-      await this.db.put('pending-images', image);
-      await this.updatePendingCount();
+    if (!image) {
+      console.warn('[OfflineQueue] Status write dropped: no record found for', id, status);
+      return false;
     }
+
+    image.status = status;
+    if (error) {
+      image.lastError = error;
+      image.retryCount += 1;
+    }
+    await this.db.put('pending-images', image);
+    await this.updatePendingCount();
+    return true;
   }
 
   /**
@@ -528,9 +561,18 @@ export class OfflineQueueService implements OnDestroy {
 
   /**
    * Clear entire queue (use with caution).
+   *
+   * A queue closed for a newer version throws instead of returning: account
+   * deletion records this step from its resolution alone, and the settings
+   * page announces the queue emptied, while the images are still on the
+   * device. Before the first open there is nothing to clear and nothing to
+   * report, so that case still returns.
    */
   async clearAll(): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {
+      if (this._closedForUpgrade()) throw new Error(QUEUE_CLOSED_FOR_UPGRADE);
+      return;
+    }
 
     // Scoped to the signed-in account, so one user's "clear queue" no longer
     // discards another's captures. The sync log goes too: it used to be left

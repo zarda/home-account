@@ -1250,6 +1250,7 @@
     "queueCleared": "佇列已清除",
     "queueSyncFailed": "同步佇列失敗",
     "queueClearFailed": "清除佇列失敗",
+    "queueClosedReload": "佇列已關閉以便其他分頁更新，請重新載入此頁面。",
     "invalidModelSelection": "無效的模型選擇",
     "textModelUpdated": "文字模型已更新為 {{model}}",
     "textModelUpdateFailed": "更新文字模型失敗，請再試一次。",

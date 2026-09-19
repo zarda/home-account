@@ -1250,6 +1250,7 @@
     "queueCleared": "キューがクリアされました",
     "queueSyncFailed": "キューの同期に失敗しました",
     "queueClearFailed": "キューのクリアに失敗しました",
+    "queueClosedReload": "別のタブが更新するためキューを閉じました。再読み込みすると再表示されます。",
     "invalidModelSelection": "無効なモデルが選択されました",
     "textModelUpdated": "テキストモデルを{{model}}に更新しました",
     "textModelUpdateFailed": "テキストモデルの更新に失敗しました。もう一度お試しください。",
