@@ -24,15 +24,34 @@ import { imageSources } from './import-review.utils';
  * instead of the shared `splitFrom` value, or a receipt split into three
  * parts would attach only the first of them.
  *
+ * A reviewer merge across two receipts (`mergeImportRows`) is a fourth case:
+ * the merged row keeps the target's `receiptId`, so the source receipt's id
+ * does not survive the spread, and anything left over from the source (a
+ * sibling row that stayed unmerged) would read as an unrelated receipt and
+ * upload a photo the merged row already claims. The merge is the only thing
+ * that knows it folded a different receipt in, so it records the ids it
+ * absorbed (`mergedReceiptIds`) and those groups count as attached before
+ * any row is walked here — whatever order the rows arrive in. Metadata on
+ * its own cannot tell that merge from the model's own consolidation of one
+ * long receipt spanning two photos (`consolidateReceiptItems`): both end as
+ * one row stamping `wasMerged` and the union of the photos, and a second
+ * receipt printed on one of a long receipt's photos must still attach it
+ * (the case above this one). The one edge this accepts: two receipts
+ * printed on the same photo, merged together, attach that photo once — on
+ * the merged row.
+ *
  * Indices outside the file list attach nothing rather than someone else's
  * photo, and a long receipt is cut at the per-transaction cap the upload
  * would otherwise refuse outright.
  */
 export function planReceiptAttachments(
-  rows: CategorizedImportTransaction[],
+  rows: Pick<CategorizedImportTransaction, 'id' | 'splitFrom' | 'imageMetadata'>[],
   fileCount: number
 ): number[][] {
   const attachedGroups = new Set<string>();
+  for (const row of rows) {
+    for (const id of row.imageMetadata?.mergedReceiptIds ?? []) attachedGroups.add(`receipt:${id}`);
+  }
 
   return rows.map(row => {
     const meta = row.imageMetadata;

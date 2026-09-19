@@ -814,6 +814,30 @@ describe('import-review.utils', () => {
       expect(merged.imageMetadata?.mergedFromImages).toEqual([0, 1]);
     });
 
+    it('records the receipt groups it folded into the target, and only those', () => {
+      const meta = (over: Partial<ImagePositionMetadata>): ImagePositionMetadata => ({
+        imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, ...over,
+      });
+
+      const across = mergeImportRows(
+        target({ imageMetadata: meta({ receiptId: 1 }) }),
+        source({ imageMetadata: meta({ imageIndex: 1, receiptId: 2 }) })
+      )!;
+      expect(across.imageMetadata?.mergedReceiptIds).withContext('across two receipts').toEqual([2]);
+
+      const within = mergeImportRows(
+        target({ imageMetadata: meta({ receiptId: 1 }) }),
+        source({ imageMetadata: meta({ receiptId: 1 }) })
+      )!;
+      expect(within.imageMetadata?.mergedReceiptIds).withContext('two rows of one receipt').toBeUndefined();
+
+      const again = mergeImportRows(
+        target({ imageMetadata: meta({ receiptId: 1, mergedReceiptIds: [2] }) }),
+        source({ imageMetadata: meta({ imageIndex: 2, receiptId: 3 }) })
+      )!;
+      expect(again.imageMetadata?.mergedReceiptIds).withContext('a row that already absorbed one').toEqual([2, 3]);
+    });
+
     it('copies the source\'s imageMetadata block when the target has none', () => {
       const meta: ImagePositionMetadata = {
         imageIndex: 1, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8,
