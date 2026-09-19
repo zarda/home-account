@@ -564,6 +564,7 @@
     "period": "Period",
     "on": "On",
     "onDay": "On day",
+    "onDaySameAsStart": "Same day as the start date",
     "duration": "Duration",
     "addEndDate": "Add end date",
     "removeEndDate": "Remove end date",

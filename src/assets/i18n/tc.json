@@ -522,6 +522,7 @@
     "period": "週期",
     "on": "於",
     "onDay": "每月幾號",
+    "onDaySameAsStart": "與開始日同一天",
     "duration": "期間",
     "addEndDate": "新增結束日期",
     "removeEndDate": "移除結束日期",

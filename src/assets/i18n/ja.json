@@ -558,6 +558,7 @@
     "period": "期間",
     "on": "対象",
     "onDay": "日付",
+    "onDaySameAsStart": "開始日と同じ日",
     "duration": "有効期間",
     "addEndDate": "終了日を追加",
     "removeEndDate": "終了日を削除",
