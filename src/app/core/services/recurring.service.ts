@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { addDays, dateAtClampedDay, endOfDay, startOfDay } from '../utils/transaction-date.utils';
+import { addDays, dateAtClampedDay, endOfDay, startOfDay, toDate } from '../utils/transaction-date.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -22,6 +22,14 @@ interface ClaimResult {
   postedIds: string[];
   categoryId: string;
   type: TransactionType;
+}
+
+// A rule's two dates, coerced: the anchor every walk measures from and the
+// pointer the rule currently stands on. A null pointer means the stored value
+// was not a date the engine could read.
+interface RuleSchedule {
+  start: Date;
+  pointer: Date | null;
 }
 
 /**
@@ -409,10 +417,26 @@ export class RecurringService {
       const createdTransactions: Transaction[] = [];
       const affectedExpenseCategories = new Set<string>();
 
-      // Active rules that are due, from the caller's enumerated set
-      const dueRecurring = rules.filter(r =>
-        r.isActive && r.nextOccurrence.toDate() <= now
-      );
+      // Active rules that are due, from the caller's enumerated set. A rule
+      // whose stored dates cannot be read is made harmless here — skipped or
+      // repaired — rather than taking down the whole run, and with it every
+      // other rule the user owns.
+      const dueRecurring: RecurringTransaction[] = [];
+      for (const rule of rules) {
+        if (!rule.isActive) continue;
+
+        const schedule = this.readSchedule(rule);
+        if (!schedule) continue;
+
+        if (!schedule.pointer) {
+          await this.repairPointer(rule, schedule.start);
+          // The rewritten pointer is in the future by construction, so the
+          // rule is never due in the run that repaired it.
+          continue;
+        }
+
+        if (schedule.pointer <= now) dueRecurring.push(rule);
+      }
 
       for (const recurring of dueRecurring) {
         // A backlog past the per-claim cap drains here, one full batch per
@@ -480,16 +504,22 @@ export class RecurringService {
       if (!snapshot.exists()) return null;
 
       const rule = { ...snapshot.data(), id: snapshot.id } as RecurringTransaction;
-      let occurrenceDate = rule.nextOccurrence.toDate();
+      const schedule = this.readSchedule(rule);
+
+      // Re-check on fresh server data: another device may have paused,
+      // edited, or already processed this rule — or left it in a state this
+      // claim cannot read, which answers null like any other nothing-to-do.
+      // Throwing here instead would reach the caller as a rejection, which is
+      // how being offline arrives, and a document nobody can read is not a
+      // condition the next run will find any different.
+      if (!schedule?.pointer || !rule.isActive || schedule.pointer > now) return null;
+
+      let occurrenceDate = schedule.pointer;
       // Every step of the catch-up below measures from the rule's start date,
       // never from the occurrence it has just posted, so draining a backlog
       // lands on the same days the rule would have posted had the app been
       // open all along.
-      const anchor = rule.startDate.toDate();
-
-      // Re-check on fresh server data: another device may have paused,
-      // edited, or already processed this rule.
-      if (!rule.isActive || occurrenceDate > now) return null;
+      const anchor = schedule.start;
 
       // Occurrences that came due BEFORE the end date must still be posted
       // even when the end date itself has passed.
@@ -588,7 +618,14 @@ export class RecurringService {
         for (const r of recurring) {
           if (!r.isActive) continue;
 
-          let nextDate = r.nextOccurrence.toDate();
+          // A rule the engine cannot read is left out of the forecast rather
+          // than erroring the stream, which would blank the chart for every
+          // rule the user owns. Repairing belongs to the catch-up, which can
+          // write; this is a projection.
+          const schedule = this.readSchedule(r);
+          if (!schedule?.pointer) continue;
+
+          let nextDate = schedule.pointer;
 
           // Collect all occurrences within the date range
           while (nextDate <= endDate) {
@@ -607,7 +644,7 @@ export class RecurringService {
             });
 
             const next = this.calculateNextOccurrenceFromDate(
-              nextDate, r.frequency, r.startDate.toDate()
+              nextDate, r.frequency, schedule.start
             );
             // Safety: a non-advancing frequency must not spin forever
             if (!(next.getTime() > nextDate.getTime())) break;
@@ -618,6 +655,90 @@ export class RecurringService {
         return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
       })
     );
+  }
+
+  /**
+   * The one seam every reader takes a rule's dates through.
+   *
+   * A stored document need not honour the type it is read as: a restore, an
+   * older build or a hand edit can leave either field holding something that
+   * is not a Timestamp, and `.toDate()` on it throws out of whichever pass met
+   * it first.
+   *
+   * A rule with no readable start is answered null and skipped, by name. The
+   * start is the anchor every walk measures from, and a substitute would
+   * silently re-date the rule and every occurrence it has yet to post — the
+   * decision ADR 0014 made and this keeps. The pointer is derived from the
+   * start rather than given, so an unreadable one is answered as a null
+   * pointer and the caller that can write recomputes it.
+   */
+  private readSchedule(rule: RecurringTransaction): RuleSchedule | null {
+    const start = toDate(rule.startDate);
+    if (!start) {
+      console.warn('[Recurring] Skipping a rule with no readable start date:', rule.id);
+      return null;
+    }
+
+    return { start, pointer: toDate(rule.nextOccurrence) };
+  }
+
+  /**
+   * Rewrite an unreadable pointer from the rule's start date.
+   *
+   * The frequency is checked first because `calculateNextOccurrence` answers
+   * the start date itself for an interval that could never advance: storing
+   * that would leave the rule permanently due, which is worse than leaving it
+   * inert. That guard only names one refusal (interval); it does not cover
+   * every way a frequency can fail to advance — a `type` outside the four
+   * known kinds falls through `calculateNextOccurrenceFromDate`'s switch
+   * unchanged and also answers the start back. So the computed result is
+   * checked too: whichever guard catches it, storing the start as "next"
+   * would make the rule permanently due and re-post the same idempotent id
+   * on every run. The write carries `nextOccurrence` alone — `updatedAt` is
+   * FirestoreService's to stamp, and nothing here says the rule has run.
+   */
+  private async repairPointer(rule: RecurringTransaction, start: Date): Promise<void> {
+    try {
+      this.validateFrequency(rule.frequency);
+    } catch {
+      console.warn('[Recurring] Leaving a pointer unrepaired, the frequency cannot advance:', rule.id);
+      return;
+    }
+
+    const next = this.calculateNextOccurrence(start, rule.frequency);
+    if (!(next.getTime() > start.getTime())) {
+      console.warn('[Recurring] Leaving a pointer unrepaired, the frequency cannot advance:', rule.id);
+      return;
+    }
+
+    // An ended rule would never reach a pointer past its end date, so the
+    // repair deactivates it the way the claim's own endDatePassed branch
+    // would have, instead of writing a pointer the rule can't get to. This
+    // is a normal outcome of a healthy schedule meeting its end, not a
+    // defect, so nothing is warned.
+    const endDate = toDate(rule.endDate);
+    if (endDate && next > endDate) {
+      try {
+        await this.firestoreService.updateDocument<RecurringTransaction>(
+          `${this.userRecurringPath}/${rule.id}`,
+          { isActive: false }
+        );
+      } catch (error) {
+        console.warn('[Recurring] A pointer repair did not land:', rule.id, error);
+      }
+      return;
+    }
+
+    try {
+      await this.firestoreService.updateDocument<RecurringTransaction>(
+        `${this.userRecurringPath}/${rule.id}`,
+        { nextOccurrence: this.firestoreService.dateToTimestamp(next) }
+      );
+    } catch (error) {
+      // Offline, or denied: the rule keeps its bad pointer, posts nothing,
+      // and the next run tries the repair again.
+      console.warn('[Recurring] A pointer repair did not land:', rule.id, error);
+    }
   }
 
   /**
