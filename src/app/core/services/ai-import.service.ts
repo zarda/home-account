@@ -63,7 +63,7 @@ import {
   CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { imageMetadataOf, importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { sumByCurrency } from '../utils/import-review.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
@@ -372,6 +372,7 @@ export class AIImportService {
     return result.transactions.map(tx => {
       const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
       const money = resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency);
+      const imageMetadata = imageMetadataOf(tx);
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('strategy'),
         description: tx.description,
@@ -387,19 +388,7 @@ export class AIImportService {
         selected: true,
         notes: tx.notes,
         fieldConfidence: tx.fieldConfidence,
-        // The receipt badge keys on receiptId, which only the cloud strategy
-        // path reports; the photo mapping comes from either engine. Both ride
-        // the same metadata block, with their real values.
-        ...(tx.receiptId != null || tx.imageIndex !== undefined ? {
-          imageMetadata: {
-            imageIndex: tx.imageIndex ?? 0,
-            imageId: `image_${tx.imageIndex ?? 0}`,
-            positionInImage: 'middle' as const,
-            confidenceScore: tx.confidence,
-            ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
-            ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
-          },
-        } : {}),
+        ...(imageMetadata ? { imageMetadata } : {}),
         ...(tx.tags?.length ? { tags: tx.tags } : {}),
         ...(tx.location ? { location: tx.location } : {}),
         ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),

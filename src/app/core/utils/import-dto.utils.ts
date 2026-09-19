@@ -1,4 +1,4 @@
-import { BudgetPeriod, CreateTransactionDTO, roundToMinorUnit, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
+import { BudgetPeriod, CreateTransactionDTO, ImagePositionMetadata, roundToMinorUnit, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
 import { FALLBACK_CATEGORY_ID } from './categorization.utils';
 import { parseDateInput } from './transaction-date.utils';
 
@@ -213,5 +213,47 @@ export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: strin
     ...(row.isRecurring !== undefined ? { isRecurring: row.isRecurring } : {}),
     ...(row.recurringId ? { recurringId: row.recurringId } : {}),
     ...(row.period ? { period: row.period } : {})
+  };
+}
+
+/**
+ * Everything `imageMetadataOf` needs off a read row.
+ *
+ * Spelled out here rather than imported from the AI reader's module: this
+ * file is the one mapper every import door writes through — a CSV, a backup
+ * and a photo all reach it — and naming `ProcessedTransaction` would tie it
+ * to the one door that has a model behind it. Both callers pass a
+ * `ProcessedTransaction`, which satisfies this structurally.
+ */
+export interface ReadRowPlacement {
+  imageIndex?: number;
+  receiptId?: number;
+  confidence: number;
+  mergedFromImages?: number[];
+}
+
+/**
+ * Which photo a read row came off, in the shape the review card and the
+ * attachment planner both read.
+ *
+ * Absent when the reader placed the row on no photo at all: a CSV row has no
+ * photo, and an engine with no per-photo mapping reports neither field. A
+ * block stamped `image_0` for those would claim a source nobody read, and
+ * `planReceiptAttachments` would hand them someone else's picture.
+ *
+ * `receiptId` alone is enough — only the cloud path reports it, and an index
+ * it left unset still means the first photo. Shared by the wizard and the
+ * offline drain, which build the same block off the same reader's output and
+ * would otherwise drift apart the way the DTO builders did (ADR 0059).
+ */
+export function imageMetadataOf(tx: ReadRowPlacement): ImagePositionMetadata | undefined {
+  if (tx.receiptId == null && tx.imageIndex === undefined) return undefined;
+  return {
+    imageIndex: tx.imageIndex ?? 0,
+    imageId: `image_${tx.imageIndex ?? 0}`,
+    positionInImage: 'middle',
+    confidenceScore: tx.confidence,
+    ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
+    ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
   };
 }

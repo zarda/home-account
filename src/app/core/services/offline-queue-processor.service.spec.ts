@@ -4,7 +4,7 @@ import { OfflineQueueProcessorService } from './offline-queue-processor.service'
 import { OfflineQueueService, QueuedImage } from './offline-queue.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
-import { TransactionService } from './transaction.service';
+import { INVALID_AMOUNT_ERROR, RECEIPT_ATTACH_FAILED, TransactionService } from './transaction.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
@@ -289,7 +289,7 @@ describe('OfflineQueueProcessorService', () => {
       expect(notifications.success).not.toHaveBeenCalled();
     });
 
-    it('fails a partial batch so the queue can retry the rows that did not land', async () => {
+    it('fails a partial batch on a transient failure so the queue can retry the rows that did not land', async () => {
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk' })]),
@@ -309,6 +309,266 @@ describe('OfflineQueueProcessorService', () => {
       // told nothing succeeded until it actually has.
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_6', 'failed', 'Firestore down');
       expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('attaches the photo to the first row of each receipt group', async () => {
+      const file = imageFile();
+      queue.getQueuedImageAsFile.and.resolveTo(file);
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted({ imageIndex: 0, receiptId: 1 }),
+        extracted({ imageIndex: 0, receiptId: 1, description: 'Kiosk' }),
+        extracted({ imageIndex: 0, receiptId: 2, description: 'Bakery' }),
+      ]));
+
+      dispatchImage('img_9');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // Two rows off one receipt would each upload the same photograph, so
+      // only the first of a group carries it. Two receipts printed on one
+      // photo are a different case: the photo is evidence for both.
+      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
+      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: 'img_9-0' });
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_9-1' });
+      expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toEqual([file]);
+      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: 'img_9-2' });
+    });
+
+    it('falls back to the bare row when the photo is refused, and counts it', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ imageIndex: 0 })]));
+      let call = 0;
+      transactions.addTransaction.and.callFake(() =>
+        ++call === 1 ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED)) : Promise.resolve('new-id'),
+      );
+
+      dispatchImage('img_12');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The transaction is the record and the photo is evidence attached to
+      // it: losing the amount, date and category to protect the picture is
+      // the wrong way round. The retry is bare, and the loss is reported.
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(2);
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_12-0' });
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_12', 'completed');
+      expect(translation.t).toHaveBeenCalledWith(
+        'settings.transactionsImportedPartial', { count: 1, skipped: 1 },
+      );
+      expect(notifications.info).toHaveBeenCalledWith('settings.transactionsImportedPartial');
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('hands the photo on when the row that was to carry it is refused', async () => {
+      const file = imageFile();
+      queue.getQueuedImageAsFile.and.resolveTo(file);
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted({ imageIndex: 0, amount: 0.4 }),
+        extracted({ imageIndex: 0, description: 'Kiosk' }),
+        extracted({ imageIndex: 0, description: 'Bakery' }),
+      ]));
+      transactions.addTransaction.and.callFake((dto) =>
+        dto.description === 'Konbini'
+          ? Promise.reject(new Error(INVALID_AMOUNT_ERROR))
+          : Promise.resolve('new-id'),
+      );
+
+      dispatchImage('img_16');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The planner gave the picture to the first row of the group, and the
+      // ledger refused that row for its amount — a decision nothing knew
+      // until the write. The photo is evidence for the whole receipt, so it
+      // goes to the next row of the group rather than down with the first.
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_16-1' });
+      expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toBeUndefined();
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_16', 'completed');
+      // One loss, not two: the row was refused, the photo landed.
+      expect(translation.t).toHaveBeenCalledWith(
+        'settings.transactionsImportedPartial', { count: 2, skipped: 1 },
+      );
+    });
+
+    it('counts the photo too when the row it was handed to cannot take it either', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted({ imageIndex: 0, amount: 0.4 }),
+        extracted({ imageIndex: 0, description: 'Kiosk' }),
+      ]));
+      transactions.addTransaction.and.callFake((dto) => {
+        if (dto.description === 'Konbini') return Promise.reject(new Error(INVALID_AMOUNT_ERROR));
+        return dto.receiptFiles
+          ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED))
+          : Promise.resolve('new-id');
+      });
+
+      dispatchImage('img_17');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(3);
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_17', 'completed');
+      expect(translation.t).toHaveBeenCalledWith(
+        'settings.transactionsImportedPartial', { count: 1, skipped: 2 },
+      );
+    });
+
+    it('counts a photo no row of its receipt could take', async () => {
+      const file = imageFile();
+      queue.getQueuedImageAsFile.and.resolveTo(file);
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted({ imageIndex: 0, receiptId: 1, amount: 0.4 }),
+        extracted({ imageIndex: 0, receiptId: 2, description: 'Bakery' }),
+      ]));
+      transactions.addTransaction.and.callFake((dto) =>
+        dto.description === 'Konbini'
+          ? Promise.reject(new Error(INVALID_AMOUNT_ERROR))
+          : Promise.resolve('new-id'),
+      );
+
+      dispatchImage('img_18');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The second row is a different receipt with a photo of its own, so
+      // nothing is left that could carry the first receipt's. That picture
+      // is lost exactly the way a refused upload loses one, and counts.
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_18', 'completed');
+      expect(translation.t).toHaveBeenCalledWith(
+        'settings.transactionsImportedPartial', { count: 1, skipped: 2 },
+      );
+    });
+
+    it('never hands a metadata-less row a photo it was never planned for', async () => {
+      const file = imageFile();
+      queue.getQueuedImageAsFile.and.resolveTo(file);
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted({ imageIndex: 0, amount: 0.4 }),
+        extracted({ description: 'Kiosk' }),
+        extracted({ imageIndex: 0, description: 'Bakery' }),
+      ]));
+      transactions.addTransaction.and.callFake((dto) =>
+        dto.description === 'Konbini'
+          ? Promise.reject(new Error(INVALID_AMOUNT_ERROR))
+          : Promise.resolve('new-id'),
+      );
+
+      dispatchImage('img_20');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The middle row was never given a photo by the planner — it read no
+      // metadata at all — so the first row's refusal must skip past it to
+      // the next row the planner actually grouped, not the next row in line.
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
+      expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toEqual([file]);
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_20', 'completed');
+      expect(translation.t).toHaveBeenCalledWith(
+        'settings.transactionsImportedPartial', { count: 2, skipped: 1 },
+      );
+    });
+
+    it('fails the image when the bare retry after a refused photo fails too', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ imageIndex: 0 })]));
+      transactions.addTransaction.and.callFake((dto) =>
+        dto.receiptFiles
+          ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED))
+          : Promise.reject(new Error('Firestore down')),
+      );
+
+      dispatchImage('img_19');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // Dropping the photo bought nothing: the row itself could not be
+      // written, and that failure is transient, so the image goes back
+      // through the retries whole rather than reporting a skipped receipt.
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(2);
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_19', 'failed', 'Firestore down');
+      expect(notifications.info).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('completes the image and reports the rows an unreadable amount kept out', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted(),
+        extracted({ description: 'Kiosk', amount: 0.4 }),
+        extracted({ description: 'Bakery', amount: 320 }),
+      ]));
+      transactions.addTransaction.and.callFake((dto) =>
+        dto.description === 'Kiosk'
+          ? Promise.reject(new Error(INVALID_AMOUNT_ERROR))
+          : Promise.resolve('new-id'),
+      );
+
+      dispatchImage('img_13');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The ledger will refuse this row on every pass, so retrying the image
+      // for its sake only keeps the other two out of the ledger as well.
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(3);
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_13', 'completed');
+      expect(translation.t).toHaveBeenCalledWith(
+        'settings.transactionsImportedPartial', { count: 2, skipped: 1 },
+      );
+      expect(notifications.info).toHaveBeenCalledWith('settings.transactionsImportedPartial');
+      expect(attempts.handle.succeeded).toHaveBeenCalled();
+    });
+
+    it('still fails the image when another row\'s error is transient', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted({ amount: 0.4 }),
+        extracted({ description: 'Kiosk' }),
+      ]));
+      transactions.addTransaction.and.callFake((dto) =>
+        dto.description === 'Kiosk'
+          ? Promise.reject(new Error('Firestore down'))
+          : Promise.reject(new Error(INVALID_AMOUNT_ERROR)),
+      );
+
+      dispatchImage('img_14');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // A refusal is final and a transient failure is not, so the image goes
+      // back through the queue's retries for the row that can still land.
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_14', 'failed', 'Firestore down');
+      expect(notifications.info).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('re-refuses a skipped row on a later pass without storing it', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([
+        extracted(),
+        extracted({ description: 'Kiosk', amount: 0.4 }),
+      ]));
+      transactions.addTransaction.and.callFake((dto) =>
+        dto.description === 'Kiosk'
+          ? Promise.reject(new Error(INVALID_AMOUNT_ERROR))
+          : Promise.resolve('new-id'),
+      );
+
+      dispatchImage('img_15');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // Nothing remembers a refusal: the row has no document, so the next
+      // pass over the same image attempts it again, is refused again, and
+      // counts it again. Only the row that landed is skipped by its id.
+      transactions.hasTransaction.and.callFake((id: string) => Promise.resolve(id === 'img_15-0'));
+      dispatchImage('img_15');
+      await waitFor(() => queue.updateImageStatus.calls.count() === 2);
+
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(3);
+      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: 'img_15-1' });
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([
+        ['img_15', 'completed'],
+        ['img_15', 'completed'],
+      ]);
+      expect(translation.t.calls.allArgs()).toContain([
+        'settings.transactionsImportedPartial', { count: 1, skipped: 1 },
+      ]);
+      expect(notifications.info).toHaveBeenCalledTimes(2);
     });
 
     it('marks the image failed (with the error) when AI processing throws', async () => {
