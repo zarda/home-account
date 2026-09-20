@@ -1272,7 +1272,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     // settled, not the camera's (#151).
     const attempt = this.receiptAttempts.begin('form', 'receipt_image', [file]);
     try {
-      const importResult = await this.aiImportService.importFromMultipleImages([file]);
+      // Never queued: the scan above already patched this photo's primary
+      // receipt into the open form, so a stored copy would reach the ledger
+      // again through the drain once the connection returns.
+      const importResult = await this.aiImportService.importFromMultipleImages([file], {
+        queueWhenOffline: false,
+      });
       if (importResult.transactions.length > 0) {
         attempt.succeeded(importResult);
       } else {

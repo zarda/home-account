@@ -7,7 +7,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 
 import { ImportWizardComponent } from './import-wizard.component';
-import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -17,7 +17,10 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { AuthService } from '../../../../core/services/auth.service';
+import { MockAuthService } from '../../../../core/services/testing';
 import { blankImportRow } from '../../../../core/utils/import-review.utils';
+import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -789,6 +792,151 @@ describe('ImportWizardComponent', () => {
       expect(component.answerIncomplete()).toBeTrue();
       // The rows that did arrive are still the review step's business.
       expect(component.extractedTransactions().length).toBe(2);
+    }));
+
+    it('reports a queued capture as kept rather than as a failure', fakeAsync(() => {
+      // The template is the stub, so the state the step branches on is what
+      // this reads: the error card and the empty card must both stay down.
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUED_OFFLINE))
+      );
+      component.selectedFiles.set([new File([''], 'r.png', { type: 'image/png' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.queuedOfflineCount()).toBe(1);
+      expect(component.processingError()).toBeNull();
+      expect(component.processingErrorKey()).toBeNull();
+    }));
+
+    it('leaves no step looking like the work is still coming after a queued capture', fakeAsync(() => {
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUED_OFFLINE))
+      );
+      component.selectedFiles.set([new File([''], 'r.png', { type: 'image/png' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.processingFinishedEmpty()).toBeFalse();
+      expect(component.processingComplete()).toBeFalse();
+      // Still settled at the one chokepoint that turns the sentinel into a
+      // queue outcome rather than a failure class.
+      expect(attempts.handle.failed).toHaveBeenCalled();
+    }));
+
+    it('takes the queued photos out of the picker so the step cannot store them twice', fakeAsync(() => {
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUED_OFFLINE))
+      );
+      const csv = new File([''], 'ledger.csv', { type: 'text/csv' });
+      component.selectedFiles.set([new File([''], 'r.png', { type: 'image/png' }), csv]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.selectedFiles()).toEqual([csv]);
+    }));
+
+    it('still imports the files that needed no reader when the photos are queued', fakeAsync(() => {
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUED_OFFLINE))
+      );
+      component.selectedFiles.set([
+        new File([''], 'r.png', { type: 'image/png' }),
+        new File([''], 'ledger.csv', { type: 'text/csv' })
+      ]);
+
+      component.processFiles();
+      tick();
+
+      expect(mockImportService.importFromFile).toHaveBeenCalled();
+      expect(component.extractedTransactions().length).toBe(mockTransactions.length);
+      expect(component.queuedOfflineCount()).toBe(1);
+      expect(component.processingError()).toBeNull();
+    }));
+
+    it('reports a failure elsewhere in the batch even when the photos were stored', fakeAsync(() => {
+      // The template is the stub, so this reads the pair of signals the step
+      // branches on: an error beside a queued count is the error card, with
+      // the stored photos still named inside it.
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUED_OFFLINE))
+      );
+      mockImportService.importFromFile.and.returnValue(Promise.reject(new Error('bad csv')));
+      component.selectedFiles.set([
+        new File([''], 'r.png', { type: 'image/png' }),
+        new File([''], 'ledger.csv', { type: 'text/csv' })
+      ]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.processingError()).toBe('bad csv');
+      expect(component.queuedOfflineCount()).toBe(1);
+      expect(component.processingComplete()).toBeFalse();
+    }));
+
+    it('takes the photos out of the picker when only part of the capture was stored', fakeAsync(() => {
+      // What the real parser answers for this sentinel: the pages already
+      // written cannot be stored a second time, so the class is not retryable.
+      mockImportService.parseAIError.and.returnValue({
+        message: 'Only part of the capture could be stored for later.',
+        messageKey: 'import.errorQueueWritePartial',
+        type: 'unknown',
+        retryable: false
+      });
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUE_WRITE_PARTIAL))
+      );
+      const csv = new File([''], 'ledger.csv', { type: 'text/csv' });
+      component.onFilesSelected([new File([''], 'r.png', { type: 'image/png' }), csv]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.selectedFiles()).toEqual([csv]);
+      expect(component.imagePreviewUrls()).toEqual([]);
+      // Not the dialog's wording: that one asks for the retry this card
+      // must not offer.
+      expect(component.processingErrorKey()).toBe('import.errorQueueWritePartial');
+      expect(component.processingErrorRetryable()).toBeFalse();
+      expect(component.queuedOfflineCount()).toBe(0);
+    }));
+
+    it('leaves the photos selected when the queue kept none of them', fakeAsync(() => {
+      // Nothing is stored, so a second Process cannot duplicate anything —
+      // and stripping the picker here would be the only copy of the capture
+      // going out of reach.
+      mockImportService.parseAIError.and.returnValue({
+        message: 'The capture could not be stored for later.',
+        messageKey: 'import.errorQueueWrite',
+        type: 'unknown',
+        retryable: false
+      });
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUE_WRITE_FAILED))
+      );
+      const photo = new File([''], 'r.png', { type: 'image/png' });
+      component.onFilesSelected([photo]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.selectedFiles()).toEqual([photo]);
+      expect(component.processingErrorKey()).toBe('import.errorQueueWrite');
+      expect(component.queuedOfflineCount()).toBe(0);
+    }));
+
+    it('drops the queued notice when the next batch is processed', fakeAsync(() => {
+      component.queuedOfflineCount.set(1);
+      component.selectedFiles.set([new File([''], 'r.png', { type: 'image/png' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.queuedOfflineCount()).toBe(0);
     }));
 
     it('leaves the notice down for an ordinary import', fakeAsync(() => {
@@ -2077,6 +2225,106 @@ describe('ImportWizardComponent', () => {
 
       expect(component.duplicateChecks().find(c => c.transactionId === 'txn2')).toBeUndefined();
       expect(component.rechecksInFlight()).toBe(0);
+    }));
+  });
+
+  // Every case above blanks the template, so none of them can see which card
+  // the processing step chose. The order of those branches is the whole of
+  // what a batch that queued a photo and then failed on a later file gets
+  // wrong, so one case renders the real thing.
+  describe('the processing step as the user sees it', () => {
+    let realFixture: ComponentFixture<ImportWizardComponent>;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [ImportWizardComponent, NoopAnimationsModule],
+        providers: [
+          { provide: NotificationService, useValue: notifications },
+          { provide: AIImportService, useValue: mockImportService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: TranslationService, useValue: mockTranslationService },
+          { provide: MatSnackBar, useValue: mockSnackBar },
+          { provide: AnnouncerService, useValue: mockAnnouncer },
+          { provide: Router, useValue: mockRouter },
+          { provide: DuplicateDetectionService, useValue: mockDuplicateService },
+          { provide: ShareIntakeService, useValue: mockShareIntake },
+          { provide: ReceiptAttemptService, useValue: attempts.service },
+          { provide: ActivatedRoute, useValue: routeStub },
+          // Wider than the stub above: the review card builds its whole
+          // currency picker in a field initializer, so the narrow shape the
+          // blanked-template cases use throws before the step can render.
+          {
+            provide: CurrencyService,
+            useValue: {
+              formatCurrency: (a: number, c: string) => `${c} ${a}`,
+              getSupportedCurrencies: () => [{ code: 'USD', nameKey: 'currencies.usd', symbol: '$' }],
+              getCurrencyInfo: (code: string) => ({ code, nameKey: `currencies.${code.toLowerCase()}`, symbol: code }),
+              getExchangeRate: () => 1,
+              ensureRatesLoaded: () => Promise.resolve()
+            }
+          },
+          // The real template builds every step, including the review card,
+          // whose currency memory reaches AuthService and from there the
+          // Firebase Auth token the unit run has no provider for.
+          { provide: AuthService, useValue: new MockAuthService() }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      }).compileComponents();
+
+      realFixture = TestBed.createComponent(ImportWizardComponent);
+      realFixture.detectChanges();
+    });
+
+    it('puts a same-batch failure on the error card, with the stored photos named in it', fakeAsync(() => {
+      mockImportService.importFromMultipleImages.and.returnValue(
+        Promise.reject(new Error(AI_QUEUED_OFFLINE))
+      );
+      mockImportService.importFromFile.and.returnValue(Promise.reject(new Error('bad csv')));
+      const real = realFixture.componentInstance;
+      real.onFilesSelected([
+        new File([''], 'r.png', { type: 'image/png' }),
+        new File([''], 'ledger.csv', { type: 'text/csv' })
+      ]);
+      realFixture.detectChanges();
+
+      real.processFiles();
+      real.stepper.next();
+      tick();
+      realFixture.detectChanges();
+
+      const card: HTMLElement | null = realFixture.nativeElement.querySelector('.error-card');
+      expect(card).withContext('the error card, not the queued one').not.toBeNull();
+      expect(card!.querySelector('.error-title')).not.toBeNull();
+      expect(card!.textContent).toContain('import.queuedForLater');
+      // The queued card's own way out, which would end the batch as if
+      // nothing had failed.
+      expect(realFixture.nativeElement.textContent).not.toContain('common.done');
+    }));
+
+    it('names the file that failed on the card that offers the rows that landed', fakeAsync(() => {
+      // Rows from one file and a throw from the next: the success card wins
+      // the branch, because those rows are real and still importable, so it
+      // is the only place the failure can be said at all.
+      mockImportService.importFromFile.and.returnValues(
+        Promise.resolve(mockImportResult),
+        Promise.reject(new Error('bad csv'))
+      );
+      const real = realFixture.componentInstance;
+      real.onFilesSelected([
+        new File([''], 'january.csv', { type: 'text/csv' }),
+        new File([''], 'february.csv', { type: 'text/csv' })
+      ]);
+      realFixture.detectChanges();
+
+      real.processFiles();
+      real.stepper.next();
+      tick();
+      realFixture.detectChanges();
+
+      const card: HTMLElement | null = realFixture.nativeElement.querySelector('.success-card');
+      expect(card).withContext('the rows are offered').not.toBeNull();
+      expect(card!.textContent).toContain('bad csv');
     }));
   });
 });

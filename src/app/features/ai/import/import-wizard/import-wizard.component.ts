@@ -9,7 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 
-import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -32,6 +32,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
+import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
 
@@ -169,6 +170,15 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * letting a short receipt look complete (#331).
    */
   answerIncomplete = signal(false);
+  /**
+   * How many photos had nowhere to go and were stored instead. Not an
+   * error: they are on the device and the queue processor imports them when
+   * the connection returns, so the step says so rather than offering a retry
+   * that would only queue them again. A count rather than a flag because the
+   * doors that reach it are the multi-image doors, and a user told "the
+   * image was queued" after dropping four would re-shoot the other three.
+   */
+  queuedOfflineCount = signal(0);
   isImporting = signal(false);
   /**
    * Re-checks still waiting on their stored-history read. Import waits on
@@ -231,6 +241,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     !this.isProcessing() &&
     this.extractedTransactions().length === 0 &&
     !this.processingError() &&
+    this.queuedOfflineCount() === 0 &&
     this.selectedFiles().length > 0
   );
   /**
@@ -462,6 +473,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async processFiles(): Promise<void> {
     this.processingError.set(null);
+    this.queuedOfflineCount.set(0);
     this.answerIncomplete.set(false);
     this.extractedTransactions.set([]);
     this.receiptRowIds.set(new Set());
@@ -491,34 +503,65 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       if (imageFiles.length >= 1) {
-        // Receipt and statement images need opposite treatment and look alike
-        // to a MIME check, so the user says which they have. Receipts go
-        // through the receiptId-aware pipeline, which merges the line items of
-        // one purchase; statements skip it, because their rows are unrelated
-        // charges that must stay apart.
-        const result = this.imageKind() === 'statement'
-          ? await this.importService.importFromStatementImages(imageFiles)
-          : await this.importService.importFromMultipleImages(imageFiles);
-        this.imageDiagnostics = result.diagnostics ?? null;
-        if (result.warnings.some(w => w.type === 'parse_error')) {
-          this.answerIncomplete.set(true);
-        }
-        this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
-        this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
-        if (this.imageKind() === 'receipt') {
-          this.receiptRowIds.set(new Set(result.transactions.map(t => t.id)));
-        }
-        this.processedBatches.push({
-          source: result.source,
-          fileType: result.fileType,
-          rows: result.transactions.length
-        });
-        if (receiptAttempt) {
-          if (result.transactions.length > 0) {
-            receiptAttempt.succeeded(result);
-          } else {
-            receiptAttempt.failed('nothing_extracted');
+        try {
+          // Receipt and statement images need opposite treatment and look alike
+          // to a MIME check, so the user says which they have. Receipts go
+          // through the receiptId-aware pipeline, which merges the line items of
+          // one purchase; statements skip it, because their rows are unrelated
+          // charges that must stay apart.
+          const result = this.imageKind() === 'statement'
+            ? await this.importService.importFromStatementImages(imageFiles)
+            : await this.importService.importFromMultipleImages(imageFiles);
+          this.imageDiagnostics = result.diagnostics ?? null;
+          if (result.warnings.some(w => w.type === 'parse_error')) {
+            this.answerIncomplete.set(true);
           }
+          this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
+          this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
+          if (this.imageKind() === 'receipt') {
+            this.receiptRowIds.set(new Set(result.transactions.map(t => t.id)));
+          }
+          this.processedBatches.push({
+            source: result.source,
+            fileType: result.fileType,
+            rows: result.transactions.length
+          });
+          if (receiptAttempt) {
+            if (result.transactions.length > 0) {
+              receiptAttempt.succeeded(result);
+            } else {
+              receiptAttempt.failed('nothing_extracted');
+            }
+          }
+        } catch (error) {
+          // Caught here rather than around the batch: the queued sentinel is
+          // the one throw that leaves the rest worth running, and a CSV
+          // picked alongside the photos needs no reader at all — skipping it
+          // would drop rows nothing else announces. A write that stored only
+          // part of the capture is caught beside it because the pages it did
+          // get through are stored just as firmly. A write that kept nothing
+          // is not: the photos stay in the picker, where a second Process is
+          // the way out and cannot store anything twice.
+          const sentinel = error instanceof Error ? error.message : '';
+          if (sentinel !== AI_QUEUED_OFFLINE && sentinel !== AI_QUEUE_WRITE_PARTIAL) {
+            throw error;
+          }
+          receiptAttempt?.failed(error);
+          // Out of the picker, so neither Back nor a second Process can store
+          // them again: the queue keys nothing on a photo's content, and two
+          // rows for one capture become two transactions when the drain runs.
+          this.selectedFiles.update(list => list.filter(f => !looksLikeImageFile(f)));
+          this.revokePreviews();
+          // Still a failure, so it goes to the error card; how many pages
+          // were kept is not reported, which is why no count is set here and
+          // the card's own wording is what says some were. Raised before the
+          // files that need no reader are read, which deliberately abandons
+          // them: they are still selected and the photos are not, so a second
+          // Process reads exactly them and can store nothing twice.
+          if (sentinel === AI_QUEUE_WRITE_PARTIAL) {
+            throw error;
+          }
+          this.queuedOfflineCount.set(imageFiles.length);
         }
       }
 
@@ -1045,6 +1088,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   retryProcessing(): void {
     this.processingError.set(null);
+    this.queuedOfflineCount.set(0);
     this.processingErrorKey.set(null);
     this.processingErrorType.set('unknown');
     this.processingErrorRetryable.set(true);

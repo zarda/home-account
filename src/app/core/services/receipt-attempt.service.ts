@@ -171,12 +171,14 @@ export class ReceiptAttemptService {
       queued: () => once(() => {
         send('queued_offline', null, null);
       }),
-      // No door raises AI_QUEUED_OFFLINE today — importFromImage is its only
-      // source, and no door's try block reaches it — but the translation
-      // lives here, at the one chokepoint every door's failed() runs
-      // through, so all four are covered the day one does. A queued image
-      // is a queue outcome, not a failure kind: it takes the same path
-      // queued() takes, not a failure class of its own.
+      // The receipt doors raise AI_QUEUED_OFFLINE from outside any try block
+      // that could call queued() — the statement door never raises it, since
+      // the drain would read a statement page as a receipt — so the sentinel
+      // arrives here, at the one chokepoint every door's failed() runs
+      // through, and all four are covered by translating it once. A queued
+      // image is a queue outcome, not a failure kind: it takes the same path
+      // queued() takes, not a failure class of its own, and no failure record
+      // is written for a capture that was kept.
       failed: errorOrReason => once(() => {
         if (errorOrReason instanceof Error && errorOrReason.message === AI_QUEUED_OFFLINE) {
           send('queued_offline', null, null);

@@ -1204,6 +1204,7 @@
     "errorQueuedOffline": "目前沒有網路連線，此圖片已加入佇列，恢復連線後將自動處理。",
     "errorProcessingFailed": "無法處理圖片，請重試。",
     "errorQueueWrite": "無法儲存圖片以稍後處理，請重試。",
+    "errorQueueWritePartial": "部分圖片無法儲存以稍後處理。已成功儲存的圖片仍在裝置上，恢復連線後將自動處理。",
     "errorInvalidKey": "AI 的 API 金鑰無效或已過期。請在「設定 → AI 處理」中更新。",
     "errorAnswerIncomplete": "在讀完這張收據前就達到輸出上限。請再試一次，或減少一次上傳的相片數量。",
     "warningAnswerIncomplete": "讀取在收據中途達到輸出上限，之後的品項因此缺漏。請核對下方金額，並補上沒有列出的品項；清單下方的「新增一列」會建立一個空白列。"

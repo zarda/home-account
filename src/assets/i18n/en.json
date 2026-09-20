@@ -1291,6 +1291,7 @@
     "errorQueuedOffline": "No connection, so this image was queued. It will be processed when you are back online.",
     "errorProcessingFailed": "Could not process the image. Please try again.",
     "errorQueueWrite": "Could not save images for later. Please try again.",
+    "errorQueueWritePartial": "Some images could not be saved for later. The ones that were saved are on your device and will be processed when you are back online.",
     "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing.",
     "errorAnswerIncomplete": "The reader ran out of room before it finished this receipt. Try again, or with fewer photos at a time.",
     "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below, and add anything that is not here — Add a row under the list starts a blank one."
