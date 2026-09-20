@@ -93,7 +93,6 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
         confidence: 0.9,
         source: 'cloud',
         suggestedCategoryId: 'salary',
-        imageIndex: 0,
       }],
       source: 'cloud',
       confidence: 0.9,
@@ -541,7 +540,6 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
       confidence: 0.9,
       source: 'cloud' as const,
       suggestedCategoryId: 'salary',
-      imageIndex: 0,
     });
     ai.processReceipt.and.resolveTo({
       transactions: [

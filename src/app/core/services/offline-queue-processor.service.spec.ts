@@ -311,7 +311,28 @@ describe('OfflineQueueProcessorService', () => {
       expect(notifications.success).not.toHaveBeenCalled();
     });
 
-    it('attaches the photo to the first row of each receipt group', async () => {
+    // Both engines this door can reach answer with exactly one row per image:
+    // native OCR structures a single transaction out of the page, and the
+    // single-image cloud read converts one parsed receipt. So the multi-row
+    // fixtures below guard the door against a reader that one day returns
+    // more, rather than describing anything it receives today.
+    it('attaches the photo when the reader placed the row on no image at all', async () => {
+      const file = imageFile();
+      queue.getQueuedImageAsFile.and.resolveTo(file);
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_21');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // One row carrying neither an index nor a receipt id: what a drained
+      // receipt actually arrives as. The drain is holding the one photo that
+      // row was read off, so the row claims it.
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(1);
+      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
+      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: 'img_21-0' });
+    });
+
+    it('attaches the photo to the first row of each receipt the reader numbered', async () => {
       const file = imageFile();
       queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(processingResult([
@@ -323,9 +344,13 @@ describe('OfflineQueueProcessorService', () => {
       dispatchImage('img_9');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      // Two rows off one receipt would each upload the same photograph, so
-      // only the first of a group carries it. Two receipts printed on one
-      // photo are a different case: the photo is evidence for both.
+      // No reader behind this door numbers a receipt: the native read stamps
+      // nothing at all, and the cloud read that does number them answers a
+      // door the drain never opens. Numbered rows reach the shared planner
+      // through the wizard, and this pins the grouping rule they meet there —
+      // two rows off one receipt would each upload the same photograph, so
+      // only the first of a group carries it, while two receipts printed on
+      // one photo are a different case: the photo is evidence for both.
       expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
       expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: 'img_9-0' });
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
@@ -336,7 +361,7 @@ describe('OfflineQueueProcessorService', () => {
 
     it('falls back to the bare row when the photo is refused, and counts it', async () => {
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
-      ai.processReceipt.and.resolveTo(processingResult([extracted({ imageIndex: 0 })]));
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
       let call = 0;
       transactions.addTransaction.and.callFake(() =>
         ++call === 1 ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED)) : Promise.resolve('new-id'),
@@ -363,9 +388,9 @@ describe('OfflineQueueProcessorService', () => {
       const file = imageFile();
       queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(processingResult([
-        extracted({ imageIndex: 0, amount: 0.4 }),
-        extracted({ imageIndex: 0, description: 'Kiosk' }),
-        extracted({ imageIndex: 0, description: 'Bakery' }),
+        extracted({ amount: 0.4 }),
+        extracted({ description: 'Kiosk' }),
+        extracted({ description: 'Bakery' }),
       ]));
       transactions.addTransaction.and.callFake((dto) =>
         dto.description === 'Konbini'
@@ -376,10 +401,13 @@ describe('OfflineQueueProcessorService', () => {
       dispatchImage('img_16');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      // The planner gave the picture to the first row of the group, and the
-      // ledger refused that row for its amount — a decision nothing knew
-      // until the write. The photo is evidence for the whole receipt, so it
-      // goes to the next row of the group rather than down with the first.
+      // None of these rows carries a placement, which is what a single-image
+      // read returns: there was only ever one photo to place them on. The
+      // planner gave the picture to the first row of the group this door
+      // named for them, and the ledger refused that row for its amount — a
+      // decision nothing knew until the write. The photo is evidence for the
+      // whole receipt, so it goes to the row behind the refused one rather
+      // than past it.
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
       expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_16-1' });
       expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toBeUndefined();
@@ -393,8 +421,8 @@ describe('OfflineQueueProcessorService', () => {
     it('counts the photo too when the row it was handed to cannot take it either', async () => {
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([
-        extracted({ imageIndex: 0, amount: 0.4 }),
-        extracted({ imageIndex: 0, description: 'Kiosk' }),
+        extracted({ amount: 0.4 }),
+        extracted({ description: 'Kiosk' }),
       ]));
       transactions.addTransaction.and.callFake((dto) => {
         if (dto.description === 'Konbini') return Promise.reject(new Error(INVALID_AMOUNT_ERROR));
@@ -413,7 +441,7 @@ describe('OfflineQueueProcessorService', () => {
       );
     });
 
-    it('counts a photo no row of its receipt could take', async () => {
+    it('counts a photo no row of the receipt the reader numbered could take', async () => {
       const file = imageFile();
       queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(processingResult([
@@ -429,9 +457,11 @@ describe('OfflineQueueProcessorService', () => {
       dispatchImage('img_18');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      // The second row is a different receipt with a photo of its own, so
-      // nothing is left that could carry the first receipt's. That picture
-      // is lost exactly the way a refused upload loses one, and counts.
+      // Numbered rows again: the planner's rule, not a shape this door can
+      // be handed. The second row is a different receipt with a photo of its
+      // own, so nothing is left that could carry the first receipt's. That
+      // picture is lost exactly the way a refused upload loses one, and
+      // counts.
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_18', 'completed');
       expect(translation.t).toHaveBeenCalledWith(
@@ -439,37 +469,9 @@ describe('OfflineQueueProcessorService', () => {
       );
     });
 
-    it('never hands a metadata-less row a photo it was never planned for', async () => {
-      const file = imageFile();
-      queue.getQueuedImageAsFile.and.resolveTo(file);
-      ai.processReceipt.and.resolveTo(processingResult([
-        extracted({ imageIndex: 0, amount: 0.4 }),
-        extracted({ description: 'Kiosk' }),
-        extracted({ imageIndex: 0, description: 'Bakery' }),
-      ]));
-      transactions.addTransaction.and.callFake((dto) =>
-        dto.description === 'Konbini'
-          ? Promise.reject(new Error(INVALID_AMOUNT_ERROR))
-          : Promise.resolve('new-id'),
-      );
-
-      dispatchImage('img_20');
-      await waitFor(() => queue.updateImageStatus.calls.any());
-
-      // The middle row was never given a photo by the planner — it read no
-      // metadata at all — so the first row's refusal must skip past it to
-      // the next row the planner actually grouped, not the next row in line.
-      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
-      expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toEqual([file]);
-      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_20', 'completed');
-      expect(translation.t).toHaveBeenCalledWith(
-        'settings.transactionsImportedPartial', { count: 2, skipped: 1 },
-      );
-    });
-
     it('fails the image when the bare retry after a refused photo fails too', async () => {
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
-      ai.processReceipt.and.resolveTo(processingResult([extracted({ imageIndex: 0 })]));
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
       transactions.addTransaction.and.callFake((dto) =>
         dto.receiptFiles
           ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED))
@@ -658,7 +660,12 @@ describe('OfflineQueueProcessorService', () => {
       await waitFor(() => queue.updateImageStatus.calls.any());
 
       const dto = transactions.addTransaction.calls.mostRecent().args[0];
-      expect(Object.keys(dto).sort()).toEqual(['amount', 'categoryId', 'currency', 'date', 'description', 'type']);
+      // `receiptFiles` is this door's own: the row came off the one photo it
+      // is draining. Everything else is the mapper's, and an optional the
+      // reader never filled is no key at all.
+      expect(Object.keys(dto).sort()).toEqual(
+        ['amount', 'categoryId', 'currency', 'date', 'description', 'receiptFiles', 'type'],
+      );
     });
 
     it('writes a queued yen fraction whole', async () => {

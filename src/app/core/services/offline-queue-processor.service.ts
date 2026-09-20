@@ -14,7 +14,7 @@ import { ReceiptAttemptService } from './receipt-attempt.service';
 import { ProcessedTransaction } from './ai-types';
 import { imageMetadataOf, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
-import { baseCurrencyOf } from '../../models';
+import { baseCurrencyOf, ImagePositionMetadata } from '../../models';
 
 /**
  * Coordinates the asynchronous side of the offline queue.
@@ -192,7 +192,23 @@ export class OfflineQueueProcessorService implements OnDestroy {
     transactions: ProcessedTransaction[],
     file: File,
   ): Promise<{ landed: number; refused: number; receiptsSkipped: number }> {
-    const metas = transactions.map((tx) => imageMetadataOf(tx));
+    // A reader that placed no row on a photo — the single-image cloud read
+    // reports neither an index nor a receipt id, because there was only ever
+    // one photo to place a row on — still read every one of these rows off
+    // the single file this drain is holding. So the source is named here
+    // rather than guessed: the wizard may not do this, since a batch of
+    // several files leaves nobody able to say which of them an unplaced row
+    // came off, and `imageMetadataOf` keeps that rule for the doors that
+    // need it. A row that was placed keeps what it says, since the fallback
+    // only fills a gap — but placement is the numbering the multi-image
+    // readers the wizard opens do, and no reader behind this door does it,
+    // so in practice every drained row is attached on the assumption above.
+    const metas = transactions.map((tx): ImagePositionMetadata => imageMetadataOf(tx) ?? {
+      imageIndex: 0,
+      imageId: 'image_0',
+      positionInImage: 'middle',
+      confidenceScore: tx.confidence,
+    });
     const plans = planReceiptAttachments(
       transactions.map((tx, index) => ({
         id: `${id}-${index}`,
@@ -202,11 +218,8 @@ export class OfflineQueueProcessorService implements OnDestroy {
     );
     // The group each row's plan belongs to, keyed the way the planner keyed
     // it. Nothing here is a reviewer's split and the drain runs over exactly
-    // one file, so the planner's image-set key can only ever be one group. A
-    // row with no metadata at all was never given a group by the planner
-    // (it returns `[]` before any key is chosen) and must stay out of the
-    // pick-up below rather than share the `'images'` key with rows the
-    // planner did group.
+    // one file, so the planner's image-set key can only ever be one group,
+    // and every row above carries metadata, so every row is in one.
     const groupKeys = transactions.map((_, index) => {
       const receiptId = metas[index]?.receiptId;
       return receiptId !== undefined ? `receipt:${receiptId}` : 'images';
@@ -232,7 +245,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
       // group that was given none. A row already in the ledger consumes the
       // plan without writing: the pass that put it there consumed it too.
       let plan = plans[index];
-      if (plan.length === 0 && metas[index] !== undefined) {
+      if (plan.length === 0) {
         const waiting = orphanedPlans.get(groupKey);
         if (waiting) {
           plan = waiting;
