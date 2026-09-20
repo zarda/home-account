@@ -8,10 +8,11 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog } from '@angular/material/dialog';
 
-import { RecurringService } from '../../../core/services/recurring.service';
+import { RecurringService, INVALID_FREQUENCY_ERROR, RULE_ENDED_ERROR } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringTransaction, Category, CreateRecurringDTO } from '../../../models';
+import { toDate } from '../../../core/utils/transaction-date.utils';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
@@ -99,15 +100,37 @@ export class RecurringTransactionsComponent implements OnInit {
     return this.recurringService.getFrequencyText(recurring.frequency);
   }
 
+  /**
+   * The rule's pointer as a date, or null when the stored value is not a
+   * timestamp the readers can make sense of. A restore or a hand edit can
+   * leave it holding anything, and this page is the route back for such a
+   * rule, so the card has to keep rendering without it.
+   */
+  nextOccurrenceDate(recurring: RecurringTransaction): Date | null {
+    return toDate(recurring.nextOccurrence);
+  }
+
   async toggleActive(recurring: RecurringTransaction): Promise<void> {
     if (recurring.isActive) {
       await this.recurringService.pauseRecurring(recurring.id);
       const message = this.t('settings.recurringPaused');
       this.notifications.success(message);
     } else {
-      await this.recurringService.resumeRecurring(recurring.id);
-      const message = this.t('settings.recurringResumed');
-      this.notifications.success(message);
+      try {
+        await this.recurringService.resumeRecurring(recurring.id);
+        this.notifications.success(this.t('settings.recurringResumed'));
+      } catch (error) {
+        // The interval refusal and the ended-rule refusal each get their own
+        // copy naming the fix; every other rejection (an unreadable schedule
+        // included) falls back to the generic message, matching every other
+        // failed action on this page.
+        const key = error instanceof Error && error.message === INVALID_FREQUENCY_ERROR
+          ? 'settings.recurringResumeInvalidFrequency'
+          : error instanceof Error && error.message === RULE_ENDED_ERROR
+          ? 'settings.recurringResumeEnded'
+          : 'settings.recurringResumeFailed';
+        this.notifications.error(this.t(key));
+      }
     }
   }
 

@@ -907,6 +907,21 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    // Rewriting an unreadable pointer touches neither the posting stamp nor
+    // anything else: a rule left inert by a bad restore is repaired by this
+    // write alone, so the rules have to accept it on its own.
+    it('allows an update touching only nextOccurrence', async () => {
+      const p = path('recurring');
+      await setDoc(doc(firestore, p), validRecurring());
+      await expectAllowed(
+        updateDoc(doc(firestore, p), {
+          nextOccurrence: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        }),
+        'pointer repair'
+      );
+    });
+
     it('accepts a reminder lead time', async () => {
       await expectAllowed(
         setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: 3 })),

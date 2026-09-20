@@ -23,8 +23,11 @@ import { localeRegion, suggestCurrency } from '../utils/currency-suggestion.util
 import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import {
   AIErrorInfo,
+  AI_CLOUD_UNAVAILABLE,
   AI_NO_PROVIDER,
   AI_QUEUED_OFFLINE,
+  AI_QUEUE_WRITE_FAILED,
+  AI_QUEUE_WRITE_PARTIAL,
   parseAIError,
   ReceiptProcessingError,
 } from '../utils/ai-error.utils';
@@ -63,7 +66,7 @@ import {
   CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { imageMetadataOf, importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { sumByCurrency } from '../utils/import-review.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
@@ -161,24 +164,80 @@ export class AIImportService {
   }
 
   /**
+   * The gate every image door opens with: return when a reader this door can
+   * actually reach is available, otherwise keep the capture or say why it
+   * cannot be read.
+   *
+   * `nativeReads` is the door's own answer, not the device's. `canUseNative`
+   * is a platform check, so crediting a cloud-only door with the on-device
+   * reader would walk an offline iPhone straight into a request that has
+   * nowhere to go — only the door that runs through the strategy service
+   * reads locally.
+   *
+   * `queues` asks the same question of the queue. The drain runs every stored
+   * image through the receipt pipeline, so a door whose images are not
+   * receipts, or whose caller already holds the rows this photo produced,
+   * refuses instead of promising work the drain cannot deliver.
+   *
+   * Queuing answers before any provider guard, because a photo the user
+   * cannot take again is worth more than an error that names the right cause:
+   * a configured key says nothing about a connection reaching it, and the
+   * capture is unrepeatable either way. Online, nothing is kept — the queue
+   * exists for work that has no way out, not for a device that simply has no
+   * reader configured.
+   */
+  private async holdOrRefuse(
+    files: File[],
+    door: { nativeReads: boolean; queues: boolean }
+  ): Promise<void> {
+    if (
+      this.strategyService.canUseCloud() ||
+      (door.nativeReads && this.strategyService.canUseNative())
+    ) {
+      return;
+    }
+    if (this.pwaService.isOnline()) {
+      throw new Error(AI_NO_PROVIDER);
+    }
+    if (!door.queues) {
+      throw new Error(AI_CLOUD_UNAVAILABLE);
+    }
+
+    // Every page is attempted before anything is thrown: stopping at the
+    // first rejection would leave the rest of a capture neither stored nor
+    // mentioned. Each page is its own queue row and the drain reads each on
+    // its own, so a receipt photographed across several pages comes back as
+    // several transactions — the count the caller shows is what tells the
+    // user how many were kept.
+    let stored = 0;
+    for (const file of files) {
+      try {
+        await this.offlineQueue.queueImage(file);
+        stored++;
+      } catch (error) {
+        console.warn('[AIImport] Could not queue an image for later:', error);
+      }
+    }
+    // Two outcomes, not one: a caller told "some pages were kept" must not
+    // offer the retry that would store them again, and a caller told that
+    // when nothing was kept would be reporting a capture as safe that is
+    // gone. Only the second leaves a second attempt worth making.
+    if (stored === 0) {
+      throw new Error(AI_QUEUE_WRITE_FAILED);
+    }
+    if (stored < files.length) {
+      throw new Error(AI_QUEUE_WRITE_PARTIAL);
+    }
+    throw new Error(AI_QUEUED_OFFLINE);
+  }
+
+  /**
    * Import transactions from an image (receipt, screenshot, bank statement)
    * Uses cloud AI or native OCR (iOS)
    */
   async importFromImage(file: File): Promise<ImportResult> {
     const startedAt = performance.now();
-    const isOnline = this.pwaService.isOnline();
-    const canUseCloud = this.strategyService.canUseCloud();
-    const canUseNative = this.strategyService.canUseNative();
-
-    // Check if we can process at all
-    if (!canUseCloud && !canUseNative) {
-      // Queue for later if offline
-      if (!isOnline) {
-        await this.offlineQueue.queueImage(file);
-        throw new Error(AI_QUEUED_OFFLINE);
-      }
-      throw new Error(AI_NO_PROVIDER);
-    }
+    await this.holdOrRefuse([file], { nativeReads: true, queues: true });
 
     this.isProcessing.set(true);
     this.processingStep.set({ name: 'reading' });
@@ -299,6 +358,12 @@ export class AIImportService {
       throw new Error('No image files provided');
     }
 
+    // Cloud-only, and never queued: a statement page stored in the queue
+    // would come back through the receipt pipeline this door exists to avoid,
+    // and land a page of unrelated charges in the ledger as one lumped
+    // transaction with nothing to review it against.
+    await this.holdOrRefuse(files, { nativeReads: false, queues: false });
+
     const startedAt = performance.now();
     this.isProcessing.set(true);
     this.processingStep.set({ name: 'reading' });
@@ -372,6 +437,7 @@ export class AIImportService {
     return result.transactions.map(tx => {
       const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
       const money = resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency);
+      const imageMetadata = imageMetadataOf(tx);
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('strategy'),
         description: tx.description,
@@ -387,19 +453,7 @@ export class AIImportService {
         selected: true,
         notes: tx.notes,
         fieldConfidence: tx.fieldConfidence,
-        // The receipt badge keys on receiptId, which only the cloud strategy
-        // path reports; the photo mapping comes from either engine. Both ride
-        // the same metadata block, with their real values.
-        ...(tx.receiptId != null || tx.imageIndex !== undefined ? {
-          imageMetadata: {
-            imageIndex: tx.imageIndex ?? 0,
-            imageId: `image_${tx.imageIndex ?? 0}`,
-            positionInImage: 'middle' as const,
-            confidenceScore: tx.confidence,
-            ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
-            ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
-          },
-        } : {}),
+        ...(imageMetadata ? { imageMetadata } : {}),
         ...(tx.tags?.length ? { tags: tx.tags } : {}),
         ...(tx.location ? { location: tx.location } : {}),
         ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),
@@ -477,11 +531,27 @@ export class AIImportService {
    * Every count goes through receiptId-aware extraction + consolidation, so
    * a single photo holding several receipts still yields one transaction
    * per receipt (importFromImage has no receipt grouping).
+   *
+   * `queueWhenOffline` is for the callers that already hold what this photo
+   * produced — the transaction form re-reads a photo its own scan has
+   * already patched into the open form, and storing it would have the drain
+   * write those rows a second time once the connection returns.
    */
-  async importFromMultipleImages(files: File[]): Promise<ImportResult> {
+  async importFromMultipleImages(
+    files: File[],
+    options: { queueWhenOffline?: boolean } = {}
+  ): Promise<ImportResult> {
     if (files.length === 0) {
       throw new Error('No image files provided');
     }
+
+    // Ahead of the key check below, which is about configuration and not
+    // about connectivity: an offline device with a key configured still has
+    // nowhere to send the photos, and they are kept rather than lost.
+    await this.holdOrRefuse(files, {
+      nativeReads: false,
+      queues: options.queueWhenOffline ?? true,
+    });
 
     if (!this.cloudLLMProvider.hasAnyCloudProvider()) {
       throw new Error(AI_NO_PROVIDER);

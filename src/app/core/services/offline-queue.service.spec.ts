@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { openDB } from 'idb';
-import { DB_NAME, OfflineQueueService, QUEUE_NOT_SIGNED_IN } from './offline-queue.service';
+import { DB_NAME, OfflineQueueService, QUEUE_CLOSED_FOR_UPGRADE, QUEUE_NOT_SIGNED_IN } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
 
@@ -106,13 +106,20 @@ describe('OfflineQueueService', () => {
   describe('status updates', () => {
     it('updates image status and increments retry count on error', async () => {
       const id = await service.queueImage(imageFile());
-      await service.updateImageStatus(id, 'failed', 'boom');
+      expect(await service.updateImageStatus(id, 'failed', 'boom')).toBeTrue();
       const img = await service.getQueuedImage(id);
       expect(img?.status).toBe('failed');
       expect(img?.retryCount).toBe(1);
       expect(img?.lastError).toBe('boom');
     });
 
+    it('reports a status update for a record that is gone', async () => {
+      const consoleWarnSpy = spyOn(console, 'warn');
+      expect(await service.updateImageStatus('missing', 'completed')).toBeFalse();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        jasmine.stringContaining('[OfflineQueue]'), 'missing', 'completed',
+      );
+    });
   });
 
   describe('removal and clearing', () => {
@@ -211,8 +218,14 @@ describe('OfflineQueueService', () => {
   });
 
   describe('without a database', () => {
+    let consoleWarnSpy: jasmine.Spy;
+
     beforeEach(() => {
       (service as unknown as { db: null }).db = null;
+      // The dropped-status-update warning fires from this state, including
+      // from the existing call below — spy it here so every case in this
+      // describe stays quiet in the runner's output.
+      consoleWarnSpy = spyOn(console, 'warn');
     });
 
     it('degrades gracefully on reads and clears', async () => {
@@ -229,6 +242,37 @@ describe('OfflineQueueService', () => {
       expect(stats.pendingImages).toBe(0);
       expect(service.pendingCount()).toBe(0);
       expect(consoleLogSpy).not.toHaveBeenCalledWith(jasmine.stringContaining('[OfflineQueue] Cleared all items'));
+    });
+
+    it('reports a dropped status update and warns with the id', async () => {
+      expect(await service.updateImageStatus('x', 'failed')).toBeFalse();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        jasmine.stringContaining('[OfflineQueue]'), 'x', 'failed',
+      );
+    });
+  });
+
+  describe('closing for a newer version', () => {
+    beforeEach(() => {
+      spyOn(console, 'warn');
+    });
+
+    it('marks itself closed and drops the open handle', () => {
+      expect((service as unknown as { db: unknown }).db).not.toBeNull();
+      (service as unknown as { closeForUpgrade(): void }).closeForUpgrade();
+      expect(service.closedForUpgrade()).toBeTrue();
+      expect(service.isReady()).toBeFalse();
+      expect((service as unknown as { db: unknown }).db).toBeNull();
+    });
+
+    it('refuses to clear rather than calling a queue it never touched empty', async () => {
+      // Account deletion records this step from its resolution alone, so a
+      // silent return leaves the user's captured receipts on the device with
+      // the deletion reported as complete.
+      await service.queueImage(imageFile());
+      (service as unknown as { closeForUpgrade(): void }).closeForUpgrade();
+
+      await expectAsync(service.clearAll()).toBeRejectedWithError(QUEUE_CLOSED_FOR_UPGRADE);
     });
   });
 

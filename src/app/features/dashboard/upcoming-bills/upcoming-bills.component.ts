@@ -51,6 +51,12 @@ export class UpcomingBillsComponent {
   baseCurrency = input.required<string>();
   /** Window net in the base currency; income positive. Folded by the page. */
   net = input.required<number>();
+  /**
+   * Occurrences the window's floor left behind — a rule dormant long enough
+   * that listing its backlog would bury everything upcoming. Zero hides the
+   * note entirely; there is no "all caught up" to announce.
+   */
+  olderCount = input<number>(0);
 
   private categoryHelperService = inject(CategoryHelperService);
 
@@ -61,7 +67,8 @@ export class UpcomingBillsComponent {
    *
    * Days already past are grouped and shown like any other: they are due but
    * not yet posted, and hiding them would conceal money about to move on the
-   * one occasion the catch-up has failed.
+   * one occasion the catch-up has failed. Only the ones behind the window's
+   * floor never arrive here, and `olderCount` says how many those were.
    */
   readonly days = computed<UpcomingBillDay[]>(() => {
     const days = new Map<string, UpcomingBillDay>();

@@ -430,6 +430,9 @@
               <span class="queue-count">{{ pendingQueueCount() }}</span>
               <span class="queue-label">{{ 'aiPage.pendingItems' | translate }}</span>
             </div>
+            @if (queueClosed()) {
+              <p class="queue-note">{{ 'aiPage.queueClosedReload' | translate }}</p>
+            }
 
             <div class="auto-sync-row">
               <span>{{ 'aiPage.autoSync' | translate }}</span>
@@ -444,14 +447,14 @@
           <mat-card-actions>
             <button mat-button
                     (click)="syncQueue()"
-                    [disabled]="pendingQueueCount() === 0 || !isOnline()">
+                    [disabled]="pendingQueueCount() === 0 || !isOnline() || queueClosed()">
               <mat-icon>sync</mat-icon>
               {{ 'aiPage.syncNow' | translate }}
             </button>
             <button mat-button
                     color="warn"
                     (click)="clearQueue()"
-                    [disabled]="pendingQueueCount() === 0">
+                    [disabled]="pendingQueueCount() === 0 || queueClosed()">
               <mat-icon>delete_sweep</mat-icon>
               {{ 'aiPage.clearQueue' | translate }}
             </button>

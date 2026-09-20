@@ -145,6 +145,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0138](0138-a-plugin-call-nothing-implements-is-the-developers-failure-not-the-users.md) | A plugin call nothing implements is the developer's failure, not the user's | Accepted | 2026-09-17 |
 | [0139](0139-a-transaction-read-acted-on-once-names-its-source-and-a-listeners-first-value-is-banned.md) | A transaction read acted on once names its source, and a listener's first value is banned | Accepted; applies 0034; extends 0137 | 2026-09-18 |
 | [0140](0140-the-tab-strips-scroll-natively-and-a-layout-holds-at-the-scale-and-the-width-that-broke-it.md) | The tab strips scroll natively, and a layout holds at the scale and the width that broke it | Accepted; extends 0010 and 0012; closes a gap of 0102 | 2026-09-18 |
+| [0141](0141-a-recurring-rule-in-a-bad-state-is-repaired-where-its-data-allows-and-refused-where-it-does-not.md) | A recurring rule in a bad state is repaired where its data allows and refused where it does not | Accepted; extends 0014 and closes five of its gaps; revisits 0091 and closes its last gap | 2026-09-20 |
+| [0142](0142-a-queued-receipt-lands-whole-or-says-what-it-dropped.md) | A queued receipt lands whole or says what it dropped | Accepted; extends 0015 and 0059; closes gaps of 0060, 0106 and 0117; narrows a gap of 0052 | 2026-09-20 |
 
 ## What belongs here
 

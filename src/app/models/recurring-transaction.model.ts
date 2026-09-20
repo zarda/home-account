@@ -64,3 +64,14 @@ export interface RecurringOccurrence {
   // back to the recurring collection.
   remindDaysBefore?: number;
 }
+
+/**
+ * One walk of the schedule: the occurrences that fall inside the window, and
+ * how many fell behind its floor. The two travel together because only the
+ * walk that skipped them knows how many there were — a reader handed the rows
+ * alone cannot tell a rule that is up to date from one that stalled in 2019.
+ */
+export interface UpcomingSchedule {
+  occurrences: RecurringOccurrence[];
+  olderCount: number;
+}

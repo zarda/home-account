@@ -5,7 +5,9 @@ import { of } from 'rxjs';
 import {
   RecurringService,
   MAX_OCCURRENCES_PER_CLAIM,
-  INVALID_FREQUENCY_ERROR
+  INVALID_FREQUENCY_ERROR,
+  UNREADABLE_SCHEDULE_ERROR,
+  RULE_ENDED_ERROR
 } from './recurring.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -18,7 +20,9 @@ import {
   RecurringTransaction,
   RecurringFrequency,
   CreateRecurringDTO,
-  Transaction
+  RecurringOccurrence,
+  Transaction,
+  UpcomingSchedule
 } from '../../models';
 
 describe('RecurringService', () => {
@@ -517,6 +521,61 @@ describe('RecurringService', () => {
       await service.updateRecurring('rec1', { name: 'x' });
       expect(service.isLoading()).toBeFalse();
     });
+
+    it("drops the stored dayOfMonth when the update's frequency omits it", async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        const current = createRecurring({
+          startDate: Timestamp.fromDate(new Date(2024, 0, 20)),
+          nextOccurrence: Timestamp.fromDate(new Date(2024, 0, 20)),
+          frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 }
+        });
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(current));
+
+        await service.updateRecurring('rec1', { frequency: { type: 'monthly', interval: 1 } });
+
+        const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        const record = data as Record<string, unknown>;
+        expect(record['frequency']).toEqual({ type: 'monthly', interval: 1 });
+        // The dropped dayOfMonth must not linger: the recompute lands on the
+        // start's own day (the 20th), not the discarded 15th.
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 8, 20));
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('recalculates from a submitted start date on a rule whose stored start cannot be read', async () => {
+      // A submitted startDate is the repair itself, so it must not be
+      // refused for the unreadable value it is about to overwrite.
+      spyOn(console, 'warn');
+      const unreadable = { toDate: () => new Date(NaN) } as unknown as Timestamp;
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ startDate: unreadable })
+      ));
+
+      await service.updateRecurring('rec1', { startDate: new Date(2024, 6, 1) });
+
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      const record = data as Record<string, unknown>;
+      expect((record['startDate'] as Timestamp).toDate()).toEqual(new Date(2024, 6, 1));
+      expect(record['nextOccurrence']).toBeDefined();
+    });
+
+    it('rejects a recalculation when the stored start date cannot be read and none is submitted', async () => {
+      spyOn(console, 'warn');
+      const unreadable = { toDate: () => new Date(NaN) } as unknown as Timestamp;
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ startDate: unreadable })
+      ));
+
+      await expectAsync(
+        service.updateRecurring('rec1', { frequency: { type: 'monthly', interval: 2 } })
+      ).toBeRejectedWithError(UNREADABLE_SCHEDULE_ERROR);
+
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
   });
 
   // A frequency that cannot advance is the interval-0 hang in its stored
@@ -614,22 +673,174 @@ describe('RecurringService', () => {
       expect(record['nextOccurrence']).toBeDefined();
     });
 
-    // Resume deliberately does not reject a stored frequency the way create
-    // and update do — the button has nowhere to show an error, and a rule
-    // already saved with a bad interval has to stay recoverable. What it must
-    // not do is hang while recalculating the pointer from today.
-    it('resumes a rule whose stored frequency cannot advance without spinning', async () => {
+    it('refuses to resume a rule whose interval cannot advance', async () => {
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
         createRecurring({ id: 'r1', frequency: { type: 'daily', interval: 0 } })
       ));
 
-      await service.resumeRecurring('r1');
+      await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
 
-      const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
-      expect(path).toBe('users/user123/recurring/r1');
-      const record = data as Record<string, unknown>;
-      expect(record['isActive']).toBeTrue();
-      expect(record['nextOccurrence']).toEqual(jasmine.any(Timestamp));
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('refuses to resume a rule whose interval is not finite', async () => {
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ id: 'r1', frequency: { type: 'daily', interval: NaN } })
+      ));
+
+      await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('refuses to resume a rule whose frequency type cannot advance', async () => {
+      // validateFrequency only checks the interval; a type outside the four
+      // known kinds is the other way a stored frequency can never advance,
+      // and it slips past that guard.
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'fortnightly' as never, interval: 1 },
+            startDate: Timestamp.fromDate(new Date(2024, 0, 15))
+          })
+        ));
+
+        await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it("anchors the resumed pointer on the rule's start date, not today", async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1 },
+            startDate: Timestamp.fromDate(new Date(2024, 0, 15))
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        expect(path).toBe('users/user123/recurring/r1');
+        const record = data as Record<string, unknown>;
+        expect(record['isActive']).toBeTrue();
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 9, 15));
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('resumes a rule whose start is in the future onto the start', async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        const futureStart = new Date(2027, 0, 1);
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1 },
+            startDate: Timestamp.fromDate(futureStart)
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        const record = data as Record<string, unknown>;
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(futureStart);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it("clamps the day the rule names to the month's last day", async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1, dayOfMonth: 31 },
+            startDate: Timestamp.fromDate(new Date(2024, 0, 31))
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        const record = data as Record<string, unknown>;
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 8, 30));
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('refuses to resume a rule it cannot read', async () => {
+      spyOn(console, 'warn');
+      const unreadable = { toDate: () => new Date(NaN) } as unknown as Timestamp;
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ id: 'r1', startDate: unreadable })
+      ));
+
+      await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(UNREADABLE_SCHEDULE_ERROR);
+
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('refuses to resume a rule whose end date has passed', async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 20));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1, dayOfMonth: 6 },
+            startDate: Timestamp.fromDate(new Date(2026, 0, 5)),
+            endDate: Timestamp.fromDate(new Date(2026, 2, 18))
+          })
+        ));
+
+        await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(RULE_ENDED_ERROR);
+
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('resumes a rule whose end date is still ahead', async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 20));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1, dayOfMonth: 6 },
+            startDate: Timestamp.fromDate(new Date(2026, 0, 5)),
+            endDate: Timestamp.fromDate(new Date(2027, 0, 1))
+          })
+        ));
+
+        await service.resumeRecurring('r1');
+
+        const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        expect(path).toBe('users/user123/recurring/r1');
+        const record = data as Record<string, unknown>;
+        expect(record['isActive']).toBeTrue();
+        expect((record['nextOccurrence'] as Timestamp).toDate()).toEqual(new Date(2026, 9, 6));
+      } finally {
+        jasmine.clock().uninstall();
+      }
     });
   });
 
@@ -843,6 +1054,8 @@ describe('RecurringService', () => {
       );
       expect(result.length).toBe(1);
       expect(result[0]).toBe(createdTxn);
+      // A readable pointer is claimed on the server, never repaired.
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
     });
 
     it('should build occurrence documents with the addTransaction shape', async () => {
@@ -1125,6 +1338,267 @@ describe('RecurringService', () => {
       await service.processRecurringTransactions([]);
       expect(service.isLoading()).toBeFalse();
     });
+
+    // A stored rule need not honour its declared type. A restore, an older
+    // build or a hand edit can leave either date holding something `.toDate()`
+    // is not a method on, and the engine read both of them straight: one such
+    // document took the whole catch-up down, so every other rule the user owns
+    // stopped posting too.
+    describe('a rule whose stored dates cannot be read', () => {
+      /** The shape a `Timestamp` field takes when what it holds is not a date. */
+      const unreadable = { toDate: () => new Date(NaN) } as unknown as Timestamp;
+
+      /** 15 January 2024: a past anchor the monthly walk can count from. */
+      const anchor = (): Timestamp => Timestamp.fromDate(new Date(2024, 0, 15));
+
+      it('skips a rule with no readable start date, warns with its id, and still claims the others', async () => {
+        const warn = spyOn(console, 'warn');
+        const due = new Date(Date.now() - 3 * DAY);
+        const bad = createRecurring({
+          id: 'bad',
+          startDate: undefined as unknown as Timestamp,
+          nextOccurrence: Timestamp.fromDate(due)
+        });
+        const ok = createRecurring({ id: 'ok', nextOccurrence: Timestamp.fromDate(due) });
+        seedServerRule(ok);
+
+        await service.processRecurringTransactions([bad, ok]);
+
+        // The bad rule never reaches a claim: it used to pass the due filter
+        // and spend a whole server transaction discovering nothing to do.
+        expect(mockFirestoreService.runTransaction).toHaveBeenCalledTimes(1);
+        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-ok-${due.getTime()}`]);
+        expect(warn).toHaveBeenCalledWith(jasmine.stringContaining('[Recurring]'), 'bad');
+        // The anchor is never invented (ADR 0014), so nothing is written.
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      });
+
+      it('a rule whose pointer is not a timestamp does not stop the run', async () => {
+        spyOn(console, 'warn');
+        const due = new Date(Date.now() - 3 * DAY);
+        const bad = createRecurring({
+          id: 'bad',
+          startDate: anchor(),
+          nextOccurrence: 'soon' as unknown as Timestamp
+        });
+        const ok = createRecurring({ id: 'ok', nextOccurrence: Timestamp.fromDate(due) });
+        seedServerRule(ok);
+
+        await expectAsync(service.processRecurringTransactions([bad, ok])).toBeResolved();
+
+        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-ok-${due.getTime()}`]);
+      });
+
+      it('repairs a malformed pointer to the first future occurrence without claiming it', async () => {
+        spyOn(console, 'warn');
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 8, 19));
+          const rule = createRecurring({
+            id: 'stale',
+            startDate: anchor(),
+            nextOccurrence: unreadable
+          });
+
+          const result = await service.processRecurringTransactions([rule]);
+
+          expect(mockFirestoreService.updateDocument).toHaveBeenCalledTimes(1);
+          const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+          expect(path).toBe('users/user123/recurring/stale');
+          // `updatedAt` is FirestoreService's to stamp, and the repair says
+          // nothing about whether the rule has run: only the pointer moves.
+          const record = data as Record<string, Timestamp>;
+          expect(Object.keys(record)).toEqual(['nextOccurrence']);
+          expect(record['nextOccurrence'].toDate()).toEqual(new Date(2026, 9, 15));
+
+          // The repaired pointer is in the future by construction, so this run
+          // posts nothing from the rule — the next one finds it healthy.
+          expect(mockFirestoreService.runTransaction).not.toHaveBeenCalled();
+          expect(result).toEqual([]);
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      });
+
+      // Every other case here anchors in the past, where a computed date that
+      // does not move past the start means a frequency that cannot advance. A
+      // start still ahead of today comes back unmoved because nothing was
+      // skipped, and it is the rule's real next occurrence.
+      it('repairs the pointer of a healthy rule whose start date has not arrived', async () => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 8, 19));
+          const rule = createRecurring({
+            id: 'not-yet',
+            startDate: Timestamp.fromDate(new Date(2026, 11, 1)),
+            nextOccurrence: unreadable
+          });
+
+          await service.processRecurringTransactions([rule]);
+
+          expect(mockFirestoreService.updateDocument).toHaveBeenCalledTimes(1);
+          const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+          expect(path).toBe('users/user123/recurring/not-yet');
+          const record = data as Record<string, Timestamp>;
+          expect(Object.keys(record)).toEqual(['nextOccurrence']);
+          expect(record['nextOccurrence'].toDate()).toEqual(new Date(2026, 11, 1));
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      });
+
+      it('leaves a rule whose frequency cannot advance unrepaired and says so', async () => {
+        const warn = spyOn(console, 'warn');
+        const rule = createRecurring({
+          id: 'stuck',
+          frequency: { type: 'daily', interval: 0 },
+          startDate: anchor(),
+          nextOccurrence: unreadable
+        });
+
+        await service.processRecurringTransactions([rule]);
+
+        // Recomputing from a frequency that cannot advance answers the start
+        // date itself: storing it would make the rule due forever.
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.calls.mostRecent().args.slice(0, 2))
+          .toEqual([jasmine.stringContaining('[Recurring]'), 'stuck']);
+      });
+
+      it('leaves a rule whose frequency type cannot advance unrepaired and says so', async () => {
+        const warn = spyOn(console, 'warn');
+        const rule = createRecurring({
+          id: 'unknown-type',
+          frequency: { type: 'fortnightly' as never, interval: 1 },
+          startDate: anchor(),
+          nextOccurrence: unreadable
+        });
+
+        await service.processRecurringTransactions([rule]);
+
+        // validateFrequency only names the interval refusal; an unknown
+        // `type` passes it and falls through calculateNextOccurrenceFromDate's
+        // switch unchanged, so the computed result has to be checked too.
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.calls.mostRecent().args.slice(0, 2))
+          .toEqual([jasmine.stringContaining('[Recurring]'), 'unknown-type']);
+      });
+
+      it('leaves a frequency that cannot advance unrepaired however far off its start is', async () => {
+        const warn = spyOn(console, 'warn');
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 8, 19));
+          const rule = createRecurring({
+            id: 'unknown-type-ahead',
+            frequency: { type: 'fortnightly' as never, interval: 1 },
+            startDate: Timestamp.fromDate(new Date(2026, 11, 1)),
+            nextOccurrence: unreadable
+          });
+
+          await service.processRecurringTransactions([rule]);
+
+          // The start is a date the rule really does fall due on, but it is
+          // also the only one it will ever reach: storing it buys one
+          // occurrence and leaves the rule due forever after it.
+          expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(warn.calls.mostRecent().args.slice(0, 2))
+            .toEqual([jasmine.stringContaining('[Recurring]'), 'unknown-type-ahead']);
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      });
+
+      it('deactivates an ended rule instead of repairing its pointer past the end date', async () => {
+        spyOn(console, 'warn');
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 8, 19));
+          const rule = createRecurring({
+            id: 'over',
+            startDate: anchor(),
+            endDate: Timestamp.fromDate(new Date(2025, 11, 31)),
+            nextOccurrence: unreadable
+          });
+
+          await service.processRecurringTransactions([rule]);
+
+          expect(mockFirestoreService.updateDocument).toHaveBeenCalledTimes(1);
+          const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+          expect(path).toBe('users/user123/recurring/over');
+          expect(data).toEqual({ isActive: false });
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      });
+
+      // The claim reads `endDate` through the same seam as the walk above,
+      // but on the fresh server document rather than the enumerated copy —
+      // an unreadable bound there must not stop the backlog from posting.
+      it('posts the backlog through a claim whose end date cannot be read', async () => {
+        spyOn(console, 'warn');
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = createRecurring({
+          id: 'bad-end',
+          startDate: anchor(),
+          endDate: { seconds: 1, nanoseconds: 0 } as unknown as Timestamp,
+          nextOccurrence: Timestamp.fromDate(due)
+        });
+        seedServerRule(rule);
+
+        await expectAsync(service.processRecurringTransactions([rule])).toBeResolved();
+
+        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-bad-end-${due.getTime()}`]);
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      });
+
+      it('a repair that does not land leaves the rule for the next run', async () => {
+        const warn = spyOn(console, 'warn');
+        mockFirestoreService.updateDocument.and.returnValue(
+          Promise.reject(new Error('unavailable: failed to get documents from server'))
+        );
+        const due = new Date(Date.now() - 3 * DAY);
+        const bad = createRecurring({
+          id: 'bad',
+          startDate: anchor(),
+          nextOccurrence: unreadable
+        });
+        const ok = createRecurring({ id: 'ok', nextOccurrence: Timestamp.fromDate(due) });
+        seedServerRule(ok);
+
+        await expectAsync(service.processRecurringTransactions([bad, ok])).toBeResolved();
+
+        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-ok-${due.getTime()}`]);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.calls.mostRecent().args.slice(0, 2))
+          .toEqual([jasmine.stringContaining('[Recurring]'), 'bad']);
+      });
+
+      // The claim re-reads the rule fresh from the server, so it meets shapes
+      // the enumerated copy never showed. A rejection out of that callback is
+      // indistinguishable from being offline — the caller breaks out of the
+      // drain loop either way — so the claim has to answer null instead.
+      it('the claim answers null, not a rejection, for a fresh document it cannot read', async () => {
+        const warn = spyOn(console, 'warn');
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = createRecurring({ id: 'half', nextOccurrence: Timestamp.fromDate(due) });
+        seedServerRule(createRecurring({
+          id: 'half',
+          startDate: undefined as unknown as Timestamp,
+          nextOccurrence: Timestamp.fromDate(due)
+        }));
+
+        await service.processRecurringTransactions([rule]);
+
+        await expectAsync(mockFirestoreService.runTransaction.calls.mostRecent().returnValue)
+          .toBeResolvedTo(null);
+        expect(warn).toHaveBeenCalledWith(jasmine.stringContaining('[Recurring]'), 'half');
+        expect(txSet).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('catchUpRecurringTransactions', () => {
@@ -1372,6 +1846,162 @@ describe('RecurringService', () => {
           expect(occ.date.getTime()).toBeLessThanOrEqual(endDate.getTime());
         }
         done();
+      });
+    });
+
+    /**
+     * The walk used to start at the stored pointer with no lower bound, so a
+     * rule that stopped paying years ago handed the card one row per day from
+     * then to the horizon. The floor mirrors the horizon: as many whole local
+     * days behind today as the window draws ahead of it.
+     */
+    describe('window floor', () => {
+      const TODAY = new Date(2027, 4, 20, 9, 30);
+
+      /**
+       * A daily rule whose pointer stands `back` whole days behind today, run
+       * through both readers with the clock frozen so the floor and the
+       * horizon are fixed rather than taken from the day the suite runs.
+       */
+      const walk = (
+        back: number,
+        days: number,
+        overrides: Partial<RecurringTransaction> = {}
+      ): { schedule: UpcomingSchedule; occurrences: RecurringOccurrence[] } => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(TODAY);
+          const pointer = addDays(startOfDay(TODAY), -back);
+          mockFirestoreService.subscribeToCollection.and.returnValue(of([
+            createRecurring({
+              id: 'dormant',
+              frequency: { type: 'daily', interval: 1 },
+              startDate: Timestamp.fromDate(pointer),
+              nextOccurrence: Timestamp.fromDate(pointer),
+              ...overrides
+            })
+          ]));
+
+          let schedule: UpcomingSchedule = { occurrences: [], olderCount: -1 };
+          service.getUpcomingSchedule(days).subscribe(s => (schedule = s));
+          let occurrences: RecurringOccurrence[] = [];
+          service.getNextOccurrences(days).subscribe(o => (occurrences = o));
+          return { schedule, occurrences };
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      };
+
+      const keyAt = (offset: number): string => dayKey(addDays(startOfDay(TODAY), offset));
+
+      it('counts the occurrences older than the floor instead of returning them', () => {
+        const { schedule } = walk(20, 14);
+
+        // Days -20 to -15 are below the floor; -14 to +14 are the 29 rows
+        // the card draws.
+        expect(schedule.olderCount).toBe(6);
+        expect(schedule.occurrences.length).toBe(29);
+        expect(dayKey(schedule.occurrences[0].date)).toBe(keyAt(-14));
+        expect(dayKey(schedule.occurrences[28].date)).toBe(keyAt(14));
+      });
+
+      // A few days overdue is the ordinary failed-catch-up case the card
+      // exists to surface, so the floor must not swallow it (ADR 0091).
+      it('still returns an overdue occurrence inside the floor', () => {
+        const { schedule } = walk(3, 14);
+
+        expect(schedule.olderCount).toBe(0);
+        expect(dayKey(schedule.occurrences[0].date)).toBe(keyAt(-3));
+      });
+
+      it('getNextOccurrences keeps its shape and takes the floor', () => {
+        const { schedule, occurrences } = walk(20, 14);
+
+        expect(occurrences).toEqual(schedule.occurrences);
+      });
+
+      // The count is exact and uncapped: a cap that stopped the walk would
+      // leave the pointer below the floor and drop the in-window rows too.
+      it('counts exactly, however far back the pointer is', () => {
+        const { schedule } = walk(800, 14);
+
+        expect(schedule.olderCount).toBe(786);
+        expect(schedule.occurrences.length).toBe(29);
+        expect(dayKey(schedule.occurrences[0].date)).toBe(keyAt(-14));
+      });
+
+      // The walk-break cases below `getNextOccurrences` (`stops collecting
+      // occurrences when the frequency cannot advance`, `stops collecting
+      // when a negative interval walks backwards`) all pin a pointer ahead of
+      // today, so they exercise the break in the collecting loop only. This
+      // one starts the pointer behind the floor so the count loop hits the
+      // same break: it counts the pointer once, cannot advance, and stops —
+      // never reaching the collecting loop at all.
+      it('stops the count loop when the frequency cannot advance', () => {
+        const { schedule } = walk(800, 14, {
+          frequency: { type: 'daily', interval: 0 }
+        });
+
+        expect(schedule.olderCount).toBe(1);
+        expect(schedule.occurrences).toEqual([]);
+      });
+
+      it('stops counting at an end date older than the floor', () => {
+        const { schedule } = walk(20, 14, {
+          endDate: Timestamp.fromDate(addDays(startOfDay(TODAY), -18))
+        });
+
+        expect(schedule.olderCount).toBe(3);
+        expect(schedule.occurrences).toEqual([]);
+      });
+
+      // An end date is read through the same seam as the rest of the rule's
+      // dates, so a malformed one leaves the rule running rather than
+      // throwing out of the walk. `toDate` returns null for a shape that has
+      // no `toDate` method at all — the old direct `.toDate()` call threw on
+      // exactly this shape, taking the whole walk down with it.
+      it('walks a rule whose end date cannot be read as one with no end', () => {
+        const { schedule } = walk(3, 14, {
+          endDate: { seconds: 1, nanoseconds: 0 } as unknown as Timestamp
+        });
+
+        expect(schedule.olderCount).toBe(0);
+        expect(schedule.occurrences.length).toBe(18);
+      });
+    });
+
+    // The forecast walks whatever the listener hands it. One rule stored in a
+    // state its own writes could never produce used to error the stream, so
+    // the chart went blank for every rule the user owns.
+    it('the schedule walker skips an unreadable rule instead of erroring the stream', (done) => {
+      const warn = spyOn(console, 'warn');
+      const soon = new Date(Date.now() + 1 * DAY);
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([
+        createRecurring({
+          id: 'nostart',
+          startDate: undefined as unknown as Timestamp,
+          nextOccurrence: Timestamp.fromDate(soon)
+        }),
+        createRecurring({
+          id: 'nopointer',
+          startDate: Timestamp.fromDate(new Date(2024, 0, 15)),
+          nextOccurrence: { toDate: () => new Date(NaN) } as unknown as Timestamp
+        }),
+        createRecurring({
+          id: 'healthy',
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(soon)
+        })
+      ]));
+
+      service.getNextOccurrences(14).subscribe({
+        next: occurrences => {
+          expect(occurrences.length).toBeGreaterThan(0);
+          expect([...new Set(occurrences.map(o => o.recurringId))]).toEqual(['healthy']);
+          expect(warn).toHaveBeenCalledWith(jasmine.stringContaining('[Recurring]'), 'nostart');
+          done();
+        },
+        error: (error: unknown) => done.fail(error as Error)
       });
     });
 

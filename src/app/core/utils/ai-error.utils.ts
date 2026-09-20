@@ -41,6 +41,25 @@ export const AI_NO_PROVIDER = 'AI_NO_PROVIDER';
 export const AI_QUEUED_OFFLINE = 'AI_QUEUED_OFFLINE';
 
 /**
+ * Thrown when a capture had nowhere to go and the queue kept none of it.
+ *
+ * Nothing was stored, so the files are still wherever the caller holds them
+ * and a second attempt costs nothing: this code says the capture is lost
+ * unless the user makes one.
+ */
+export const AI_QUEUE_WRITE_FAILED = 'AI_QUEUE_WRITE_FAILED';
+
+/**
+ * Thrown when the queue kept some pages of a capture and refused the rest.
+ *
+ * Its own code rather than the one above, because the two need opposite
+ * advice: the queue keys nothing on a photo's content, so a second attempt
+ * would store the kept pages again and the drain would write their rows
+ * twice. Never retryable, for that reason.
+ */
+export const AI_QUEUE_WRITE_PARTIAL = 'AI_QUEUE_WRITE_PARTIAL';
+
+/**
  * Thrown when no cloud provider can be reached for a request that needs one.
  *
  * A code rather than a sentence, following the receipt-to-note errors: the
@@ -189,6 +208,22 @@ export function parseAIError(error: unknown): AIErrorInfo {
       message: 'Image queued for processing when back online.',
       messageKey: 'import.errorQueuedOffline',
       type: 'network',
+      retryable: false
+    };
+  }
+  if (raw === AI_QUEUE_WRITE_FAILED) {
+    return {
+      message: 'The capture could not be stored for later.',
+      messageKey: 'import.errorQueueWrite',
+      type: 'unknown',
+      retryable: false
+    };
+  }
+  if (raw === AI_QUEUE_WRITE_PARTIAL) {
+    return {
+      message: 'Only part of the capture could be stored for later.',
+      messageKey: 'import.errorQueueWritePartial',
+      type: 'unknown',
       retryable: false
     };
   }

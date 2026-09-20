@@ -115,7 +115,7 @@ it is the fourth door now, not an exception to the rule.
 | suggestions (tags, rule link) | — | yes | yes | yes | yes | — | — (no review step) |
 | currency marked as fallen back | — | yes | yes | yes | yes | yes | — (the base currency is written, unmarked) |
 | category | catch-all (ADR 0011) | ladder (#258) | ladder / extraction | ladder | ladder | the backup's own; a row without one is defaulted and graded 0.3 (ADR 0113) | extraction, else catch-all |
-| photo attached | — | — | **yes** | no (known gap, ADR 0060) | no | no | no (follow-up) |
+| photo attached | — | — | **yes** | no (known gap, ADR 0060) | no | no | **yes** |
 | recorded as | n/a | `csv` / `generic_csv` | `image` / `receipt_image` | `image` / `screenshot` | `pdf` / `bank_pdf` | `json` / `backup_json` | a failed attempt only: `image` / `receipt_image`, door `queue` |
 
 The data hub's CSV path has no review step, so it takes no suggestions and
@@ -128,8 +128,13 @@ floor of 0.1 — so the chip's dot and the low-confidence tally see it
 ([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).
 
 A mixed wizard batch is recorded as its dominant kind by row count (ties keep
-the first processed), sized by every file in the batch. Import History renders
-`fileType` as a labelled, iconed chip.
+the first processed), sized by every file still selected when the write runs.
+Photos the wizard stored for the offline queue have left the picker by then,
+so they count towards neither the record's name nor its size — they produced
+no rows here, and the transactions they become are the drain's to record. See
+*Offline capture and the queue* in
+[receipt-import.md](receipt-import.md#offline-capture-and-the-queue). Import
+History renders `fileType` as a labelled, iconed chip.
 
 A receipt attempt's record also carries `door`, `engine`, `fellBackFrom`,
 `provider`, `errorType` and `durationMs` — written at extraction time for a
@@ -170,16 +175,37 @@ own `imageMetadata`:
   bounded to the batch, cut at `MAX_RECEIPTS_PER_TRANSACTION`.
 - Rows sharing a receipt (same `receiptId`, or identical source images when
   ungrouped) attach on the **first selected row only**. Two receipts printed
-  on one photo both keep it.
+  on one photo both keep it — with one exception: two that the reviewer then
+  merges together attach that photo once, on the merged row.
 - A row the reviewer split off on the card (`splitFrom` set) is keyed on its
   own id, apart from its original's receipt group, so **every part uploads its
   own copy** of the photo — one storage object per transaction id, and one
   quota slot each. A merged row attaches the union of both sides' sources
   under the target's id
-  ([ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md)).
+  ([ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md)) and
+  records the receipt groups it absorbed in `mergedReceiptIds`; the planner
+  marks those groups attached before it walks any row, whatever order the
+  rows arrive in, so a sibling row left behind on the source receipt attaches
+  nothing rather than a second copy of the same photo — a second storage
+  object and a second quota slot
+  ([ADR 0142](ADR/0142-a-queued-receipt-lands-whole-or-says-what-it-dropped.md)).
 - The wizard passes the **image subset** of its files — `imageIndex` indexes
   what the extraction ran over, not `selectedFiles`. The camera flow passes
   the `sourceFiles` its capture result handed over via router state.
+
+**The offline drain is the second door that attaches**, and it attaches
+through the same planner: it plans over the rows the reader produced, keyed on
+the ids it is about to write, and hands the file to the row the plan names.
+The block the planner reads is built by one shared helper, `imageMetadataOf`
+in `import-dto.utils.ts` — the wizard stamps it onto the review row as it
+converts a reader's output, the drain builds it over the same output at drain
+time. It is shared because it is the one place that decides **whether a row
+has a source at all**: absent where the reader reported neither an image index
+nor a receipt id, and otherwise a block naming the photo the row came off and,
+where the cloud path reported one, the receipt it belongs to. A condition like
+that drifting between two callers is how one door ends up handing a row
+someone else's picture while the other hands it none, so there is only one
+of it.
 
 A quota refusal (`RECEIPT_IMAGE_LIMIT_ERROR`) saves the row without its photo
 and counts it in `receiptsSkipped` on the history record — never in

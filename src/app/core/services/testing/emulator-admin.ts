@@ -58,6 +58,47 @@ export async function setDocumentAsOwner(
   }
 }
 
+/**
+ * Patch named fields of an existing document, bypassing rules. A key carrying
+ * an `EmulatorField` is written; a key mapped to `null` is masked but left out
+ * of the body, which is how REST's update mask spells a delete. A field path
+ * containing a dot is not supported — the mask is `encodeURIComponent`ed, not
+ * backtick-quoted the way a Firestore field-path segment would need.
+ *
+ * This is what a bad-state fixture needs, and `setDocumentAsOwner` cannot
+ * stand in for it: the client rules require both timestamps on a create, a
+ * document that lacks the field every enumeration orders by is never read back
+ * at all, and the encoders above cannot express a rule's `frequency` map. So a
+ * rule is written whole through the client SDK and only then broken here.
+ */
+export async function patchFieldsAsOwner(
+  path: string,
+  fields: Record<string, EmulatorField | null>
+): Promise<void> {
+  const entries = Object.entries(fields);
+  if (entries.length === 0) {
+    throw new Error('patchFieldsAsOwner: no fields');
+  }
+  const mask = entries
+    .map(([key]) => `updateMask.fieldPaths=${encodeURIComponent(key)}`)
+    .join('&');
+  const present: Record<string, EmulatorField> = {};
+  for (const [key, value] of entries) {
+    if (value !== null) present[key] = value;
+  }
+
+  const response = await fetch(`${documentUrl(path)}?${mask}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
+    body: JSON.stringify({ fields: present })
+  });
+  if (!response.ok) {
+    throw new Error(
+      `emulator patch of ${path} failed: ${response.status} ${await response.text()}`
+    );
+  }
+}
+
 /** Delete a document, bypassing rules. A document that is already gone is fine. */
 export async function deleteDocumentAsOwner(path: string): Promise<void> {
   const response = await fetch(documentUrl(path), {

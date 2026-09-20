@@ -166,6 +166,81 @@ records why it is not automated and the conditions under which it should be.
 A step that could be a spec belongs in a spec — cheaper, repeatable, and it
 actually runs.
 
+## The state that cannot be arranged (#432, #431)
+
+The blind spots above are about what the suite does not see. This one is
+about what it cannot be shown: the guard is sound and the suite is willing,
+but there is no way to hand it the document, or the interleaving, that the
+guard exists for.
+
+**A NaN timestamp is not a document any client can write.** The recurring
+engine reads every stored date through one seam and treats an unreadable
+pointer as one to recompute, and an invalid date looks like the obvious way
+to ask for that. It cannot be stored. `Timestamp.fromDate(new Date(NaN))`
+builds a value happily (the constructor's range checks are `<` and `>=`, and
+NaN satisfies neither, so `seconds` and `nanoseconds` both come out NaN) but
+the write never reaches the wire: the web SDK encodes a timestamp as
+proto3 JSON through `new Date(1000 * seconds).toISOString()`, which throws
+`RangeError: Invalid time value`. So the emulator case writes the rule whole
+through the SDK and only then breaks `nextOccurrence` to an integer through
+the owner REST route (`recurring.service.smoke.spec.ts`, "a rule whose
+pointer is malformed is repaired on the next catch-up and posts nothing"),
+and the NaN branch of the seam is pinned by unit fixtures that hand the
+reader a `toDate()` answering an invalid date (`recurring.service.spec.ts`).
+
+**A rule missing its pointer is returned by nothing at all.** Every read that
+could repair one orders by `nextOccurrence`: the live listener, the one-shot
+list, the backup export and the catch-up work list all pass the same
+`recurringQueryOptions()`, and Firestore omits a document that lacks the
+field a query orders by. The one enumeration that passes no ordering is
+`deleteAll`, the account-deletion sweep, and what that one finds it deletes.
+No suite can therefore demonstrate such a rule being repaired — there is
+nothing to repair it from, and no surface in the app can select it either,
+since the edit dialog and the delete control open from a list ordered by the
+same missing field, so the only route back is a restore from a backup taken
+while the rule still held a pointer
+([ADR 0141](ADR/0141-a-recurring-rule-in-a-bad-state-is-repaired-where-its-data-allows-and-refused-where-it-does-not.md),
+[recurring.md](recurring.md)). It is worth separating from the blind spots
+above: those have something else standing in for them, and this one has
+nothing, because there is nothing to stand in for.
+
+**An in-flight read cannot be held across a session swap.** The profile retry
+re-arms when its own read is abandoned for an account that took the session
+over while the read was out, so the proof needs that read still in flight at
+the moment the swap lands. Against the emulator a read answers when Firestore
+answers; the only lever on where it lands is a delay, and a case whose result
+depends on one is a flake, not a proof. The emulator suite covers the shape
+it can arrange — sign out first, then arm the retry
+(`auth.service.smoke.spec.ts`, "a retry that resolves after sign-out does not
+resurrect the session") — and the orderings themselves are driven by hand in
+`auth.service.spec.ts`, where the profile read is a promise the spec resolves
+where it chooses.
+
+## The fixture that invents its input (#431)
+
+Every blind spot above is about the server. This one is about the suite
+itself, and no emulator can catch it, because the emulator is downstream of
+it: a fixture is free to hand the code under test a shape nothing in the app
+produces, and both suites will then agree the code handles it.
+
+The drained receipt's photo is the case that shipped. The drain plans the
+attachment off each row's own placement fields, and the fixture feeding it
+stamped `imageIndex: 0` on those rows. Nothing the drain can reach stamps
+it: the native read structures one transaction and places it nowhere, the
+single-image cloud read converts one parsed receipt, and the reader that does
+number its rows answers a door the drain never opens. So every drained
+receipt on a real device lost its photo while a suite that connected the real
+storage emulator, uploaded real objects and read them back stayed green. It
+was proving the handling of an input that does not exist. A driven browser
+pass found it on the first drain.
+
+The check is to read the producer, not the type. A field the type marks
+optional is a claim about the shape, not about who fills it, and the question
+a fixture has to answer is which call site writes it on the path under test.
+Where the answer is "none of them", the fixture specifies a reader that does
+not exist yet, which is a legitimate thing to pin — as long as it says so
+beside itself instead of passing for what the door receives today.
+
 ## Summary
 
 | Blind spot | What covers it | Where |
@@ -178,6 +253,10 @@ actually runs.
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
 | Nothing renders, and no journey crosses a page | the driven browser journeys — a protocol, not a gate | [e2e.md](e2e.md), by hand, twice per branch |
 | The iOS App Group container and the widget extension | a signed simulator build, its file cross-checked against the app's own screens by hand | [widget.md](widget.md) |
+| A stored shape no client write can produce | a unit fixture standing in for the value; the emulator seeds the nearest shape it can hold | `recurring.service.spec.ts`, `recurring.service.smoke.spec.ts` |
+| A document missing the field every read orders by | nothing, and nothing can — it is invisible until the form rewrites it | [ADR 0141](ADR/0141-a-recurring-rule-in-a-bad-state-is-repaired-where-its-data-allows-and-refused-where-it-does-not.md) |
+| An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
+| A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 
 ## When you add another one
 
@@ -206,3 +285,15 @@ unindexed. If it composes more than one equality filter with an order-by, it
 either goes through `buildTransactionWhere`'s contract or it needs its own
 hand-listed entry — and the entry is reviewed, not tested, so say so in a
 comment next to the query.
+
+**A fixture for a door someone else's code feeds?** Find the producer on that
+door's own path and copy the shape it returns, field by field, rather than
+the shape the type permits. A fixture assembled from the type agrees with
+code that agrees with it and says nothing about the code that does not.
+
+**A guard against a stored value?** Work out what can actually be written
+there before deciding where its proof lives. A shape no client write can
+produce belongs in a unit fixture, with the nearest storable shape carrying
+the emulator case. And if the bad value is the absence of a field the reads
+order by, the guard has nothing to run against at all: write the gap down
+rather than a test that cannot exist.

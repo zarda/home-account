@@ -101,6 +101,10 @@
     "upcomingNet": "Scheduled net",
     "noUpcomingBills": "Nothing scheduled",
     "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring.",
+    "upcomingOlderHidden": {
+      "one": "{{count}} older occurrence is overdue and not shown",
+      "other": "{{count}} older occurrences are overdue and not shown"
+    },
     "customize": "Customize dashboard",
     "noCardsShown": "No cards are shown on the dashboard."
   },
@@ -564,6 +568,7 @@
     "period": "Period",
     "on": "On",
     "onDay": "On day",
+    "onDaySameAsStart": "Same day as the start date",
     "duration": "Duration",
     "addEndDate": "Add end date",
     "removeEndDate": "Remove end date",
@@ -595,6 +600,9 @@
     "recurringCreateFailed": "Failed to create recurring transaction",
     "recurringUpdated": "Recurring transaction updated",
     "recurringUpdateFailed": "Failed to update recurring transaction",
+    "recurringResumeFailed": "Failed to resume recurring transaction",
+    "recurringResumeInvalidFrequency": "Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1.",
+    "recurringResumeEnded": "Cannot resume: this rule's end date has passed. Edit the end date first.",
     "deleteRecurringTitle": "Delete Recurring Transaction",
     "deleteRecurringMessage": "Are you sure you want to delete \"{{name}}\"? This will not affect existing transactions.",
     "addRecurring": "Add Recurring Transaction",
@@ -1283,6 +1291,7 @@
     "errorQueuedOffline": "No connection, so this image was queued. It will be processed when you are back online.",
     "errorProcessingFailed": "Could not process the image. Please try again.",
     "errorQueueWrite": "Could not save images for later. Please try again.",
+    "errorQueueWritePartial": "Some images could not be saved for later. The ones that were saved are on your device and will be processed when you are back online.",
     "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing.",
     "errorAnswerIncomplete": "The reader ran out of room before it finished this receipt. Try again, or with fewer photos at a time.",
     "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below, and add anything that is not here — Add a row under the list starts a blank one."
@@ -1332,6 +1341,7 @@
     "queueCleared": "Queue cleared",
     "queueSyncFailed": "Failed to sync queue",
     "queueClearFailed": "Failed to clear queue",
+    "queueClosedReload": "The queue was closed so another tab could update it. Reload this page to see it again.",
     "invalidModelSelection": "Invalid model selection",
     "textModelUpdated": "Text model updated to {{model}}",
     "textModelUpdateFailed": "Failed to update text model. Please try again.",

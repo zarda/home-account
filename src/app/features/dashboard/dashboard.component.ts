@@ -21,7 +21,7 @@ import {
   Transaction,
   Category,
   CategoryTotal,
-  RecurringOccurrence,
+  UpcomingSchedule,
   RAG_TIER_CONFIGS,
   effectiveRagLevel,
   baseCurrencyOf,
@@ -235,11 +235,16 @@ export class DashboardComponent implements OnInit {
 
   gridAreas = computed(() => dashboardGridAreas(this.arrangedCards()));
 
-  // Scheduled money for the next UPCOMING_WINDOW_DAYS. Occurrences dated
-  // before today are kept: they are due but not yet posted, and dropping them
-  // would hide money about to move on exactly the occasion — a failed
-  // catch-up — when the user most needs to see it (ADR 0091).
-  upcomingOccurrences = signal<RecurringOccurrence[]>([]);
+  // Scheduled money for the next UPCOMING_WINDOW_DAYS, with the count of the
+  // occurrences that fell behind the window's floor. Occurrences dated before
+  // today are kept as far back as that floor: they are due but not yet
+  // posted, and dropping them would hide money about to move on exactly the
+  // occasion — a failed catch-up — when the user most needs to see it
+  // (ADR 0091). Older than the floor is a rule that stalled long ago, which
+  // the card names rather than lists (ADR 0141).
+  upcomingSchedule = signal<UpcomingSchedule>({ occurrences: [], olderCount: 0 });
+
+  upcomingOccurrences = computed(() => this.upcomingSchedule().occurrences);
 
   // Live conversion, unlike every other total on this page: a scheduled
   // occurrence has not been written yet, so there is no amountInBaseCurrency
@@ -327,9 +332,9 @@ export class DashboardComponent implements OnInit {
     // so it belongs here beside budgets rather than in loadData() — and, like
     // them, it is an onSnapshot that never completes, so a period change must
     // not stack a second listener on it.
-    this.recurringService.getNextOccurrences(UPCOMING_WINDOW_DAYS)
+    this.recurringService.getUpcomingSchedule(UPCOMING_WINDOW_DAYS)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(occurrences => this.upcomingOccurrences.set(occurrences));
+      .subscribe(schedule => this.upcomingSchedule.set(schedule));
 
     this.loadData();
     // Post recurring occurrences that came due since the app was last open.

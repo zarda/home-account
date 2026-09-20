@@ -18,6 +18,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category, MAX_REMINDER_LEAD_DAYS, baseCurrencyOf} from '../../../../models';
 import { RecurringPrefill } from '../../../../core/utils/recurring-conversion.utils';
+import { toDate } from '../../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
@@ -72,7 +73,11 @@ export class RecurringFormDialogComponent implements OnInit {
   frequencyType: FrequencyType = 'monthly';
   interval = 1;
   dayOfWeek: number | null = null;
-  dayOfMonth: number | null = 1;
+  // Null means "same day as the start date" — the default for a new rule
+  // and for one whose stored frequency never named a day. `showDayOfMonth`
+  // decides whether the field is on screen at all; this only decides what
+  // it starts at.
+  dayOfMonth: number | null = null;
   startDate: Date = new Date();
   endDate: Date | null = null;
   hasEndDate = false;
@@ -170,7 +175,7 @@ export class RecurringFormDialogComponent implements OnInit {
           : t('settings.everyNWeeksOn', { n: this.interval, day });
       }
       case 'monthly': {
-        const day = this.dayOfMonth ?? 1;
+        const day = this.dayOfMonth ?? this.startDate.getDate();
         const suffix = this.getDaySuffix(day);
         return this.interval === 1
           ? t('settings.everyMonthOn', { day, suffix })
@@ -205,7 +210,7 @@ export class RecurringFormDialogComponent implements OnInit {
     this.frequencyType = prefill.frequency.type;
     this.interval = prefill.frequency.interval;
     this.dayOfWeek = prefill.frequency.dayOfWeek ?? null;
-    this.dayOfMonth = prefill.frequency.dayOfMonth ?? 1;
+    this.dayOfMonth = prefill.frequency.dayOfMonth ?? null;
     this.startDate = prefill.startDate;
   }
 
@@ -225,12 +230,19 @@ export class RecurringFormDialogComponent implements OnInit {
     this.frequencyType = recurring.frequency.type;
     this.interval = recurring.frequency.interval;
     this.dayOfWeek = recurring.frequency.dayOfWeek ?? null;
-    this.dayOfMonth = recurring.frequency.dayOfMonth ?? 1;
-    this.startDate = recurring.startDate.toDate();
+    this.dayOfMonth = recurring.frequency.dayOfMonth ?? null;
+    // Every reader refuses a rule whose stored dates are not the timestamps
+    // they claim to be, and names this form as where such a rule is put
+    // right — so this is the one surface that has to accept them. A start
+    // that cannot be read opens on today for the user to correct, and an
+    // unreadable end is read as no end date, the way the engine's own walk
+    // reads it.
+    this.startDate = toDate(recurring.startDate) ?? new Date();
     this.remindDaysBefore = recurring.remindDaysBefore ?? null;
-    if (recurring.endDate) {
+    const endDate = toDate(recurring.endDate);
+    if (endDate) {
       this.hasEndDate = true;
-      this.endDate = recurring.endDate.toDate();
+      this.endDate = endDate;
     }
   }
 
@@ -240,12 +252,12 @@ export class RecurringFormDialogComponent implements OnInit {
   }
 
   onFrequencyTypeChange(): void {
-    // Set sensible defaults when frequency type changes
+    // Weekly has no "same as start date" reading — a start date names one
+    // day of the month but not one day of the week — so it still needs an
+    // invented default. Monthly/yearly leave the day unset; the preview and
+    // the save both fall back to the start date on their own.
     if (this.frequencyType === 'weekly' && this.dayOfWeek === null) {
       this.dayOfWeek = new Date().getDay();
-    }
-    if ((this.frequencyType === 'monthly' || this.frequencyType === 'yearly') && this.dayOfMonth === null) {
-      this.dayOfMonth = new Date().getDate();
     }
   }
 

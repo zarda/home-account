@@ -125,6 +125,10 @@ export class AiSettingsPageComponent implements OnInit {
   useNativeOCR = computed(() => this.strategyService.useNativeOCR());
   platform = computed(() => this.strategyService.platform());
   pendingQueueCount = computed(() => this.offlineQueue.pendingCount());
+  // Another tab closed this tab's connection to open a newer schema; nothing
+  // here can reopen it, so every write from here on is dropped and only the
+  // console says so.
+  queueClosed = computed(() => this.offlineQueue.closedForUpgrade());
   configuredProviderCount = computed(() => {
     let count = 0;
     if (this.cloudLLMProvider.isProviderAvailable('gemini')) count++;
@@ -449,6 +453,11 @@ export class AiSettingsPageComponent implements OnInit {
   }
 
   async clearQueue(): Promise<void> {
+    // The queue is beyond reach until the page is reloaded, and the note
+    // beside the buttons already says so — a confirmation that it had been
+    // emptied would be the only untrue thing on the card.
+    if (this.queueClosed()) return;
+
     try {
       await this.offlineQueue.clearAll();
       this.showToast('aiPage.queueCleared');

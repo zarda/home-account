@@ -345,7 +345,7 @@ export class TransactionService {
       );
 
       if (options?.goalSnapshot) {
-        // Refused rather than resolved by precedence, like receipts+id below.
+        // Refused rather than resolved by precedence, like receipts+merge below.
         if (data.goalId) {
           throw new Error('A goal snapshot cannot be combined with a goal link');
         }
@@ -355,13 +355,12 @@ export class TransactionService {
 
       let id: string;
       const receiptFiles = data.receiptFiles ?? [];
-      // The receipts branch below has to pre-generate its own id to key the
-      // storage objects with, so it cannot also write at the caller's. It used
-      // to just win, discarding `options.id` without a word — quiet precedence
-      // that turned a caller's idempotency key into no key at all. Refuse the
-      // combination instead; no caller has a use for both at once.
-      if (receiptFiles.length > 0 && options?.id) {
-        throw new Error('A caller-chosen id cannot be combined with receipt files');
+      // A merge write is a restore's: it carries URLs, never files, and
+      // replaying it here would re-point receiptUrls at slot 0 over
+      // whatever the stale keys already held. Refuse the combination;
+      // a plain overwrite is the only write receipt files ever get.
+      if (receiptFiles.length > 0 && options?.merge) {
+        throw new Error('A merge write cannot be combined with receipt files');
       }
 
       if (receiptFiles.length > 0) {
@@ -372,9 +371,12 @@ export class TransactionService {
         if (!(await this.receiptQuota.canAddImages(receiptFiles.length))) {
           throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
         }
-        // Pre-generate the id so the receipts' storage objects and the
-        // Firestore document share the same key, then upload before saving.
-        id = this.firestoreService.generateId(this.userTransactionsPath);
+        // The storage objects and the Firestore document share this id as
+        // their key. A caller-chosen id is as good a slot key as a
+        // generated one — the object path is the id either way — so a
+        // replayed queue row re-uploads into the same slot and writes the
+        // same document instead of duplicating it.
+        id = options?.id ?? this.firestoreService.generateId(this.userTransactionsPath);
         const urls = await this.uploadReceiptBatch(userId, id, receiptFiles, 0);
         transaction.receiptUrl = urls[0];
         transaction.receiptUrls = urls;

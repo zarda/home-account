@@ -140,4 +140,34 @@ describe('planReceiptAttachments', () => {
 
     expect(planReceiptAttachments([stale], 2)).toEqual([[]]);
   });
+
+  it('uploads each photo once when a merge carried the source receipt onto the target', () => {
+    const merged = row({
+      imageIndex: 0, receiptId: 1, wasMerged: true, mergedFromImages: [0, 1], mergedReceiptIds: [2]
+    });
+    const targetSibling = row({ imageIndex: 0, receiptId: 1 });
+    const sourceLeftover = row({ imageIndex: 1, receiptId: 2 });
+
+    expect(planReceiptAttachments([merged, targetSibling, sourceLeftover], 2)).toEqual([[0, 1], [], []]);
+  });
+
+  it('finds the absorbed receipt whatever order the rows arrive in', () => {
+    const merged = row({
+      imageIndex: 0, receiptId: 1, wasMerged: true, mergedFromImages: [0, 1], mergedReceiptIds: [2]
+    });
+    const sourceLeftover = row({ imageIndex: 1, receiptId: 2 });
+
+    expect(planReceiptAttachments([sourceLeftover, merged], 2)).toEqual([[], [0, 1]]);
+  });
+
+  it('leaves a model-consolidated long receipt sharing its second photo', () => {
+    // The shape consolidateReceiptItems really produces for one long receipt
+    // spanning two photos: wasMerged and the union, but no absorbed receipt.
+    // A second receipt printed on either photo must still attach it, which
+    // is why the mark is the absorbed ids and never wasMerged.
+    const long = row({ imageIndex: 0, receiptId: 1, wasMerged: true, mergedFromImages: [0, 1] });
+    const other = row({ imageIndex: 1, receiptId: 2 });
+
+    expect(planReceiptAttachments([long, other], 2)).toEqual([[0, 1], [1]]);
+  });
 });

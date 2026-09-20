@@ -9,7 +9,12 @@ import {
   IMPORT_READBACK_FAILED,
   IMPORT_READBACK_TIMEOUT_MS,
 } from './ai-import.service';
-import { ReceiptProcessingError } from '../utils/ai-error.utils';
+import {
+  AI_CLOUD_UNAVAILABLE,
+  AI_QUEUE_WRITE_FAILED,
+  AI_QUEUE_WRITE_PARTIAL,
+  ReceiptProcessingError,
+} from '../utils/ai-error.utils';
 import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
@@ -257,6 +262,28 @@ describe('AIImportService', () => {
       await expectAsync(
         service.importFromImage(makeFile('r.png', 'image/png'))
       ).toBeRejectedWithError(AI_NO_PROVIDER);
+      expect(offlineQueue.queueImage).not.toHaveBeenCalled();
+    });
+
+    it('reads offline on a device that reads locally, rather than queueing', async () => {
+      // The one door that runs through the strategy service, so the
+      // on-device reader it names is one this door actually reaches.
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(true);
+      isOnlineSignal.set(false);
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'native',
+        confidence: 0.9,
+        processingTime: 1,
+        transactions: [{
+          date: '2024-06-01', description: 'Local read', amount: 12, type: 'expense',
+          currency: 'JPY', confidence: 0.9,
+        }],
+      } as unknown as ProcessingResult));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions.length).toBe(1);
       expect(offlineQueue.queueImage).not.toHaveBeenCalled();
     });
 
@@ -1195,6 +1222,48 @@ describe('AIImportService', () => {
         .toBeRejectedWithError(/No image files/);
     });
 
+    it('refuses offline rather than queueing pages the drain would read as receipts', async () => {
+      // The queue runs every stored image through the receipt pipeline, the
+      // one pipeline this door exists to avoid — so a statement is refused
+      // and stays in the picker rather than being promised a drain that
+      // would lump a page of unrelated charges into one transaction.
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(false);
+      isOnlineSignal.set(false);
+      const pages = [makeFile('p1.png', 'image/png'), makeFile('p2.png', 'image/png')];
+
+      await expectAsync(service.importFromStatementImages(pages))
+        .toBeRejectedWithError(AI_CLOUD_UNAVAILABLE);
+
+      expect(offlineQueue.queueImage).not.toHaveBeenCalled();
+      expect(cloudLLMProvider.extractStatementTransactions).not.toHaveBeenCalled();
+    });
+
+    it('refuses offline on a device whose only reader is the local one', async () => {
+      // canUseNative is a platform answer, and this door never calls the
+      // on-device reader — crediting it would send an offline iPhone into a
+      // cloud request with nowhere to go.
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(true);
+      isOnlineSignal.set(false);
+
+      await expectAsync(service.importFromStatementImages([makeFile('p1.png', 'image/png')]))
+        .toBeRejectedWithError(AI_CLOUD_UNAVAILABLE);
+
+      expect(cloudLLMProvider.extractStatementTransactions).not.toHaveBeenCalled();
+    });
+
+    it('refuses without queueing when online with nothing on the device', async () => {
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(false);
+      isOnlineSignal.set(true);
+
+      await expectAsync(service.importFromStatementImages([makeFile('stmt.png', 'image/png')]))
+        .toBeRejectedWithError(AI_NO_PROVIDER);
+
+      expect(offlineQueue.queueImage).not.toHaveBeenCalled();
+    });
+
     it('reports no provider for a failure before any request was issued', async () => {
       // fileToBase64 fails before extractStatementTransactions is ever
       // called — the provider must stay unresolved rather than naming
@@ -1251,6 +1320,99 @@ describe('AIImportService', () => {
   describe('importFromMultipleImages', () => {
     it('should throw for an empty file list', async () => {
       await expectAsync(service.importFromMultipleImages([])).toBeRejectedWithError(/No image files/);
+    });
+
+    it('queues every photo and refuses when offline with nothing on the device', async () => {
+      // Answers ahead of the hasAnyCloudProvider guard: a key being
+      // configured says nothing about a connection reaching it, and the
+      // photo has to be kept either way.
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(false);
+      isOnlineSignal.set(false);
+      const photos = [makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')];
+
+      await expectAsync(service.importFromMultipleImages(photos))
+        .toBeRejectedWithError(AI_QUEUED_OFFLINE);
+
+      expect(offlineQueue.queueImage.calls.allArgs()).toEqual([[photos[0]], [photos[1]]]);
+      expect(cloudLLMProvider.extractTransactionsFromMultipleImages).not.toHaveBeenCalled();
+      // The run never started, so nothing is left looking like work in flight.
+      expect(service.isProcessing()).toBeFalse();
+      expect(service.processingProgress()).toBe(0);
+    });
+
+    it('keeps the photos on a device whose only reader is the local one', async () => {
+      // This door is cloud-only; the platform saying an on-device reader
+      // exists does not mean this door can reach it, and an offline iPhone
+      // is exactly where a capture cannot be taken again.
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(true);
+      isOnlineSignal.set(false);
+      const photos = [makeFile('a.png', 'image/png')];
+
+      await expectAsync(service.importFromMultipleImages(photos))
+        .toBeRejectedWithError(AI_QUEUED_OFFLINE);
+
+      expect(offlineQueue.queueImage.calls.allArgs()).toEqual([[photos[0]]]);
+      expect(cloudLLMProvider.extractTransactionsFromMultipleImages).not.toHaveBeenCalled();
+    });
+
+    it('attempts every photo and says so when the queue refuses one', async () => {
+      spyOn(console, 'warn');
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(false);
+      isOnlineSignal.set(false);
+      const photos = [makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')];
+      offlineQueue.queueImage.and.callFake((file: File) =>
+        file.name === 'a.png'
+          ? Promise.reject(new Error('Database not initialized'))
+          : Promise.resolve('queued-id')
+      );
+
+      await expectAsync(service.importFromMultipleImages(photos))
+        .toBeRejectedWithError(AI_QUEUE_WRITE_PARTIAL);
+
+      // The second photo is still attempted, and the raw storage error never
+      // reaches a caller that would read it as a retryable unknown failure.
+      expect(offlineQueue.queueImage.calls.allArgs()).toEqual([[photos[0]], [photos[1]]]);
+    });
+
+    it('does not claim any page was kept when the queue refused them all', async () => {
+      // The caller strips a partly stored capture out of the picker so it
+      // cannot be queued twice; told that here, it would throw away photos
+      // nothing is holding.
+      spyOn(console, 'warn');
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(false);
+      isOnlineSignal.set(false);
+      offlineQueue.queueImage.and.rejectWith(new Error('Database not initialized'));
+
+      await expectAsync(
+        service.importFromMultipleImages([makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')])
+      ).toBeRejectedWithError(AI_QUEUE_WRITE_FAILED);
+    });
+
+    it('refuses without queueing for a caller that already holds the scan', async () => {
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(false);
+      isOnlineSignal.set(false);
+
+      await expectAsync(
+        service.importFromMultipleImages([makeFile('a.png', 'image/png')], { queueWhenOffline: false })
+      ).toBeRejectedWithError(AI_CLOUD_UNAVAILABLE);
+
+      expect(offlineQueue.queueImage).not.toHaveBeenCalled();
+    });
+
+    it('refuses without queueing when online with nothing on the device', async () => {
+      strategyService.canUseCloud.and.returnValue(false);
+      strategyService.canUseNative.and.returnValue(false);
+      isOnlineSignal.set(true);
+
+      await expectAsync(service.importFromMultipleImages([makeFile('a.png', 'image/png')]))
+        .toBeRejectedWithError(AI_NO_PROVIDER);
+
+      expect(offlineQueue.queueImage).not.toHaveBeenCalled();
     });
 
     it('should run a single file through the receipt-aware extraction, not importFromImage', async () => {

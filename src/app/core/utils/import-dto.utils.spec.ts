@@ -1,5 +1,6 @@
-import { importAmount, locationSlot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
+import { imageMetadataOf, importAmount, locationSlot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
 import { parseDateInput } from './transaction-date.utils';
+import { ProcessedTransaction } from '../services/ai-types';
 
 describe('toCreateTransactionDTO', () => {
   const date = new Date(2026, 5, 1);
@@ -438,5 +439,53 @@ describe('toCreateTransactionDTO and the location it writes', () => {
     const dto = toCreateTransactionDTO({ amount: 9, date, receiptCountry: 'KR' }, 'USD');
 
     expect('receiptCountry' in dto).toBeFalse();
+  });
+});
+
+describe('imageMetadataOf', () => {
+  function read(overrides: Partial<ProcessedTransaction> = {}): ProcessedTransaction {
+    return {
+      date: new Date(2026, 5, 1),
+      description: 'Konbini',
+      amount: 880,
+      type: 'expense',
+      currency: 'JPY',
+      confidence: 0.9,
+      source: 'cloud',
+      ...overrides,
+    };
+  }
+
+  it('builds a row\'s image metadata only when the reader placed it', () => {
+    // A CSV row and a reader with no per-photo mapping both arrive here with
+    // neither field, and a block stamped image_0 for them would tell the
+    // review card and the attachment planner a photo they never saw.
+    expect(imageMetadataOf(read())).toBeUndefined();
+
+    expect(imageMetadataOf(read({ imageIndex: 2 }))).toEqual({
+      imageIndex: 2,
+      imageId: 'image_2',
+      positionInImage: 'middle',
+      confidenceScore: 0.9,
+    });
+
+    // The receipt badge keys on receiptId, which only the cloud path reports;
+    // an index it left unset still means the first photo.
+    expect(imageMetadataOf(read({ receiptId: 3 }))).toEqual({
+      imageIndex: 0,
+      imageId: 'image_0',
+      positionInImage: 'middle',
+      confidenceScore: 0.9,
+      receiptId: 3,
+    });
+
+    expect(imageMetadataOf(read({ imageIndex: 0, mergedFromImages: [0, 1], receiptId: 1 }))).toEqual({
+      imageIndex: 0,
+      imageId: 'image_0',
+      positionInImage: 'middle',
+      confidenceScore: 0.9,
+      mergedFromImages: [0, 1],
+      receiptId: 1,
+    });
   });
 });

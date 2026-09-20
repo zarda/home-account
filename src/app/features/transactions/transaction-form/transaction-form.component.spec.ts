@@ -1537,7 +1537,12 @@ describe('TransactionFormComponent', () => {
 
         await scan(component);
 
-        expect(aiImport.importFromMultipleImages).toHaveBeenCalledWith([component.pendingReceipts()[0].file]);
+        // Never queued: this form already holds the rows the scan patched in,
+        // so a stored copy would reach the ledger again from the drain.
+        expect(aiImport.importFromMultipleImages).toHaveBeenCalledWith(
+          [component.pendingReceipts()[0].file],
+          { queueWhenOffline: false }
+        );
         expect(dialogRef.close).toHaveBeenCalledWith(false);
         // Named as the form's own door, not the camera's — this extraction
         // began at the form, from an image the user chose there (#151).

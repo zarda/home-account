@@ -27,6 +27,7 @@ import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import { prefillFromGroup } from '../utils/recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
+import { integerField, patchFieldsAsOwner } from './testing/emulator-admin';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -57,6 +58,9 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   let service: RecurringService;
 
   const RULE_ID = 'smoke-rent-31st';
+  /** The rule the bad-state cases seed whole and then break. */
+  const BAD_ID = 'smoke-bad-state';
+  const IDS = [RULE_ID, BAD_ID];
 
   beforeAll(async () => {
     app = initializeApp(
@@ -132,11 +136,13 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   });
 
   afterEach(async () => {
-    await deleteDoc(doc(firestore, `users/${uid}/recurring/${RULE_ID}`)).catch(() => undefined);
+    for (const id of IDS) {
+      await deleteDoc(doc(firestore, `users/${uid}/recurring/${id}`)).catch(() => undefined);
+    }
     const posted = await getDocs(collection(firestore, `users/${uid}/transactions`));
     await Promise.all(
       posted.docs
-        .filter(d => d.id.startsWith(`rec-${RULE_ID}-`))
+        .filter(d => IDS.some(id => d.id.startsWith(`rec-${id}-`)))
         .map(d => deleteDoc(d.ref).catch(() => undefined))
     );
   });
@@ -350,4 +356,94 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
       await deleteDoc(doc(firestore, `users/${uid}/recurring/${id}`)).catch(() => undefined);
     }
   }, 30000);
+
+  /**
+   * A rule can reach the engine in a state no client write could produce: a
+   * restore, an older build, a hand edit. Both cases below write the rule
+   * whole through the SDK and only then break it through the owner REST
+   * route — firestore.rules refuses the broken shape, and the fields they
+   * break are the two the engine reads on every pass.
+   *
+   * The pointer is broken to an integer rather than removed: every
+   * enumeration orders by `nextOccurrence`, and a document without it is
+   * never returned at all, so the shape a reader can actually meet is a
+   * value of the wrong type.
+   */
+  describe('a rule stored in a bad state', () => {
+    /** Far enough in the past that it was stamped by nothing in this run. */
+    const SEEDED_AT = new Date(2026, 0, 2, 3, 4, 5);
+
+    const badPath = (): string => `users/${uid}/recurring/${BAD_ID}`;
+
+    /** Three months back on a day every month has, so the cadence is exact. */
+    const badStart = (): Date => {
+      const start = new Date();
+      start.setHours(9, 0, 0, 0);
+      start.setDate(15);
+      start.setMonth(start.getMonth() - 3);
+      return start;
+    };
+
+    const seedBadRule = (start: Date): Promise<void> =>
+      setDoc(doc(firestore, badPath()), {
+        userId: uid,
+        name: 'Bad state',
+        type: 'expense',
+        amount: 7,
+        currency: 'USD',
+        categoryId: 'food_coffee',
+        description: 'Bad state',
+        frequency: { type: 'monthly', interval: 1 },
+        startDate: Timestamp.fromDate(start),
+        nextOccurrence: Timestamp.fromDate(start),
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.fromDate(SEEDED_AT)
+      });
+
+    const badRuleOccurrences = async (): Promise<string[]> => {
+      const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      return snapshot.docs.map(d => d.id).filter(id => id.startsWith(`rec-${BAD_ID}-`));
+    };
+
+    it('a rule whose start date is gone is skipped by name and the next rule posts', async () => {
+      const warn = spyOn(console, 'warn');
+      await seedBadRule(badStart());
+      await patchFieldsAsOwner(badPath(), { startDate: null });
+
+      await expectAsync(service.catchUpRecurringTransactions()).toBeResolved();
+
+      // The healthy rule from beforeEach posted its whole backlog regardless.
+      expect((await postedDayKeys()).length).toBeGreaterThan(0);
+
+      const stored = (await getDoc(doc(firestore, badPath()))).data()!;
+      expect('startDate' in stored).toBeFalse();
+      // The anchor is never invented (ADR 0014): the document is untouched,
+      // which the seeded updatedAt still standing is the proof of.
+      expect((stored['updatedAt'] as Timestamp).toDate()).toEqual(SEEDED_AT);
+      expect(await badRuleOccurrences()).toEqual([]);
+
+      // Skipped by name: without this the rule is silently inert forever.
+      expect(warn.calls.allArgs().some(args => args.includes(BAD_ID))).toBeTrue();
+    }, 60000);
+
+    it('a rule whose pointer is malformed is repaired on the next catch-up and posts nothing', async () => {
+      spyOn(console, 'warn');
+      const start = badStart();
+      await seedBadRule(start);
+      await patchFieldsAsOwner(badPath(), { nextOccurrence: integerField(0) });
+
+      await expectAsync(service.catchUpRecurringTransactions()).toBeResolved();
+
+      const stored = (await getDoc(doc(firestore, badPath()))).data()!;
+      expect(stored['nextOccurrence'] instanceof Timestamp).toBeTrue();
+      const next = (stored['nextOccurrence'] as Timestamp).toDate();
+      expect(next.getTime()).toBeGreaterThan(Date.now());
+      // Recomputed from the rule's own start date, so it lands on the cadence.
+      expect(next.getDate()).toBe(start.getDate());
+
+      // The repaired pointer is in the future, so this run claims nothing.
+      expect(await badRuleOccurrences()).toEqual([]);
+    }, 60000);
+  });
 });

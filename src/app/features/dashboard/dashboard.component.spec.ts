@@ -27,7 +27,14 @@ import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
-import { BudgetAlert, Category, RecurringOccurrence, Transaction, User } from '../../models';
+import {
+  BudgetAlert,
+  Category,
+  RecurringOccurrence,
+  Transaction,
+  UpcomingSchedule,
+  User,
+} from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
 import {
   PeriodSelection,
@@ -60,6 +67,7 @@ class UpcomingBillsStubComponent {
   categories = input<Map<string, Category>>(new Map());
   baseCurrency = input<string>('USD');
   net = input<number>(0);
+  olderCount = input<number>(0);
 }
 
 // Same for the weekly recap card. The real one injects WeeklyRecapService,
@@ -91,7 +99,7 @@ describe('DashboardComponent', () => {
   let categoryService: { categories: ReturnType<typeof signal<unknown[]>>; loadCategories: jasmine.Spy };
   let recurringService: {
     catchUpRecurringTransactions: jasmine.Spy;
-    getNextOccurrences: jasmine.Spy;
+    getUpcomingSchedule: jasmine.Spy;
   };
   let insightSnapshotService: { generateClosedMonths: jasmine.Spy };
   let authService: { currentUser: ReturnType<typeof signal<User | null>> };
@@ -136,7 +144,9 @@ describe('DashboardComponent', () => {
       catchUpRecurringTransactions: jasmine
         .createSpy('catchUpRecurringTransactions')
         .and.returnValue(Promise.resolve([])),
-      getNextOccurrences: jasmine.createSpy('getNextOccurrences').and.returnValue(of([])),
+      getUpcomingSchedule: jasmine
+        .createSpy('getUpcomingSchedule')
+        .and.returnValue(of({ occurrences: [], olderCount: 0 })),
     };
     // Root-provided, so without this the real service is constructed and its
     // Firestore injection fails.
@@ -686,13 +696,13 @@ describe('DashboardComponent', () => {
       fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
       fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
 
-      expect(recurringService.getNextOccurrences).toHaveBeenCalledTimes(1);
-      expect(recurringService.getNextOccurrences).toHaveBeenCalledWith(14);
+      expect(recurringService.getUpcomingSchedule).toHaveBeenCalledTimes(1);
+      expect(recurringService.getUpcomingSchedule).toHaveBeenCalledWith(14);
     });
 
     it('stops listening to occurrence emissions once the component is destroyed', () => {
-      const occurrences$ = new Subject<RecurringOccurrence[]>();
-      recurringService.getNextOccurrences.and.returnValue(occurrences$);
+      const occurrences$ = new Subject<UpcomingSchedule>();
+      recurringService.getUpcomingSchedule.and.returnValue(occurrences$);
       const fixture = build();
       fixture.detectChanges();
       expect(occurrences$.observed).toBeTrue();
@@ -703,7 +713,7 @@ describe('DashboardComponent', () => {
 
     it('publishes the occurrences the card renders', () => {
       const rent = occurrence();
-      recurringService.getNextOccurrences.and.returnValue(of([rent]));
+      recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: [rent], olderCount: 0 }));
       const fixture = build();
       fixture.detectChanges();
 
@@ -716,10 +726,13 @@ describe('DashboardComponent', () => {
     it('converts each occurrence to base currency and signs income positive', () => {
       currencyService.convert.and.callFake(
         (amount: number, from: string) => (from === 'JPY' ? amount / 100 : amount));
-      recurringService.getNextOccurrences.and.returnValue(of([
-        occurrence({ recurringId: 'r1', type: 'expense', amount: 1200, currency: 'USD' }),
-        occurrence({ recurringId: 'r2', type: 'income', amount: 380000, currency: 'JPY' }),
-      ]));
+      recurringService.getUpcomingSchedule.and.returnValue(of({
+        occurrences: [
+          occurrence({ recurringId: 'r1', type: 'expense', amount: 1200, currency: 'USD' }),
+          occurrence({ recurringId: 'r2', type: 'income', amount: 380000, currency: 'JPY' }),
+        ],
+        olderCount: 0,
+      }));
 
       const fixture = build();
       fixture.detectChanges();
@@ -729,15 +742,34 @@ describe('DashboardComponent', () => {
     });
 
     it('rounds the net at the fold boundary', () => {
-      recurringService.getNextOccurrences.and.returnValue(of([
-        occurrence({ recurringId: 'r1', type: 'expense', amount: 0.1 }),
-        occurrence({ recurringId: 'r2', type: 'expense', amount: 0.2 }),
-      ]));
+      recurringService.getUpcomingSchedule.and.returnValue(of({
+        occurrences: [
+          occurrence({ recurringId: 'r1', type: 'expense', amount: 0.1 }),
+          occurrence({ recurringId: 'r2', type: 'expense', amount: 0.2 }),
+        ],
+        olderCount: 0,
+      }));
 
       const fixture = build();
       fixture.detectChanges();
 
       expect(fixture.componentInstance.upcomingNet()).toBe(-0.3);
+    });
+
+    // The occurrences behind the floor are a count, not rows: the card names
+    // them, and folding them into the net would make the figure disagree with
+    // the days listed above it.
+    it('folds only the shown occurrences into the net', () => {
+      recurringService.getUpcomingSchedule.and.returnValue(of({
+        occurrences: [occurrence({ recurringId: 'r1', type: 'expense', amount: 1200 })],
+        olderCount: 5,
+      }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.upcomingNet()).toBe(-1200);
+      expect(fixture.componentInstance.upcomingSchedule().olderCount).toBe(5);
     });
   });
 
@@ -876,7 +908,7 @@ describe('DashboardComponent', () => {
         date: new Date(2026, 8, 1),
       };
       const upcoming = [rent];
-      recurringService.getNextOccurrences.and.returnValue(of(upcoming));
+      recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: upcoming, olderCount: 0 }));
 
       const fixture = build();
       fixture.detectChanges();
@@ -922,8 +954,8 @@ describe('DashboardComponent', () => {
     it('does not republish when tracked signals change while parked on another period', () => {
       const window$ = new Subject<Transaction[]>();
       transactionService.getByDateRange.and.returnValue(window$);
-      const occurrences$ = new Subject<RecurringOccurrence[]>();
-      recurringService.getNextOccurrences.and.returnValue(occurrences$);
+      const occurrences$ = new Subject<UpcomingSchedule>();
+      recurringService.getUpcomingSchedule.and.returnValue(occurrences$);
       const fixture = build();
       fixture.detectChanges();
       window$.next([]);
@@ -950,7 +982,7 @@ describe('DashboardComponent', () => {
         categoryId: 'food',
         date: new Date(2026, 8, 1),
       };
-      occurrences$.next([rent]);
+      occurrences$.next({ occurrences: [rent], olderCount: 0 });
       TestBed.tick();
 
       expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
@@ -1138,7 +1170,7 @@ describe('DashboardComponent', () => {
         categoryId: 'food',
         date: new Date(2026, 8, 1),
       };
-      recurringService.getNextOccurrences.and.returnValue(of([rent]));
+      recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: [rent], olderCount: 0 }));
       authService.currentUser.set(
         createUser({ preferences: { baseCurrency: 'JPY' } as User['preferences'] }));
 
@@ -1154,6 +1186,20 @@ describe('DashboardComponent', () => {
       // other money computed on the page, catch a binding pointed elsewhere.
       expect(stub.baseCurrency()).toBe('JPY');
       expect(stub.net()).toBe(-1200);
+    });
+
+    // Without this binding the service counts what the floor left out and
+    // nobody ever renders it.
+    it('hands the card the older count', () => {
+      recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: [], olderCount: 4 }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      const stub = fixture.debugElement.query(By.directive(UpcomingBillsStubComponent))
+        ?.componentInstance as UpcomingBillsStubComponent;
+      expect(stub).withContext('app-upcoming-bills rendered').toBeTruthy();
+      expect(stub.olderCount()).toBe(4);
     });
 
     it('binds the alerts, the upcoming window, base currency and categories to app-weekly-recap', () => {
@@ -1173,7 +1219,7 @@ describe('DashboardComponent', () => {
         remaining: 0,
         severity: 'exceeded',
       };
-      recurringService.getNextOccurrences.and.returnValue(of([rent]));
+      recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: [rent], olderCount: 0 }));
       budgetService.budgetAlerts.set([alert]);
       authService.currentUser.set(
         createUser({ preferences: { baseCurrency: 'JPY' } as User['preferences'] }));

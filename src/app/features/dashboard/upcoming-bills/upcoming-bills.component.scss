@@ -115,6 +115,17 @@ app-amount-display {
   text-align: end;
 }
 
+// Counts what the window's floor left out. A sentence, so it wraps rather
+// than truncating (docs/ui-overflow.md) — a clipped count reads as a
+// different number.
+.older-note {
+  font-size: var(--text-xs);
+  @apply text-gray-500 dark:text-gray-400;
+  margin: 0;
+  padding: 4px 16px 8px;
+  overflow-wrap: anywhere;
+}
+
 .net-footer {
   display: flex;
   align-items: center;
@@ -137,6 +148,7 @@ app-amount-display {
 
   .day-header,
   .bill-row,
+  .older-note,
   .net-footer {
     padding-inline: 14px;
   }

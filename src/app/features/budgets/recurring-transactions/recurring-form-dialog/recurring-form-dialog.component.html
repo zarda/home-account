@@ -110,6 +110,7 @@
       <mat-form-field appearance="outline">
         <mat-label>{{ 'settings.onDay' | translate }}</mat-label>
         <mat-select [(ngModel)]="dayOfMonth">
+          <mat-option [value]="null">{{ 'settings.onDaySameAsStart' | translate }}</mat-option>
           @for (day of daysOfMonth; track day) {
             <mat-option [value]="day">{{ day }}</mat-option>
           }

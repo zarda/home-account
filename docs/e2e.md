@@ -80,10 +80,16 @@ surfaces it is the served catalog and the Settings line:
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).settings.ratesLabel`
 is defined on this branch and `undefined` on `0139d46`, and
 `document.querySelector('app-rate-status') !== null` with Settings →
-Preferences open, where the line sits under the base-currency select. For
-another branch it is whatever that branch added. A stale `.angular/cache`, or
-a server started before the checkout switched, shows yesterday's app with
-today's confidence.
+Preferences open, where the line sits under the base-currency select. For the
+recurring-repair and offline-recovery surfaces it is the day select in a
+recurring rule's edit dialog, whose first option now reads *Same day as the
+start date*, and the dashboard's own schedule reader, with `dash` bound to
+`ng.getComponent(document.querySelector('app-dashboard'))`:
+`typeof dash.recurringService.getUpcomingSchedule` is `'function'` on this
+branch and `'undefined'` where the dashboard still read
+`getNextOccurrences`. For another branch it is whatever that branch added. A
+stale `.angular/cache`, or a server started before the checkout switched,
+shows yesterday's app with today's confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
 page actually loaded and read the project id out of it:
@@ -250,11 +256,11 @@ only the difference counts.
 
 ## What a run may touch
 
-Five writes are authorised — four on the account, one on the device only.
+Six writes are authorised — five on the account, one on the device only.
 Each is put back before the run ends, and the restore is *confirmed on
-screen*, not assumed. The other six rows write nothing at all and are listed
-with them anyway: four still cost the account a real provider call, one not
-even that, and the last leaves a notification standing in the operating
+screen*, not assumed. The other seven rows write nothing at all and are
+listed with them anyway: four still cost the account a real provider call,
+two not even that, and one leaves a notification standing in the operating
 system rather than anything on the account — what an import journey or a
 raised notification leaves behind is worth stating rather than leaving to be
 inferred.
@@ -272,6 +278,8 @@ inferred.
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
 | Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
 | Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications({ tag: 'e2e-14' }).then(ns => ns.forEach(n => n.close()))` — by tag, so a bill reminder the account's own sweep raised in this profile is left standing |
+| Resuming a rule whose end date has passed (journey 35) | Nothing. The service refuses before any write; the rule's own fields are read back unchanged | Nothing to undo |
+| Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, and one queue record that reaches `completed` | The row deleted through the list, which removes its receipt object with it; the list count read back; the completed queue entry cleared from the AI settings page |
 
 The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
@@ -497,6 +505,11 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 31 | Every route at the account's own font scale | The layouts at 1.3 as the account actually renders them, against the same page at 1.0 | `31-nav-labels-375.png`, `31-amounts-375.png`, `31-model-selects-375.png`, `31-period-picker-375.png` |
 | 32 | The papercuts: targets, floors and a fallback | Tap targets and a table floor measured in a real layout, and Material's own touch target underneath two of them | `32-table-floor-768.png`, `32-sidebar-nav-1280.png`, `32-budget-menu-375.png`, `32-avatar-fallback.png` |
 | 33 | Import review: the duplicate check reads the account | A twin outside anything this session browsed, found by a real import against a real cache | `33-duplicate-banner.png` |
+| 34 | Recurring: the day the dialog offers | A real rule's own day standing in the select under the new first option, and a Cancel proving that opening the dialog rewrites nothing | `34-day-select.png` |
+| 35 | Recurring: a resume the rule refuses | A real rejection reaching the screen as its own sentence instead of an unhandled rejection, over a rule whose stored fields do not move | `35-resume-refused.png` |
+| 36 | A receipt queued offline drains with its photo | A real receipt taken by the queue with no connection and written on the way back, arriving in the list carrying the photo that was queued | `36-queued-offline.png`, `36-drained-row.png` |
+| 37 | Dashboard: the Upcoming card counts what it left out | The card's own line rendered in both plural forms and beside the empty state, in the page the account actually sees | `37-older-note.png` |
+| 38 | A queue closed for an upgrade says so | A tab told to close its queue reporting it on the page rather than only in the console, with the drain control disabled behind it | `38-queue-closed.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1279,8 +1292,10 @@ goes to the network and succeeds.
 Neither mechanism the issue offered reaches them:
 
 - **Request blocking on `open.er-api.com`.** The pane the protocol runs in
-  exposes no request blocking and no offline mode, so a failed fetch cannot be
-  arranged from outside the app.
+  exposes no request blocking and no offline mode, so a fetch cannot be failed
+  on its own from outside the app — taking the machine's interface down fails
+  every request and demotes the app's own online signal with it, which is not
+  the isolated failure this rung needs.
 - **The seeded harness under [`docs/ui-audit/tools/`](ui-audit/tools/).** It
   can stub `fetch` before the service is constructed, but it renders a demo
   account against the emulators, and only after `.vscode/environment.ts` is
@@ -1991,6 +2006,261 @@ categorization call and nothing else — see
 [What a run may touch](#what-a-run-may-touch).
 
 One shot: the review step with the duplicate banner standing.
+
+### 34. Recurring: the day the dialog offers
+
+`/budgets?tab=recurring`, a monthly rule, its card menu → **Edit**.
+
+Read the rules before the dialog opens, from the list's own live signal:
+
+```js
+const el = document.querySelector('app-recurring-transactions');
+const rules = () => ng.getComponent(el).recurringTransactions();
+rules().map(r => [r.name, r.frequency.dayOfMonth ?? null,
+  r.nextOccurrence.toMillis(), r.isActive, r.updatedAt.toMillis()]);
+```
+
+Open the **On day** select and read what it offers:
+
+```js
+const options = [...document.querySelectorAll('mat-option')];
+const chosen = options.find(o => o.getAttribute('aria-selected') === 'true');
+[options.length, options[0].textContent.trim(), chosen?.textContent.trim()];
+```
+
+**Pass — the option list.** Thirty-two entries: *Same day as the start date*
+first, then 1 to 31. The selected entry is the day this rule names, so the
+select opens on the rule's own value rather than on a default. The new first
+option is the point of the journey: a rule that names no day has something to
+sit on, where the field used to arrive pre-filled with 1 and any unrelated
+edit saved that — moving a schedule the user never touched onto the 1st.
+
+Leave by **Cancel**.
+
+**Pass — nothing moved.** Read the first block again: the day, the pointer,
+the active state and `updatedAt` are the figures read before the dialog
+opened. A dialog left by Cancel writes nothing, and what changed here is what
+the field offers, not what the document holds.
+
+One shot: the open select, with its first option above the rule's own day.
+
+### 35. Recurring: a resume the rule refuses
+
+`/budgets?tab=recurring`, against a paused rule whose end date has passed —
+the account's own one is monthly and ends 2026-03-18, months before today, so
+it can never post again. Its card wears the *Paused* chip and shows no
+next-occurrence line: the template prints that line for an active rule only.
+
+Read it first, the end date with it:
+
+```js
+const el = document.querySelector('app-recurring-transactions');
+const rule = () => ng.getComponent(el).recurringTransactions()[0];
+const shape = r => [r.isActive, r.nextOccurrence.toMillis(),
+  r.endDate?.toMillis() ?? null, r.updatedAt.toMillis()];
+shape(rule());
+```
+
+The card menu → **Resume**.
+
+**Pass — the refusal is on screen.** A snackbar reads *Cannot resume: this
+rule's end date has passed. Edit the end date first.* — the ended rule's own
+copy, not the generic *Failed to resume recurring transaction* that an
+unreadable schedule still falls back to. Nothing new at `error` level in the
+console either: the toggle had no catch at all before this branch, so a
+rejected resume was an unhandled rejection and the screen said nothing.
+
+**Pass — the journey writes nothing.** `shape(rule())` reads back identical
+to the millisecond: still inactive, the same pointer, the same `updatedAt`.
+That is the whole journey, and it is why it is listed among the runs that
+touch nothing. The same press used to report success and leave an Active rule
+whose next occurrence lay beyond its own end date — a date nothing would ever
+post, on a rule the list showed as live.
+
+One shot: the snackbar over the list, with the card's Paused chip behind it.
+
+### 36. A receipt queued offline drains with its photo
+
+The one write in this set, and the only journey here that lets a scanned
+receipt reach the ledger — see [What a run may touch](#what-a-run-may-touch).
+It needs a receipt file and starts at `/import`, with `/transactions`' own
+row count read beforehand.
+
+**Offline — to the device, not only to the page.** Take the machine's own
+connection down (wifi off, or the cable out) rather than dispatching an
+`offline` event at the page. The app does not trust a flag: it re-checks
+reachability, `refreshOnlineStatus()` runs whenever the tab becomes visible
+again, and the probe is a HEAD on the app's own origin, which answers happily
+on a locally served page whatever the network is doing. A dispatched event
+therefore holds only until something looks again — the first switch back to
+the pane puts the app online underneath the run. With the interface actually
+down the probe can only demote: `navigator.onLine` is false, there is nothing
+to verify, and the signal stays where it is for the whole journey.
+
+Read it before handing anything over:
+
+```js
+const wizard = ng.getComponent(document.querySelector('app-import-wizard'));
+[navigator.onLine, wizard.importService.pwaService.isOnline(),
+  wizard.importService.offlineQueue.pendingCount()];
+```
+
+`false`, `false`, and the queue's count as the journey starts.
+
+Hand the receipt to the dropzone's hidden input ([Fixtures](#fixtures)), with
+the image kind left on **Receipt**. The wizard asks which kind it has, and
+only the receipt kind is kept: a statement page is refused with *Cloud AI
+could not be reached…* instead, because the drain reads every stored image as
+a receipt and would land the page in the ledger as one lumped row.
+
+**Pass — the wizard keeps the capture.** With no connection there is no
+provider to read the photo, so the receipt door stores it instead of scanning.
+The processing step ends on a card carrying the offline cloud icon and the
+count of what was kept — *1 image queued for processing when online*, the
+camera dialog's own message — with **Done** and **Back** under it and no retry
+to press: a retry would only store the same photo again. The capture also leaves
+the picker, so neither Back nor a second **Process** can queue it twice:
+
+```js
+[wizard.queuedOfflineCount(), wizard.selectedFiles().length,
+  wizard.importService.offlineQueue.pendingCount()];
+```
+
+`1`, `0`, and one more than the figure read above. Before this branch the
+wizard's image doors had no offline branch at all: the same drop walked
+straight into a request that could not be sent, and the photo went into the
+bin with the paper.
+
+**Online.** Bring the connection back up. The browser fires its own `online`
+event, which the queue listens for and drains on when it has pending items;
+where it has not started by the time the page settles, **Sync Now** on `/ai`
+runs the same drain by hand.
+
+**Pass — the row arrives with its photo.** One notice: *1 transaction
+imported* — the partial copy, *1 transaction imported, 1 skipped*, is what a
+refused row or a dropped photo would read instead. On `/transactions` at
+desktop width, where the receipt icon lives in the table the list swaps to at
+`min-width: 768px`, the new row carries `.receipt-icon-button`, and opening it
+shows the photograph that was queued. The drain used to write the row bare:
+the ledger refused receipt files together with a caller-chosen id, and every
+row a drain writes is written at an id of its own.
+
+**Pass — the queue's own record.** On `/ai` the drained entry reads
+`completed`, which is what is new here; the card counts only what is pending
+or failed, so its own figure is the restore's evidence rather than this step's.
+
+**The restore.** Delete the row through the list, which takes the stored
+receipt object with it, then clear the completed entry from the AI settings
+page. That page's **Clear Queue** control is disabled while nothing is
+pending, so the completed record goes through the queue's own seam from the
+page's console:
+
+```js
+await ng.getComponent(document.querySelector('app-ai-settings-page'))
+  .offlineQueue.clearCompleted();
+```
+
+**Pass — the restore.** The Transactions list shows the count it did before
+the journey, the Offline Queue card reads the pending figure it started at —
+the completed record is the one thing that card never counted, which is why
+it is cleared by name — and no new `error`-level console entry across the
+whole journey.
+
+Two shots: the wizard's queued notice with the app offline, and the drained
+row in the list carrying its receipt icon.
+
+### 37. Dashboard: the Upcoming card counts what it left out
+
+`/dashboard`. The card is fed by a walk that starts at a floor — the start of
+the day the window reaches back to — and counts everything older than that
+instead of listing it.
+
+**Pass — the account's own schedule.** Nothing older is being held back, so
+there is no line: `document.querySelector('app-upcoming-bills .older-note')`
+is `null`.
+
+The count is an input on the card and a field on the dashboard's schedule, so
+it is driven from the page:
+
+```js
+const dash = ng.getComponent(document.querySelector('app-dashboard'));
+const kept = dash.upcomingSchedule();
+dash.upcomingSchedule.set({ ...kept, olderCount: 3 });
+ng.applyChanges(dash);
+document.querySelector('app-upcoming-bills .older-note').textContent.trim();
+```
+
+**Pass — both plural forms.** *3 older occurrences are overdue and not
+shown*, and with `olderCount: 1`, *1 older occurrence is overdue and not
+shown*.
+
+Then the case the line exists for — an empty window over a rule that stalled
+years ago:
+
+```js
+dash.upcomingSchedule.set({ occurrences: [], olderCount: 3 });
+ng.applyChanges(dash);
+[document.querySelector('app-upcoming-bills app-empty-state') !== null,
+  document.querySelector('app-upcoming-bills .older-note').textContent.trim()];
+```
+
+**Pass — the line beside the empty state.** *Nothing scheduled* with its
+hint, and the older line underneath it. An empty card on its own says there
+is nothing to pay; the line is what turns that into *there is, and it is
+behind you*.
+
+**The restore.** Reload. The override lives in the page's signal only, the
+schedule listener answers again with the account's own walk, and the card
+reads what it did at the start.
+
+One shot: the older line under the card's rows.
+
+### 38. A queue closed for an upgrade says so
+
+`/ai`, the **Offline Queue** card.
+
+A second tab opening a newer database version is what closes this tab's
+handle, and no run arranges that from inside one page. What it leaves behind
+is one signal, and the page reads it:
+
+```js
+const page = ng.getComponent(document.querySelector('app-ai-settings-page'));
+page.offlineQueue._closedForUpgrade.set(true);
+ng.applyChanges(page);
+[document.querySelector('.queue-note')?.textContent.trim(),
+  [...document.querySelectorAll('mat-card-actions button')]
+    .map(b => [b.textContent.trim(), b.disabled])];
+```
+
+**Pass — the note.** The card carries *The queue was closed so another tab
+could update it. Reload this page to see it again.* under its pending figure,
+and **Sync Now** is disabled: nothing this tab does can reopen the handle, so
+offering the drain would be offering a no-op. Before this branch the close was
+a `console.warn` and nothing else — every read and write after it, the status
+writes that record a drain's outcome included, did nothing in silence.
+
+**Read the disabled control where it means something.** An empty queue and a
+missing connection disable that same button, so on an idle queue its state
+proves nothing. Drive it with something pending and the connection up: with
+journey 36's receipt queued, bring the signal back with
+`await page.pwaService.refreshOnlineStatus()` rather than the `online` event —
+the probe sets the signal, the event is what the queue's own drain listens
+for — and **Sync Now** is enabled until the flag above is set. Otherwise read
+the three terms the binding is made of and watch which one moved:
+`[page.pendingQueueCount(), page.isOnline(), page.queueClosed()]`.
+
+Clear it again:
+
+```js
+page.offlineQueue._closedForUpgrade.set(false);
+ng.applyChanges(page);
+```
+
+**Pass — it reverts.** The note is gone and **Sync Now** is governed by the
+pending count and the connection alone again.
+
+One shot: the note beside the queue's figures, with the disabled control
+under it.
 
 ## Evidence
 

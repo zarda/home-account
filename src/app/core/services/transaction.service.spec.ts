@@ -622,10 +622,11 @@ describe('TransactionService', () => {
       expect((written['createdAt'] as Timestamp).toMillis()).toBeGreaterThanOrEqual(before);
     });
 
-    it('refuses a caller-chosen id alongside receipt files', async () => {
+    it('writes receipts under the caller-chosen id', async () => {
+      spyOn(mockFirestore, 'generateId').and.callThrough();
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
 
-      await expectAsync(service.addTransaction(
+      await service.addTransaction(
         {
           type: 'expense',
           amount: 100,
@@ -636,15 +637,61 @@ describe('TransactionService', () => {
           receiptFiles: [receiptFile]
         },
         { id: 'img_1-0' }
-      )).toBeRejected();
+      );
 
-      // The receipts branch pre-generates its own id to key the storage
-      // objects with, so it cannot honour the caller's. Silently preferring
-      // one over the other is what let a replayed receipt duplicate itself;
-      // refuse the combination outright, before anything is uploaded.
+      // The caller's id is as good a storage-slot key as a generated one —
+      // the object path is the id either way — so a replayed queue row
+      // re-uploads into the same slot instead of a fresh, orphaned one.
+      expect(mockStorage.uploadReceiptSpy.mostRecent()?.args[1]).toBe('img_1-0');
+      expect(mockFirestore.setDocumentSpy.mostRecent()?.args[0]).toMatch(/\/img_1-0$/);
+      const written = mockFirestore.setDocumentSpy.mostRecent()
+        ?.args[1] as Record<string, unknown>;
+      expect((written['receiptUrls'] as string[]).length).toBe(1);
+      expect(mockFirestore.generateId).not.toHaveBeenCalled();
+    });
+
+    it('refuses a merge write with receipt files', async () => {
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+      await expectAsync(service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Receipt at a chosen id, merged',
+          date: new Date(),
+          receiptFiles: [receiptFile]
+        },
+        { id: 'img_1-0', merge: true }
+      )).toBeRejectedWithError('A merge write cannot be combined with receipt files');
+
+      // A merge is a restore's write and carries URLs, never files; honouring
+      // it here would re-point receiptUrls at slot 0 over stale keys.
       expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
       expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
-      expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('a replay uploads into the same slot', async () => {
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+      const dto: CreateTransactionDTO = {
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Replayed queue row',
+        date: new Date(),
+        receiptFiles: [receiptFile]
+      };
+
+      await service.addTransaction(dto, { id: 'img_1-0' });
+      await service.addTransaction(dto, { id: 'img_1-0' });
+
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(2);
+      expect(mockStorage.uploadReceiptSpy.calls[0].args[1]).toBe('img_1-0');
+      expect(mockStorage.uploadReceiptSpy.calls[1].args[1]).toBe('img_1-0');
+      expect(mockStorage.uploadReceiptSpy.calls[0].args[3]).toBe(0);
+      expect(mockStorage.uploadReceiptSpy.calls[1].args[3]).toBe(0);
     });
 
     it('recalculates affected budgets after posting an expense', async () => {

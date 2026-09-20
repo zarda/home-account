@@ -3,6 +3,8 @@ import {
   AI_CLOUD_UNAVAILABLE,
   AI_NO_PROVIDER,
   AI_QUEUED_OFFLINE,
+  AI_QUEUE_WRITE_FAILED,
+  AI_QUEUE_WRITE_PARTIAL,
   ReceiptProcessingError,
   parseAIError,
 } from './ai-error.utils';
@@ -60,6 +62,20 @@ describe('parseAIError', () => {
     const parsed = parseAIError(new Error(AI_QUEUED_OFFLINE));
     expect(parsed.type).toBe('network');
     expect(parsed.messageKey).toBe('import.errorQueuedOffline');
+  });
+
+  it('offers no retry for a capture the queue would not store', () => {
+    const parsed = parseAIError(new Error(AI_QUEUE_WRITE_FAILED));
+    expect(parsed.retryable).toBeFalse();
+    expect(parsed.messageKey).toBe('import.errorQueueWrite');
+  });
+
+  it('says so in its own words when only part of a capture was stored', () => {
+    // A retry would store whatever of the batch did land a second time, so
+    // this class must not reach the wording that asks for one.
+    const parsed = parseAIError(new Error(AI_QUEUE_WRITE_PARTIAL));
+    expect(parsed.retryable).toBeFalse();
+    expect(parsed.messageKey).toBe('import.errorQueueWritePartial');
   });
 
   it('leaves a provider its own wording, which cannot be translated', () => {

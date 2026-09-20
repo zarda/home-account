@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flush } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
@@ -243,6 +243,172 @@ describe('RecurringFormDialogComponent', () => {
       const prefilled = await createWithPrefill();
 
       expect(prefilled.isEdit).toBeFalse();
+    });
+  });
+
+  // `?? 1` read an unset day as the 1st, so an unrelated edit to a rule that
+  // never named a day rewrote its schedule. The null option carries that
+  // "unset" state all the way to the stored frequency map.
+  describe('day of month defaults', () => {
+    async function createEditComponent(
+      recurring: RecurringTransaction
+    ): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const editFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      editFixture.detectChanges();
+      return editFixture.componentInstance;
+    }
+
+    it('prefills no day for a rule that names none', async () => {
+      const noDayRule = {
+        id: 'rec1',
+        name: 'Test',
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'cat1',
+        description: '',
+        frequency: { type: 'monthly', interval: 1 },
+        startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+        isActive: true
+      } as RecurringTransaction;
+
+      const editComponent = await createEditComponent(noDayRule);
+
+      expect(editComponent.dayOfMonth).toBeNull();
+    });
+
+    it('omits dayOfMonth from the saved frequency for the same-day option', () => {
+      component.name = 'Test';
+      component.amount = 100;
+      component.categoryId = 'cat1';
+      component.dayOfMonth = null;
+
+      component.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as { frequency: Record<string, unknown> };
+      expect('dayOfMonth' in result.frequency).toBeFalse();
+    });
+
+    it('switching to monthly leaves the day unset', () => {
+      component.dayOfMonth = null;
+      component.frequencyType = 'monthly';
+
+      component.onFrequencyTypeChange();
+
+      expect(component.dayOfMonth).toBeNull();
+    });
+
+    it("previews the start date's day when none is chosen", () => {
+      component.frequencyType = 'monthly';
+      component.interval = 1;
+      component.dayOfMonth = null;
+      component.startDate = new Date(2026, 6, 15);
+
+      expect(component.frequencyPreview).toBe('Every month on the 15th');
+    });
+
+    it("a new rule defaults to the start date's day", () => {
+      expect(component.dayOfMonth).toBeNull();
+    });
+  });
+
+  // A stored date need not honour its declared type, and the readers refuse
+  // such a rule and name this form as the place it gets put right — so this
+  // is the one surface that has to open it rather than throw on it.
+  describe('a rule whose stored dates cannot be read', () => {
+    /** What a Timestamp field holds after a restore or a hand edit. */
+    const notATimestamp = { seconds: 1, nanoseconds: 0 } as unknown as Timestamp;
+
+    function ruleWith(dates: Partial<RecurringTransaction>): RecurringTransaction {
+      return {
+        id: 'rec1',
+        name: 'Test',
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'cat1',
+        description: '',
+        frequency: { type: 'monthly', interval: 1 },
+        startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+        isActive: true,
+        ...dates
+      } as RecurringTransaction;
+    }
+
+    async function createEditComponent(
+      recurring: RecurringTransaction
+    ): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const editFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      editFixture.detectChanges();
+      return editFixture.componentInstance;
+    }
+
+    it('opens a rule whose start date cannot be read, on today', async () => {
+      // Frozen, because the component reads the clock and so does the
+      // assertion: a run that straddles local midnight between the two would
+      // fail on the date rolling over rather than on the behaviour.
+      const today = new Date(2026, 8, 19);
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(today);
+        const editComponent = await createEditComponent(
+          ruleWith({ startDate: notATimestamp })
+        );
+
+        expect(editComponent.startDate.toDateString()).toBe(today.toDateString());
+        // The rest of the rule still arrives, so the user is editing their own
+        // rule rather than a blank form.
+        expect(editComponent.name).toBe('Test');
+        expect(editComponent.amount).toBe(100);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('reads an unreadable end date as no end date', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ endDate: notATimestamp })
+      );
+
+      expect(editComponent.startDate).toEqual(new Date(2024, 0, 1));
+      expect(editComponent.hasEndDate).toBeFalse();
+      expect(editComponent.endDate).toBeNull();
     });
   });
 
@@ -624,4 +790,87 @@ describe('RecurringFormDialogComponent', () => {
       expect(mockDialogRef.close).toHaveBeenCalledWith();
     });
   });
+});
+
+/**
+ * Every case above overrides the template to `<div></div>`, so none of them
+ * would notice a missing `[value]` binding or a wrong option order. This is
+ * the one place the real template renders and the day-of-month dropdown is
+ * actually opened, the same way a user would meet the option.
+ */
+describe('RecurringFormDialogComponent, the day-of-month select through its own template', () => {
+  let fixture: ComponentFixture<RecurringFormDialogComponent>;
+  let component: RecurringFormDialogComponent;
+  let mockDialogRef: jasmine.SpyObj<MatDialogRef<RecurringFormDialogComponent>>;
+
+  const editedRule = {
+    id: 'rec1',
+    name: 'Test',
+    type: 'expense',
+    amount: 100,
+    currency: 'USD',
+    categoryId: 'cat1',
+    description: '',
+    frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 },
+    startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+    isActive: true
+  } as RecurringTransaction;
+
+  beforeEach(async () => {
+    mockDialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+
+    await TestBed.configureTestingModule({
+      imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+      providers: [
+        { provide: MatDialogRef, useValue: mockDialogRef },
+        { provide: MAT_DIALOG_DATA, useValue: { recurring: editedRule } },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal({
+              preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+            })
+          }
+        },
+        { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+        { provide: CurrencyService, useValue: { currencies: signal([]) } },
+        {
+          // Echoes the key, so the null option's text is its own catalog key —
+          // the same way the preview table's own real-template describe reads
+          // labels without depending on English wording.
+          provide: TranslationService,
+          useValue: { t: (key: string) => key }
+        }
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RecurringFormDialogComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it("offers the start date's day first", fakeAsync(() => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    const dayField = Array.from(compiled.querySelectorAll('mat-form-field'))
+      .find(field => field.querySelector('mat-label')?.textContent?.trim() === 'settings.onDay');
+    expect(dayField).withContext('day of month field').toBeTruthy();
+
+    // MatSelect opens on a click of its inner trigger, the same way the
+    // filter panel's currency select is driven.
+    const trigger = dayField!.querySelector<HTMLElement>('.mat-mdc-select-trigger');
+    trigger!.click();
+    fixture.detectChanges();
+    flush();
+
+    // Options render into the overlay container, outside the fixture.
+    const options = Array.from(document.querySelectorAll<HTMLElement>('mat-option'));
+    expect(options[0].textContent?.trim()).toBe('settings.onDaySameAsStart');
+
+    options[0].click();
+    fixture.detectChanges();
+    flush();
+
+    expect(component.dayOfMonth).toBeNull();
+  }));
 });

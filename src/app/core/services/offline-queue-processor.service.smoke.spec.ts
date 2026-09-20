@@ -6,6 +6,14 @@ import { TestBed } from '@angular/core/testing';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import { getFirestore, connectFirestoreEmulator, Firestore, Timestamp } from '@angular/fire/firestore';
+import {
+  getStorage,
+  connectStorageEmulator,
+  getMetadata,
+  listAll,
+  ref,
+  Storage,
+} from '@angular/fire/storage';
 
 import { OfflineQueueService } from './offline-queue.service';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
@@ -14,6 +22,7 @@ import { TransactionService } from './transaction.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
+import { ReceiptQuotaService } from './receipt-quota.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { PwaService } from './pwa.service';
 import { NotificationService } from './notification.service';
@@ -47,11 +56,14 @@ silenceFirebaseWarnings();
 describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   const FIRESTORE_HOST = '127.0.0.1';
   const FIRESTORE_PORT = 8080;
+  const STORAGE_HOST = '127.0.0.1';
+  const STORAGE_PORT = 9199;
   const AUTH_URL = 'http://127.0.0.1:9099';
 
   let app: FirebaseApp;
   let auth: Auth;
   let firestore: ReturnType<typeof getFirestore>;
+  let storage: ReturnType<typeof getStorage>;
   let uid: string;
   let signedInAs: string | null;
 
@@ -62,6 +74,11 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
   function receiptFile(name = 'receipt.jpg'): File {
     return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/jpeg' });
+  }
+
+  /** Payload whose third byte identifies it, so an uploaded object can be traced back. */
+  function markedFile(marker: number, name = 'receipt.jpg'): File {
+    return new File([new Uint8Array([0xff, 0xd8, marker, 0xd9])], name, { type: 'image/jpeg' });
   }
 
   /** One income row, so the write path skips budget recalculation. */
@@ -96,6 +113,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
       {
         apiKey: 'fake-api-key',
         projectId: 'demo-home-account',
+        storageBucket: 'demo-home-account.appspot.com',
       },
       `offline-queue-smoke-${Date.now()}`,
     );
@@ -105,6 +123,9 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
     firestore = getFirestore(app);
     connectFirestoreEmulator(firestore, FIRESTORE_HOST, FIRESTORE_PORT);
+
+    storage = getStorage(app);
+    connectStorageEmulator(storage, STORAGE_HOST, STORAGE_PORT);
 
     const credential = await signInAnonymously(auth);
     uid = credential.user.uid;
@@ -144,7 +165,22 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
           provide: CurrencyService,
           useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
         },
-        { provide: StorageService, useValue: jasmine.createSpyObj('StorageService', ['uploadReceipt', 'deleteReceipt']) },
+        // The photo travels through the real upload: what these cases prove is
+        // that a drained receipt's bytes land at the slot its document points
+        // at, which a stubbed StorageService cannot say anything about.
+        StorageService,
+        { provide: Storage, useValue: storage },
+        // Quota decisions are unit-tested, and the real service injects
+        // RemoteConfigService, which this run has no transport for.
+        {
+          provide: ReceiptQuotaService,
+          useValue: {
+            canAddImages: async () => true,
+            noteImagesAdded: () => undefined,
+            noteImagesRemoved: () => undefined,
+            invalidateCount: () => undefined,
+          },
+        },
         // The one stub: reading a photo reaches a cloud or native provider with
         // no local emulator. Everything downstream of it is real.
         { provide: AIStrategyService, useValue: ai },
@@ -422,4 +458,113 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     expect(row?.amount).toBe(179);
     expect(row?.currency).toBe('JPY');
   }, 20000);
+
+  // #431 P1, against real Storage. A receipt queued offline is queued
+  // precisely because its photograph was the point of the capture, and this
+  // was the one import door that dropped it.
+  it('a drained receipt lands with its photo attached', async () => {
+    reads(311.11, 'Smoke queued photo');
+    const id = await queue.queueImage(markedFile(0x41));
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    const stored = await firestoreService.getCollection<{
+      amount: number; receiptUrls?: string[]; receiptCount?: number;
+    }>(`users/${uid}/transactions`);
+    const row = stored.find((t) => t.amount === 311.11);
+    expect(row?.receiptUrls?.length).toBe(1);
+    expect(row?.receiptCount).toBe(1);
+
+    // The slot key is the row's own id, so the bytes are findable from the
+    // id alone — which is what makes the replay below land on them again.
+    await expectAsync(
+      getMetadata(ref(storage, `users/${uid}/receipts/${id}-0`)),
+    ).toBeResolved();
+  }, 30000);
+
+  // The upload precedes the document write, so a drain interrupted between
+  // them leaves bytes at the slot with nothing pointing at them. The replay
+  // has to land on that same slot: a fresh key per pass would leave the
+  // orphan behind and bill the account for it on every retry.
+  it('re-uploads into the same slot on a replay', async () => {
+    reads(412.12, 'Smoke replay slot');
+    const id = await queue.queueImage(markedFile(0x42));
+    const rowId = `${id}-0`;
+    const objectsForRow = async (): Promise<string[]> => {
+      const listed = await listAll(ref(storage, `users/${uid}/receipts`));
+      return listed.items.map((i) => i.name).filter((name) => name.startsWith(rowId));
+    };
+
+    // Exactly the interruption: the photo is uploaded, the document is not.
+    spyOn(firestoreService, 'setDocument').and.rejectWith(new Error('Interrupted'));
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.peekQueuedImage(id))?.status === 'failed');
+    expect(await objectsForRow()).toEqual([rowId]);
+
+    // Back to the state syncQueue leaves behind, then the next launch
+    // reclaims it — over a fresh service stack, so the spy is gone.
+    await queue.updateImageStatus(id, 'processing');
+    processor.ngOnDestroy();
+    queue.ngOnDestroy();
+    await configure();
+
+    const [reclaimed] = await queue.getPendingImages();
+    expect(reclaimed?.id).toBe(id);
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    expect(await objectsForRow()).toEqual([rowId]);
+    const stored = await firestoreService.getCollection<{
+      amount: number; receiptUrls?: string[];
+    }>(`users/${uid}/transactions`);
+    expect(stored.find((t) => t.amount === 412.12)?.receiptUrls?.length).toBe(1);
+  }, 45000);
+
+  // #431 P2, through the client guard that does the refusing
+  // (TransactionService checks the amount before it writes, so importers get
+  // a row they can report rather than an opaque permission error). A sub-unit
+  // yen figure rounds to zero, which every pass this image ever gets will
+  // refuse — so failing the image for it only kept the rows beside it out of
+  // the ledger too. The refused row is first, which is also the row the
+  // planner handed the receipt's photo to: the picture has to reach the row
+  // behind it rather than go down with it.
+  it('one refused row does not fail the image, and its photo lands on the next row', async () => {
+    const row = (description: string, amount: number, currency = 'USD') => ({
+      date: new Date(2026, 5, 15),
+      description,
+      amount,
+      type: 'income' as const,
+      currency,
+      confidence: 0.9,
+      source: 'cloud' as const,
+      suggestedCategoryId: 'salary',
+    });
+    ai.processReceipt.and.resolveTo({
+      transactions: [
+        row('Smoke refused first', 0.4, 'JPY'),
+        row('Smoke refused second', 55.55),
+        row('Smoke refused last', 66.66),
+      ],
+      source: 'cloud', confidence: 0.9, processingTimeMs: 1,
+    });
+    const id = await queue.queueImage(markedFile(0x44));
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.peekQueuedImage(id))?.status === 'completed');
+
+    const stored = await firestoreService.getCollection<{
+      description: string; receiptUrls?: string[];
+    }>(`users/${uid}/transactions`);
+    const drained = stored.filter((t) => t.description.startsWith('Smoke refused'));
+    expect(drained.map((t) => t.description).sort()).toEqual([
+      'Smoke refused last', 'Smoke refused second',
+    ]);
+    // The photo was planned for the row the ledger refused, so the one
+    // document holding it has to be the row behind it — not none of them.
+    expect(
+      drained.filter((t) => t.receiptUrls?.length === 1).map((t) => t.description),
+    ).toEqual(['Smoke refused second']);
+  }, 30000);
 });

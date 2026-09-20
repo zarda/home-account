@@ -448,6 +448,18 @@ export function mergeImportRows(
   const net = roundToMinorUnit(signed(target) + signed(source), target.currency);
 
   const single = target.imageMetadata ?? source.imageMetadata;
+  // The source's own receipt group has no other record once the spread has
+  // run: the merged row wears the target's `receiptId`, and nothing else in
+  // the batch says the two groups became one. `planReceiptAttachments` needs
+  // it to know that whatever is left of the source receipt is already
+  // carrying its photo here.
+  const absorbed = [...new Set([
+    ...(target.imageMetadata?.mergedReceiptIds ?? []),
+    ...(source.imageMetadata?.mergedReceiptIds ?? []),
+    ...(source.imageMetadata?.receiptId !== undefined ? [source.imageMetadata.receiptId] : []),
+  ])]
+    .filter(id => id !== target.imageMetadata?.receiptId)
+    .sort((a, b) => a - b);
   const imageMetadata = target.imageMetadata && source.imageMetadata
     ? {
         ...target.imageMetadata,
@@ -456,6 +468,7 @@ export function mergeImportRows(
           ...imageSources(target.imageMetadata),
           ...imageSources(source.imageMetadata),
         ])].sort((a, b) => a - b),
+        ...(absorbed.length ? { mergedReceiptIds: absorbed } : {}),
       }
     : single && { ...single };
 

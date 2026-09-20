@@ -116,6 +116,11 @@ export interface ImagePositionMetadata {
   wasMerged?: boolean;             // True if this item was deduplicated from multiple images
   mergedFromImages?: number[];     // Source image indices this item was merged from
   receiptId?: number;              // AI-assigned receipt group across the processed photos
+  /**
+   * Receipt groups a reviewer merge folded into this row, other than the
+   * row's own; the planner treats each as already carrying its photo.
+   */
+  mergedReceiptIds?: number[];
 }
 
 /**

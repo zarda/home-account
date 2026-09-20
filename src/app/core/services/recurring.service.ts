@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { addDays, dateAtClampedDay, endOfDay, startOfDay } from '../utils/transaction-date.utils';
+import { addDays, dateAtClampedDay, endOfDay, startOfDay, toDate } from '../utils/transaction-date.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -14,6 +14,7 @@ import {
   RecurringOccurrence,
   Transaction,
   TransactionType,
+  UpcomingSchedule,
   baseCurrencyOf
 } from '../../models';
 
@@ -22,6 +23,14 @@ interface ClaimResult {
   postedIds: string[];
   categoryId: string;
   type: TransactionType;
+}
+
+// A rule's two dates, coerced: the anchor every walk measures from and the
+// pointer the rule currently stands on. A null pointer means the stored value
+// was not a date the engine could read.
+interface RuleSchedule {
+  start: Date;
+  pointer: Date | null;
 }
 
 /**
@@ -41,6 +50,23 @@ export const MAX_OCCURRENCES_PER_CLAIM = 400;
  * turns that walk into a loop with no exit.
  */
 export const INVALID_FREQUENCY_ERROR = 'INVALID_RECURRING_FREQUENCY';
+
+/**
+ * Thrown when a rule's stored start date is not one `readSchedule` can read.
+ * Every caller that reaches this — resume included — has no start to anchor
+ * a recomputed pointer on and no substitute ADR 0014 allows it to invent, so
+ * it refuses rather than re-dating the rule. The edit form is where such a
+ * rule is repaired (a new start date) or deleted.
+ */
+export const UNREADABLE_SCHEDULE_ERROR = 'RECURRING_SCHEDULE_UNREADABLE';
+
+/**
+ * Thrown when a resumed rule's recomputed pointer lands past its own end
+ * date: the rule can never post again, so resuming it would leave the list
+ * showing an active rule with an unreachable next date. The edit form is
+ * where the end date moves.
+ */
+export const RULE_ENDED_ERROR = 'RECURRING_RULE_ENDED';
 
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
@@ -282,14 +308,31 @@ export class RecurringService {
         );
 
         if (current) {
+          // Read through the same seam every other caller does: a stored
+          // start date need not honour its declared type. An unreadable
+          // stored start only blocks the write when nothing here replaces
+          // it — a submitted startDate is exactly the repair this call
+          // exists to make, so it must not be refused for the value it is
+          // overwriting.
+          const schedule = this.readSchedule(current);
+          if (!schedule && data.startDate === undefined) {
+            throw new Error(UNREADABLE_SCHEDULE_ERROR);
+          }
+
           const frequencyChanged = data.frequency !== undefined &&
             !this.isSameFrequency(data.frequency, current.frequency);
+          // A missing stored start counts as changed: there is no prior
+          // value a submitted startDate could match, so schedule?.start
+          // reads as undefined and the comparison always differs.
           const startDateChanged = data.startDate !== undefined &&
-            data.startDate.getTime() !== current.startDate.toDate().getTime();
+            data.startDate.getTime() !== schedule?.start.getTime();
 
           if (frequencyChanged || startDateChanged) {
             const frequency = data.frequency ?? current.frequency;
-            const startDate = data.startDate ?? current.startDate.toDate();
+            // schedule is only null here when data.startDate is defined
+            // (the guard above throws for the other case), so the fallback
+            // is never actually read.
+            const startDate = data.startDate ?? schedule!.start;
             const nextOccurrence = this.calculateNextOccurrence(startDate, frequency);
             updateData.nextOccurrence = this.firestoreService.dateToTimestamp(nextOccurrence);
           }
@@ -334,13 +377,44 @@ export class RecurringService {
 
     if (!recurring) return;
 
-    // No frequency check here, unlike create and update: a rule already stored
-    // with an interval that cannot advance has to stay resumable, and this
-    // path has no way to show the user why it refused. The guard inside
-    // calculateNextOccurrence is what keeps that safe.
+    // Unlike the old behaviour, this refusal now reaches the user: the
+    // toggle in RecurringTransactionsComponent catches it and tells them why
+    // instead of the resume silently doing nothing useful (ADR 0141).
+    this.validateFrequency(recurring.frequency);
 
-    // Recalculate next occurrence from today
-    const nextOccurrence = this.calculateNextOccurrence(new Date(), recurring.frequency);
+    const schedule = this.readSchedule(recurring);
+    if (!schedule) throw new Error(UNREADABLE_SCHEDULE_ERROR);
+
+    // Anchored on the rule's own start, not on today: the same walk
+    // calculateNextOccurrence already does for a fresh create, so a resumed
+    // rule lands on the day its schedule actually names instead of restarting
+    // the count from the moment it happened to be resumed.
+    const nextOccurrence = this.calculateNextOccurrence(schedule.start, recurring.frequency);
+
+    // validateFrequency only catches an interval that can never advance; a
+    // stored frequency.type outside the four known kinds falls through
+    // calculateNextOccurrenceFromDate's switch unchanged and answers the
+    // start back too. A start already due that comes back unmoved is that
+    // failure, not a legitimate answer — calculateNextOccurrence's own
+    // future-start branch is the only other case that returns the start
+    // unchanged, and it is excluded here because that date has not arrived,
+    // so nothing was skipped.
+    if (
+      schedule.start.getTime() <= Date.now() &&
+      !(nextOccurrence.getTime() > schedule.start.getTime())
+    ) {
+      throw new Error(INVALID_FREQUENCY_ERROR);
+    }
+
+    // A resume that recomputes a pointer past the rule's own end date would
+    // write isActive: true and a date the walker can never reach — the list
+    // would show it Active forever with nothing left to post. An unreadable
+    // end is treated as no end, the same as everywhere else this field is
+    // read.
+    const end = toDate(recurring.endDate);
+    if (end && nextOccurrence > end) {
+      throw new Error(RULE_ENDED_ERROR);
+    }
 
     await this.firestoreService.updateDocument(
       `${this.userRecurringPath}/${id}`,
@@ -409,10 +483,26 @@ export class RecurringService {
       const createdTransactions: Transaction[] = [];
       const affectedExpenseCategories = new Set<string>();
 
-      // Active rules that are due, from the caller's enumerated set
-      const dueRecurring = rules.filter(r =>
-        r.isActive && r.nextOccurrence.toDate() <= now
-      );
+      // Active rules that are due, from the caller's enumerated set. A rule
+      // whose stored dates cannot be read is made harmless here — skipped or
+      // repaired — rather than taking down the whole run, and with it every
+      // other rule the user owns.
+      const dueRecurring: RecurringTransaction[] = [];
+      for (const rule of rules) {
+        if (!rule.isActive) continue;
+
+        const schedule = this.readSchedule(rule);
+        if (!schedule) continue;
+
+        if (!schedule.pointer) {
+          await this.repairPointer(rule, schedule.start);
+          // The rewritten pointer is in the future by construction, so the
+          // rule is never due in the run that repaired it.
+          continue;
+        }
+
+        if (schedule.pointer <= now) dueRecurring.push(rule);
+      }
 
       for (const recurring of dueRecurring) {
         // A backlog past the per-claim cap drains here, one full batch per
@@ -480,21 +570,29 @@ export class RecurringService {
       if (!snapshot.exists()) return null;
 
       const rule = { ...snapshot.data(), id: snapshot.id } as RecurringTransaction;
-      let occurrenceDate = rule.nextOccurrence.toDate();
+      const schedule = this.readSchedule(rule);
+
+      // Re-check on fresh server data: another device may have paused,
+      // edited, or already processed this rule — or left it in a state this
+      // claim cannot read, which answers null like any other nothing-to-do.
+      // Throwing here instead would reach the caller as a rejection, which is
+      // how being offline arrives, and a document nobody can read is not a
+      // condition the next run will find any different.
+      if (!schedule?.pointer || !rule.isActive || schedule.pointer > now) return null;
+
+      let occurrenceDate = schedule.pointer;
       // Every step of the catch-up below measures from the rule's start date,
       // never from the occurrence it has just posted, so draining a backlog
       // lands on the same days the rule would have posted had the app been
       // open all along.
-      const anchor = rule.startDate.toDate();
-
-      // Re-check on fresh server data: another device may have paused,
-      // edited, or already processed this rule.
-      if (!rule.isActive || occurrenceDate > now) return null;
+      const anchor = schedule.start;
 
       // Occurrences that came due BEFORE the end date must still be posted
-      // even when the end date itself has passed.
-      const endDate = rule.endDate?.toDate();
-      const endDatePassed = endDate !== undefined && endDate < now;
+      // even when the end date itself has passed. An end date the engine
+      // cannot read is treated as no end at all, so the rule keeps posting
+      // rather than being deactivated on a value nobody can interpret.
+      const endDate = toDate(rule.endDate);
+      const endDatePassed = endDate !== null && endDate < now;
       const postUntil = endDatePassed ? endDate : now;
 
       const postedIds: string[] = [];
@@ -572,52 +670,218 @@ export class RecurringService {
     };
   }
 
-  // Get upcoming occurrences for the next N days
+  /**
+   * Occurrences inside the next N days, for a reader that wants the rows and
+   * nothing else. The floor below applies here too: the reminder sweep
+   * already drops anything dated before today, and the forecast's first
+   * bucket is today, so neither loses a row it would have drawn.
+   */
   getNextOccurrences(days: number): Observable<RecurringOccurrence[]> {
     return this.getRecurring().pipe(
-      map(recurring => {
-        const now = new Date();
-        // Close on the last millisecond of the final day the chart draws, not
-        // `days × 24h` from this instant. The series builder walks whole local
-        // calendar days, so a window measured in raw milliseconds disagreed
-        // with it from the current time of day to the end of that final day —
-        // and across a DST fall-back it fell short of the day entirely.
-        const endDate = endOfDay(addDays(startOfDay(now), days));
-        const occurrences: RecurringOccurrence[] = [];
-
-        for (const r of recurring) {
-          if (!r.isActive) continue;
-
-          let nextDate = r.nextOccurrence.toDate();
-
-          // Collect all occurrences within the date range
-          while (nextDate <= endDate) {
-            if (r.endDate && nextDate > r.endDate.toDate()) break;
-
-            occurrences.push({
-              recurringId: r.id,
-              name: r.name,
-              type: r.type,
-              amount: r.amount,
-              currency: r.currency,
-              categoryId: r.categoryId,
-              date: new Date(nextDate),
-              // `!= null` because zero is a lead time, not an absent one
-              ...(r.remindDaysBefore != null ? { remindDaysBefore: r.remindDaysBefore } : {})
-            });
-
-            const next = this.calculateNextOccurrenceFromDate(
-              nextDate, r.frequency, r.startDate.toDate()
-            );
-            // Safety: a non-advancing frequency must not spin forever
-            if (!(next.getTime() > nextDate.getTime())) break;
-            nextDate = next;
-          }
-        }
-
-        return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
-      })
+      map(recurring => this.walkSchedule(recurring, days, new Date()).occurrences)
     );
+  }
+
+  /**
+   * The same walk with its count, for the dashboard card — which is the one
+   * reader that can say how much of the schedule it is not showing.
+   */
+  getUpcomingSchedule(days: number): Observable<UpcomingSchedule> {
+    return this.getRecurring().pipe(
+      map(recurring => this.walkSchedule(recurring, days, new Date()))
+    );
+  }
+
+  /**
+   * Walk every active rule across the window and split what it finds.
+   *
+   * The window has a floor as well as a horizon, and the floor mirrors it:
+   * as many whole local days behind today as the window reaches ahead. A few
+   * days overdue is the failed-catch-up case the card exists to surface, so
+   * those rows still come back; a rule that stopped paying years ago used to
+   * come back as one row per day from then to the horizon, burying everything
+   * genuinely upcoming underneath it. ADR 0091 recorded "no lower bound" as a
+   * decision on the strength of the overdue case alone; ADR 0141 revisits it.
+   *
+   * The count of what the floor left out is exact and uncapped. Stopping the
+   * first loop early would leave the pointer short of the floor, and the
+   * collecting loop after it would then either start below the floor or not
+   * run at all — the rule's in-window occurrences would be the price of the
+   * cap. The walk costs one `calculateNextOccurrenceFromDate` per step, the
+   * same arithmetic a rule's creation already pays.
+   */
+  private walkSchedule(
+    rules: RecurringTransaction[],
+    days: number,
+    now: Date
+  ): UpcomingSchedule {
+    const today = startOfDay(now);
+    // Close on the last millisecond of the final day the chart draws, not
+    // `days × 24h` from this instant. The series builder walks whole local
+    // calendar days, so a window measured in raw milliseconds disagreed
+    // with it from the current time of day to the end of that final day —
+    // and across a DST fall-back it fell short of the day entirely.
+    const horizon = endOfDay(addDays(today, days));
+    const floor = startOfDay(addDays(today, -days));
+    const occurrences: RecurringOccurrence[] = [];
+    let olderCount = 0;
+
+    for (const r of rules) {
+      if (!r.isActive) continue;
+
+      // A rule the engine cannot read is left out of the forecast rather
+      // than erroring the stream, which would blank the chart for every
+      // rule the user owns. Repairing belongs to the catch-up, which can
+      // write; this is a projection.
+      const schedule = this.readSchedule(r);
+      if (!schedule?.pointer) continue;
+
+      // A rule whose end date is not a date the engine can read is walked as
+      // one with no end: an unreadable bound is not a bound.
+      const ruleEnd = toDate(r.endDate);
+
+      let nextDate = schedule.pointer;
+
+      // Everything behind the floor is counted, not carried.
+      while (nextDate < floor) {
+        if (ruleEnd && nextDate > ruleEnd) break;
+        olderCount++;
+
+        const next = this.calculateNextOccurrenceFromDate(
+          nextDate, r.frequency, schedule.start
+        );
+        // Safety: a non-advancing frequency must not spin forever
+        if (!(next.getTime() > nextDate.getTime())) break;
+        nextDate = next;
+      }
+
+      // A pointer still short of the floor means the loop above broke rather
+      // than reached it, so there is nothing inside the window to collect.
+      if (nextDate < floor) continue;
+
+      // Collect all occurrences within the date range
+      while (nextDate <= horizon) {
+        if (ruleEnd && nextDate > ruleEnd) break;
+
+        occurrences.push({
+          recurringId: r.id,
+          name: r.name,
+          type: r.type,
+          amount: r.amount,
+          currency: r.currency,
+          categoryId: r.categoryId,
+          date: new Date(nextDate),
+          // `!= null` because zero is a lead time, not an absent one
+          ...(r.remindDaysBefore != null ? { remindDaysBefore: r.remindDaysBefore } : {})
+        });
+
+        const next = this.calculateNextOccurrenceFromDate(
+          nextDate, r.frequency, schedule.start
+        );
+        // Safety: a non-advancing frequency must not spin forever
+        if (!(next.getTime() > nextDate.getTime())) break;
+        nextDate = next;
+      }
+    }
+
+    occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return { occurrences, olderCount };
+  }
+
+  /**
+   * The one seam every reader takes a rule's dates through.
+   *
+   * A stored document need not honour the type it is read as: a restore, an
+   * older build or a hand edit can leave either field holding something that
+   * is not a Timestamp, and `.toDate()` on it throws out of whichever pass met
+   * it first.
+   *
+   * A rule with no readable start is answered null and skipped, by name. The
+   * start is the anchor every walk measures from, and a substitute would
+   * silently re-date the rule and every occurrence it has yet to post — the
+   * decision ADR 0014 made and this keeps. The pointer is derived from the
+   * start rather than given, so an unreadable one is answered as a null
+   * pointer and the caller that can write recomputes it.
+   */
+  private readSchedule(rule: RecurringTransaction): RuleSchedule | null {
+    const start = toDate(rule.startDate);
+    if (!start) {
+      console.warn('[Recurring] Skipping a rule with no readable start date:', rule.id);
+      return null;
+    }
+
+    return { start, pointer: toDate(rule.nextOccurrence) };
+  }
+
+  /**
+   * Rewrite an unreadable pointer from the rule's start date.
+   *
+   * The frequency is checked first because `calculateNextOccurrence` answers
+   * the start date itself for an interval that could never advance: storing
+   * that would leave the rule permanently due, which is worse than leaving it
+   * inert. That guard only names one refusal (interval); it does not cover
+   * every way a frequency can fail to advance — a `type` outside the four
+   * known kinds falls through `calculateNextOccurrenceFromDate`'s switch
+   * unchanged and also answers the start back. So a single step off the
+   * start is taken and checked as well: whichever guard catches it, storing
+   * the start as "next" would make the rule permanently due and re-post the
+   * same idempotent id on every run, and that is as true of a rule whose
+   * start is still months off as of one already due. `resumeRecurring` asks
+   * the same question of the date it has computed instead, which costs it
+   * the future-start case and is why it carries a `start <= now` prefix this
+   * does not. The write carries `nextOccurrence` alone — `updatedAt` is
+   * FirestoreService's to stamp, and nothing here says the rule has run.
+   */
+  private async repairPointer(rule: RecurringTransaction, start: Date): Promise<void> {
+    try {
+      this.validateFrequency(rule.frequency);
+    } catch {
+      console.warn('[Recurring] Leaving a pointer unrepaired, the interval cannot advance:', rule.id);
+      return;
+    }
+
+    // Asked of the frequency itself rather than of the clock: one step from
+    // the start is what every known kind advances by, and what an unknown
+    // one answers back unchanged. Reading it off `calculateNextOccurrence`
+    // instead would answer the start back for a start still in the future —
+    // legitimately, since nothing has been skipped yet — and a rule that can
+    // never advance would be repaired on the strength of that.
+    const step = this.calculateNextOccurrenceFromDate(start, rule.frequency, start);
+    if (!(step.getTime() > start.getTime())) {
+      console.warn('[Recurring] Leaving a pointer unrepaired, the computed next date does not move past the start:', rule.id);
+      return;
+    }
+
+    const next = this.calculateNextOccurrence(start, rule.frequency);
+
+    // An ended rule would never reach a pointer past its end date, so the
+    // repair deactivates it the way the claim's own endDatePassed branch
+    // would have, instead of writing a pointer the rule can't get to. This
+    // is a normal outcome of a healthy schedule meeting its end, not a
+    // defect, so nothing is warned.
+    const endDate = toDate(rule.endDate);
+    if (endDate && next > endDate) {
+      try {
+        await this.firestoreService.updateDocument<RecurringTransaction>(
+          `${this.userRecurringPath}/${rule.id}`,
+          { isActive: false }
+        );
+      } catch (error) {
+        console.warn('[Recurring] A rule\'s deactivation past its end date did not land:', rule.id, error);
+      }
+      return;
+    }
+
+    try {
+      await this.firestoreService.updateDocument<RecurringTransaction>(
+        `${this.userRecurringPath}/${rule.id}`,
+        { nextOccurrence: this.firestoreService.dateToTimestamp(next) }
+      );
+    } catch (error) {
+      // Offline, or denied: the rule keeps its bad pointer, posts nothing,
+      // and the next run tries the repair again.
+      console.warn('[Recurring] A pointer repair did not land:', rule.id, error);
+    }
   }
 
   /**

@@ -68,10 +68,14 @@ describe('overflow guard: the AI settings model selects', () => {
 
     const offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',
+      'closedForUpgrade',
       'syncQueue',
       'clearAll',
     ]);
     offlineQueueServiceMock.pendingCount.and.returnValue(0);
+    // The page's own template reads this one, so the probe has to answer it
+    // even though the queue is not what it measures.
+    offlineQueueServiceMock.closedForUpgrade.and.returnValue(false);
 
     const geminiServiceMock = jasmine.createSpyObj('GeminiService', ['isAvailable']);
     geminiServiceMock.isAvailable.and.returnValue(true);
