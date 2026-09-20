@@ -30,7 +30,7 @@ five ids — `DashboardCardId = 'recent' | 'upcoming' | 'chart' | 'insights' |
 | Card | Component | Reads |
 |---|---|---|
 | Recent Transactions | `app-recent-transactions` | The five most recent transactions (`getRecentTransactions(5)`), independent of the selected period |
-| Upcoming Bills | `app-upcoming-bills` | Occurrences due in the next 14 days (`getNextOccurrences`), live-converted to the base currency |
+| Upcoming Bills | `app-upcoming-bills` | The 14-day window's occurrences and the count of those behind its floor (`getUpcomingSchedule`), live-converted to the base currency |
 | Spending by Category | `app-spending-chart` | `categoryTotals` — the selected period's expenses folded by category |
 | AI Insights | `app-ai-summary` | The selected period's transactions, the previous period's totals and per-category breakdown, a trailing historical window sized by the account's RAG tier, active budgets and goals |
 | Budget Progress | `app-budget-progress` | `activeBudgets()` — and only while at least one exists; an account with no active budget never sees this card, arranged or not |
@@ -42,6 +42,27 @@ checks whether its own card is currently hidden; hiding costs nothing on any
 of them (see [Known gaps](#known-gaps)). AI Insights is the one card whose
 cost is actually conditional on being shown; see
 [What a hidden card skips](#what-a-hidden-card-skips).
+
+## The Upcoming window's floor
+
+The window is symmetric. `getUpcomingSchedule(14)` walks each active rule
+from 14 whole local days behind today to the end of the fourteenth day
+ahead ([recurring.md](recurring.md)). Days already past are grouped and
+listed like any other — a rule a few days overdue is the failed-catch-up
+case this card exists to surface — but a rule dormant since long before
+that floor no longer arrives as one row per day from then to the horizon,
+burying everything genuinely upcoming underneath it.
+
+What the floor left behind is counted rather than collected, by the same
+walk that builds the list, and named in a single line underneath it:
+*"3 older occurrences are overdue and not shown"*
+(`dashboard.upcomingOlderHidden`). The line also stands beside the empty
+state, since a rule can be entirely behind the floor. The count is exact,
+not capped — stopping the walk at some number would leave that rule's
+pointer short of the floor, and its in-window occurrences would be the
+price.
+
+The card's net folds only the occurrences it shows.
 
 ## The preference, and its resolver
 
@@ -199,6 +220,10 @@ Journey 25 carries this feature's one authorised write —
   conditional on being shown; Spending by Category has no listener of its
   own to begin with — it reads the transactions the period query already
   loaded.
+- **The older-occurrence count is per window, not per rule.** One figure
+  covers everything behind the floor, so the card cannot say which rule
+  stalled — and the walk producing it re-runs on every emission of the
+  schedule listener, not only when the window itself moves.
 - **An older build's editor can drop an id it does not know, permanently.**
   `effectiveDashboardLayout()` filters unknown ids out of every read,
   including the editor's own working copy — a build that predates a newer

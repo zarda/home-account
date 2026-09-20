@@ -39,14 +39,23 @@ name a day, it is where every later occurrence takes its day from — see
 | `type` | `daily`, `weekly`, `monthly`, `yearly` | always |
 | `interval` | every N days / weeks / months / years | always; the form blocks zero and below, and 1 is the real floor ([below](#what-makes-a-rule-valid)) |
 | `dayOfWeek` | 0–6, Sunday is 0 | for weekly rules |
-| `dayOfMonth` | 1–31 | for monthly **and** yearly rules |
+| `dayOfMonth` | 1–31 | offered for monthly **and** yearly rules, and may be left unset |
 | `monthOfYear` | 1–12 | never — a yearly rule takes its month from `startDate` |
 
-Two things follow from the right-hand column. A monthly or yearly rule created in
-the app always names its day, because the day-of-month select has no empty
-option. And a rule that does *not* name one can only have come from a restored
-backup, an older build, or a direct write through the SDK — which is exactly the
-case the anchor below exists for.
+`dayOfMonth` is offered, not required. The day select's first entry is **Same
+day as the start date**, and picking it stores no `dayOfMonth` at all — the
+schedule then takes its day from `startDate` every time it steps, which is the
+case the anchor below exists for. A save rewrites the whole `frequency` map, so
+an omitted day really is gone from the stored document, and a rule that names no
+day still names none after an edit to its name, its amount, or anything else on
+the form.
+
+**A new monthly or yearly rule starts on that option rather than on the 1st.**
+The old default invented a day nobody had asked for: a rule created for the 28th
+saved as paying on the 1st unless the day was set by hand, out of step with the
+start date sitting directly above it in the same form. The monthly preview under
+the field reads the start date's day whenever no day is named, so what the rule
+will do is on screen before it is saved.
 
 ## The clamp and the anchor
 
@@ -134,6 +143,54 @@ An occurrence that came due before the end date is still posted after that date
 has passed; the rule deactivates only once its backlog is fully drained, so a
 capped batch never strands the rest. A rule whose next occurrence falls after its
 end date pauses without posting anything.
+
+### A rule the engine cannot read
+
+A stored document need not honour the type it is read as. Every read of a rule's
+schedule goes through one seam that narrows it first: `startDate` and
+`nextOccurrence` are coerced through the same helper the ledger's own dates use
+(`toDate`, in `core/utils/transaction-date.utils.ts`), and either can come back
+empty. `endDate` is read the same way, and **an end date the engine cannot read
+is no end date** — the rule keeps posting rather than deactivating on a value
+nobody can interpret. Three shapes matter here, and only the first two ever
+reach that seam.
+
+**No readable start date — the rule is skipped, by name.** Nothing is written
+and the catch-up warns once per run with the rule's id in the browser console.
+The start date *is* the schedule: substituting one would silently re-date the
+rule and every occurrence it has yet to post, which is the guess
+[ADR 0014](ADR/0014-recurrence-guards-and-anchors.md) refused and this keeps
+refusing. Edit the rule and give it a start date, or delete it. Nothing else
+recovers it, and resuming it will not.
+
+**A readable start with an unusable pointer — the pointer is repaired.** A
+pointer is derived from the start date rather than given, so recomputing it is
+not that guess. The catch-up rewrites it before the due filter and writes that
+one field alone; the rule is never due in the run that repaired it, because the
+new pointer is the first occurrence after now rather than a backfill, so the
+stretch the rule sat unreadable is not owed. Two checks stand before the write —
+the interval floor, and then the computed date itself, which has to move past the
+start — and either one leaves the pointer as it was and names the rule in a
+warning. A recomputed date beyond a readable end date is not written either: the
+rule is deactivated instead, because it can never post again and an active rule
+with a date it cannot reach is exactly the lie the Upcoming card would show.
+
+**No pointer at all — the rule is invisible.** Every enumeration of the
+collection is ordered by `nextOccurrence`, and Firestore omits a document that
+lacks the field it is ordered by, so a rule missing that field sits in the
+collection and in no result: not in the catch-up's work list, not on the Upcoming
+card, not in the Recurring list itself. No repair can reach what no read returns.
+Only a write that puts a timestamp back in the field brings the rule back, and
+the edit form is the one place in the app that writes it — saving a change to the
+frequency or the start date recomputes the pointer — but the list that form opens
+from is ordered by the same field, so the rule cannot be selected there. What is
+left is a backup taken while the rule was still whole: a restore recomputes the
+pointer from the start date like any other created rule.
+
+None of the three can be produced by this build. `firestore.rules` requires both
+dates to be timestamps on create and on any update that touches them, removal
+included; these are states an older document, or a write made with credentials
+the rules do not apply to, left behind.
 
 ## From detection to a rule
 
@@ -263,22 +320,41 @@ re-run it.
 Pause sets the rule inactive. Catch-up only claims active rules, so nothing
 accrues while it is paused — the days that pass are not owed.
 
-Resume recalculates the pointer **from today**, which has two consequences worth
-knowing before using it:
+Resume sets the pointer to the **first occurrence after now on the cadence the
+rule's own start date set** — the same walk a rule created by hand takes, and the
+same one a restore runs. Two consequences are worth knowing before using it:
 
-- **The paused stretch is not backfilled**, and neither is the current interval.
-  A monthly rule on the 15th resumed on 10 August next posts on 15 September, not
-  on 15 August.
-- **A rule with no day of its own re-anchors on the day you resume.** For a
-  monthly or yearly rule that does not name a `dayOfMonth`, the first date after
-  a resume takes its day from the resume day. The stored `startDate` is not
-  changed, so the occurrence after that one is measured from the rule's original
-  day again.
+- **The paused stretch is not backfilled.** Occurrences that fell due while the
+  rule was inactive are not owed and never post; only the next one is scheduled.
+- **The day you resume on is not the schedule.** A monthly rule on the 15th
+  paused in April and resumed on 10 August posts next on 15 August; resumed on
+  20 August instead, its next is 15 September. A rule that names no `dayOfMonth`
+  comes back on the day its `startDate` names, whatever day it was resumed on.
 
-Resume deliberately accepts a stored frequency the create and edit forms would
-refuse. It is a toggle with nowhere to show an error, and a rule already saved
-with an unusable interval has to stay recoverable — see
-[ADR 0014](ADR/0014-recurrence-guards-and-anchors.md).
+`lastProcessed` is deliberately not consulted. It answers the same date the start
+date does whenever it lies on the cadence, and the wrong one whenever it does
+not — which is the case a resume exists to get out of.
+
+Resume can also refuse. Each refusal puts a message on the list and writes
+nothing at all: the rule stays paused, with its pointer, its active flag and its
+`updatedAt` exactly as they were.
+
+| Why it refuses | What the list says | What to do about it |
+|---|---|---|
+| the interval cannot advance | *Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1.* | edit the rule and give it an interval of 1 or more |
+| the end date has already passed | *Cannot resume: this rule's end date has passed. Edit the end date first.* | move the end date or remove it; a rule that is genuinely finished can be deleted instead |
+| the start date cannot be read | *Failed to resume recurring transaction* | edit the rule and set a start date, or delete it ([above](#a-rule-the-engine-cannot-read)) |
+
+The first two name the field to change, because for them it is one field. The
+third shares the page's generic failure copy: there is no short instruction for a
+document whose stored start date is not a date.
+
+Resume applies the same interval floor the create and edit forms do, which it
+used to skip on the grounds that a toggle had nowhere to show an error. It has
+one now, so a rule saved with an unusable interval is reported rather than
+silently resumed onto a pointer that was immediately due
+([ADR 0014](ADR/0014-recurrence-guards-and-anchors.md) has the floor's
+reasoning).
 
 ## Reminders
 
@@ -323,13 +399,27 @@ to today and is deliberately independent of the period selector — the card
 answers "what is about to move", not "what happened in the window I am looking
 at".
 
-Two behaviours are deliberate and worth knowing:
+Three behaviours are deliberate and worth knowing:
 
-- **Occurrences dated before today are shown, not hidden.** They are due but
-  not yet posted. Hiding them would conceal money about to move on precisely
-  the occasion the user most needs to see it — a catch-up that has not run or
-  has failed. The brief flicker when catch-up posts one, moving it out of the
-  card and into Recent Transactions, is the cheaper of the two failures.
+- **Occurrences dated before today are shown, not hidden — as far back as the
+  window reaches forward.** They are due but not yet posted. Hiding them would
+  conceal money about to move on precisely the occasion the user most needs to
+  see it — a catch-up that has not run or has failed. The brief flicker when
+  catch-up posts one, moving it out of the card and into Recent Transactions,
+  is the cheaper of the two failures. The walk has a floor as well as a
+  horizon, and the floor mirrors it: a fortnight of whole local days behind
+  today. Without one, a rule that stopped paying years ago came back as one
+  row per day from then to the horizon and buried everything genuinely
+  upcoming underneath it.
+- **What the floor left out is counted, and the card says so.** With a
+  non-zero count the card shows one line under the list — *3 older occurrences
+  are overdue and not shown*, or *1 older occurrence is overdue and not shown*
+  — and the same line stands beside the empty state, so a card with nothing in
+  its window still says that something older is outstanding. The count is
+  exact and uncapped: stopping the walk early would leave it short of the
+  floor and cost the rule its in-window occurrences too. The net under the
+  list folds what the card lists, so an occurrence behind the floor is in the
+  count and not in that figure.
 - **Row amounts stay in each rule's own currency; only the net converts.** A
   scheduled occurrence has not been written, so it carries no base-currency
   snapshot to prefer, and a converted figure beside an amount the user typed
@@ -347,17 +437,21 @@ than the one before it, and every walk over the rule's occurrences is a loop tha
 advances by asking for exactly that. Fractional intervals below 1 truncate to no
 movement at all, which is why the floor is 1 rather than "greater than zero".
 
-The floor is stated three times, in three different vocabularies:
+The floor is stated three times, in three different vocabularies, and a fourth
+layer stands behind them for the documents they never had a say over:
 
 | Layer | What it does | What you see |
 |---|---|---|
 | The dialog | keeps **Save** disabled at an interval of zero or less, and floors its number input at 1 | the button stays greyed |
-| `RecurringService` | throws `INVALID_RECURRING_FREQUENCY` from create and update, before any read or write | the surrounding action reports a failure |
+| `RecurringService` | throws `INVALID_RECURRING_FREQUENCY` from create, update and resume, before anything is written | the surrounding action reports a failure |
 | `firestore.rules` | denies any write whose `frequency.interval` is not a number ≥ 1 | permission denied |
+| The reader | narrows a stored document on the way in: every schedule date is coerced, and a rule whose `startDate` is not a date it can read is answered as having no schedule at all | the rule is skipped rather than acted on, and named in the browser console |
 
 The client layers exist so a refusal can be explained; the rules layer exists
 because a restore, an older build on a second device, and anything holding the
-account credentials all reach the document directly.
+account credentials all reach the document directly. The reader exists because
+none of the three reaches a document that is already stored — the rest of that
+case is [A rule the engine cannot read](#a-rule-the-engine-cannot-read).
 
 ### Restoring a backup that contains a bad rule
 
@@ -383,25 +477,44 @@ covers the rest of what a restore carries verbatim.
 
 ## Known gaps
 
-- **A rule already stored with an unusable interval is made harmless, not
-  repaired.** Catch-up still posts the single occurrence its pointer names, then
-  stops without advancing and writes the same pointer back. The occurrence id is
-  deterministic, so the ledger keeps exactly one row for it, but every run
-  rewrites that row and the rule document. Edit the rule to a real interval, or
-  delete it.
-- **Resuming such a rule reports success and does not move it.** The pointer
-  lands on the moment of the resume, which is immediately due.
-- **A rule that stopped paying before this version may hold an unreadable
-  pointer** and will never be found due. Pause it and resume it: that rewrites the
-  pointer from today.
-- **The Upcoming card has no lower bound on how far back an overdue row
-  reaches.** A rule that stopped paying long ago holds a pointer from then, and
-  its occurrence appears in the card at that old date — the three gaps above
-  are how a rule gets into that state. The card makes the condition visible
-  rather than causing it.
-- **Editing a rule that names no day of month pins it to a day.** The dialog's
-  day-of-month field cannot be cleared and pre-fills with the 1st, so saving that
-  form changes the schedule to the 1st unless you set the day you meant.
+- **A rule the reader cannot use stays that way until you touch it.** A start
+  date that is not a date, and an absent pointer, are both left where they
+  are: nothing repairs either, and the second cannot even be listed. Editing
+  or deleting the rule is the only way out, and the absent-pointer case needs
+  a backup to get that far ([above](#a-rule-the-engine-cannot-read)).
+- **A rule already stored with an interval below 1 is made harmless, not
+  repaired.** Catch-up still posts the single occurrence its pointer names,
+  then breaks before advancing and writes the very same pointer back. The
+  occurrence id is deterministic, so the ledger keeps exactly one row — but
+  every run rewrites that row with a fresh `createdAt` and stamps the rule
+  with a fresh `updatedAt` and `lastProcessed` beside it, and that goes on
+  until the interval is edited or the rule deleted. Nothing picks a
+  corrected interval on the user's behalf. What changed here is only the
+  resume half, which now refuses such a rule by name instead of reporting
+  success.
+- **The interval refusal answers for more than the interval.** Resume raises
+  `INVALID_RECURRING_FREQUENCY` for a stored `frequency.type` outside the four
+  known kinds as well, and for a day of month below 1 when that leaves the
+  computed date back on the one it started from. The message names the
+  interval, which for those two is the wrong field to go and change.
+- **A rule that cannot advance is never deactivated for its end date.** When
+  the pointer repair meets a rule whose interval cannot advance it stops there
+  and warns, and the branch that would have deactivated an ended rule sits
+  after that check — so the same console warning is written on every catch-up
+  run and nothing else changes. Fix the interval, or delete the rule.
+- **A failed pause is silent.** The toggle now reports every way a resume can
+  fail, but its pause half still has no catch, so a pause that does not land
+  leaves the rule active with nothing on screen to say so.
+- **The older count is per window, not per rule.** The line under the Upcoming
+  card says how many occurrences fell behind the floor across every active
+  rule; it does not say which rule stalled, and the Recurring list is the only
+  place to go looking. The walk that produces the count also runs on
+  every emission of the schedule listener, so a rule years overdue is counted
+  from its pointer again each time.
+- **The two walks are independent.** The reminder sweep and the forecast take
+  one walk over the schedule and the dashboard card takes another; nothing
+  subscribes to both at once today, so the duplication costs a second walk only
+  if a third reader arrives.
 - **A drained backlog converts at today's rate.** Occurrences posted late are
   converted with the exchange rates current when the catch-up runs, not the rates
   of the dates they carry.

@@ -497,11 +497,12 @@ catalogs, so nothing on either step is a sentence a service wrote
 The camera dialog's line works the same way and through the same catalogs,
 from a `CaptureStatus` of its own — *analyzing*, *processingImages* carrying
 the photo count, *queueing* — a separate type because that door's steps are
-its own: it queues, which no wizard door does, and it never converts,
-categorizes or checks for duplicates. A fourth status it used to set was
-deleted rather than translated: the overlay renders under `isProcessing()`,
-which is raised in `processImage` and nowhere else, and the *Optimizing
-image...* write ran before that, so it could not paint on any path
+its own: it paints a step for queueing, which no wizard door does — the
+wizard's doors store the capture before their first step is painted — and it
+never converts, categorizes or checks for duplicates. A fourth status it used
+to set was deleted rather than translated: the overlay renders under
+`isProcessing()`, which is raised in `processImage` and nowhere else, and the
+*Optimizing image...* write ran before that, so it could not paint on any path
 ([ADR 0124](ADR/0124-the-camera-door-names-its-step-and-a-status-nobody-could-see-is-deleted.md)).
 When every row saved but the summary read-back fails, the wizard says so and
 moves on; the full record, including per-row errors, is on the Import History
@@ -710,7 +711,8 @@ The classes a failure is filed under: `parseAIError`'s
 three the pipeline decides itself — `no_provider` (nothing configured;
 filed here even though `parseAIError` calls the sentinel `auth` so the wizard
 can offer the key hint), `nothing_extracted` (an engine answered with no
-row) and `queue_write` (the offline queue could not store the image).
+row) and `queue_write` (the offline queue could not store the image) — from
+the camera dialog; a wizard refusal is filed as `unknown`.
 
 ## Offline capture and the queue
 
@@ -719,16 +721,48 @@ IndexedDB queue on the device, with the account that captured it recorded on the
 row. Camera capture queues on connectivity alone — an offline iPhone whose
 on-device pipeline could have read the photo perfectly well still queues it,
 because being offline is decided before the question of which engine could run
-is asked. The import wizard's file import is the other producer, and it queues
-only when both are true: offline, and no engine able to run. Files shared from
-other apps (see [share-import.md](share-import.md)) arrive through that same
-wizard intake, so a shared receipt follows the file-import rule rather than
-adding a third producer. The in-form **Scan
-Receipt** queues nothing — as above, it keeps the image on the form and tells
-you the scan needs a connection. The queue is one store per device rather than
-per account, so that stamp is what keeps it honest — an item is only ever drained
-into the ledger of the account that took the photo, and a drain that fires while
-someone else is signed in leaves it alone rather than filing it in their ledger.
+is asked.
+
+**The wizard's receipt door is the other producer.** It queues on connectivity
+alone, like the camera: the door is cloud-only and the cloud check folds the
+connection in, so an offline device has nowhere to send the photo whatever key
+is configured. The on-device reader is not credited to it either — crediting a
+cloud-only door with it would lose the photo on exactly the device where the
+paper cannot be photographed again.
+Every image in the batch is attempted, and the processing step says how many
+were kept — *{n} images queued for processing when online*, the same counting
+message the camera dialog uses — and offers **Done** and **Back** rather than
+a retry, which would only store them a second time. The kept images leave the
+picker, so neither Back nor a second **Process** can queue one capture twice:
+nothing keys a queued row to a photo's content, and two rows for one photo are
+two transactions when the drain runs. A batch that also held a CSV or a JSON
+backup still imports those rows, with the same count carried above the review
+list. Where the queue refuses the write, the step says the capture could not
+be stored — again in the camera dialog's own words — and offers no retry,
+since part of the batch may already be there. A capture kept whole is recorded
+as queued rather than failed, so nothing lands on the Import History page for
+it; a refused write is an ordinary failure and files its record there like any
+other. Files shared from other apps (see
+[share-import.md](share-import.md)) arrive through that same wizard intake, so
+a shared receipt follows this rule rather than adding a third producer.
+
+**A statement photo is refused rather than queued.** The wizard asks which
+kind of image you picked, and with no connection the statement door says cloud
+AI could not be reached instead of storing the page. The drain reads every
+queued image as a receipt — merging the line items of one purchase into a
+single transaction — so a statement page through it would land a page of
+unrelated charges in the ledger as one lumped row that no review step ever
+saw. Queueing one could only be right once a queued image carried its own kind
+([ADR 0142](ADR/0142-a-queued-receipt-lands-whole-or-says-what-it-dropped.md)).
+The in-form **Scan Receipt** queues nothing either — as above, it keeps the
+image on the form and tells you the scan needs a connection — and neither does
+the multi-receipt re-read it offers, whose primary receipt the open form is
+already holding.
+
+The queue is one store per device rather than per account, so that stamp is
+what keeps it honest — an item is only ever drained into the ledger of the
+account that took the photo, and a drain that fires while someone else is
+signed in leaves it alone rather than filing it in their ledger.
 The share stash carries the same stamp for the same reason: a shared file is
 surfaced only to the account that was signed in when it arrived, with a bounded
 claim window for shares made signed out (see
@@ -741,8 +775,8 @@ carries a `sync` handler
 ([ADR 0105](ADR/0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md)).
 Draining is unattended by definition — a reconnect with no dialog
 open and possibly nobody looking — so there is no review step: what the model
-read goes straight into the ledger and a toast says how many rows arrived. They
-are ordinary transactions afterwards, editable like any other.
+read goes straight into the ledger. They are ordinary transactions afterwards,
+editable like any other.
 
 A date the reader doubted is resolved on the drain's own rule — the same
 `resolveImportDate` the review lanes use, run at the moment the row is written.
@@ -766,11 +800,45 @@ produced, so a receipt that had already fully landed reports its rows again and
 writes nothing. The reasoning, and what is still not guaranteed, is
 [ADR 0015](ADR/0015-reclaimed-receipts-replay-idempotently.md).
 
-An image whose rows only partly landed is failed rather than completed, and goes
-back into the queue's retry budget: three attempts, after which it is no longer
-dispatched. A retry writes only the rows that are missing. An item that has
-exhausted its retries stays in the queue and keeps counting towards the number
-shown on the AI settings page, which is what **Clear Queue** is for.
+A row the ledger refuses for good no longer fails the image around it. A
+figure below its currency's minor unit rounds to nothing and the amount guard
+refuses it on every pass, so the drain counts it, steps over it and completes
+the image: failing the whole photo for a row that can never land only keeps
+the rows beside it out of the ledger too, receipt after receipt, until the
+retries run out. Any other failure — the network, a contended write — still
+fails the image, which goes back into the queue's retry budget: three
+attempts, after which it is no longer dispatched, and a retry writes only the
+rows that are missing. An image where nothing landed at all fails whatever
+refused it, so a receipt that produced no transaction is never reported as
+done. An item that has exhausted its retries stays in the queue and keeps
+counting towards the number shown on the AI settings page, which is what
+**Clear Queue** is for.
+
+One notice per drain says how it went: *{n} transactions imported* when
+everything landed, and *{n} transactions imported, {m} skipped* when anything
+did not. A row the ledger refused and a photo it refused are both "did not
+land", and the skipped figure is the two together — the drain runs unattended,
+so a second toast for the losses would arrive with nothing to click and no way
+to tell which receipt it belonged to.
+
+**A queued receipt keeps its photo.** The drain plans the attachment the way
+the wizard does, over the rows the reader produced and through the same
+planner, and the image lands on the row the plan names — uploaded at that
+row's own id, so a replay re-uploads the identical bytes into the slot the
+first pass opened rather than a second one. A plan belongs to a row by what
+the reader said about the photo, but a refusal is only known at the write: if
+the row the plan names is the one the ledger refuses, the photo moves to the
+next row of the same receipt that was given none. A plan no row consumed is
+counted as a skipped photo, exactly as a quota or upload refusal is.
+
+**A queue closed for an upgrade says so.** When another tab opens a newer
+database version this tab closes its handle and cannot reopen at the old one,
+and every read and write after that would otherwise no-op in silence. The AI
+settings page carries the note *The queue was closed so another tab could
+update it. Reload this page to see it again.* beside the queue figures and
+disables **Sync Now** while it stands. A status write is no longer swallowed
+either: recording an outcome answers whether it was written, and the queue
+names the image and the status it dropped, with the drain's warning beside it.
 
 ## What still bounds coverage
 
@@ -795,10 +863,26 @@ shown on the AI settings page, which is what **Clear Queue** is for.
   runs after whichever engine read the receipt, so memory answers either way
   and the model rung asks whatever cloud key is set up — a receipt read
   on-device still gets suggested tags when there is one.
-- **A queued receipt keeps no photo.** The drain writes the rows through the
-  same mapper as every other door, so the address, tags and period the
-  model read now land; the image bytes themselves are not re-uploaded from
-  the queue. Filed as a follow-up.
+- **A receipt queued across several pages drains as one transaction per
+  page.** Each page is stored as its own queue row and the drain reads them
+  one at a time, so a long receipt photographed in three parts arrives as
+  three transactions to be merged by hand. The camera dialog has always
+  worked this way; the wizard, where a multi-page batch is the ordinary case,
+  now reaches the same queue.
+- **A drained row does not pass back through review.** The same photos
+  imported with a connection get the review card — the field corrections, the
+  date question, the duplicate verdict — while a capture kept offline is
+  written unattended and corrected in the ledger afterwards, like any other
+  transaction.
+- **The drain's skipped figure is a count, not a list.** The notice says how
+  many rows and photos did not land, never which, and it is not replay-stable:
+  a later pass cannot see a photo an earlier pass dropped, so it reports one
+  fewer than the first did.
+- **Queueing an image while the queue is closed still fails outright.** The
+  status writes a drain makes now report whether they landed, but an image
+  captured after another tab has taken the database to a newer version is met
+  as an ordinary could-not-store failure rather than as the closed-queue state
+  the AI settings page names; the page has to be reloaded first.
 
 If a receipt fails for any other reason, that is a bug rather than a
 limitation. Diagnosing one starts on the Import History page: the failed

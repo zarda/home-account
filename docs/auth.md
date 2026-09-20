@@ -75,6 +75,24 @@ stays on the fallback until the next flip.
 `profileRetryInFlight` is a plain boolean rather than a signal, deliberately —
 as a signal it would become a dependency of the effect that sets it.
 
+`retryArm` beside it is the opposite choice for the opposite reason: a counter
+the effect reads at the top, precisely so that bumping it re-runs the effect.
+Exactly one event bumps it — a read whose answer was abandoned because the
+session that started it had been replaced. Nothing else covers that case: the
+in-flight flag is held for as long as the old read is out, so the effect
+returns early for the new session, and dropping the flag re-runs nothing by
+itself.
+
+**A read that failed never bumps it.** Whatever refused it is usually still
+refusing on the next pass, so re-arming on a failure would loop the effect
+against something that is not going away. Waiting for the next connectivity
+flip at least waits for something to change.
+
+Both halves are pinned by unit fixtures rather than by the emulator suite:
+holding a read open across a session swap is not expressible against a real
+Firestore read without a timer, so the spec substitutes a promise it resolves
+by hand and decides the ordering itself.
+
 ## The identity rule
 
 > **A read may only write to the session that started it.**
@@ -155,10 +173,12 @@ service is protected transitively, by being keyed on `userId()`, which no
 longer takes a value from a dead session — except where a service does its own
 post-await write, as `ProviderKeyService` does and checks for itself.
 
-After a cross-session bail the retry's mutex is released with nothing left to
-re-arm the effect, so a new session that degrades while the old read is still
-in flight waits for the next connectivity flip. That is strictly better than
-the cross-account write it replaced, and it is not free of a wait.
+A cross-session bail is the case that now re-arms: the abandoned read bumps
+the counter on its way out, so a session that degraded while its predecessor's
+read was still in flight gets its own read straight away. What is left
+uncovered is the plain failure. A retry whose read rejects arms nothing and
+waits for the next connectivity flip — the deliberate price of not looping
+against a failure that has not changed, and still a wait.
 
 ## When you write another write that crosses an await
 
