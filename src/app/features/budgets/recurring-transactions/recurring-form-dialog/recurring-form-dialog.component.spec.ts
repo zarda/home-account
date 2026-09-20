@@ -330,6 +330,88 @@ describe('RecurringFormDialogComponent', () => {
     });
   });
 
+  // A stored date need not honour its declared type, and the readers refuse
+  // such a rule and name this form as the place it gets put right — so this
+  // is the one surface that has to open it rather than throw on it.
+  describe('a rule whose stored dates cannot be read', () => {
+    /** What a Timestamp field holds after a restore or a hand edit. */
+    const notATimestamp = { seconds: 1, nanoseconds: 0 } as unknown as Timestamp;
+
+    function ruleWith(dates: Partial<RecurringTransaction>): RecurringTransaction {
+      return {
+        id: 'rec1',
+        name: 'Test',
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'cat1',
+        description: '',
+        frequency: { type: 'monthly', interval: 1 },
+        startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+        isActive: true,
+        ...dates
+      } as RecurringTransaction;
+    }
+
+    async function createEditComponent(
+      recurring: RecurringTransaction
+    ): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const editFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      editFixture.detectChanges();
+      return editFixture.componentInstance;
+    }
+
+    it('opens a rule whose start date cannot be read, on today', async () => {
+      // Frozen, because the component reads the clock and so does the
+      // assertion: a run that straddles local midnight between the two would
+      // fail on the date rolling over rather than on the behaviour.
+      const today = new Date(2026, 8, 19);
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(today);
+        const editComponent = await createEditComponent(
+          ruleWith({ startDate: notATimestamp })
+        );
+
+        expect(editComponent.startDate.toDateString()).toBe(today.toDateString());
+        // The rest of the rule still arrives, so the user is editing their own
+        // rule rather than a blank form.
+        expect(editComponent.name).toBe('Test');
+        expect(editComponent.amount).toBe(100);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('reads an unreadable end date as no end date', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ endDate: notATimestamp })
+      );
+
+      expect(editComponent.startDate).toEqual(new Date(2024, 0, 1));
+      expect(editComponent.hasEndDate).toBeFalse();
+      expect(editComponent.endDate).toBeNull();
+    });
+  });
+
   describe('isValid', () => {
     it('should be invalid when name is empty', () => {
       component.name = '';

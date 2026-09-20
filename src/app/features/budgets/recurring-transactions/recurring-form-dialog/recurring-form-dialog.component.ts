@@ -18,6 +18,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category, MAX_REMINDER_LEAD_DAYS, baseCurrencyOf} from '../../../../models';
 import { RecurringPrefill } from '../../../../core/utils/recurring-conversion.utils';
+import { toDate } from '../../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
@@ -230,11 +231,18 @@ export class RecurringFormDialogComponent implements OnInit {
     this.interval = recurring.frequency.interval;
     this.dayOfWeek = recurring.frequency.dayOfWeek ?? null;
     this.dayOfMonth = recurring.frequency.dayOfMonth ?? null;
-    this.startDate = recurring.startDate.toDate();
+    // Every reader refuses a rule whose stored dates are not the timestamps
+    // they claim to be, and names this form as where such a rule is put
+    // right — so this is the one surface that has to accept them. A start
+    // that cannot be read opens on today for the user to correct, and an
+    // unreadable end is read as no end date, the way the engine's own walk
+    // reads it.
+    this.startDate = toDate(recurring.startDate) ?? new Date();
     this.remindDaysBefore = recurring.remindDaysBefore ?? null;
-    if (recurring.endDate) {
+    const endDate = toDate(recurring.endDate);
+    if (endDate) {
       this.hasEndDate = true;
-      this.endDate = recurring.endDate.toDate();
+      this.endDate = endDate;
     }
   }
 

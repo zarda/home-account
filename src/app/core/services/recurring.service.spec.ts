@@ -1420,6 +1420,33 @@ describe('RecurringService', () => {
         }
       });
 
+      // Every other case here anchors in the past, where a computed date that
+      // does not move past the start means a frequency that cannot advance. A
+      // start still ahead of today comes back unmoved because nothing was
+      // skipped, and it is the rule's real next occurrence.
+      it('repairs the pointer of a healthy rule whose start date has not arrived', async () => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 8, 19));
+          const rule = createRecurring({
+            id: 'not-yet',
+            startDate: Timestamp.fromDate(new Date(2026, 11, 1)),
+            nextOccurrence: unreadable
+          });
+
+          await service.processRecurringTransactions([rule]);
+
+          expect(mockFirestoreService.updateDocument).toHaveBeenCalledTimes(1);
+          const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+          expect(path).toBe('users/user123/recurring/not-yet');
+          const record = data as Record<string, Timestamp>;
+          expect(Object.keys(record)).toEqual(['nextOccurrence']);
+          expect(record['nextOccurrence'].toDate()).toEqual(new Date(2026, 11, 1));
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      });
+
       it('leaves a rule whose frequency cannot advance unrepaired and says so', async () => {
         const warn = spyOn(console, 'warn');
         const rule = createRecurring({
@@ -1457,6 +1484,32 @@ describe('RecurringService', () => {
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.calls.mostRecent().args.slice(0, 2))
           .toEqual([jasmine.stringContaining('[Recurring]'), 'unknown-type']);
+      });
+
+      it('leaves a frequency that cannot advance unrepaired however far off its start is', async () => {
+        const warn = spyOn(console, 'warn');
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 8, 19));
+          const rule = createRecurring({
+            id: 'unknown-type-ahead',
+            frequency: { type: 'fortnightly' as never, interval: 1 },
+            startDate: Timestamp.fromDate(new Date(2026, 11, 1)),
+            nextOccurrence: unreadable
+          });
+
+          await service.processRecurringTransactions([rule]);
+
+          // The start is a date the rule really does fall due on, but it is
+          // also the only one it will ever reach: storing it buys one
+          // occurrence and leaves the rule due forever after it.
+          expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(warn.calls.mostRecent().args.slice(0, 2))
+            .toEqual([jasmine.stringContaining('[Recurring]'), 'unknown-type-ahead']);
+        } finally {
+          jasmine.clock().uninstall();
+        }
       });
 
       it('deactivates an ended rule instead of repairing its pointer past the end date', async () => {

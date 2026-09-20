@@ -496,6 +496,32 @@ describe('RecurringTransactionsComponent', () => {
       return items.find(item => item.textContent?.includes('common.edit'));
     }
 
+    // Re-renders the card grid over a given set of rules; the TestBed is
+    // already configured, so only the component is built again.
+    function renderRules(rules: RecurringTransaction[]): HTMLElement {
+      mockRecurringService.getRecurring.and.returnValue(of(rules));
+      fixture = TestBed.createComponent(RecurringTransactionsComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    it('shows the next date of a rule whose pointer reads', () => {
+      expect(renderRules(mockRecurring).querySelector('.recurring-next')).toBeTruthy();
+    });
+
+    // This page is the manual route back for a rule the catch-up skipped, so
+    // a pointer a restore or a hand edit left unreadable has to leave the row
+    // standing without its next date rather than take the grid down.
+    it('shows no next date when the stored pointer is not a timestamp', () => {
+      const host = renderRules([{
+        ...mockRecurring[0],
+        nextOccurrence: { seconds: 1, nanoseconds: 0 } as unknown as Timestamp
+      }]);
+
+      expect(host.querySelector('.recurring-card')).toBeTruthy();
+      expect(host.querySelector('.recurring-next')).toBeNull();
+    });
+
     it('should offer an Edit action in the card menu', fakeAsync(() => {
       const editItem = findEditItem(openCardMenu());
 

@@ -12,6 +12,7 @@ import { RecurringService, INVALID_FREQUENCY_ERROR, RULE_ENDED_ERROR } from '../
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringTransaction, Category, CreateRecurringDTO } from '../../../models';
+import { toDate } from '../../../core/utils/transaction-date.utils';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
@@ -97,6 +98,16 @@ export class RecurringTransactionsComponent implements OnInit {
 
   getFrequencyText(recurring: RecurringTransaction): string {
     return this.recurringService.getFrequencyText(recurring.frequency);
+  }
+
+  /**
+   * The rule's pointer as a date, or null when the stored value is not a
+   * timestamp the readers can make sense of. A restore or a hand edit can
+   * leave it holding anything, and this page is the route back for such a
+   * rule, so the card has to keep rendering without it.
+   */
+  nextOccurrenceDate(recurring: RecurringTransaction): Date | null {
+    return toDate(recurring.nextOccurrence);
   }
 
   async toggleActive(recurring: RecurringTransaction): Promise<void> {

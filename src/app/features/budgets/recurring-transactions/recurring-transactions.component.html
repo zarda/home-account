@@ -59,10 +59,15 @@
                 <mat-chip class="status-chip paused">{{ 'settings.paused' | translate }}</mat-chip>
               }
             </div>
-            @if (recurring.nextOccurrence && recurring.isActive) {
-              <span class="recurring-next">
-                {{ 'settings.nextOccurrence' | translate:{ date: (recurring.nextOccurrence.toDate() | localeDate) ?? '' } }}
-              </span>
+            <!-- No line at all when the stored pointer cannot be read: the
+                 card still names the rule, and the edit action is the way
+                 back. -->
+            @if (recurring.isActive) {
+              @if (nextOccurrenceDate(recurring); as nextDate) {
+                <span class="recurring-next">
+                  {{ 'settings.nextOccurrence' | translate:{ date: (nextDate | localeDate) ?? '' } }}
+                </span>
+              }
             }
           </div>
 

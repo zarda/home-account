@@ -822,10 +822,14 @@ export class RecurringService {
    * inert. That guard only names one refusal (interval); it does not cover
    * every way a frequency can fail to advance — a `type` outside the four
    * known kinds falls through `calculateNextOccurrenceFromDate`'s switch
-   * unchanged and also answers the start back. So the computed result is
-   * checked too: whichever guard catches it, storing the start as "next"
-   * would make the rule permanently due and re-post the same idempotent id
-   * on every run. The write carries `nextOccurrence` alone — `updatedAt` is
+   * unchanged and also answers the start back. So a single step off the
+   * start is taken and checked as well: whichever guard catches it, storing
+   * the start as "next" would make the rule permanently due and re-post the
+   * same idempotent id on every run, and that is as true of a rule whose
+   * start is still months off as of one already due. `resumeRecurring` asks
+   * the same question of the date it has computed instead, which costs it
+   * the future-start case and is why it carries a `start <= now` prefix this
+   * does not. The write carries `nextOccurrence` alone — `updatedAt` is
    * FirestoreService's to stamp, and nothing here says the rule has run.
    */
   private async repairPointer(rule: RecurringTransaction, start: Date): Promise<void> {
@@ -836,11 +840,19 @@ export class RecurringService {
       return;
     }
 
-    const next = this.calculateNextOccurrence(start, rule.frequency);
-    if (!(next.getTime() > start.getTime())) {
+    // Asked of the frequency itself rather than of the clock: one step from
+    // the start is what every known kind advances by, and what an unknown
+    // one answers back unchanged. Reading it off `calculateNextOccurrence`
+    // instead would answer the start back for a start still in the future —
+    // legitimately, since nothing has been skipped yet — and a rule that can
+    // never advance would be repaired on the strength of that.
+    const step = this.calculateNextOccurrenceFromDate(start, rule.frequency, start);
+    if (!(step.getTime() > start.getTime())) {
       console.warn('[Recurring] Leaving a pointer unrepaired, the computed next date does not move past the start:', rule.id);
       return;
     }
+
+    const next = this.calculateNextOccurrence(start, rule.frequency);
 
     // An ended rule would never reach a pointer past its end date, so the
     // repair deactivates it the way the claim's own endDatePassed branch
