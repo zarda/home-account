@@ -44,6 +44,7 @@ describe('ImportHistoryService', () => {
       'addDocument',
       'updateDocument',
       'deleteDocument',
+      'setDocument',
       'getTimestamp'
     ]);
 
@@ -57,6 +58,7 @@ describe('ImportHistoryService', () => {
     mockFirestoreService.addDocument.and.returnValue(Promise.resolve('new-import-id'));
     mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
     mockFirestoreService.deleteDocument.and.returnValue(Promise.resolve());
+    mockFirestoreService.setDocument.and.returnValue(Promise.resolve());
     mockFirestoreService.getTimestamp.and.returnValue(Timestamp.now());
 
     TestBed.configureTestingModule({
@@ -368,6 +370,66 @@ describe('ImportHistoryService', () => {
         expect(stats.successRate).toBe(0);
         done();
       });
+    });
+  });
+
+  describe('restore', () => {
+    const PATH = 'users/user123/imports';
+
+    // What a backup actually hands a restore: JSON.stringify leaves a stored
+    // Timestamp as { seconds, nanoseconds }, and the read that produced the
+    // file injected the document id as a field.
+    const fromBackup = (overrides: Record<string, unknown> = {}): ImportHistory => ({
+      ...baseRecord(),
+      id: 'import1',
+      userId: 'the-account-the-file-came-from',
+      importedAt: { seconds: 1_700_000_000, nanoseconds: 0 },
+      createdAt: { seconds: 1_600_000_000, nanoseconds: 0 },
+      ...overrides,
+    } as unknown as ImportHistory);
+
+    const written = (): Record<string, unknown> =>
+      mockFirestoreService.setDocument.calls.mostRecent().args[1] as Record<string, unknown>;
+
+    it('writes the record at its own id without restamping', async () => {
+      // saveImportHistory takes an auto id and overwrites importedAt with
+      // now, so a second restore through it duplicates the whole history.
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument.calls.mostRecent().args[0]).toBe(`${PATH}/import1`);
+      expect((written()['importedAt'] as Timestamp).toMillis()).toBe(1_700_000_000_000);
+      expect((written()['createdAt'] as Timestamp).toMillis()).toBe(1_600_000_000_000);
+      expect(written()['fileName']).toBe('statement.csv');
+      expect(written()['status']).toBe('completed');
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+    });
+
+    it('strips the id the read injected', async () => {
+      await service.restore(fromBackup());
+
+      expect('id' in written()).toBeFalse();
+    });
+
+    it('stamps the current account, not the one the file came from', async () => {
+      await service.restore(fromBackup());
+
+      expect(written()['userId']).toBe('user123');
+    });
+
+    it('is a no-op the second time', async () => {
+      await service.restore(fromBackup());
+      const first = mockFirestoreService.setDocument.calls.mostRecent().args;
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument.calls.mostRecent().args).toEqual(first);
+    });
+
+    it('does nothing while signed out', async () => {
+      (mockAuthService.userId as unknown as jasmine.Spy).and.returnValue(null);
+
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument).not.toHaveBeenCalled();
     });
   });
 });

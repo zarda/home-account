@@ -342,4 +342,83 @@ describe('TagMemoryService', () => {
       expect(firestore.deleteDocument).not.toHaveBeenCalled();
     });
   });
+
+  describe('restore', () => {
+    // What a backup actually hands a restore: the read that produced the file
+    // injected the document id as a field, and both lists are the decision as
+    // it stood when the file was taken.
+    const fromBackup = (overrides: Record<string, unknown> = {}): TagMemoryEntry => ({
+      id: 'starbucks',
+      merchantKey: 'starbucks',
+      tags: ['coffee'],
+      suppressed: ['lunch'],
+      sampleDescription: 'STARBUCKS #123',
+      count: 4,
+      ...overrides,
+    } as unknown as TagMemoryEntry);
+
+    const written = (): Record<string, unknown> =>
+      firestore.setDocument.calls.mostRecent().args[1] as Record<string, unknown>;
+
+    it('writes the entry at its merchant key, preserving the count', async () => {
+      // remember() would increment; a restore records what was decided, not a
+      // fresh confirmation.
+      await service.restore(fromBackup());
+
+      expect(firestore.setDocument.calls.mostRecent().args[0])
+        .toBe('users/user-1/tagMemory/starbucks');
+      expect(written()['count']).toBe(4);
+      expect(written()['tags']).toEqual(['coffee']);
+      expect(written()['sampleDescription']).toBe('STARBUCKS #123');
+    });
+
+    it('replaces the refusals rather than merging them', async () => {
+      // remember() accumulates `suppressed`; restoring the same file twice
+      // through that door would grow a list the user never grew.
+      await service.ensureLoaded();
+      await service.remember('STARBUCKS #123', [], ['brunch']);
+      firestore.setDocument.calls.reset();
+
+      await service.restore(fromBackup());
+
+      expect(written()['suppressed']).toEqual(['lunch']);
+    });
+
+    it('strips the id the read injected and writes no userId', async () => {
+      // tagMemoryValid hasOnly() merchantKey, tags, suppressed,
+      // sampleDescription, count and updatedAt — either extra field is denied.
+      await service.restore(fromBackup());
+
+      expect('id' in written()).toBeFalse();
+      expect('userId' in written()).toBeFalse();
+    });
+
+    it('shows the restored entry without a reload', async () => {
+      // ensureLoaded is idempotent per user, so a restore that only wrote
+      // would leave the settings screen showing the pre-restore map until the
+      // next sign-in.
+      await service.ensureLoaded();
+
+      await service.restore(fromBackup());
+
+      expect(service.remembered().map(e => e.merchantKey)).toEqual(['starbucks']);
+      expect(service.remembered()[0].count).toBe(4);
+    });
+
+    it('is a no-op the second time', async () => {
+      await service.restore(fromBackup());
+      const first = firestore.setDocument.calls.mostRecent().args;
+      await service.restore(fromBackup());
+
+      expect(firestore.setDocument.calls.mostRecent().args).toEqual(first);
+    });
+
+    it('does nothing while signed out', async () => {
+      userId.set(null);
+
+      await service.restore(fromBackup());
+
+      expect(firestore.setDocument).not.toHaveBeenCalled();
+    });
+  });
 });

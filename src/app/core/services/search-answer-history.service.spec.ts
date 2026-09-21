@@ -13,6 +13,7 @@ import {
   AggregateAnswer,
   SEARCH_ANSWER_SCHEMA_VERSION,
   SearchAnswerRecord,
+  SearchRecord,
 } from '../../models';
 
 describe('SearchAnswerHistoryService', () => {
@@ -69,6 +70,7 @@ describe('SearchAnswerHistoryService', () => {
       'updateDocument',
       'deleteDocument',
       'getCollection',
+      'setDocument',
       'getTimestamp',
     ]);
     userIdSpy = jasmine.createSpy('userId').and.returnValue('user123');
@@ -84,6 +86,7 @@ describe('SearchAnswerHistoryService', () => {
     mockFirestoreService.addDocument.and.returnValue(Promise.resolve('new-answer-id'));
     mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
     mockFirestoreService.deleteDocument.and.returnValue(Promise.resolve());
+    mockFirestoreService.setDocument.and.returnValue(Promise.resolve());
     mockFirestoreService.getTimestamp.and.returnValue(NOW);
 
     TestBed.configureTestingModule({
@@ -488,6 +491,92 @@ describe('SearchAnswerHistoryService', () => {
       expect(count).toBe(2);
       expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(PATH);
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('restore', () => {
+    // What a backup actually hands a restore: JSON.stringify leaves a stored
+    // Timestamp as { seconds, nanoseconds }, and the read that produced the
+    // file injected the document id as a field. The scope's bounds are already
+    // day-key strings in the stored document and must stay that way.
+    const fromBackup = (overrides: Record<string, unknown> = {}): SearchRecord => ({
+      id: 'a-1',
+      userId: 'the-account-the-file-came-from',
+      schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+      kind: 'aggregate',
+      query: 'how much on coffee in August',
+      operation: 'sum',
+      limit: 3,
+      scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+      baseCurrency: 'USD',
+      value: 42,
+      transactionCount: 7,
+      computedAt: { seconds: 1_700_000_000, nanoseconds: 0 },
+      lastUsedAt: { seconds: 1_700_000_500, nanoseconds: 0 },
+      createdAt: { seconds: 1_600_000_000, nanoseconds: 0 },
+      ...overrides,
+    } as unknown as SearchRecord);
+
+    const written = (): Record<string, unknown> =>
+      mockFirestoreService.setDocument.calls.mostRecent().args[1] as Record<string, unknown>;
+
+    it('writes the record at its own id without restamping', async () => {
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument.calls.mostRecent().args[0]).toBe(`${PATH}/a-1`);
+      expect((written()['computedAt'] as Timestamp).toMillis()).toBe(1_700_000_000_000);
+      expect((written()['lastUsedAt'] as Timestamp).toMillis()).toBe(1_700_000_500_000);
+      expect((written()['createdAt'] as Timestamp).toMillis()).toBe(1_600_000_000_000);
+      expect(written()['value']).toBe(42);
+    });
+
+    it('keeps the scope bounds as day keys', async () => {
+      // answerScopeValid requires yyyy-MM-dd strings; reviving them into
+      // timestamps would smuggle a timezone into a calendar window and be
+      // refused by the rules.
+      await service.restore(fromBackup());
+
+      expect(written()['scope']).toEqual({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    });
+
+    it('strips the id the read injected', async () => {
+      // answerCreateValid hasOnly() a field list without `id`, so a write
+      // carrying it is denied outright.
+      await service.restore(fromBackup());
+
+      expect('id' in written()).toBeFalse();
+    });
+
+    it('stamps the current account, not the one the file came from', async () => {
+      await service.restore(fromBackup());
+
+      expect(written()['userId']).toBe('user123');
+    });
+
+    it('bypasses the create path\'s prune and its now-stamps', async () => {
+      await seed(Array.from({ length: MAX_SEARCH_ANSWERS }, (_, i) => stored(`s${i}`, 1_000 + i)));
+
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument).toHaveBeenCalledTimes(1);
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+      expect(mockFirestoreService.deleteDocument).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op the second time', async () => {
+      await service.restore(fromBackup());
+      const first = mockFirestoreService.setDocument.calls.mostRecent().args;
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument.calls.mostRecent().args).toEqual(first);
+    });
+
+    it('does nothing while signed out', async () => {
+      userIdSpy.and.returnValue(null);
+
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument).not.toHaveBeenCalled();
     });
   });
 });
