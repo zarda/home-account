@@ -154,6 +154,22 @@ describe('PeriodTotalsService', () => {
     expect(mockFirestore.getPageSpy.calls.length).toBe(0);
   });
 
+  it('records a count through its own spy, not the collection read\'s', async () => {
+    // A count is an aggregate query that reads no documents, so "this path
+    // was swept" and "this path was only counted" have to be separable. They
+    // shared one spy until now, which is why five specs reached for `spyOn`
+    // on countDocuments instead of reading a spy.
+    seedTransactions([{ amount: 10 }]);
+
+    await service.reset({});
+
+    expect(mockFirestore.countDocumentsSpy.calls.length).toBe(1);
+    expect(mockFirestore.countDocumentsSpy.calls[0].args[0]).toBe(PATH);
+    expect(mockFirestore.getCollectionSpy.calls.length)
+      .withContext('a count must not register as a collection read')
+      .toBe(0);
+  });
+
   it('holds an over-cap set behind an explicit ask', async () => {
     seedTransactions([{ amount: 10 }, { amount: 20 }]);
     spyOn(mockFirestore, 'countDocuments').and.resolveTo(AUTO_SWEEP_LIMIT + 1);
@@ -251,7 +267,7 @@ describe('PeriodTotalsService', () => {
       { amount: 17, description: 'coffee beans' }
     ]);
     await service.reset({ startDate: new Date(2026, 5, 1), endDate: new Date(2026, 5, 30) });
-    const countCalls = mockFirestore.getCollectionSpy.calls.length;
+    const countCalls = mockFirestore.countDocumentsSpy.calls.length;
     const pageCalls = mockFirestore.getPageSpy.calls.length;
 
     await service.reset({
@@ -262,7 +278,7 @@ describe('PeriodTotalsService', () => {
 
     // Same server constraints: no recount, no repage, no computing beat —
     // the fold recomputes over the rows already swept.
-    expect(mockFirestore.getCollectionSpy.calls.length).toBe(countCalls);
+    expect(mockFirestore.countDocumentsSpy.calls.length).toBe(countCalls);
     expect(mockFirestore.getPageSpy.calls.length).toBe(pageCalls);
     expect(service.status().kind).toBe('ready');
     expect(service.totals()!.expense).toBe(28);

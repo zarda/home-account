@@ -36,6 +36,7 @@ export class MockFirestoreService {
   private _getDocumentSpy = new SimpleSpy();
   private _getCollectionSpy = new SimpleSpy();
   private _getCollectionFromServerSpy = new SimpleSpy();
+  private _countDocumentsSpy = new SimpleSpy();
   private _subscribeToCollectionSpy = new SimpleSpy();
   private _subscribeToDocumentSpy = new SimpleSpy();
   private _getPageSpy = new SimpleSpy();
@@ -50,6 +51,7 @@ export class MockFirestoreService {
   get getDocumentSpy() { return this._getDocumentSpy; }
   get getCollectionSpy() { return this._getCollectionSpy; }
   get getCollectionFromServerSpy() { return this._getCollectionFromServerSpy; }
+  get countDocumentsSpy() { return this._countDocumentsSpy; }
   get subscribeToCollectionSpy() { return this._subscribeToCollectionSpy; }
   get subscribeToDocumentSpy() { return this._subscribeToDocumentSpy; }
   get getPageSpy() { return this._getPageSpy; }
@@ -87,6 +89,7 @@ export class MockFirestoreService {
     this._getDocumentSpy.reset();
     this._getCollectionSpy.reset();
     this._getCollectionFromServerSpy.reset();
+    this._countDocumentsSpy.reset();
     this._subscribeToCollectionSpy.reset();
     this._subscribeToDocumentSpy.reset();
     this._getPageSpy.reset();
@@ -117,8 +120,13 @@ export class MockFirestoreService {
     return (this.mockCollections.get(collectionPath) as T[]) ?? [];
   }
 
+  // Its own spy, not getCollection's: a count is an aggregate query that
+  // reads no documents, so a spec asserting "this path was swept" and one
+  // asserting "this path was only counted" are different statements. Sharing
+  // one spy made them indistinguishable, and five specs worked around it with
+  // `spyOn` instead.
   async countDocuments(collectionPath: string, options?: unknown): Promise<number> {
-    this._getCollectionSpy.call(collectionPath, options);
+    this._countDocumentsSpy.call(collectionPath, options);
     return (this.mockCollections.get(collectionPath) ?? []).length;
   }
 

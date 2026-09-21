@@ -361,6 +361,23 @@ describe('TransactionListComponent', () => {
         .withContext('the guard must not short-circuit the live path')
         .toHaveBeenCalled();
     });
+
+    it('clears the scroll target when the row has not rendered yet', () => {
+      // The `if (el)` false arm: the target is a real id the window has not
+      // paged in, so there is nothing to scroll to and nothing to highlight —
+      // but the target still has to be cleared, or every later page keeps
+      // trying to reach a row that will never arrive.
+      internals(component).scrollToTarget('not-in-the-dom');
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-tx-id="not-in-the-dom"]'))
+        .withContext('the premise: that row really is not rendered')
+        .toBeNull();
+      expect(windowSource.clearScrollTarget).toHaveBeenCalled();
+      expect(component.highlightedId())
+        .withContext('nothing was scrolled to, so nothing may be highlighted')
+        .toBeNull();
+    });
   });
 });
 
