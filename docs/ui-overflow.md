@@ -143,18 +143,25 @@ all.
 npm run grid:check
 ```
 
-`scripts/check-grid-tracks.mjs` scans `src/**/*.scss` for the nested shape,
-masked for comments, with a `--self-test` proving it hits the nested form (and
-the nested form under a `@media` line) and misses `repeat(3, minmax(0, 1fr))`,
-`repeat(auto-fill, minmax(100px, 1fr))`, and either shape inside a comment. CI
-runs it between the truncation check and the direction check. The bare-`1fr`
-half is still a grep:
+`scripts/check-grid-tracks.mjs` scans `src/**/*.scss` for **both** halves of the
+rule, masked for comments, with a `--self-test` proving it hits the nested form
+(and the nested form under a `@media` line), hits a bare `1fr` written as a
+single track, inside a `repeat()`, beside a fixed column and beside a floored
+one, and misses `repeat(3, minmax(0, 1fr))`, `repeat(auto-fill, minmax(100px,
+1fr))`, `var(--frame-width)`, and either shape inside a comment. CI runs it
+between the truncation check and the direction check.
+
+The bare-`1fr` half strips every balanced `minmax(…)` out of the value and then
+looks for a surviving `fr`, rather than running the shell grep this rule shipped
+with:
 
 ```bash
 grep -rn "grid-template-columns" src --include='*.scss' | grep "1fr" | grep -v "minmax("
 ```
 
-comes back empty.
+That grep judges a whole line, so `minmax(0, 2fr) 1fr` — a repaired track beside
+an unrepaired one, which is how a half-done sweep leaves a file — reads as clean
+to it. It comes back empty today either way.
 
 ---
 
@@ -463,7 +470,7 @@ swipe keeps a non-gesture route — the pinned menu.
 | `shared/directives/tab-strip-scroll.directive.spec.ts` | the strip mechanics on a 300px host: no chevrons on an overflowing strip, a label container that really scrolls, a newly selected tab brought into view, the tab the arrow keys walk to kept in view, and a clicked tab staying put after the reader scrolled to it — the case Material's focus reset breaks |
 | `features/budgets/budgets.overflow.spec.ts`, `features/reports/reports.overflow.spec.ts` | the two opted-in pages: the chevrons never appear, and a `?tab=` deep link opens on its tab already in view |
 | `features/reports/<name>/<name>.overflow.spec.ts` for category-breakdown, monthly-comparison and spending-analysis, `features/settings/profile-settings/profile-settings.overflow.spec.ts`, and cases in `ai-settings-page.component.spec.ts` and `transaction-filters.component.spec.ts` | G2 as rendered: the column count of each repaired grid. Karma's window is 756px, so the three whose rules start at 768px or 1024px cannot be read as layout — those pin the repaired *declaration* through the CSSOM instead, where an invalid value serialises as an empty string |
-| `scripts/check-grid-tracks.mjs` | G2's nested shape across the whole source, `npm run grid:check` |
+| `scripts/check-grid-tracks.mjs` | both halves of G2 across the whole source — the nested `minmax()` and a bare `fr` track with no floor — `npm run grid:check` |
 | `shared/layout/bottom-nav/bottom-nav.overflow.spec.ts`, `shared/components/period-selector/period-selector.overflow.spec.ts` | the two rows the account's own font scale breaks: a gutter between two fitted nav labels at 1.3 and at the default, and the calendar button staying beside the toggle group at 1.3 while the group stops at its content width on a desktop row |
 | `shared/layout/sidebar/sidebar.overflow.spec.ts`, `shared/layout/header/header.overflow.spec.ts` | the drawer never scrolls sideways to reach a nav row; the header avatar falls back to its placeholder on a load failure and recovers when the URL changes (the settings card's own case is in `settings.component.spec.ts`) |
 | `features/settings/ai-settings-page/ai-settings-page.overflow.spec.ts` | the longest catalog model name wraps in the select trigger instead of ellipsizing, at both font scales |
