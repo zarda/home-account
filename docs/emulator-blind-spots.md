@@ -274,6 +274,32 @@ The violations that already stood when the pass was wired in are frozen per
 route in `core/services/testing/axe.ts`, each with its reason. They are debts
 with names: the freeze exists so the next one fails.
 
+## A rule that tightens, and the data already stored (#454)
+
+The emulator proves what a new rule *accepts and refuses*. It cannot tell you
+whether anything **already in a real account** would now be refused, because
+its data is whatever the spec just seeded.
+
+Tightening `categoryId is string` to also demand `size() > 0` on transactions,
+budgets and recurring rules had exactly that shape. Nine smoke cases proved the
+clause; none of them could say whether a row somewhere carried `''` and would
+become unwritable on its next edit. Two things closed it:
+
+- **A live read before the rule shipped.** From the authed session:
+  `countDocuments(path, { where: [{ field: 'categoryId', op: '==', value: '' }] })`
+  against each of the three collections. 131 rows, zero empties — and zero
+  whitespace-only, missing, non-string or dangling ids, which the clause would
+  not have caught anyway.
+- **The clause written inside the `touched()` guard**, so that even an unseen
+  row stays editable for every other field and is refused only if a write tries
+  to keep the id empty. That is the part that does not depend on the probe
+  being complete.
+
+The probe covers one account. Rules grant no collection-group read and no
+service-account credential is configured here, so nothing in this project can
+count such rows across every account — which is why the guarded form is load
+bearing rather than belt-and-braces.
+
 ## Summary
 
 | Blind spot | What covers it | Where |
@@ -290,6 +316,7 @@ with names: the freeze exists so the next one fails.
 | A document missing the field every read orders by | nothing, and nothing can — it is invisible until the form rewrites it | [ADR 0141](ADR/0141-a-recurring-rule-in-a-bad-state-is-repaired-where-its-data-allows-and-refused-where-it-does-not.md) |
 | An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
+| A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
 | An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px with unserved i18n | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
 
 ## When you add another one

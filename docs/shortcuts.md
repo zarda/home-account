@@ -169,6 +169,10 @@ palette — so the dialog config lives in one place.
   the palette has no touch entry point.
 - **The palette finds destinations, not content** — no transactions, categories
   or stored searches. Smart Search is a separate surface with no hotkey.
-- **`PALETTE_ONLY_ITEMS` is maintained by hand.** Nothing compares it against
-  `app.routes.ts`, so a new route no surface shows will be missing until
-  somebody adds it.
+- **`PALETTE_ONLY_ITEMS` is still maintained by hand**, but no longer
+  silently: `nav-items.spec.ts` compares `NAV_ITEMS` and `PALETTE_ONLY_ITEMS`
+  against `app.routes.ts` in both directions, so a loadable route with no
+  entry fails the suite, and so does an entry naming a route that no longer
+  exists. `login` and `lock` are named exemptions — both are guarded and
+  unreachable while the palette exists
+  ([ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md)).
