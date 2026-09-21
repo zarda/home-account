@@ -156,6 +156,30 @@ contrast read the service's signals, where stored and resolved are the same.
 If it runs through WAAPI or paints to a canvas, inject `AccessibilityService`
 and read `reducedMotion()` — nothing sweeps for the ones that do not.
 
+**Check:**
+
+```bash
+npm run motion:check
+```
+
+`scripts/check-motion.mjs` holds the CSS half to what is actually checkable: both
+kill-switches still exist in `src/styles.scss`, still declare all four properties
+with `!important`, and still cover `*`, `*::before` and `*::after` — and no
+component stylesheet declares an `!important` duration of its own. That last one
+is the way a component gets past them: `*` is specificity zero, so an
+`!important` duration in a component rule ties on importance and wins on
+specificity, and that component keeps moving for a reader who asked it not to. A
+duration of about zero is the kill-switch's own spelling and passes; a
+declaration inside the component's **own** `prefers-reduced-motion` block is
+cooperating and is skipped. One survivor is frozen in the script's `ALLOWED`
+table with its reason (`login.component.scss`'s Google button, whose eleven
+`!important`s were written to override Material).
+
+The check says nothing about `forced-colors`, and there is no rule to write
+there: two stylesheets declare it because two paint their own focus and
+selection states, and a gate demanding it of the rest would be a gate that
+asserts nothing.
+
 ## What is tested
 
 - `sidebar.component.spec.ts` and `bottom-nav.component.spec.ts` register real

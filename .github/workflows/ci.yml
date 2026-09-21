@@ -177,6 +177,15 @@ jobs:
       - name: Check date arithmetic
         run: npm run dates:check
 
+      # The two reduced-motion kill-switches, and the one way past them.
+      # Nothing else here can see either: deleting the in-app `.reduced-motion`
+      # switch leaves the OS one working, so every machine that has the OS
+      # preference set still looks right; and an `!important` duration in a
+      # component stylesheet beats a `*` selector on specificity, so that
+      # component keeps animating with no error, no log and no failing spec.
+      - name: Check reduced motion
+        run: npm run motion:check
+
       - name: Unit tests
         run: npm run test:ci
 

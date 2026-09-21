@@ -27,6 +27,7 @@
     "direction:check": "node scripts/check-direction.mjs --self-test && node scripts/check-direction.mjs",
     "grid:check": "node scripts/check-grid-tracks.mjs --self-test && node scripts/check-grid-tracks.mjs",
     "dates:check": "node scripts/check-dates.mjs --self-test && node scripts/check-dates.mjs",
+    "motion:check": "node scripts/check-motion.mjs --self-test && node scripts/check-motion.mjs",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",
