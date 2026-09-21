@@ -1165,6 +1165,24 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
   });
 
   /**
+   * MatIcon sets aria-hidden="true" on itself at construction unless the
+   * template carries a *literal* aria-hidden attribute — a bound
+   * [attr.aria-hidden] does not count (HostAttributeToken reads the static
+   * attribute). So a flag with role="img" and a bound label was silent: the
+   * only thing telling a screen-reader user the reading needs checking.
+   */
+  it('lets a screen reader read the amount verification flag', () => {
+    component.transactions = [makeRow({ fieldConfidence: { amount: 0.2 } })];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const flag = fixture.nativeElement.querySelector('.amount-section .verify-flag') as HTMLElement;
+    expect(flag).withContext('the flag should render for a doubted amount').not.toBeNull();
+    expect(flag.getAttribute('aria-hidden')).toBe('false');
+    expect(flag.getAttribute('aria-label')).toBeTruthy();
+  });
+
+  /**
    * The touch picker renders in the CDK overlay container, outside the
    * fixture, so a test that opened it closes it again — or the next test
    * finds a stray dialog in the document.
