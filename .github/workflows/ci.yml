@@ -168,6 +168,15 @@ jobs:
       - name: Check Material imports
         run: npm run material:check
 
+      # The date audit greps in docs/dates.md, which were reviewer
+      # instructions until now. Nothing else here can see the shapes: they are
+      # legal TypeScript that type-checks, lints and passes every spec at UTC
+      # — and this runner is at UTC, so the two non-UTC test:dates passes are
+      # the only other thing between a hand-rolled end-of-day bound and a
+      # user, and they only cover the specs somebody enumerated.
+      - name: Check date arithmetic
+        run: npm run dates:check
+
       - name: Unit tests
         run: npm run test:ci
 

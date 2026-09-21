@@ -207,6 +207,7 @@ Every script CI runs, in the order it runs it:
 | `npm run prod-env:check` | Verify the production config secret matches its committed digest. CI runs the checker's `--self-test` half only, against a stub it wrote itself; the real compare runs in `deploy-web` against the actual secret |
 | `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates |
 | `npm run direction:check` | Verify the physical-direction CSS is still exactly where the per-file baseline says ([docs/rtl.md](docs/rtl.md)) |
+| `npm run dates:check` | Run the date audit greps over production code — a hand-built end-of-day or month end, a UTC day key, a day step in milliseconds, a re-parsed date field ([docs/dates.md](docs/dates.md)) |
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run test:dates` | Run the zone-sensitive specs — CI runs them twice, under `TZ=America/New_York` and `TZ=Asia/Tokyo` |
 | `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
