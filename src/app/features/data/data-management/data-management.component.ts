@@ -363,6 +363,9 @@ export class DataManagementComponent {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
         title: this.t('settings.confirmRestore'),
+        // One count per section the file carries. Six of the eleven were
+        // named here before 1.5, so the confirmation described a third of
+        // what it was about to write.
         message: this.t('settings.confirmRestoreMessage', {
           transactions: contents?.transactions ?? 0,
           categories: contents?.categories ?? 0,
@@ -370,6 +373,11 @@ export class DataManagementComponent {
           recurring: contents?.recurring ?? 0,
           goals: contents?.goals ?? 0,
           insightSnapshots: contents?.insightSnapshots ?? 0,
+          savedSearches: contents?.savedSearches ?? 0,
+          searchAnswers: contents?.searchAnswers ?? 0,
+          categoryMemory: contents?.categoryMemory ?? 0,
+          tagMemory: contents?.tagMemory ?? 0,
+          imports: contents?.imports ?? 0,
         }),
         confirmLabel: this.t('common.import'),
         confirmColor: 'primary'

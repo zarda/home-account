@@ -33,6 +33,8 @@ import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { Firestore } from '@angular/fire/firestore';
 import { Transaction } from '../../../models';
+import { BACKUP_SECTIONS, NOT_IN_BACKUP } from '../../../core/services/export.service';
+import en from '../../../../assets/i18n/en.json';
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
@@ -399,6 +401,7 @@ describe('DataManagementComponent', () => {
   // while every goal landed, and the preview panel one line above the dialog
   // showed the goal count all along.
 
+
   describe('the CSV bulk import', () => {
     /** Stage parsed rows and a confirmed dialog, then run the import. */
     async function importRows(rows: { type: string; categoryId: string }[]): Promise<void> {
@@ -493,6 +496,66 @@ describe('DataManagementComponent', () => {
         await new Promise(resolve => setTimeout(resolve, 20));
       }
     }
+
+    describe('what the dialogs say the file covers', () => {
+      it('interpolates a count for every section the backup carries', async () => {
+        // Six of the eleven before 1.5, so the confirmation described a third of
+        // what it was about to write.
+        await restoreWith({}, {
+          transactions: 12, categories: 3, budgets: 2, recurring: 1, goals: 4,
+          insightSnapshots: 6, savedSearches: 5, searchAnswers: 7,
+          categoryMemory: 8, tagMemory: 9, imports: 10,
+        });
+
+        const call = mockTranslationService.t.calls.all()
+          .find(c => c.args[0] === 'settings.confirmRestoreMessage');
+        expect(call).toBeDefined();
+        const params = call!.args[1] as Record<string, number>;
+        expect(Object.keys(params).sort()).toEqual([...BACKUP_SECTIONS].sort());
+        expect(params['savedSearches']).toBe(5);
+        expect(params['imports']).toBe(10);
+      });
+
+      // The English catalog is the source text; ja and tc are held to the same
+      // placeholders by translation-keys.spec.ts, and their prose is a
+      // translator's business rather than a spec's.
+      it('names every section the file carries, in the message itself', () => {
+        const message = en.settings.confirmRestoreMessage;
+        const missing = BACKUP_SECTIONS.filter(section => !message.includes(`{{${section}}}`));
+
+        expect(missing).toEqual([]);
+      });
+
+      it('stops calling the backup a full one, and names what it cannot carry', () => {
+        const offer = en.settings.deleteAccountBackupMessage.toLowerCase();
+
+        // Each excluded kind, by the word the English message uses for it.
+        // Keyed against NOT_IN_BACKUP, so a fourth exclusion has to be given a
+        // word here before this passes.
+        const named: Record<string, string> = {
+          secrets: 'keys',
+          securityEvents: 'sign-in history',
+          feedback: 'feedback',
+        };
+        expect(Object.keys(named).sort()).toEqual(Object.keys(NOT_IN_BACKUP).sort());
+
+        const unmentioned = Object.entries(named)
+          .filter(([, word]) => !offer.includes(word))
+          .map(([kind]) => kind);
+
+        expect(unmentioned).toEqual([]);
+        expect(offer).not.toContain('full backup');
+      });
+
+      it('warns about the kinds the cascade removes that the old wording left out', () => {
+        const warning = en.settings.deleteAccountWarning.toLowerCase();
+
+        const missing = ['goals', 'stored answers', 'merchant', 'import history', 'feedback']
+          .filter(word => !warning.includes(word));
+
+        expect(missing).toEqual([]);
+      });
+    });
 
     it('counts the goals it restored, in a backup that holds nothing else', async () => {
       await restoreWith({ goals: 12 });
