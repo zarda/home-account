@@ -179,6 +179,22 @@ export class SearchHistoryService {
   }
 
   /**
+   * One-shot read of every saved and recent search, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Not the `allSearches` signal, and no MAX_RECENT_SEARCHES slice: the signal
+   * holds only what a subscription happened to deliver, and the backup has to
+   * carry what erasure removes, which is the whole collection.
+   */
+  async exportAll(): Promise<SavedSearch[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<SavedSearch>(
+      this.userSearchesPath, { orderBy: [{ field: 'lastUsedAt', direction: 'desc' }] });
+  }
+
+  /**
    * Remove every saved and recent search, for account deletion. Enumerates
    * the collection rather than the signal — the signal only holds what a
    * subscription happened to deliver.

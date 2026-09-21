@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { BACKUP_SCHEMA_VERSION, ExportService } from './export.service';
+import { BACKUP_SCHEMA_VERSION, ExportData, ExportService } from './export.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
@@ -615,8 +615,38 @@ describe('ExportService', () => {
         // never moved as sections were added, so a schema change was shipping
         // under the same number each time.
         expect(parsed.version).toBe(BACKUP_SCHEMA_VERSION);
-        // Last bumped when goal links joined the transactions section.
-        expect(parsed.version).toBe('1.4');
+        // Last bumped when saved searches, stored answers, the two merchant
+        // memories and the import history joined the file.
+        expect(parsed.version).toBe('1.5');
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
+    it('carries the five collections erasure removes that 1.4 left behind', (done) => {
+      // The deletion cascade takes fourteen stored kinds; before 1.5 the file
+      // held six of them, so accepting the backup offer and then deleting the
+      // account still lost these five for good.
+      const blob = service.exportToJSON({
+        transactions: [],
+        categories: [],
+        savedSearches: [{ id: 's-1', query: 'coffee' }] as unknown as ExportData['savedSearches'],
+        searchAnswers: [{ id: 'a-1', query: 'how much on coffee' }] as unknown as ExportData['searchAnswers'],
+        categoryMemory: [{ merchantKey: 'starbucks', categoryId: 'food_coffee' }] as unknown as ExportData['categoryMemory'],
+        tagMemory: [{ merchantKey: 'starbucks', tags: ['coffee'] }] as unknown as ExportData['tagMemory'],
+        imports: [{ id: 'i-1', fileName: 'statement.csv' }] as unknown as ExportData['imports'],
+        exportDate: new Date().toISOString(),
+        version: BACKUP_SCHEMA_VERSION,
+      });
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const parsed = JSON.parse(reader.result as string);
+        expect(parsed.savedSearches.length).toBe(1);
+        expect(parsed.searchAnswers.length).toBe(1);
+        expect(parsed.categoryMemory.length).toBe(1);
+        expect(parsed.tagMemory.length).toBe(1);
+        expect(parsed.imports.length).toBe(1);
         done();
       };
       reader.readAsText(blob);

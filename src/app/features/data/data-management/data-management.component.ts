@@ -23,6 +23,11 @@ import { BudgetService } from '../../../core/services/budget.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { RecurringService } from '../../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
+import { SearchHistoryService } from '../../../core/services/search-history.service';
+import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
+import { CategoryMemoryService } from '../../../core/services/category-memory.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -63,6 +68,11 @@ export class DataManagementComponent {
   private budgetService = inject(BudgetService);
   private goalService = inject(GoalService);
   private recurringService = inject(RecurringService);
+  private searchHistory = inject(SearchHistoryService);
+  private searchAnswers = inject(SearchAnswerHistoryService);
+  private categoryMemory = inject(CategoryMemoryService);
+  private tagMemory = inject(TagMemoryService);
+  private importHistory = inject(ImportHistoryService);
   private backupRestore = inject(BackupRestoreService);
   private authService = inject(AuthService);
   private accountDeletion = inject(AccountDeletionService);
@@ -124,6 +134,15 @@ export class DataManagementComponent {
       const budgets = await this.budgetService.exportAll();
       const recurring = await this.recurringService.exportAll();
       const goals = await this.goalService.exportAll();
+      // The five backup 1.5 added. Read after the six above rather than
+      // beside them for the same reason transactions go first: the whole
+      // export fails on the first server read that rejects, and the deletion
+      // gate below reads that failure.
+      const savedSearches = await this.searchHistory.exportAll();
+      const searchAnswers = await this.searchAnswers.exportAll();
+      const categoryMemory = await this.categoryMemory.exportAll();
+      const tagMemory = await this.tagMemory.exportAll();
+      const imports = await this.importHistory.exportAll();
 
       const blob = this.exportService.exportToJSON({
         transactions,
@@ -132,6 +151,11 @@ export class DataManagementComponent {
         budgets,
         recurring,
         goals,
+        savedSearches,
+        searchAnswers,
+        categoryMemory,
+        tagMemory,
+        imports,
         exportDate: new Date().toISOString(),
         version: BACKUP_SCHEMA_VERSION
       });

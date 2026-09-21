@@ -16,9 +16,14 @@ import { GoalService } from './goal.service';
 import {
   Budget,
   Category,
+  CategoryMemoryEntry,
   CreateTransactionDTO,
   Goal,
+  ImportHistory,
   RecurringTransaction,
+  SavedSearch,
+  SearchRecord,
+  TagMemoryEntry,
   Transaction,
 } from '../../models';
 import { parseDateInput } from '../utils/transaction-date.utils';
@@ -139,6 +144,14 @@ export class BackupRestoreService {
       budgets: Array.isArray(data.budgets) ? data.budgets as Budget[] : [],
       recurring: Array.isArray(data.recurring) ? data.recurring as RecurringTransaction[] : [],
       goals: Array.isArray(data.goals) ? data.goals as Goal[] : [],
+      savedSearches: Array.isArray(data.savedSearches)
+        ? data.savedSearches as SavedSearch[] : [],
+      searchAnswers: Array.isArray(data.searchAnswers)
+        ? data.searchAnswers as SearchRecord[] : [],
+      categoryMemory: Array.isArray(data.categoryMemory)
+        ? data.categoryMemory as CategoryMemoryEntry[] : [],
+      tagMemory: Array.isArray(data.tagMemory) ? data.tagMemory as TagMemoryEntry[] : [],
+      imports: Array.isArray(data.imports) ? data.imports as ImportHistory[] : [],
       exportDate: typeof data.exportDate === 'string' ? data.exportDate : '',
       version,
     };

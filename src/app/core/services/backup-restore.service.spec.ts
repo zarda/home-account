@@ -159,7 +159,7 @@ describe('BackupRestoreService', () => {
     });
 
     it('accepts every version this build can read', () => {
-      for (const version of ['1.0', '1.1', '1.2', '1.3', '1.4']) {
+      for (const version of ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5']) {
         expect(service.parse({ transactions: [], version }).version).toBe(version);
       }
     });
@@ -174,6 +174,31 @@ describe('BackupRestoreService', () => {
       expect(data.budgets).toEqual([]);
       expect(data.recurring).toEqual([]);
       expect(data.insightSnapshots).toEqual([]);
+      // The five 1.5 added. A 1.4 file carries none of them and must still
+      // restore rather than reaching a section-loop with an undefined.
+      expect(data.savedSearches).toEqual([]);
+      expect(data.searchAnswers).toEqual([]);
+      expect(data.categoryMemory).toEqual([]);
+      expect(data.tagMemory).toEqual([]);
+      expect(data.imports).toEqual([]);
+    });
+
+    it('keeps the five new sections a 1.5 file does carry', () => {
+      const data = service.parse({
+        transactions: [],
+        version: '1.5',
+        savedSearches: [{ id: 's-1' }],
+        searchAnswers: [{ id: 'a-1' }],
+        categoryMemory: [{ merchantKey: 'starbucks' }],
+        tagMemory: [{ merchantKey: 'starbucks' }],
+        imports: [{ id: 'i-1' }],
+      });
+
+      expect(data.savedSearches?.length).toBe(1);
+      expect(data.searchAnswers?.length).toBe(1);
+      expect(data.categoryMemory?.length).toBe(1);
+      expect(data.tagMemory?.length).toBe(1);
+      expect(data.imports?.length).toBe(1);
     });
   });
 

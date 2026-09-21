@@ -268,6 +268,21 @@ export class SearchAnswerHistoryService {
   }
 
   /**
+   * One-shot read of every stored interpretation, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Not the `answers` signal and not capped at MAX_SEARCH_ANSWERS: the cap is
+   * a write-path prune, and the backup has to carry what erasure removes.
+   */
+  async exportAll(): Promise<SearchRecord[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<SearchRecord>(
+      this.userAnswersPath, { orderBy: [{ field: 'lastUsedAt', direction: 'desc' }] });
+  }
+
+  /**
    * Remove every persisted answer, for account deletion. Enumerates the
    * collection rather than the signal — the signal only holds what a
    * subscription happened to deliver.

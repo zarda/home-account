@@ -18,7 +18,12 @@ import {
   Goal,
   RecurringTransaction,
   InsightSnapshot,
-  MonthlyTotal
+  MonthlyTotal,
+  SavedSearch,
+  SearchRecord,
+  CategoryMemoryEntry,
+  TagMemoryEntry,
+  ImportHistory
 } from '../../models';
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
 import {
@@ -71,14 +76,18 @@ export interface ReportData {
 }
 
 /** Bumped whenever the backup gains or reshapes a section. */
-export const BACKUP_SCHEMA_VERSION = '1.4';
+export const BACKUP_SCHEMA_VERSION = '1.5';
 
 /**
  * Versions this build can restore. Older ones simply carry fewer sections;
  * a version not in this list came from a newer build and is refused rather
  * than half-read.
+ *
+ * A closed membership list, not a `>` comparison: every build shipped before
+ * this one refuses a 1.5 file outright rather than restoring six of its eleven
+ * sections and reporting success.
  */
-export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2', '1.3', '1.4'] as const;
+export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5'] as const;
 
 export interface ExportData {
   transactions: Transaction[];
@@ -98,6 +107,21 @@ export interface ExportData {
    * whole documents, and restore recomputes the counter from the links.
    */
   goals?: Goal[];
+  /**
+   * The five the deletion cascade removes and 1.4 left behind. Optional for
+   * the same reason as every section above: a file written before 1.5 carries
+   * none of them and must still parse as an ExportData.
+   *
+   * Each is a whole stored document, restored at its own id through a door
+   * that writes it back as it was written — the public `remember` /
+   * `recordRecent` / `saveImportHistory` APIs all restamp or renumber, which
+   * is why the doors exist.
+   */
+  savedSearches?: SavedSearch[];
+  searchAnswers?: SearchRecord[];
+  categoryMemory?: CategoryMemoryEntry[];
+  tagMemory?: TagMemoryEntry[];
+  imports?: ImportHistory[];
   exportDate: string;
   version: string;
 }

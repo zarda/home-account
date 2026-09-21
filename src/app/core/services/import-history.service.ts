@@ -100,6 +100,22 @@ export class ImportHistoryService {
   }
 
   /**
+   * One-shot read of the whole import history, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Deliberately uncapped, unlike every read above: IMPORT_HISTORY_LIMIT
+   * bounds what a page subscribes to, and the backup has to carry what
+   * erasure removes.
+   */
+  async exportAll(): Promise<ImportHistory[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<ImportHistory>(
+      this.userImportsPath, { orderBy: [{ field: 'importedAt', direction: 'desc' }] });
+  }
+
+  /**
    * Write one history record back from a backup, at its own id.
    *
    * `saveImportHistory` is the wrong door for this: it takes an auto id and

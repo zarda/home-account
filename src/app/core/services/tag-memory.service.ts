@@ -206,6 +206,20 @@ export class TagMemoryService {
   }
 
   /**
+   * One-shot read of every remembered merchant, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Not the `entries` signal — on a session that never ran an import it holds
+   * nothing at all, and a backup of nothing is the failure this section
+   * exists to prevent.
+   */
+  async exportAll(): Promise<TagMemoryEntry[]> {
+    if (!this.authService.userId()) return [];
+    return this.firestoreService.getCollectionFromServer<TagMemoryEntry>(this.memoryPath);
+  }
+
+  /**
    * Remove every stored memory row, for account deletion. Enumerates the
    * collection rather than the loaded entries — clear() only forgets what
    * this session happened to load, which on a fresh session is nothing.

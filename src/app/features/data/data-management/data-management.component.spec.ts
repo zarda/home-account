@@ -23,6 +23,11 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AccountDeletionService } from '../../../core/services/account-deletion.service';
 import { GoalService } from '../../../core/services/goal.service';
+import { SearchHistoryService } from '../../../core/services/search-history.service';
+import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
+import { CategoryMemoryService } from '../../../core/services/category-memory.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { Firestore } from '@angular/fire/firestore';
 import { Transaction } from '../../../models';
 
@@ -44,6 +49,11 @@ describe('DataManagementComponent', () => {
   let mockBackupRestore: jasmine.SpyObj<BackupRestoreService>;
   let mockAccountDeletion: jasmine.SpyObj<AccountDeletionService>;
   let mockGoalService: jasmine.SpyObj<GoalService>;
+  let mockSearchHistory: jasmine.SpyObj<SearchHistoryService>;
+  let mockSearchAnswers: jasmine.SpyObj<SearchAnswerHistoryService>;
+  let mockCategoryMemory: jasmine.SpyObj<CategoryMemoryService>;
+  let mockTagMemory: jasmine.SpyObj<TagMemoryService>;
+  let mockImportHistory: jasmine.SpyObj<ImportHistoryService>;
 
   beforeEach(async () => {
     mockExportService = jasmine.createSpyObj('ExportService', [
@@ -80,6 +90,18 @@ describe('DataManagementComponent', () => {
     mockRecurringService.exportAll.and.returnValue(Promise.resolve([]));
     mockGoalService = jasmine.createSpyObj('GoalService', ['exportAll', 'createGoal']);
     mockGoalService.exportAll.and.resolveTo([]);
+    // The five sections backup 1.5 added. Root-provided like the rest, so
+    // without stubs the real services are constructed against a bare Firestore.
+    mockSearchHistory = jasmine.createSpyObj('SearchHistoryService', ['exportAll']);
+    mockSearchHistory.exportAll.and.resolveTo([]);
+    mockSearchAnswers = jasmine.createSpyObj('SearchAnswerHistoryService', ['exportAll']);
+    mockSearchAnswers.exportAll.and.resolveTo([]);
+    mockCategoryMemory = jasmine.createSpyObj('CategoryMemoryService', ['exportAll']);
+    mockCategoryMemory.exportAll.and.resolveTo([]);
+    mockTagMemory = jasmine.createSpyObj('TagMemoryService', ['exportAll']);
+    mockTagMemory.exportAll.and.resolveTo([]);
+    mockImportHistory = jasmine.createSpyObj('ImportHistoryService', ['exportAll']);
+    mockImportHistory.exportAll.and.resolveTo([]);
     mockBackupRestore = jasmine.createSpyObj('BackupRestoreService', ['parse', 'describe', 'restore']);
 
     // Root-provided, so without this the real service is constructed and its
@@ -119,6 +141,11 @@ describe('DataManagementComponent', () => {
         { provide: BudgetService, useValue: mockBudgetService },
         { provide: RecurringService, useValue: mockRecurringService },
         { provide: GoalService, useValue: mockGoalService },
+        { provide: SearchHistoryService, useValue: mockSearchHistory },
+        { provide: SearchAnswerHistoryService, useValue: mockSearchAnswers },
+        { provide: CategoryMemoryService, useValue: mockCategoryMemory },
+        { provide: TagMemoryService, useValue: mockTagMemory },
+        { provide: ImportHistoryService, useValue: mockImportHistory },
         { provide: BackupRestoreService, useValue: mockBackupRestore },
         { provide: InsightSnapshotService, useValue: mockInsightSnapshots },
         { provide: AuthService, useValue: mockAuthService },
@@ -194,6 +221,52 @@ describe('DataManagementComponent', () => {
       tick();
 
       expect(component.isExporting()).toBeFalse();
+    }));
+
+    it('reads every section the file carries, one-shot and server-only', fakeAsync(() => {
+      // Eleven from 1.5. A section the assembly forgets is a section the
+      // deletion cascade still removes and the file no longer holds.
+      component.exportFullBackup();
+      tick();
+
+      const sections: [string, jasmine.Spy][] = [
+        ['transactions', mockTransactionService.exportAll],
+        ['categories', mockCategoryService.exportAll],
+        ['insightSnapshots', mockInsightSnapshots.exportAll],
+        ['budgets', mockBudgetService.exportAll],
+        ['recurring', mockRecurringService.exportAll],
+        ['goals', mockGoalService.exportAll],
+        ['savedSearches', mockSearchHistory.exportAll],
+        ['searchAnswers', mockSearchAnswers.exportAll],
+        ['categoryMemory', mockCategoryMemory.exportAll],
+        ['tagMemory', mockTagMemory.exportAll],
+        ['imports', mockImportHistory.exportAll],
+      ];
+
+      expect(sections.length).toBe(11);
+      expect(sections.filter(([, spy]) => spy.calls.count() === 1).map(([name]) => name))
+        .toEqual(sections.map(([name]) => name));
+    }));
+
+    it('hands the blob every section it read', fakeAsync(() => {
+      mockSearchHistory.exportAll.and.resolveTo([{ id: 's-1' }] as never);
+      mockSearchAnswers.exportAll.and.resolveTo([{ id: 'a-1' }] as never);
+      mockCategoryMemory.exportAll.and.resolveTo([{ merchantKey: 'starbucks' }] as never);
+      mockTagMemory.exportAll.and.resolveTo([{ merchantKey: 'starbucks' }] as never);
+      mockImportHistory.exportAll.and.resolveTo([{ id: 'i-1' }] as never);
+
+      component.exportFullBackup();
+      tick();
+
+      expect(mockExportService.exportToJSON).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          savedSearches: [{ id: 's-1' }],
+          searchAnswers: [{ id: 'a-1' }],
+          categoryMemory: [{ merchantKey: 'starbucks' }],
+          tagMemory: [{ merchantKey: 'starbucks' }],
+          imports: [{ id: 'i-1' }],
+        }) as never
+      );
     }));
   });
 
