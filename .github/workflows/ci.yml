@@ -186,6 +186,16 @@ jobs:
       - name: Check reduced motion
         run: npm run motion:check
 
+      # Contrast is a property of a PAIR, so no stylesheet can state it and
+      # no reviewer sees it: a token is chosen on its own, against whichever
+      # background the author had on screen. Three dark-mode chips shipped
+      # under AA that way. The axe pass in the smoke suite measures what a
+      # rendered page paints, which is the other half and not this one — it
+      # cannot see a pair no route happened to show, or a mode Karma never
+      # renders.
+      - name: Check colour contrast
+        run: npm run contrast:check
+
       # A mat-icon that carries role="img" or an aria-label and no *literal*
       # aria-hidden. MatIcon hides itself at construction unless the template
       # carries the static attribute, so a bound [attr.aria-hidden] does not
