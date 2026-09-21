@@ -231,9 +231,22 @@ asserts nothing.
   announced.
 - **No landmark structure beyond `nav`.** The two navigation surfaces are
   indistinguishable to a user listing landmarks.
-- **No automated accessibility check in CI.** Everything above is pinned by
-  hand-written specs; nothing sweeps for the next instance of the same class —
-  the one exception is direction, which `npm run direction:check` does gate.
+- **The automated pass is a phone audit of seven routes.** `app.smoke.spec.ts`
+  now runs axe-core (WCAG 2.1 A and AA, `color-contrast` included) inside
+  `expectPage`, so every page the walkthrough opens is swept. What it cannot
+  see is stated in [emulator-blind-spots.md](emulator-blind-spots.md): i18n is
+  not served, Karma's window is 756px, eight page-level rules are disabled
+  because the run is scoped to the routed element, and four routes (`/ai`,
+  `/search-history`, `/import/file`, `/import/history`) are never opened.
+  Everything outside that is still a hand-written spec, and nothing sweeps for
+  the next instance of a class nobody has met.
+- **Four violation classes are frozen, not fixed.** The pass found them on its
+  first run and `core/services/testing/axe.ts` records each with its reason:
+  Material's `mat-spinner` / `mat-progress-bar` render `role="progressbar"`
+  with no accessible name; the dashboard stat card's `.stat-label-suffix` and
+  the transaction row's `.row-date` fail contrast **in light mode**; and a
+  transaction row is a `role="button"` containing its own buttons, which
+  screen readers flatten. The freeze is so the next one fails.
 - **Nothing measures a contrast ratio.** The high-contrast palette moves tokens
   further along a ramp by judgement; no gate checks the result against WCAG,
   and the surfaces and brand colours it leaves alone are unaudited.

@@ -46,7 +46,7 @@ import { addDays } from './core/utils/transaction-date.utils';
 import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
-import { MockAuthService, createMockUser } from './core/services/testing';
+import { MockAuthService, createMockUser, runAxe, unexpectedViolations } from './core/services/testing';
 import { BUDGET_TABS } from './features/budgets/budgets.component';
 import { REPORT_TABS } from './features/reports/reports.component';
 import { silenceFirebaseWarnings } from './core/services/testing/silence-firebase-warnings';
@@ -64,7 +64,11 @@ describe('App routes (emulator smoke test)', () => {
   const STORAGE_HOST = '127.0.0.1';
   const STORAGE_PORT = 9199;
   const AUTH_URL = 'http://127.0.0.1:9099';
-  const WALKTHROUGH_TIMEOUT = 60000;
+  // Raised from 60s when the axe pass joined expectPage: eight routes plus
+  // the tab variants, and `color-contrast` — the rule with the most to say
+  // here, and the slowest — costs a few seconds on a page the size of the
+  // dashboard.
+  const WALKTHROUGH_TIMEOUT = 150000;
 
   let app: FirebaseApp;
   let auth: Auth;
@@ -106,6 +110,50 @@ describe('App routes (emulator smoke test)', () => {
     }
     expectScreenName(url, screenClass);
     expectCurrentRouteMarked(url);
+    await expectNoAxeViolations(url);
+  }
+
+  /**
+   * An axe-core pass over the page just opened, WCAG 2.1 A and AA.
+   *
+   * Asserted inside expectPage for the same reason expectCurrentRouteMarked
+   * is: every route this spec visits gets it, so the sweep widens whenever
+   * the walkthrough does, and nobody has to remember. The options — what is
+   * disabled, what is deliberately left on, and the three harness
+   * constraints that bound what any of it can mean — live in
+   * core/services/testing/axe.ts, and the harness itself is proven against a
+   * deliberately broken fixture in its own unit spec.
+   *
+   * Scoped to `routeNativeElement`, never the document: Karma's debug.html
+   * owns the `<html>` element, a banner and its own headings, and auditing
+   * the test runner's chrome would report failures nobody can fix here.
+   *
+   * The four violation classes that already stood when this was wired in are
+   * frozen per route in `KNOWN_VIOLATIONS`, each with its reason. Anything
+   * else fails. Freezing them rather than fixing them here is deliberate:
+   * two are a Material progress indicator with no accessible name, one is a
+   * light-mode contrast pair, and one is a transaction row that is a button
+   * containing buttons — each a production change to a surface this commit
+   * has no business touching, and each now visible and named instead of
+   * nobody's problem.
+   *
+   * The routes this reaches are the walkthrough's: /dashboard,
+   * /transactions, /budgets (both tabs), /reports (all five), /settings,
+   * /data, /about and /login. Four routes are never visited by this spec
+   * and are therefore **unswept**: /ai, /search-history, /import/file and
+   * /import/history — see docs/emulator-blind-spots.md.
+   */
+  async function expectNoAxeViolations(url: string): Promise<void> {
+    const element = harness.routeNativeElement;
+    if (!element) {
+      throw new Error(`No routed element to audit for ${url}`);
+    }
+
+    const results = await runAxe(element);
+
+    expect(unexpectedViolations(results, url))
+      .withContext(`axe-core (wcag2a, wcag2aa) violations on ${url} beyond the frozen ones`)
+      .toEqual([]);
   }
 
   /**

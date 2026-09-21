@@ -4,3 +4,4 @@ export * from './mock-storage.service';
 export * from './test-data';
 export * from './translation-stub';
 export * from './emulator-admin';
+export * from './axe';
