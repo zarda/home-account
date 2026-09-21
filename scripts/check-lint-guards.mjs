@@ -115,6 +115,13 @@ const PIPED_LISTENER_SELECTOR =
   `CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child` +
   `[callee.property.name='pipe'][callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`;
 
+// The built-in formatting pipes ADR 0058 swept out of every template. Both
+// are at zero sites, so nothing would notice this ban dying — which is
+// exactly the condition the analytics ban died under. Kept as plain strings
+// here, not imported, so a drift from eslint.config.js shows up below.
+const TEMPLATE_DATE_SELECTOR = 'BindingPipe[name="date"]';
+const TEMPLATE_NUMBER_SELECTOR = 'BindingPipe[name="number"]';
+
 const SYNTAX_POPULATIONS = [
   {
     label: 'app code under the firstValueFrom-listener ban',
@@ -123,6 +130,14 @@ const SYNTAX_POPULATIONS = [
       'src/app/features/transactions/transactions.component.ts',
     ],
     expectedSelectors: [DIRECT_LISTENER_SELECTOR, PIPED_LISTENER_SELECTOR],
+  },
+  {
+    label: 'templates under the built-in date/number pipe ban',
+    files: [
+      'src/app/features/reports/monthly-comparison/monthly-comparison.component.html',
+      'src/app/shared/components/transaction-row/transaction-row.component.html',
+    ],
+    expectedSelectors: [TEMPLATE_DATE_SELECTOR, TEMPLATE_NUMBER_SELECTOR],
   },
 ];
 
@@ -480,6 +495,38 @@ async function selfTest() {
     { filePath: fixturePath }
   );
   check('firstValueFrom over a …Once method passes the rule', countSyntaxMessages(good), 0);
+
+  // The template half. @angular-eslint/template-parser publishes visitorKeys
+  // and tags nodes with `type`, so ESLint's own selector engine walks the
+  // template AST — that is the whole mechanism the pipe ban rests on, and it
+  // is worth proving rather than assuming.
+  const templatePath = 'src/app/features/about/pipe-fixture.component.html';
+  const dateInTemplate = await fixtureEslint.lintText('<p>{{ at | date }}</p>\n', {
+    filePath: templatePath,
+  });
+  check('a built-in date pipe in a template fails the rule once', countSyntaxMessages(dateInTemplate), 1);
+
+  const numberInTemplate = await fixtureEslint.lintText('<p [title]="n | number">x</p>\n', {
+    filePath: templatePath,
+  });
+  check('a built-in number pipe in a bound attribute fails the rule once', countSyntaxMessages(numberInTemplate), 1);
+
+  const chainedInTemplate = await fixtureEslint.lintText('<p>{{ k | translate | date }}</p>\n', {
+    filePath: templatePath,
+  });
+  check('a chained built-in pipe still fails the rule once', countSyntaxMessages(chainedInTemplate), 1);
+
+  // The one built-in formatting pipe with no replacement to point at.
+  const currencyInTemplate = await fixtureEslint.lintText('<p>{{ amount | currency }}</p>\n', {
+    filePath: templatePath,
+  });
+  check('a currency pipe passes the rule', countSyntaxMessages(currencyInTemplate), 0);
+
+  const localeInTemplate = await fixtureEslint.lintText(
+    '<p>{{ at | localeDate }} {{ n | localeNumber }}</p>\n',
+    { filePath: templatePath }
+  );
+  check('the replacement pipes pass the rule', countSyntaxMessages(localeInTemplate), 0);
 
   let failed = 0;
   for (const result of results) {
