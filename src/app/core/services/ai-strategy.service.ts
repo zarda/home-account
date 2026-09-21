@@ -212,10 +212,6 @@ export class AIStrategyService {
     if (updates.textModel || updates.visionModel) {
       try {
         this.cloudLLMProvider.reinitializeGemini(updated.textModel, updated.visionModel);
-        console.log('[AIStrategy] Models updated successfully:', {
-          textModel: updated.textModel,
-          visionModel: updated.visionModel
-        });
       } catch (error) {
         console.error('[AIStrategy] Failed to reinitialize Gemini with new models:', error);
         // Revert to previous preferences on error

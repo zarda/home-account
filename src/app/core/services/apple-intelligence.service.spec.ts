@@ -20,4 +20,18 @@ describe('AppleIntelligenceService', () => {
 
     expect(service.isModelAvailable()).toBeFalse();
   });
+
+  // Both arms of the probe used to print a line — the resolved one naming
+  // the model's availability, the rejected one announcing that the plugin is
+  // absent. On the web the rejection is the ordinary path, so that second
+  // line fired on every boot; ADR 0123's rule took both out and no-console
+  // keeps them out.
+  it('says nothing to the console either way', async () => {
+    const logSpy = spyOn(console, 'log');
+
+    service.detectAvailability();
+    await new Promise(resolve => setTimeout(resolve));
+
+    expect(logSpy).not.toHaveBeenCalled();
+  });
 });

@@ -925,6 +925,20 @@ describe('AIStrategyService', () => {
       expect(stored.textModel).toBe('gemma-4-26b-a4b-it');
     });
 
+    // The success arm used to print `[AIStrategy] Models updated
+    // successfully:` with both model ids. ADR 0123's rule took it out and
+    // no-console keeps it out; the failure arm still errors, and the
+    // reinitializeGemini spy above is what says the switch happened.
+    it('switches models without narrating the switch', () => {
+      const logSpy = spyOn(console, 'log');
+      const service = createService('web');
+
+      service.updatePreferences({ textModel: 'gemma-4-26b-a4b-it' });
+
+      expect(cloudMock.reinitializeGemini).toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+    });
+
     it('should revert preferences when Gemini reinitialization fails', () => {
       cloudMock.reinitializeGemini.and.throwError('bad model');
       const service = createService('web');

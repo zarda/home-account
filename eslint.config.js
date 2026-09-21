@@ -108,6 +108,25 @@ module.exports = defineConfig([
     },
   },
   {
+    // ADR 0123's decision, expressed as a gate: a line that narrates a path
+    // the code took is removed; a line that reports a real failure stays. So
+    // console.warn and console.error remain legal — 109 of them are there on
+    // purpose — and log/debug/info/trace do not. Sixteen narrating log lines
+    // lived in core/services/ behind bracketed service tags, and they are
+    // exactly the kind of thing nothing notices: they type-check, they lint,
+    // they pass every spec, and they only show up as noise in a console
+    // somebody happens to be reading.
+    //
+    // Specs are exempt because a spec that spies on console legitimately
+    // names it, and core/services/testing/** is exempt because
+    // silence-firebase-warnings.ts monkeypatches the console on purpose.
+    files: ["src/app/**/*.ts"],
+    ignores: ["**/*.spec.ts", "src/app/core/services/testing/**"],
+    rules: {
+      "no-console": ["error", { allow: ["warn", "error"] }],
+    },
+  },
+  {
     // Both bans, for everything in the app. A direct logEvent() in a
     // component would bypass the consent gate, the no-op paths and the
     // parameter allowlist at once, and nothing else would notice; a fourth

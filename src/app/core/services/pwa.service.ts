@@ -220,7 +220,6 @@ export class PwaService {
     try {
       const registration = await navigator.serviceWorker.ready;
       await (registration as ServiceWorkerRegistration & { sync: { register: (tag: string) => Promise<void> } }).sync.register(tag);
-      console.log('[PWA] Background sync registered:', tag);
       return true;
     } catch (error) {
       console.error('[PWA] Background sync registration failed:', error);

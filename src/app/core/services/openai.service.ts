@@ -76,7 +76,6 @@ export class OpenAIService extends CloudLLMProviderBase {
   setModel(modelId: string): void {
     if (modelId && modelId !== this.model) {
       this.model = modelId;
-      console.log(`[OpenAIService] Model switched to ${modelId}`);
     }
   }
 

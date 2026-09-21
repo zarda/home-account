@@ -86,7 +86,6 @@ export class GeminiService extends CloudLLMProviderBase {
     // Same key — only update models if they changed
     if (apiKey === this.currentApiKey && this.genAI) {
       if (finalTextModel !== this.currentTextModelId || finalVisionModel !== this.currentVisionModelId) {
-        console.log(`[GeminiService] Same API key, switching models: text=${finalTextModel}, vision=${finalVisionModel}`);
         this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
         this.visionModel = this.genAI.getGenerativeModel({ model: finalVisionModel });
         this.currentTextModelId = finalTextModel;
@@ -96,7 +95,6 @@ export class GeminiService extends CloudLLMProviderBase {
     }
 
     try {
-      console.log('[GeminiService] Initializing with new API key (length:', apiKey.length, ')');
       // The SDK is loaded on demand to keep it out of the initial bundle
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       this.genAI = new GoogleGenerativeAI(apiKey);
@@ -107,8 +105,6 @@ export class GeminiService extends CloudLLMProviderBase {
       this.currentTextModelId = finalTextModel;
       this.currentVisionModelId = finalVisionModel;
       this.available.set(true);
-
-      console.log(`[GeminiService] ✓ Initialized successfully with text model: ${finalTextModel}, vision model: ${finalVisionModel}`);
     } catch (error) {
       console.error('[GeminiService] ✗ Failed to initialize:', error);
       this.genAI = null;

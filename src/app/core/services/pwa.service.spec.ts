@@ -218,5 +218,26 @@ describe('PwaService', () => {
       const result = await s.registerBackgroundSync('sync-offline-queue');
       expect(typeof result).toBe('boolean');
     });
+
+    // The success arm used to print `[PWA] Background sync registered: <tag>`.
+    // ADR 0123's rule took it out and no-console keeps it out; the returned
+    // boolean already says whether the registration happened, and the two
+    // failure arms still warn and error the way 0123 kept them.
+    it('registers without narrating it', async () => {
+      const logSpy = spyOn(console, 'log');
+      const s = make();
+      const supported =
+        'serviceWorker' in navigator && 'sync' in ServiceWorkerRegistration.prototype;
+      if (supported) {
+        Object.defineProperty(navigator.serviceWorker, 'ready', {
+          configurable: true,
+          value: Promise.resolve({ sync: { register: () => Promise.resolve() } }),
+        });
+      }
+
+      await s.registerBackgroundSync('sync-offline-queue');
+
+      expect(logSpy).not.toHaveBeenCalled();
+    });
   });
 });

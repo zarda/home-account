@@ -90,19 +90,6 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     await deleteApp(app).catch(() => undefined);
   });
 
-  /**
-   * These three tests arm Gemini with a key on purpose, to exercise its real
-   * reinitialize path — what they assert is availability and error state,
-   * not the initialization log that path prints, so swallow only that line.
-   */
-  function silenceGeminiInitLogs(): void {
-    const originalLog = console.log.bind(console);
-    spyOn(console, 'log').and.callFake((...args: unknown[]) => {
-      if (typeof args[0] === 'string' && args[0].startsWith('[GeminiService]')) return;
-      originalLog(...args);
-    });
-  }
-
   beforeEach(async () => {
     TestBed.configureTestingModule({
       providers: [
@@ -150,7 +137,6 @@ describe('cloud LLM providers (emulator smoke test)', () => {
   });
 
   it('flips availability when a key arrives, and records no error doing it', async () => {
-    silenceGeminiInitLogs();
     for (const name of ['gemini', 'openai', 'claude'] as const) {
       await facade.updateProviderApiKey(name, 'fake-key-for-the-smoke');
     }
@@ -168,7 +154,6 @@ describe('cloud LLM providers (emulator smoke test)', () => {
   });
 
   it('tears every provider down on reset, through the paths the façade uses', async () => {
-    silenceGeminiInitLogs();
     for (const name of ['gemini', 'openai', 'claude'] as const) {
       await facade.updateProviderApiKey(name, 'fake-key-for-the-smoke');
     }
@@ -231,7 +216,6 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     // and stores nothing. reinitializeGemini — the method AIStrategyService
     // calls on a model switch — reads the key back from Firestore, so this is
     // the path the app actually takes.
-    silenceGeminiInitLogs();
     await TestBed.inject(ProviderKeyService).setKey('gemini', 'fake-key-for-the-smoke');
 
     await expectAsync(

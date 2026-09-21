@@ -16,11 +16,10 @@ export class AppleIntelligenceService {
    */
   detectAvailability(): void {
     AppleIntelligence.isAvailable()
-      .then(({ available, reason }) => {
-        this._available.set(available === true);
-        console.log(`[AppleIntelligence] Model available: ${available}${reason ? ` (${reason})` : ''}`);
-      })
-      .catch(() => console.log('[AppleIntelligence] Plugin not present in this binary'));
+      .then(({ available }) => this._available.set(available === true))
+      // The plugin is absent from every web build, so a rejection here is the
+      // ordinary path rather than a failure: report no model and say nothing.
+      .catch(() => this._available.set(false));
   }
 
   parseReceiptText(options: { text: string; categories?: string[] }): Promise<AppleReceiptExtraction> {

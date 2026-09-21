@@ -158,26 +158,39 @@ describe('ClaudeService', () => {
   });
 
   describe('setModel', () => {
-    it('switches the model and logs once', () => {
+    /**
+     * The switch used to be observed through the console.log it printed,
+     * which said only that the method reached its assignment. The narration
+     * came out with ADR 0123's rule, so the proof is now the model the next
+     * request actually carries — which is what the setting is for.
+     */
+    async function modelOnTheWire(): Promise<string> {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+      await service.parseReceipt('rawbase64');
+      return fake.messages.create.calls.mostRecent().args[0].model;
+    }
+
+    it('sends the model it was switched to, and narrates nothing doing it', async () => {
       const logSpy = spyOn(console, 'log');
 
       service.setModel('claude-test');
 
-      expect(logSpy).toHaveBeenCalledWith('[ClaudeService] Model switched to claude-test');
+      expect(await modelOnTheWire()).toBe('claude-test');
+      expect(logSpy).not.toHaveBeenCalled();
     });
 
-    it('ignores an empty model id', () => {
-      const logSpy = spyOn(console, 'log');
+    it('ignores an empty model id', async () => {
+      service.setModel('claude-test');
       service.setModel('');
-      expect(logSpy).not.toHaveBeenCalled();
+      expect(await modelOnTheWire()).toBe('claude-test');
     });
 
-    it('ignores a model id identical to the current one', () => {
-      const logSpy = spyOn(console, 'log');
+    it('leaves the model alone when handed the id it already has', async () => {
       service.setModel('claude-x');
-      logSpy.calls.reset();
       service.setModel('claude-x');
-      expect(logSpy).not.toHaveBeenCalled();
+      expect(await modelOnTheWire()).toBe('claude-x');
     });
   });
 

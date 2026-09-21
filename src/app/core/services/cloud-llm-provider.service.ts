@@ -85,20 +85,12 @@ export class CloudLLMProviderService {
 
     if (gemini) {
       await this.geminiService.reinitialize(gemini, textModelId, visionModelId);
-      console.log(`[CloudLLMProvider] Gemini initialized with API key${textModelId ? ` (text: ${textModelId}, vision: ${visionModelId})` : ''}`);
     } else {
       // Not reinitialize(undefined) — that re-arms from the environment key.
       this.geminiService.clear();
     }
 
-    if (openai) {
-      console.log('[CloudLLMProvider] OpenAI initialized with API key');
-    }
     await this.openaiService.reinitialize(openai);
-
-    if (claude) {
-      console.log('[CloudLLMProvider] Claude initialized with API key');
-    }
     await this.claudeService.reinitialize(claude);
   }
 
