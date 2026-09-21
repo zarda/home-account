@@ -186,6 +186,16 @@ jobs:
       - name: Check reduced motion
         run: npm run motion:check
 
+      # A mat-icon that carries role="img" or an aria-label and no *literal*
+      # aria-hidden. MatIcon hides itself at construction unless the template
+      # carries the static attribute, so a bound [attr.aria-hidden] does not
+      # count — the icon reads correctly in the source, in the template type
+      # check and in a screenshot, and is announced to nobody at runtime. The
+      # two components that had this both blanked their templates in every
+      # spec, which is how all three sites survived.
+      - name: Check icon labels
+        run: npm run icon-labels:check
+
       - name: Unit tests
         run: npm run test:ci
 
