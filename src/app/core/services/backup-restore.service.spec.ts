@@ -13,12 +13,22 @@ import { BudgetService } from './budget.service';
 import { INVALID_FREQUENCY_ERROR, RecurringService } from './recurring.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { GoalService } from './goal.service';
+import { SearchHistoryService } from './search-history.service';
+import { SearchAnswerHistoryService } from './search-answer-history.service';
+import { CategoryMemoryService } from './category-memory.service';
+import { TagMemoryService } from './tag-memory.service';
+import { ImportHistoryService } from './import-history.service';
 import {
   Budget,
   Category,
+  CategoryMemoryEntry,
   Goal,
+  ImportHistory,
   InsightSnapshot,
   RecurringTransaction,
+  SavedSearch,
+  SearchRecord,
+  TagMemoryEntry,
   Transaction
 } from '../../models';
 
@@ -30,6 +40,11 @@ describe('BackupRestoreService', () => {
   let recurring: jasmine.SpyObj<RecurringService>;
   let snapshots: jasmine.SpyObj<InsightSnapshotService>;
   let goals: jasmine.SpyObj<GoalService>;
+  let searchHistory: jasmine.SpyObj<SearchHistoryService>;
+  let searchAnswers: jasmine.SpyObj<SearchAnswerHistoryService>;
+  let categoryMemory: jasmine.SpyObj<CategoryMemoryService>;
+  let tagMemory: jasmine.SpyObj<TagMemoryService>;
+  let importHistory: jasmine.SpyObj<ImportHistoryService>;
 
   const ts = (iso: string) => Timestamp.fromDate(new Date(iso));
 
@@ -104,10 +119,56 @@ describe('BackupRestoreService', () => {
     } as Goal;
   }
 
+  function savedSearch(overrides: Partial<SavedSearch> = {}): SavedSearch {
+    return {
+      id: 's-1', userId: 'user-a', query: 'coffee', pinned: false,
+      lastUsedAt: ts('2026-08-01'),
+      ...overrides,
+    } as SavedSearch;
+  }
+
+  function searchAnswer(overrides: Record<string, unknown> = {}): SearchRecord {
+    return {
+      id: 'a-1', userId: 'user-a', schemaVersion: 2, kind: 'aggregate',
+      query: 'how much on coffee', operation: 'sum', limit: 3,
+      scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+      baseCurrency: 'USD', value: 42, transactionCount: 7,
+      computedAt: ts('2026-08-31'), lastUsedAt: ts('2026-08-31'),
+      ...overrides,
+    } as unknown as SearchRecord;
+  }
+
+  function memory(overrides: Partial<CategoryMemoryEntry> = {}): CategoryMemoryEntry {
+    return {
+      merchantKey: 'starbucks', categoryId: 'food_coffee',
+      sampleDescription: 'STARBUCKS #123', count: 3,
+      ...overrides,
+    } as CategoryMemoryEntry;
+  }
+
+  function tags(overrides: Partial<TagMemoryEntry> = {}): TagMemoryEntry {
+    return {
+      merchantKey: 'starbucks', tags: ['coffee'], suppressed: [],
+      sampleDescription: 'STARBUCKS #123', count: 2,
+      ...overrides,
+    } as TagMemoryEntry;
+  }
+
+  function importRecord(overrides: Partial<ImportHistory> = {}): ImportHistory {
+    return {
+      id: 'i-1', userId: 'user-a', importedAt: ts('2026-07-01'), source: 'csv',
+      fileType: 'generic_csv', fileName: 'statement.csv', fileSize: 1024,
+      transactionCount: 1, successCount: 1, skippedCount: 0, errorCount: 0,
+      totalIncome: 0, totalExpenses: 1200, status: 'completed', duplicatesSkipped: 0,
+      ...overrides,
+    } as ImportHistory;
+  }
+
   function backup(overrides: Partial<ExportData> = {}): ExportData {
     return {
       transactions: [], categories: [], budgets: [], recurring: [], insightSnapshots: [],
       goals: [],
+      savedSearches: [], searchAnswers: [], categoryMemory: [], tagMemory: [], imports: [],
       exportDate: '2026-08-01T00:00:00.000Z',
       version: '1.2',
       ...overrides,
@@ -130,6 +191,18 @@ describe('BackupRestoreService', () => {
     ]);
     goals.createGoal.and.resolveTo('id');
     goals.recomputeLinkedAmount.and.resolveTo();
+    searchHistory = jasmine.createSpyObj<SearchHistoryService>('SearchHistoryService', ['restore']);
+    searchHistory.restore.and.resolveTo();
+    searchAnswers = jasmine.createSpyObj<SearchAnswerHistoryService>(
+      'SearchAnswerHistoryService', ['restore']);
+    searchAnswers.restore.and.resolveTo();
+    categoryMemory = jasmine.createSpyObj<CategoryMemoryService>(
+      'CategoryMemoryService', ['restore']);
+    categoryMemory.restore.and.resolveTo();
+    tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['restore']);
+    tagMemory.restore.and.resolveTo();
+    importHistory = jasmine.createSpyObj<ImportHistoryService>('ImportHistoryService', ['restore']);
+    importHistory.restore.and.resolveTo();
 
     TestBed.configureTestingModule({
       providers: [
@@ -140,6 +213,11 @@ describe('BackupRestoreService', () => {
         { provide: RecurringService, useValue: recurring },
         { provide: InsightSnapshotService, useValue: snapshots },
         { provide: GoalService, useValue: goals },
+        { provide: SearchHistoryService, useValue: searchHistory },
+        { provide: SearchAnswerHistoryService, useValue: searchAnswers },
+        { provide: CategoryMemoryService, useValue: categoryMemory },
+        { provide: TagMemoryService, useValue: tagMemory },
+        { provide: ImportHistoryService, useValue: importHistory },
       ],
     });
     service = TestBed.inject(BackupRestoreService);
@@ -227,7 +305,9 @@ describe('BackupRestoreService', () => {
       // total it reports. A seventh section has to be added here to pass.
       expect(summary).toEqual({
         transactions: 1, categories: 1, budgets: 1, recurring: 1, goals: 1,
-        insightSnapshots: 1, skipped: [],
+        insightSnapshots: 1,
+        savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
+        skipped: [],
       });
     });
 
@@ -556,6 +636,125 @@ describe('BackupRestoreService', () => {
     });
   });
 
+
+  describe('the five sections 1.5 added', () => {
+    it('hands each door the record at its own id', async () => {
+      const summary = await service.restore(backup({
+        version: '1.5',
+        savedSearches: [savedSearch({ id: 's-9' })],
+        searchAnswers: [searchAnswer({ id: 'a-9' })],
+        categoryMemory: [memory({ merchantKey: 'costa' })],
+        tagMemory: [tags({ merchantKey: 'costa' })],
+        imports: [importRecord({ id: 'i-9' })],
+      }));
+
+      expect(searchHistory.restore).toHaveBeenCalledWith(
+        jasmine.objectContaining({ id: 's-9' }) as never);
+      expect(searchAnswers.restore).toHaveBeenCalledWith(
+        jasmine.objectContaining({ id: 'a-9' }) as never);
+      expect(categoryMemory.restore).toHaveBeenCalledWith(
+        jasmine.objectContaining({ merchantKey: 'costa' }) as never);
+      expect(tagMemory.restore).toHaveBeenCalledWith(
+        jasmine.objectContaining({ merchantKey: 'costa' }) as never);
+      expect(importHistory.restore).toHaveBeenCalledWith(
+        jasmine.objectContaining({ id: 'i-9' }) as never);
+      expect(summary).toEqual(jasmine.objectContaining({
+        savedSearches: 1, searchAnswers: 1, categoryMemory: 1, tagMemory: 1, imports: 1,
+      }));
+    });
+
+    it('restores the import history after the transactions it names', async () => {
+      // transactionIds is pruned against what the transactions loop actually
+      // wrote, so the order is load-bearing rather than tidy.
+      const order: string[] = [];
+      transactions.addTransaction.and.callFake(async () => {
+        order.push('transaction');
+        return 'id';
+      });
+      importHistory.restore.and.callFake(async () => {
+        order.push('import');
+      });
+
+      await service.restore(backup({
+        version: '1.5',
+        transactions: [transaction()],
+        imports: [importRecord()],
+      }));
+
+      expect(order).toEqual(['transaction', 'import']);
+    });
+
+    it('drops a transaction id the restore could not write, and says so in the count', async () => {
+      transactions.addTransaction.and.callFake(async (_dto, options) => {
+        if (options?.id === 'txn-2') throw new Error('permission-denied');
+        return 'id';
+      });
+
+      await service.restore(backup({
+        version: '1.5',
+        transactions: [transaction({ id: 'txn-1' }), transaction({ id: 'txn-2' })],
+        imports: [importRecord({
+          transactionIds: ['txn-1', 'txn-2'],
+          successCount: 2,
+          transactionCount: 2,
+        })],
+      }));
+
+      expect(importHistory.restore).toHaveBeenCalledWith(jasmine.objectContaining({
+        transactionIds: ['txn-1'],
+        successCount: 1,
+      }) as never);
+    });
+
+    it('leaves a transaction id the file never carried alone', async () => {
+      // An id the backup does not mention was never offered to the restore, so
+      // it is not a row the restore skipped — the account may well hold it.
+      await service.restore(backup({
+        version: '1.5',
+        transactions: [transaction({ id: 'txn-1' })],
+        imports: [importRecord({ transactionIds: ['txn-1', 'txn-from-another-import'], successCount: 2 })],
+      }));
+
+      expect(importHistory.restore).toHaveBeenCalledWith(jasmine.objectContaining({
+        transactionIds: ['txn-1', 'txn-from-another-import'],
+        successCount: 2,
+      }) as never);
+    });
+
+    it('records a door that refused, without stopping the section', async () => {
+      searchHistory.restore.and.callFake(async (record: SavedSearch) => {
+        if (record.id === 's-2') throw new Error('permission-denied');
+      });
+
+      const summary = await service.restore(backup({
+        version: '1.5',
+        savedSearches: [savedSearch({ id: 's-1' }), savedSearch({ id: 's-2' }), savedSearch({ id: 's-3' })],
+      }));
+
+      expect(summary.savedSearches).toBe(2);
+      expect(summary.skipped).toEqual([
+        { section: 'savedSearches', id: 's-2', reason: 'permission-denied' },
+      ]);
+    });
+
+    it('leaves a 1.4 file alone: no door is called and no section throws', async () => {
+      const parsed = service.parse({
+        transactions: [], categories: [], version: '1.4', exportDate: '2026-08-01',
+      });
+
+      const summary = await service.restore(parsed);
+
+      expect(searchHistory.restore).not.toHaveBeenCalled();
+      expect(searchAnswers.restore).not.toHaveBeenCalled();
+      expect(categoryMemory.restore).not.toHaveBeenCalled();
+      expect(tagMemory.restore).not.toHaveBeenCalled();
+      expect(importHistory.restore).not.toHaveBeenCalled();
+      expect(summary).toEqual(jasmine.objectContaining({
+        savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
+      }));
+    });
+  });
+
   describe('describe', () => {
     it('counts every section for the confirmation dialog', () => {
       const contents = service.describe(backup({
@@ -573,6 +772,26 @@ describe('BackupRestoreService', () => {
       const contents = service.describe(backup({ version: '1.3', goals: [goal(), goal()] }));
 
       expect(contents).toEqual(jasmine.objectContaining({ goals: 2 }));
+    });
+
+    it('counts all eleven sections, so the confirmation names what it will write', () => {
+      const contents = service.describe(backup({
+        version: '1.5',
+        transactions: [transaction()],
+        categories: [category()],
+        savedSearches: [savedSearch()],
+        searchAnswers: [searchAnswer()],
+        categoryMemory: [memory()],
+        tagMemory: [tags()],
+        imports: [importRecord()],
+      }));
+
+      expect(contents).toEqual({
+        version: '1.5', exportDate: '2026-08-01T00:00:00.000Z',
+        transactions: 1, categories: 1, budgets: 0, recurring: 0, goals: 0,
+        insightSnapshots: 0,
+        savedSearches: 1, searchAnswers: 1, categoryMemory: 1, tagMemory: 1, imports: 1,
+      });
     });
   });
 

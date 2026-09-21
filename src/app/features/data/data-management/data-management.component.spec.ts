@@ -347,6 +347,7 @@ describe('DataManagementComponent', () => {
       const contents = {
         version: '1.2', exportDate: '2026-08-01',
         transactions: 12, categories: 3, budgets: 2, recurring: 1, goals: 0, insightSnapshots: 4,
+        savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
       };
       mockBackupRestore.parse.and.returnValue(parsed);
       mockBackupRestore.describe.and.returnValue(contents);
@@ -391,12 +392,15 @@ describe('DataManagementComponent', () => {
   describe('confirmRestore', () => {
     const emptySummary = {
       transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0,
-      insightSnapshots: 0, skipped: [] as { section: string; id: string; reason: string }[],
+      insightSnapshots: 0,
+      savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
+      skipped: [] as { section: string; id: string; reason: string }[],
     };
 
     const emptyContents = {
-      version: '1.4', exportDate: '2026-08-01',
+      version: '1.5', exportDate: '2026-08-01',
       transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0, insightSnapshots: 0,
+      savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
     };
 
     /** Stage a parsed backup and a confirmed dialog, then run the restore. */
