@@ -314,6 +314,21 @@ describe('BackupRestoreService', () => {
     // Restoring used to call addTransaction with no id — an unconditional
     // addDoc — so a second restore doubled every balance, budget and chart
     // while reporting success.
+    it('passes the backup\'s order through, so the list comes back as it was', async () => {
+      // Without it addCategory recomputes maxOrder from the in-memory signal,
+      // which mid-restore is whatever the subscription has delivered so far —
+      // so a restore both reshuffles the list and can give two categories the
+      // same position.
+      await service.restore(backup({
+        categories: [category({ id: 'cat-1', order: 5 }), category({ id: 'cat-2', order: 2 })],
+      }));
+
+      expect(categories.addCategory.calls.allArgs().map(args => args[1])).toEqual([
+        jasmine.objectContaining({ id: 'cat-1', order: 5 }) as never,
+        jasmine.objectContaining({ id: 'cat-2', order: 2 }) as never,
+      ]);
+    });
+
     it('writes every row at the id the backup carries', async () => {
       await service.restore(backup({
         transactions: [transaction({ id: 'txn-42' })],
@@ -538,7 +553,7 @@ describe('BackupRestoreService', () => {
       }));
 
       expect(categories.addCategory).toHaveBeenCalledWith(
-        jasmine.anything(), { id: 'cat-gone', isActive: false });
+        jasmine.anything(), { id: 'cat-gone', isActive: false, order: 5 });
     });
 
     // Latent: nothing in the app can deactivate a budget or a goal yet. Pinned

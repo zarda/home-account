@@ -409,6 +409,46 @@ describe('CategoryService', () => {
         type: 'expense'
       })).toBeRejected();
     });
+
+    it('writes the order the caller names', async () => {
+      // A restore knows where each category sat. maxOrder reads the in-memory
+      // signal, so a restore loop that let this compute would not merely
+      // reshuffle the list — several categories would be handed the same
+      // number before any of them reached the signal.
+      service.categories.set([createCategory({ id: 'c1', order: 1 })]);
+
+      await service.addCategory(
+        { name: 'Bouldering', icon: 'sports_handball', color: '#ff8800', type: 'expense' },
+        { id: 'cat-9', order: 7 }
+      );
+
+      const call = mockFirestore.setDocumentSpy.mostRecent();
+      expect(call!.args[0]).toBe('users/test-user-123/categories/cat-9');
+      expect((call!.args[1] as Record<string, unknown>)['order']).toBe(7);
+    });
+
+    it('accepts a zeroth position rather than reading it as "none named"', async () => {
+      await service.addCategory(
+        { name: 'Bouldering', icon: 'sports_handball', color: '#ff8800', type: 'expense' },
+        { id: 'cat-0', order: 0 }
+      );
+
+      expect((mockFirestore.setDocumentSpy.mostRecent()!.args[1] as Record<string, unknown>)['order'])
+        .toBe(0);
+    });
+
+    it('still computes maxOrder + 1 when none is named', async () => {
+      service.categories.set([
+        createCategory({ id: 'c1', order: 3 }),
+        createCategory({ id: 'c2', order: 9 }),
+      ]);
+
+      await service.addCategory({
+        name: 'Bouldering', icon: 'sports_handball', color: '#ff8800', type: 'expense',
+      });
+
+      expect(writtenPayload()['order']).toBe(10);
+    });
   });
 
   describe('deleteAll', () => {

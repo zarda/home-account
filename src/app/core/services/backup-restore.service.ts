@@ -247,7 +247,13 @@ export class BackupRestoreService {
           // A deleted category is a soft delete, so the file records it as
           // inactive and the restore has to keep it that way. Absent means a
           // backup predating the flag; those rows were all live.
-        }, { id: category.id, isActive: category.isActive ?? true });
+          //
+          // `order` is the position the file recorded. Without it every
+          // restored category takes maxOrder + 1 off the in-memory signal,
+          // which mid-restore holds whatever the subscription has delivered —
+          // so the list comes back reshuffled, and rows can collide on one
+          // position.
+        }, { id: category.id, isActive: category.isActive ?? true, order: category.order });
         summary.categories++;
       } catch (error) {
         skip('categories', category.id, error);

@@ -122,11 +122,19 @@ export class CategoryService {
    * one, so restoring a backup twice overwrites rather than duplicating.
    * `options.isActive` carries a restore's soft-deleted category back as
    * deleted; without it a restore returns every category the user removed to
-   * the pickers.
+   * the pickers. `options.order` carries the position the file recorded — and
+   * lives here rather than on CreateCategoryDTO, which is the create form's
+   * shape and has no business naming a position.
+   *
+   * `maxOrder` reads the in-memory signal, which is safe for the one-at-a-time
+   * create form and unsafe for a loop: mid-restore the signal holds whatever
+   * the subscription has delivered so far, so a restore that let every
+   * category compute its own position would not merely reshuffle the list — it
+   * could hand several of them the same number.
    */
   async addCategory(
     data: CreateCategoryDTO,
-    options?: { id?: string; isActive?: boolean }
+    options?: { id?: string; isActive?: boolean; order?: number }
   ): Promise<string> {
     this.isLoading.set(true);
 
@@ -147,7 +155,8 @@ export class CategoryService {
         type: data.type,
         // Only include optional fields if they have values (Firestore rejects undefined)
         ...(data.parentId ? { parentId: data.parentId } : {}),
-        order: maxOrder + 1,
+        // `typeof`, not `??`: position zero is a position.
+        order: typeof options?.order === 'number' ? options.order : maxOrder + 1,
         isActive: options?.isActive ?? true,
         isDefault: false
       };
