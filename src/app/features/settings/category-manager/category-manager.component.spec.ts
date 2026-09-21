@@ -11,6 +11,54 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
+import { createTranslationStub } from '../../../core/services/testing';
+
+const mockCategoryList: Category[] = [
+  {
+    id: 'cat1',
+    userId: 'user1',
+    name: 'Food & Drinks',
+    icon: 'restaurant',
+    color: '#FF5722',
+    type: 'expense',
+    order: 1,
+    isActive: true,
+    isDefault: false
+  },
+  {
+    id: 'cat2',
+    userId: 'user1',
+    name: 'Transportation',
+    icon: 'directions_car',
+    color: '#2196F3',
+    type: 'expense',
+    order: 2,
+    isActive: true,
+    isDefault: false
+  },
+  {
+    id: 'cat3',
+    userId: 'user1',
+    name: 'Salary',
+    icon: 'payments',
+    color: '#4CAF50',
+    type: 'income',
+    order: 1,
+    isActive: true,
+    isDefault: false
+  },
+  {
+    id: 'cat4',
+    userId: 'user1',
+    name: 'Inactive Category',
+    icon: 'block',
+    color: '#9E9E9E',
+    type: 'expense',
+    order: 3,
+    isActive: false,
+    isDefault: false
+  }
+];
 
 describe('CategoryManagerComponent', () => {
   let component: CategoryManagerComponent;
@@ -22,52 +70,7 @@ describe('CategoryManagerComponent', () => {
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
-  const mockCategories: Category[] = [
-    {
-      id: 'cat1',
-      userId: 'user1',
-      name: 'Food & Drinks',
-      icon: 'restaurant',
-      color: '#FF5722',
-      type: 'expense',
-      order: 1,
-      isActive: true,
-      isDefault: false
-    },
-    {
-      id: 'cat2',
-      userId: 'user1',
-      name: 'Transportation',
-      icon: 'directions_car',
-      color: '#2196F3',
-      type: 'expense',
-      order: 2,
-      isActive: true,
-      isDefault: false
-    },
-    {
-      id: 'cat3',
-      userId: 'user1',
-      name: 'Salary',
-      icon: 'payments',
-      color: '#4CAF50',
-      type: 'income',
-      order: 1,
-      isActive: true,
-      isDefault: false
-    },
-    {
-      id: 'cat4',
-      userId: 'user1',
-      name: 'Inactive Category',
-      icon: 'block',
-      color: '#9E9E9E',
-      type: 'expense',
-      order: 3,
-      isActive: false,
-      isDefault: false
-    }
-  ];
+  const mockCategories = mockCategoryList;
 
   beforeEach(async () => {
     mockCategoryService = jasmine.createSpyObj('CategoryService', [
@@ -395,5 +398,157 @@ describe('CategoryManagerComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('Failed to reorder categories');
       expect(notifications.success).not.toHaveBeenCalled();
     }));
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>` and drive the
+ * component by calling its methods, so the manager's own chrome is unproven
+ * by them: the type toggle that decides which categories the list shows, the
+ * per-row overflow menu (where edit and delete actually live), the
+ * default-category badge that also hides delete, and the empty state that
+ * only appears once loading has finished.
+ */
+describe('CategoryManagerComponent, through its own template', () => {
+  let fixture: ComponentFixture<CategoryManagerComponent>;
+  let categories: jasmine.SpyObj<CategoryService>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const rows = () => Array.from(el().querySelectorAll('.category-item')) as HTMLElement[];
+  const names = () =>
+    Array.from(el().querySelectorAll('.category-name')).map(n => n.textContent?.trim());
+  const toggle = (value: string) =>
+    el().querySelector(`mat-button-toggle[value="${value}"] button`) as HTMLButtonElement;
+
+  /**
+   * The overflow menu renders into the CDK overlay, outside the fixture, so
+   * a case that opened one closes it again.
+   */
+  function openMenu(index: number): HTMLElement {
+    (rows()[index].querySelector('[aria-label="common.moreActions"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    return document.querySelector('.mat-mdc-menu-panel') as HTMLElement;
+  }
+  const menuItem = (panel: HTMLElement, label: string): HTMLButtonElement | undefined =>
+    (Array.from(panel.querySelectorAll('button')) as HTMLButtonElement[]).find(b =>
+      (b.textContent ?? '').includes(label)
+    );
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  function setUp(list: Category[]): void {
+    categories.loadCategories.and.returnValue(of(list));
+    fixture = TestBed.createComponent(CategoryManagerComponent);
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    categories = jasmine.createSpyObj('CategoryService', [
+      'loadCategories', 'addCategory', 'updateCategory', 'deleteCategory', 'reorderCategories',
+    ]);
+    categories.addCategory.and.resolveTo('new-id');
+    categories.updateCategory.and.resolveTo();
+    categories.deleteCategory.and.resolveTo();
+    categories.reorderCategories.and.resolveTo();
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+
+    await TestBed.configureTestingModule({
+      imports: [CategoryManagerComponent, NoopAnimationsModule],
+      providers: [
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: CategoryService, useValue: categories },
+        { provide: MatDialog, useValue: dialog },
+        { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
+      ],
+    }).compileComponents();
+  });
+
+  it('lists the expense categories it starts on, active ones only', () => {
+    setUp(mockCategoryList);
+
+    expect(names()).toEqual(['Food & Drinks', 'Transportation']);
+    expect(el().querySelector('app-empty-state')).toBeNull();
+  });
+
+  it('swaps the list when the income toggle is chosen', () => {
+    setUp(mockCategoryList);
+
+    toggle('income').click();
+    fixture.detectChanges();
+
+    expect(names()).toEqual(['Salary']);
+  });
+
+  it('shows the spinner only while the first load is open', () => {
+    const pending = new Subject<Category[]>();
+    categories.loadCategories.and.returnValue(pending.asObservable());
+    fixture = TestBed.createComponent(CategoryManagerComponent);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')).not.toBeNull();
+    expect(el().querySelector('app-empty-state')).toBeNull();
+
+    pending.next([]);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')).toBeNull();
+    expect(el().querySelector('app-empty-state')).not.toBeNull();
+  });
+
+  it('offers the add dialog from the header and from the empty state', () => {
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+    setUp([]);
+
+    (el().querySelector('.manager-header button[mat-flat-button]') as HTMLButtonElement).click();
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+
+    (el().querySelector('app-empty-state button') as HTMLButtonElement).click();
+    expect(dialog.open).toHaveBeenCalledTimes(2);
+  });
+
+  it('badges a default category and refuses to offer its delete', () => {
+    setUp([
+      mockCategoryList[0],
+      { ...mockCategoryList[1], id: 'built-in', name: 'Groceries', isDefault: true },
+    ]);
+
+    expect(rows()[0].querySelector('.default-badge')).toBeNull();
+    expect(rows()[1].querySelector('.default-badge')?.textContent?.trim()).toBe('settings.default');
+
+    const panel = openMenu(1);
+    expect(menuItem(panel, 'common.edit')).toBeDefined();
+    expect(menuItem(panel, 'common.delete')).toBeUndefined();
+  });
+
+  it('reaches the edit dialog through the row\'s own overflow menu', () => {
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+    setUp(mockCategoryList);
+
+    menuItem(openMenu(0), 'common.edit')?.click();
+
+    expect(dialog.open).toHaveBeenCalled();
+    const data = (dialog.open.calls.mostRecent().args[1] as { data: { category: Category } }).data;
+    expect(data.category.id).toBe('cat1');
+  });
+
+  it('reaches the delete confirmation through the same menu', () => {
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+    setUp(mockCategoryList);
+
+    menuItem(openMenu(0), 'common.delete')?.click();
+
+    expect(dialog.open).toHaveBeenCalled();
+  });
+
+  it('gives each row a drag handle so the order can be changed at all', () => {
+    setUp(mockCategoryList);
+
+    expect(el().querySelectorAll('.drag-handle').length).toBe(2);
+    expect(el().querySelector('.categories-list')).not.toBeNull();
   });
 });
