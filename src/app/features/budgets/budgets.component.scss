@@ -53,6 +53,8 @@
   @apply flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6;
 
   .tab-description {
-    @apply text-sm text-gray-500 dark:text-gray-400 m-0;
+    @apply text-sm m-0;
+
+    color: var(--text-muted);
   }
 }

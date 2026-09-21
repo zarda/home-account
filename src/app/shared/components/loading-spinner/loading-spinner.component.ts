@@ -16,10 +16,17 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
     >
       <mat-spinner [diameter]="diameter" [strokeWidth]="strokeWidth"></mat-spinner>
       @if (message) {
-        <p class="mt-4 text-gray-500 dark:text-gray-400 text-sm">{{ message }}</p>
+        <p class="mt-4 text-sm spinner-message">{{ message }}</p>
       }
     </div>
   `,
+  styles: [
+    `
+      .spinner-message {
+        color: var(--text-muted);
+      }
+    `,
+  ],
 })
 export class LoadingSpinnerComponent {
   @Input() size: 'sm' | 'md' | 'lg' = 'md';
