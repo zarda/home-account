@@ -92,6 +92,7 @@
     "@types/jasmine": "~5.1.0",
     "angular-eslint": "22.0.0",
     "autoprefixer": "^10.4.23",
+    "axe-core": "^4.13.0",
     "eslint": "^9.39.1",
     "firebase-tools": "^15.20.0",
     "istanbul-lib-instrument": "^6.0.3",
