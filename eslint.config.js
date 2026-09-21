@@ -53,6 +53,25 @@ const FIRST_VALUE_FROM_LISTENER_MESSAGE =
   "cache can answer from a stale subset (docs/one-shot-reads.md). Use the " +
   "…Once/…FromServer sibling instead.";
 
+// The dynamic half of the analytics ban. no-restricted-imports reads static
+// import DECLARATIONS only, so `await import('@capacitor-firebase/analytics')`
+// walks straight past it — and check-analytics-registry.mjs cannot see one
+// either, because it reads the registry table and its call sites, not module
+// specifiers. The two bans are the same decision (ADR 0003: AnalyticsService
+// owns the consent gate, the no-op paths and the parameter allowlist), so
+// they cover the same specifiers; this one is written as a syntax selector
+// because that is the only rule that sees an ImportExpression at all.
+//
+// The prefix match, not an exact one, so `firebase/analytics/lite` is covered
+// the way the static ban's `firebase/analytics/*` pattern covers it.
+const DYNAMIC_ANALYTICS_IMPORT_SELECTOR =
+  "ImportExpression[source.value=/^(@angular\\/fire\\/analytics|" +
+  "@capacitor-firebase\\/analytics|@?firebase\\/analytics)/]";
+const DYNAMIC_ANALYTICS_IMPORT_MESSAGE =
+  "Use AnalyticsService. A dynamic import of an analytics SDK bypasses the " +
+  "consent gate exactly as a static one does; NativeAnalyticsTransport is the " +
+  "one file that may load it, and it takes the loader as an injected seam.";
+
 const MODEL_IMPORT_PATHS = [
   {
     name: "@google/generative-ai",
@@ -185,12 +204,64 @@ module.exports = defineConfig([
   },
   {
     // Bans firstValueFrom over a TransactionService listener across app
-    // code (see the alternation's comment above). Specs are ignored here,
-    // not just left unmatched by `files`, because a fixture double calling
-    // a listener method by the same name is not a warm cache — the rule has
-    // nothing to say about a spec's own stand-in.
+    // code (see the alternation's comment above), and a dynamic import of an
+    // analytics SDK. Specs are ignored here, not just left unmatched by
+    // `files`, because a fixture double calling a listener method by the same
+    // name is not a warm cache — the rule has nothing to say about a spec's
+    // own stand-in.
+    //
+    // The analytics selector is APPENDED to this array rather than given a
+    // block of its own. A second block matching src/app/**/*.ts and setting
+    // no-restricted-syntax would replace these options wholesale and take the
+    // two firstValueFrom selectors down with it, silently — the flat-config
+    // hazard this file's header exists to warn about, and the way the
+    // analytics import ban died once already (#262, ADR 0038).
+    //
+    // Appending it here also means specs inherit the ignores above, so the
+    // dynamic ban is narrower than the static one, which does reach specs.
+    // That is the right side to err on: the analytics owners' specs and
+    // app.config.spec.ts already import the SDK on purpose to assert the
+    // wiring, and a spec cannot send an event to anybody.
     files: ["src/app/**/*.ts"],
     ignores: ["**/*.spec.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child" +
+            `[callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`,
+          message: FIRST_VALUE_FROM_LISTENER_MESSAGE,
+        },
+        {
+          selector:
+            "CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child" +
+            "[callee.property.name='pipe']" +
+            `[callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`,
+          message: FIRST_VALUE_FROM_LISTENER_MESSAGE,
+        },
+        {
+          selector: DYNAMIC_ANALYTICS_IMPORT_SELECTOR,
+          message: DYNAMIC_ANALYTICS_IMPORT_MESSAGE,
+        },
+      ],
+    },
+  },
+  {
+    // NativeAnalyticsTransport's constructor default is
+    // `() => import('@capacitor-firebase/analytics')` — the one legitimate
+    // dynamic analytics import in the tree, kept out of the initial bundle
+    // and injectable so a spec can substitute it. It sits inside the
+    // analytics-owners population, which already restates the model ban for
+    // the same reason, so it needs an exemption from the ban directly above.
+    //
+    // And because a later block replaces the earlier options wholesale, this
+    // one restates BOTH firstValueFrom selectors in full. Dropping them here
+    // would leave this file — a service, with a Firestore-backed consent
+    // signal — as the one place in the app where a warm-cache listener read
+    // is legal, with nothing saying so. scripts/check-lint-guards.mjs
+    // asserts exactly this file's resolved selector list.
+    files: ["src/app/core/services/analytics-transport.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",
