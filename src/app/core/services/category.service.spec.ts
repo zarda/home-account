@@ -495,4 +495,146 @@ describe('CategoryService', () => {
       expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
     });
   });
+  describe('loadCategories', () => {
+    const path = 'users/test-user-123/categories';
+
+    /**
+     * Subscribe-and-capture rather than firstValueFrom: ADR 0139 made
+     * awaiting a listener a house defect, and loadCategories returns one.
+     * The mock's stream is synchronous, so the first emission is already in
+     * hand when subscribe returns.
+     */
+    function firstEmission(): ReturnType<typeof createCategory>[] {
+      let seen: ReturnType<typeof createCategory>[] | undefined;
+      service.loadCategories().subscribe(value => (seen ??= value));
+      expect(seen).withContext('the stream emitted synchronously').toBeDefined();
+      return seen!;
+    }
+
+    it('answers an empty list without subscribing when nobody is signed in', () => {
+      mockAuth.setMockUser(null);
+
+      const emitted = firstEmission();
+
+      expect(emitted).toEqual([]);
+      expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBe(0);
+    });
+
+    it('merges the stored categories over the built-ins and caches the result', () => {
+      // A stored row carrying a built-in's own id replaces that built-in
+      // rather than doubling it — that is what `isDefault` rows are for.
+      const builtIn = service.getDefaultCategories()[0];
+      const overridden = createCategory({
+        id: builtIn.id, name: 'My Groceries', order: builtIn.order, isDefault: false,
+      });
+      const custom = createCategory({ id: 'custom-1', name: 'Hobbies', order: 9999 });
+      mockFirestore.setMockCollection(path, [overridden, custom]);
+
+      const emitted = firstEmission();
+
+      expect(emitted.filter(c => c.id === builtIn.id).length).toBe(1);
+      expect(emitted.find(c => c.id === builtIn.id)?.name).toBe('My Groceries');
+      expect(emitted.find(c => c.id === 'custom-1')).toBeDefined();
+      // The subscription's merge is what fills the signal every consumer reads.
+      expect(service.categories()).toEqual(emitted);
+    });
+
+    it('orders the merged list by order, not by which side it came from', () => {
+      mockFirestore.setMockCollection(path, [
+        createCategory({ id: 'late', name: 'Late', order: 99999 }),
+        createCategory({ id: 'early', name: 'Early', order: -1 }),
+      ]);
+
+      const emitted = firstEmission();
+
+      expect(emitted[0].id).toBe('early');
+      expect(emitted[emitted.length - 1].id).toBe('late');
+      expect(emitted.map(c => c.order)).toEqual([...emitted.map(c => c.order)].sort((a, b) => a - b));
+    });
+
+    it('reads in stored order', () => {
+      mockFirestore.setMockCollection(path, []);
+
+      firstEmission();
+
+      expect(mockFirestore.subscribeToCollectionSpy.calls[0].args[0]).toBe(path);
+      expect(mockFirestore.subscribeToCollectionSpy.calls[0].args[1])
+        .toEqual({ orderBy: [{ field: 'order', direction: 'asc' }] });
+    });
+  });
+
+  describe('deleting a category', () => {
+    const path = 'users/test-user-123/categories';
+
+    it('soft-deletes by clearing isActive, leaving the row in place', async () => {
+      await service.deleteCategory('cat-1');
+
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(1);
+      expect(mockFirestore.updateDocumentSpy.calls[0].args[0]).toBe(`${path}/cat-1`);
+      expect(mockFirestore.updateDocumentSpy.calls[0].args[1]).toEqual({ isActive: false });
+      expect(mockFirestore.deleteDocumentSpy.calls.length)
+        .withContext('a soft delete must not remove the document')
+        .toBe(0);
+    });
+
+    it('hard-deletes the document on the permanent path', async () => {
+      await service.permanentlyDeleteCategory('cat-1');
+
+      expect(mockFirestore.deleteDocumentSpy.calls.map(c => c.args[0])).toEqual([`${path}/cat-1`]);
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('lowers the loading flag even when the write rejects', async () => {
+      // The flag is raised before the write and lowered in a finally: a
+      // rejected delete that left it raised would freeze the manager's
+      // spinner for the rest of the session.
+      spyOn(mockFirestore, 'updateDocument').and.rejectWith(new Error('denied'));
+
+      await expectAsync(service.deleteCategory('cat-1')).toBeRejected();
+
+      expect(service.isLoading()).toBeFalse();
+    });
+
+    it('lowers the loading flag even when the hard delete rejects', async () => {
+      spyOn(mockFirestore, 'deleteDocument').and.rejectWith(new Error('denied'));
+
+      await expectAsync(service.permanentlyDeleteCategory('cat-1')).toBeRejected();
+
+      expect(service.isLoading()).toBeFalse();
+    });
+  });
+
+  describe('initializeDefaultCategories', () => {
+    const path = 'users/test-user-123/categories';
+
+    it('writes one document per built-in, each at its own id and owned', async () => {
+      mockFirestore.setMockCollection(path, []);
+
+      await service.initializeDefaultCategories();
+
+      const writes = mockFirestore.setDocumentSpy.calls;
+      expect(writes.length).toBe(service.getDefaultCategories().length);
+      const first = service.getDefaultCategories()[0];
+      const written = writes.find(c => c.args[0] === `${path}/${first.id}`);
+      expect(written).toBeDefined();
+      expect((written!.args[1] as { userId: string }).userId).toBe('test-user-123');
+    });
+
+    it('writes nothing into an account that already has categories', async () => {
+      mockFirestore.setMockCollection(path, [createCategory({ id: 'existing' })]);
+
+      await service.initializeDefaultCategories();
+
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('writes nothing when nobody is signed in', async () => {
+      mockAuth.setMockUser(null);
+
+      await service.initializeDefaultCategories();
+
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
+    });
+  });
 });

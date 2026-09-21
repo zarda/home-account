@@ -549,4 +549,288 @@ describe('AiSettingsPageComponent', () => {
         .toBe(2);
     });
   });
+  describe('the status line', () => {
+    /**
+     * `aiStatusText` is a computed over plain service *methods*, not signals,
+     * so its dependency set is empty and it memoizes on first read — which
+     * the suite's own `fixture.detectChanges()` has already done. Changing a
+     * spy afterwards can never reach it. A fresh component is the only way
+     * to evaluate it against a different platform.
+     */
+    function statusWith(): string {
+      return TestBed.createComponent(AiSettingsPageComponent).componentInstance.aiStatusText();
+    }
+
+    it('names Apple Intelligence when native OCR is backed by it', () => {
+      strategyServiceMock.useNativeOCR.and.returnValue(true);
+      strategyServiceMock.canUseAppleIntelligence.and.returnValue(true);
+
+      expect(statusWith()).toBe('aiPage.appleIntelligenceReady');
+    });
+
+    it('falls back to plain native OCR when Apple Intelligence is absent', () => {
+      strategyServiceMock.useNativeOCR.and.returnValue(true);
+      strategyServiceMock.canUseAppleIntelligence.and.returnValue(false);
+
+      expect(statusWith()).toBe('aiPage.nativeOCRReady');
+    });
+
+    it('reports cloud AI when no native engine is preferred', () => {
+      strategyServiceMock.useNativeOCR.and.returnValue(false);
+      strategyServiceMock.canUseCloud.and.returnValue(true);
+
+      expect(statusWith()).toBe('aiPage.cloudAIReady');
+    });
+
+    it('blames the network rather than the configuration when offline', () => {
+      // Offline with no cloud key is not the same statement as "you have not
+      // configured this": one is fixed by a key, the other by a signal.
+      strategyServiceMock.useNativeOCR.and.returnValue(false);
+      strategyServiceMock.canUseCloud.and.returnValue(false);
+      pwaServiceMock.isOnline.and.returnValue(false);
+
+      expect(statusWith()).toBe('aiPage.offline');
+    });
+
+    it('asks for configuration when online with nothing set up', () => {
+      strategyServiceMock.useNativeOCR.and.returnValue(false);
+      strategyServiceMock.canUseCloud.and.returnValue(false);
+      pwaServiceMock.isOnline.and.returnValue(true);
+
+      expect(statusWith()).toBe('aiPage.configureRequired');
+    });
+  });
+
+  describe('per-provider model choice', () => {
+    it('stores an OpenAI model the list knows and says so', () => {
+      component.onOpenaiModelChange('gpt-5.4');
+
+      expect(component.selectedOpenaiModel()).toBe('gpt-5.4');
+      expect(strategyServiceMock.updatePreferences)
+        .toHaveBeenCalledWith({ openaiModel: 'gpt-5.4' });
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.openaiModelUpdated');
+    });
+
+    it('ignores an OpenAI model id that is not on the list', () => {
+      const before = component.selectedOpenaiModel();
+
+      component.onOpenaiModelChange('gpt-nonexistent');
+
+      expect(component.selectedOpenaiModel()).toBe(before);
+      expect(strategyServiceMock.updatePreferences).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('stores a Claude model the list knows and says so', () => {
+      const known = component.claudeModels[1].id;
+
+      component.onClaudeModelChange(known);
+
+      expect(component.selectedClaudeModel()).toBe(known);
+      expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ claudeModel: known });
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.claudeModelUpdated');
+    });
+
+    it('ignores a Claude model id that is not on the list', () => {
+      const before = component.selectedClaudeModel();
+
+      component.onClaudeModelChange('claude-nonexistent');
+
+      expect(component.selectedClaudeModel()).toBe(before);
+      expect(strategyServiceMock.updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unknown text model with an error, before touching preferences', () => {
+      component.onTextModelChange('not-a-model');
+
+      expect(notifications.error).toHaveBeenCalledWith('aiPage.invalidModelSelection');
+      expect(strategyServiceMock.updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unknown vision model the same way', () => {
+      component.onVisionModelChange('not-a-model');
+
+      expect(notifications.error).toHaveBeenCalledWith('aiPage.invalidModelSelection');
+      expect(strategyServiceMock.updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('reverts the shown text model when storing it throws', () => {
+      // The select has already moved by the time the write fails, so the
+      // handler has to put the displayed value back or the page lies about
+      // what is stored.
+      strategyServiceMock.preferences.and.returnValue({ autoSync: true, textModel: component.textModels[0].id });
+      strategyServiceMock.updatePreferences.and.throwError('denied');
+      const other = component.textModels[1].id;
+
+      component.onTextModelChange(other);
+
+      expect(notifications.error).toHaveBeenCalledWith('aiPage.textModelUpdateFailed');
+      expect(component.selectedTextModel()).toBe(component.textModels[0].id);
+    });
+
+    it('reverts the shown vision model when storing it throws', () => {
+      strategyServiceMock.preferences.and.returnValue({ autoSync: true, visionModel: component.visionModels[0].id });
+      strategyServiceMock.updatePreferences.and.throwError('denied');
+      const other = component.visionModels[1].id;
+
+      component.onVisionModelChange(other);
+
+      expect(notifications.error).toHaveBeenCalledWith('aiPage.visionModelUpdateFailed');
+      expect(component.selectedVisionModel()).toBe(component.visionModels[0].id);
+    });
+  });
+
+  describe('testing a provider key', () => {
+    beforeEach(() => component.keysLoaded.set(true));
+
+    it('does nothing at all without a key to test', async () => {
+      component.geminiApiKey.set('');
+
+      await component.testGeminiApiKey();
+
+      expect(cloudLLMProviderMock.updateProviderApiKey).not.toHaveBeenCalled();
+      expect(component.geminiTestResult()).toBeNull();
+    });
+
+    it('reports success when the provider becomes available', async () => {
+      component.geminiApiKey.set('key');
+      cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+
+      await component.testGeminiApiKey();
+
+      expect(component.geminiTestResult()).toBe('success');
+      expect(component.isTestingGemini()).toBeFalse();
+    });
+
+    it('reports failure when the provider stays unavailable', async () => {
+      component.geminiApiKey.set('key');
+      cloudLLMProviderMock.isProviderAvailable.and.returnValue(false);
+
+      await component.testGeminiApiKey();
+
+      expect(component.geminiTestResult()).toBe('error');
+      expect(component.isTestingGemini()).toBeFalse();
+    });
+
+    it('reports failure, and lowers the flag, when the update throws', async () => {
+      component.geminiApiKey.set('key');
+      cloudLLMProviderMock.updateProviderApiKey.and.rejectWith(new Error('network'));
+
+      await component.testGeminiApiKey();
+
+      expect(component.geminiTestResult()).toBe('error');
+      expect(component.isTestingGemini()).toBeFalse();
+    });
+
+    it('tests an OpenAI key the same way', async () => {
+      component.openaiApiKey.set('key');
+      cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+
+      await component.testOpenaiApiKey();
+
+      expect(component.openaiTestResult()).toBe('success');
+      expect(component.isTestingOpenai()).toBeFalse();
+    });
+
+    it('reports an OpenAI failure and lowers the flag', async () => {
+      component.openaiApiKey.set('key');
+      cloudLLMProviderMock.updateProviderApiKey.and.rejectWith(new Error('network'));
+
+      await component.testOpenaiApiKey();
+
+      expect(component.openaiTestResult()).toBe('error');
+      expect(component.isTestingOpenai()).toBeFalse();
+    });
+
+    it('tests a Claude key the same way', async () => {
+      component.claudeApiKey.set('key');
+      cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+
+      await component.testClaudeApiKey();
+
+      expect(component.claudeTestResult()).toBe('success');
+      expect(component.isTestingClaude()).toBeFalse();
+    });
+
+    it('reports a Claude failure and lowers the flag', async () => {
+      component.claudeApiKey.set('key');
+      cloudLLMProviderMock.updateProviderApiKey.and.rejectWith(new Error('network'));
+
+      await component.testClaudeApiKey();
+
+      expect(component.claudeTestResult()).toBe('error');
+      expect(component.isTestingClaude()).toBeFalse();
+    });
+  });
+
+  describe('clearing a provider key', () => {
+    beforeEach(() => component.keysLoaded.set(true));
+
+    it('empties the field, drops the test result and pushes the removal through', async () => {
+      component.geminiApiKey.set('key');
+      component.geminiTestResult.set('success');
+
+      component.clearGeminiApiKey();
+      await Promise.resolve();
+
+      expect(component.geminiApiKey()).toBe('');
+      expect(component.geminiTestResult()).toBeNull();
+      expect(providerKeysMock.setKey).toHaveBeenCalledWith('gemini', undefined);
+    });
+
+    it('clears an OpenAI key the same way', async () => {
+      component.openaiApiKey.set('key');
+      component.openaiTestResult.set('error');
+
+      component.clearOpenaiApiKey();
+      await Promise.resolve();
+
+      expect(component.openaiApiKey()).toBe('');
+      expect(component.openaiTestResult()).toBeNull();
+      expect(providerKeysMock.setKey).toHaveBeenCalledWith('openai', undefined);
+    });
+
+    it('clears a Claude key the same way', async () => {
+      component.claudeApiKey.set('key');
+      component.claudeTestResult.set('success');
+
+      component.clearClaudeApiKey();
+      await Promise.resolve();
+
+      expect(component.claudeApiKey()).toBe('');
+      expect(component.claudeTestResult()).toBeNull();
+      expect(providerKeysMock.setKey).toHaveBeenCalledWith('claude', undefined);
+    });
+  });
+
+  describe('clearing remembered decisions', () => {
+    it('reports success and lowers the flag when the memory clears', async () => {
+      await component.clearCategoryMemory();
+
+      expect(categoryMemoryMock.clear).toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.categoryMemoryCleared');
+      expect(component.clearingCategoryMemory()).toBeFalse();
+    });
+
+    it('reports the failure and still lowers the flag', async () => {
+      // Raised before the call and lowered in a finally: a rejected clear
+      // that left it raised would freeze the button for the session.
+      categoryMemoryMock.clear.and.rejectWith(new Error('denied'));
+
+      await component.clearCategoryMemory();
+
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
+      expect(component.clearingCategoryMemory()).toBeFalse();
+    });
+  });
+
+  describe('saving a preference', () => {
+    it('surfaces a rejected preference write rather than failing silently', async () => {
+      authServiceMock.updateUserPreferences.and.rejectWith(new Error('offline'));
+
+      await component.onProviderPreferenceChange();
+
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
+    });
+  });
 });
