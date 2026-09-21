@@ -1,4 +1,23 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { MatDialogModule } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatIconModule } from '@angular/material/icon';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { CdkTextareaAutosize } from '@angular/cdk/text-field';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { signal } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -30,7 +49,10 @@ import { TagSuggestionService } from '../../../core/services/tag-suggestion.serv
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { Transaction, Category, Goal, User } from '../../../models';
-import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
+import { createTransaction, createCategory, createUser, createTranslationStub } from '../../../core/services/testing';
+
+const renderExpenseCategory = createCategory({ id: 'food', type: 'expense', name: 'food' });
+const renderIncomeCategory = createCategory({ id: 'salary', type: 'income', name: 'salary' });
 import { NotificationService } from '../../../core/services/notification.service';
 
 function attemptStub() {
@@ -1904,5 +1926,370 @@ describe('TransactionFormComponent', () => {
 
       expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
     });
+  });
+});
+
+/**
+ * The app's central form. Every case above compiles it with
+ * `{ imports: [], template: '' }`, and so does `transaction-form.smoke.spec.ts`
+ * — so until here nothing in the repo had ever rendered a single field of it.
+ * The form group being right is not the same statement as the form being
+ * usable: the type toggle swapping the category list, the submit gate, the
+ * validation messages, the AI-scan affordances and the verify flags beside a
+ * doubted reading are all template facts.
+ *
+ * Partial render: only `app-note-translation` and `app-split-parts` are left
+ * unresolved — both have their own specs, and neither is asserted about here
+ * beyond the gate that decides whether it exists at all.
+ */
+describe('TransactionFormComponent, through its own template', () => {
+  let fixture: ComponentFixture<TransactionFormComponent>;
+  let component: TransactionFormComponent;
+  let dialogRefSpy: jasmine.SpyObj<MatDialogRef<TransactionFormComponent>>;
+  let strategySpy: jasmine.SpyObj<AIStrategyService>;
+  let online: ReturnType<typeof signal<boolean>>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const field = (name: string) =>
+    el().querySelector(`[formControlName="${name}"]`) as HTMLInputElement;
+  const errors = () =>
+    Array.from(el().querySelectorAll('mat-error')).map(n => n.textContent?.trim());
+  const submit = () => el().querySelector('.submit-button') as HTMLButtonElement;
+  const toggle = (value: string) =>
+    el().querySelector(`mat-button-toggle[value="${value}"] button`) as HTMLButtonElement;
+
+  function type(name: string, value: string): void {
+    const input = field(name);
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+  }
+
+  /** The category select's panel renders into the CDK overlay. */
+  function categoryOptions(): string[] {
+    // By control name, not by position: the currency select is rendered first.
+    const trigger = el().querySelector('mat-select[formControlName="categoryId"]') as HTMLElement;
+    (trigger.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
+    fixture.detectChanges();
+    const panel = document.querySelector('.mat-mdc-select-panel') as HTMLElement;
+    const names = Array.from(panel.querySelectorAll('mat-option')).map(o => o.textContent?.trim() ?? '');
+    (document.querySelector('.cdk-overlay-backdrop') as HTMLElement | null)?.click();
+    fixture.detectChanges();
+    return names;
+  }
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  function render(data: { mode: 'add' | 'edit'; transaction?: Transaction } = { mode: 'add' }): void {
+    TestBed.overrideProvider(MAT_DIALOG_DATA, { useValue: data });
+    fixture = TestBed.createComponent(TransactionFormComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    online = signal(true);
+    dialogRefSpy = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
+    dialogRefSpy.afterClosed.and.returnValue(of(undefined) as never);
+
+    strategySpy = jasmine.createSpyObj('AIStrategyService', [
+      'hasAnyEngine', 'canProcessNow', 'canUseCloud', 'processReceipt', 'suggestCategory',
+    ]);
+    strategySpy.hasAnyEngine.and.returnValue(true);
+    strategySpy.canProcessNow.and.returnValue(true);
+    strategySpy.canUseCloud.and.returnValue(true);
+    strategySpy.suggestCategory.and.resolveTo(undefined);
+
+    const transactions = jasmine.createSpyObj('TransactionService', [
+      'addTransaction', 'updateTransaction', 'removeReceiptAt', 'removeAllReceipts',
+      'getTransactionDatesForMonth', 'addSplitTransaction', 'splitTransaction',
+    ]);
+    transactions.addTransaction.and.resolveTo('new-id');
+    transactions.updateTransaction.and.resolveTo(undefined);
+    transactions.getTransactionDatesForMonth.and.returnValue(of(new Map()));
+
+    const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
+    currency.getSupportedCurrencies.and.returnValue([
+      { code: 'USD', name: 'US Dollar', symbol: '$' },
+      { code: 'EUR', name: 'Euro', symbol: '€' },
+    ]);
+    currency.getCurrencyInfo.and.callFake((code: string) => ({ code, nameKey: code, symbol: code }));
+
+    const tagSuggest = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
+    tagSuggest.suggest.and.resolveTo([[]]);
+    const grounding = jasmine.createSpyObj<GroundingHistoryService>('GroundingHistoryService', ['recent']);
+    grounding.recent.and.resolveTo([]);
+    const session = jasmine.createSpyObj<CurrencyChoiceSessionService>(
+      'CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
+    session.current.and.returnValue(null);
+    const quota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
+    quota.canAddImages.and.resolveTo(true);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionFormComponent, ReactiveFormsModule, NoopAnimationsModule],
+      providers: [
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: TransactionService, useValue: transactions },
+        {
+          provide: CategoryService,
+          useValue: {
+            categories: signal<Category[]>([renderExpenseCategory, renderIncomeCategory]),
+            expenseCategories: signal<Category[]>([renderExpenseCategory]),
+            incomeCategories: signal<Category[]>([renderIncomeCategory]),
+            loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
+          },
+        },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal<User | null>(createUser()) } },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: AIStrategyService, useValue: strategySpy },
+        { provide: AIImportService, useValue: jasmine.createSpyObj('AIImportService', ['importFromMultipleImages']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
+        { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
+        { provide: MatDialogRef, useValue: dialogRefSpy },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: ReceiptQuotaService, useValue: quota },
+        { provide: ReceiptToNoteService, useValue: jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']) },
+        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']) },
+        { provide: TagSuggestionService, useValue: tagSuggest },
+        { provide: GroundingHistoryService, useValue: grounding },
+        { provide: TagMemoryService, useValue: jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']) },
+        {
+          provide: GoalService,
+          useValue: {
+            goals: signal<Goal[]>([]),
+            activeGoals: signal<Goal[]>([]),
+            getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
+          },
+        },
+        { provide: ReceiptAttemptService, useValue: attemptStub().service },
+        { provide: CurrencyChoiceSessionService, useValue: session },
+        { provide: PwaService, useValue: { isOnline: online } },
+        { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
+      ],
+    })
+      .overrideComponent(TransactionFormComponent, {
+        set: {
+          imports: [
+            LoadingSpinnerComponent,
+            DialogHeaderComponent,
+            CommonModule,
+            ReactiveFormsModule,
+            MatDialogModule,
+            MatFormFieldModule,
+            MatInputModule,
+            MatSelectModule,
+            MatDatepickerModule,
+            MatNativeDateModule,
+            MatButtonModule,
+            MatButtonToggleModule,
+            MatIconModule,
+            MatProgressSpinnerModule,
+            MatChipsModule,
+            MatTooltipModule,
+            TranslatePipe,
+            CdkTextareaAutosize,
+          ],
+          // A standalone component's template is governed by its own schemas,
+          // not the TestBed's. `app-note-translation` and `app-split-parts`
+          // are deliberately not rendered — each has its own spec, and here
+          // only the gate that decides whether they exist is asserted.
+          schemas: [NO_ERRORS_SCHEMA],
+        },
+      })
+      .compileComponents();
+  });
+
+  it('titles itself and labels its submit for adding', () => {
+    render({ mode: 'add' });
+
+    expect(text('.dialog-header-text')).toContain('transactions.addTransaction');
+    expect(submit().textContent).toContain('transactions.addTransaction');
+    expect(submit().querySelector('mat-icon')?.textContent?.trim()).toBe('add');
+  });
+
+  it('titles itself and labels its submit for editing', () => {
+    render({ mode: 'edit', transaction: createTransaction({ description: 'Coffee', amount: 4.5 }) });
+
+    expect(text('.dialog-header-text')).toContain('transactions.editTransaction');
+    expect(submit().textContent).toContain('transactions.saveChanges');
+    expect(submit().querySelector('mat-icon')?.textContent?.trim()).toBe('save');
+  });
+
+  it('fills the fields from the transaction it is editing', () => {
+    render({
+      mode: 'edit',
+      transaction: createTransaction({ description: 'Coffee', amount: 4.5, currency: 'USD' }),
+    });
+
+    expect(field('description').value).toBe('Coffee');
+    expect(field('amount').value).toBe('4.5');
+  });
+
+  it('keeps submit locked until the form is actually fillable', () => {
+    render();
+    expect(submit().disabled).toBeTrue();
+
+    type('amount', '12.5');
+    type('description', 'Groceries');
+    component.form.get('categoryId')?.setValue('food');
+    fixture.detectChanges();
+
+    expect(submit().disabled).toBeFalse();
+  });
+
+  it('names each missing requirement in its own field', () => {
+    render();
+    expect(errors()).toEqual([]);
+
+    type('amount', '');
+    type('description', '');
+    component.form.get('categoryId')?.markAsTouched();
+    component.form.get('categoryId')?.setValue('');
+    fixture.detectChanges();
+
+    expect(errors()).toContain('transactions.required');
+    expect(errors()).toContain('transactions.categoryRequired');
+  });
+
+  it('refuses a non-positive amount in the field itself', () => {
+    render();
+
+    type('amount', '-5');
+
+    expect(errors()).toContain('transactions.mustBePositive');
+  });
+
+  it('swaps the category list when the type toggle is flipped', () => {
+    render();
+    expect(categoryOptions().some(name => name.includes('food'))).toBeTrue();
+
+    toggle('income').click();
+    fixture.detectChanges();
+
+    expect(component.form.get('type')?.value).toBe('income');
+    const incomeOptions = categoryOptions();
+    expect(incomeOptions.some(name => name.includes('salary'))).toBeTrue();
+    expect(incomeOptions.some(name => name.includes('food'))).toBeFalse();
+  });
+
+  it('offers both receipt affordances while an engine is available', () => {
+    render();
+
+    expect(el().querySelector('.scan-receipt-btn')?.textContent).toContain('ai.scanReceipt');
+    expect(el().querySelector('.long-receipt-btn')?.textContent).toContain('ai.longReceipt');
+    expect(el().querySelector('input[type="file"][accept="image/*"]')).not.toBeNull();
+  });
+
+  it('hides the whole receipt section when no engine is available', () => {
+    strategySpy.hasAnyEngine.and.returnValue(false);
+    render();
+
+    expect(el().querySelector('.receipt-scanner-section')).toBeNull();
+    expect(el().querySelector('.scan-receipt-btn')).toBeNull();
+  });
+
+  it('flags a doubted reading beside the field it belongs to', () => {
+    render();
+    expect(el().querySelector('.verify-flag')).toBeNull();
+
+    component.scanFieldConfidence.set({ amount: 0.2 });
+    fixture.detectChanges();
+
+    const flag = el().querySelector('.verify-flag') as HTMLElement;
+    expect(flag).not.toBeNull();
+    // The flag is inside the amount field, not the date one.
+    expect(flag.closest('.amount-field')).not.toBeNull();
+    expect(flag.getAttribute('aria-label')).toBe(component.verifyFieldTooltip('amount'));
+  });
+
+  it('leaves the flag off a reading the scan was confident about', () => {
+    render();
+
+    component.scanFieldConfidence.set({ amount: 0.95 });
+    fixture.detectChanges();
+
+    expect(el().querySelector('.verify-flag')).toBeNull();
+  });
+
+  it('tells a part it is one', () => {
+    render({
+      mode: 'edit',
+      transaction: createTransaction({ description: 'Coffee', splitGroupId: 'g1' }),
+    });
+
+    expect(text('.split-part-notice')).toBe('transactions.splitPartNotice');
+  });
+
+  it('says nothing about parts on a row that is not one', () => {
+    render({ mode: 'edit', transaction: createTransaction({ description: 'Coffee' }) });
+
+    expect(el().querySelector('.split-part-notice')).toBeNull();
+  });
+
+  it('warns, as an alert, that a split cannot be saved offline', () => {
+    render();
+    component.splitParts.set([{ categoryId: 'food', amount: 5 }] as never);
+    fixture.detectChanges();
+    expect(el().querySelector('.split-offline-hint')).toBeNull();
+
+    online.set(false);
+    fixture.detectChanges();
+
+    const hint = el().querySelector('.split-offline-hint') as HTMLElement;
+    expect(hint).not.toBeNull();
+    expect(hint.getAttribute('role')).toBe('alert');
+  });
+
+  it('offers the split control on an unlinked row', () => {
+    render();
+
+    expect(el().querySelector('app-split-parts')).not.toBeNull();
+  });
+
+  it('takes the split control away once a goal is linked', () => {
+    // A goal link is a whole-purchase notion, so the two exclude each other.
+    render({
+      mode: 'edit',
+      transaction: createTransaction({ description: 'Coffee', goalId: 'g1' }),
+    });
+
+    expect(el().querySelector('app-split-parts')).toBeNull();
+  });
+
+  it('closes with nothing from cancel and from the header close', () => {
+    render();
+
+    (el().querySelector('.cancel-button') as HTMLButtonElement).click();
+    expect(dialogRefSpy.close).toHaveBeenCalledWith(false);
+
+    dialogRefSpy.close.calls.reset();
+    (el().querySelector('.dialog-header-close') as HTMLButtonElement).click();
+    expect(dialogRefSpy.close).toHaveBeenCalledWith(false);
+  });
+
+  it('accepts and dismisses a currency suggestion from its own chip', () => {
+    render();
+    expect(el().querySelector('.ai-suggestion-container')).toBeNull();
+
+    component.suggestedCurrency.set({ code: 'EUR', reason: 'receipt' } as never);
+    fixture.detectChanges();
+
+    (el().querySelector('.suggestion-chip') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(component.form.get('currency')?.value).toBe('EUR');
+    expect(el().querySelector('.suggestion-chip')).toBeNull();
+
+    component.suggestedCurrency.set({ code: 'EUR', reason: 'receipt' } as never);
+    fixture.detectChanges();
+    (el().querySelector('.suggestion-dismiss') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('.suggestion-chip')).toBeNull();
   });
 });
