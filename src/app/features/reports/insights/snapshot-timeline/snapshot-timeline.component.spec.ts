@@ -7,6 +7,7 @@ import { InsightSnapshot, SnapshotStaleness } from '../../../../models';
 import en from '../../../../../assets/i18n/en.json';
 import ja from '../../../../../assets/i18n/ja.json';
 import tc from '../../../../../assets/i18n/tc.json';
+import { createTranslationStub } from '../../../../core/services/testing';
 
 /**
  * Every reason the staleness comparison can produce. Built dynamically as
@@ -195,5 +196,152 @@ describe('SnapshotTimelineComponent', () => {
   it('reports having no snapshots', () => {
     build([]);
     expect(component.hasSnapshots()).toBeFalse();
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`. They prove the
+ * computeds, but the timeline's whole job is the chip row and the two
+ * mutually exclusive strips under it: a warning when the user's own data
+ * moved, and a quiet footnote when only the detector version did. Which of
+ * those renders is a template decision (`@if … @else if`), and nothing until
+ * here has ever rendered either.
+ */
+describe('SnapshotTimelineComponent, through its own template', () => {
+  let fixture: ComponentFixture<SnapshotTimelineComponent>;
+  let component: SnapshotTimelineComponent;
+
+  function snap(monthKey: string): InsightSnapshot {
+    return {
+      id: monthKey, userId: 'u1', monthKey,
+      detectorVersion: 1, schemaVersion: 1, status: 'complete',
+      fingerprint: { tx: 'x:1', count: 1, timeZone: 'UTC', baseCurrency: 'USD' },
+      totals: { income: 0, expense: 0, balance: 0, count: 0 },
+      byCategory: [],
+      facts: {} as InsightSnapshot['facts'],
+      cards: [],
+      generatedAt: Timestamp.fromDate(new Date(2026, 6, 1)),
+      createdAt: Timestamp.fromDate(new Date(2026, 6, 1)),
+      revision: 1,
+    };
+  }
+
+  function stale(reasons: SnapshotStaleness['reasons'], isStale: boolean): SnapshotStaleness {
+    return { isStale, reasons, currentFingerprint: 'x:2' };
+  }
+
+  function render(
+    snapshots: InsightSnapshot[],
+    selectedMonth: string | null = null,
+    staleness: SnapshotStaleness | null = null,
+    isRegenerating = false,
+  ): void {
+    fixture.componentRef.setInput('snapshots', snapshots);
+    fixture.componentRef.setInput('selectedMonth', selectedMonth);
+    fixture.componentRef.setInput('staleness', staleness);
+    fixture.componentRef.setInput('isRegenerating', isRegenerating);
+    fixture.detectChanges();
+  }
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const chips = () => Array.from(el().querySelectorAll('.month-chip')) as HTMLButtonElement[];
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [SnapshotTimelineComponent],
+      providers: [
+        {
+          // `monthLabel` formats through Intl with the service's own locale,
+          // which the shared stub has no opinion about.
+          provide: TranslationService,
+          useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
+        },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(SnapshotTimelineComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('renders nothing when there is no stored month', () => {
+    render([]);
+
+    expect(el().querySelector('.timeline')).toBeNull();
+    expect(el().textContent?.trim()).toBe('');
+  });
+
+  it('offers one labelled chip per stored month', () => {
+    render([snap('2026-06'), snap('2026-05')]);
+
+    expect(chips().map(c => c.textContent?.trim())).toEqual(['Jun 2026', 'May 2026']);
+    expect(el().querySelector('.chip-row')?.getAttribute('role')).toBe('group');
+    expect(el().querySelector('.chip-row')?.getAttribute('aria-label')).toBe('insights.timelineLabel');
+    expect(chips().every(c => c.getAttribute('aria-pressed') === 'false')).toBeTrue();
+  });
+
+  it('marks the selected chip pressed and no other', () => {
+    render([snap('2026-06'), snap('2026-05')], '2026-05');
+
+    expect(chips().map(c => c.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    expect(chips()[1].classList).toContain('selected');
+  });
+
+  it('emits the month a chip names, and clears it when the same chip is clicked again', () => {
+    const emitted: (string | null)[] = [];
+    component.monthSelected.subscribe(m => emitted.push(m));
+
+    render([snap('2026-06')]);
+    chips()[0].click();
+    expect(emitted).toEqual(['2026-06']);
+
+    render([snap('2026-06')], '2026-06');
+    chips()[0].click();
+    expect(emitted).toEqual(['2026-06', null]);
+  });
+
+  it('shows the viewing bar only once a month is selected, with a way back', () => {
+    render([snap('2026-06')]);
+    expect(el().querySelector('.viewing-bar')).toBeNull();
+
+    const emitted: (string | null)[] = [];
+    component.monthSelected.subscribe(m => emitted.push(m));
+    render([snap('2026-06')], '2026-06');
+
+    expect(text('.viewing-text')).toBe('insights.viewingMonth:{"month":"Jun 2026"}');
+    (el().querySelector('.viewing-bar button') as HTMLButtonElement).click();
+    expect(emitted).toEqual([null]);
+  });
+
+  it('warns with the reasons that mean the user\'s own data moved', () => {
+    render([snap('2026-06')], '2026-06', stale(['transactionsChanged', 'baseCurrencyChanged'], true));
+
+    expect(el().querySelector('.stale-strip')?.getAttribute('role')).toBe('status');
+    expect(text('.stale-title')).toBe('insights.staleTitle');
+    expect(
+      Array.from(el().querySelectorAll('.stale-reason')).map(n => n.textContent?.trim())
+    ).toEqual(['insights.stale_transactionsChanged', 'insights.stale_baseCurrencyChanged']);
+    expect(el().querySelector('.detector-note')).toBeNull();
+  });
+
+  it('demotes a detector-only change to a footnote rather than a warning', () => {
+    render([snap('2026-06')], '2026-06', stale(['detectorUpdated'], false));
+
+    expect(el().querySelector('.stale-strip')).toBeNull();
+    expect(text('.detector-note')).toContain('insights.detectorUpdatedNote');
+  });
+
+  it('asks for a regenerate of the month being viewed, and refuses while one runs', () => {
+    const asked: string[] = [];
+    component.regenerateRequested.subscribe(m => asked.push(m));
+    render([snap('2026-06')], '2026-06', stale(['transactionsChanged'], true));
+
+    const regenerate = el().querySelector('.stale-strip button') as HTMLButtonElement;
+    expect(regenerate.disabled).toBeFalse();
+    regenerate.click();
+    expect(asked).toEqual(['2026-06']);
+
+    render([snap('2026-06')], '2026-06', stale(['transactionsChanged'], true), true);
+    expect((el().querySelector('.stale-strip button') as HTMLButtonElement).disabled).toBeTrue();
   });
 });

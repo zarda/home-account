@@ -7,6 +7,54 @@ import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-pro
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightFacts, User } from '../../../../models';
 import { createUser } from '../../../../core/services/testing/test-data';
+import { createTranslationStub } from '../../../../core/services/testing';
+
+function factsFor(overrides: Partial<InsightFacts> = {}): InsightFacts {
+  return {
+    detectorVersion: 1,
+    window: { start: '2026-01-01', end: '2026-06-30', months: ['2026-05', '2026-06'] },
+    baseCurrency: 'USD',
+    timeZone: 'Asia/Taipei',
+    totals: { income: 4000, expense: 1200, balance: 2800, count: 20 },
+    byCategory: [],
+    recurring: {
+      groups: [], groupCount: 2, declaredGroupCount: 1, detectedGroupCount: 1,
+      totalMonthlyEquivalent: 50, declaredMonthlyEquivalent: 30,
+      detectedMonthlyEquivalent: 20, newGroupCount: 0, increasedGroupCount: 0,
+    },
+    trends: [{
+      categoryId: 'food_groceries',
+      series: [100, 118],
+      slopePerMonth: 18, meanMonthly: 109, relativeSlope: 0.16,
+      firstHalfMean: 100, secondHalfMean: 118, changeRatio: 0.18,
+      direction: 'rising', activeMonths: 2, windowShare: 0.4, transactionCount: 12,
+    }],
+    rhythms: {
+      hasEnoughData: true, transactionCount: 20,
+      weekdayWeekend: {
+        weekdayTotal: 800, weekendTotal: 400, weekdayCount: 14, weekendCount: 6,
+        weekdayDays: 22, weekendDays: 9,
+        weekdayDailyAverage: 36.36, weekendDailyAverage: 44.44,
+        ratio: 1.22, lean: 'weekend',
+      },
+      monthEnd: {
+        tailDays: 5, tailTotal: 300, restTotal: 900, tailCount: 6, restCount: 14,
+        tailDailyAverage: 60, restDailyAverage: 34.6, ratio: 1.73, isSpike: true,
+      },
+      payday: {
+        basis: 'recurringIncome', paydayDayOfMonth: 25, windowDays: 3,
+        postPaydayTotal: 400, otherTotal: 800, postPaydayCount: 6, otherCount: 14,
+        postPaydayDailyAverage: 66, otherDailyAverage: 32, ratio: 2.06, isPresent: true,
+      },
+    },
+    drip: {
+      threshold: 4, count: 30, total: 105, monthlyAverage: 52.5,
+      shareOfSpending: 0.0875, medianAmount: 3.5, byCategory: [],
+      filterSafe: true, isNotable: true,
+    },
+    ...overrides,
+  };
+}
 
 describe('InsightNarrativeComponent', () => {
   let component: InsightNarrativeComponent;
@@ -15,52 +63,7 @@ describe('InsightNarrativeComponent', () => {
   let hasProvider: ReturnType<typeof signal<boolean>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
 
-  function facts(overrides: Partial<InsightFacts> = {}): InsightFacts {
-    return {
-      detectorVersion: 1,
-      window: { start: '2026-01-01', end: '2026-06-30', months: ['2026-05', '2026-06'] },
-      baseCurrency: 'USD',
-      timeZone: 'Asia/Taipei',
-      totals: { income: 4000, expense: 1200, balance: 2800, count: 20 },
-      byCategory: [],
-      recurring: {
-        groups: [], groupCount: 2, declaredGroupCount: 1, detectedGroupCount: 1,
-        totalMonthlyEquivalent: 50, declaredMonthlyEquivalent: 30,
-        detectedMonthlyEquivalent: 20, newGroupCount: 0, increasedGroupCount: 0,
-      },
-      trends: [{
-        categoryId: 'food_groceries',
-        series: [100, 118],
-        slopePerMonth: 18, meanMonthly: 109, relativeSlope: 0.16,
-        firstHalfMean: 100, secondHalfMean: 118, changeRatio: 0.18,
-        direction: 'rising', activeMonths: 2, windowShare: 0.4, transactionCount: 12,
-      }],
-      rhythms: {
-        hasEnoughData: true, transactionCount: 20,
-        weekdayWeekend: {
-          weekdayTotal: 800, weekendTotal: 400, weekdayCount: 14, weekendCount: 6,
-          weekdayDays: 22, weekendDays: 9,
-          weekdayDailyAverage: 36.36, weekendDailyAverage: 44.44,
-          ratio: 1.22, lean: 'weekend',
-        },
-        monthEnd: {
-          tailDays: 5, tailTotal: 300, restTotal: 900, tailCount: 6, restCount: 14,
-          tailDailyAverage: 60, restDailyAverage: 34.6, ratio: 1.73, isSpike: true,
-        },
-        payday: {
-          basis: 'recurringIncome', paydayDayOfMonth: 25, windowDays: 3,
-          postPaydayTotal: 400, otherTotal: 800, postPaydayCount: 6, otherCount: 14,
-          postPaydayDailyAverage: 66, otherDailyAverage: 32, ratio: 2.06, isPresent: true,
-        },
-      },
-      drip: {
-        threshold: 4, count: 30, total: 105, monthlyAverage: 52.5,
-        shareOfSpending: 0.0875, medianAmount: 3.5, byCategory: [],
-        filterSafe: true, isNotable: true,
-      },
-      ...overrides,
-    };
-  }
+  const facts = factsFor;
 
   function build(input: InsightFacts | null, previous: InsightFacts | null = null): void {
     fixture = TestBed.createComponent(InsightNarrativeComponent);
@@ -276,5 +279,142 @@ describe('InsightNarrativeComponent', () => {
       await settled();
       expect(String(component.formatted())).not.toContain('<script');
     });
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so the card's four
+ * mutually exclusive body states — loading, error, unchanged, narrative — are
+ * proven only as signals. Which one renders is a template decision, and
+ * `formatted()` (the markdown-to-HTML step, and the sanitizer fallback behind
+ * it) only ever reaches a user through `[innerHTML]`, which nothing until
+ * here has rendered.
+ */
+describe('InsightNarrativeComponent, through its own template', () => {
+  let fixture: ComponentFixture<InsightNarrativeComponent>;
+  let component: InsightNarrativeComponent;
+  let cloud: jasmine.SpyObj<CloudLLMProviderService>;
+  let provider: ReturnType<typeof signal<boolean>>;
+  let user: ReturnType<typeof signal<User | null>>;
+  let resolveNarrative: (text: string) => void;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const drain = async (): Promise<void> => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+  };
+
+  beforeEach(async () => {
+    sessionStorage.clear();
+    provider = signal(true);
+    user = signal<User | null>(createUser({
+      preferences: { ...createUser().preferences, ragInsightsLevel: 'standard' },
+    }));
+
+    cloud = jasmine.createSpyObj<CloudLLMProviderService>(
+      'CloudLLMProviderService',
+      ['generatePatternNarrative', 'getPreferredProvider'],
+      { hasAnyCloudProvider: provider });
+    cloud.generatePatternNarrative.and.returnValue(
+      new Promise<string>(resolve => { resolveNarrative = resolve; }));
+    cloud.getPreferredProvider.and.returnValue('gemini');
+
+    await TestBed.configureTestingModule({
+      imports: [InsightNarrativeComponent],
+      providers: [
+        { provide: CloudLLMProviderService, useValue: cloud },
+        { provide: AuthService, useValue: { currentUser: user } },
+        { provide: CategoryService, useValue: { categories: signal([]) } },
+        { provide: TranslationService, useValue: createTranslationStub() },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(InsightNarrativeComponent);
+    component = fixture.componentInstance;
+  });
+
+  afterEach(() => sessionStorage.clear());
+
+  function render(input: InsightFacts | null): void {
+    fixture.componentRef.setInput('facts', input);
+    fixture.componentRef.setInput('previousFacts', null);
+    fixture.detectChanges();
+  }
+
+  it('renders nothing at all when no provider is configured', () => {
+    provider.set(false);
+    render(factsFor());
+
+    expect(el().querySelector('.narrative-card')).toBeNull();
+    expect(el().textContent?.trim()).toBe('');
+  });
+
+  it('renders nothing at all when grounding is switched off', () => {
+    user.set(createUser({ preferences: { ...createUser().preferences, ragInsightsLevel: 'off' } }));
+    render(factsFor());
+
+    expect(el().querySelector('.narrative-card')).toBeNull();
+  });
+
+  it('shows the spinner and locks the refresh button while a request is open', () => {
+    render(factsFor());
+
+    expect(text('mat-card-title')).toBe('insights.narrativeTitle');
+    expect(el().querySelector('app-loading-spinner')).not.toBeNull();
+    expect(el().querySelector('app-loading-spinner')?.textContent).toContain('insights.narrativeLoading');
+    expect((el().querySelector('.refresh') as HTMLButtonElement).disabled).toBeTrue();
+    expect(el().querySelector('.narrative-body')).toBeNull();
+  });
+
+  it('renders the returned narrative as HTML, with its note', async () => {
+    render(factsFor());
+    resolveNarrative('Your **groceries** rose 18%.');
+    await drain();
+
+    const body = el().querySelector('.narrative-body') as HTMLElement;
+    expect(body).not.toBeNull();
+    // `formatted()` runs the text through markdownToHtml, so the emphasis
+    // arrives as real markup rather than as asterisks.
+    expect(body.querySelector('strong')?.textContent).toBe('groceries');
+    expect(text('.narrative-note')).toBe('insights.narrativeNote');
+    expect(el().querySelector('app-loading-spinner')).toBeNull();
+    expect((el().querySelector('.refresh') as HTMLButtonElement).disabled).toBeFalse();
+  });
+
+  it('shows the failure key in its own state rather than an empty card', async () => {
+    cloud.generatePatternNarrative.and.returnValue(Promise.reject(new Error('boom')));
+    render(factsFor());
+    await drain();
+
+    expect(el().querySelector('.error-state')).not.toBeNull();
+    expect(text('.error-state span')).toBe(component.errorKey());
+    expect(el().querySelector('.narrative-body')).toBeNull();
+  });
+
+  it('says nothing moved rather than showing an empty body', () => {
+    render(factsFor());
+    component.isUnchanged.set(true);
+    component.isLoading.set(false);
+    fixture.detectChanges();
+
+    expect(text('.unchanged')).toBe('insights.narrativeUnchanged');
+    expect(el().querySelector('.narrative-body')).toBeNull();
+  });
+
+  it('labels the refresh control and reaches regenerate from it', () => {
+    render(factsFor());
+    resolveNarrative('Done.');
+    const regenerate = spyOn(component, 'regenerate');
+    const refresh = el().querySelector('.refresh') as HTMLButtonElement;
+
+    expect(refresh.getAttribute('aria-label')).toBe('insights.narrativeRefresh');
+    component.isLoading.set(false);
+    fixture.detectChanges();
+    refresh.click();
+
+    expect(regenerate).toHaveBeenCalled();
   });
 });
