@@ -135,12 +135,30 @@ describe('SplitPartsComponent', () => {
   });
 
   describe('removing a part', () => {
-    it('names the remove button by its key', () => {
+    it('names the remove button by its key, carrying the row it removes', () => {
       render();
       host.parts.set([{ categoryId: 'cat-food', amount: 30 }]);
       fixture.detectChanges();
 
-      expect(removeButtons()[0].getAttribute('aria-label')).toBe('transactions.splitRemovePart');
+      expect(removeButtons()[0].getAttribute('aria-label'))
+        .toBe('transactions.splitRemovePart{"position":1}');
+    });
+
+    // Every row's button used to read the same sentence, so a screen reader
+    // heard "Remove this part" three times with nothing to tell the rows
+    // apart. The position is 1-based because it is spoken, not indexed.
+    it('gives each row\'s remove button a name of its own', () => {
+      render();
+      host.parts.set([
+        { categoryId: 'cat-food', amount: 30 },
+        { categoryId: 'cat-home', amount: 20 },
+      ]);
+      fixture.detectChanges();
+
+      expect(removeButtons().map(b => b.getAttribute('aria-label'))).toEqual([
+        'transactions.splitRemovePart{"position":1}',
+        'transactions.splitRemovePart{"position":2}',
+      ]);
     });
 
     it('gives the remove button a 40px box', () => {

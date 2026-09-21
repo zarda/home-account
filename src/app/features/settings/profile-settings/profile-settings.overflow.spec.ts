@@ -260,6 +260,26 @@ describe('overflow guard: the theme toggle', () => {
       const label = segmentFor('system').querySelector('.mat-button-toggle-label-content') as HTMLElement;
       expect(getComputedStyle(label).fontWeight).toBe('600');
     });
+
+    // Hiding the checkmark's wrapper does not release the inline space
+    // Material reserves for it, so the checked segment used to carry an
+    // empty strip its siblings did not — the font-size group beside it has
+    // zeroed that padding since #450 and this group had not.
+    it('gives the checked segment the same inline padding as its siblings', async () => {
+      await setUp('en');
+      probe.width = GROUP_WIDTH_AT_320_VIEWPORT;
+      fixture.detectChanges();
+      setThemeAndDetect('system');
+
+      const paddings = (['light', 'dark', 'system'] as const).map(value => {
+        const button = segmentFor(value).querySelector('.mat-button-toggle-button') as HTMLElement;
+        return getComputedStyle(button).paddingInlineStart;
+      });
+
+      expect(new Set(paddings).size)
+        .withContext(`checked segment padded differently: ${paddings.join(', ')}`)
+        .toBe(1);
+    });
   });
 
   describe('on desktop, at the default font scale', () => {

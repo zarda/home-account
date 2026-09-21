@@ -33,7 +33,7 @@
         type="button"
         class="split-remove"
         data-split-remove
-        [attr.aria-label]="'transactions.splitRemovePart' | translate"
+        [attr.aria-label]="'transactions.splitRemovePart' | translate: { position: $index + 1 }"
         (click)="removePart($index)"
       >
         <mat-icon aria-hidden="true">close</mat-icon>

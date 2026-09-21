@@ -201,10 +201,14 @@
     "splitAcross": "Split across categories",
     "splitPartCategory": "Category",
     "splitPartAmount": "Amount",
-    "splitRemovePart": "Remove this part",
+    "splitRemovePart": "Remove part {{position}}",
     "splitRemainder": "{{amount}} stays on the main category",
     "splitRemainderInvalid": "Each part needs an amount, and together they must leave something for the main category",
     "splitPartCategoryRequired": "Every part needs a category",
+    "splitPartsDropped": {
+      "one": "{{count}} part removed: its category is not offered for this type",
+      "other": "{{count}} parts removed: their categories are not offered for this type"
+    },
     "splitPartNotice": "One part of a split purchase. Its other parts are edited on their own.",
     "splitFailed": "Couldn't split this purchase",
     "splitOffline": "Splitting needs a connection",

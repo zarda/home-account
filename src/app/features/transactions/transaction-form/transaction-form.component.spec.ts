@@ -54,6 +54,7 @@ describe('TransactionFormComponent', () => {
   let router: jasmine.SpyObj<Router>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let announcer: jasmine.SpyObj<AnnouncerService>;
+  let translation: jasmine.SpyObj<TranslationService>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<TransactionFormComponent>>;
   let dialog: jasmine.SpyObj<MatDialog>;
   let receiptQuota: jasmine.SpyObj<ReceiptQuotaService>;
@@ -170,7 +171,7 @@ describe('TransactionFormComponent', () => {
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
     currency.getCurrencyInfo.and.callFake((code: string) => ({ code, nameKey: code, symbol: code }));
-    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
 
     await TestBed.configureTestingModule({
@@ -260,6 +261,34 @@ describe('TransactionFormComponent', () => {
       // The rows would render as blank selects while still naming an expense
       // category, and nothing holds the submit — the parts would be written.
       expect(component.splitParts()).toEqual([]);
+    });
+
+    // The category reset above leaves a visibly empty required field. A
+    // dropped row leaves nothing at all, so it is the one that has to be
+    // said out loud.
+    it('announces the parts a type change drops', () => {
+      const component = build().componentInstance;
+      component.splitParts.set([
+        { categoryId: 'food', amount: 5 },
+        { categoryId: 'food', amount: 7 },
+      ]);
+
+      component.form.get('type')?.setValue('income');
+
+      expect(announcer.announce).toHaveBeenCalledOnceWith(
+        'transactions.splitPartsDropped'
+      );
+      // The key pluralises on count alone, so the number has to reach t().
+      expect(translation.t).toHaveBeenCalledWith('transactions.splitPartsDropped', { count: 2 });
+    });
+
+    it('says nothing when the type change drops no parts', () => {
+      const component = build().componentInstance;
+      component.splitParts.set([]);
+
+      component.form.get('type')?.setValue('income');
+
+      expect(announcer.announce).not.toHaveBeenCalled();
     });
   });
 

@@ -97,14 +97,13 @@ being legible. Both groups answer this with a container query of their own
 (`container: … / inline-size` on the row, not the viewport, because a
 component does not know how wide its own container will be at the point it
 renders): below 420px, the option's label wraps onto a second line instead
-of overflowing. Only the font-size group also stops Material's checkmark
-from reserving the inline space it would otherwise still claim on the
-checked segment, by zeroing that segment's `padding-inline-start`
-(`accessibility-settings.component.scss`); the theme toggle hides the
-checkmark's wrapper the same way but leaves that padding in place
-(`profile-settings.component.scss`), so its checked segment still carries
-the empty strip. `overflow-wrap: anywhere` is part of the same rule for the
-one label with no space to wrap on at all.
+of overflowing. Hiding the checkmark's wrapper does not release the
+inline space Material reserves for it on the checked segment, so both
+groups also zero that segment's `padding-inline-start`
+(`accessibility-settings.component.scss`, `profile-settings.component.scss`);
+without it the selected option carries an empty strip its siblings do not.
+`overflow-wrap: anywhere` is part of the same rule for the one label with no
+space to wrap on at all.
 
 ---
 

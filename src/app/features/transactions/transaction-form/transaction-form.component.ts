@@ -47,6 +47,7 @@ import { ReceiptAttemptService } from '../../../core/services/receipt-attempt.se
 import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import {
   Transaction,
   CreateTransactionDTO,
@@ -145,6 +146,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private receiptAttempts = inject(ReceiptAttemptService);
   private currencySession = inject(CurrencyChoiceSessionService);
   private localeFormat = inject(LocaleFormatService);
+  private announcer = inject(AnnouncerService);
   pwa = inject(PwaService);
   private destroyRef = inject(DestroyRef);
   /** True from a scan that fell back until the user settles the currency; what makes a hand edit worth remembering. */
@@ -609,23 +611,34 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       .subscribe(note => this.noteValue.set(note ?? ''));
 
     // Watch for type changes
-    this.form.get('type')?.valueChanges.subscribe((type) => {
-      this.transactionType.set(type);
-      // Reset category if it doesn't match the type
-      const currentCategoryId = this.form.get('categoryId')?.value;
-      const validCategories = this.filteredCategories();
-      if (currentCategoryId) {
-        if (!validCategories.some(c => c.id === currentCategoryId)) {
-          this.form.patchValue({ categoryId: '' });
+    this.form.get('type')?.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((type) => {
+        this.transactionType.set(type);
+        // Reset category if it doesn't match the type
+        const currentCategoryId = this.form.get('categoryId')?.value;
+        const validCategories = this.filteredCategories();
+        if (currentCategoryId) {
+          if (!validCategories.some(c => c.id === currentCategoryId)) {
+            this.form.patchValue({ categoryId: '' });
+          }
         }
-      }
-      // Same for the split's own rows, which the picker no longer offers: a
-      // part naming a category of the other type renders as a blank select
-      // and would still be written.
-      this.splitParts.update(parts =>
-        parts.filter(part => validCategories.some(c => c.id === part.categoryId))
-      );
-    });
+        // Same for the split's own rows, which the picker no longer offers: a
+        // part naming a category of the other type renders as a blank select
+        // and would still be written. The category reset above leaves a
+        // visibly empty required field; a dropped row leaves nothing at all,
+        // so it is the one that has to be said out loud.
+        const before = this.splitParts().length;
+        this.splitParts.update(parts =>
+          parts.filter(part => validCategories.some(c => c.id === part.categoryId))
+        );
+        const dropped = before - this.splitParts().length;
+        if (dropped > 0) {
+          this.announcer.announce(
+            this.translationService.t('transactions.splitPartsDropped', { count: dropped })
+          );
+        }
+      });
 
     // Watch for category changes to update the trigger display
     this.categoryIdSignal.set(transaction?.categoryId || '');
