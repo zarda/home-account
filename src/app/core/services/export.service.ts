@@ -2,6 +2,9 @@ import { Injectable, inject } from '@angular/core';
 // Type only: the renderer itself still arrives through loadJsPdf's dynamic
 // import, so nothing here pulls jspdf into the initial bundle.
 import type { jsPDF } from 'jspdf';
+// Type only: DeletionStep names the cascade steps, and BACKUP_SECTIONS is
+// typed against it so a section and the step that erases it cannot drift.
+import type { DeletionStep } from './account-deletion.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { LocaleFormatService } from './locale-format.service';
@@ -88,6 +91,52 @@ export const BACKUP_SCHEMA_VERSION = '1.5';
  * sections and reporting success.
  */
 export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5'] as const;
+
+/**
+ * Every section the file carries, named as the cascade step that erases it.
+ *
+ * Typed as `DeletionStep & keyof ExportData` so a section has to be both: a
+ * field the file actually holds, and a kind account deletion actually removes.
+ * `export.service.spec.ts` checks the other direction — a stored kind the
+ * cascade erases must appear here or in NOT_IN_BACKUP. Nothing checked either
+ * direction before, which is how the backup came to cover six of fourteen
+ * stored kinds while the deletion dialog offered it as a full one.
+ */
+export const BACKUP_SECTIONS: readonly (DeletionStep & keyof ExportData)[] = [
+  'transactions',
+  'categories',
+  'budgets',
+  'recurring',
+  'goals',
+  'insightSnapshots',
+  'savedSearches',
+  'searchAnswers',
+  'categoryMemory',
+  'tagMemory',
+  'imports',
+];
+
+/**
+ * Stored kinds the backup deliberately does not carry, and why.
+ *
+ * The parity spec reads this, so a new stored kind forces a decision here
+ * rather than silently leaving it out of the file the user is offered before
+ * their account is erased. Each reason is what the deletion dialog has to be
+ * able to say out loud.
+ */
+export const NOT_IN_BACKUP: Readonly<Record<string, string>> = {
+  secrets:
+    'Encrypted provider credentials. The backup file is unencrypted and promises to hold none, '
+    + 'and reading them to count would decrypt keys for a figure nobody needs.',
+  securityEvents:
+    'An audit trail. The rules refuse an update to a security event, so a second restore would '
+    + 'fail every row and break the "restoring the same file twice is a no-op" contract — and a '
+    + 'file restored into another account would forge sign-in history for one that never had it.',
+  feedback:
+    'Already delivered: creating a feedback document fires the Cloud Function that mails the '
+    + 'operator, so a restore would send every message a second time. The rules refuse an update '
+    + 'to one as well.',
+};
 
 export interface ExportData {
   transactions: Transaction[];
