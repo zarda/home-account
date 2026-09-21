@@ -74,11 +74,16 @@ the only thing standing between you and a second copy.
 | Section | Verbatim from the file | Recomputed after the restore | Never sourced from a file |
 |---|---|---|---|
 | Transactions | id, amount, currency, the historical rate and base-currency figure, category, description, date, note, tags, location, period, `createdAt`, the recurring link, the goal link and its figure | — | receipt images |
-| Categories | id, name, icon, colour, type, parent, deleted-or-not | display order | the built-in categories, which are generated rather than stored |
+| Categories | id, name, icon, colour, type, parent, display order, deleted-or-not | — | the built-in categories, which are generated rather than stored |
 | Budgets | id, category, name, amount, currency, period, dates, alert threshold, active-or-not | `spent`, from the restored ledger | — |
 | Recurring rules | id, name, type, amount, currency, category, description, frequency, dates, **paused-or-not** | `nextOccurrence`, from today | `lastProcessed` |
 | Goals | id, kind, name, target, currency, target date, checklist items, note, contributed balance, active-or-not | `linkedAmount`, from the restored ledger | — |
 | Monthly insights | the whole snapshot, at its month-key id | — | — |
+| Saved searches | id, the query, its label, pinned-or-not, when it was last used | — | — |
+| Stored answers | id, the question, its resolved scope, the figures it answered with, pinned-or-not, when it was computed | — | — |
+| Category memory | the merchant key (which is the id), the category it settled on, the sample description, how many times it was confirmed | — | — |
+| Tag memory | the merchant key (which is the id), the tags kept and the tags suppressed, the sample description, the count | — | — |
+| Import history | id, the file and its source, the door and engine, the outcome and its counts, when it ran | the list of transaction ids, pruned to the rows this restore actually wrote | — |
 
 The split is deliberate. Anything the app can derive from the restored data is
 derived, so a restore cannot install a counter that disagrees with the ledger;
@@ -153,6 +158,7 @@ default.
 | 1.2 | budgets, recurring rules |
 | 1.3 | goals |
 | 1.4 | goal links on transactions |
+| 1.5 | saved searches, stored answers, category memory, tag memory, import history |
 
 Not every field a transaction later gains needs a row here. A field rides
 across a restore for free the moment it is added to `CreateTransactionDTO`
@@ -170,7 +176,24 @@ category names — so it deserves the same handling as a bank statement. It does
 not contain receipt images, credentials, or any authentication token, and
 restoring it into another account rewrites every `userId` to that account's.
 
-Feedback entries (`users/{uid}/feedback`) are deliberately absent as well:
-they are messages already delivered to the developer, not account data worth
-migrating, and restoring them would re-fire the mail trigger
-([feedback.md](feedback.md)) and send every one again.
+Three stored kinds are deliberately absent, and the deletion dialog names
+all three before it erases anything. They are the only kinds the cascade
+removes that the file does not carry, and a spec checks that list against the
+cascade so a fourth cannot be added by omission
+([ADR 0143](ADR/0143-the-backup-carries-what-erasure-takes-except-what-it-must-not.md)).
+
+**Stored provider keys** (`users/{uid}/secrets`) are the credentials this file
+promises not to hold, and reading them to count them would decrypt them for a
+figure nobody needs.
+
+**Feedback entries** (`users/{uid}/feedback`) are messages already delivered to
+the developer, not account data worth migrating, and restoring them would
+re-fire the mail trigger ([feedback.md](feedback.md)) and send every one again.
+
+**The sign-in history** (`users/{uid}/securityEvents`) is an audit trail. The
+rules refuse an update to a security event, so restoring the same file twice
+would fail every row on the second pass and break the rule that a re-run is
+safe; the service stamps each event with *now* and with the device doing the
+restoring, so a restored log would say every historical sign-in happened during
+the restore; and a file restored into a second account would furnish that
+account with sign-ins it never had.
