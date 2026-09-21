@@ -260,6 +260,11 @@ export class BackupRestoreService {
       }
     }
 
+    // Every expense category the loop below actually posts to. addTransaction
+    // recomputes a category's budgets on every write by default, so a
+    // fifty-row restore read and rewrote the same two budgets fifty times.
+    const affectedExpenseCategories = new Set<string>();
+
     for (const transaction of data.transactions) {
       try {
         const dto: CreateTransactionDTO = {
@@ -293,6 +298,9 @@ export class BackupRestoreService {
         await this.transactionService.addTransaction(dto, {
           id: transaction.id,
           merge: true,
+          // The recalculation this suppresses runs once per category after the
+          // budgets section, below.
+          skipBudgetRecalc: true,
           createdAt: toTimestamp(transaction.createdAt),
           ...(typeof transaction.exchangeRate === 'number'
             && typeof transaction.amountInBaseCurrency === 'number'
@@ -320,6 +328,9 @@ export class BackupRestoreService {
             : {}),
         });
         summary.transactions++;
+        if (transaction.type === 'expense') {
+          affectedExpenseCategories.add(transaction.categoryId);
+        }
       } catch (error) {
         skip('transactions', transaction.id, error);
       }
@@ -340,6 +351,21 @@ export class BackupRestoreService {
         summary.budgets++;
       } catch (error) {
         skip('budgets', budget.id, error);
+      }
+    }
+
+    // One recalculation per distinct category the transaction loop posted to,
+    // the same shape the AI import uses after its rows commit. After the
+    // budgets section rather than before it: createBudget already recomputes
+    // the budgets it writes, and a budget the account already held — one the
+    // file does not carry — is reached only here. A failure must not fail a
+    // restore that already wrote its rows; a spent counter that lagged is
+    // recovered by the next recalculation.
+    for (const categoryId of affectedExpenseCategories) {
+      try {
+        await this.budgetService.recalculateBudgetsForCategory(categoryId);
+      } catch (error) {
+        console.warn('[BackupRestore] Budget recalculation failed for', categoryId, error);
       }
     }
 

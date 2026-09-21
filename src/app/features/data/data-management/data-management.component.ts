@@ -311,15 +311,35 @@ export class DataManagementComponent {
         // not abandon the rest of the file half-imported.
         let imported = 0;
         let skipped = 0;
+        // addTransaction recomputes a category's budgets on every write by
+        // default, so a fifty-row file read and rewrote the same budgets fifty
+        // times. The recalculation this suppresses runs once per category
+        // after the loop.
+        const affectedExpenseCategories = new Set<string>();
         for (let i = 0; i < parsed.length; i++) {
           try {
-            await this.transactionService.addTransaction(parsed[i]);
+            await this.transactionService.addTransaction(parsed[i], { skipBudgetRecalc: true });
             imported++;
+            if (parsed[i].type === 'expense') {
+              affectedExpenseCategories.add(parsed[i].categoryId);
+            }
           } catch (error) {
             skipped++;
             console.error('Failed to import transaction', parsed[i], error);
           }
           this.importProgress.set(Math.round(((i + 1) / parsed.length) * 100));
+        }
+
+        // One recalculation per distinct category the loop actually posted to,
+        // the same shape the AI import uses. A failure here must not fail an
+        // import that already wrote its rows: a spent counter that lagged is
+        // recovered by the next recalculation.
+        for (const categoryId of affectedExpenseCategories) {
+          try {
+            await this.budgetService.recalculateBudgetsForCategory(categoryId);
+          } catch (error) {
+            console.warn('Budget recalculation failed for', categoryId, error);
+          }
         }
 
         if (skipped > 0) {

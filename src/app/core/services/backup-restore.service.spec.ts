@@ -180,8 +180,11 @@ describe('BackupRestoreService', () => {
     transactions.addTransaction.and.resolveTo('id');
     categories = jasmine.createSpyObj<CategoryService>('CategoryService', ['addCategory']);
     categories.addCategory.and.resolveTo('id');
-    budgets = jasmine.createSpyObj<BudgetService>('BudgetService', ['createBudget']);
+    budgets = jasmine.createSpyObj<BudgetService>('BudgetService', [
+      'createBudget', 'recalculateBudgetsForCategory'
+    ]);
     budgets.createBudget.and.resolveTo('id');
+    budgets.recalculateBudgetsForCategory.and.resolveTo();
     recurring = jasmine.createSpyObj<RecurringService>('RecurringService', ['createRecurring']);
     recurring.createRecurring.and.resolveTo('id');
     snapshots = jasmine.createSpyObj<InsightSnapshotService>('InsightSnapshotService', ['restore']);
@@ -767,6 +770,77 @@ describe('BackupRestoreService', () => {
       expect(summary).toEqual(jasmine.objectContaining({
         savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
       }));
+    });
+  });
+
+
+  describe('budget recalculation', () => {
+    it('recalculates once per affected category, after the budgets are back', async () => {
+      // addTransaction recomputes every budget on the row's category by
+      // default, so a fifty-row restore read and rewrote the same two budgets
+      // fifty times.
+      const rows = Array.from({ length: 50 }, (_, i) => transaction({
+        id: `txn-${i}`,
+        type: 'expense',
+        categoryId: i % 2 === 0 ? 'food_restaurants' : 'housing_rent',
+      }));
+
+      await service.restore(backup({ transactions: rows }));
+
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(50);
+      expect(transactions.addTransaction.calls.allArgs()
+        .every(args => args[1]?.skipBudgetRecalc === true)).toBeTrue();
+      expect(budgets.recalculateBudgetsForCategory.calls.allArgs().map(args => args[0]).sort())
+        .toEqual(['food_restaurants', 'housing_rent']);
+    });
+
+    it('runs after the budgets section, so a restored budget is not recomputed from an empty half', async () => {
+      const order: string[] = [];
+      budgets.createBudget.and.callFake(async () => {
+        order.push('createBudget');
+        return 'id';
+      });
+      budgets.recalculateBudgetsForCategory.and.callFake(async () => {
+        order.push('recalculate');
+      });
+
+      await service.restore(backup({
+        transactions: [transaction({ type: 'expense', categoryId: 'food_restaurants' })],
+        budgets: [{ id: 'b-1', categoryId: 'food_restaurants', name: 'Food', amount: 300,
+          currency: 'USD', period: 'monthly', startDate: ts('2026-06-01'), spent: 0,
+          isActive: true, alertThreshold: 80 } as Budget],
+      }));
+
+      expect(order).toEqual(['createBudget', 'recalculate']);
+    });
+
+    it('counts only the expense rows it actually wrote', async () => {
+      transactions.addTransaction.and.callFake(async (_dto, options) => {
+        if (options?.id === 'txn-bad') throw new Error('permission-denied');
+        return 'id';
+      });
+
+      await service.restore(backup({
+        transactions: [
+          transaction({ id: 'txn-ok', type: 'expense', categoryId: 'food_restaurants' }),
+          transaction({ id: 'txn-bad', type: 'expense', categoryId: 'housing_rent' }),
+          transaction({ id: 'txn-income', type: 'income', categoryId: 'salary' }),
+        ],
+      }));
+
+      expect(budgets.recalculateBudgetsForCategory.calls.allArgs())
+        .toEqual([['food_restaurants']]);
+    });
+
+    it('a lagging counter never fails a restore that already wrote its rows', async () => {
+      budgets.recalculateBudgetsForCategory.and.rejectWith(new Error('offline'));
+
+      const summary = await service.restore(backup({
+        transactions: [transaction({ type: 'expense', categoryId: 'food_restaurants' })],
+      }));
+
+      expect(summary.transactions).toBe(1);
+      expect(summary.skipped).toEqual([]);
     });
   });
 
