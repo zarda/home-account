@@ -13,7 +13,11 @@ describe('FileDropzoneComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [FileDropzoneComponent, NoopAnimationsModule],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
+      // The component itself reads the catalog now — its two file refusals
+      // are user-facing sentences — so the stub is needed even with the
+      // template blanked.
+      providers: [{ provide: TranslationService, useValue: createTranslationStub() }]
     })
       .overrideComponent(FileDropzoneComponent, {
         set: { template: '<div></div>' }
@@ -191,7 +195,21 @@ describe('FileDropzoneComponent', () => {
       component.onFileSelect({ target: { files: [file], value: 'x' } } as unknown as Event);
 
       expect(component.hasError()).toBeTrue();
-      expect(component.errorMessage().endsWith('is not a supported file type')).toBeTrue();
+      // The refusal is read from the catalog, keyed and parameterised — the
+      // stub echoes key and params, so this is the whole rendered sentence.
+      expect(component.errorMessage()).toBe('import.fileTypeUnsupported:{"name":"notes.txt"}');
+    });
+
+    it('refuses an oversized file from the catalog too', () => {
+      const file = new File(['x'], 'huge.png', { type: 'image/png' });
+      Object.defineProperty(file, 'size', { value: component.maxFileSize + 1 });
+
+      component.onFileSelect({ target: { files: [file], value: 'x' } } as unknown as Event);
+
+      expect(component.hasError()).toBeTrue();
+      expect(component.errorMessage()).toBe(
+        'import.fileTooLarge:{"name":"huge.png","limit":"10 MB"}'
+      );
     });
   });
 
@@ -380,7 +398,7 @@ describe('FileDropzoneComponent, through its own template', () => {
     dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
 
     expect(el().querySelector('.error-banner')).not.toBeNull();
-    expect(text('.error-message')).toBe('notes.txt is not a supported file type');
+    expect(text('.error-message')).toBe('import.fileTypeUnsupported:{"name":"notes.txt"}');
     expect(el().querySelector('.dropzone')?.classList).toContain('error');
   });
 

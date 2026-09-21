@@ -199,7 +199,7 @@ Every script CI runs, in the order it runs it:
 | `npm --prefix functions test` | The functions workspace's own tests, after `npm --prefix functions ci` builds it — not a root script |
 | `npm run lint` | ESLint |
 | `npm run lint-guards:check` | Verify the ESLint import bans still resolve for the files they were written for |
-| `npm run i18n:check` | Verify every literal translation key resolves in all locales and no template hard-codes an aria-label |
+| `npm run i18n:check` | Verify every literal translation key resolves in all locales, and no template hard-codes an aria-label, alt text or visible English sentence |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
