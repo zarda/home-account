@@ -78,6 +78,14 @@
       white-space: normal;
       overflow-wrap: anywhere;
     }
+
+    // Hiding the checkmark's wrapper does not release the inline space
+    // Material reserves for it on the checked segment, so the selected
+    // option keeps an empty strip its siblings do not have. The font-size
+    // group answers this the same way.
+    ::ng-deep .mat-button-toggle-checked.mat-button-toggle-appearance-standard .mat-button-toggle-button {
+      padding-inline-start: 0;
+    }
   }
 }
 

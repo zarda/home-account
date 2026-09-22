@@ -143,6 +143,22 @@ describe('OfflineQueueService', () => {
       expect(service.pendingCount()).toBe(0);
       expect(consoleLogSpy).not.toHaveBeenCalledWith(jasmine.stringContaining('[OfflineQueue] Cleared all items'));
     });
+
+    // Four `[OfflineQueue]` narration lines used to sit on these paths —
+    // image queued, sync completed, cleared completed, cleared failed — and
+    // every one of them duplicated a logSync record that is durable and
+    // readable in the app. ADR 0123's rule took them out and no-console
+    // keeps them out; the spy is armed for the whole suite in beforeEach, so
+    // one case walks all four.
+    it('narrates nothing while queueing, syncing and clearing', async () => {
+      await service.syncQueue();
+      const id = await service.queueImage(imageFile('narration.jpg'));
+      await service.updateImageStatus(id, 'completed');
+      await service.clearCompleted();
+      await service.clearFailed();
+
+      expect(consoleLogSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('syncQueue', () => {

@@ -23,6 +23,11 @@ import { BudgetService } from '../../../core/services/budget.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { RecurringService } from '../../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
+import { SearchHistoryService } from '../../../core/services/search-history.service';
+import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
+import { CategoryMemoryService } from '../../../core/services/category-memory.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -63,6 +68,11 @@ export class DataManagementComponent {
   private budgetService = inject(BudgetService);
   private goalService = inject(GoalService);
   private recurringService = inject(RecurringService);
+  private searchHistory = inject(SearchHistoryService);
+  private searchAnswers = inject(SearchAnswerHistoryService);
+  private categoryMemory = inject(CategoryMemoryService);
+  private tagMemory = inject(TagMemoryService);
+  private importHistory = inject(ImportHistoryService);
   private backupRestore = inject(BackupRestoreService);
   private authService = inject(AuthService);
   private accountDeletion = inject(AccountDeletionService);
@@ -124,6 +134,15 @@ export class DataManagementComponent {
       const budgets = await this.budgetService.exportAll();
       const recurring = await this.recurringService.exportAll();
       const goals = await this.goalService.exportAll();
+      // The five backup 1.5 added. Read after the six above rather than
+      // beside them for the same reason transactions go first: the whole
+      // export fails on the first server read that rejects, and the deletion
+      // gate below reads that failure.
+      const savedSearches = await this.searchHistory.exportAll();
+      const searchAnswers = await this.searchAnswers.exportAll();
+      const categoryMemory = await this.categoryMemory.exportAll();
+      const tagMemory = await this.tagMemory.exportAll();
+      const imports = await this.importHistory.exportAll();
 
       const blob = this.exportService.exportToJSON({
         transactions,
@@ -132,6 +151,11 @@ export class DataManagementComponent {
         budgets,
         recurring,
         goals,
+        savedSearches,
+        searchAnswers,
+        categoryMemory,
+        tagMemory,
+        imports,
         exportDate: new Date().toISOString(),
         version: BACKUP_SCHEMA_VERSION
       });
@@ -287,15 +311,35 @@ export class DataManagementComponent {
         // not abandon the rest of the file half-imported.
         let imported = 0;
         let skipped = 0;
+        // addTransaction recomputes a category's budgets on every write by
+        // default, so a fifty-row file read and rewrote the same budgets fifty
+        // times. The recalculation this suppresses runs once per category
+        // after the loop.
+        const affectedExpenseCategories = new Set<string>();
         for (let i = 0; i < parsed.length; i++) {
           try {
-            await this.transactionService.addTransaction(parsed[i]);
+            await this.transactionService.addTransaction(parsed[i], { skipBudgetRecalc: true });
             imported++;
+            if (parsed[i].type === 'expense') {
+              affectedExpenseCategories.add(parsed[i].categoryId);
+            }
           } catch (error) {
             skipped++;
             console.error('Failed to import transaction', parsed[i], error);
           }
           this.importProgress.set(Math.round(((i + 1) / parsed.length) * 100));
+        }
+
+        // One recalculation per distinct category the loop actually posted to,
+        // the same shape the AI import uses. A failure here must not fail an
+        // import that already wrote its rows: a spent counter that lagged is
+        // recovered by the next recalculation.
+        for (const categoryId of affectedExpenseCategories) {
+          try {
+            await this.budgetService.recalculateBudgetsForCategory(categoryId);
+          } catch (error) {
+            console.warn('Budget recalculation failed for', categoryId, error);
+          }
         }
 
         if (skipped > 0) {
@@ -319,6 +363,9 @@ export class DataManagementComponent {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
         title: this.t('settings.confirmRestore'),
+        // One count per section the file carries. Six of the eleven were
+        // named here before 1.5, so the confirmation described a third of
+        // what it was about to write.
         message: this.t('settings.confirmRestoreMessage', {
           transactions: contents?.transactions ?? 0,
           categories: contents?.categories ?? 0,
@@ -326,6 +373,11 @@ export class DataManagementComponent {
           recurring: contents?.recurring ?? 0,
           goals: contents?.goals ?? 0,
           insightSnapshots: contents?.insightSnapshots ?? 0,
+          savedSearches: contents?.savedSearches ?? 0,
+          searchAnswers: contents?.searchAnswers ?? 0,
+          categoryMemory: contents?.categoryMemory ?? 0,
+          tagMemory: contents?.tagMemory ?? 0,
+          imports: contents?.imports ?? 0,
         }),
         confirmLabel: this.t('common.import'),
         confirmColor: 'primary'

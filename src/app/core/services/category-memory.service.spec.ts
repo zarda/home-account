@@ -266,4 +266,70 @@ describe('CategoryMemoryService', () => {
       expect(firestore.deleteDocument).not.toHaveBeenCalled();
     });
   });
+
+  describe('restore', () => {
+    // What a backup actually hands a restore: the read that produced the file
+    // injected the document id as a field, and the entry's own `count` records
+    // how settled the choice was when it was taken.
+    const fromBackup = (overrides: Record<string, unknown> = {}): CategoryMemoryEntry => ({
+      id: 'starbucks',
+      merchantKey: 'starbucks',
+      categoryId: 'food_coffee',
+      sampleDescription: 'STARBUCKS #123',
+      count: 7,
+      ...overrides,
+    } as unknown as CategoryMemoryEntry);
+
+    const written = (): Record<string, unknown> =>
+      firestore.setDocument.calls.mostRecent().args[1] as Record<string, unknown>;
+
+    it('writes the entry at its merchant key, preserving the count', async () => {
+      // remember() would increment; a restore records what was decided, not a
+      // fresh confirmation.
+      await service.restore(fromBackup());
+
+      expect(firestore.setDocument.calls.mostRecent().args[0])
+        .toBe('users/user-1/categoryMemory/starbucks');
+      expect(written()['count']).toBe(7);
+      expect(written()['categoryId']).toBe('food_coffee');
+      expect(written()['sampleDescription']).toBe('STARBUCKS #123');
+    });
+
+    it('strips the id the read injected and writes no userId', async () => {
+      // categoryMemoryValid hasOnly() merchantKey, categoryId,
+      // sampleDescription, count and updatedAt — either extra field is denied.
+      await service.restore(fromBackup());
+
+      expect('id' in written()).toBeFalse();
+      expect('userId' in written()).toBeFalse();
+    });
+
+    it('shows the restored entry without a reload', async () => {
+      // ensureLoaded is idempotent per user, so a restore that only wrote
+      // would leave the settings screen showing the pre-restore map until the
+      // next sign-in.
+      await service.ensureLoaded();
+
+      await service.restore(fromBackup());
+
+      expect(service.remembered().map(e => e.merchantKey)).toEqual(['starbucks']);
+      expect(service.remembered()[0].count).toBe(7);
+    });
+
+    it('is a no-op the second time', async () => {
+      await service.restore(fromBackup());
+      const first = firestore.setDocument.calls.mostRecent().args;
+      await service.restore(fromBackup());
+
+      expect(firestore.setDocument.calls.mostRecent().args).toEqual(first);
+    });
+
+    it('does nothing while signed out', async () => {
+      userId.set(null);
+
+      await service.restore(fromBackup());
+
+      expect(firestore.setDocument).not.toHaveBeenCalled();
+    });
+  });
 });

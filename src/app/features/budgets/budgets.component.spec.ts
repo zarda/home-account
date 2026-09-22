@@ -1,4 +1,15 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatTabsModule } from '@angular/material/tabs';
+import { TabStripScrollDirective } from '../../shared/directives/tab-strip-scroll.directive';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
+import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
@@ -10,7 +21,10 @@ import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { BudgetFormComponent } from './budget-form/budget-form.component';
 import { Budget } from '../../models';
-import { createBudget, createCategory } from '../../core/services/testing';
+import { createBudget, createCategory, createTranslationStub } from '../../core/services/testing';
+
+/** Query params the sibling rendering describe re-points between cases. */
+const budgetQueryParams: { value: Record<string, string> } = { value: {} };
 
 describe('BudgetsComponent', () => {
   let budgetService: {
@@ -171,5 +185,165 @@ describe('BudgetsComponent', () => {
     // That BUDGET_TABS still describes the strip it names is asserted in
     // app.smoke.spec.ts, which is the only place the real template renders —
     // this spec stubs it out.
+  });
+});
+
+/**
+ * Every case above compiles the page with `{ imports: [], template: '' }`, so
+ * the three-tab strip, the count badge, the three-way budget gate and the
+ * add-budget control have never rendered. The badge in particular is a
+ * template-only `@if` that nothing else evaluates.
+ *
+ * Partial render: the three feature children are left unresolved. Each has
+ * its own spec, and none is asserted about here beyond existing.
+ */
+describe('BudgetsComponent, through its own template', () => {
+  let fixture: ComponentFixture<BudgetsComponent>;
+  let component: BudgetsComponent;
+  let budgets: ReturnType<typeof signal<Budget[]>>;
+  let dialogSpy: jasmine.SpyObj<MatDialog>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const tabHeaders = () => Array.from(el().querySelectorAll('.mdc-tab')) as HTMLElement[];
+
+  function render(): void {
+    fixture = TestBed.createComponent(BudgetsComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    budgetQueryParams.value = {};
+    budgets = signal<Budget[]>([createBudget()]);
+    dialogSpy = jasmine.createSpyObj('MatDialog', ['open']);
+    dialogSpy.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+
+    await TestBed.configureTestingModule({
+      imports: [BudgetsComponent, NoopAnimationsModule],
+      providers: [
+        { provide: ActivatedRoute, useValue: { get snapshot() { return { queryParamMap: convertToParamMap(budgetQueryParams.value) }; } } },
+        {
+          provide: BudgetService,
+          useValue: {
+            budgets,
+            getBudgets: jasmine.createSpy('getBudgets').and.returnValue(of([])),
+            deleteBudget: jasmine.createSpy('deleteBudget').and.resolveTo(undefined),
+          },
+        },
+        {
+          provide: CategoryService,
+          useValue: {
+            categories: signal([createCategory({ id: 'c9' })]),
+            loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
+          },
+        },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: MatDialog, useValue: dialogSpy },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    })
+      .overrideComponent(BudgetsComponent, {
+        set: {
+          imports: [
+            PageHeaderComponent,
+            CommonModule,
+            MatButtonModule,
+            MatIconModule,
+            MatTabsModule,
+            TabStripScrollDirective,
+            LoadingSpinnerComponent,
+            EmptyStateComponent,
+            TranslatePipe,
+          ],
+          // A standalone component's template is governed by its own schemas,
+          // not the TestBed's. The budget overview, the recurring list and
+          // the goals page each have their own spec and stay unrendered here.
+          schemas: [NO_ERRORS_SCHEMA],
+        },
+      })
+      .compileComponents();
+  });
+
+  it('offers all three tabs, labelled and in order', () => {
+    render();
+
+    expect(tabHeaders().length).toBe(BUDGET_TABS.length);
+    expect(tabHeaders().map(h => h.textContent?.trim())).toEqual([
+      'savingsbudget.budgets1',
+      'repeatbudget.recurring',
+      'flagbudget.goals',
+    ]);
+  });
+
+  it('badges the budgets tab with its count, and drops the badge at zero', () => {
+    render();
+    expect(text('.tab-badge')).toBe('1');
+
+    budgets.set([]);
+    fixture.detectChanges();
+
+    expect(el().querySelector('.tab-badge')).toBeNull();
+  });
+
+  it('shows the spinner while the first read is open', () => {
+    render();
+    component.isLoading.set(true);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')).not.toBeNull();
+    expect(el().querySelector('app-empty-state')).toBeNull();
+    expect(el().querySelector('.budget-grid')).toBeNull();
+  });
+
+  it('offers a first budget from the empty state rather than a bare page', () => {
+    render();
+    component.isLoading.set(false);
+    budgets.set([]);
+    fixture.detectChanges();
+
+    const empty = el().querySelector('app-empty-state') as HTMLElement;
+    expect(empty.textContent).toContain('budget.noBudgets');
+    expect(empty.textContent).toContain('budget.createBudget');
+
+    (empty.querySelector('button') as HTMLButtonElement).click();
+
+    expect(dialogSpy.open).toHaveBeenCalled();
+  });
+
+  it('shows the budget grid once there is a budget', () => {
+    render();
+    component.isLoading.set(false);
+    fixture.detectChanges();
+
+    expect(el().querySelector('.budget-grid')).not.toBeNull();
+    expect(el().querySelector('app-empty-state')).toBeNull();
+    expect(text('.tab-description')).toBe('budget.budgetsDescription');
+  });
+
+  it('opens the add dialog from the header button', () => {
+    render();
+    component.isLoading.set(false);
+    fixture.detectChanges();
+
+    (el().querySelector('.tab-header button') as HTMLButtonElement).click();
+
+    expect(dialogSpy.open).toHaveBeenCalledWith(BudgetFormComponent, jasmine.anything());
+  });
+
+  it('opens on the tab the query parameter names', () => {
+    budgetQueryParams.value = { tab: BUDGET_TABS[2] };
+    render();
+
+    expect(component.selectedTabIndex).toBe(2);
+  });
+
+  it('carries the accessibility tab-animation duration into the strip', () => {
+    render();
+
+    const group = el().querySelector('mat-tab-group') as HTMLElement;
+    expect(group.style.getPropertyValue('--mat-tab-header-animation-duration').trim())
+      .toBe(component.tabAnimationDuration());
   });
 });

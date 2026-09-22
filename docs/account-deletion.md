@@ -102,10 +102,14 @@ smoke`).
 
 ## Known gaps
 
-- The offered backup covers transactions, categories, budgets, recurring
-  rules, goals, and insight snapshots — not saved searches, search
-  answers, category memory, import history, or the security log. Erasure
-  is complete; the export is not.
+- The offered backup covers eleven of the fourteen stored kinds the cascade
+  erases. The three it cannot carry are the stored provider keys, the
+  feedback already sent, and the sign-in history — each excluded for a
+  reason the deletion dialog states, and each read from the same list a
+  spec checks against the cascade
+  ([ADR 0143](ADR/0143-the-backup-carries-what-erasure-takes-except-what-it-must-not.md),
+  [backup-restore.md](backup-restore.md)). Erasure is still more complete
+  than the export, by decision now rather than by omission.
 - The web reauthentication popup can be blocked by aggressive popup
   settings; the failure mode is safe (nothing deleted) and retrying from
   the same click usually passes.

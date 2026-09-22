@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { InsightsTabComponent } from './insights-tab.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -18,6 +18,51 @@ import { createTimestamp, createTransaction, createUser } from '../../../core/se
 import {
   PeriodSelection,
 } from '../../../shared/components/period-selector/period-selector.component';
+import { MatButtonModule } from '@angular/material/button';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatIconModule } from '@angular/material/icon';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { createTranslationStub } from '../../../core/services/testing';
+
+function expenseRow(date: Date, amount: number, overrides: Partial<Transaction> = {}): Transaction {
+  return createTransaction({
+    type: 'expense', amount, amountInBaseCurrency: amount,
+    date: createTimestamp(date), ...overrides,
+  });
+}
+
+/** Six months of a subscription and a coffee habit — enough to trip the gates. */
+function historyRows(): Transaction[] {
+  const rows: Transaction[] = [];
+  for (let month = 0; month < 6; month += 1) {
+    rows.push(expenseRow(new Date(2026, month, 5), 15.99, {
+      description: 'Netflix', categoryId: 'subscriptions_streaming_services',
+    }));
+    for (let day = 1; day <= 10; day += 1) {
+      rows.push(expenseRow(new Date(2026, month, day * 2), 3.5, {
+        description: 'Coffee', categoryId: 'food_restaurants',
+      }));
+    }
+  }
+  return rows;
+}
+
+function storedSnapshotFixture(monthKey: string): InsightSnapshot {
+  return {
+    id: monthKey, userId: 'u1', monthKey,
+    detectorVersion: 1, schemaVersion: 1, status: 'complete',
+    fingerprint: { tx: 'x:1', count: 1, timeZone: 'UTC', baseCurrency: 'USD' },
+    totals: { income: 0, expense: 0, balance: 0, count: 0 },
+    byCategory: [],
+    facts: {} as InsightSnapshot['facts'],
+    cards: [],
+    generatedAt: createTimestamp(new Date(2026, 6, 1)),
+    createdAt: createTimestamp(new Date(2026, 6, 1)),
+    revision: 1,
+  };
+}
 
 describe('InsightsTabComponent', () => {
   let component: InsightsTabComponent;
@@ -322,5 +367,233 @@ describe('InsightsTabComponent', () => {
 
       expect(notifications.error).toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so the tab's
+ * governing structure — a four-arm `@if` chain at the top and a four-arm one
+ * inside it — is proven only as signals. Which arm renders is the template's
+ * decision, and the arm that matters most is the third: an offline cold cache
+ * returns an empty window, and showing "no patterns" there would tell the
+ * user they have no transactions, which would be a lie
+ * (`insights-tab.component.html:13-21`).
+ *
+ * Partial render: the five feature children are left unresolved. Each has its
+ * own spec; none is asserted about here beyond being present or absent, which
+ * is exactly what the gates decide and what an unresolved element answers the
+ * same way a real one would.
+ */
+describe('InsightsTabComponent, through its own template', () => {
+  let fixture: ComponentFixture<InsightsTabComponent>;
+  let component: InsightsTabComponent;
+  let transactions: jasmine.SpyObj<TransactionService>;
+  let snapshots: jasmine.SpyObj<InsightSnapshotService>;
+  let stored: ReturnType<typeof signal<InsightSnapshot[]>>;
+  let online: ReturnType<typeof signal<boolean>>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const emptyState = () => el().querySelector('app-empty-state') as HTMLElement | null;
+
+  const windowPeriod: PeriodSelection = {
+    option: 'lastMonth',
+    start: new Date(2026, 5, 1),
+    end: new Date(2026, 5, 30, 23, 59, 59, 999),
+    label: 'June 2026',
+  };
+
+  function render(rows: Transaction[] = []): void {
+    transactions.getTransactionsInRange.and.returnValue(of(rows));
+    fixture = TestBed.createComponent(InsightsTabComponent);
+    fixture.componentRef.setInput('period', windowPeriod);
+    fixture.componentRef.setInput('currency', 'USD');
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    sessionStorage.clear();
+    stored = signal<InsightSnapshot[]>([]);
+    online = signal(true);
+
+    transactions = jasmine.createSpyObj<TransactionService>('TransactionService', ['getTransactionsInRange']);
+    transactions.getTransactionsInRange.and.returnValue(of([]));
+
+    snapshots = jasmine.createSpyObj<InsightSnapshotService>(
+      'InsightSnapshotService',
+      ['generateClosedMonths', 'watch', 'get', 'staleness', 'regenerate'],
+      { snapshots: stored });
+    snapshots.generateClosedMonths.and.resolveTo([]);
+    snapshots.watch.and.returnValue(of([]));
+    snapshots.get.and.returnValue(null);
+    snapshots.staleness.and.resolveTo(null);
+    snapshots.regenerate.and.resolveTo(null);
+
+    await TestBed.configureTestingModule({
+      imports: [InsightsTabComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionService, useValue: transactions },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: PwaService, useValue: { isOnline: online } },
+        { provide: InsightSnapshotService, useValue: snapshots },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        {
+          provide: RecurringService,
+          useValue: {
+            recurringTransactions: signal([]),
+            getRecurring: () => of([]),
+            createRecurring: () => Promise.resolve('id'),
+          },
+        },
+        { provide: CurrencyService, useValue: { amountInBase: (t: Transaction) => t.amountInBaseCurrency ?? t.amount } },
+        { provide: CategoryService, useValue: { categories: signal([]) } },
+        {
+          provide: TranslationService,
+          useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    })
+      .overrideComponent(InsightsTabComponent, {
+        set: {
+          imports: [
+            MatButtonModule,
+            MatExpansionModule,
+            MatIconModule,
+            EmptyStateComponent,
+            LoadingSpinnerComponent,
+            TranslatePipe,
+          ],
+          // A standalone component's template is governed by its own schemas,
+          // not the TestBed's, so the five feature children need excusing here.
+          schemas: [NO_ERRORS_SCHEMA],
+        },
+      })
+      .compileComponents();
+  });
+
+  afterEach(() => sessionStorage.clear());
+
+  it('shows the computing spinner while the window is still being read', () => {
+    const pending = new Subject<Transaction[]>();
+    transactions.getTransactionsInRange.and.returnValue(pending.asObservable());
+    fixture = TestBed.createComponent(InsightsTabComponent);
+    fixture.componentRef.setInput('period', windowPeriod);
+    fixture.componentRef.setInput('currency', 'USD');
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')?.textContent).toContain('insights.computing');
+    expect(emptyState()).toBeNull();
+    expect(el().querySelector('.window-banner')).toBeNull();
+  });
+
+  it('offers a retry when the window could not be read', () => {
+    transactions.getTransactionsInRange.and.returnValue(throwError(() => new Error('offline')));
+    fixture = TestBed.createComponent(InsightsTabComponent);
+    fixture.componentRef.setInput('period', windowPeriod);
+    fixture.componentRef.setInput('currency', 'USD');
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    expect(component.hasFailed()).toBeTrue();
+    expect(emptyState()?.textContent).toContain('insights.errorTitle');
+    expect(emptyState()?.textContent).toContain('insights.retry');
+    expect(el().querySelector('app-loading-spinner')).toBeNull();
+  });
+
+  it('says offline rather than "no data" on a cold cache', () => {
+    // The single most important gate in this template: an empty window
+    // offline is not the same statement as an empty account.
+    online.set(false);
+    render([]);
+
+    expect(component.isOfflineWithoutData()).toBeTrue();
+    expect(emptyState()?.textContent).toContain('insights.offlineTitle');
+    expect(emptyState()?.textContent).toContain('insights.offlineBody');
+    expect(el().textContent).not.toContain('insights.noPatternsTitle');
+    expect(el().textContent).not.toContain('insights.gettingStartedTitle');
+  });
+
+  it('names the window and its count, with a refresh beside them', () => {
+    render(historyRows());
+
+    expect(component.windowLabel()).toBeTruthy();
+    expect(text('.window-banner span'))
+      .toBe(`insights.basedOn:${JSON.stringify({ range: component.windowLabel(), count: component.transactionCount() })}`);
+
+    const refresh = el().querySelector('.refresh-button') as HTMLButtonElement;
+    expect(refresh.getAttribute('aria-label')).toBe('insights.retry');
+    const refreshed = spyOn(component, 'refresh');
+    refresh.click();
+    expect(refreshed).toHaveBeenCalled();
+  });
+
+  it('names the gaps rather than looking broken on a young account', () => {
+    render([expenseRow(new Date(2026, 5, 3), 10)]);
+
+    expect(component.missingRequirements().length).toBeGreaterThan(0);
+    expect(el().querySelector('.getting-started')).not.toBeNull();
+    expect(emptyState()?.textContent).toContain('insights.gettingStartedTitle');
+    expect(Array.from(el().querySelectorAll('.requirement-list li')).map(n => n.textContent?.trim()))
+      .toEqual(component.missingRequirements());
+  });
+
+  it('renders one card per insight once there are cards', () => {
+    render(historyRows());
+
+    expect(component.hasCards()).toBeTrue();
+    expect(el().querySelectorAll('.insight-grid app-insight-card').length)
+      .toBe(component.cards().length);
+    expect(el().querySelector('.getting-started')).toBeNull();
+  });
+
+  it('keeps the narrative off a frozen month and on the live view', () => {
+    // Describing a frozen month would need the prose stored, and model output
+    // is not deterministic enough to belong in a record that must regenerate
+    // identically (`insights-tab.component.html:46-48`).
+    const frozen = storedSnapshotFixture('2026-05');
+    stored.set([frozen]);
+    snapshots.get.and.returnValue(frozen);
+    render(historyRows());
+
+    expect(el().querySelector('app-insight-narrative')).not.toBeNull();
+
+    component.onMonthSelected('2026-05');
+    fixture.detectChanges();
+
+    expect(component.isViewingArchive()).toBeTrue();
+    expect(el().querySelector('app-insight-narrative')).toBeNull();
+  });
+
+  it('says the archive is empty rather than showing the live empty state', () => {
+    const frozen = storedSnapshotFixture('2026-05');
+    stored.set([frozen]);
+    snapshots.get.and.returnValue(frozen);
+    render(historyRows());
+
+    component.onMonthSelected('2026-05');
+    fixture.detectChanges();
+
+    // The frozen month carries no cards of its own.
+    expect(component.hasCards()).toBeFalse();
+    expect(el().textContent).toContain('insights.archiveEmptyTitle');
+    expect(el().textContent).not.toContain('insights.gettingStartedTitle');
+    expect(el().textContent).not.toContain('insights.noPatternsTitle');
+  });
+
+  it('keeps the history accordion out until a month has been stored', () => {
+    render(historyRows());
+    expect(el().querySelector('.history-accordion')).toBeNull();
+
+    stored.set([storedSnapshotFixture('2026-05'), storedSnapshotFixture('2026-04')]);
+    fixture.detectChanges();
+
+    expect(el().querySelector('.history-accordion')).not.toBeNull();
+    expect(text('mat-panel-title')).toContain('insights.historyTitle');
+    expect(text('mat-panel-description')).toBe('insights.historyCount:{"count":2}');
+    expect(el().querySelector('app-snapshot-timeline')).not.toBeNull();
+    expect(el().querySelector('app-snapshot-compare')).not.toBeNull();
   });
 });

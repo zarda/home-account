@@ -156,6 +156,75 @@ contrast read the service's signals, where stored and resolved are the same.
 If it runs through WAAPI or paints to a canvas, inject `AccessibilityService`
 and read `reducedMotion()` — nothing sweeps for the ones that do not.
 
+**Check:**
+
+```bash
+npm run motion:check
+```
+
+`scripts/check-motion.mjs` holds the CSS half to what is actually checkable: both
+kill-switches still exist in `src/styles.scss`, still declare all four properties
+with `!important`, and still cover `*`, `*::before` and `*::after` — and no
+component stylesheet declares an `!important` duration of its own. That last one
+is the way a component gets past them: `*` is specificity zero, so an
+`!important` duration in a component rule ties on importance and wins on
+specificity, and that component keeps moving for a reader who asked it not to. A
+duration of about zero is the kill-switch's own spelling and passes; a
+declaration inside the component's **own** `prefers-reduced-motion` block is
+cooperating and is skipped. One survivor is frozen in the script's `ALLOWED`
+table with its reason (`login.component.scss`'s Google button, whose eleven
+`!important`s were written to override Material).
+
+The check says nothing about `forced-colors`, and there is no rule to write
+there: two stylesheets declare it because two paint their own focus and
+selection states, and a gate demanding it of the rest would be a gate that
+asserts nothing.
+
+### Colour contrast is a property of a pair
+
+**Check:**
+
+```bash
+npm run contrast:check
+```
+
+A stylesheet declares one token at a time, so nothing in it can say whether a
+colour reads — contrast exists only between a foreground and a background, and
+the author picks the token against whichever background happened to be on
+screen. That is how three dark-mode chips shipped at 4.09, 4.10 and 3.00:1: an
+income chip, a warning banner and an expense chip, all on the dashboard, all
+under AA, with nothing to say so.
+
+`scripts/check-contrast.mjs` scores a **hand-written table** of the pairs the
+app paints, in **four** rendered modes — light, dark, light + high contrast,
+dark + high contrast. Three things about that are worth knowing:
+
+- There are four modes, not three: `.high-contrast` and
+  `.dark-theme.high-contrast` are separate blocks resolving to different
+  palettes.
+- The two high-contrast blocks declare **zero** `--color-*` tokens — they
+  override `--border-*` and `--text-*` only — so the colour tokens are
+  identical there to the ones underneath.
+- Pairing cannot be derived from the names. The base token is a **fill**,
+  `-light` is a **tinted background**, `-text` is the AA-corrected
+  **foreground**. Scoring every token as a foreground on `--surface-card`
+  fails 14 of 20 in light, and nearly all of those are false positives: a
+  chart bar owes nothing to a card it never sits on.
+
+Rows come in three kinds: **required** (must clear 4.5:1 in every mode),
+**exempt** (recorded with the reason it is not a rule — a disabled control,
+a divider, a combination nothing paints), and **frozen** (fails today, pinned
+at the ratio it measures, may only improve; when one reaches its threshold the
+script asks to have it promoted). `--self-test` asserts that every `--color-*`
+token the light palette declares appears in one of those tables or in a named
+`NOT_PAINTED` list, so a new token cannot be added unaudited.
+
+The first run fixed four pairs — `--text-muted` moved to gray-600 (it measured
+4.39 and 4.43 against `--surface-muted` and `--surface-background`), and the
+three dark chips' `-text` tokens each moved one step lighter, with
+`--color-expense-light` moving one step darker to meet its text — and froze
+four more, which are listed under Known gaps.
+
 ## What is tested
 
 - `sidebar.component.spec.ts` and `bottom-nav.component.spec.ts` register real
@@ -207,12 +276,40 @@ and read `reducedMotion()` — nothing sweeps for the ones that do not.
   announced.
 - **No landmark structure beyond `nav`.** The two navigation surfaces are
   indistinguishable to a user listing landmarks.
-- **No automated accessibility check in CI.** Everything above is pinned by
-  hand-written specs; nothing sweeps for the next instance of the same class —
-  the one exception is direction, which `npm run direction:check` does gate.
-- **Nothing measures a contrast ratio.** The high-contrast palette moves tokens
-  further along a ramp by judgement; no gate checks the result against WCAG,
-  and the surfaces and brand colours it leaves alone are unaudited.
+- **The automated pass is a phone audit of seven routes.** `app.smoke.spec.ts`
+  now runs axe-core (WCAG 2.1 A and AA, `color-contrast` included) inside
+  `expectPage`, so every page the walkthrough opens is swept. What it cannot
+  see is stated in [emulator-blind-spots.md](emulator-blind-spots.md): i18n is
+  not served, Karma's window is 756px, eight page-level rules are disabled
+  because the run is scoped to the routed element, and four routes (`/ai`,
+  `/search-history`, `/import/file`, `/import/history`) are never opened.
+  Everything outside that is still a hand-written spec, and nothing sweeps for
+  the next instance of a class nobody has met.
+- **Four violation classes are frozen, not fixed.** The pass found them on its
+  first run and `core/services/testing/axe.ts` records each with its reason:
+  Material's `mat-spinner` / `mat-progress-bar` render `role="progressbar"`
+  with no accessible name; the dashboard stat card's `.stat-label-suffix` and
+  the transaction row's `.row-date` fail contrast **in light mode**; and a
+  transaction row is a `role="button"` containing its own buttons, which
+  screen readers flatten. The freeze is so the next one fails.
+- **Contrast is measured for the pairs somebody listed.** `npm run
+  contrast:check` scores a hand-written table of the pairs the app actually
+  paints, in all four rendered modes, and it found five failures on its first
+  run (below). What it cannot see is a colour that is not a token — a hex
+  literal in a component stylesheet, a Material default, a Tailwind utility
+  class — or a pair nobody added a row for. The axe pass is the other half of
+  that: it measures what a rendered page paints, and it found two light-mode
+  failures this cannot.
+- **Four known-failing pairs are frozen, not fixed.** Each is recorded in
+  `scripts/check-contrast.mjs` with its ratio and what it would take: the
+  transaction form's and the recurring dialog's type toggles paint
+  `--color-income` / `--color-expense` — the *fill* tokens — on their own
+  tints, where `--color-income-text` / `--color-expense-text` exist and clear
+  AA; the login error banner paints `--color-error` on `--color-error-light`,
+  for which there is no `-text` token to reach for; and the neutral stat-card
+  chip, the import preview badge and the period selector paint
+  `--color-primary` on `--color-primary-light`, which measures 2.60:1 in dark.
+  The freeze is a floor: those numbers may only improve.
 - **Nothing sweeps for the next animation CSS cannot reach.** Chart.js and the
   Material tab strips were found by reading the code; a new WAAPI duration or
   canvas animation will honour neither kill-switch and no gate will say so.

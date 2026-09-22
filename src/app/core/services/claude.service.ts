@@ -78,7 +78,6 @@ export class ClaudeService extends CloudLLMProviderBase {
   setModel(modelId: string): void {
     if (modelId && modelId !== this.model) {
       this.model = modelId;
-      console.log(`[ClaudeService] Model switched to ${modelId}`);
     }
   }
 

@@ -8,6 +8,7 @@ import { PendingFiltersService } from '../../../../core/services/pending-filters
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightCard, Transaction } from '../../../../models';
 import { createCategory, createTransaction } from '../../../../core/services/testing/test-data';
+import { createTranslationStub } from '../../../../core/services/testing';
 
 describe('InsightCardComponent', () => {
   let component: InsightCardComponent;
@@ -218,5 +219,158 @@ describe('InsightCardComponent', () => {
 
       expect(component.canShowRows()).toBeFalse();
     });
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so they prove the
+ * computeds and leave the card's five gates unproven: the unknown-kind
+ * fallback that stops old history rendering blank, the headline stat card,
+ * the multi-category line, the inline row list, and the actions bar that only
+ * exists when at least one of its two buttons does.
+ */
+describe('InsightCardComponent, through its own template', () => {
+  let fixture: ComponentFixture<InsightCardComponent>;
+  let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
+  let router: jasmine.SpyObj<Router>;
+
+  function render(
+    input: InsightCard,
+    lookup = new Map<string, Transaction>(),
+    archived = false,
+  ): void {
+    fixture.componentRef.setInput('card', input);
+    fixture.componentRef.setInput('currency', 'USD');
+    fixture.componentRef.setInput('lookup', lookup);
+    fixture.componentRef.setInput('archived', archived);
+    fixture.detectChanges();
+  }
+
+  function insight(overrides: Partial<InsightCard> = {}): InsightCard {
+    return {
+      id: 'categoryTrend:food_groceries',
+      kind: 'categoryTrend',
+      titleKey: 'insights.trendRisingTitle',
+      bodyKey: 'insights.trendRisingBody',
+      params: { months: 6, percent: 18, share: 40 },
+      metrics: { secondHalfMean: 118, firstHalfMean: 100 },
+      categoryIds: ['food_groceries'],
+      transactionCount: 24,
+      drillDown: {
+        mode: 'filters',
+        filters: { type: 'expense', categoryId: 'food_groceries', startDate: '2026-01-01', endDate: '2026-06-30' },
+      },
+      weight: 70,
+      ...overrides,
+    };
+  }
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const action = (label: string): HTMLButtonElement | undefined =>
+    (Array.from(el().querySelectorAll('.card-actions button')) as HTMLButtonElement[]).find(b =>
+      (b.textContent ?? '').includes(label)
+    );
+
+  beforeEach(async () => {
+    pendingFilters = jasmine.createSpyObj<PendingFiltersService>('PendingFiltersService', ['apply']);
+    router = jasmine.createSpyObj<Router>('Router', ['navigate']);
+
+    await TestBed.configureTestingModule({
+      imports: [InsightCardComponent, NoopAnimationsModule],
+      providers: [
+        { provide: PendingFiltersService, useValue: pendingFilters },
+        { provide: Router, useValue: router },
+        {
+          provide: CategoryService,
+          useValue: {
+            categories: signal([createCategory({ id: 'food_groceries', name: 'categoryNames.groceries' })]),
+          },
+        },
+        { provide: TranslationService, useValue: createTranslationStub() },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(InsightCardComponent);
+  });
+
+  it('heads the card with the kind\'s icon and its translated title', () => {
+    render(insight());
+
+    expect(text('.card-icon')).toBe('show_chart');
+    expect(text('mat-card-title')).toBe('insights.trendRisingTitle');
+    expect(text('.card-body')).toContain('insights.trendRisingBody');
+  });
+
+  it('always says how many transactions the card stands on', () => {
+    render(insight({ transactionCount: 24 }));
+
+    expect(text('.card-basis')).toBe('insights.basedOnCount:{"count":24}');
+  });
+
+  it('renders the headline figure as a stat card in the card\'s currency', () => {
+    render(insight());
+
+    const headline = el().querySelector('app-stat-card.card-headline') as HTMLElement;
+    expect(headline).not.toBeNull();
+    expect(headline.textContent).toContain('$118.00');
+  });
+
+  it('falls back to the raw metrics rather than blank for a kind it does not know', () => {
+    render(insight({ kind: 'somethingNewer' as InsightCard['kind'] }));
+
+    expect(text('.card-body')).toBe('insights.unknownKind');
+    expect(text('.card-icon')).toBe('lightbulb');
+    const rows = Array.from(el().querySelectorAll('.metric-row')).map(r => r.textContent?.trim());
+    expect(rows.length).toBe(2);
+    expect(rows[0]).toContain('secondHalfMean');
+    expect(rows[0]).toContain('$118.00');
+    expect(el().querySelector('app-stat-card')).toBeNull();
+  });
+
+  it('names the categories only when there is more than one', () => {
+    render(insight());
+    expect(el().querySelector('.card-categories')).toBeNull();
+
+    render(insight({ categoryIds: ['food_groceries', 'transport'] }));
+    expect(text('.card-categories')).toBe('categoryNames.groceries, transport');
+  });
+
+  it('offers the filters button for a filters card and hands them over on click', () => {
+    render(insight());
+
+    expect(action('insights.viewTransactions')).toBeDefined();
+    expect(action('insights.showTransactions')).toBeUndefined();
+
+    action('insights.viewTransactions')?.click();
+
+    expect(pendingFilters.apply).toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith(['/transactions']);
+  });
+
+  it('expands and collapses the inline rows from its own toggle', () => {
+    render(insight({ drillDown: { mode: 'inline', transactionIds: ['t1'], truncated: false } }));
+
+    expect(action('insights.viewTransactions')).toBeUndefined();
+    expect(el().querySelector('app-insight-transaction-list')).toBeNull();
+
+    const toggle = action('insights.showTransactions') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-insight-transaction-list')).not.toBeNull();
+    const collapse = action('insights.hideTransactions') as HTMLButtonElement;
+    expect(collapse.getAttribute('aria-expanded')).toBe('true');
+    collapse.click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-insight-transaction-list')).toBeNull();
+  });
+
+  it('drops the actions bar entirely when an archived card can offer neither', () => {
+    render(insight({ drillDown: { mode: 'inline', transactionIds: ['t1'], truncated: false } }), new Map(), true);
+
+    expect(el().querySelector('.card-actions')).toBeNull();
   });
 });

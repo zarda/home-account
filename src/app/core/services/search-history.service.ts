@@ -3,6 +3,7 @@ import { Observable, of, map } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { SavedSearch } from '../../models';
+import { optionalTimestamp, reviveTimestamp } from '../utils/backup-revive.utils';
 
 export const MAX_RECENT_SEARCHES = 10;
 export const MIN_RECORDED_QUERY_LENGTH = 2;
@@ -137,6 +138,60 @@ export class SearchHistoryService {
 
   async deleteSearch(id: string): Promise<void> {
     await this.firestoreService.deleteDocument(`${this.userSearchesPath}/${id}`);
+  }
+
+  /**
+   * Write one remembered search back from a backup, at its own id.
+   *
+   * `recordRecent` is the wrong door for this and cannot be made right:
+   * it refuses a query under MIN_RECORDED_QUERY_LENGTH, takes an auto id, and
+   * prunes the oldest recents on every write — so restoring ten recents
+   * through it would drop most of them and duplicate the rest on a second run.
+   *
+   * Three transformations stand between the file and the write. The id the
+   * read injected is stripped, because it was never a stored field. `userId`
+   * is the *current* account's, not the file's, both because searchCreateValid
+   * demands it and because a backup may legitimately be restored into another
+   * account. And `lastUsedAt`/`createdAt` arrive as the plain objects
+   * JSON.stringify makes of a Timestamp, which the rules refuse.
+   *
+   * `setDocument` stamps `updatedAt` from today regardless — harmless here
+   * (searchOptionalsValid accepts any timestamp) but it is the one field a
+   * restore cannot carry verbatim.
+   */
+  async restore(record: SavedSearch): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) return;
+
+    const { id, label, query, pinned } = record;
+    await this.firestoreService.setDocument(
+      `${this.userSearchesPath}/${id}`,
+      {
+        userId,
+        query,
+        pinned: pinned ?? false,
+        lastUsedAt: reviveTimestamp(record.lastUsedAt) ?? this.firestoreService.getTimestamp(),
+        ...(label ? { label } : {}),
+        ...optionalTimestamp('createdAt', record.createdAt),
+      },
+      true
+    );
+  }
+
+  /**
+   * One-shot read of every saved and recent search, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Not the `allSearches` signal, and no MAX_RECENT_SEARCHES slice: the signal
+   * holds only what a subscription happened to deliver, and the backup has to
+   * carry what erasure removes, which is the whole collection.
+   */
+  async exportAll(): Promise<SavedSearch[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<SavedSearch>(
+      this.userSearchesPath, { orderBy: [{ field: 'lastUsedAt', direction: 'desc' }] });
   }
 
   /**

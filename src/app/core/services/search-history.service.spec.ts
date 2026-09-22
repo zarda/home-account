@@ -45,6 +45,7 @@ describe('SearchHistoryService', () => {
       'updateDocument',
       'deleteDocument',
       'getCollection',
+      'setDocument',
       'getTimestamp'
     ]);
 
@@ -57,6 +58,7 @@ describe('SearchHistoryService', () => {
     mockFirestoreService.addDocument.and.returnValue(Promise.resolve('new-search-id'));
     mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
     mockFirestoreService.deleteDocument.and.returnValue(Promise.resolve());
+    mockFirestoreService.setDocument.and.returnValue(Promise.resolve());
     mockFirestoreService.getTimestamp.and.returnValue(Timestamp.fromMillis(1_800_000_000_000));
 
     TestBed.configureTestingModule({
@@ -291,6 +293,77 @@ describe('SearchHistoryService', () => {
       expect(count).toBe(2);
       expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(PATH);
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('restore', () => {
+    // What a backup actually hands a restore: JSON.stringify leaves a stored
+    // Timestamp as { seconds, nanoseconds }, and the read that produced the
+    // file injected the document id as a field.
+    const fromBackup = (overrides: Record<string, unknown> = {}): SavedSearch => ({
+      id: 's1',
+      userId: 'the-account-the-file-came-from',
+      query: 'coffee',
+      label: 'Coffee runs',
+      pinned: true,
+      lastUsedAt: { seconds: 1_700_000_000, nanoseconds: 0 },
+      createdAt: { seconds: 1_600_000_000, nanoseconds: 0 },
+      ...overrides,
+    } as unknown as SavedSearch);
+
+    const written = (): Record<string, unknown> =>
+      mockFirestoreService.setDocument.calls.mostRecent().args[1] as Record<string, unknown>;
+
+    it('writes the record at its own id without restamping', async () => {
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument.calls.mostRecent().args[0]).toBe(`${PATH}/s1`);
+      expect((written()['lastUsedAt'] as Timestamp).toMillis()).toBe(1_700_000_000_000);
+      expect((written()['createdAt'] as Timestamp).toMillis()).toBe(1_600_000_000_000);
+      expect(written()['query']).toBe('coffee');
+      expect(written()['label']).toBe('Coffee runs');
+      expect(written()['pinned']).toBeTrue();
+    });
+
+    it('strips the id the read injected', async () => {
+      // firestore.service maps { id: doc.id, ...doc.data() } on every read, so
+      // the file carries a field the document never stored.
+      await service.restore(fromBackup());
+
+      expect('id' in written()).toBeFalse();
+    });
+
+    it('stamps the current account, not the one the file came from', async () => {
+      await service.restore(fromBackup());
+
+      expect(written()['userId']).toBe('user123');
+    });
+
+    it('bypasses the recorded-query floor and the recent-search prune', async () => {
+      seed(Array.from({ length: MAX_RECENT_SEARCHES }, (_, i) => entry(`r${i}`, `query ${i}`, {}, i)));
+
+      await service.restore(fromBackup({ id: 's9', query: 'x', pinned: false }));
+
+      expect(mockFirestoreService.setDocument).toHaveBeenCalledTimes(1);
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+      expect(mockFirestoreService.deleteDocument).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op the second time', async () => {
+      await service.restore(fromBackup());
+      const first = mockFirestoreService.setDocument.calls.mostRecent().args;
+      await service.restore(fromBackup());
+      const second = mockFirestoreService.setDocument.calls.mostRecent().args;
+
+      expect(second).toEqual(first);
+    });
+
+    it('does nothing while signed out', async () => {
+      userIdSpy.and.returnValue(null);
+
+      await service.restore(fromBackup());
+
+      expect(mockFirestoreService.setDocument).not.toHaveBeenCalled();
     });
   });
 });

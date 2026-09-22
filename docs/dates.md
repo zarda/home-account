@@ -222,8 +222,9 @@ consecutive periods cannot overlap or leave a gap.
 
 ### The audit greps
 
-Reviewer instructions, not automation — there is no `dates:check` script and no
-lint rule (see *Known gaps*). Run them when touching anything date-shaped.
+`npm run dates:check` (`scripts/check-dates.mjs`) runs all five of them in CI.
+Run them by hand too when touching anything date-shaped; the grep is still the
+faster way to read the surrounding code.
 
 These should return **nothing in production code** outside this module. Every
 one of them has caught a real bug, which is why it is listed rather than
@@ -236,8 +237,14 @@ grep -rn "toISOString().split" src/app --include='*.ts'
 grep -rEn "getTime\(\) [+-] .*24 \* 60 \* 60 \* 1000" src/app --include='*.ts'
 ```
 
-Specs match the first two freely — an expectation literal is not arithmetic, and
-about fifteen suites build their bounds that way on purpose.
+Specs match all four freely — an expectation literal is not arithmetic, about
+fifteen suites build their bounds that way on purpose, and `reminder.service.spec.ts`
+spells a staleness horizon as `61 * 24 * 60 * 60 * 1000` in three places. So
+`dates:check` reads production code only, and exempts
+`core/utils/transaction-date.utils.ts` from the first two greps and from neither
+of the others: the module is where an end-of-day and a month end are meant to be
+written by hand, and it has no more business than anyone else taking a UTC day
+key or stepping a day in milliseconds.
 
 This last one cannot be zero, because cloning a `Date` looks the same as parsing
 a string. Read every hit:
@@ -246,22 +253,28 @@ a string. Read every hit:
 grep -rEn "new Date\([a-zA-Z0-9_$]+\.(date|startDate|endDate)\b" src/app --include='*.ts'
 ```
 
-Allowed today, and why:
+Allowed today, and why. `check-dates.mjs` holds the same three rows **with a
+count**, and the counts may only go down: a sixth clone in a file already listed
+here is a deliberate edit to both tables in one commit, not a hit that hides
+behind a file name.
 
-| Hit | Why it is fine |
-|---|---|
-| `recent-transactions.component.ts` | cloning a value already typed as a `Date`, not parsing a string |
-| `insight-card.component.ts` | the legacy-ISO-instant fallback, reached only after `parseDayKey` returns null |
+| Hit | Count | Why it is fine |
+|---|---|---|
+| `recent-transactions.component.ts` | 1 | cloning a value already typed as a `Date`, not parsing a string |
+| `insight-card.component.ts` | 2 | the legacy-ISO-instant fallback, reached only after `parseDayKey` returns null |
+| `import-review.utils.ts` | 2 | `CategorizedImportTransaction.date` is typed `Date` (`import-history.model.ts`), so `:90` and `:353` both clone; recorded here for the first time when `dates:check` landed |
 
 Anything else is the #174 shape and should go through `parseDateInput`.
 
 ## Known gaps
 
-- **Nothing runs the audit greps.** They are reviewer instructions. There is no
-  `dates:check` script beside `check-i18n.mjs` and friends, and `eslint.config.js`
-  has no date rule, so a new instance of any shape above ships green and is
-  found by reading. Two sweeps' worth of stragglers (#248, #266, #267) is what
-  that costs; see ADR 0032.
+- **The greps run; the judgement still does not.** `dates:check` enforces the
+  five shapes above, so a new instance of any of them fails CI rather than
+  shipping green — what it cannot see is a sixth shape nobody has written a
+  grep for, the same arithmetic split across two lines, or a day step hidden
+  behind a `DAY_MS` constant. `eslint.config.js` still has no date rule. Two
+  sweeps' worth of stragglers (#248, #266, #267) is what reviewer-only greps
+  cost; see ADR 0032.
 - **Weekly budgets label with an ISO week but window on their own weekday.**
   `budgetPeriodWindow('weekly', …)` runs from the anchor's day of the week,
   while `budgetPeriodKey(…, 'weekly')` is an ISO week number, which always

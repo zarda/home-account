@@ -20,14 +20,27 @@
  * flag the cure; asserting the outcome catches every mechanism that kills a
  * ban, including ones not invented yet.
  *
- * A second, unrelated rule rides the same mechanism: no-restricted-syntax
- * bans firstValueFrom over a TransactionService listener (docs/one-shot-reads.md,
- * #427) — a warm cache's first emission is a plausible-looking subset, not
- * the collection. That ban lives in its own files/ignores block, so it
- * cannot be silently replaced by the import bans above; what it can lose
- * silently is a listener the alternation forgets, which is why this check
- * also re-derives the census straight from TransactionService and asserts
- * every name it finds is named in the selector.
+ * Three further rules ride the same mechanism through no-restricted-syntax,
+ * and they share one options array precisely because a second block setting
+ * the same key would replace it:
+ *
+ *   - firstValueFrom over a TransactionService listener
+ *     (docs/one-shot-reads.md, #427) — a warm cache's first emission is a
+ *     plausible-looking subset, not the collection. What that ban can lose
+ *     silently is a listener the alternation forgets, which is why this check
+ *     also re-derives the census straight from TransactionService and asserts
+ *     every name it finds is named in the selector.
+ *   - A dynamic import of an analytics SDK. no-restricted-imports reads
+ *     static import DECLARATIONS only, so `await import('firebase/analytics')`
+ *     walks past every ban above it; this one is an ImportExpression selector
+ *     sitting in the same array as the pair above. analytics-transport.ts is
+ *     exempt — its constructor default is exactly that import, kept out of
+ *     the initial bundle — and that exemption block is where the pair above
+ *     is most likely to be dropped by accident, so its resolved selector list
+ *     is asserted here in both directions.
+ *   - The built-in `date` and `number` pipes in a template (ADR 0058). Both
+ *     are at zero sites, so nothing in the app would notice the ban dying —
+ *     which is the exact condition under which the analytics ban died.
  *
  * `--self-test` exercises the extraction and diff helpers against known
  * shapes and exits non-zero if the checker itself is broken; npm's
@@ -36,11 +49,13 @@
  * What it deliberately cannot see:
  *   - A population nobody listed. It probes representative files; a future
  *     exemption block for a fourth SDK family needs a row in POPULATIONS.
- *   - A dynamic import('firebase/analytics'). The rule flags static import
- *     declarations only; import() passes it, and the registry check cannot
- *     see one either.
- *   - Whether the rule would actually fire on a banned import. This proves
- *     the ban is in force for the file, not that ESLint works.
+ *   - An analytics SDK reached some other way than a specifier: a
+ *     `require()`, a bare `import(variable)` whose value is computed, or a
+ *     global the SDK attaches to `window`. The ImportExpression selector
+ *     reads the literal specifier, so only a literal is covered.
+ *   - Whether the rule would actually fire on a banned import in the app.
+ *     This proves the ban is in force for the file; --self-test proves the
+ *     rules fire, against fixtures.
  *   - A listener held in a variable and passed as an identifier — `const rows$ =
  *     this.transactionService.getTransactions(); await firstValueFrom(rows$)`
  *     — the argument is an Identifier, not a CallExpression, so neither selector
@@ -115,14 +130,52 @@ const PIPED_LISTENER_SELECTOR =
   `CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child` +
   `[callee.property.name='pipe'][callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`;
 
+// The built-in formatting pipes ADR 0058 swept out of every template. Both
+// are at zero sites, so nothing would notice this ban dying — which is
+// exactly the condition the analytics ban died under. Kept as plain strings
+// here, not imported, so a drift from eslint.config.js shows up below.
+const TEMPLATE_DATE_SELECTOR = 'BindingPipe[name="date"]';
+const TEMPLATE_NUMBER_SELECTOR = 'BindingPipe[name="number"]';
+
+// The dynamic half of the analytics ban. no-restricted-imports reads static
+// declarations only, so import('@capacitor-firebase/analytics') passes it —
+// which is why this one is a syntax selector and why it lives in the same
+// array as the firstValueFrom pair rather than in a block of its own.
+const DYNAMIC_ANALYTICS_IMPORT_SELECTOR =
+  'ImportExpression[source.value=/^(@angular\\/fire\\/analytics|' +
+  '@capacitor-firebase\\/analytics|@?firebase\\/analytics)/]';
+
 const SYNTAX_POPULATIONS = [
   {
-    label: 'app code under the firstValueFrom-listener ban',
+    label: 'app code under the firstValueFrom-listener and dynamic-analytics bans',
     files: [
       'src/app/core/services/insight-snapshot.service.ts',
       'src/app/features/transactions/transactions.component.ts',
     ],
+    expectedSelectors: [
+      DIRECT_LISTENER_SELECTOR,
+      PIPED_LISTENER_SELECTOR,
+      DYNAMIC_ANALYTICS_IMPORT_SELECTOR,
+    ],
+  },
+  {
+    // The one file that may load an analytics SDK on demand. Its exemption
+    // block resolves last and replaces the options above wholesale, so what
+    // must resolve here is the two firstValueFrom selectors and NOT the
+    // analytics one — asserting the absence is as load-bearing as asserting
+    // the presence, because the cheap way to write this exemption is to
+    // forget to restate the pair.
+    label: 'the analytics transport — the listener ban only',
+    files: ['src/app/core/services/analytics-transport.ts'],
     expectedSelectors: [DIRECT_LISTENER_SELECTOR, PIPED_LISTENER_SELECTOR],
+  },
+  {
+    label: 'templates under the built-in date/number pipe ban',
+    files: [
+      'src/app/features/reports/monthly-comparison/monthly-comparison.component.html',
+      'src/app/shared/components/transaction-row/transaction-row.component.html',
+    ],
+    expectedSelectors: [TEMPLATE_DATE_SELECTOR, TEMPLATE_NUMBER_SELECTOR],
   },
 ];
 
@@ -480,6 +533,86 @@ async function selfTest() {
     { filePath: fixturePath }
   );
   check('firstValueFrom over a …Once method passes the rule', countSyntaxMessages(good), 0);
+
+  // The dynamic analytics import: every specifier the static ban covers, the
+  // sub-path form, a model SDK that must pass, and the one exempt file.
+  for (const specifier of [
+    '@capacitor-firebase/analytics',
+    '@angular/fire/analytics',
+    'firebase/analytics',
+    'firebase/analytics/lite',
+    '@firebase/analytics',
+  ]) {
+    const dynamicBad = await fixtureEslint.lintText(
+      `export async function f() { return import('${specifier}'); }\n`,
+      { filePath: 'src/app/core/services/analytics-fixture.service.ts' }
+    );
+    check(`a dynamic import of ${specifier} fails the rule once`, countSyntaxMessages(dynamicBad), 1);
+  }
+
+  const modelSdkDynamic = await fixtureEslint.lintText(
+    "export async function f() { return import('@anthropic-ai/sdk'); }\n",
+    { filePath: 'src/app/core/services/analytics-fixture.service.ts' }
+  );
+  check(
+    'a dynamic import of a model SDK is no-restricted-imports’ business, not this rule’s',
+    countSyntaxMessages(modelSdkDynamic),
+    0
+  );
+
+  const transportDynamic = await fixtureEslint.lintText(
+    "export async function f() { return import('@capacitor-firebase/analytics'); }\n",
+    { filePath: 'src/app/core/services/analytics-transport.ts' }
+  );
+  check('the analytics transport may still load its SDK', countSyntaxMessages(transportDynamic), 0);
+
+  const transportListener = await fixtureEslint.lintText(
+    'declare const firstValueFrom: any;\n' +
+      'class X {\n' +
+      '  transactionService: any;\n' +
+      '  async f() {\n' +
+      '    return firstValueFrom(this.transactionService.getTransactions());\n' +
+      '  }\n' +
+      '}\n',
+    { filePath: 'src/app/core/services/analytics-transport.ts' }
+  );
+  check(
+    'the analytics transport is still under the listener ban its exemption restates',
+    countSyntaxMessages(transportListener),
+    1
+  );
+
+  // The template half. @angular-eslint/template-parser publishes visitorKeys
+  // and tags nodes with `type`, so ESLint's own selector engine walks the
+  // template AST — that is the whole mechanism the pipe ban rests on, and it
+  // is worth proving rather than assuming.
+  const templatePath = 'src/app/features/about/pipe-fixture.component.html';
+  const dateInTemplate = await fixtureEslint.lintText('<p>{{ at | date }}</p>\n', {
+    filePath: templatePath,
+  });
+  check('a built-in date pipe in a template fails the rule once', countSyntaxMessages(dateInTemplate), 1);
+
+  const numberInTemplate = await fixtureEslint.lintText('<p [title]="n | number">x</p>\n', {
+    filePath: templatePath,
+  });
+  check('a built-in number pipe in a bound attribute fails the rule once', countSyntaxMessages(numberInTemplate), 1);
+
+  const chainedInTemplate = await fixtureEslint.lintText('<p>{{ k | translate | date }}</p>\n', {
+    filePath: templatePath,
+  });
+  check('a chained built-in pipe still fails the rule once', countSyntaxMessages(chainedInTemplate), 1);
+
+  // The one built-in formatting pipe with no replacement to point at.
+  const currencyInTemplate = await fixtureEslint.lintText('<p>{{ amount | currency }}</p>\n', {
+    filePath: templatePath,
+  });
+  check('a currency pipe passes the rule', countSyntaxMessages(currencyInTemplate), 0);
+
+  const localeInTemplate = await fixtureEslint.lintText(
+    '<p>{{ at | localeDate }} {{ n | localeNumber }}</p>\n',
+    { filePath: templatePath }
+  );
+  check('the replacement pipes pass the rule', countSyntaxMessages(localeInTemplate), 0);
 
   let failed = 0;
   for (const result of results) {

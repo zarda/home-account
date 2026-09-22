@@ -168,6 +168,44 @@ jobs:
       - name: Check Material imports
         run: npm run material:check
 
+      # The date audit greps in docs/dates.md, which were reviewer
+      # instructions until now. Nothing else here can see the shapes: they are
+      # legal TypeScript that type-checks, lints and passes every spec at UTC
+      # — and this runner is at UTC, so the two non-UTC test:dates passes are
+      # the only other thing between a hand-rolled end-of-day bound and a
+      # user, and they only cover the specs somebody enumerated.
+      - name: Check date arithmetic
+        run: npm run dates:check
+
+      # The two reduced-motion kill-switches, and the one way past them.
+      # Nothing else here can see either: deleting the in-app `.reduced-motion`
+      # switch leaves the OS one working, so every machine that has the OS
+      # preference set still looks right; and an `!important` duration in a
+      # component stylesheet beats a `*` selector on specificity, so that
+      # component keeps animating with no error, no log and no failing spec.
+      - name: Check reduced motion
+        run: npm run motion:check
+
+      # Contrast is a property of a PAIR, so no stylesheet can state it and
+      # no reviewer sees it: a token is chosen on its own, against whichever
+      # background the author had on screen. Three dark-mode chips shipped
+      # under AA that way. The axe pass in the smoke suite measures what a
+      # rendered page paints, which is the other half and not this one — it
+      # cannot see a pair no route happened to show, or a mode Karma never
+      # renders.
+      - name: Check colour contrast
+        run: npm run contrast:check
+
+      # A mat-icon that carries role="img" or an aria-label and no *literal*
+      # aria-hidden. MatIcon hides itself at construction unless the template
+      # carries the static attribute, so a bound [attr.aria-hidden] does not
+      # count — the icon reads correctly in the source, in the template type
+      # check and in a screenshot, and is announced to nobody at runtime. The
+      # two components that had this both blanked their templates in every
+      # spec, which is how all three sites survived.
+      - name: Check icon labels
+        run: npm run icon-labels:check
+
       - name: Unit tests
         run: npm run test:ci
 

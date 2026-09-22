@@ -325,8 +325,6 @@ export class OfflineQueueService implements OnDestroy {
     await this.updatePendingCount();
     await this.logSync('item_processed', id, 'Image queued for processing');
 
-    console.log('[OfflineQueue] Image queued:', id);
-    
     // Register background sync if available
     this.pwaService.registerBackgroundSync('sync-offline-queue');
 
@@ -486,8 +484,6 @@ export class OfflineQueueService implements OnDestroy {
 
       this._lastSyncTime.set(Date.now());
       await this.logSync('sync_completed', undefined, `Success: ${success}, Failed: ${failed}`);
-
-      console.log('[OfflineQueue] Sync completed:', { success, failed });
     } catch (error) {
       console.error('[OfflineQueue] Sync failed:', error);
       await this.logSync('sync_failed', undefined, 
@@ -538,7 +534,6 @@ export class OfflineQueueService implements OnDestroy {
     }
 
     await this.updatePendingCount();
-    console.log('[OfflineQueue] Cleared completed items');
   }
 
   /**
@@ -556,7 +551,6 @@ export class OfflineQueueService implements OnDestroy {
     }
 
     await this.updatePendingCount();
-    console.log('[OfflineQueue] Cleared failed items');
   }
 
   /**

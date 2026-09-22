@@ -147,6 +147,10 @@ reverse — why a thing is the way it is, not how to use it.
 | [0140](0140-the-tab-strips-scroll-natively-and-a-layout-holds-at-the-scale-and-the-width-that-broke-it.md) | The tab strips scroll natively, and a layout holds at the scale and the width that broke it | Accepted; extends 0010 and 0012; closes a gap of 0102 | 2026-09-18 |
 | [0141](0141-a-recurring-rule-in-a-bad-state-is-repaired-where-its-data-allows-and-refused-where-it-does-not.md) | A recurring rule in a bad state is repaired where its data allows and refused where it does not | Accepted; extends 0014 and closes five of its gaps; revisits 0091 and closes its last gap | 2026-09-20 |
 | [0142](0142-a-queued-receipt-lands-whole-or-says-what-it-dropped.md) | A queued receipt lands whole or says what it dropped | Accepted; extends 0015 and 0059; closes gaps of 0060, 0106 and 0117; narrows a gap of 0052 | 2026-09-20 |
+| [0143](0143-the-backup-carries-what-erasure-takes-except-what-it-must-not.md) | The backup carries what erasure takes, except what it must not | Accepted; extends 0018 and 0029; amends 0031; applies 0034 | 2026-09-21 |
+| [0144](0144-a-blanked-template-is-paired-with-a-describe-that-renders-it.md) | A blanked template is paired with a describe that renders it | Accepted; states a convention 0128 named as a limitation | 2026-09-21 |
+| [0145](0145-a-class-found-by-reading-becomes-a-gate.md) | A class found by reading becomes a gate | Accepted; extends 0032; closes gaps of 0058, 0123 and 0139; closes three gaps of accessibility.md | 2026-09-21 |
+| [0146](0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) | An icon that carries a label is not hidden, and a stored category id is never empty | Accepted | 2026-09-21 |
 
 ## What belongs here
 

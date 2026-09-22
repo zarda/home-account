@@ -10,6 +10,25 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringOccurrence, RecurringTransaction } from '../../../models';
 import { MAX_FORECAST_POINTS } from '../../../core/utils/forecast-series.utils';
+import { createTranslationStub } from '../../../core/services/testing';
+
+function tomorrowFor(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12);
+}
+
+function occurrenceFor(overrides: Partial<RecurringOccurrence> = {}): RecurringOccurrence {
+  return {
+    recurringId: 'r1',
+    name: 'Rent',
+    type: 'expense',
+    amount: 100,
+    currency: 'USD',
+    categoryId: 'housing_rent',
+    date: tomorrowFor(),
+    ...overrides
+  };
+}
 
 describe('ForecastComponent', () => {
   let fixture: ComponentFixture<ForecastComponent>;
@@ -169,5 +188,134 @@ describe('ForecastComponent', () => {
 
     // The convert fake doubles both: income 600 minus expense 200.
     expect(component.projectedNet()).toBe(400);
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so they prove the
+ * series arithmetic and never the card: the no-rules empty state, the horizon
+ * toggle group (the only control on this card), the canvas the projection is
+ * actually drawn on, and the bucket note that explains a folded x-axis.
+ *
+ * Full render: `provideAppCharts()` is mandatory (docs/performance.md:47-49),
+ * and the chart draws on a real canvas headless.
+ */
+describe('ForecastComponent, through its own template', () => {
+  let fixture: ComponentFixture<ForecastComponent>;
+  let component: ForecastComponent;
+  let rules: ReturnType<typeof signal<RecurringTransaction[]>>;
+  let streams: Subject<RecurringOccurrence[]>[];
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const horizonButtons = () =>
+    Array.from(el().querySelectorAll('.horizon-toggle mat-button-toggle button')) as HTMLButtonElement[];
+
+  function render(): void {
+    fixture.detectChanges();
+    streams.forEach(stream => stream.next([occurrenceFor()]));
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    streams = [];
+    rules = signal<RecurringTransaction[]>([{ id: 'r1' } as RecurringTransaction]);
+
+    const recurring = jasmine.createSpyObj('RecurringService', ['getNextOccurrences'], {
+      activeRecurring: rules,
+    });
+    recurring.getNextOccurrences.and.callFake(() => {
+      const stream = new Subject<RecurringOccurrence[]>();
+      streams.push(stream);
+      return stream.asObservable();
+    });
+
+    const currency = jasmine.createSpyObj('CurrencyService', [
+      'convert', 'amountInBase', 'getCurrencyInfo', 'formatCurrency',
+    ]);
+    currency.convert.and.callFake((amount: number) => amount);
+    currency.amountInBase.and.callFake((t: { amount: number }) => t.amount);
+    currency.getCurrencyInfo.and.returnValue(undefined);
+    currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
+
+    await TestBed.configureTestingModule({
+      imports: [ForecastComponent, NoopAnimationsModule],
+      providers: [
+        provideAppCharts(),
+        { provide: RecurringService, useValue: recurring },
+        { provide: CurrencyService, useValue: currency },
+        {
+          provide: TranslationService,
+          useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
+        },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ForecastComponent);
+    component = fixture.componentInstance;
+    component.currency = 'USD';
+  });
+
+  it('offers the empty state, and no chart, when no rule feeds a forecast', () => {
+    rules.set([]);
+    fixture.detectChanges();
+
+    const empty = el().querySelector('app-empty-state') as HTMLElement;
+    expect(empty).not.toBeNull();
+    expect(empty.textContent).toContain('reports.forecastNoRulesTitle');
+    expect(empty.textContent).toContain('reports.forecastNoRulesBody');
+    expect(el().querySelector('canvas')).toBeNull();
+    expect(el().querySelector('.horizon-toggle')).toBeNull();
+  });
+
+  it('draws the projection on a real canvas, with its note and summary', () => {
+    render();
+
+    expect(el().querySelector('app-empty-state')).toBeNull();
+    expect(el().querySelector('canvas')).not.toBeNull();
+    expect(text('.forecast-note')).toBe('reports.forecastZeroNote');
+    expect(text('.forecast-summary'))
+      .toBe(`reports.forecastProjectedNet:${JSON.stringify({ amount: component.projectedNetLabel() })}`);
+  });
+
+  it('offers one labelled toggle per horizon, with 30 days chosen', () => {
+    render();
+
+    expect(horizonButtons().map(b => b.textContent?.trim()))
+      .toEqual(['reports.forecastDays30', 'reports.forecastDays60', 'reports.forecastDays90']);
+    expect(component.horizon()).toBe(30);
+    expect(horizonButtons()[0].getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('changes the horizon from the toggle a user clicks', () => {
+    render();
+
+    horizonButtons()[2].click();
+    fixture.detectChanges();
+
+    expect(component.horizon()).toBe(90);
+    expect(horizonButtons()[2].getAttribute('aria-checked')).toBe('true');
+    expect(horizonButtons()[0].getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('explains a folded axis only when the days are actually bucketed', () => {
+    render();
+    // A short history plus 30 projected days fits inside MAX_FORECAST_POINTS,
+    // so every day is its own point and there is nothing to explain.
+    expect(component.bucketDays()).toBe(1);
+    expect(el().querySelector('.forecast-bucket-note')).toBeNull();
+
+    // Push history + projection past the point cap so the axis has to fold.
+    const end = new Date();
+    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - MAX_FORECAST_POINTS);
+    component.dateRange = { start, end };
+    component.setHorizon(90);
+    fixture.detectChanges();
+    streams.forEach(stream => stream.next([occurrenceFor()]));
+    fixture.detectChanges();
+
+    expect(component.bucketDays()).toBeGreaterThan(1);
+    expect(text('.forecast-bucket-note'))
+      .toBe(`reports.forecastBucketNote:${JSON.stringify({ count: component.bucketDays() })}`);
   });
 });

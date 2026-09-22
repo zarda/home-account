@@ -154,6 +154,49 @@ export class CategoryMemoryService {
     }
   }
 
+  /**
+   * Write one remembered merchant back from a backup, at its own key.
+   *
+   * `remember` is the wrong door for this: it *increments* `count`, so
+   * restoring the same file twice would claim the user confirmed each merchant
+   * once more than they did, and a restore into an account that already knows
+   * the merchant would compound the two histories.
+   *
+   * The write carries only the five fields categoryMemoryValid allows.
+   * `merchantKey` is the document id as well as a stored field and the rules
+   * require them to agree, so the key is taken from the entry rather than from
+   * the id the read injected — which is also why that id is dropped. `userId`
+   * is not written at all: the `hasOnly()` list forbids it, unlike the three
+   * collections that key on it.
+   *
+   * `setDocument` stamps `updatedAt` from today; the field is allowed and
+   * optional, and it is the one thing here that is not the file's own.
+   */
+  async restore(entry: CategoryMemoryEntry): Promise<void> {
+    if (!this.authService.userId()) return;
+
+    const stored: CategoryMemoryEntry = {
+      merchantKey: entry.merchantKey,
+      categoryId: entry.categoryId,
+      sampleDescription: entry.sampleDescription,
+      count: entry.count,
+    };
+
+    // The map is loaded once per user and never re-read, so a restore that
+    // only wrote would leave the settings screen showing the pre-restore
+    // memory until the next sign-in.
+    this.entries.update(current => [
+      ...current.filter(e => e.merchantKey !== stored.merchantKey),
+      stored,
+    ]);
+
+    await this.firestoreService.setDocument(
+      `${this.memoryPath}/${stored.merchantKey}`,
+      stored,
+      true
+    );
+  }
+
   /** Forget one merchant. */
   async forget(merchantKey: string): Promise<void> {
     if (!merchantKey || !this.authService.userId()) return;
@@ -169,6 +212,20 @@ export class CategoryMemoryService {
     for (const key of keys) {
       await this.firestoreService.deleteDocument(`${this.memoryPath}/${key}`);
     }
+  }
+
+  /**
+   * One-shot read of every remembered merchant, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Not the `entries` signal — on a session that never ran an import it holds
+   * nothing at all, and a backup of nothing is the failure this section
+   * exists to prevent.
+   */
+  async exportAll(): Promise<CategoryMemoryEntry[]> {
+    if (!this.authService.userId()) return [];
+    return this.firestoreService.getCollectionFromServer<CategoryMemoryEntry>(this.memoryPath);
   }
 
   /**

@@ -30,7 +30,17 @@ import { CurrencyService } from './currency.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { TranslationService } from './translation.service';
 import { ExportData } from './export.service';
-import { Category, InsightSnapshot, RecurringTransaction, Transaction } from '../../models';
+import {
+  Category,
+  CategoryMemoryEntry,
+  ImportHistory,
+  InsightSnapshot,
+  RecurringTransaction,
+  SavedSearch,
+  SearchRecord,
+  TagMemoryEntry,
+  Transaction
+} from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -80,6 +90,9 @@ describe('Backup restore (emulator smoke test)', () => {
   // Swept in afterAll, per collection.
   const created: Record<string, string[]> = {
     transactions: [], categories: [], recurring: [], insightSnapshots: [],
+    // The five 1.5 added. A section with no bucket here leaks its documents
+    // into the next run against the same emulator.
+    savedSearches: [], searchAnswers: [], categoryMemory: [], tagMemory: [], imports: [],
   };
 
   const track = (section: keyof typeof created, id: string): string => {
@@ -164,8 +177,9 @@ describe('Backup restore (emulator smoke test)', () => {
   const emptyBackup = (overrides: Partial<ExportData> = {}): ExportData => ({
     transactions: [], categories: [], budgets: [], recurring: [], goals: [],
     insightSnapshots: [],
+    savedSearches: [], searchAnswers: [], categoryMemory: [], tagMemory: [], imports: [],
     exportDate: '2026-08-01T00:00:00.000Z',
-    version: '1.4',
+    version: '1.5',
     ...overrides,
   });
 
@@ -359,6 +373,169 @@ describe('Backup restore (emulator smoke test)', () => {
     expect(stored['revision']).toBe(5);
     expect((stored['fingerprint'] as { count: number }).count).toBe(9);
   }, 30000);
+
+
+  /**
+   * The five sections 1.5 added, round-tripped through the real doors against
+   * the real rules.
+   *
+   * The unit specs drive mocked services, so they see which record each door
+   * is handed and never the write it becomes — and every one of these five
+   * collections is governed by a rule set that a plausible-looking write
+   * fails: three `hasOnly()` a field list without `id`, two forbid `userId`
+   * outright, and all five demand real timestamps where a parsed file holds
+   * `{ seconds, nanoseconds }`. Only the emulator answers that.
+   */
+  describe('the five sections 1.5 added', () => {
+    const fileStamp = { seconds: 1_700_000_000, nanoseconds: 0 };
+
+    const fixture = () => {
+      const savedSearchId = track('savedSearches', `smoke-search-${run}`);
+      const answerId = track('searchAnswers', `smoke-answer-${run}`);
+      const merchantKey = track('categoryMemory', `smoke-merchant-${run}`);
+      const tagKey = track('tagMemory', `smoke-tags-${run}`);
+      const importId = track('imports', `smoke-import-${run}`);
+
+      return {
+        savedSearchId, answerId, merchantKey, tagKey, importId,
+        data: emptyBackup({
+          // Every stamp in the plain-object form JSON.stringify leaves behind,
+          // and the account the file came from rather than this one.
+          savedSearches: [{
+            id: savedSearchId,
+            userId: 'the-account-the-file-came-from',
+            query: 'coffee',
+            label: 'Coffee runs',
+            pinned: true,
+            lastUsedAt: fileStamp,
+          } as unknown as SavedSearch],
+          searchAnswers: [{
+            id: answerId,
+            userId: 'the-account-the-file-came-from',
+            schemaVersion: 2,
+            kind: 'aggregate',
+            query: 'how much on coffee in August',
+            operation: 'sum',
+            limit: 3,
+            scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+            baseCurrency: 'USD',
+            value: 42.5,
+            transactionCount: 7,
+            computedAt: fileStamp,
+            lastUsedAt: fileStamp,
+          } as unknown as SearchRecord],
+          categoryMemory: [{
+            id: merchantKey,
+            merchantKey,
+            categoryId: 'food_coffee',
+            sampleDescription: 'STARBUCKS #123',
+            count: 7,
+          } as unknown as CategoryMemoryEntry],
+          tagMemory: [{
+            id: tagKey,
+            merchantKey: tagKey,
+            tags: ['coffee'],
+            suppressed: ['lunch'],
+            sampleDescription: 'STARBUCKS #123',
+            count: 4,
+          } as unknown as TagMemoryEntry],
+          imports: [{
+            id: importId,
+            userId: 'the-account-the-file-came-from',
+            importedAt: fileStamp,
+            source: 'csv',
+            fileType: 'generic_csv',
+            fileName: 'statement.csv',
+            fileSize: 1024,
+            transactionCount: 3,
+            successCount: 3,
+            skippedCount: 0,
+            errorCount: 0,
+            totalIncome: 0,
+            totalExpenses: 90,
+            status: 'completed',
+            duplicatesSkipped: 0,
+          } as unknown as ImportHistory],
+        }),
+      };
+    };
+
+    it('writes one record of each kind at its own id, stamped for this account', async () => {
+      const { savedSearchId, answerId, merchantKey, tagKey, importId, data } = fixture();
+
+      const summary = await service.restore(data);
+
+      expect(summary.skipped).toEqual([]);
+      expect(summary.savedSearches).toBe(1);
+      expect(summary.searchAnswers).toBe(1);
+      expect(summary.categoryMemory).toBe(1);
+      expect(summary.tagMemory).toBe(1);
+      expect(summary.imports).toBe(1);
+
+      const search = await readRaw('savedSearches', savedSearchId);
+      expect(search['query']).toBe('coffee');
+      expect(search['userId']).toBe(uid);
+      expect('id' in search).toBeFalse();
+      expect((search['lastUsedAt'] as Timestamp).toMillis()).toBe(1_700_000_000_000);
+
+      const answer = await readRaw('searchAnswers', answerId);
+      expect(answer['value']).toBe(42.5);
+      expect(answer['userId']).toBe(uid);
+      // Day keys, not timestamps: answerScopeValid refuses anything else, and a
+      // calendar window with a timezone in it is not the window that was asked
+      // about.
+      expect(answer['scope']).toEqual({ startDate: '2026-08-01', endDate: '2026-08-31' });
+      expect((answer['computedAt'] as Timestamp).toMillis()).toBe(1_700_000_000_000);
+
+      const memory = await readRaw('categoryMemory', merchantKey);
+      expect(memory['count']).toBe(7);
+      expect(memory['merchantKey']).toBe(merchantKey);
+      // categoryMemoryValid hasOnly()s five fields; either of these denies the
+      // whole write.
+      expect('userId' in memory).toBeFalse();
+      expect('id' in memory).toBeFalse();
+
+      const tags = await readRaw('tagMemory', tagKey);
+      expect(tags['suppressed']).toEqual(['lunch']);
+      expect(tags['count']).toBe(4);
+      expect('userId' in tags).toBeFalse();
+
+      const record = await readRaw('imports', importId);
+      expect(record['fileName']).toBe('statement.csv');
+      expect(record['userId']).toBe(uid);
+      expect((record['importedAt'] as Timestamp).toMillis()).toBe(1_700_000_000_000);
+    }, 30000);
+
+    it('restores the same file twice with no duplication and no count drift', async () => {
+      const { savedSearchId, merchantKey, tagKey, importId, data } = fixture();
+
+      await service.restore(data);
+      const second = await service.restore(data);
+
+      // The second run is an update against every one of these rule sets, and
+      // three of them freeze fields on update. A row refused would land in
+      // skipped rather than throwing.
+      expect(second.skipped).toEqual([]);
+      expect(second.savedSearches).toBe(1);
+      expect(second.searchAnswers).toBe(1);
+      expect(second.categoryMemory).toBe(1);
+      expect(second.tagMemory).toBe(1);
+      expect(second.imports).toBe(1);
+
+      // remember() would have incremented both counts; saveImportHistory would
+      // have written a second record under a fresh id.
+      expect((await readRaw('categoryMemory', merchantKey))['count']).toBe(7);
+      expect((await readRaw('tagMemory', tagKey))['count']).toBe(4);
+      expect((await readRaw('savedSearches', savedSearchId))['query']).toBe('coffee');
+      expect((await readRaw('imports', importId))['successCount']).toBe(3);
+
+      const imports = await getDocs(query(
+        collection(firestore, `users/${uid}/imports`),
+        where('fileName', '==', 'statement.csv')
+      ));
+      expect(imports.size).toBe(1);
+    }, 30000);
+  });
 
   it('leaves a category deleted before the backup was taken deleted', async () => {
     const id = track('categories', `backup-restore-smoke-cat-${run}`);

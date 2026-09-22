@@ -635,6 +635,31 @@ describe('firestore.rules (emulator smoke test)', () => {
       await expectDenied(updateDoc(doc(firestore, p), { userId: otherUid }), 'update to foreign userId');
     });
 
+    // A category id is required on create and may never be blanked. An empty
+    // string passed the type check, and every category reader then buckets the
+    // row under '' — a category that cannot be named, edited or filtered on.
+    // The update clause sits inside the touched() guard on purpose: a row that
+    // somehow already carries '' stays editable for every other field rather
+    // than becoming permanently unwritable.
+    it('rejects an empty categoryId', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ categoryId: '' })),
+        'empty categoryId on create'
+      );
+    });
+
+    it('rejects an update that blanks the categoryId', async () => {
+      const p = path('transactions');
+      await setDoc(doc(firestore, p), validTransaction());
+      await expectDenied(updateDoc(doc(firestore, p), { categoryId: '' }), 'blanked categoryId');
+    });
+
+    it('accepts an update that repoints the categoryId at a named category', async () => {
+      const p = path('transactions');
+      await setDoc(doc(firestore, p), validTransaction());
+      await expectAllowed(updateDoc(doc(firestore, p), { categoryId: 'food_dining' }), 'repointed categoryId');
+    });
+
     it('allows the owner to delete', async () => {
       const p = path('transactions');
       await setDoc(doc(firestore, p), validTransaction());
@@ -688,6 +713,28 @@ describe('firestore.rules (emulator smoke test)', () => {
         updateDoc(doc(firestore, p), { spent: 120, spentPeriod: 20260801 }),
         'numeric spentPeriod'
       );
+    });
+
+    // A category id is required on create and may never be blanked. The update
+    // clause sits inside the touched() guard on purpose: a row that somehow
+    // already carries '' stays editable for every other field.
+    it('rejects an empty categoryId', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('budgets')), validBudget({ categoryId: '' })),
+        'empty categoryId on create'
+      );
+    });
+
+    it('rejects an update that blanks the categoryId', async () => {
+      const p = path('budgets');
+      await setDoc(doc(firestore, p), validBudget());
+      await expectDenied(updateDoc(doc(firestore, p), { categoryId: '' }), 'blanked categoryId');
+    });
+
+    it('accepts an update that repoints the categoryId at a named category', async () => {
+      const p = path('budgets');
+      await setDoc(doc(firestore, p), validBudget());
+      await expectAllowed(updateDoc(doc(firestore, p), { categoryId: 'transport' }), 'repointed categoryId');
     });
   });
 
@@ -974,6 +1021,31 @@ describe('firestore.rules (emulator smoke test)', () => {
       const p = path('recurring');
       await setDoc(doc(firestore, p), validRecurring({ endDate: Timestamp.now() }));
       await expectAllowed(updateDoc(doc(firestore, p), { endDate: deleteField() }), 'endDate deletion');
+    });
+
+    // A category id is required on create and may never be blanked. The update
+    // clause sits inside the touched() guard on purpose: a row that somehow
+    // already carries '' stays editable for every other field.
+    it('rejects an empty categoryId', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ categoryId: '' })),
+        'empty categoryId on create'
+      );
+    });
+
+    it('rejects an update that blanks the categoryId', async () => {
+      const p = path('recurring');
+      await setDoc(doc(firestore, p), validRecurring());
+      await expectDenied(updateDoc(doc(firestore, p), { categoryId: '' }), 'blanked categoryId');
+    });
+
+    it('accepts an update that repoints the categoryId at a named category', async () => {
+      const p = path('recurring');
+      await setDoc(doc(firestore, p), validRecurring());
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { categoryId: 'employment_bonus' }),
+        'repointed categoryId'
+      );
     });
   });
 

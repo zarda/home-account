@@ -1,3 +1,6 @@
+import { provideRouter } from '@angular/router';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
+import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
@@ -23,8 +26,15 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AccountDeletionService } from '../../../core/services/account-deletion.service';
 import { GoalService } from '../../../core/services/goal.service';
+import { SearchHistoryService } from '../../../core/services/search-history.service';
+import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
+import { CategoryMemoryService } from '../../../core/services/category-memory.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { Firestore } from '@angular/fire/firestore';
 import { Transaction } from '../../../models';
+import { BACKUP_SECTIONS, NOT_IN_BACKUP } from '../../../core/services/export.service';
+import en from '../../../../assets/i18n/en.json';
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
@@ -44,6 +54,11 @@ describe('DataManagementComponent', () => {
   let mockBackupRestore: jasmine.SpyObj<BackupRestoreService>;
   let mockAccountDeletion: jasmine.SpyObj<AccountDeletionService>;
   let mockGoalService: jasmine.SpyObj<GoalService>;
+  let mockSearchHistory: jasmine.SpyObj<SearchHistoryService>;
+  let mockSearchAnswers: jasmine.SpyObj<SearchAnswerHistoryService>;
+  let mockCategoryMemory: jasmine.SpyObj<CategoryMemoryService>;
+  let mockTagMemory: jasmine.SpyObj<TagMemoryService>;
+  let mockImportHistory: jasmine.SpyObj<ImportHistoryService>;
 
   beforeEach(async () => {
     mockExportService = jasmine.createSpyObj('ExportService', [
@@ -74,12 +89,27 @@ describe('DataManagementComponent', () => {
 
     // Root-provided like InsightSnapshotService below: without stubs the real
     // services are constructed and their Firestore injection fails.
-    mockBudgetService = jasmine.createSpyObj('BudgetService', ['exportAll', 'createBudget']);
+    mockBudgetService = jasmine.createSpyObj('BudgetService', [
+      'exportAll', 'createBudget', 'recalculateBudgetsForCategory'
+    ]);
     mockBudgetService.exportAll.and.returnValue(Promise.resolve([]));
+    mockBudgetService.recalculateBudgetsForCategory.and.resolveTo();
     mockRecurringService = jasmine.createSpyObj('RecurringService', ['exportAll', 'createRecurring']);
     mockRecurringService.exportAll.and.returnValue(Promise.resolve([]));
     mockGoalService = jasmine.createSpyObj('GoalService', ['exportAll', 'createGoal']);
     mockGoalService.exportAll.and.resolveTo([]);
+    // The five sections backup 1.5 added. Root-provided like the rest, so
+    // without stubs the real services are constructed against a bare Firestore.
+    mockSearchHistory = jasmine.createSpyObj('SearchHistoryService', ['exportAll']);
+    mockSearchHistory.exportAll.and.resolveTo([]);
+    mockSearchAnswers = jasmine.createSpyObj('SearchAnswerHistoryService', ['exportAll']);
+    mockSearchAnswers.exportAll.and.resolveTo([]);
+    mockCategoryMemory = jasmine.createSpyObj('CategoryMemoryService', ['exportAll']);
+    mockCategoryMemory.exportAll.and.resolveTo([]);
+    mockTagMemory = jasmine.createSpyObj('TagMemoryService', ['exportAll']);
+    mockTagMemory.exportAll.and.resolveTo([]);
+    mockImportHistory = jasmine.createSpyObj('ImportHistoryService', ['exportAll']);
+    mockImportHistory.exportAll.and.resolveTo([]);
     mockBackupRestore = jasmine.createSpyObj('BackupRestoreService', ['parse', 'describe', 'restore']);
 
     // Root-provided, so without this the real service is constructed and its
@@ -88,7 +118,10 @@ describe('DataManagementComponent', () => {
     mockInsightSnapshots.exportAll.and.returnValue(Promise.resolve([]));
     mockInsightSnapshots.deleteAll.and.returnValue(Promise.resolve());
 
-    mockAuthService = jasmine.createSpyObj('AuthService', ['signOut']);
+    // currentUser is read through the component's baseCurrency computed, which
+    // the CSV import path reaches and the restore path does not.
+    mockAuthService = jasmine.createSpyObj('AuthService', ['signOut', 'currentUser']);
+    mockAuthService.currentUser.and.returnValue(null);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     mockAccountDeletion = jasmine.createSpyObj('AccountDeletionService', ['deleteAccount']);
     mockAccountDeletion.deleteAccount.and.resolveTo({ ok: true, failed: [] });
@@ -119,6 +152,11 @@ describe('DataManagementComponent', () => {
         { provide: BudgetService, useValue: mockBudgetService },
         { provide: RecurringService, useValue: mockRecurringService },
         { provide: GoalService, useValue: mockGoalService },
+        { provide: SearchHistoryService, useValue: mockSearchHistory },
+        { provide: SearchAnswerHistoryService, useValue: mockSearchAnswers },
+        { provide: CategoryMemoryService, useValue: mockCategoryMemory },
+        { provide: TagMemoryService, useValue: mockTagMemory },
+        { provide: ImportHistoryService, useValue: mockImportHistory },
         { provide: BackupRestoreService, useValue: mockBackupRestore },
         { provide: InsightSnapshotService, useValue: mockInsightSnapshots },
         { provide: AuthService, useValue: mockAuthService },
@@ -194,6 +232,52 @@ describe('DataManagementComponent', () => {
       tick();
 
       expect(component.isExporting()).toBeFalse();
+    }));
+
+    it('reads every section the file carries, one-shot and server-only', fakeAsync(() => {
+      // Eleven from 1.5. A section the assembly forgets is a section the
+      // deletion cascade still removes and the file no longer holds.
+      component.exportFullBackup();
+      tick();
+
+      const sections: [string, jasmine.Spy][] = [
+        ['transactions', mockTransactionService.exportAll],
+        ['categories', mockCategoryService.exportAll],
+        ['insightSnapshots', mockInsightSnapshots.exportAll],
+        ['budgets', mockBudgetService.exportAll],
+        ['recurring', mockRecurringService.exportAll],
+        ['goals', mockGoalService.exportAll],
+        ['savedSearches', mockSearchHistory.exportAll],
+        ['searchAnswers', mockSearchAnswers.exportAll],
+        ['categoryMemory', mockCategoryMemory.exportAll],
+        ['tagMemory', mockTagMemory.exportAll],
+        ['imports', mockImportHistory.exportAll],
+      ];
+
+      expect(sections.length).toBe(11);
+      expect(sections.filter(([, spy]) => spy.calls.count() === 1).map(([name]) => name))
+        .toEqual(sections.map(([name]) => name));
+    }));
+
+    it('hands the blob every section it read', fakeAsync(() => {
+      mockSearchHistory.exportAll.and.resolveTo([{ id: 's-1' }] as never);
+      mockSearchAnswers.exportAll.and.resolveTo([{ id: 'a-1' }] as never);
+      mockCategoryMemory.exportAll.and.resolveTo([{ merchantKey: 'starbucks' }] as never);
+      mockTagMemory.exportAll.and.resolveTo([{ merchantKey: 'starbucks' }] as never);
+      mockImportHistory.exportAll.and.resolveTo([{ id: 'i-1' }] as never);
+
+      component.exportFullBackup();
+      tick();
+
+      expect(mockExportService.exportToJSON).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          savedSearches: [{ id: 's-1' }],
+          searchAnswers: [{ id: 'a-1' }],
+          categoryMemory: [{ merchantKey: 'starbucks' }],
+          tagMemory: [{ merchantKey: 'starbucks' }],
+          imports: [{ id: 'i-1' }],
+        }) as never
+      );
     }));
   });
 
@@ -274,6 +358,7 @@ describe('DataManagementComponent', () => {
       const contents = {
         version: '1.2', exportDate: '2026-08-01',
         transactions: 12, categories: 3, budgets: 2, recurring: 1, goals: 0, insightSnapshots: 4,
+        savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
       };
       mockBackupRestore.parse.and.returnValue(parsed);
       mockBackupRestore.describe.and.returnValue(contents);
@@ -315,15 +400,80 @@ describe('DataManagementComponent', () => {
   // was handed. A backup of nothing but goals reported "0 records restored"
   // while every goal landed, and the preview panel one line above the dialog
   // showed the goal count all along.
+
+
+  describe('the CSV bulk import', () => {
+    /** Stage parsed rows and a confirmed dialog, then run the import. */
+    async function importRows(rows: { type: string; categoryId: string }[]): Promise<void> {
+      component.pendingBackup.set(null);
+      component.importedTransactions.set(rows.map(() => ({}) as never));
+      mockExportService.parseImportedData.and.returnValue(rows as never);
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.confirmImport();
+
+      const deadline = Date.now() + 3000;
+      while (!notifications.success.calls.any() && !notifications.info.calls.any()
+        && !notifications.error.calls.any() && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+
+    it('recalculates once per affected category, not once per row', async () => {
+      // addTransaction recomputes every budget on the row's category by
+      // default, so a fifty-row file read and rewrote the same two budgets
+      // fifty times — the same defect the AI import path already fixed.
+      await importRows(Array.from({ length: 50 }, (_, i) => ({
+        type: 'expense',
+        categoryId: i % 2 === 0 ? 'food_restaurants' : 'housing_rent',
+      })));
+
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(50);
+      expect(mockTransactionService.addTransaction.calls.allArgs()
+        .every(args => args[1]?.skipBudgetRecalc === true)).toBeTrue();
+      expect(mockBudgetService.recalculateBudgetsForCategory.calls.allArgs()
+        .map(args => args[0]).sort())
+        .toEqual(['food_restaurants', 'housing_rent']);
+    });
+
+    it('counts only the expense rows it actually wrote', async () => {
+      mockTransactionService.addTransaction.and.callFake(async (dto: { categoryId: string }) => {
+        if (dto.categoryId === 'housing_rent') throw new Error('invalid amount');
+        return 'id';
+      });
+
+      await importRows([
+        { type: 'expense', categoryId: 'food_restaurants' },
+        { type: 'expense', categoryId: 'housing_rent' },
+        { type: 'income', categoryId: 'salary' },
+      ]);
+
+      expect(mockBudgetService.recalculateBudgetsForCategory.calls.allArgs())
+        .toEqual([['food_restaurants']]);
+    });
+
+    it('a lagging counter never fails an import that already wrote its rows', async () => {
+      mockBudgetService.recalculateBudgetsForCategory.and.rejectWith(new Error('offline'));
+
+      await importRows([{ type: 'expense', categoryId: 'food_restaurants' }]);
+
+      expect(notifications.success).toHaveBeenCalledWith('settings.transactionsImported');
+      expect(notifications.error).not.toHaveBeenCalled();
+    });
+  });
+
   describe('confirmRestore', () => {
     const emptySummary = {
       transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0,
-      insightSnapshots: 0, skipped: [] as { section: string; id: string; reason: string }[],
+      insightSnapshots: 0,
+      savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
+      skipped: [] as { section: string; id: string; reason: string }[],
     };
 
     const emptyContents = {
-      version: '1.4', exportDate: '2026-08-01',
+      version: '1.5', exportDate: '2026-08-01',
       transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0, insightSnapshots: 0,
+      savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
     };
 
     /** Stage a parsed backup and a confirmed dialog, then run the restore. */
@@ -346,6 +496,66 @@ describe('DataManagementComponent', () => {
         await new Promise(resolve => setTimeout(resolve, 20));
       }
     }
+
+    describe('what the dialogs say the file covers', () => {
+      it('interpolates a count for every section the backup carries', async () => {
+        // Six of the eleven before 1.5, so the confirmation described a third of
+        // what it was about to write.
+        await restoreWith({}, {
+          transactions: 12, categories: 3, budgets: 2, recurring: 1, goals: 4,
+          insightSnapshots: 6, savedSearches: 5, searchAnswers: 7,
+          categoryMemory: 8, tagMemory: 9, imports: 10,
+        });
+
+        const call = mockTranslationService.t.calls.all()
+          .find(c => c.args[0] === 'settings.confirmRestoreMessage');
+        expect(call).toBeDefined();
+        const params = call!.args[1] as Record<string, number>;
+        expect(Object.keys(params).sort()).toEqual([...BACKUP_SECTIONS].sort());
+        expect(params['savedSearches']).toBe(5);
+        expect(params['imports']).toBe(10);
+      });
+
+      // The English catalog is the source text; ja and tc are held to the same
+      // placeholders by translation-keys.spec.ts, and their prose is a
+      // translator's business rather than a spec's.
+      it('names every section the file carries, in the message itself', () => {
+        const message = en.settings.confirmRestoreMessage;
+        const missing = BACKUP_SECTIONS.filter(section => !message.includes(`{{${section}}}`));
+
+        expect(missing).toEqual([]);
+      });
+
+      it('stops calling the backup a full one, and names what it cannot carry', () => {
+        const offer = en.settings.deleteAccountBackupMessage.toLowerCase();
+
+        // Each excluded kind, by the word the English message uses for it.
+        // Keyed against NOT_IN_BACKUP, so a fourth exclusion has to be given a
+        // word here before this passes.
+        const named: Record<string, string> = {
+          secrets: 'keys',
+          securityEvents: 'sign-in history',
+          feedback: 'feedback',
+        };
+        expect(Object.keys(named).sort()).toEqual(Object.keys(NOT_IN_BACKUP).sort());
+
+        const unmentioned = Object.entries(named)
+          .filter(([, word]) => !offer.includes(word))
+          .map(([kind]) => kind);
+
+        expect(unmentioned).toEqual([]);
+        expect(offer).not.toContain('full backup');
+      });
+
+      it('warns about the kinds the cascade removes that the old wording left out', () => {
+        const warning = en.settings.deleteAccountWarning.toLowerCase();
+
+        const missing = ['goals', 'stored answers', 'merchant', 'import history', 'feedback']
+          .filter(word => !warning.includes(word));
+
+        expect(missing).toEqual([]);
+      });
+    });
 
     it('counts the goals it restored, in a backup that holds nothing else', async () => {
       await restoreWith({ goals: 12 });
@@ -610,5 +820,237 @@ describe('DataManagementComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('settings.deleteAccountReauthFailed');
       expect(redirect).not.toHaveBeenCalled();
     }));
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so the page's five
+ * sections, the two mutually exclusive import previews (a full backup's
+ * section counts vs a CSV's first five rows), the receipt-usage line's three
+ * states, and every danger-zone control are unproven by them. The
+ * `routerLink` buttons are the only way into the import wizard from here and
+ * nothing has ever checked they resolve.
+ */
+describe('DataManagementComponent, through its own template', () => {
+  let fixture: ComponentFixture<DataManagementComponent>;
+  let component: DataManagementComponent;
+  let backupRestore: jasmine.SpyObj<BackupRestoreService>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+  let quota: {
+    imageCount: ReturnType<typeof signal<number | null>>;
+    refreshCount: jasmine.Spy;
+    hasUnlimitedImages: jasmine.Spy;
+    imageLimit: jasmine.Spy;
+  };
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const button = (label: string): HTMLButtonElement | undefined =>
+    (Array.from(el().querySelectorAll('button')) as HTMLButtonElement[]).find(b =>
+      (b.textContent ?? '').includes(label)
+    );
+  const link = (label: string): HTMLElement | undefined =>
+    (Array.from(el().querySelectorAll('[routerlink], a, button')) as HTMLElement[]).find(b =>
+      (b.textContent ?? '').includes(label)
+    );
+  /**
+   * A preview row by the key in its description. Looked up by key rather than
+   * by index so widening the backup with further sections does not move it.
+   */
+  const previewRow = (key: string): string | null => {
+    const row = (Array.from(el().querySelectorAll('.preview-item')) as HTMLElement[]).find(
+      item => item.querySelector('.preview-desc')?.textContent?.trim() === key
+    );
+    return row?.querySelector('.preview-amount')?.textContent?.trim() ?? null;
+  };
+
+  const spy = (name: string, methods: string[], resolve: unknown = []) => {
+    const obj = jasmine.createSpyObj(name, methods);
+    methods.forEach(m => (obj[m] as jasmine.Spy).and.resolveTo(resolve));
+    return obj;
+  };
+
+  beforeEach(async () => {
+    backupRestore = jasmine.createSpyObj('BackupRestoreService', ['parse', 'describe', 'restore']);
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+    quota = {
+      imageCount: signal<number | null>(null),
+      refreshCount: jasmine.createSpy('refreshCount').and.resolveTo(0),
+      hasUnlimitedImages: jasmine.createSpy('hasUnlimitedImages').and.returnValue(false),
+      imageLimit: jasmine.createSpy('imageLimit').and.returnValue(200),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [DataManagementComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: NotificationService, useValue: spy('NotificationService', ['success', 'error', 'info']) },
+        { provide: ExportService, useValue: spy('ExportService', ['exportToJSON', 'exportTransactionsToCSV', 'downloadFile', 'parseImportFile']) },
+        { provide: TransactionService, useValue: spy('TransactionService', ['exportAll', 'addTransaction', 'deleteAllTransactions']) },
+        { provide: CategoryService, useValue: spy('CategoryService', ['exportAll']) },
+        { provide: BudgetService, useValue: spy('BudgetService', ['exportAll']) },
+        { provide: RecurringService, useValue: spy('RecurringService', ['exportAll']) },
+        { provide: GoalService, useValue: spy('GoalService', ['exportAll']) },
+        { provide: SearchHistoryService, useValue: spy('SearchHistoryService', ['exportAll']) },
+        { provide: SearchAnswerHistoryService, useValue: spy('SearchAnswerHistoryService', ['exportAll']) },
+        { provide: CategoryMemoryService, useValue: spy('CategoryMemoryService', ['exportAll']) },
+        { provide: TagMemoryService, useValue: spy('TagMemoryService', ['exportAll']) },
+        { provide: ImportHistoryService, useValue: spy('ImportHistoryService', ['exportAll']) },
+        { provide: BackupRestoreService, useValue: backupRestore },
+        { provide: InsightSnapshotService, useValue: spy('InsightSnapshotService', ['exportAll', 'deleteAll']) },
+        { provide: AuthService, useValue: { signOut: jasmine.createSpy('signOut'), currentUser: signal(null) } },
+        { provide: AccountDeletionService, useValue: spy('AccountDeletionService', ['deleteAccount'], { ok: true, failed: [] }) },
+        { provide: Firestore, useValue: {} },
+        { provide: MatDialog, useValue: dialog },
+        { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
+        { provide: ReceiptQuotaService, useValue: quota },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(DataManagementComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('offers both exports, and locks them both while one runs', () => {
+    fixture.detectChanges();
+
+    const exports = Array.from(el().querySelectorAll('.export-btn')) as HTMLButtonElement[];
+    expect(exports.length).toBe(2);
+    expect(exports.map(b => b.querySelector('.btn-title')?.textContent?.trim()))
+      .toEqual(['settings.fullBackup', 'settings.transactionsCsv']);
+    expect(exports.every(b => !b.disabled)).toBeTrue();
+
+    component.isExporting.set(true);
+    fixture.detectChanges();
+
+    expect((Array.from(el().querySelectorAll('.export-btn')) as HTMLButtonElement[])
+      .every(b => b.disabled)).toBeTrue();
+  });
+
+  it('routes into the import wizard and its history', () => {
+    fixture.detectChanges();
+
+    expect(link('import.startSmartImport')?.getAttribute('routerlink')).toBe('/import/file');
+    expect(link('import.viewHistory')?.getAttribute('routerlink')).toBe('/import/history');
+  });
+
+  it('says nothing about receipt usage until the count is known', () => {
+    fixture.detectChanges();
+    expect(text('.receipt-usage')).toBe('');
+
+    quota.imageCount.set(12);
+    fixture.detectChanges();
+    expect(text('.receipt-usage')).toBe('receiptImages.usage:{"used":12,"limit":200}');
+  });
+
+  it('drops the limit from the usage line when there is no limit', () => {
+    quota.hasUnlimitedImages.and.returnValue(true);
+    quota.imageCount.set(12);
+    fixture.detectChanges();
+
+    expect(text('.receipt-usage')).toBe('receiptImages.usageUnlimited:{"used":12}');
+  });
+
+  it('offers the dropzone as a keyboard-reachable target, and a spinner while it reads', () => {
+    fixture.detectChanges();
+
+    const dropzone = el().querySelector('.import-dropzone') as HTMLElement;
+    expect(dropzone.getAttribute('role')).toBe('button');
+    expect(dropzone.getAttribute('tabindex')).toBe('0');
+    expect(text('.dropzone-text')).toBe('settings.uploadPrompt');
+
+    component.isImporting.set(true);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')).not.toBeNull();
+    expect(el().querySelector('.dropzone-text')).toBeNull();
+  });
+
+  it('previews a full backup as its section counts, and offers a restore', () => {
+    fixture.detectChanges();
+    component.backupContents.set({
+      version: '1.4', exportDate: '2026-03-04',
+      transactions: 42, categories: 8, budgets: 3, recurring: 2, goals: 1, insightSnapshots: 6,
+    } as never);
+    component.showImportPreview.set(true);
+    fixture.detectChanges();
+
+    expect(text('.preview-header span')).toBe('settings.previewBackup:{"version":"1.4"}');
+    expect(previewRow('settings.sectionTransactions')).toBe('42');
+    expect(previewRow('settings.sectionCategories')).toBe('8');
+    expect(previewRow('settings.sectionInsightSnapshots')).toBe('6');
+    expect(button('settings.restoreBackup')).toBeDefined();
+    expect(button('settings.importTransactions')).toBeUndefined();
+  });
+
+  it('previews a CSV as its first five rows and counts the rest', () => {
+    fixture.detectChanges();
+    component.importedTransactions.set(
+      Array.from({ length: 7 }, (_, i) => ({
+        date: new Date('2026-03-04T00:00:00Z'),
+        description: `Row ${i}`,
+        amount: 10 + i,
+        type: 'expense' as const,
+        currency: 'USD',
+      })) as never
+    );
+    component.showImportPreview.set(true);
+    fixture.detectChanges();
+
+    expect(text('.preview-header span')).toBe('settings.previewTransactions:{"count":7}');
+    expect(el().querySelectorAll('.preview-item').length).toBe(5);
+    expect(text('.preview-more')).toBe('settings.moreTransactions:{"count":2}');
+    expect(text('.preview-item .preview-amount')).toBe('-$10.00');
+    expect(text('.preview-item .preview-date')).toBe('2026-03-04');
+    expect(button('settings.importTransactions')).toBeDefined();
+  });
+
+  it('shows the progress bar only while an import is partway through', () => {
+    fixture.detectChanges();
+    component.showImportPreview.set(true);
+    fixture.detectChanges();
+    expect(el().querySelector('mat-progress-bar')).toBeNull();
+
+    component.importProgress.set(40);
+    fixture.detectChanges();
+    expect(el().querySelector('mat-progress-bar')).not.toBeNull();
+    expect(text('.progress-text')).toBe('settings.importingProgress:{"progress":40}');
+
+    component.importProgress.set(100);
+    fixture.detectChanges();
+    expect(el().querySelector('mat-progress-bar')).toBeNull();
+  });
+
+  it('carries both danger-zone actions, and locks account deletion while it runs', () => {
+    fixture.detectChanges();
+
+    const items = Array.from(el().querySelectorAll('.danger-item')) as HTMLElement[];
+    expect(items.length).toBe(2);
+    expect(items[0].querySelector('.danger-title')?.textContent?.trim())
+      .toBe('settings.deleteAllTransactions');
+    expect(el().querySelector('.danger-zone mat-progress-bar')).toBeNull();
+
+    component.isDeletingAccount.set(true);
+    fixture.detectChanges();
+
+    const deleteAccount = (Array.from(el().querySelectorAll('.danger-item button')) as HTMLButtonElement[])[1];
+    expect(deleteAccount.disabled).toBeTrue();
+    expect(el().querySelector('.danger-zone mat-progress-bar')).not.toBeNull();
+  });
+
+  it('reaches the receipt image manager from its own button', () => {
+    // The handler is `async` and opens the dialog behind a lazy `import()`,
+    // so what a template describe can honestly pin is that the control
+    // exists and its `(click)` is bound — the dialog's own arguments belong
+    // to the component, not to this markup.
+    const open = spyOn(component, 'openReceiptImageManager').and.resolveTo();
+    fixture.detectChanges();
+
+    button('receiptImages.manage')?.click();
+
+    expect(open).toHaveBeenCalled();
   });
 });

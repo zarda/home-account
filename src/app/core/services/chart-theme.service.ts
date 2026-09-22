@@ -74,7 +74,7 @@ export class ChartThemeService {
 
     return {
       text: read('--text-secondary', '#374151'),
-      textMuted: read('--text-muted', '#6b7280'),
+      textMuted: read('--text-muted', '#4b5563'),
       grid: read('--border-primary', '#e5e7eb'),
       fontFamily: "'PT Sans', system-ui, sans-serif",
     };

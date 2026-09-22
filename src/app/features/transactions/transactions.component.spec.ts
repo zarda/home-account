@@ -1,9 +1,20 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
+import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
+import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { FitTextDirective } from '../../shared/directives/fit-text.directive';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, Subject, EMPTY } from 'rxjs';
+import { of, Subject, BehaviorSubject, EMPTY } from 'rxjs';
 import { TransactionsComponent } from './transactions.component';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService } from '../../core/services/transaction-window.service';
@@ -19,7 +30,7 @@ import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
 import { Transaction, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
-import { createTransaction, createCategory } from '../../core/services/testing';
+import { createTransaction, createCategory, createTranslationStub } from '../../core/services/testing';
 
 function createMockWindowSource() {
   return {
@@ -694,5 +705,283 @@ describe('TransactionsComponent', () => {
     const fixture = build();
     fixture.detectChanges();
     expect(() => fixture.destroy()).not.toThrow();
+  });
+});
+
+/**
+ * Every case above compiles the page with `{ imports: [], template: '' }`, so
+ * the whole header — the part this page is unusual for — has never rendered.
+ * The totals are a five-arm `@switch` rendered twice, once for the desktop
+ * actions row and once for the mobile subtitle line, behind a viewport gate
+ * whose contract is stated in the template itself: *never both, never
+ * neither* (`transactions.component.html:65-68`). Nothing has ever checked
+ * that contract holds.
+ *
+ * Partial render: the list, the filters and the insight chips are left
+ * unresolved. Each has its own spec, and none is asserted about here.
+ */
+describe('TransactionsComponent, through its own template', () => {
+  let fixture: ComponentFixture<TransactionsComponent>;
+  let component: TransactionsComponent;
+  let totals: ReturnType<typeof createMockPeriodTotals>;
+  let windowMock: ReturnType<typeof createMockWindowSource>;
+  let quickAddSpy: jasmine.SpyObj<QuickAddService>;
+  let viewport$: BehaviorSubject<BreakpointState>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const mobile = (matches: boolean) => {
+    viewport$.next({ matches, breakpoints: { [APP_BREAKPOINTS.mobile]: matches } });
+    fixture.detectChanges();
+  };
+
+  function render(): void {
+    fixture = TestBed.createComponent(TransactionsComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  }
+
+  /** The add menu renders into the CDK overlay, outside the fixture. */
+  function openAddMenu(): HTMLElement {
+    (el().querySelector('.add-fab') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    return document.querySelector('.mat-mdc-menu-panel') as HTMLElement;
+  }
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  beforeEach(async () => {
+    windowMock = createMockWindowSource();
+    totals = createMockPeriodTotals();
+    viewport$ = new BehaviorSubject<BreakpointState>({ matches: false, breakpoints: {} });
+    quickAddSpy = jasmine.createSpyObj('QuickAddService', [
+      'openAddTransaction', 'openScanReceipt', 'openImportPhotos',
+    ]);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionsComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: TransactionService,
+          useValue: {
+            transactions: signal<Transaction[]>([]),
+            isLoading: signal(false),
+            lastMutation: signal<TransactionMutation | null>(null),
+            deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
+            getTransactionOnce: jasmine.createSpy('getTransactionOnce').and.resolveTo(null),
+          },
+        },
+        {
+          provide: CategoryService,
+          useValue: {
+            expenseCategories: signal<unknown[]>([]),
+            incomeCategories: signal<unknown[]>([]),
+            categories: signal([createCategory({ id: 'c1' })]),
+            loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
+          },
+        },
+        { provide: AuthService, useValue: { currentUser: signal<User | null>({ preferences: { baseCurrency: 'USD' } } as User) } },
+        { provide: CurrencyService, useValue: { formatCurrency: (value: number, code: string) => `${code} ${value}` } },
+        {
+          provide: LocaleFormatService,
+          useValue: { formatRange: jasmine.createSpy('formatRange').and.returnValue('RANGE') },
+        },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', { open: { afterClosed: () => of(undefined) } }) },
+        { provide: QuickAddService, useValue: quickAddSpy },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { queryParamMap: { get: () => null } },
+            queryParams: new Subject<Record<string, string>>().asObservable(),
+          },
+        },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
+        { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    })
+      .overrideComponent(TransactionsComponent, {
+        set: {
+          imports: [
+            PageHeaderComponent,
+            MatButtonModule,
+            MatIconModule,
+            MatMenuModule,
+            LoadingSpinnerComponent,
+            FitTextDirective,
+            TranslatePipe,
+          ],
+          // A standalone component's template is governed by its own schemas,
+          // not the TestBed's: the list, the filters and the insight chips
+          // are left unresolved and are never asserted about here.
+          schemas: [NO_ERRORS_SCHEMA],
+          // This override replaces the component's own providers array, so
+          // every page-provided service needs its mock listed here.
+          providers: [
+            { provide: TransactionWindowService, useValue: windowMock },
+            { provide: PeriodTotalsService, useValue: totals },
+          ],
+        },
+      })
+      .compileComponents();
+  });
+
+  it('counts the transactions beside the page title', () => {
+    windowMock.totalCount.set(37);
+    render();
+
+    expect(text('[header-title-suffix]')).toBe(`(${component.transactionCount()})`);
+  });
+
+  it('shows the spinner instead of the list while the first window loads', () => {
+    windowMock.isInitialLoading.set(true);
+    render();
+
+    expect(el().querySelector('app-loading-spinner')).not.toBeNull();
+    expect(el().querySelector('app-transaction-list')).toBeNull();
+
+    windowMock.isInitialLoading.set(false);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')).toBeNull();
+    expect(el().querySelector('app-transaction-list')).not.toBeNull();
+  });
+
+  it('puts the add affordance in exactly one place at each width', () => {
+    // The template's own contract: the desktop FAB and the mobile subtitle
+    // line are the two halves of one viewport gate — never both, never
+    // neither. The bottom-nav FAB covers add below 600px.
+    render();
+    expect(el().querySelector('.add-fab')).not.toBeNull();
+
+    mobile(true);
+
+    expect(el().querySelector('.add-fab')).toBeNull();
+  });
+
+  it('shows nothing where the totals go while they are idle', () => {
+    render();
+
+    expect(el().querySelector('.period-totals')).toBeNull();
+    expect(el().querySelector('.period-totals-placeholder')).toBeNull();
+    expect(el().querySelector('.period-totals-note')).toBeNull();
+    expect(el().querySelector('.period-totals-calc')).toBeNull();
+  });
+
+  it('holds a placeholder rather than a stale figure while computing', () => {
+    render();
+    totals.status.set({ kind: 'computing' });
+    fixture.detectChanges();
+
+    const placeholder = el().querySelector('.period-totals-placeholder') as HTMLElement;
+    expect(placeholder).not.toBeNull();
+    // Decorative: a screen reader is told nothing rather than "blank".
+    expect(placeholder.getAttribute('aria-hidden')).toBe('true');
+    expect(el().querySelector('.period-totals')).toBeNull();
+  });
+
+  it('renders the exact figures once a fold is ready', () => {
+    render();
+    totals.totals.set({ expense: 120, income: 400, balance: 280 } as TypeTotals);
+    totals.status.set({ kind: 'ready' });
+    fixture.detectChanges();
+
+    const figures = Array.from(el().querySelectorAll('.period-totals-figure')) as HTMLElement[];
+    expect(figures.length).toBe(2);
+    expect(figures.map(f => f.querySelector('dt')?.textContent?.trim()))
+      .toEqual(['common.totalExpenses', 'common.netBalance']);
+    expect(figures[0].querySelector('dd')?.textContent?.trim()).toBe('USD 120');
+  });
+
+  it('stays on the placeholder when a ready status carries no fold', () => {
+    // A sweep invalidated between the status settling and the template
+    // reading it must never print a figure.
+    render();
+    totals.totals.set(null);
+    totals.status.set({ kind: 'ready' });
+    fixture.detectChanges();
+
+    expect(el().querySelector('.period-totals')).toBeNull();
+    expect(el().querySelector('.period-totals-placeholder')).not.toBeNull();
+  });
+
+  it('says the totals are unavailable rather than printing a zero', () => {
+    render();
+    totals.status.set({ kind: 'unavailable' });
+    fixture.detectChanges();
+
+    expect(text('.period-totals-note')).toBe('transactions.totalsUnavailable');
+    expect(el().querySelector('.period-totals')).toBeNull();
+  });
+
+  it('asks before sweeping when the range is over the cap', () => {
+    render();
+    totals.status.set({ kind: 'over-cap' } as PeriodTotalsStatus);
+    fixture.detectChanges();
+
+    const ask = el().querySelector('.period-totals-calc') as HTMLButtonElement;
+    expect(ask.textContent?.trim()).toBe('transactions.calculateTotals');
+
+    const calculate = spyOn(component, 'onCalculateTotals');
+    ask.click();
+    expect(calculate).toHaveBeenCalled();
+  });
+
+  it('moves the figures onto the subtitle line on a phone', () => {
+    render();
+    totals.totals.set({ expense: 120, income: 400, balance: 280 } as TypeTotals);
+    totals.status.set({ kind: 'ready' });
+    mobile(true);
+
+    expect(el().querySelector('.period-totals')).toBeNull();
+    const line = el().querySelector('.period-totals-line') as HTMLElement;
+    expect(line).not.toBeNull();
+    expect(Array.from(line.querySelectorAll('.period-figure-label')).map(n => n.textContent?.trim()))
+      .toEqual(['common.totalExpenses', 'common.netBalance']);
+  });
+
+  it('captions the phone figures only when the filter carries both bounds', () => {
+    // An open-ended or show-all set has no honest range caption, and the
+    // figures are still correct without one.
+    render();
+    totals.totals.set({ expense: 120, income: 400, balance: 280 } as TypeTotals);
+    totals.status.set({ kind: 'ready' });
+    mobile(true);
+    expect(el().querySelector('.period-caption')).toBeNull();
+
+    component.onFiltersChanged({
+      startDate: new Date('2026-03-01'),
+      endDate: new Date('2026-03-31'),
+    } as never);
+    fixture.detectChanges();
+
+    expect(text('.period-caption')).toBe('RANGE');
+  });
+
+  it('keeps the subtitle line out entirely while the totals are hidden', () => {
+    render();
+    mobile(true);
+
+    expect(el().querySelector('.period-totals-line')).toBeNull();
+  });
+
+  it('offers all three add entries from the desktop menu', () => {
+    render();
+
+    const panel = openAddMenu();
+    const items = Array.from(panel.querySelectorAll('button[mat-menu-item]')) as HTMLButtonElement[];
+    expect(items.map(b => b.textContent?.trim())).toEqual([
+      'addtransactions.addTransaction',
+      'photo_cameraimport.importFromCamera',
+      'upload_fileimport.importFromFile',
+    ]);
+
+    items[1].click();
+    expect(quickAddSpy.openScanReceipt).toHaveBeenCalled();
   });
 });

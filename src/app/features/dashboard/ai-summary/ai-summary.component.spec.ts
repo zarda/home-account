@@ -1,4 +1,5 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { AiSummaryComponent } from './ai-summary.component';
@@ -10,7 +11,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
-import { createCategory, createTransaction, createUser } from '../../../core/services/testing';
+import { createCategory, createTransaction, createUser, createTranslationStub } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
   let cloudLLM: jasmine.SpyObj<CloudLLMProviderService>;
@@ -416,5 +417,150 @@ describe('AiSummaryComponent', () => {
       expect(analytics.trackAiAssistUsed).not.toHaveBeenCalled();
       expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/**
+ * Every case above compiles the card with `{ imports: [], template: '' }`, so
+ * the four-arm body chain — loading, not-enough-data, error, content — has
+ * never chosen an arm on screen, and the whole card's `isAvailable()` gate
+ * has never hidden anything. `formatMarkdown` reaches a user only through
+ * `[innerHTML]`, which nothing until here has rendered.
+ */
+describe('AiSummaryComponent, through its own template', () => {
+  let fixture: ComponentFixture<AiSummaryComponent>;
+  let component: AiSummaryComponent;
+  let llm: jasmine.SpyObj<CloudLLMProviderService>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, i) => createTransaction({ id: `t${i}`, amount: 10 + i }));
+
+  function render(transactions: Transaction[] = rows(5)): void {
+    fixture = TestBed.createComponent(AiSummaryComponent);
+    fixture.componentRef.setInput('transactions', transactions);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    sessionStorage.clear();
+    llm = jasmine.createSpyObj('CloudLLMProviderService', [
+      'hasAnyCloudProvider', 'generateSpendingSummary', 'getFinancialAdvice',
+    ]);
+    llm.hasAnyCloudProvider.and.returnValue(true);
+    llm.generateSpendingSummary.and.resolveTo('Summary text');
+    llm.getFinancialAdvice.and.resolveTo('Advice text');
+
+    const currencySpy = jasmine.createSpyObj('CurrencyService', ['convert', 'ensureRatesLoaded']);
+    currencySpy.convert.and.callFake((a: number) => a);
+    currencySpy.ensureRatesLoaded.and.resolveTo(undefined);
+    const rag = jasmine.createSpyObj('RagContextService', ['buildSummaryGrounding']);
+    rag.buildSummaryGrounding.and.returnValue('GROUNDING');
+    const sanitizer = jasmine.createSpyObj('DomSanitizer', ['sanitize', 'bypassSecurityTrustHtml']);
+    sanitizer.sanitize.and.callFake((_ctx: number, val: string) => val);
+    sanitizer.bypassSecurityTrustHtml.and.callFake((val: string) => val);
+
+    await TestBed.configureTestingModule({
+      imports: [AiSummaryComponent, NoopAnimationsModule],
+      providers: [
+        { provide: CloudLLMProviderService, useValue: llm },
+        { provide: CurrencyService, useValue: currencySpy },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: AuthService, useValue: { currentUser: signal<User | null>(createUser()) } },
+        { provide: CategoryService, useValue: { categories: signal<Category[]>([createCategory()]) } },
+        { provide: RagContextService, useValue: rag },
+        { provide: DomSanitizer, useValue: sanitizer },
+        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackAiAssistUsed']) },
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => sessionStorage.clear());
+
+  it('renders nothing at all when no cloud provider is configured', () => {
+    llm.hasAnyCloudProvider.and.returnValue(false);
+    render();
+
+    expect(el().querySelector('.ai-summary-card')).toBeNull();
+    expect(el().textContent?.trim()).toBe('');
+  });
+
+  it('heads the card and labels its refresh control', () => {
+    render();
+
+    expect(text('.title')).toBe('ai.insights');
+    const refresh = el().querySelector('.refresh-btn') as HTMLButtonElement;
+    expect(refresh.getAttribute('aria-label')).toBe('ai.refresh');
+    expect(refresh.getAttribute('title')).toBe('ai.refresh');
+  });
+
+  it('says there is nothing to summarise below three rows, and locks refresh', () => {
+    render(rows(2));
+
+    expect(component.hasEnoughData()).toBeFalse();
+    expect(el().querySelector('app-empty-state')?.textContent).toContain('ai.noInsights');
+    expect((el().querySelector('.refresh-btn') as HTMLButtonElement).disabled).toBeTrue();
+    expect(el().querySelector('.insight-section')).toBeNull();
+  });
+
+  it('shows the spinner and spins the refresh icon while generating', () => {
+    render();
+    component.isLoading.set(true);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')?.textContent).toContain('ai.generating');
+    expect(el().querySelector('.refresh-btn mat-icon')?.classList).toContain('spinning');
+    expect((el().querySelector('.refresh-btn') as HTMLButtonElement).disabled).toBeTrue();
+    expect(el().querySelector('.insight-section')).toBeNull();
+  });
+
+  it('shows the failure in its own state rather than an empty card', () => {
+    render();
+    component.isLoading.set(false);
+    component.hasError.set(true);
+    fixture.detectChanges();
+
+    expect(text('.error-state span')).toBe('errors.generic');
+    expect(el().querySelector('.insight-section')).toBeNull();
+    expect(el().querySelector('.advice-section')).toBeNull();
+  });
+
+  it('renders the summary as HTML and the advice as plain text', () => {
+    render();
+    component.isLoading.set(false);
+    component.hasError.set(false);
+    component.summary.set('Groceries are **up** 18%.');
+    component.advice.set('Try a weekly cap.');
+    fixture.detectChanges();
+
+    // `formatMarkdown` reaches the user only through [innerHTML].
+    const body = el().querySelector('.structured-content') as HTMLElement;
+    expect(body.querySelector('strong')?.textContent).toBe('up');
+    expect(text('.advice-header span')).toBe('ai.financialAdvice');
+    expect(text('.advice-text')).toBe('Try a weekly cap.');
+  });
+
+  it('leaves the advice block out when there is no advice', () => {
+    render();
+    component.isLoading.set(false);
+    component.summary.set('Just a summary.');
+    component.advice.set('');
+    fixture.detectChanges();
+
+    expect(el().querySelector('.insight-section')).not.toBeNull();
+    expect(el().querySelector('.advice-section')).toBeNull();
+  });
+
+  it('reaches refresh from its own button once there is enough data', () => {
+    render();
+    component.isLoading.set(false);
+    fixture.detectChanges();
+    const refreshed = spyOn(component, 'refresh');
+
+    (el().querySelector('.refresh-btn') as HTMLButtonElement).click();
+
+    expect(refreshed).toHaveBeenCalled();
   });
 });

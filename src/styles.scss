@@ -128,10 +128,13 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --border-primary: #e5e7eb;
   --border-secondary: #f3f4f6;
 
-  // Text colors
+  // Text colors. --text-muted is gray-600, not the gray-500 it started as:
+  // muted text sits on --surface-muted and --surface-background as often as
+  // on a white card, and gray-500 measured 4.39 and 4.43 against those two —
+  // under AA, on running text, in the default theme (check-contrast.mjs).
   --text-primary: #111827;
   --text-secondary: #374151;
-  --text-muted: #6b7280;
+  --text-muted: #4b5563;
   --text-disabled: #9ca3af;
   --text-inverse: #ffffff;
 
@@ -266,16 +269,24 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --color-error-light: #991b1b;
   --color-warning: #facc15;
   --color-warning-light: #854d0e;
-  --color-warning-text: #fbbf24;
+  // One step lighter than the -400 the dark chips started on. A tinted chip
+  // here is `-text` on `-light`, and those three pairs measured 4.09, 3.00
+  // and 4.10 — all under AA, on the stat cards, the weekly recap and the
+  // budget alert banner (check-contrast.mjs). Lightening the text rather
+  // than darkening the fill is deliberate: the fills already sit close to
+  // the #1e1e1e card, and darkening them would make the chip itself vanish.
+  --color-warning-text: #fcd34d;
   --color-info: #60a5fa;
   --color-info-light: #1e40af;
 
   --color-income: #4ade80;
   --color-income-light: #166534;
-  --color-income-text: #4ade80;
+  --color-income-text: #86efac;
   --color-expense: #f87171;
-  --color-expense-light: #991b1b;
-  --color-expense-text: #f87171;
+  // Expense needed both halves to move one step: red-400 on red-800 was
+  // 3.00, and lightening the text alone stopped at 4.38.
+  --color-expense-light: #7f1d1d;
+  --color-expense-text: #fca5a5;
 
   --scrollbar-track: #2d2d2d;
   --scrollbar-thumb: #4a4a4a;
@@ -301,7 +312,7 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --border-primary: #6b7280;   // gray-500 (was gray-200)
   --border-secondary: #9ca3af; // gray-400 (was gray-100)
   --text-secondary: #1f2937;   // gray-800 (was gray-700)
-  --text-muted: #374151;       // gray-700 (was gray-500)
+  --text-muted: #374151;       // gray-700 (was gray-600)
   --text-disabled: #4b5563;    // gray-600 (was gray-400)
 }
 

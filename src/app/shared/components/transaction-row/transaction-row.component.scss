@@ -286,7 +286,9 @@ app-category-chip {
 
 .row-date {
   font-size: var(--text-xs);
-  color: var(--text-disabled);
+  // Muted, not disabled: a date on a live row is information, so it takes
+  // the token that clears AA rather than the one WCAG exempts.
+  color: var(--text-muted);
   max-width: 100%;
 }
 

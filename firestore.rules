@@ -104,6 +104,7 @@ service cloud.firestore {
         && d.amountInBaseCurrency is number
         && d.exchangeRate is number
         && d.categoryId is string
+        && d.categoryId.size() > 0
         && d.description is string
         && d.date is timestamp
         && d.isRecurring is bool
@@ -119,7 +120,8 @@ service cloud.firestore {
         && (!touched('amountInBaseCurrency')
             || ('amountInBaseCurrency' in d && d.amountInBaseCurrency is number))
         && (!touched('exchangeRate') || ('exchangeRate' in d && d.exchangeRate is number))
-        && (!touched('categoryId') || ('categoryId' in d && d.categoryId is string))
+        && (!touched('categoryId')
+            || ('categoryId' in d && d.categoryId is string && d.categoryId.size() > 0))
         && (!touched('description') || ('description' in d && d.description is string))
         && (!touched('date') || ('date' in d && d.date is timestamp))
         && (!touched('isRecurring') || ('isRecurring' in d && d.isRecurring is bool))
@@ -143,6 +145,7 @@ service cloud.firestore {
              'startDate', 'spent', 'isActive', 'alertThreshold'
            ])
         && d.categoryId is string
+        && d.categoryId.size() > 0
         && d.name is string
         && isPositive(d.amount)
         && d.currency is string
@@ -157,7 +160,8 @@ service cloud.firestore {
     function budgetUpdateValid(userId) {
       let d = request.resource.data;
       return ownerKept(userId)
-        && (!touched('categoryId') || ('categoryId' in d && d.categoryId is string))
+        && (!touched('categoryId')
+            || ('categoryId' in d && d.categoryId is string && d.categoryId.size() > 0))
         && (!touched('name') || ('name' in d && d.name is string))
         && (!touched('amount') || ('amount' in d && isPositive(d.amount)))
         && (!touched('currency') || ('currency' in d && d.currency is string))
@@ -305,6 +309,7 @@ service cloud.firestore {
         && isPositive(d.amount)
         && d.currency is string
         && d.categoryId is string
+        && d.categoryId.size() > 0
         && d.description is string
         && frequencyValid(d.frequency)
         && d.startDate is timestamp
@@ -320,7 +325,8 @@ service cloud.firestore {
         && (!touched('type') || ('type' in d && d.type in ['income', 'expense']))
         && (!touched('amount') || ('amount' in d && isPositive(d.amount)))
         && (!touched('currency') || ('currency' in d && d.currency is string))
-        && (!touched('categoryId') || ('categoryId' in d && d.categoryId is string))
+        && (!touched('categoryId')
+            || ('categoryId' in d && d.categoryId is string && d.categoryId.size() > 0))
         && (!touched('description') || ('description' in d && d.description is string))
         && (!touched('frequency')
             || ('frequency' in d && frequencyValid(d.frequency)))

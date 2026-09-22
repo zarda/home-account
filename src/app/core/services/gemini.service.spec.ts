@@ -248,6 +248,21 @@ describe('GeminiService', () => {
       await service.reinitialize('key-stable', GEMMA_MODEL);
       expect(internal.genAI).toBe(client);
     });
+
+    // Three `[GeminiService]` lines used to narrate this path: one on a
+    // model-only switch, one announcing a new key *and its length*, and one
+    // confirming success. ADR 0123's rule took them out and no-console keeps
+    // them out — the second was also the only line in the app that put a
+    // fact about a user's API key on the console.
+    it('initializes and switches models without narrating either', async () => {
+      const logSpy = spyOn(console, 'log');
+
+      await service.reinitialize('quiet-key');
+      await service.reinitialize('quiet-key', GEMMA_MODEL, GEMMA_VISION_MODEL);
+
+      expect(service.isAvailable()).toBeTrue();
+      expect(logSpy).not.toHaveBeenCalled();
+    });
   });
 
   // ----------------------------------------------------------------

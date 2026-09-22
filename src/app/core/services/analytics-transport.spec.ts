@@ -11,6 +11,7 @@ import { NativeAnalyticsTransport, WebAnalyticsTransport } from './analytics-tra
  */
 class TestWebAnalyticsTransport extends WebAnalyticsTransport {
   checkSupportedCalls = 0;
+  configured = true;
 
   constructor(
     injector: EnvironmentInjector,
@@ -20,7 +21,7 @@ class TestWebAnalyticsTransport extends WebAnalyticsTransport {
   }
 
   protected override isConfigured(): boolean {
-    return true;
+    return this.configured;
   }
 
   protected override checkSupported(): Promise<boolean> {
@@ -82,6 +83,65 @@ describe('WebAnalyticsTransport', () => {
     const logging = expectAsync(transport.logEvent('e', {})).toBeResolved();
     await enabling;
     await logging;
+
+    expect(transport.checkSupportedCalls).toBe(0);
+  });
+
+  it('switches off without ever resolving the token', async () => {
+    // Resolving the Analytics instance purely to disable it would create the
+    // very gtag load the toggle exists to prevent, so a disable before any
+    // enable must not reach checkSupported() at all.
+    const transport = new TestWebAnalyticsTransport(testInjector(), Promise.resolve(true));
+
+    await expectAsync(transport.setEnabled(false)).toBeResolved();
+
+    expect(transport.checkSupportedCalls).toBe(0);
+  });
+
+  it('short-circuits before the risky await when no measurement id is configured', async () => {
+    // CI's stub measurement id lands here. The memo still has to close, or
+    // every later call would re-enter the same dead path.
+    const transport = new TestWebAnalyticsTransport(testInjector(), Promise.resolve(true));
+    transport.configured = false;
+
+    await transport.setEnabled(true);
+    await expectAsync(transport.logEvent('e', {})).toBeResolved();
+
+    expect(transport.checkSupportedCalls).toBe(0);
+  });
+
+  it('abandons an enable that was switched back off while isSupported was parked', async () => {
+    // The await inside resolve() is exactly where a toggle-off lands. The
+    // re-check after it is what stops a stale enable arming analytics.
+    let resolveSupported!: (value: boolean) => void;
+    const supported = new Promise<boolean>(resolve => { resolveSupported = resolve; });
+    const transport = new TestWebAnalyticsTransport(testInjector(), supported);
+
+    const enabling = transport.setEnabled(true);
+    await transport.setEnabled(false);
+    resolveSupported(true);
+
+    await expectAsync(enabling).toBeResolved();
+  });
+
+  it('logs a screen view through the same funnel as any other event', async () => {
+    const transport = new TestWebAnalyticsTransport(testInjector(), Promise.resolve(true));
+    await transport.setEnabled(true);
+
+    await expectAsync(
+      transport.logScreenView({ screenName: 'dashboard', screenClass: 'DashboardComponent' })
+    ).toBeResolved();
+  });
+
+  it('stands down immediately when handed an already-destroyed injector', async () => {
+    // injector.get throws once the injector is gone, so onDestroy would never
+    // fire and the disposal flag would stay false forever.
+    const injector = testInjector();
+    injector.destroy();
+
+    const transport = new TestWebAnalyticsTransport(injector, Promise.resolve(true));
+    await expectAsync(transport.setEnabled(true)).toBeResolved();
+    await expectAsync(transport.logEvent('e', {})).toBeResolved();
 
     expect(transport.checkSupportedCalls).toBe(0);
   });
@@ -179,6 +239,33 @@ describe('NativeAnalyticsTransport', () => {
       screenName: 'dashboard',
       screenClassOverride: 'DashboardComponent',
     });
+  });
+
+  it('does not re-push a value the plugin already carries', async () => {
+    await transport.setEnabled(true);
+    nativeCall.calls.reset();
+
+    await transport.setEnabled(true);
+
+    // Re-pushing would restart the measurement session for no reason.
+    expect(nativeCall).not.toHaveBeenCalled();
+  });
+
+  it('pushes a change of mind through to the plugin', async () => {
+    await transport.setEnabled(true);
+    nativeCall.calls.reset();
+
+    await transport.setEnabled(false);
+
+    expect(nativeCall).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it('drops an event and a screen view while disabled, without loading the plugin', async () => {
+    await transport.logEvent('purchase_added', { amount: 5 });
+    await transport.logScreenView({ screenName: 'dashboard', screenClass: 'DashboardComponent' });
+
+    expect(nativeCall).not.toHaveBeenCalled();
+    expect(loadModule).not.toHaveBeenCalled();
   });
 
   it('imports the module once across calls', async () => {

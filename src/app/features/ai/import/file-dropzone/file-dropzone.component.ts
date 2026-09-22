@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnDestroy, Output, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnDestroy, Output, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { TranslationService } from '../../../../core/services/translation.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
 @Component({
@@ -21,6 +22,8 @@ import { looksLikeImageFile } from '../../../../core/utils/file.utils';
   styleUrl: './file-dropzone.component.scss'
 })
 export class FileDropzoneComponent implements OnDestroy {
+  private translationService = inject(TranslationService);
+
   @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
   @Input() maxFileSize = 10 * 1024 * 1024; // 10MB
   @Input() multiple = true;
@@ -91,15 +94,22 @@ export class FileDropzoneComponent implements OnDestroy {
     const errors: string[] = [];
 
     for (const file of files) {
-      // Check file size
+      // Check file size. Both refusals are read by whoever tried to import,
+      // so they come from the catalog like everything else on screen; the
+      // file's own name is the one part that stays as the disk spells it.
       if (file.size > this.maxFileSize) {
-        errors.push(`${file.name} exceeds ${this.formatFileSize(this.maxFileSize)} limit`);
+        errors.push(
+          this.translationService.t('import.fileTooLarge', {
+            name: file.name,
+            limit: this.formatFileSize(this.maxFileSize),
+          })
+        );
         continue;
       }
 
       // Check file type
       if (!this.isValidFileType(file)) {
-        errors.push(`${file.name} is not a supported file type`);
+        errors.push(this.translationService.t('import.fileTypeUnsupported', { name: file.name }));
         continue;
       }
 

@@ -54,10 +54,13 @@ describe('provider keys (emulator smoke test)', () => {
     // on what it did.
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    const geminiLines = logSpy.calls
-      .all()
-      .filter(call => call.args.some(arg => typeof arg === 'string' && arg.includes('[GeminiService]')));
-    expect(geminiLines).withContext('no [GeminiService] console.log line').toEqual([]);
+    // This used to filter for a `[GeminiService]` line, because the
+    // initialization path printed one and its absence was the proof that the
+    // path had not run. That narration came out with ADR 0123's rule, and
+    // no-console now keeps it out, so the filter would pass whatever
+    // happened: assert on the whole spy instead, and let isAvailable() carry
+    // the load.
+    expect(logSpy).withContext('the provider narrates nothing at all').not.toHaveBeenCalled();
     expect(gemini.isAvailable()).toBeFalse();
     expect(gemini.isAvailableSignal()).toBeFalse();
   });

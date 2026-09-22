@@ -13,12 +13,22 @@ import { BudgetService } from './budget.service';
 import { RecurringService } from './recurring.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { GoalService } from './goal.service';
+import { SearchHistoryService } from './search-history.service';
+import { SearchAnswerHistoryService } from './search-answer-history.service';
+import { CategoryMemoryService } from './category-memory.service';
+import { TagMemoryService } from './tag-memory.service';
+import { ImportHistoryService } from './import-history.service';
 import {
   Budget,
   Category,
+  CategoryMemoryEntry,
   CreateTransactionDTO,
   Goal,
+  ImportHistory,
   RecurringTransaction,
+  SavedSearch,
+  SearchRecord,
+  TagMemoryEntry,
   Transaction,
 } from '../../models';
 import { parseDateInput } from '../utils/transaction-date.utils';
@@ -36,6 +46,11 @@ export interface RestoreSummary {
   recurring: number;
   goals: number;
   insightSnapshots: number;
+  savedSearches: number;
+  searchAnswers: number;
+  categoryMemory: number;
+  tagMemory: number;
+  imports: number;
   /** Rows that could not be written, with the reason, for reporting. */
   skipped: { section: string; id: string; reason: string }[];
 }
@@ -50,6 +65,11 @@ export interface BackupContents {
   recurring: number;
   goals: number;
   insightSnapshots: number;
+  savedSearches: number;
+  searchAnswers: number;
+  categoryMemory: number;
+  tagMemory: number;
+  imports: number;
 }
 
 function toDate(value: unknown): Date {
@@ -97,8 +117,11 @@ function toTimestamp(value: unknown): Timestamp {
  *   the file was taken survives restoring that file. Everything a restore
  *   does write is either verbatim from the file (ids, rates, links, flags,
  *   `createdAt`) or recomputed from the restored ledger (`spent`,
- *   `linkedAmount`) — never stamped from today, so restoring the same file
- *   twice lands the same documents both times.
+ *   `linkedAmount`), with one exception stated rather than hidden:
+ *   `setDocument` merges `updatedAt: Timestamp.now()` into every write it
+ *   makes, so that one field does come from today. It is a stamp nothing
+ *   reads for a figure, so restoring the same file twice still lands the same
+ *   documents in every field that means anything.
  */
 @Injectable({ providedIn: 'root' })
 export class BackupRestoreService {
@@ -108,6 +131,11 @@ export class BackupRestoreService {
   private recurringService = inject(RecurringService);
   private insightSnapshots = inject(InsightSnapshotService);
   private goalService = inject(GoalService);
+  private searchHistory = inject(SearchHistoryService);
+  private searchAnswers = inject(SearchAnswerHistoryService);
+  private categoryMemory = inject(CategoryMemoryService);
+  private tagMemory = inject(TagMemoryService);
+  private importHistory = inject(ImportHistoryService);
 
   /**
    * Validate a parsed JSON file as a backup.
@@ -139,6 +167,14 @@ export class BackupRestoreService {
       budgets: Array.isArray(data.budgets) ? data.budgets as Budget[] : [],
       recurring: Array.isArray(data.recurring) ? data.recurring as RecurringTransaction[] : [],
       goals: Array.isArray(data.goals) ? data.goals as Goal[] : [],
+      savedSearches: Array.isArray(data.savedSearches)
+        ? data.savedSearches as SavedSearch[] : [],
+      searchAnswers: Array.isArray(data.searchAnswers)
+        ? data.searchAnswers as SearchRecord[] : [],
+      categoryMemory: Array.isArray(data.categoryMemory)
+        ? data.categoryMemory as CategoryMemoryEntry[] : [],
+      tagMemory: Array.isArray(data.tagMemory) ? data.tagMemory as TagMemoryEntry[] : [],
+      imports: Array.isArray(data.imports) ? data.imports as ImportHistory[] : [],
       exportDate: typeof data.exportDate === 'string' ? data.exportDate : '',
       version,
     };
@@ -155,6 +191,11 @@ export class BackupRestoreService {
       recurring: data.recurring?.length ?? 0,
       goals: data.goals?.length ?? 0,
       insightSnapshots: data.insightSnapshots?.length ?? 0,
+      savedSearches: data.savedSearches?.length ?? 0,
+      searchAnswers: data.searchAnswers?.length ?? 0,
+      categoryMemory: data.categoryMemory?.length ?? 0,
+      tagMemory: data.tagMemory?.length ?? 0,
+      imports: data.imports?.length ?? 0,
     };
   }
 
@@ -165,11 +206,22 @@ export class BackupRestoreService {
    * categories that exist — a restore onto a clean account used to leave every
    * transaction pointing at a category document that was never written.
    * Budgets after transactions, because createBudget recomputes `spent` from
-   * the ledger and would otherwise compute it from an empty one.
+   * the ledger and would otherwise compute it from an empty one. The import
+   * history last, because each completed record names the rows it created and
+   * those ids are checked against what the transactions loop actually wrote.
+   *
+   * The three per-collection caps — MAX_SEARCH_ANSWERS, MAX_RECENT_SEARCHES,
+   * IMPORT_HISTORY_LIMIT — are enforced on their create paths, not here, so a
+   * restore into a non-empty account can leave more rows than a cap allows.
+   * That is deliberate: pruning here would delete rows the user just asked to
+   * have back, and the two capped collections prune themselves on their next
+   * ordinary write. The import limit bounds a subscription, not the stored
+   * collection, so there is nothing there to exceed.
    */
   async restore(data: ExportData): Promise<RestoreSummary> {
     const summary: RestoreSummary = {
       transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0, insightSnapshots: 0,
+      savedSearches: 0, searchAnswers: 0, categoryMemory: 0, tagMemory: 0, imports: 0,
       skipped: [],
     };
 
@@ -195,12 +247,23 @@ export class BackupRestoreService {
           // A deleted category is a soft delete, so the file records it as
           // inactive and the restore has to keep it that way. Absent means a
           // backup predating the flag; those rows were all live.
-        }, { id: category.id, isActive: category.isActive ?? true });
+          //
+          // `order` is the position the file recorded. Without it every
+          // restored category takes maxOrder + 1 off the in-memory signal,
+          // which mid-restore holds whatever the subscription has delivered —
+          // so the list comes back reshuffled, and rows can collide on one
+          // position.
+        }, { id: category.id, isActive: category.isActive ?? true, order: category.order });
         summary.categories++;
       } catch (error) {
         skip('categories', category.id, error);
       }
     }
+
+    // Every expense category the loop below actually posts to. addTransaction
+    // recomputes a category's budgets on every write by default, so a
+    // fifty-row restore read and rewrote the same two budgets fifty times.
+    const affectedExpenseCategories = new Set<string>();
 
     for (const transaction of data.transactions) {
       try {
@@ -235,6 +298,9 @@ export class BackupRestoreService {
         await this.transactionService.addTransaction(dto, {
           id: transaction.id,
           merge: true,
+          // The recalculation this suppresses runs once per category after the
+          // budgets section, below.
+          skipBudgetRecalc: true,
           createdAt: toTimestamp(transaction.createdAt),
           ...(typeof transaction.exchangeRate === 'number'
             && typeof transaction.amountInBaseCurrency === 'number'
@@ -262,6 +328,9 @@ export class BackupRestoreService {
             : {}),
         });
         summary.transactions++;
+        if (transaction.type === 'expense') {
+          affectedExpenseCategories.add(transaction.categoryId);
+        }
       } catch (error) {
         skip('transactions', transaction.id, error);
       }
@@ -282,6 +351,21 @@ export class BackupRestoreService {
         summary.budgets++;
       } catch (error) {
         skip('budgets', budget.id, error);
+      }
+    }
+
+    // One recalculation per distinct category the transaction loop posted to,
+    // the same shape the AI import uses after its rows commit. After the
+    // budgets section rather than before it: createBudget already recomputes
+    // the budgets it writes, and a budget the account already held — one the
+    // file does not carry — is reached only here. A failure must not fail a
+    // restore that already wrote its rows; a spent counter that lagged is
+    // recovered by the next recalculation.
+    for (const categoryId of affectedExpenseCategories) {
+      try {
+        await this.budgetService.recalculateBudgetsForCategory(categoryId);
+      } catch (error) {
+        console.warn('[BackupRestore] Budget recalculation failed for', categoryId, error);
       }
     }
 
@@ -376,7 +460,81 @@ export class BackupRestoreService {
       }
     }
 
+    for (const search of data.savedSearches ?? []) {
+      try {
+        await this.searchHistory.restore(search);
+        summary.savedSearches++;
+      } catch (error) {
+        skip('savedSearches', search.id, error);
+      }
+    }
+
+    for (const answer of data.searchAnswers ?? []) {
+      try {
+        await this.searchAnswers.restore(answer);
+        summary.searchAnswers++;
+      } catch (error) {
+        skip('searchAnswers', answer.id, error);
+      }
+    }
+
+    for (const entry of data.categoryMemory ?? []) {
+      try {
+        await this.categoryMemory.restore(entry);
+        summary.categoryMemory++;
+      } catch (error) {
+        // The merchant key, not an injected id: it is the document id here and
+        // the rules require the two to agree, so it is the one name that
+        // identifies the row in both places.
+        skip('categoryMemory', entry.merchantKey, error);
+      }
+    }
+
+    for (const entry of data.tagMemory ?? []) {
+      try {
+        await this.tagMemory.restore(entry);
+        summary.tagMemory++;
+      } catch (error) {
+        skip('tagMemory', entry.merchantKey, error);
+      }
+    }
+
+    // Last, and after transactions specifically: a completed import record
+    // names the rows it created, and an id pointing at a row this restore
+    // could not write would send the history's drill-down to a document that
+    // does not exist.
+    const unwritten = new Set(
+      summary.skipped.filter(entry => entry.section === 'transactions').map(entry => entry.id)
+    );
+    for (const record of data.imports ?? []) {
+      try {
+        await this.importHistory.restore(this.pruneUnwrittenRows(record, unwritten));
+        summary.imports++;
+      } catch (error) {
+        skip('imports', record.id, error);
+      }
+    }
+
     return summary;
+  }
+
+  /**
+   * Drop the transaction ids this restore offered and could not write.
+   *
+   * `successCount` moves with them, because `transactionIds.length ===
+   * successCount` is the field's stated contract and the history page reads
+   * both. An id the file never carried is left alone: it was never offered to
+   * this restore, so it is not a row the restore skipped — the account it is
+   * being restored into may well hold it already.
+   */
+  private pruneUnwrittenRows(record: ImportHistory, unwritten: Set<string>): ImportHistory {
+    const ids = record.transactionIds;
+    if (!ids?.length || unwritten.size === 0) return record;
+
+    const carried = ids.filter(id => !unwritten.has(id));
+    if (carried.length === ids.length) return record;
+
+    return { ...record, transactionIds: carried, successCount: carried.length };
   }
 
   /** The version this build writes, for the exporter. */

@@ -1,11 +1,15 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { WritableSignal, signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, WritableSignal, signal } from '@angular/core';
+import { A11yModule } from '@angular/cdk/a11y';
 import { BehaviorSubject } from 'rxjs';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { OnboardingService } from '../../../core/services/onboarding.service';
 import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { MainLayoutComponent } from './main-layout.component';
+import { TranslationService } from '../../../core/services/translation.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
+import { createTranslationStub } from '../../../core/services/testing';
 
 const MOBILE = APP_BREAKPOINTS.mobile;
 const TABLET = APP_BREAKPOINTS.tablet;
@@ -283,5 +287,161 @@ describe('MainLayoutComponent', () => {
 
       expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * Every case above overrides the template with the harsher
+ * `{ imports: [], template: '<div></div>' }` form, and the two DOM reads it
+ * does make reach only the host's `::before` band. So the shell's actual job
+ * — which of the docked sidebar, the modal drawer and the bottom nav exists
+ * at each breakpoint — has never been rendered. `sidebarOpen()` and
+ * `showDockedSidebar()` being right is not the same statement as the drawer
+ * being in the document, and the drawer's `role`/`aria-modal`/focus-trap are
+ * template-only.
+ *
+ * Partial render: the component's own `imports` are narrowed so
+ * `app-header`, `app-sidebar`, `app-bottom-nav` and `router-outlet` are left
+ * unresolved. None of them is asserted about here — the assertions are all
+ * about this component's own wrappers, classes and ARIA.
+ */
+describe('MainLayoutComponent, through its own template', () => {
+  let fixture: ComponentFixture<MainLayoutComponent>;
+  let component: MainLayoutComponent;
+  let breakpoint$: BehaviorSubject<BreakpointState>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const at = (active: string[]) => {
+    breakpoint$.next(state(active));
+    fixture.detectChanges();
+  };
+
+  beforeEach(async () => {
+    localStorage.removeItem('homeaccount.sidebar-collapsed');
+    breakpoint$ = new BehaviorSubject<BreakpointState>(state([DESKTOP]));
+
+    await TestBed.configureTestingModule({
+      imports: [MainLayoutComponent],
+      providers: [
+        { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } },
+        {
+          provide: OnboardingService,
+          useValue: { shouldShow: signal(false), show: jasmine.createSpy('show') },
+        },
+        {
+          provide: KeyboardShortcutService,
+          useValue: jasmine.createSpyObj('KeyboardShortcutService', [
+            'handleAddHotkey', 'handlePaletteHotkey',
+          ]),
+        },
+        { provide: TranslationService, useValue: createTranslationStub() },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    })
+      .overrideComponent(MainLayoutComponent, {
+        set: {
+          imports: [A11yModule, TranslatePipe],
+          // A standalone component's template is governed by its own schemas,
+          // not the TestBed's, so the four child elements need excusing here.
+          schemas: [NO_ERRORS_SCHEMA],
+        },
+      })
+      .compileComponents();
+
+    fixture = TestBed.createComponent(MainLayoutComponent);
+    component = fixture.componentInstance;
+  });
+
+  afterEach(() => localStorage.removeItem('homeaccount.sidebar-collapsed'));
+
+  it('docks the sidebar on desktop and opens no modal drawer', () => {
+    fixture.detectChanges();
+
+    expect(el().querySelector('.sidebar-docked')).not.toBeNull();
+    expect(el().querySelector('.sidebar-drawer')).toBeNull();
+    expect(el().querySelector('.sidebar-backdrop')).toBeNull();
+    expect(el().querySelector('.main-container')?.classList).toContain('with-docked-sidebar');
+  });
+
+  it('shows no sidebar at all on mobile until one is asked for', () => {
+    fixture.detectChanges();
+    at([MOBILE]);
+
+    expect(el().querySelector('.sidebar-docked')).toBeNull();
+    expect(el().querySelector('.sidebar-drawer')).toBeNull();
+    expect(el().querySelector('.main-container')?.classList).not.toContain('with-docked-sidebar');
+  });
+
+  it('puts the modal drawer and its backdrop in the document once opened on mobile', () => {
+    fixture.detectChanges();
+    at([MOBILE]);
+
+    component.toggleSidebar();
+    fixture.detectChanges();
+
+    const drawer = el().querySelector('.sidebar-drawer') as HTMLElement;
+    expect(drawer).not.toBeNull();
+    expect(drawer.getAttribute('role')).toBe('dialog');
+    expect(drawer.getAttribute('aria-modal')).toBe('true');
+    expect(drawer.getAttribute('aria-label')).toBe('common.navigation');
+    // The drawer is modal, so focus must not be able to walk out behind it.
+    expect(drawer.hasAttribute('cdktrapfocus')).toBeTrue();
+  });
+
+  it('closes the drawer from its backdrop, by click and by key', () => {
+    fixture.detectChanges();
+    at([MOBILE]);
+    component.toggleSidebar();
+    fixture.detectChanges();
+
+    const backdrop = el().querySelector('.sidebar-backdrop') as HTMLElement;
+    expect(backdrop.getAttribute('role')).toBe('button');
+    expect(backdrop.getAttribute('tabindex')).toBe('0');
+    expect(backdrop.getAttribute('aria-label')).toBe('common.closeSidebar');
+
+    backdrop.click();
+    fixture.detectChanges();
+    expect(el().querySelector('.sidebar-drawer')).toBeNull();
+
+    component.toggleSidebar();
+    fixture.detectChanges();
+    (el().querySelector('.sidebar-backdrop') as HTMLElement)
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    fixture.detectChanges();
+    expect(el().querySelector('.sidebar-drawer')).toBeNull();
+  });
+
+  it('makes room for the bottom nav on mobile and not on desktop', () => {
+    fixture.detectChanges();
+    expect(el().querySelector('.main-container')?.classList).not.toContain('with-bottom-nav');
+    expect(el().querySelector('.bottom-nav-container')?.classList).not.toContain('visible');
+
+    at([MOBILE]);
+    expect(el().querySelector('.main-container')?.classList).toContain('with-bottom-nav');
+    expect(el().querySelector('.bottom-nav-container')?.classList).toContain('visible');
+  });
+
+  it('takes the docked sidebar out of the layout when it is collapsed', () => {
+    fixture.detectChanges();
+    component.toggleSidebar();
+    fixture.detectChanges();
+
+    expect(el().querySelector('.sidebar-docked')).toBeNull();
+    expect(el().querySelector('.main-container')?.classList).not.toContain('with-docked-sidebar');
+    // Collapsing is not opening a drawer: desktop never gets a modal.
+    expect(el().querySelector('.sidebar-drawer')).toBeNull();
+  });
+
+  it('removes an open drawer from the document when growing into desktop', () => {
+    fixture.detectChanges();
+    at([MOBILE]);
+    component.toggleSidebar();
+    fixture.detectChanges();
+    expect(el().querySelector('.sidebar-drawer')).not.toBeNull();
+
+    at([DESKTOP]);
+
+    expect(el().querySelector('.sidebar-drawer')).toBeNull();
+    expect(el().querySelector('.sidebar-docked')).not.toBeNull();
   });
 });

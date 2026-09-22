@@ -4,6 +4,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { ImportCurrencyTotals, ImportHistory, ImportProvenance, ImportStatus } from '../../models';
+import { optionalTimestamp, reviveTimestamp } from '../utils/backup-revive.utils';
 
 /**
  * How many records the history page subscribes to. Every failed receipt
@@ -96,6 +97,69 @@ export class ImportHistoryService {
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /**
+   * One-shot read of the whole import history, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Deliberately uncapped, unlike every read above: IMPORT_HISTORY_LIMIT
+   * bounds what a page subscribes to, and the backup has to carry what
+   * erasure removes.
+   */
+  async exportAll(): Promise<ImportHistory[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<ImportHistory>(
+      this.userImportsPath, { orderBy: [{ field: 'importedAt', direction: 'desc' }] });
+  }
+
+  /**
+   * Write one history record back from a backup, at its own id.
+   *
+   * `saveImportHistory` is the wrong door for this: it takes an auto id and
+   * overwrites `importedAt` with now, so a second restore appends a whole
+   * second history whose every entry claims to have been imported during the
+   * restore.
+   *
+   * The id the read injected is stripped — it was never a stored field — and
+   * `userId` becomes the current account's, because importCreateValid demands
+   * `d.userId == request.auth.uid` and a backup may legitimately be restored
+   * into another account. `importedAt` and `createdAt` arrive as the plain
+   * objects JSON.stringify makes of a Timestamp, which the rules refuse.
+   *
+   * `setDocument` stamps `updatedAt` from today regardless; the field is
+   * optional in the rules and it is the one field a restore cannot carry
+   * verbatim.
+   */
+  async restore(record: ImportHistory): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) return;
+
+    // Everything the file holds rides along; these three cannot, in the shape
+    // the file holds them. `createdAt`/`updatedAt` are stamped by the write
+    // path rather than declared on ImportHistory, so a stored document carries
+    // them and the model does not — left as the plain objects JSON.stringify
+    // made of them, the rules refuse the write.
+    const stored: Record<string, unknown> = { ...record };
+    delete stored['id'];
+    delete stored['createdAt'];
+    delete stored['updatedAt'];
+
+    await this.firestoreService.setDocument(
+      `${this.userImportsPath}/${record.id}`,
+      {
+        ...stored,
+        userId,
+        importedAt: reviveTimestamp(record.importedAt) ?? this.firestoreService.getTimestamp(),
+        ...optionalTimestamp(
+          'createdAt',
+          (record as ImportHistory & { createdAt?: unknown }).createdAt,
+        ),
+      },
+      true
+    );
   }
 
   /**

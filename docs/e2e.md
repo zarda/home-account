@@ -258,12 +258,12 @@ only the difference counts.
 
 Six writes are authorised — five on the account, one on the device only.
 Each is put back before the run ends, and the restore is *confirmed on
-screen*, not assumed. The other seven rows write nothing at all and are
+screen*, not assumed. The other eight rows write nothing at all and are
 listed with them anyway: four still cost the account a real provider call,
-two not even that, and one leaves a notification standing in the operating
-system rather than anything on the account — what an import journey or a
-raised notification leaves behind is worth stating rather than leaving to be
-inferred.
+two not even that, one leaves a notification standing in the operating system
+rather than anything on the account, and one leaves a file on disk — what an
+import journey, a raised notification or an export leaves behind is worth
+stating rather than leaving to be inferred.
 
 | Action | What it writes | How it is put back |
 |---|---|---|
@@ -279,6 +279,7 @@ inferred.
 | Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
 | Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications({ tag: 'e2e-14' }).then(ns => ns.forEach(n => n.close()))` — by tag, so a bill reminder the account's own sweep raised in this profile is left standing |
 | Resuming a rule whose end date has passed (journey 35) | Nothing. The service refuses before any write; the rule's own fields are read back unchanged | Nothing to undo |
+| Exporting a backup (journey 39) | Nothing on the account. Eleven server-only collection reads, and one JSON file in this browser profile's download folder holding the account's full ledger in clear text | The file is deleted at the end of the run. The restore picker is handed the same file and **cancelled** at the preview, so nothing is written back |
 | Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, and one queue record that reaches `completed` | The row deleted through the list, which removes its receipt object with it; the list count read back; the completed queue entry cleared from the AI settings page |
 
 The failed-attempt record is written only by the attempt's `failed` and the
@@ -510,6 +511,13 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 36 | A receipt queued offline drains with its photo | A real receipt taken by the queue with no connection and written on the way back, arriving in the list carrying the photo that was queued | `36-queued-offline.png`, `36-drained-row.png` |
 | 37 | Dashboard: the Upcoming card counts what it left out | The card's own line rendered in both plural forms and beside the empty state, in the page the account actually sees | `37-older-note.png` |
 | 38 | A queue closed for an upgrade says so | A tab told to close its queue reporting it on the page rather than only in the console, with the drain control disabled behind it | `38-queue-closed.png` |
+| 39 | The backup file carries what erasure takes | A real export of a real account, read back as JSON, holding the five sections the cascade used to remove without offering | `39-restore-preview.png` |
+| 40 | The deletion dialog says what the backup covers | The sentence shown at the point of no return, naming what the file carries and the three kinds it cannot | `40-delete-gate.png` |
+| 41 | A scanned field's verification flag is announced | An attribute Material writes at construction, which only a rendered page can show: the flag's own `aria-hidden` on a real scanned transaction | `41-verify-flag.png` |
+| 42 | Each split part's remove button names its row | Two buttons in one real form reading different names, and a type change dropping a part with the live region carrying the count | `42-remove-names.png`, `42-dropped-announced.png` |
+| 43 | The theme toggle's checked segment carries no empty strip | Material's reserved checkmark space, measured in a real layout at the width the container query answers | `43-toggle-padding-375.png` |
+| 44 | The dropzone speaks the account's language | Two messages that were English literals in the source, resolved from the catalogs in the page | `44-dropzone-message.png` |
+| 45 | The three chips read in dark mode | A contrast ratio a script computes from tokens, checked against what the browser actually composites on a real card | `45-chips-dark.png`, `45-chips-light.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -2261,6 +2269,134 @@ pending count and the connection alone again.
 
 One shot: the note beside the queue's figures, with the disabled control
 under it.
+
+### 39. The backup file carries what erasure takes
+
+`/data`. Read the restore-preview panel's counts first, then **Export full
+backup** and read the downloaded file back in the page. This is the one
+journey that puts a file on disk; it writes nothing on the account.
+
+The point is that the offer and the cascade finally agree. Six sections used
+to travel while fourteen stored kinds were erased, and the dialog called the
+file a full backup.
+
+**Pass — eleven sections, and the version says so.** The parsed JSON's
+`version` reads `1.5`, and its top-level keys carry `savedSearches`,
+`searchAnswers`, `categoryMemory`, `tagMemory` and `imports` beside the six
+that were always there. `secrets`, `securityEvents` and `feedback` are absent.
+
+**Pass — the preview counts what the file holds.** Hand the same file back to
+the restore picker and read the preview panel without confirming: one count
+per section, eleven of them, each matching the array length in the file.
+**Leave by Cancel** — a restore is a write and none is authorised here.
+
+Delete the downloaded file at the end of the run.
+
+One shot: the preview panel with its eleven counts.
+
+### 40. The deletion dialog says what the backup covers
+
+`/data` → **Delete account**. Read gate 1's sentence and gate 2's warning, and
+**Cancel at gate 1**. Nothing is typed into the confirmation field, and the
+third gate is never reached.
+
+**Pass — the offer no longer overstates itself.** Gate 1 does not say "full
+backup"; it names what the file carries and names the stored provider keys,
+the feedback already sent and the sign-in history as the three kinds it
+cannot give back.
+
+**Pass — the warning matches the cascade.** Gate 2 lists what erasure removes
+without omitting goals, stored answers, merchant memory, the import history
+or feedback, which the old wording did.
+
+One shot: gate 1 with the sentence readable.
+
+### 41. A scanned field's verification flag is announced
+
+`/transactions`, on a transaction whose amount or date was read by a scan and
+doubted. If the account holds none, set `scanFieldConfidence` on the open
+form from the page rather than scanning a receipt — the attribute under test
+is written by Material at construction and does not care how the flag was
+raised. **Leave by Cancel.**
+
+Only a rendered page shows this. `MatIcon` sets `aria-hidden="true"` on itself
+in its constructor unless the template carries a *literal* `aria-hidden`, so
+the source reads correctly, the template type-check passes, a screenshot looks
+right, and the icon is announced to nobody.
+
+**Pass — the flag reads its own label.** The `.verify-flag` beside the field
+reports `getAttribute('aria-hidden') === 'false'` and a non-empty
+`aria-label`, in the account's own language.
+
+**Pass — the deliberately silent ones stay silent.** On the import review card
+the date and currency flags sitting inside an already-labelled button still
+report `aria-hidden === 'true'`, so the button is announced once rather than
+twice.
+
+One shot: the form with the flag, and the attribute read beside it.
+
+### 42. Each split part's remove button names its row
+
+The transaction form, **Split**, two parts. Nothing is saved; **Cancel** at the
+end.
+
+**Pass — two buttons, two names.** The remove buttons' accessible names differ
+by position — part 1 and part 2 — where every row used to read the same
+sentence and a screen reader heard it twice with nothing to tell the rows
+apart.
+
+**Pass — a dropped part is spoken.** Flip the type so a part's category is no
+longer offered. The row disappears, as it always did, and now the live region
+carries a sentence with the number of parts removed. Read it out of the
+announcer's own live element rather than assuming it fired.
+
+Shots: the two names, and the live region carrying the announcement.
+
+### 43. The theme toggle's checked segment carries no empty strip
+
+`/settings`, profile section, at **375px**. The container query the two
+toggle-groups share answers below 420px.
+
+**Pass — the three segments are padded alike.** `getComputedStyle(...).paddingInlineStart`
+is the same on all three segments of the theme toggle, checked or not, and
+matches the font-size group beside it. Before this branch the checked segment
+carried a **30px** strip of space Material reserves for a checkmark that the
+container query had already hidden.
+
+One shot: the two toggle-groups at 375px, selected options visible.
+
+### 44. The dropzone speaks the account's language
+
+`/import/file`. Hand the dropzone's hidden input a file of an unsupported type
+and an oversized one ([Fixtures](#fixtures)); a pane cannot open a file picker.
+Nothing is imported and nothing is written.
+
+**Pass — both messages come from the catalogs.** The rejection text renders in
+the account's own language, not as the English literals the component used to
+push into `errorMessage`, and neither message contains a raw catalog key.
+
+One shot: the message under the dropzone.
+
+### 45. The three chips read in dark mode
+
+`/dashboard` and `/transactions`, in the dark theme, then again in light. The
+income, expense and warning chips are the three pairs the new contrast gate
+found below WCAG AA — 4.09, 3.00 and 4.10 against their own tinted
+backgrounds.
+
+A script computes a ratio from two token values. This is the other half:
+what the browser actually composites on a real card, with the card's own
+background behind the chip and the account's font scale in force.
+
+**Pass — every chip clears 4.5:1 where it is actually painted.** Read each
+chip's computed colour and its effective background in the page and compute
+the ratio there; all three are at or above 4.5:1 in dark, and the light theme
+is unchanged from before the branch.
+
+**Pass — the fix did not cost legibility elsewhere.** The same chips in light
+mode, and the stat cards that share the tokens, still read as they did.
+
+Shots: the three chips in dark, and the same three in light.
 
 ## Evidence
 

@@ -192,26 +192,44 @@ There is no caching worker: the app itself needs a connection to load.
 
 ## Scripts
 
-Every script CI runs, in the order it runs it:
+Every step the `ci` job runs, in the order it runs it. Two of them are not
+`npm` scripts and are written the way CI writes them; the deploy-only commands
+are a separate table below, because they belong to `deploy-web` and never run
+here.
 
 | Command | Description |
 |---------|-------------|
 | `npm --prefix functions test` | The functions workspace's own tests, after `npm --prefix functions ci` builds it — not a root script |
-| `npm run lint` | ESLint |
-| `npm run lint-guards:check` | Verify the ESLint import bans still resolve for the files they were written for |
-| `npm run i18n:check` | Verify every literal translation key resolves in all locales and no template hard-codes an aria-label |
+| `npm run lint` | ESLint, templates included |
+| `npm run lint-guards:check` | Verify the ESLint import and syntax bans still resolve for the files they were written for — the analytics ban died once by being silently replaced |
+| `npm run i18n:check` | Verify every literal translation key resolves in all locales, and no template hard-codes an aria-label, alt text or visible English sentence ([docs/i18n.md](docs/i18n.md)) |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
 | `npm run firebase-tools:check` | Verify the pinned firebase-tools major has not drifted |
-| `npm run prod-env:check` | Verify the production config secret matches its committed digest. CI runs the checker's `--self-test` half only, against a stub it wrote itself; the real compare runs in `deploy-web` against the actual secret |
-| `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates |
+| `node scripts/check-prod-env.mjs --self-test` | The digest checker's own logic, against a stub. **CI runs this half only** — the "Create local environment stubs" step overwrites the file the real digest was taken from, so the compare would fail here by construction. The real compare belongs to `deploy-web`, below |
+| `node scripts/wait-for-indexes.mjs --self-test` | The index wait's state classification, deadline math, signed assertion and token-and-poll loop, against a local stub server. The real wait reaches the Firestore Admin API and belongs to `deploy-web`, below |
+| `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates ([docs/ui-overflow.md](docs/ui-overflow.md)) |
+| `npm run grid:check` | Verify no `grid-template-columns` nests a `minmax()` inside another or declares a bare `1fr` — G2 ([docs/ui-overflow.md](docs/ui-overflow.md)) |
 | `npm run direction:check` | Verify the physical-direction CSS is still exactly where the per-file baseline says ([docs/rtl.md](docs/rtl.md)) |
+| `npm run material:check` | Verify every `Mat*Module` a component imports is used by its template — ESLint counts the symbol as used the moment it appears in the array |
+| `npm run dates:check` | Run the date audit greps over production code — a hand-built end-of-day or month end, a UTC day key, a day step in milliseconds, a re-parsed date field ([docs/dates.md](docs/dates.md)) |
+| `npm run motion:check` | Verify both reduced-motion kill-switches are intact and no component stylesheet declares an `!important` duration that outruns them ([docs/accessibility.md](docs/accessibility.md)) |
+| `npm run contrast:check` | Score every colour pair the app paints against WCAG AA, in all four rendered modes ([docs/accessibility.md](docs/accessibility.md)) |
+| `npm run icon-labels:check` | Verify every `mat-icon` carrying `role="img"` or an aria-label also carries a literal `aria-hidden` — a bound one does not reach Material's constructor ([docs/accessibility.md](docs/accessibility.md)) |
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run test:dates` | Run the zone-sensitive specs — CI runs them twice, under `TZ=America/New_York` and `TZ=Asia/Tokyo` |
-| `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
+| `npm run smoke` | Run integration tests against Firebase emulators, including the axe-core accessibility pass over every route the walkthrough opens (requires JDK 21+) |
 | `npm run smoke:dates` | Run the zone-sensitive smoke specs under two shifted timezones, with one emulator boot |
 | `npm run build` | Production build |
+
+Deploy only — these run in `deploy-web` on a push to `main`, never in the `ci`
+job ([docs/deploy.md](docs/deploy.md)):
+
+| Command | Description |
+|---------|-------------|
+| `npm run prod-env:check` | The real compare: the `PROD_ENVIRONMENT_TS` secret against its committed digest. Its `--self-test` half is what the `ci` job runs, above |
+| `node scripts/wait-for-indexes.mjs` | Poll the Firestore Admin API until every composite index the deploy accepted is `READY` — the deploy returns as soon as the definitions are taken |
 
 Local only:
 
@@ -226,7 +244,7 @@ Local only:
 
 ## Continuous Integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions workspace build and tests, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the firebase-tools major check, the self-test of the production-config digest checker (the real compare belongs to `deploy-web`), the self-test of the Firestore index wait (which cannot reach the Admin API outside a deploy), the truncation check, the direction check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. On a push to `main`, a `changes` job classifies what the merge touched and a green pipeline fans out into deploys: `deploy-web` rebuilds against the real production config held in the `PROD_ENVIRONMENT_TS` secret and ships hosting, the Firestore rules and indexes, and the Storage rules, while `deploy-functions` ships the Cloud Function when `functions/` or `firebase.json` changed — docs-only merges deploy nothing, and [docs/deploy.md](docs/deploy.md) is the runbook. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
+GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions workspace build and tests, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the firebase-tools major check, the self-test of the production-config digest checker (the real compare belongs to `deploy-web`), the self-test of the Firestore index wait (which cannot reach the Admin API outside a deploy), the truncation check, the grid-track check, the direction check, the Material-imports check, the date-arithmetic check, the reduced-motion check, the colour-contrast check, the icon-label check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. The Scripts table above lists the same steps with what each one is for; the two tables change together. On a push to `main`, a `changes` job classifies what the merge touched and a green pipeline fans out into deploys: `deploy-web` rebuilds against the real production config held in the `PROD_ENVIRONMENT_TS` secret and ships hosting, the Firestore rules and indexes, and the Storage rules, while `deploy-functions` ships the Cloud Function when `functions/` or `firebase.json` changed — docs-only merges deploy nothing, and [docs/deploy.md](docs/deploy.md) is the runbook. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 
@@ -279,6 +297,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/rtl.md](docs/rtl.md) | Layout direction: where a locale's direction comes from, the ratchet that freezes the physical CSS left, and what still blocks an RTL locale |
 | [docs/locale-formatting.md](docs/locale-formatting.md) | Dates and numbers in the chosen language: the one formatting chokepoint, named styles over patterns, and what deliberately stays raw |
 | [docs/deploy.md](docs/deploy.md) | What deploys when: the change-gated CI deploys, the manual override, the service account and both secret inventories, the index-deletion policy, and the version scheme |
+| [docs/testing.md](docs/testing.md) | The three test tiers, when a spec may blank a template and what must then render it, the two house shapes, the shared stubs, and the named coverage exemption |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 

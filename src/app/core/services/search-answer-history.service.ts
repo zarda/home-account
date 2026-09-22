@@ -18,6 +18,7 @@ import {
   buildFilterFields,
   searchRecordDedupeKey,
 } from '../utils/search-answer.utils';
+import { optionalTimestamp, reviveTimestamp } from '../utils/backup-revive.utils';
 
 export const MAX_SEARCH_ANSWERS = 50;
 
@@ -216,6 +217,69 @@ export class SearchAnswerHistoryService {
 
   async deleteAnswer(id: string): Promise<void> {
     await this.firestoreService.deleteDocument(`${this.userAnswersPath}/${id}`);
+  }
+
+  /**
+   * Write one stored interpretation back from a backup, at its own id.
+   *
+   * `create()` is the wrong door for this: it takes an auto id, stamps both
+   * `computedAt` and `lastUsedAt` from now — which would claim every restored
+   * answer was computed during the restore — and prunes the unpinned tail back
+   * to MAX_SEARCH_ANSWERS on every write.
+   *
+   * The record arrives already in stored form, so nothing is rebuilt from an
+   * AggregateAnswer or a TransactionFilters; what the file carries is what the
+   * document held. Three things still change. `id` is stripped, because
+   * answerCreateValid `hasOnly()`s a field list without it and a write
+   * carrying it is denied outright. `userId` becomes the current account's.
+   * And the three stamps are revived from the objects JSON.stringify left
+   * behind — but `scope.startDate`/`endDate` are deliberately untouched:
+   * answerScopeValid requires day-key strings, because a calendar window with
+   * a timezone in it is not the window that was asked about.
+   *
+   * `setDocument` stamps `updatedAt` from today regardless; it is in the
+   * allowed field list, and it is the one field a restore cannot carry
+   * verbatim.
+   */
+  async restore(record: SearchRecord): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) return;
+
+    // Everything the file holds rides along; these three cannot, in the shape
+    // the file holds them. `id` was injected on read, and `createdAt` is
+    // re-added below only when it revives — left as the plain object
+    // JSON.stringify made of it, the rules refuse the whole write.
+    const stored: Record<string, unknown> = { ...record };
+    delete stored['id'];
+    delete stored['createdAt'];
+    delete stored['updatedAt'];
+
+    await this.firestoreService.setDocument(
+      `${this.userAnswersPath}/${record.id}`,
+      {
+        ...stored,
+        userId,
+        computedAt: reviveTimestamp(record.computedAt) ?? this.firestoreService.getTimestamp(),
+        lastUsedAt: reviveTimestamp(record.lastUsedAt) ?? this.firestoreService.getTimestamp(),
+        ...optionalTimestamp('createdAt', record.createdAt),
+      },
+      true
+    );
+  }
+
+  /**
+   * One-shot read of every stored interpretation, for the backup export.
+   * Server-only: a cache-served subset is safe for the app but not for a file
+   * the user is offered before deleting the account.
+   *
+   * Not the `answers` signal and not capped at MAX_SEARCH_ANSWERS: the cap is
+   * a write-path prune, and the backup has to carry what erasure removes.
+   */
+  async exportAll(): Promise<SearchRecord[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<SearchRecord>(
+      this.userAnswersPath, { orderBy: [{ field: 'lastUsedAt', direction: 'desc' }] });
   }
 
   /**

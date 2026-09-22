@@ -241,6 +241,65 @@ Where the answer is "none of them", the fixture specifies a reader that does
 not exist yet, which is a legitimate thing to pin — as long as it says so
 beside itself instead of passing for what the door receives today.
 
+## What the axe pass can and cannot see
+
+`app.smoke.spec.ts`'s `expectPage()` runs axe-core over every page it opens,
+WCAG 2.1 A and AA, scoped to the routed element. Three properties of the
+harness bound what that can honestly mean, and none of them is about axe:
+
+- **i18n is not served.** Karma's asset config does not publish the catalogs,
+  so `| translate` renders the raw key. Every accessible name on screen is a
+  non-empty string like `transactions.title` — which is what a presence rule
+  needs and useless to a rule about content. Contrast is unaffected: the real
+  stylesheets compile.
+- **Karma's window is 756px**, so this is a phone and small-tablet audit. A
+  rule that only fires on a desktop layout is never reached.
+- **The run is scoped to the routed element**, because Karma's `debug.html`
+  owns the `<html>` element, a banner and its own headings. Eight page-level
+  rules are therefore disabled by name (`html-has-lang`, `document-title`,
+  `landmark-one-main`, `landmark-unique`, `landmark-banner-is-top-level`,
+  `page-has-heading-one`, `bypass`, `region`) — a landmark rule has no meaning
+  when the thing being audited is a fragment.
+
+And it sweeps only the routes the walkthrough visits: `/dashboard`,
+`/transactions`, `/budgets`, `/reports`, `/settings`, `/data` and `/about`.
+**`/ai`, `/search-history`, `/import/file` and `/import/history` are
+unswept** — no spec opens them, so nothing here says anything about their
+accessibility. `wcag22aa` is left out on purpose: its headline rule,
+`target-size`, measures the 800×600 headless viewport rather than the markup
+on a mobile-first layout, and the 40px hit boxes are pinned by the component
+specs at the widths they were designed for.
+
+The violations that already stood when the pass was wired in are frozen per
+route in `core/services/testing/axe.ts`, each with its reason. They are debts
+with names: the freeze exists so the next one fails.
+
+## A rule that tightens, and the data already stored (#454)
+
+The emulator proves what a new rule *accepts and refuses*. It cannot tell you
+whether anything **already in a real account** would now be refused, because
+its data is whatever the spec just seeded.
+
+Tightening `categoryId is string` to also demand `size() > 0` on transactions,
+budgets and recurring rules had exactly that shape. Nine smoke cases proved the
+clause; none of them could say whether a row somewhere carried `''` and would
+become unwritable on its next edit. Two things closed it:
+
+- **A live read before the rule shipped.** From the authed session:
+  `countDocuments(path, { where: [{ field: 'categoryId', op: '==', value: '' }] })`
+  against each of the three collections. 131 rows, zero empties — and zero
+  whitespace-only, missing, non-string or dangling ids, which the clause would
+  not have caught anyway.
+- **The clause written inside the `touched()` guard**, so that even an unseen
+  row stays editable for every other field and is refused only if a write tries
+  to keep the id empty. That is the part that does not depend on the probe
+  being complete.
+
+The probe covers one account. Rules grant no collection-group read and no
+service-account credential is configured here, so nothing in this project can
+count such rows across every account — which is why the guarded form is load
+bearing rather than belt-and-braces.
+
 ## Summary
 
 | Blind spot | What covers it | Where |
@@ -257,6 +316,8 @@ beside itself instead of passing for what the door receives today.
 | A document missing the field every read orders by | nothing, and nothing can — it is invisible until the form rewrites it | [ADR 0141](ADR/0141-a-recurring-rule-in-a-bad-state-is-repaired-where-its-data-allows-and-refused-where-it-does-not.md) |
 | An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
+| A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
+| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px with unserved i18n | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
 
 ## When you add another one
 

@@ -6,6 +6,28 @@ import { Timestamp } from '@angular/fire/firestore';
 import { RecurringBreakdownComponent } from './recurring-breakdown.component';
 import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
+import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
+
+function expenseTxn(overrides: Partial<Transaction> = {}): Transaction {
+  return {
+    id: 't1',
+    userId: 'user1',
+    type: 'expense',
+    amount: 100,
+    amountInBaseCurrency: 100,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat1',
+    description: 'Test transaction',
+    date: Timestamp.fromDate(new Date(2024, 5, 15)),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false,
+    ...overrides,
+  };
+}
 
 describe('RecurringBreakdownComponent', () => {
   let component: RecurringBreakdownComponent;
@@ -148,5 +170,96 @@ describe('RecurringBreakdownComponent', () => {
       expect(component.recurringTotal()).toBe(100);
       expect(convertSpy).toHaveBeenCalledWith(50, 'EUR', 'USD');
     });
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so the card's three
+ * gates are unproven by them: `hasExpenses()` hides the whole card, and
+ * `hasRecurring()` swaps the share bar and the recurring row for an empty
+ * state. The share bar is also the one place the two percentages are used —
+ * as inline widths — and nothing checks they add up on screen.
+ */
+describe('RecurringBreakdownComponent, through its own template', () => {
+  let fixture: ComponentFixture<RecurringBreakdownComponent>;
+
+  function render(transactions: Transaction[], currency = 'USD'): void {
+    fixture.componentInstance.transactions = transactions;
+    fixture.componentInstance.currency = currency;
+    fixture.detectChanges();
+  }
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
+  const rows = () => Array.from(el().querySelectorAll('.breakdown-row')) as HTMLElement[];
+  const cell = (row: HTMLElement, selector: string) =>
+    row.querySelector(selector)?.textContent?.trim() ?? null;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [RecurringBreakdownComponent, NoopAnimationsModule],
+      providers: [
+        { provide: CurrencyService, useValue: { convert: (amount: number) => amount } },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RecurringBreakdownComponent);
+  });
+
+  it('renders nothing at all when there are no expenses', () => {
+    render([expenseTxn({ type: 'income' })]);
+
+    expect(el().querySelector('.recurring-breakdown')).toBeNull();
+    expect(el().textContent?.trim()).toBe('');
+  });
+
+  it('splits the two rows with their counts, amounts and shares', () => {
+    render([
+      expenseTxn({ id: 'a', amount: 300, recurringId: 'r1' }),
+      expenseTxn({ id: 'b', amount: 100 }),
+    ]);
+
+    expect(text('mat-card-title')).toBe('reports.recurringVsOneOff');
+    const [recurring, oneOff] = rows();
+    expect(cell(recurring, '.row-count')).toBe('(1)');
+    expect(cell(recurring, '.row-amount')).toBe('$300.00');
+    expect(cell(recurring, '.row-percentage')).toBe('75%');
+    expect(cell(oneOff, '.row-count')).toBe('(1)');
+    expect(cell(oneOff, '.row-amount')).toBe('$100.00');
+    expect(cell(oneOff, '.row-percentage')).toBe('25%');
+  });
+
+  it('draws the share bar as two widths that fill it', () => {
+    render([
+      expenseTxn({ id: 'a', amount: 300, isRecurring: true }),
+      expenseTxn({ id: 'b', amount: 100 }),
+    ]);
+
+    const recurringBar = el().querySelector('.share-bar-recurring') as HTMLElement;
+    const oneOffBar = el().querySelector('.share-bar-oneoff') as HTMLElement;
+    expect(recurringBar.style.width).toBe('75%');
+    expect(oneOffBar.style.width).toBe('25%');
+    // Decorative: the figures beside it are what a screen reader reads.
+    expect(el().querySelector('.share-bar')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('swaps the recurring row for an empty state when nothing recurs', () => {
+    render([expenseTxn({ id: 'b', amount: 100 })]);
+
+    expect(el().querySelector('.share-bar')).toBeNull();
+    expect(rows().length).toBe(1);
+    const empty = el().querySelector('app-empty-state') as HTMLElement;
+    expect(empty).not.toBeNull();
+    expect(empty.textContent).toContain('reports.noRecurringExpenses');
+    expect(empty.textContent).toContain('reports.noRecurringExpensesHint');
+    expect(cell(rows()[0], '.row-amount')).toBe('$100.00');
+  });
+
+  it('formats the amounts in the currency it was given', () => {
+    render([expenseTxn({ id: 'b', amount: 100 })], 'JPY');
+
+    expect(cell(rows()[0], '.row-amount')).toBe('¥100.00');
   });
 });

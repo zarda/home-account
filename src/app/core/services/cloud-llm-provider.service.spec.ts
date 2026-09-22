@@ -194,6 +194,20 @@ describe('CloudLLMProviderService', () => {
       expect(providerKeys.resolve).toHaveBeenCalled();
       expect(auth.currentUser).not.toHaveBeenCalled();
     });
+
+    // Three `[CloudLLMProvider]` lines used to announce each provider as it
+    // came up — and the two `if (openai)` / `if (claude)` blocks existed only
+    // to hold them, since the reinitialize call beneath ran either way. ADR
+    // 0123's rule took the lines out and no-console keeps them out; the
+    // spies above are what says a provider was initialized.
+    it('brings every provider up without narrating it', async () => {
+      const logSpy = spyOn(console, 'log');
+      providerKeys.resolve.and.resolveTo({ gemini: 'g-key', openai: 'o-key', claude: 'c-key' });
+
+      await service.initializeProviders('text-model', 'vision-model');
+
+      expect(logSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('resetProviders', () => {

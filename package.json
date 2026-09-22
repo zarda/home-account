@@ -1,6 +1,6 @@
 {
   "name": "home-account",
-  "version": "26.9.164",
+  "version": "26.9.165",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -26,6 +26,10 @@
     "material:check": "node scripts/check-material-imports.mjs --self-test && node scripts/check-material-imports.mjs",
     "direction:check": "node scripts/check-direction.mjs --self-test && node scripts/check-direction.mjs",
     "grid:check": "node scripts/check-grid-tracks.mjs --self-test && node scripts/check-grid-tracks.mjs",
+    "dates:check": "node scripts/check-dates.mjs --self-test && node scripts/check-dates.mjs",
+    "motion:check": "node scripts/check-motion.mjs --self-test && node scripts/check-motion.mjs",
+    "contrast:check": "node scripts/check-contrast.mjs --self-test && node scripts/check-contrast.mjs",
+    "icon-labels:check": "node scripts/check-icon-labels.mjs --self-test && node scripts/check-icon-labels.mjs",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",
@@ -90,6 +94,7 @@
     "@types/jasmine": "~5.1.0",
     "angular-eslint": "22.0.0",
     "autoprefixer": "^10.4.23",
+    "axe-core": "^4.13.0",
     "eslint": "^9.39.1",
     "firebase-tools": "^15.20.0",
     "istanbul-lib-instrument": "^6.0.3",

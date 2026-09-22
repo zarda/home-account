@@ -10,128 +10,135 @@ import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
+import { provideAppCharts } from '../../../core/config/chart.config';
+import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
 
 function breakpointState(matches: boolean): BreakpointState {
   return { matches, breakpoints: { [APP_BREAKPOINTS.mobile]: matches } };
 }
+
+const mockTransactionSet: Transaction[] = [
+  {
+    id: 't1',
+    userId: 'user1',
+    type: 'expense',
+    amount: 200,
+    amountInBaseCurrency: 200,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat1',
+    description: 'Groceries',
+    date: Timestamp.fromDate(new Date(2024, 5, 15)), // June
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false
+  },
+  {
+    id: 't2',
+    userId: 'user1',
+    type: 'income',
+    amount: 5000,
+    amountInBaseCurrency: 5000,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat2',
+    description: 'Salary June',
+    date: Timestamp.fromDate(new Date(2024, 5, 1)), // June
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false
+  },
+  {
+    id: 't3',
+    userId: 'user1',
+    type: 'expense',
+    amount: 300,
+    amountInBaseCurrency: 300,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat1',
+    description: 'May expenses',
+    date: Timestamp.fromDate(new Date(2024, 4, 15)), // May
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false
+  },
+  {
+    id: 't4',
+    userId: 'user1',
+    type: 'income',
+    amount: 4500,
+    amountInBaseCurrency: 4500,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat2',
+    description: 'Salary May',
+    date: Timestamp.fromDate(new Date(2024, 4, 1)), // May
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false
+  }
+];
+
+const mockPriorYearSet: Transaction[] = [
+  {
+    id: 'p1',
+    userId: 'user1',
+    type: 'expense',
+    amount: 160,
+    amountInBaseCurrency: 160,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat1',
+    description: 'Groceries last June',
+    date: Timestamp.fromDate(new Date(2023, 5, 15)), // June 2023
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false
+  },
+  {
+    id: 'p2',
+    userId: 'user1',
+    type: 'income',
+    amount: 4000,
+    amountInBaseCurrency: 4000,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat2',
+    description: 'Salary last June',
+    date: Timestamp.fromDate(new Date(2023, 5, 1)), // June 2023
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false
+  },
+  {
+    id: 'p3',
+    userId: 'user1',
+    type: 'income',
+    amount: 3000,
+    amountInBaseCurrency: 3000,
+    exchangeRate: 1,
+    currency: 'USD',
+    categoryId: 'cat2',
+    description: 'Salary last May',
+    date: Timestamp.fromDate(new Date(2023, 4, 1)), // May 2023
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    isRecurring: false
+  }
+];
 
 describe('MonthlyComparisonComponent', () => {
   let component: MonthlyComparisonComponent;
   let fixture: ComponentFixture<MonthlyComparisonComponent>;
   let breakpoint$: BehaviorSubject<BreakpointState>;
 
-  const mockTransactions: Transaction[] = [
-    {
-      id: 't1',
-      userId: 'user1',
-      type: 'expense',
-      amount: 200,
-      amountInBaseCurrency: 200,
-      exchangeRate: 1,
-      currency: 'USD',
-      categoryId: 'cat1',
-      description: 'Groceries',
-      date: Timestamp.fromDate(new Date(2024, 5, 15)), // June
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      isRecurring: false
-    },
-    {
-      id: 't2',
-      userId: 'user1',
-      type: 'income',
-      amount: 5000,
-      amountInBaseCurrency: 5000,
-      exchangeRate: 1,
-      currency: 'USD',
-      categoryId: 'cat2',
-      description: 'Salary June',
-      date: Timestamp.fromDate(new Date(2024, 5, 1)), // June
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      isRecurring: false
-    },
-    {
-      id: 't3',
-      userId: 'user1',
-      type: 'expense',
-      amount: 300,
-      amountInBaseCurrency: 300,
-      exchangeRate: 1,
-      currency: 'USD',
-      categoryId: 'cat1',
-      description: 'May expenses',
-      date: Timestamp.fromDate(new Date(2024, 4, 15)), // May
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      isRecurring: false
-    },
-    {
-      id: 't4',
-      userId: 'user1',
-      type: 'income',
-      amount: 4500,
-      amountInBaseCurrency: 4500,
-      exchangeRate: 1,
-      currency: 'USD',
-      categoryId: 'cat2',
-      description: 'Salary May',
-      date: Timestamp.fromDate(new Date(2024, 4, 1)), // May
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      isRecurring: false
-    }
-  ];
+  const mockTransactions = mockTransactionSet;
 
   // Same two months, one year earlier. May 2023 carries income only, which is
   // what makes the zero-division guard on the expense side observable.
-  const mockPriorYearTransactions: Transaction[] = [
-    {
-      id: 'p1',
-      userId: 'user1',
-      type: 'expense',
-      amount: 160,
-      amountInBaseCurrency: 160,
-      exchangeRate: 1,
-      currency: 'USD',
-      categoryId: 'cat1',
-      description: 'Groceries last June',
-      date: Timestamp.fromDate(new Date(2023, 5, 15)), // June 2023
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      isRecurring: false
-    },
-    {
-      id: 'p2',
-      userId: 'user1',
-      type: 'income',
-      amount: 4000,
-      amountInBaseCurrency: 4000,
-      exchangeRate: 1,
-      currency: 'USD',
-      categoryId: 'cat2',
-      description: 'Salary last June',
-      date: Timestamp.fromDate(new Date(2023, 5, 1)), // June 2023
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      isRecurring: false
-    },
-    {
-      id: 'p3',
-      userId: 'user1',
-      type: 'income',
-      amount: 3000,
-      amountInBaseCurrency: 3000,
-      exchangeRate: 1,
-      currency: 'USD',
-      categoryId: 'cat2',
-      description: 'Salary last May',
-      date: Timestamp.fromDate(new Date(2023, 4, 1)), // May 2023
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      isRecurring: false
-    }
-  ];
+  const mockPriorYearTransactions = mockPriorYearSet;
 
   beforeEach(async () => {
     const mockCurrencyService = {
@@ -419,5 +426,225 @@ describe('MonthlyComparisonComponent', () => {
       expect(component.displayedColumns()).not.toContain('yoy');
       expect(component.displayedColumns()).toContain('change');
     });
+  });
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so nothing in them
+ * renders the empty state, either of the two conditional stat cards, the
+ * chart canvas, or a single table row. Two of the sign decisions on this page
+ * live in the template alone — `worstMonth`'s `[detailTone]` and the
+ * expense column's inverted `.positive`/`.negative`, where a *fall* is good —
+ * and no spec has ever evaluated them.
+ *
+ * Full render: `provideAppCharts()` is mandatory (docs/performance.md:47-49)
+ * and `app.smoke.spec.ts:337-340` already proves Chart.js draws a real
+ * `<canvas>` headless, so nothing here needs a partial template.
+ */
+describe('MonthlyComparisonComponent, through its own template', () => {
+  let fixture: ComponentFixture<MonthlyComparisonComponent>;
+  let breakpoint$: BehaviorSubject<BreakpointState>;
+
+  function render(
+    transactions: Transaction[],
+    priorYear: Transaction[] = [],
+    range = { start: new Date(2024, 4, 1), end: new Date(2024, 5, 30) },
+  ): void {
+    fixture.componentInstance.transactions = transactions;
+    fixture.componentInstance.priorYearTransactions = priorYear;
+    fixture.componentInstance.currency = 'USD';
+    // The table's rows come from the window, not from the transactions: a
+    // month with no activity is still a row.
+    fixture.componentInstance.dateRange = range;
+    fixture.detectChanges();
+  }
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const statCards = () => Array.from(el().querySelectorAll('app-stat-card')) as HTMLElement[];
+  const statLabels = () =>
+    statCards().map(c => c.querySelector('.stat-label')?.textContent?.trim());
+  const cardByLabel = (label: string) =>
+    statCards().find(c => c.querySelector('.stat-label')?.textContent?.trim().startsWith(label));
+  const headers = () =>
+    Array.from(el().querySelectorAll('th[mat-header-cell]')).map(h => h.textContent?.trim());
+  const bodyRows = () => Array.from(el().querySelectorAll('tr[mat-row]')) as HTMLElement[];
+
+  beforeEach(async () => {
+    breakpoint$ = new BehaviorSubject<BreakpointState>(breakpointState(false));
+
+    await TestBed.configureTestingModule({
+      imports: [MonthlyComparisonComponent, NoopAnimationsModule],
+      providers: [
+        provideAppCharts(),
+        {
+          provide: CurrencyService,
+          useValue: {
+            currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
+            getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+            convert: (amount: number) => amount,
+            amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
+              t.amountInBaseCurrency ?? t.amount,
+          },
+        },
+        {
+          provide: TranslationService,
+          useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
+        },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(MonthlyComparisonComponent);
+  });
+
+  it('shows the empty state instead of an empty chart with no rows', () => {
+    render([]);
+
+    const empty = el().querySelector('app-empty-state') as HTMLElement;
+    expect(empty).not.toBeNull();
+    expect(empty.textContent).toContain('reports.noDataAvailable');
+    expect(empty.textContent).toContain('reports.addTransactionsToSee');
+    expect(el().querySelector('.monthly-comparison')).toBeNull();
+    expect(el().querySelector('canvas')).toBeNull();
+  });
+
+  it('always shows the two averages, formatted in the page currency', () => {
+    render(mockTransactionSet);
+
+    expect(statLabels()[0]).toContain('reports.avgMonthlyIncome');
+    expect(statLabels()[1]).toContain('reports.avgMonthlyExpenses');
+    expect(cardByLabel('reports.avgMonthlyIncome')?.querySelector('.stat-value')?.textContent)
+      .toContain('$4,750.00');
+    expect(cardByLabel('reports.avgMonthlyExpenses')?.querySelector('.stat-value')?.textContent)
+      .toContain('$250.00');
+  });
+
+  it('marks a profitable worst month positive, not negative', () => {
+    // Both months are in surplus here, so `worst` is still a positive
+    // balance — the one case where `[detailTone]` and the '+' prefix
+    // disagree with the card's name. Pure template logic, evaluated nowhere
+    // else in the suite.
+    render(mockTransactionSet);
+
+    const worst = cardByLabel('reports.worstMonth') as HTMLElement;
+    const detail = worst.querySelector('.stat-detail') as HTMLElement;
+    expect(detail.textContent?.trim().startsWith('+')).toBeTrue();
+    expect(detail.classList).toContain('detail-positive');
+    expect(detail.classList).not.toContain('detail-negative');
+  });
+
+  it('marks a loss-making worst month negative', () => {
+    render(
+      [
+        ...mockTransactionSet,
+        {
+          ...mockTransactionSet[0],
+          id: 't9',
+          amount: 9000,
+          amountInBaseCurrency: 9000,
+          date: Timestamp.fromDate(new Date(2024, 3, 10)),
+        },
+      ],
+      [],
+      { start: new Date(2024, 3, 1), end: new Date(2024, 5, 30) },
+    );
+
+    const detail = (cardByLabel('reports.worstMonth') as HTMLElement)
+      .querySelector('.stat-detail') as HTMLElement;
+    expect(detail.textContent?.trim().startsWith('-')).toBeTrue();
+    expect(detail.classList).toContain('detail-negative');
+  });
+
+  it('draws the bar chart on a real canvas', () => {
+    render(mockTransactionSet);
+
+    const canvas = el().querySelector('canvas') as HTMLCanvasElement;
+    expect(canvas).not.toBeNull();
+    expect(canvas.getAttribute('ng-reflect-type') ?? fixture.componentInstance.chartType).toBe('bar');
+    expect(fixture.componentInstance.chartData().datasets.length).toBeGreaterThan(0);
+    expect(el().querySelectorAll('mat-card-title')[0].textContent?.trim())
+      .toBe('reports.monthlyIncomeVsExpenses');
+  });
+
+  it('renders one table row per month', () => {
+    render(mockTransactionSet);
+
+    expect(bodyRows().length).toBe(2);
+    expect(headers()).toEqual([
+      'transactions.month', 'common.income', 'common.totalExpenses', 'common.balance', 'reports.trend',
+    ]);
+  });
+
+  it('adds the year-over-year column only when there is a year behind it', () => {
+    render(mockTransactionSet);
+    expect(headers()).not.toContain('reports.yoyChange');
+
+    render(mockTransactionSet, mockPriorYearSet);
+    expect(headers()).toContain('reports.yoyChange');
+  });
+
+  it('drops the trend and year-over-year columns on a phone', () => {
+    render(mockTransactionSet, mockPriorYearSet);
+    breakpoint$.next(breakpointState(true));
+    fixture.detectChanges();
+
+    expect(headers()).toEqual([
+      'transactions.month', 'common.income', 'common.totalExpenses', 'common.balance',
+    ]);
+  });
+
+  it('reads a rise in expenses as negative while the same rise in income is positive', () => {
+    // The two columns invert each other: spending more is bad, earning more
+    // is good, so the same arrow carries opposite classes in the two cells.
+    // Both are template expressions and this is the only place either is
+    // evaluated. June here rises on both sides.
+    render([
+      ...mockTransactionSet,
+      {
+        ...mockTransactionSet[0],
+        id: 't5',
+        amount: 400,
+        amountInBaseCurrency: 400,
+        date: Timestamp.fromDate(new Date(2024, 5, 20)),
+      },
+    ]);
+
+    const june = bodyRows()[1];
+    const income = june.querySelector('.income-cell .change-indicator') as HTMLElement;
+    const expense = june.querySelector('.expense-cell .change-indicator') as HTMLElement;
+
+    expect(income.querySelector('mat-icon')?.textContent?.trim()).toBe('arrow_upward');
+    expect(income.classList).toContain('positive');
+    expect(expense.querySelector('mat-icon')?.textContent?.trim()).toBe('arrow_upward');
+    expect(expense.classList).toContain('negative');
+    expect(june.querySelector('.trend-icon')?.textContent?.trim()).toBe('trending_up');
+  });
+
+  it('reads a fall in expenses as positive, the same arrow the other way', () => {
+    render(mockTransactionSet);
+
+    const june = bodyRows()[1];
+    const expense = june.querySelector('.expense-cell .change-indicator') as HTMLElement;
+
+    expect(expense.querySelector('mat-icon')?.textContent?.trim()).toBe('arrow_downward');
+    expect(expense.classList).toContain('positive');
+    expect(june.querySelector('.trend-icon')?.textContent?.trim()).toBe('trending_down');
+  });
+
+  it('shows an em-dash rather than a change on the first month', () => {
+    render(mockTransactionSet);
+
+    const first = bodyRows()[0];
+    expect(first.querySelector('.change-indicator')).toBeNull();
+    expect(first.querySelector('.no-data')?.textContent?.trim()).toBe('—');
+  });
+
+  it('signs a surplus balance and classes it positive', () => {
+    render(mockTransactionSet);
+
+    const balance = bodyRows()[0].querySelectorAll('td[mat-cell]')[3] as HTMLElement;
+    expect(balance.textContent?.trim().startsWith('+')).toBeTrue();
+    expect(balance.classList).toContain('positive');
   });
 });

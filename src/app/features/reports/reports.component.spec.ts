@@ -18,6 +18,19 @@ import {
   PeriodSelection,
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
+import { CommonModule } from '@angular/common';
+import { MatTabsModule } from '@angular/material/tabs';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { TabStripScrollDirective } from '../../shared/directives/tab-strip-scroll.directive';
+import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { TranslationService } from '../../core/services/translation.service';
+import { createTranslationStub } from '../../core/services/testing';
+
+/** Query params the sibling rendering describe re-points between cases. */
+const queryParamsFor: { value: Record<string, string> } = { value: {} };
 
 function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
   return { option, start, end, label: '' };
@@ -370,4 +383,195 @@ describe('ReportsComponent', () => {
     });
   });
 
+});
+
+/**
+ * The cases above override the template to `<div></div>`, so the page's own
+ * chrome is unproven: the loading gate that decides whether a tab group
+ * exists at all, the five tab labels, the export button's `(click)`, and —
+ * the one thing nothing else can see — the `<ng-template matTabContent>`
+ * wrappers on Insights and Forecast. Those exist precisely so the two live
+ * Firestore listeners behind them do not open on every visit to Reports
+ * (`reports.component.html:80-84`, `:101-103`). Only a rendered tab group can
+ * prove a child is absent until its header is clicked.
+ *
+ * Partial render: the component's own `imports` are narrowed so the seven
+ * feature children and the period selector stay unresolved. None of them is
+ * asserted about — the assertions are about this shell's own markup, and the
+ * lazy-tab case asserts *absence then presence* of a child element, which an
+ * unresolved custom element answers exactly as a real one would.
+ */
+describe('ReportsComponent, through its own template', () => {
+  let fixture: ComponentFixture<ReportsComponent>;
+  let component: ReportsComponent;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const tabHeaders = () => Array.from(el().querySelectorAll('.mdc-tab')) as HTMLElement[];
+  const tabLabels = () =>
+    Array.from(el().querySelectorAll('.tab-label')).map(n => n.textContent?.trim());
+
+  beforeEach(async () => {
+    queryParamsFor.value = {};
+
+    await TestBed.configureTestingModule({
+      imports: [ReportsComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: TransactionService,
+          useValue: jasmine.createSpyObj(
+            'TransactionService',
+            { getByDateRange: of([]), getTransactionsInRange: of([]) },
+            { transactions: signal<Transaction[]>([]) }
+          ),
+        },
+        {
+          provide: CategoryService,
+          useValue: jasmine.createSpyObj('CategoryService', { loadCategories: of([]) }, {
+            categories: signal([]),
+          }),
+        },
+        {
+          provide: AuthService,
+          useValue: { currentUser: signal({ preferences: { baseCurrency: 'USD' } }) },
+        },
+        {
+          provide: CurrencyService,
+          useValue: {
+            currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
+            getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+            amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
+              t.amountInBaseCurrency ?? t.amount,
+          },
+        },
+        { provide: PendingFiltersService, useValue: jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']) },
+        {
+          provide: Router,
+          useValue: jasmine.createSpyObj('Router', { navigate: Promise.resolve(true) }, { events: EMPTY }),
+        },
+        { provide: ActivatedRoute, useValue: { get snapshot() { return { queryParamMap: convertToParamMap(queryParamsFor.value) }; } } },
+        { provide: TranslationService, useValue: createTranslationStub() },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    })
+      .overrideComponent(ReportsComponent, {
+        set: {
+          imports: [
+            CommonModule,
+            MatTabsModule,
+            TabStripScrollDirective,
+            MatIconModule,
+            MatButtonModule,
+            LoadingSpinnerComponent,
+            PageHeaderComponent,
+            TranslatePipe,
+          ],
+          // A standalone component's template is governed by its own schemas,
+          // not the TestBed's. The seven feature children and the period
+          // selector are deliberately left unrendered: each has its own spec,
+          // and none of them is asserted about here.
+          schemas: [NO_ERRORS_SCHEMA],
+        },
+      })
+      .compileComponents();
+
+    fixture = TestBed.createComponent(ReportsComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('shows the spinner instead of the tabs while the page is loading', () => {
+    // The mocked reads all resolve synchronously, so ngOnInit has already
+    // cleared the flag by the first pass — put it back to see the gate.
+    fixture.detectChanges();
+    component.isLoading.set(true);
+    fixture.detectChanges();
+
+    const spinner = el().querySelector('app-loading-spinner') as HTMLElement;
+    expect(spinner).not.toBeNull();
+    expect(spinner.textContent).toContain('reports.loadingData');
+    expect(el().querySelector('mat-tab-group')).toBeNull();
+  });
+
+  it('swaps the spinner for the tab group once loading finishes', () => {
+    fixture.detectChanges();
+    component.isLoading.set(true);
+    fixture.detectChanges();
+    expect(el().querySelector('mat-tab-group')).toBeNull();
+
+    component.isLoading.set(false);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-loading-spinner')).toBeNull();
+    expect(el().querySelector('mat-tab-group')).not.toBeNull();
+  });
+
+  it('renders one header per report tab, in order', () => {
+    fixture.detectChanges();
+    component.isLoading.set(false);
+    fixture.detectChanges();
+
+    expect(tabHeaders().length).toBe(REPORT_TABS.length);
+    expect(tabLabels()).toEqual([
+      'reports.spendingAnalysis',
+      'reports.categoryBreakdown',
+      'reports.monthlyComparison',
+      'reports.insights',
+      'reports.forecast',
+    ]);
+  });
+
+  it('reaches the export dialog from its own button', () => {
+    const open = spyOn(component, 'openExportDialog');
+    fixture.detectChanges();
+
+    (el().querySelector('.export-btn') as HTMLButtonElement).click();
+
+    expect(open).toHaveBeenCalled();
+  });
+
+  it('keeps Insights and Forecast out of the DOM until their header is clicked', () => {
+    // The two `<ng-template matTabContent>` wrappers are the only thing
+    // stopping a six-month Firestore listener and a live recurring listener
+    // opening on every visit to Reports. A stubbed template cannot see this.
+    fixture.detectChanges();
+    component.isLoading.set(false);
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-spending-analysis')).not.toBeNull();
+    expect(el().querySelector('app-insights-tab')).toBeNull();
+    expect(el().querySelector('app-forecast')).toBeNull();
+
+    tabHeaders()[REPORT_TABS.indexOf('insights')].click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-insights-tab')).not.toBeNull();
+    expect(el().querySelector('app-forecast')).toBeNull();
+
+    tabHeaders()[REPORT_TABS.indexOf('forecast')].click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('app-forecast')).not.toBeNull();
+  });
+
+  it('carries the accessibility tab-animation duration into the strip', () => {
+    fixture.detectChanges();
+    component.isLoading.set(false);
+    fixture.detectChanges();
+
+    // Material forwards the binding to two CSS custom properties on the
+    // group, which is what the strip and the body actually read.
+    const group = el().querySelector('mat-tab-group') as HTMLElement;
+    expect(group.style.getPropertyValue('--mat-tab-header-animation-duration').trim())
+      .toBe(component.tabAnimationDuration());
+    expect(group.style.getPropertyValue('--mat-tab-body-animation-duration').trim())
+      .toBe(component.tabAnimationDuration());
+  });
+
+  it('opens on the tab the query parameter names', () => {
+    queryParamsFor.value = { tab: 'monthly' };
+    fixture = TestBed.createComponent(ReportsComponent);
+    fixture.componentInstance.isLoading.set(false);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedTabIndex).toBe(REPORT_TABS.indexOf('monthly'));
+  });
 });

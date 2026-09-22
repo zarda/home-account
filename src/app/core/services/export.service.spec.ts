@@ -1,6 +1,14 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { BACKUP_SCHEMA_VERSION, ExportService } from './export.service';
+import {
+  BACKUP_SCHEMA_VERSION,
+  BACKUP_SECTIONS,
+  ExportData,
+  ExportService,
+  NOT_IN_BACKUP,
+} from './export.service';
+import { DELETION_STEPS } from './account-deletion.service';
+import { NOT_A_RECORD_KIND } from './stored-data.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
@@ -615,8 +623,38 @@ describe('ExportService', () => {
         // never moved as sections were added, so a schema change was shipping
         // under the same number each time.
         expect(parsed.version).toBe(BACKUP_SCHEMA_VERSION);
-        // Last bumped when goal links joined the transactions section.
-        expect(parsed.version).toBe('1.4');
+        // Last bumped when saved searches, stored answers, the two merchant
+        // memories and the import history joined the file.
+        expect(parsed.version).toBe('1.5');
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
+    it('carries the five collections erasure removes that 1.4 left behind', (done) => {
+      // The deletion cascade takes fourteen stored kinds; before 1.5 the file
+      // held six of them, so accepting the backup offer and then deleting the
+      // account still lost these five for good.
+      const blob = service.exportToJSON({
+        transactions: [],
+        categories: [],
+        savedSearches: [{ id: 's-1', query: 'coffee' }] as unknown as ExportData['savedSearches'],
+        searchAnswers: [{ id: 'a-1', query: 'how much on coffee' }] as unknown as ExportData['searchAnswers'],
+        categoryMemory: [{ merchantKey: 'starbucks', categoryId: 'food_coffee' }] as unknown as ExportData['categoryMemory'],
+        tagMemory: [{ merchantKey: 'starbucks', tags: ['coffee'] }] as unknown as ExportData['tagMemory'],
+        imports: [{ id: 'i-1', fileName: 'statement.csv' }] as unknown as ExportData['imports'],
+        exportDate: new Date().toISOString(),
+        version: BACKUP_SCHEMA_VERSION,
+      });
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const parsed = JSON.parse(reader.result as string);
+        expect(parsed.savedSearches.length).toBe(1);
+        expect(parsed.searchAnswers.length).toBe(1);
+        expect(parsed.categoryMemory.length).toBe(1);
+        expect(parsed.tagMemory.length).toBe(1);
+        expect(parsed.imports.length).toBe(1);
         done();
       };
       reader.readAsText(blob);
@@ -1012,5 +1050,72 @@ describe('ExportService', () => {
       expect(appendChildSpy).toHaveBeenCalled();
       expect(removeChildSpy).toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * The backup against the deletion cascade.
+ *
+ * `stored-data.service.spec.ts` already fails the build when a cascade step is
+ * neither catalogued nor excused. Nothing did the same between the cascade and
+ * the backup, which is exactly how the file came to cover six of the fourteen
+ * stored kinds while the deletion dialog offered it as a full one.
+ */
+describe('the backup and the deletion cascade', () => {
+  const steps = new Set<string>(DELETION_STEPS);
+  const storedKinds = DELETION_STEPS.filter(step => !(step in NOT_A_RECORD_KIND));
+
+  it('gives every stored kind either a section or a stated reason for not having one', () => {
+    const sections = new Set<string>(BACKUP_SECTIONS);
+    const orphaned = storedKinds.filter(
+      step => !sections.has(step) && !(step in NOT_IN_BACKUP)
+    );
+
+    expect(orphaned)
+      .withContext(
+        `Add these to BACKUP_SECTIONS, or to NOT_IN_BACKUP with a reason: ${orphaned.join(', ')}`
+      )
+      .toEqual([]);
+  });
+
+  it('does not both carry a kind and excuse it', () => {
+    const both = BACKUP_SECTIONS.filter(section => section in NOT_IN_BACKUP);
+
+    expect(both).toEqual([]);
+  });
+
+  it('excuses only kinds the cascade actually erases', () => {
+    const unknown = Object.keys(NOT_IN_BACKUP).filter(step => !steps.has(step));
+
+    expect(unknown).toEqual([]);
+  });
+
+  it('gives every excused kind a non-empty reason', () => {
+    for (const [step, reason] of Object.entries(NOT_IN_BACKUP)) {
+      expect(reason.trim().length)
+        .withContext(`${step} needs a reason`)
+        .toBeGreaterThan(0);
+    }
+  });
+
+  it('carries no section the cascade does not erase', () => {
+    // A section nothing removes is a section that is not a stored kind, which
+    // means the file is carrying something it has no account of.
+    const unknown = BACKUP_SECTIONS.filter(section => !steps.has(section));
+
+    expect(unknown).toEqual([]);
+  });
+
+  it('lists each section once', () => {
+    expect(new Set<string>(BACKUP_SECTIONS).size).toBe(BACKUP_SECTIONS.length);
+  });
+
+  it('covers eleven of the fourteen stored kinds at 1.5', () => {
+    // The arithmetic behind the dialogs: fourteen kinds erased, eleven in the
+    // file, three named exclusions. A change to any of the three numbers is a
+    // change the deletion warning has to say out loud.
+    expect(storedKinds.length).toBe(14);
+    expect(BACKUP_SECTIONS.length).toBe(11);
+    expect(Object.keys(NOT_IN_BACKUP).length).toBe(3);
   });
 });
