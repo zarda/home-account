@@ -16,6 +16,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { CurrencyService } from '../../../../core/services/currency.service';
 import {
   CategorizedImportTransaction,
+  ImportError,
   ImportResult,
   ImportSource,
   ImportFileType,
@@ -35,7 +36,7 @@ import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
+import { importFailureKey, needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
 
 @Component({
   selector: 'app-import-wizard',
@@ -970,19 +971,43 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // Only the saved rows leave, so a second confirm cannot double-import
         // them. A row the reviewer deselected was never submitted and is
         // named in no record, so it stays as it was, unticked, for the
-        // reviewer to change their mind. A failed row comes back ticked,
-        // with its duplicate mark and its duplicate check cleared, because
-        // it is being offered for a second try.
+        // reviewer to change their mind. A failed row comes back with its
+        // duplicate mark and its duplicate check cleared, because it is
+        // being offered for a second try — ticked on its first failure, but
+        // set aside, unticked, once a second failure shows the same
+        // resubmission is not going to work; re-selecting it from there is
+        // the reviewer's own choice, not something a third automatic attempt
+        // should assume (#430).
         //
         // The record names its failed rows by id, so matching `result.errors`
         // back onto rows is a lookup, not a re-run of the service's own
-        // "selected" filter.
-        const failedIds = new Set(
-          (result.errors ?? []).map(e => e.transactionId).filter((id): id is string => !!id)
+        // "selected" filter. Read the same way for the reason each names —
+        // the whole error, not just its message, since `importFailureKey`
+        // reads `code` first — since a batch can carry more than one error
+        // and matching by position would attribute the wrong one to the
+        // wrong row.
+        const failureErrors = new Map(
+          (result.errors ?? [])
+            .filter((e): e is ImportError & { transactionId: string } => !!e.transactionId)
+            .map(e => [e.transactionId, e])
         );
+        const failedIds = new Set(failureErrors.keys());
+        const setAside: CategorizedImportTransaction[] = [];
         const kept = this.extractedTransactions()
           .filter(t => failedIds.has(t.id) || !t.selected)
-          .map(t => (failedIds.has(t.id) ? { ...t, selected: true, isDuplicate: false } : t));
+          .map(t => {
+            if (!failedIds.has(t.id)) return t;
+            const importAttempts = (t.importAttempts ?? 0) + 1;
+            const row: CategorizedImportTransaction = {
+              ...t,
+              selected: importAttempts < 2,
+              isDuplicate: false,
+              importAttempts,
+              importFailure: importFailureKey(failureErrors.get(t.id) ?? { message: '' }),
+            };
+            if (!row.selected) setAside.push(row);
+            return row;
+          });
         const keptIds = new Set(kept.map(t => t.id));
 
         this.extractedTransactions.set(kept);
@@ -997,6 +1022,15 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           failed: result.errorCount,
           total: result.successCount + result.errorCount,
         }));
+        // One notice for every row set aside this round, not one per row:
+        // NotificationService shows a single snackbar at a time, so a second
+        // or third call here would only ever leave the last row's name on
+        // screen. Each row's own reason already renders on its card.
+        if (setAside.length) {
+          this.notifications.error(this.t('import.importPartialSetAside', {
+            count: setAside.length,
+          }));
+        }
 
         this.returnToReview();
         return;

@@ -2,6 +2,7 @@ import {
   blankImportRow,
   datedToday,
   imageSources,
+  importFailureKey,
   joinSentences,
   mergeImportRows,
   mergeableRow,
@@ -200,6 +201,52 @@ describe('import-review.utils', () => {
       const row = blankImportRow('manual_1', previous, 'USD');
 
       expect(row.date).not.toBe(previous.date);
+    });
+  });
+
+  describe('importFailureKey', () => {
+    it('maps the amount guard\'s own sentinel to the amount reason', () => {
+      expect(importFailureKey({ message: 'INVALID_TRANSACTION_AMOUNT' })).toBe('import.rowFailedAmount');
+    });
+
+    it('maps a Firestore permission denial to the connection reason by its code, not its prose', () => {
+      // The message is what a FirestoreError actually carries — text meant
+      // for a console, never the code as a substring — so a classifier that
+      // read only the message could never place this one.
+      expect(importFailureKey({
+        code: 'permission-denied',
+        message: 'Missing or insufficient permissions.',
+      })).toBe('import.rowFailedConnection');
+    });
+
+    it('maps the other Firestore codes a dropped connection surfaces as', () => {
+      expect(importFailureKey({ code: 'unavailable', message: 'The service is currently unavailable.' }))
+        .toBe('import.rowFailedConnection');
+      expect(importFailureKey({ code: 'deadline-exceeded', message: 'Deadline exceeded.' }))
+        .toBe('import.rowFailedConnection');
+      expect(importFailureKey({ code: 'resource-exhausted', message: 'Quota exceeded.' }))
+        .toBe('import.rowFailedConnection');
+    });
+
+    it('does not fall back to the message ladder once a code is present', () => {
+      // A code that is not one of the connection codes is a real answer —
+      // "this failed for a reason unrelated to the connection" — not a
+      // missing one, so it must not fall through to a substring guess.
+      expect(importFailureKey({ code: 'not-found', message: 'permission-denied unavailable network' }))
+        .toBe('import.rowFailedUnknown');
+    });
+
+    it('falls back to the message ladder for an error with no code at all', () => {
+      // A dropped fetch (a plain TypeError) carries no Firestore code — the
+      // ladder is what parseAIError already reads a provider's own failure
+      // by, kept here for exactly this shape.
+      expect(importFailureKey({ message: 'network error' })).toBe('import.rowFailedConnection');
+      expect(importFailureKey({ message: 'UNAVAILABLE' })).toBe('import.rowFailedConnection');
+    });
+
+    it('falls back to unknown for anything neither reading places', () => {
+      expect(importFailureKey({ message: 'refused' })).toBe('import.rowFailedUnknown');
+      expect(importFailureKey({ message: '' })).toBe('import.rowFailedUnknown');
     });
   });
 

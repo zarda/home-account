@@ -1537,10 +1537,18 @@ export class AIImportService {
           }
         } catch (error) {
           errorCount++;
+          // Firestore rejects an undefined field, so code is only ever added
+          // when the caught value actually carried one — a FirebaseError's
+          // string code, not whatever shape a thrown plain object happens to
+          // have.
+          const code = typeof (error as { code?: unknown })?.code === 'string'
+            ? (error as { code: string }).code
+            : undefined;
           errors.push({
             row: i + 1,
             transactionId: txn.id,
             message: error instanceof Error ? error.message : 'Unknown error',
+            ...(code ? { code } : {}),
             originalValue: txn.description
           });
         }

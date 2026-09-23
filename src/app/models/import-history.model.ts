@@ -105,6 +105,15 @@ export interface ImportError {
   transactionId?: string;
   field?: string;
   message: string;
+  /**
+   * The thrown error's own `code`, when it carried a string one — a
+   * Firestore rejection's is a stable identifier (`permission-denied`,
+   * `unavailable`, …); `message` on the same error is prose meant for a
+   * console, not a reader, and never contains the code as a substring.
+   * Absent for an error that carried none, which `importFailureKey` then
+   * reads by `message` alone.
+   */
+  code?: string;
   originalValue?: string;
 }
 
@@ -258,6 +267,23 @@ export interface CategorizedImportTransaction {
    * converted at today's rate instead.
    */
   fileRate?: { exchangeRate: number; baseCurrency: string; currency: string };
+  /**
+   * A review-step mark, never written: the catalog key `importFailureKey`
+   * resolved the last time this row's own confirm attempt was refused.
+   * Absent on a row nobody has tried yet. Read instead of `ImportError.message`
+   * itself, which is a raw code or a provider's English — not this codebase's
+   * to put on screen untranslated.
+   */
+  importFailure?: string;
+  /**
+   * A review-step mark, never written: how many confirm attempts this row's
+   * id has now failed. The wizard's partial branch increments it per failure
+   * and returns the row deselected once it reaches 2 — re-offering the same
+   * refusal forever would be a loop with no way out, and re-selecting a
+   * set-aside row is the reviewer's own choice, not something a third
+   * automatic attempt should assume.
+   */
+  importAttempts?: number;
 }
 
 export interface DuplicateCheck {

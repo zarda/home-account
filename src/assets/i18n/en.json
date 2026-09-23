@@ -1121,6 +1121,13 @@
     },
     "importFailed": "Import failed: {{error}}",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
+    "importPartialSetAside": {
+      "one": "{{count}} row failed to save twice and was set aside — reselect it to try again",
+      "other": "{{count}} rows failed to save twice and were set aside — reselect them to try again"
+    },
+    "rowFailedAmount": "This transaction's amount could not be saved. Check the amount and try again.",
+    "rowFailedConnection": "The connection dropped before this row could be saved. Check your connection and try again.",
+    "rowFailedUnknown": "This row could not be saved for an unknown reason. Try again, or remove it.",
     "importingRow": "Importing {{done}} of {{total}}...",
     "importPhotosSkipped": {
       "one": "The transactions were saved, but {{count}} receipt photo was not attached — image storage limit reached",

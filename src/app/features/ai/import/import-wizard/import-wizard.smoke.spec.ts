@@ -2000,6 +2000,117 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'a row the rules refuse twice comes back deselected with its reason rendered',
+    async () => {
+      // The same handoff shape as the sealed-step case above, and the same
+      // stubbed confirmImport: what is under test is what the wizard and the
+      // real card do with the record they get back on a second refusal, not
+      // the write itself.
+      stubReceiptSeams();
+
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'twice-refused.jpg',
+        fileSize: 1234,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 545,
+            currency: 'JPY',
+            date: new Date(),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const translation = TestBed.inject(TranslationService);
+      const rowId = component.extractedTransactions()[0].id;
+
+      const confirmSpy = spyOn(TestBed.inject(AIImportService), 'confirmImport');
+      const refusal = (): ImportHistory => ({
+        id: 'twice-refused',
+        userId: uid,
+        importedAt: Timestamp.now(),
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'twice-refused.jpg',
+        fileSize: 1234,
+        transactionCount: 1,
+        successCount: 0,
+        skippedCount: 0,
+        errorCount: 1,
+        totalIncome: 0,
+        totalExpenses: 0,
+        status: 'partial',
+        // A rules denial, the way a security-rules refusal actually reaches
+        // this app: a stable code, kept apart from the message, which is
+        // prose the card could not put on screen as-is.
+        errors: [{
+          row: 1, transactionId: rowId,
+          code: 'permission-denied', message: 'Missing or insufficient permissions.',
+        }],
+        duplicatesSkipped: 0
+      });
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      confirmSpy.and.resolveTo(refusal());
+      await component.confirmImport();
+      await until(fixture, () => component.stepper.selectedIndex === 2);
+
+      // Re-offered once, still ticked, and now says why — Karma loads no
+      // catalog, so the reason's own reading is the bare key on both sides.
+      expect(component.extractedTransactions()[0].selected).toBeTrue();
+      expect(component.extractedTransactions()[0].importAttempts).toBe(1);
+      let reason = host.querySelector('.import-failure-reason span');
+      expect(reason).withContext('a failed row explains itself on the card').not.toBeNull();
+      expect(reason?.textContent?.trim()).toBe(translation.t('import.rowFailedConnection'));
+
+      // Ticked again by the wizard's own re-offer, refused a second time.
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      confirmSpy.and.resolveTo(refusal());
+      await component.confirmImport();
+      await until(fixture, () => component.stepper.selectedIndex === 2);
+
+      expect(component.extractedTransactions()[0].selected)
+        .withContext('a second refusal sets the row aside rather than re-offering it forever')
+        .toBeFalse();
+      expect(component.extractedTransactions()[0].importAttempts).toBe(2);
+      reason = host.querySelector('.import-failure-reason span');
+      expect(reason).withContext('still explains itself once deselected').not.toBeNull();
+      expect(reason?.textContent?.trim()).toBe(translation.t('import.rowFailedConnection'));
+      // Deselected, so the checkbox on the card reads unchecked too — the
+      // reason line is not the only surface that must agree with the model.
+      const checkbox = host.querySelector('.transaction-card input[type="checkbox"]') as HTMLInputElement;
+      expect(checkbox.checked).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
     'a backup row without a readable date reaches the review step marked, and a dated one keeps its day',
     async () => {
       // The JSON door through the wizard, with the real checkDuplicates

@@ -271,6 +271,17 @@
             </div>
           </div>
 
+          <!-- A row a confirm attempt refused, re-offered with its own
+               reason — role="note" rather than an alert, since nothing here
+               just happened: the refusal is what the review step reopened
+               on, not a change the reviewer needs interrupted for. -->
+          @if (row.importFailure) {
+            <div class="import-failure-reason" role="note">
+              <mat-icon aria-hidden="true">error_outline</mat-icon>
+              <span>{{ importFailureText(row) }}</span>
+            </div>
+          }
+
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap — and the add triggers. Add tag is the
                unconditional one, so the strip renders on every row whether or

@@ -97,6 +97,48 @@ export function blankImportRow(
 }
 
 /**
+ * The Firestore codes a dropped connection actually surfaces as: a rules
+ * refusal, the client caught offline, a deadline the server missed, and the
+ * quota ceiling — every one of them a retry is worth offering for, unlike a
+ * guard the row itself will never pass.
+ */
+const CONNECTION_CODES = new Set([
+  'permission-denied', 'unavailable', 'deadline-exceeded', 'resource-exhausted',
+]);
+
+/**
+ * The catalog key a failed row's own reason resolves to.
+ *
+ * The wizard re-offers a row a confirm attempt refused. A Firestore rejection
+ * keeps its identifier and its prose apart — `code` is the stable one
+ * (`permission-denied`, `unavailable`, …), `message` is text meant for a
+ * console ("Missing or insufficient permissions.") that never contains the
+ * code as a substring — so `code` is read first and decides the connection
+ * reason on its own. `message` is read only for the amount guard's own
+ * sentinel, which is a code masquerading as a message because
+ * `transaction.service` throws no Firestore error, and as a fallback ladder
+ * for an error with no code at all (a `TypeError` off a dropped `fetch`,
+ * still worth reading the way `parseAIError` reads a provider's own
+ * failure). Anything neither reading places is unknown rather than a guess
+ * at what actually stopped the row.
+ */
+export function importFailureKey(error: { message: string; code?: string }): string {
+  if (error.message === 'INVALID_TRANSACTION_AMOUNT') return 'import.rowFailedAmount';
+  if (error.code) {
+    return CONNECTION_CODES.has(error.code) ? 'import.rowFailedConnection' : 'import.rowFailedUnknown';
+  }
+  const lower = error.message.toLowerCase();
+  if (
+    lower.includes('permission-denied') ||
+    lower.includes('unavailable') ||
+    lower.includes('network')
+  ) {
+    return 'import.rowFailedConnection';
+  }
+  return 'import.rowFailedUnknown';
+}
+
+/**
  * Whether the row has no amount an import could ship.
  *
  * Read as "not more than zero" rather than "is zero", so every unusable

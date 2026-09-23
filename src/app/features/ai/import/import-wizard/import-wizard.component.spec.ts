@@ -1405,6 +1405,106 @@ describe('ImportWizardComponent', () => {
       expect(component.selectedTransactionIds()).toEqual(new Set(['b']));
     }));
 
+    it('a re-offered row carries its reason', fakeAsync(() => {
+      component.extractedTransactions.set([{ ...mockTransactions[0], id: 'a' }]);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'csv' as const, fileType: 'generic_csv' as const,
+        fileName: 'test.csv', fileSize: 1024,
+        transactionCount: 1, successCount: 0, skippedCount: 0, errorCount: 1,
+        totalIncome: 0, totalExpenses: 0, duplicatesSkipped: 0,
+        status: 'partial' as const,
+        errors: [{ row: 1, transactionId: 'a', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      const row = component.extractedTransactions().find(t => t.id === 'a')!;
+      expect(row.importFailure).toBe('import.rowFailedAmount');
+      expect(row.importAttempts).toBe(1);
+      // One failure re-offers the row; it stops short of setting it aside.
+      expect(row.selected).toBeTrue();
+      expect(notifications.error).not.toHaveBeenCalledWith('import.importPartialSetAside');
+    }));
+
+    it('a row that fails twice comes back deselected and is named in the notice', fakeAsync(() => {
+      component.extractedTransactions.set([{ ...mockTransactions[0], id: 'a', description: 'Coffee' }]);
+      const refusal = {
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'csv' as const, fileType: 'generic_csv' as const,
+        fileName: 'test.csv', fileSize: 1024,
+        transactionCount: 1, successCount: 0, skippedCount: 0, errorCount: 1,
+        totalIncome: 0, totalExpenses: 0, duplicatesSkipped: 0,
+        status: 'partial' as const,
+        // A rules denial the way it actually reaches this app: a stable
+        // code, separate from prose meant for a console.
+        errors: [{
+          row: 1, transactionId: 'a',
+          code: 'permission-denied', message: 'Missing or insufficient permissions.',
+          originalValue: 'Coffee',
+        }],
+      };
+
+      mockImportService.confirmImport.and.returnValue(Promise.resolve(refusal));
+      component.confirmImport();
+      tick();
+
+      expect(component.extractedTransactions()[0].importAttempts).toBe(1);
+      expect(component.extractedTransactions()[0].selected).toBeTrue();
+
+      // Same id, refused a second time — the wizard reads the row's own
+      // running count, not the response, so a fresh confirmImport stub with
+      // the same shape is enough to drive the second failure.
+      mockImportService.confirmImport.and.returnValue(Promise.resolve(refusal));
+      component.confirmImport();
+      tick();
+
+      const row = component.extractedTransactions()[0];
+      expect(row.selected)
+        .withContext('re-offering the same refusal forever is a loop with no way out')
+        .toBeFalse();
+      expect(row.importAttempts).toBe(2);
+      expect(row.importFailure).toBe('import.rowFailedConnection');
+      // One notice for the whole round, carrying how many rows it set aside
+      // — not the row's own description, which its card already shows.
+      expect(notifications.error).toHaveBeenCalledWith('import.importPartialSetAside');
+      expect(mockTranslationService.t)
+        .toHaveBeenCalledWith('import.importPartialSetAside', { count: 1 });
+    }));
+
+    it('names every set-aside row in one notice, not one per row', fakeAsync(() => {
+      // NotificationService shows a single snackbar at a time — a call per
+      // row would leave only the last row's name on screen with two rows
+      // set aside in the same round.
+      component.extractedTransactions.set([
+        { ...mockTransactions[0], id: 'a', description: 'Coffee', importAttempts: 1 },
+        { ...mockTransactions[0], id: 'b', description: 'Lunch', importAttempts: 1 },
+      ]);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'csv' as const, fileType: 'generic_csv' as const,
+        fileName: 'test.csv', fileSize: 1024,
+        transactionCount: 2, successCount: 0, skippedCount: 0, errorCount: 2,
+        totalIncome: 0, totalExpenses: 0, duplicatesSkipped: 0,
+        status: 'partial' as const,
+        errors: [
+          { row: 1, transactionId: 'a', code: 'permission-denied', message: 'Missing or insufficient permissions.', originalValue: 'Coffee' },
+          { row: 2, transactionId: 'b', code: 'unavailable', message: 'The service is currently unavailable.', originalValue: 'Lunch' },
+        ],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      expect(component.extractedTransactions().every(t => !t.selected)).toBeTrue();
+      const setAsideCalls = notifications.error.calls.allArgs()
+        .filter(args => args[0] === 'import.importPartialSetAside');
+      expect(setAsideCalls.length).toBe(1);
+      expect(mockTranslationService.t)
+        .toHaveBeenCalledWith('import.importPartialSetAside', { count: 2 });
+    }));
+
     it('treats a failed read-back as saved: info toast, still navigates', fakeAsync(() => {
       // The rows were written; only the summary read failed. An error toast
       // here would invite a retry that duplicates the whole batch.

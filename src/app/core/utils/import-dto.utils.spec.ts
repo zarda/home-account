@@ -361,6 +361,20 @@ describe('toCreateTransactionDTO and the review flags', () => {
     expect('exchangeRate' in dto).toBeFalse();
     expect('amountInBaseCurrency' in dto).toBeFalse();
   });
+
+  it('never forwards importFailure or importAttempts — review-only marks the wizard sets on a re-offered row', () => {
+    const dto = toCreateTransactionDTO(
+      {
+        amount: 5,
+        date: new Date(2026, 0, 1),
+        importFailure: 'import.rowFailedAmount',
+        importAttempts: 2
+      } as never,
+      'USD'
+    );
+    expect('importFailure' in dto).toBeFalse();
+    expect('importAttempts' in dto).toBeFalse();
+  });
 });
 
 describe('readTransactionSnapshot', () => {

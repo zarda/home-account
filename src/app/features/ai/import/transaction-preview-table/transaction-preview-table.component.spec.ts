@@ -1210,6 +1210,34 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
   });
 
   /**
+   * ADR 0144: this describe carries the one rendering pass proving a new
+   * template branch — a re-offered row's own reason, resolved through the
+   * catalog key the wizard stamped onto it (importFailureKey) rather than
+   * the raw code or provider text ImportError.message actually carries.
+   */
+  it('renders a re-offered row\'s own reason under the card', () => {
+    component.transactions = [makeRow({ importFailure: 'import.rowFailedAmount' })];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const reason = fixture.nativeElement.querySelector('.import-failure-reason') as HTMLElement;
+    expect(reason).withContext('a failed row explains itself on the card').not.toBeNull();
+    expect(reason.getAttribute('role')).toBe('note');
+    // Scoped past the icon: mat-icon's own content is the ligature name
+    // ("error_outline") with no font loaded here to turn it into a glyph.
+    const text = reason.querySelector('span') as HTMLElement;
+    expect(text.textContent?.trim()).toBe('import.rowFailedAmount');
+  });
+
+  it('renders no reason at all for a row that has not failed', () => {
+    component.transactions = [makeRow()];
+    component.categories = [];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.import-failure-reason')).toBeNull();
+  });
+
+  /**
    * The touch picker renders in the CDK overlay container, outside the
    * fixture, so a test that opened it closes it again — or the next test
    * finds a stray dialog in the document.

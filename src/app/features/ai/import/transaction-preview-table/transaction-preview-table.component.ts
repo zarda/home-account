@@ -630,6 +630,19 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
+   * Why a re-offered row failed last time, in the reviewer's own language.
+   *
+   * Resolved through the row's own catalog key (`importFailure`, stamped by
+   * the wizard via `importFailureKey`) rather than `ImportError.message`
+   * itself, which is a raw code or a provider's English — never this
+   * codebase's to put on a card untranslated. Empty for a row nobody has
+   * tried yet, which is the template's own cue to render nothing.
+   */
+  importFailureText(row: CategorizedImportTransaction): string {
+    return row.importFailure ? this.translationService.t(row.importFailure) : '';
+  }
+
+  /**
    * Whether a field was read confidently enough not to need a second look.
    *
    * An unreported confidence is not a low one: CSV and JSON imports have no

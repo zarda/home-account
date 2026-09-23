@@ -3279,6 +3279,36 @@ describe('AIImportService', () => {
       expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({ row: 1, transactionId: 'a' }));
     });
 
+    it("records the caught error's own code alongside its message", async () => {
+      // A FirestoreError keeps a stable code apart from its prose message —
+      // the shape a real rules denial or an offline write actually throws,
+      // as opposed to a plain Error, which has none.
+      const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+      });
+      transactionService.addTransaction.and.returnValue(Promise.reject(denied));
+
+      await service.confirmImport([selected({ id: 'a' })], 'r.png', 10, 'image', 'receipt_image');
+
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1];
+      expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({
+        transactionId: 'a',
+        message: 'Missing or insufficient permissions.',
+        code: 'permission-denied',
+      }));
+    });
+
+    it('omits code entirely when the caught error carried none', async () => {
+      // completeImport writes this straight to Firestore, which rejects an
+      // undefined field — the key must be absent, not present and empty.
+      transactionService.addTransaction.and.returnValue(Promise.reject(new Error('save failed')));
+
+      await service.confirmImport([selected({ id: 'a' })], 'r.png', 10, 'image', 'receipt_image');
+
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1];
+      expect('code' in (stats.errors?.[0] ?? {})).toBeFalse();
+    });
+
     it('should coerce string and invalid dates to valid Date objects', async () => {
       await service.confirmImport(
         [
