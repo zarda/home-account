@@ -12,8 +12,9 @@ figures handed to the AI summary — reads one in-memory table in
    arrival.
 3. **The device cache** — the last successful fetch, in localStorage under
    `home-account.exchangeRates`, carrying the fetch's own timestamp. Fresh
-   for twelve hours; a table with fewer than two entries is refused as
-   indistinguishable from the placeholder.
+   for twelve hours; an entry that is not a finite number above zero is
+   dropped on the way in, and a table with fewer than two survivors is
+   refused as indistinguishable from the placeholder.
 4. **The compiled-in constants** — nineteen approximate rates for the
    picker's curated currencies. They were written in `2a27991 feat: Core
    services` (2025-12-30), the third commit of the repository, and no
@@ -29,8 +30,24 @@ it settled on, and `ensureRatesLoaded()` releases the writers that await it.
 A response is a failure unless its body proves otherwise. The provider
 signals failure in band — HTTP 200 with `{"result":"error", …}` — so
 `refreshRates` rejects on anything that is not `result: "success"` with a
-multi-entry object table, and it validates **before** writing signals or
-cache, so a good cache can never be overwritten by a bad response.
+usable table, and it validates **before** writing signals or cache, so a good
+cache can never be overwritten by a bad response.
+
+**A table keeps only real rates.** `sanitizeRates` in `currency.model.ts` is
+what "usable" means, for the fetch and the cache reader alike: an entry
+survives only when its value is a finite number above zero — a string, `NaN`,
+zero, a negative and `Infinity` are dropped rather than coerced — an array is
+refused outright, and fewer than two survivors refuse the whole table. The
+fetch caches the sanitised table, never the raw body.
+
+**A curated code the table lacks keeps its built-in rate.** Dropping an entry
+leaves the code absent, and `getExchangeRate` reads an absent code as 1 — the
+par conversion of #251 below, in a form that looks plausible. So every
+accepted table, live or cached, is installed over the nineteen compiled-in
+rates (`withBuiltInFallback`): the table's own entries win, and a curated code
+it is missing keeps its approximation. The cache still holds only what the
+provider sent. A code neither the table nor the constants know still converts
+at 1 ([ADR 0148](ADR/0148-every-figure-names-its-rate.md)).
 
 What each rung stamps into `lastUpdated`: the fetch stamps now; the cache
 stamps its own write time; the constants stamp nothing — null means "never
@@ -50,15 +67,29 @@ provider, but only `fallback` has never seen a real market rate, and only
 Settings → Preferences reads it, in `RateStatusComponent`, on a line directly
 under the base-currency select — beside the currency whose conversions the
 table serves. Four rungs, three lines: `live` and `cached` share *Exchange
-rates updated {{date}}*, because a fresh cache is at most twelve hours old
-and makes the same claim about the table's age that a live fetch does. The
-cache is the ladder's *first* rung, so nearly every boot lands on `cached`;
-a line naming the provider there would report the ordinary case as a
+rates updated {{date}} at {{time}}*, because a fresh cache is at most twelve
+hours old and makes the same claim about the table's age that a live fetch
+does. The cache is the ladder's *first* rung, so nearly every boot lands on
+`cached`; a line naming the provider there would report the ordinary case as a
 degraded one. `expired` and `fallback` carry warnings of their own — those are
 the two rungs that did not reach the provider, and that failure is the thing
-worth saying. `fallback` names no date, because it has none. The marker is
-passive: `refreshRates` is a rejecting API with no retry, so there is no
-refresh control to offer.
+worth saying. `expired` names the saved table's date and time too, and
+`fallback` names neither, because it has none. The time is
+`LocaleFormatService.formatTime` — hour and minute on the locale's own clock.
+The marker is passive: there is no refresh control to offer, and the one
+recovery there is runs by itself.
+
+**A missed live table tries again when the connection returns.** When the
+ladder settles on `expired` or `fallback`, `CurrencyService` listens for the
+window's `online` event. On it, once `PwaService.isOnline()` agrees, it runs
+`refreshRates()` again, and a success installs the live table and flips the
+rung — and the line — to `live`. At most three attempts a session
+(`RATE_RETRY_LIMIT`), one per `online` event rather than on a timer; a second
+event while an attempt is still in flight starts nothing and spends nothing;
+and the listener goes on success, at the limit, and when the service is
+destroyed. A boot on `live` or `cached` listens for nothing. Rows written
+while the table was the fallback keep the rate they were written at
+([ADR 0148](ADR/0148-every-figure-names-its-rate.md)).
 
 The reasoning and the rejected loud-failure alternative are in
 [ADR 0037](ADR/0037-an-error-body-is-a-failed-fetch.md); what the marker

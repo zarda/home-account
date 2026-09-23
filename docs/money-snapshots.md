@@ -40,6 +40,25 @@ be trusted: no snapshot at all (rows written before it existed), a
 cross-currency snapshot — a 1:1 rate between two different currencies, which
 can only come from unloaded rates at write time.
 
+**Read by** the figures over transactions already written: the dashboard's
+totals, the transaction list, the reports page's tabs and cards, both PDF
+exports and the category summary file, budgets' `spent`, and the period total
+the AI summary card hands its advice request. The report PDF, the category,
+country and recurring breakdowns and that summary total moved over in
+[ADR 0148](ADR/0148-every-figure-names-its-rate.md) — each had converted every
+row at today's rate, so the two PDFs of one period could print different
+totals. One figure over written rows still converts live: the spending-summary
+prompt's, whose totals `CloudLLMProviderBase.generateSpendingSummary` builds
+through `convert`.
+
+**Three figures cannot read it, and say so.** A scheduled occurrence is not a
+written row, so a figure over money that has not moved yet has no snapshot to
+prefer: the Upcoming card's *Scheduled net*, the weekly recap's bills due and
+the forecast's projected net. They convert at today's rate through
+`CurrencyService.convert`, and each carries **At today's rate**
+(`common.atTodaysRate`) beside the figure — the forecast's actuals, which are
+written rows, still read their snapshots.
+
 **Repaired by** `TransactionService.resnapshotBaseCurrency`, which rewrites
 every row when the base-currency preference changes. That is why the guard
 above can leave a stale-stamped row alone: the read path already handles it,

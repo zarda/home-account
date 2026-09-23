@@ -12,9 +12,11 @@ mapper and the widened rows),
 [ADR 0060](ADR/0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md)
 (photos and the recorded source),
 [ADR 0062](ADR/0062-the-review-step-can-correct-every-field-the-import-writes.md)
-(what the review step may correct) and
+(what the review step may correct),
 [ADR 0063](ADR/0063-an-import-suggests-only-what-the-account-already-knows.md)
-(where a suggestion comes from). This document is the part you need when
+(where a suggestion comes from) and
+[ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md) (what
+each door's grades may claim). This document is the part you need when
 adding a field, a door, or a suggestion.
 
 ## The row shapes
@@ -36,7 +38,7 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries nine more that are **review-step
+`CategorizedImportTransaction` carries twelve more that are **review-step
 marks, not fields**: `currencyFellBack` (nobody read a currency, so the base
 currency is standing in), `dateAssumed` (the row's `date` is *now* rather than
 something read off the source, because `resolveImportDate` could not vouch
@@ -67,10 +69,17 @@ instead, see [ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phon
 `currencySuggestion` (the currency ladder's offer for a fallen-back row —
 `AIImportService.currencySuggestionSlot()` fills it and the review card reads
 it, while `currencyFellBack` keeps standing; see
-[ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)).
-None of them reaches the
+[ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)),
+`fileRate` (the conversion a backup row was stored with: its rate, the base
+currency it converts into and the currency it converts from — never the
+converted figure, because the card can still change the amount; see
+[ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)),
+`importFailure` (the catalog key for why this row's last confirm attempt was
+refused) and `importAttempts` (how many confirm attempts the row has failed —
+at two the wizard hands it back deselected). None of them reaches the
 mapper — it names its fields — and none of them is ever written to a
-transaction.
+transaction as itself: `fileRate` reaches the write only as the snapshot the
+confirm step computes from it, over the amount actually being written.
 
 The renames, applied only at the confirm step's call into the mapper:
 `suggestedCategoryId` → `categoryId`, `notes` → `note`. Nothing else is named
@@ -87,7 +96,7 @@ travels with zero edits.
 | `type` | the row's own, else derived from the amount's sign |
 | `amount` | `importAmount` — absolute, and whole in the row's currency. The four review-row builders call it too, so the figure is already whole by the time it reaches here; the second call is for the offline drain, which has no builder in front of it, and rounding an already-rounded figure returns it ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)) |
 | `currency` | the row's, else the account's base currency (empty string falls back) |
-| `categoryId` | the row's, else the catch-all (empty string falls back) |
+| `categoryId` | the row's, else the catch-all of the row's own declared type — `other_income` for an income row, `other_expense` for an expense row and for a row that declared no type at all, whatever its amount's sign (empty string falls back) |
 | `description` | the row's, else `Imported transaction` |
 | `date` | passed through — the review-row builders and the queue drain resolve via `resolveImportDate` before the row reaches here, and the wizard's JSON backup door now does too; the data hub's CSV path still parses and defaults its own |
 | `note`, `tags`, `location`, `period` | spread only when truthy / non-empty |
@@ -111,21 +120,34 @@ it is the fourth door now, not an exception to the rule.
 |---|---|---|---|---|---|---|---|
 | type, amount, currency, date, description | yes | yes | yes | yes | yes | yes | yes |
 | note | yes | yes | items list → note | — | — | yes | items list → note |
-| tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file | `location` when the receipt prints one |
+| tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file; a rule link only when this account still holds the rule | `location` when the receipt prints one |
 | suggestions (tags, rule link) | — | yes | yes | yes | yes | — | — (no review step) |
 | currency marked as fallen back | — | yes | yes | yes | yes | yes | — (the base currency is written, unmarked) |
-| category | catch-all (ADR 0011) | ladder (#258) | ladder / extraction | ladder | ladder | the backup's own; a row without one is defaulted and graded 0.3 (ADR 0113) | extraction, else catch-all |
+| category | the file's Category cell, matched exactly; else the type's catch-all (ADR 0150) | the file's Category cell, matched exactly; the ladder for the rest (#258) | extraction, else the ladder | extraction, else the type's catch-all | extraction, else the type's catch-all | the backup's own when this account holds it, on the row's side; else the type's catch-all (ADR 0147) | extraction, else catch-all |
+| base-currency rate written | today's | today's | today's | today's | today's | the file's, while the row's currency is still the one it converts from | today's |
 | photo attached | — | — | **yes** | no (known gap, ADR 0060) | no | no | **yes** |
 | recorded as | n/a | `csv` / `generic_csv` | `image` / `receipt_image` | `image` / `screenshot` | `pdf` / `bank_pdf` | `json` / `backup_json` | a failed attempt only: `image` / `receipt_image`, door `queue` |
 
 The data hub's CSV path has no review step, so it takes no suggestions and
 carries no marks. The JSON backup is the one wizard door that takes none
-either: its rows already carry what the backup recorded — with one exception.
-A category the backup did **not** record is not carried; it is defaulted to
-the catch-all and graded 0.3, the grade 0045 gives a default nobody answered
-for — the shared mapper's, not the categorization ladder's own unanswered
-floor of 0.1 — so the chip's dot and the low-confidence tally see it
-([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).
+either: its rows already carry what the backup recorded — checked against this
+account rather than trusted. A category is kept at 1.0 only when this account
+holds it, active, on the row's own side. One it does not hold — deleted since
+the backup, from another account, or on the other side — and one the backup
+did **not** record are filed under the row's own catch-all and graded 0.3,
+the grade 0045 gives a default nobody answered for — the shared mapper's, not
+the categorization ladder's own unanswered floor of 0.1 — so the chip's dot
+and the low-confidence tally see it
+([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md),
+[ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+While the account's categories have not loaded, the file's id is kept at 0.3:
+an empty list can neither vouch for it nor show it wrong. A rule link is kept
+only when it names a rule the account holds, paused ones included, and a
+failed read of the rules keeps none. The row's rate travels as `fileRate` and
+is applied to the row's own amount when it is written, so a split, a merge or
+an edited amount is converted at the file's rate rather than written beside a
+figure it no longer matches; a row whose currency was changed on the card, or
+a file stamped in another base currency, converts at today's rate instead.
 
 A mixed wizard batch is recorded as its dominant kind by row count (ties keep
 the first processed), sized by every file still selected when the write runs.
@@ -163,6 +185,32 @@ history card guards the legacy read at the call site and renders a zero in
 the account's own currency, never the word `NaN`
 ([ADR 0127](ADR/0127-a-figure-the-app-cannot-vouch-for-says-so.md)).
 See [receipt-import.md](receipt-import.md#failure-surfacing).
+
+## What a row's grades claim, door by door
+
+A grade says what the door that produced the row can vouch for, and no more
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+The review card colours the category chip from `categoryConfidence`, and the
+`low_confidence` tally counts rows under 0.5:
+
+| Door | A category the source named | A category nobody named, or nobody could place |
+|---|---|---|
+| CSV (data hub) | the file's Category cell, matched exactly over the row's own type ([ADR 0150](ADR/0150-the-csv-reads-back-what-it-writes.md)) — ungraded, since there is no review step | the row's own catch-all; the preview says how many rows land there |
+| CSV (wizard) | the same exact match, at 1.0, and the row skips the ladder | the ladder: category memory at 0.95; the provider's own grade for an answer it placed; 0.3 for a row it left out, an answer it could not place, or one on the other side of the ledger; 0.1 when no model answered at all |
+| Receipt photos | 0.8 when the extraction named one, and the row skips the ladder | the ladder, as above |
+| Statement photos, bank PDF | 0.8 when the extraction named one | the row's own catch-all at 0.3 |
+| JSON backup | 1.0 when this account holds the id, active, on the row's own side | the row's own catch-all at 0.3 — or the file's id at 0.3, while the account's categories have not loaded |
+| Camera, through the strategy service | the reader's own confidence when its answer resolved | 0.3 when it did not; 0.1 when no categorizer looked ([ADR 0051](ADR/0051-an-uncategorized-row-is-graded-where-it-is-coerced.md)) |
+
+A typed row is only ever filed under its own side: the categorizer refuses an
+answer on the other side at 0.3, and every catch-all a typed row can reach is
+`other_income` for income and `other_expense` for an expense.
+
+The amount and date grades belong to the readers rather than the doors, and
+[receipt-import.md](receipt-import.md#where-the-amount-comes-from) has them —
+the on-device path's cross-check included. A CSV or JSON row carries neither:
+nobody read it, so nothing is graded, and `resolveImportDate` skips its
+plausibility window for an ungraded date.
 
 ## Photos
 
