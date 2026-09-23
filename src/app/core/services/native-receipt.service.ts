@@ -15,6 +15,15 @@ import {
 import { parseDateInput } from '../utils/transaction-date.utils';
 import { fileToBase64 } from '../utils/file.utils';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
+import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
+import { VERIFY_FIELD_THRESHOLD, roundToMinorUnit } from '../../models';
+
+/**
+ * ADR 0045's evidence grade: a reading with nothing else to corroborate or
+ * dispute it — an extraction that named something, or a date the constructor
+ * accepted, and no second source to weigh against it.
+ */
+const MODEL_READ_GRADE = 0.8;
 
 /**
  * On-device receipt pipeline: Vision OCR recognizes the text, then Apple's
@@ -138,24 +147,45 @@ export class NativeReceiptService {
     // day-key shape and returns null rather than an Invalid Date, so the
     // fallback covers an unreadable string too.
     const parsedDate = parseDateInput(extraction.date);
+    const amount = Math.abs(extraction.amount) || 0;
+    // Report what was read, empty when nothing was. The consumer knows the
+    // account's base currency; this service does not.
+    const currency = readCurrencyCode(extraction.currency);
+
+    // The plugin reports no confidence of its own, so the only corroboration
+    // for its total is running the same OCR text through the regex reader and
+    // comparing the two — in whichever currency either side actually read, or
+    // at two decimal places when neither did (roundToMinorUnit's own fallback
+    // for an unrecognized code).
+    const text = parseReceiptOcrText(ocrResult.text);
+    const amountCurrency = currency || text.currency;
+    const sameTotal = amount > 0 &&
+      roundToMinorUnit(amount, amountCurrency) === roundToMinorUnit(text.amount, amountCurrency);
 
     return {
       date: parsedDate ?? new Date(),
       description: extraction.merchant || 'Unknown Merchant',
-      amount: Math.abs(extraction.amount) || 0,
+      amount,
       type: 'expense',
-      // Report what was read, empty when nothing was. The consumer knows the
-      // account's base currency; this service does not.
-      currency: readCurrencyCode(extraction.currency),
+      currency,
       confidence: ocrResult.confidence,
       source: 'native',
       notes: extraction.details || undefined,
       suggestedCategoryId: match?.matched ? match.id : undefined,
       ...printedLocationSlot(readPrintedLocation(extraction.location, extraction.merchant), country),
       ...(country ? { receiptCountry: country } : {}),
-      // Nothing else here grades the date; an unreadable one has to say so
-      // itself rather than silently landing on today with no mark at all.
-      ...(parsedDate === null ? { fieldConfidence: { date: 0 } } : {}),
+      // An unreadable field has to say so itself rather than silently landing
+      // on a fallback (today's date, a zero amount) with no mark at all.
+      fieldConfidence: {
+        amount: !(amount > 0)
+          ? 0
+          : sameTotal
+            ? Math.max(text.amountConfidence, MODEL_READ_GRADE)
+            : text.amountConfidence >= VERIFY_FIELD_THRESHOLD
+              ? REVIEW_AMOUNT_CONFIDENCE
+              : MODEL_READ_GRADE,
+        date: parsedDate === null ? 0 : MODEL_READ_GRADE,
+      },
     };
   }
 
