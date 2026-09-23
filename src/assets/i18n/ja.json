@@ -462,6 +462,7 @@
     "uploadHint": "銀行エクスポートとバックアップファイルに対応",
     "previewTransactions": "プレビュー：{{count}}件の取引が見つかりました",
     "moreTransactions": "...他{{count}}件の取引",
+    "csvUnmatchedCategories": "カテゴリを特定できなかった{{count}}件の取引はデフォルトのカテゴリになります",
     "importingProgress": "インポート中... {{progress}}%",
     "importTransactions": "{{count}}件の取引をインポート",
     "dangerZone": "危険ゾーン",

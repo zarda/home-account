@@ -15,7 +15,7 @@ import { TranslationService } from './translation.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
-import { MockAuthService } from './testing/mock-auth.service';
+import { MockAuthService, createMockUser } from './testing/mock-auth.service';
 import { createTransaction, createCategory, createCategoryHierarchy } from './testing/test-data';
 import { parseCsvRows } from '../utils/csv.utils';
 import { Timestamp } from '@angular/fire/firestore';
@@ -67,6 +67,13 @@ describe('ExportService', () => {
     service = TestBed.inject(ExportService);
     categoryService = TestBed.inject(CategoryService);
     currencyService = TestBed.inject(CurrencyService);
+
+    // CategoryService clears its own signal the moment it sees no signed-in
+    // user (its signed-out reset effect), which fires on the microtask queue
+    // rather than synchronously — so a category set below survives a
+    // synchronous read (export's) but is gone by the time an awaited one
+    // (import's) runs, unless a user is signed in first.
+    (TestBed.inject(AuthService) as unknown as MockAuthService).setMockUser(createMockUser());
 
     // Set up test categories
     categoryService.categories.set(createCategoryHierarchy());
@@ -1052,6 +1059,42 @@ describe('ExportService', () => {
 
       expect(result.length).toBe(1);
       expect(result[0].period).toBeUndefined();
+    });
+
+    it("export then import restores every row's category", async () => {
+      const result = await reimport([
+        createTransaction({ type: 'expense' }),
+        createTransaction({ type: 'income' }),
+      ]);
+
+      const expenseRow = result.find(r => r.type === 'expense');
+      const incomeRow = result.find(r => r.type === 'income');
+      // createTransaction's own defaults: 'food_restaurants' for expense,
+      // 'employment_salary' for income — both real entries in the
+      // createCategoryHierarchy fixture this suite's CategoryService holds.
+      expect(expenseRow?.categoryId).toBe('food_restaurants');
+      expect(incomeRow?.categoryId).toBe('employment_salary');
+    });
+
+    it('a file without a Category column imports as before', async () => {
+      const text = 'Date,Description,Amount\n2026-06-01,Coffee,4.50\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].category).toBeUndefined();
+      expect(result[0].categoryId).toBeUndefined();
+    });
+
+    it("parseImportedData hands the DTO the file's category, and an unmatched row its type's catch-all", async () => {
+      const text = 'Date,Type,Category,Amount\n'
+        + '2026-06-01,expense,Restaurants,12\n'
+        + '2026-06-02,expense,Nonexistent,8\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+      const dtos = service.parseImportedData(result, 'USD');
+
+      expect(dtos[0].categoryId).toBe('food_restaurants');
+      expect(dtos[1].categoryId).toBe('other_expense');
     });
   });
 

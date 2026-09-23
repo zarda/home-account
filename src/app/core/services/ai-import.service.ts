@@ -111,6 +111,16 @@ export const IMPORT_READBACK_TIMEOUT_MS = 5000;
 const EXTRACTION_CATEGORY_GRADE = 0.8;
 
 /**
+ * The grade for a category resolved from the CSV door's own Category cell:
+ * not a guess, at any evidence tier — a name the account's own catalog
+ * matched exactly, over the row's own type, with no other entry it could
+ * mean. Above {@link EXTRACTION_CATEGORY_GRADE}'s reading of a model's
+ * extraction for the same reason: nothing was read here, an exact name in
+ * the file was checked against the catalog that named it.
+ */
+const EXACT_CATEGORY_GRADE = 1.0;
+
+/**
  * Re-exported from their new home so the dialogs and specs that import the
  * codes from here keep compiling. The definitions moved to the util because
  * parseAIError needs them and the strategy service needs parseAIError.
@@ -1137,19 +1147,39 @@ export class AIImportService {
 
       const categorized = await this.categorizeTransactions(extractedTransactions);
 
+      // The file's own Category cell: parseCSV (closed by ADR 0150) already
+      // resolved each cell against the live catalog, exactly and over the
+      // row's own type, so the id it left on the row is reused as-is — never
+      // re-resolved here, and never sent to the fuzzy ladder below, which is
+      // for a name the parser could not answer, not one it might answer
+      // wrong. A row the parser could not resolve carries no `categoryId`.
+      const resolvedCategoryIds = importedTransactions.map(t => t.categoryId);
+      resolvedCategoryIds.forEach((categoryId, index) => {
+        if (categoryId) {
+          categorized[index].suggestedCategoryId = categoryId;
+          categorized[index].categoryConfidence = EXACT_CATEGORY_GRADE;
+        }
+      });
+
       // The same ladder the image paths climb: category memory first, then a
       // grounded model call when a provider is configured, then the
-      // review-flagged floor. A CSV row never carries an extraction category
-      // — the Category column deliberately does not round-trip (ADR 0011) —
-      // so the overlay cannot fight the mapper's suggestion.
+      // review-flagged floor. Only for what the file's own column left
+      // unresolved — a row already matched has no ladder opinion worth
+      // blending with an answer that came straight from the account's catalog.
       const rawRows: RawTransaction[] = extractedTransactions.map(t => ({
         description: t.description,
         amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
         date: parseDateInput(t.date) ?? new Date(),
         type: t.type
       }));
-      const laddered = await this.categorizeWithLadder(rawRows, history);
-      laddered.forEach((row, index) => {
+      const unresolvedIndexes = resolvedCategoryIds
+        .map((categoryId, index) => (categoryId ? -1 : index))
+        .filter(index => index >= 0);
+      const laddered = unresolvedIndexes.length > 0
+        ? await this.categorizeWithLadder(unresolvedIndexes.map(index => rawRows[index]), history)
+        : [];
+      laddered.forEach((row, position) => {
+        const index = unresolvedIndexes[position];
         categorized[index].suggestedCategoryId = row.suggestedCategoryId;
         categorized[index].categoryConfidence = row.confidence;
       });

@@ -489,6 +489,10 @@
       "one": "...and {{count}} more transaction",
       "other": "...and {{count}} more transactions"
     },
+    "csvUnmatchedCategories": {
+      "one": "{{count}} row's category could not be matched and will use the default category",
+      "other": "{{count}} rows' categories could not be matched and will use the default category"
+    },
     "importingProgress": "Importing... {{progress}}%",
     "importTransactions": {
       "one": "Import {{count}} Transaction",

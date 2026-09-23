@@ -2159,6 +2159,38 @@ describe('AIImportService', () => {
       expect(coffee?.categoryConfidence).toBe(0.95);
     });
 
+    it("keeps a category the file named, at full grade, and sends only the rest to the ladder", async () => {
+      categories.set([
+        createCategory({ id: 'dining', name: 'Dining Out', type: 'expense' }),
+        createCategory({ id: 'other_expense', name: 'Other', type: 'expense' }),
+      ]);
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        {
+          description: 'Ramen', amount: 12, date: new Date(2024, 5, 1),
+          type: 'expense', currency: 'USD', category: 'Dining Out', categoryId: 'dining',
+        },
+        {
+          description: 'Mystery', amount: 7, date: new Date(2024, 5, 2),
+          type: 'expense', currency: 'USD', category: 'Nonexistent',
+        },
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      // The file's own exact name never reaches the model at all.
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.map(r => r.description)).toEqual(['Mystery']);
+
+      const ramen = result.transactions.find(t => t.description === 'Ramen');
+      expect(ramen?.suggestedCategoryId).toBe('dining');
+      expect(ramen?.categoryConfidence).toBe(1);
+
+      // What the ladder answers for the row that did need it is untouched.
+      const mystery = result.transactions.find(t => t.description === 'Mystery');
+      expect(mystery?.suggestedCategoryId).toBe('food');
+      expect(mystery?.categoryConfidence).toBe(0.8);
+    });
+
     it('names the categorization step for what it does', async () => {
       const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
       exportService.importFromCSV.and.returnValue(csvRows());

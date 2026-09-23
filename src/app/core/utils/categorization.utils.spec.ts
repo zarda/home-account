@@ -6,6 +6,7 @@ import {
   gradeCategorySuggestion,
   mapCategoryNameToId,
   matchCategoryName,
+  resolveExactCategoryName,
   fallbackCategoryFor,
   CATEGORY_KEYWORDS,
   FALLBACK_CATEGORY_ID,
@@ -543,6 +544,79 @@ describe('categorization.utils', () => {
           expect(expenseIds.has(id)).withContext(id).toBeTrue();
         });
       });
+    });
+  });
+
+  /**
+   * The importer's own probe: an app reading back a Category column it wrote
+   * itself is checking a name against the account's own catalog, not guessing
+   * at free text — so this never runs the partial-name or keyword passes
+   * {@link matchCategoryName} falls through to, and refuses rather than
+   * guesses when a name lands on more than one active entry.
+   */
+  describe('resolveExactCategoryName', () => {
+    it('resolves an exported English name', () => {
+      expect(resolveExactCategoryName('Food & Drinks', 'expense', categories, identity))
+        .toBe('food');
+    });
+
+    it('resolves a Japanese name, in every shipped locale, not just the active bundle', () => {
+      const catalog = defaultCatalog();
+      expect(resolveExactCategoryName('食料品', 'expense', catalog, untranslated))
+        .toBe('food_groceries');
+    });
+
+    it("resolves a custom category's own name", () => {
+      const custom = [createCategory({ id: 'gym', name: 'Gym Membership', type: 'expense' })];
+      expect(resolveExactCategoryName('Gym Membership', 'expense', custom, identity)).toBe('gym');
+      // Matched the same as every other pass: case folds, surrounding space does not.
+      expect(resolveExactCategoryName('  gym membership  ', 'expense', custom, identity))
+        .toBe('gym');
+    });
+
+    it('refuses a name nothing in the catalog carries', () => {
+      // getCategoryName's own literal for a category the export could not
+      // find — refusing it here is what keeps that placeholder from ever
+      // resolving to a real category on the way back in.
+      expect(resolveExactCategoryName('Unknown', 'expense', categories, identity)).toBeUndefined();
+    });
+
+    it('refuses a near-name rather than the partial match matchCategoryName allows', () => {
+      expect(resolveExactCategoryName('Food', 'expense', categories, identity)).toBeUndefined();
+    });
+
+    it('refuses a name that only exists on the other type', () => {
+      expect(resolveExactCategoryName('Food & Drinks', 'income', categories, identity))
+        .toBeUndefined();
+    });
+
+    it('refuses an inactive category', () => {
+      expect(resolveExactCategoryName('Dormant', 'expense', categories, identity)).toBeUndefined();
+    });
+
+    it('refuses an ambiguous name shared by two children under different parents', () => {
+      const ambiguous = [
+        createCategory({ id: 'office_supplies', name: 'Supplies', type: 'expense', parentId: 'office' }),
+        createCategory({ id: 'craft_supplies', name: 'Supplies', type: 'expense', parentId: 'craft' }),
+      ];
+      expect(resolveExactCategoryName('Supplies', 'expense', ambiguous, identity)).toBeUndefined();
+    });
+
+    it("resolves a 'both' category from either row type it fits", () => {
+      const shared = [createCategory({ id: 'gifts', name: 'Gifts', type: 'both' })];
+      expect(resolveExactCategoryName('Gifts', 'expense', shared, identity)).toBe('gifts');
+      expect(resolveExactCategoryName('Gifts', 'income', shared, identity)).toBe('gifts');
+    });
+
+    it("refuses a name a 'both' category shares with a typed category, only for the type they both fit", () => {
+      const shared = [
+        createCategory({ id: 'gifts', name: 'Gifts', type: 'both' }),
+        createCategory({ id: 'gifts_expense', name: 'Gifts', type: 'expense' }),
+      ];
+      // Both entries fit 'expense' — ambiguous.
+      expect(resolveExactCategoryName('Gifts', 'expense', shared, identity)).toBeUndefined();
+      // Only the 'both' entry fits 'income' — resolves cleanly.
+      expect(resolveExactCategoryName('Gifts', 'income', shared, identity)).toBe('gifts');
     });
   });
 });

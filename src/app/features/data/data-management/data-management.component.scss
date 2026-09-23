@@ -250,6 +250,12 @@
   padding: 8px;
 }
 
+.unmatched-categories {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-block-start: 4px;
+}
+
 .progress-text {
   text-align: center;
   font-size: var(--text-sm);

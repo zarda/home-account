@@ -37,6 +37,7 @@ import {
 import { decodeTagsCell, encodeTagsCell, parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
 import { normalizeTags } from '../utils/tag.utils';
 import { locationSlot, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { resolveExactCategoryName } from '../utils/categorization.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -770,6 +771,13 @@ export class ExportService {
     const noteCol = this.findColumn(headers, ['note']);
     const tagsCol = this.findColumn(headers, ['tags']);
     const locationCol = this.findColumn(headers, ['location']);
+    // exportToCSV writes the category's translated name, never its id, so
+    // this is the one column that cannot be validated the way the others
+    // above are: resolveExactCategoryName below is the check. Read once per
+    // file, not once per row — the catalog does not change mid-parse.
+    const categoryCol = this.findColumn(headers, ['category']);
+    const catalog = categoryCol >= 0 ? this.categoryService.categories() : [];
+    const translate = (name: string) => this.translationService.t(name);
 
     for (let i = 1; i < rows.length; i++) {
       const values = rows[i];
@@ -828,12 +836,27 @@ export class ExportService {
         ? values[locationCol].trim()
         : '';
 
+      // Exact match only, over the row's own type, never the fuzzy ladder a
+      // model's free-text answer runs through: an importer reading its own
+      // app's export back is checking a name it already wrote, so a
+      // near-name or a name two catalog entries share is refused rather than
+      // guessed at. `category` records whether this file carried the column
+      // at all, independent of whether the cell resolved — the preview's
+      // catch-all count reads it for exactly that.
+      const categoryCell = categoryCol >= 0 && categoryCol < values.length
+        ? values[categoryCol].trim()
+        : '';
+      const categoryId = categoryCol >= 0
+        ? resolveExactCategoryName(categoryCell, type, catalog, translate)
+        : undefined;
+
       transactions.push({
         date: this.parseDate(values[dateCol] || ''),
         description: values[descCol] || 'Unknown',
         amount: Math.abs(amount),
         type,
         ...(currency ? { currency } : {}),
+        ...(categoryCol >= 0 ? { category: categoryCell, ...(categoryId ? { categoryId } : {}) } : {}),
         ...(period ? { period } : {}),
         ...(isRecurring ? { isRecurring } : {}),
         ...(note ? { note } : {}),

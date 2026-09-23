@@ -191,6 +191,12 @@
             </div>
           }
         </div>
+
+        @if (unmatchedCategoryCount() > 0) {
+          <div class="unmatched-categories">
+            {{ 'settings.csvUnmatchedCategories' | translate:{ count: unmatchedCategoryCount() } }}
+          </div>
+        }
         }
 
         @if (importProgress() > 0 && importProgress() < 100) {

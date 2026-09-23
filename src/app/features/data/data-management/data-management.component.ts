@@ -111,6 +111,19 @@ export class DataManagementComponent {
   importedTransactions = signal<ImportedTransaction[]>([]);
   showImportPreview = signal(false);
 
+  /**
+   * Rows the confirm step will file under a type's catch-all rather than a
+   * category the file itself named — a cell the file carried but nothing in
+   * the catalog matched, or no cell at all in a file that carries the column.
+   * `category` is set on a row only when the file has a Category column at
+   * all (parseCSV), so a file with no Category column leaves every row's
+   * `category` undefined: it named no categories, so it has none unmatched,
+   * and this count is zero and the preview renders nothing for it.
+   */
+  unmatchedCategoryCount = computed(() =>
+    this.importedTransactions().filter(t => t.category !== undefined && t.categoryId === undefined).length
+  );
+
   /** A parsed backup awaiting confirmation; null for the CSV import path. */
   pendingBackup = signal<ExportData | null>(null);
   backupContents = signal<BackupContents | null>(null);

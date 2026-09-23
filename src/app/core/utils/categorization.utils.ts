@@ -219,6 +219,30 @@ export function gradeCategorySuggestion(
   };
 }
 
+/**
+ * Resolve a name onto a catalog entry only when the match is exact and
+ * unambiguous — never the ladder above's ID pass, partial pass or keyword
+ * table. An importer reading its own app's export back is not guessing at
+ * free text; it is checking a name the app itself wrote, so a name that
+ * lands on two active entries of the row's own type (two same-named
+ * children under different parents, say) is refused rather than picked
+ * arbitrarily, exactly like a name that lands on none.
+ */
+export function resolveExactCategoryName(
+  name: string,
+  type: CategoryRowType,
+  categories: Category[],
+  translate: (name: string) => string
+): string | undefined {
+  const trimmed = name.trim();
+  if (!trimmed) return undefined;
+  const normalizedName = trimmed.toLowerCase();
+
+  const candidates = categories.filter(c => c.isActive && categoryFitsType(c, type));
+  const matches = candidates.filter(c => categoryNameCandidates(c, translate).includes(normalizedName));
+  return matches.length === 1 ? matches[0].id : undefined;
+}
+
 /** Every shipped rendering of a catalog entry's name; empty for custom names, which have no translations. */
 function shippedNamesFor(name: string): string[] {
   if (!name.startsWith(CATEGORY_NAME_KEY_PREFIX)) {
@@ -228,6 +252,29 @@ function shippedNamesFor(name: string): string[] {
   return Object.values(SHIPPED_CATEGORY_NAMES)
     .map(names => names[key])
     .filter((translated): translated is string => !!translated);
+}
+
+/**
+ * Every name a catalog entry can be matched under: its stored name, that
+ * name's active-locale translation, and every shipped locale's rendering —
+ * trimmed and lower-cased so a stored or cell value with incidental
+ * whitespace or casing still matches. Shared by {@link resolveExactCategoryName}
+ * and {@link matchCategoryName}, which differ only in what they do once a
+ * name from here is (or isn't) found.
+ *
+ * Blank candidates are dropped rather than trimmed to `''`: an unresolved
+ * translation or a locale with no rendering for this name would otherwise
+ * leave `''` in the list, and `matchCategoryName`'s substring pass treats
+ * `''` as a substring of everything, matching any input.
+ */
+function categoryNameCandidates(category: Category, translate: (name: string) => string): string[] {
+  return [
+    category.name,
+    translate(category.name),
+    ...shippedNamesFor(category.name),
+  ]
+    .map(n => n.trim().toLowerCase())
+    .filter(n => n !== '');
 }
 
 /**
@@ -306,18 +353,11 @@ export function matchCategoryName(
   // refile a receipt under a category the user removed.
   const activeCategories = categories.filter(c => c.isActive);
 
-  // An empty name would swallow every input through the substring pass below.
-  const namesOf = (c: Category) => [
-    c.name.toLowerCase(),
-    translate(c.name).toLowerCase(),
-    ...shippedNamesFor(c.name).map(n => n.toLowerCase()),
-  ].filter(n => n !== '');
-
-  const exactMatch = activeCategories.find(c => namesOf(c).includes(normalizedName));
+  const exactMatch = activeCategories.find(c => categoryNameCandidates(c, translate).includes(normalizedName));
   if (exactMatch) return { id: exactMatch.id, matched: true };
 
   const partialMatch = activeCategories.find(
-    c => namesOf(c).some(n => n.includes(normalizedName) || normalizedName.includes(n))
+    c => categoryNameCandidates(c, translate).some(n => n.includes(normalizedName) || normalizedName.includes(n))
   );
   if (partialMatch) return { id: partialMatch.id, matched: true };
 

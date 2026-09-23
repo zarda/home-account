@@ -462,6 +462,7 @@
     "uploadHint": "支援銀行匯出和備份檔案",
     "previewTransactions": "預覽：找到 {{count}} 筆交易",
     "moreTransactions": "...還有 {{count}} 筆交易",
+    "csvUnmatchedCategories": "{{count}} 筆交易的類別無法比對，將使用預設類別",
     "importingProgress": "匯入中... {{progress}}%",
     "importTransactions": "匯入 {{count}} 筆交易",
     "dangerZone": "危險區域",

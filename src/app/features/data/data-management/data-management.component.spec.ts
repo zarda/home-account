@@ -1008,6 +1008,33 @@ describe('DataManagementComponent, through its own template', () => {
     expect(button('settings.importTransactions')).toBeDefined();
   });
 
+  it('counts the rows that will land on the catch-all category', () => {
+    fixture.detectChanges();
+    component.importedTransactions.set([
+      // Its own Category cell resolved — not part of the count.
+      { date: new Date(), description: 'Lunch', amount: 12, type: 'expense', category: 'Restaurants', categoryId: 'food_restaurants' },
+      // A cell the catalog could not match.
+      { date: new Date(), description: 'Widget', amount: 8, type: 'expense', category: 'Nonexistent' },
+      // No cell at all, in a file that carries the column.
+      { date: new Date(), description: 'Gadget', amount: 5, type: 'expense', category: '' },
+    ] as never);
+    component.showImportPreview.set(true);
+    fixture.detectChanges();
+
+    expect(text('.unmatched-categories')).toBe('settings.csvUnmatchedCategories:{"count":2}');
+  });
+
+  it('says nothing about unmatched categories when the file carries no Category column at all', () => {
+    fixture.detectChanges();
+    component.importedTransactions.set([
+      { date: new Date(), description: 'Lunch', amount: 12, type: 'expense' },
+    ] as never);
+    component.showImportPreview.set(true);
+    fixture.detectChanges();
+
+    expect(el().querySelector('.unmatched-categories')).toBeNull();
+  });
+
   it('shows the progress bar only while an import is partway through', () => {
     fixture.detectChanges();
     component.showImportPreview.set(true);
