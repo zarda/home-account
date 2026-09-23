@@ -230,6 +230,33 @@ function shippedNamesFor(name: string): string[] {
     .filter((translated): translated is string => !!translated);
 }
 
+/**
+ * Free-text words a receipt or bank line carries when it names no catalog
+ * entry at all — the last-resort pass in {@link matchCategoryName}, after the
+ * ID and every shipped locale's display name have already failed. Keyed by
+ * target id rather than by keyword: a keyword can name only one id, but an id
+ * needs one array per entry to hold en/ja/tc words together, and the reverse
+ * shape (keyword -> id) cannot express that without repeating the id per
+ * language. An array value also cannot live in the category catalogs
+ * themselves (`DEFAULT_EXPENSE_GROUPS` et al.), whose `nameKey` fields are
+ * string leaves everywhere a category can be reached.
+ *
+ * A ja/tc word already identical to that id's exact shipped name is left out
+ * on purpose: the exact- and partial-name passes above already resolve any
+ * input containing it, so listing it again here would never fire.
+ */
+export const CATEGORY_KEYWORDS: Record<string, readonly string[]> = {
+  food_restaurants: ['restaurant', '外食', '小吃'],
+  food_groceries: ['grocery', 'スーパー', '超市'],
+  food_coffeeAndDrinks: ['coffee', 'コーヒー', 'カフェ', '咖啡'],
+  food: ['food'],
+  transport: ['transport', '電車', '捷運'],
+  transport_fuelAndGas: ['gas', '給油', '加油'],
+  shopping: ['shopping', 'ショッピング', '網購'],
+  health_pharmacyAndMedicine: ['pharmacy', '薬局', '藥局'],
+  health: ['health', '健康', '醫療'],
+};
+
 export interface CategoryNameMatch {
   id: string;
   /**
@@ -294,23 +321,12 @@ export function matchCategoryName(
   );
   if (partialMatch) return { id: partialMatch.id, matched: true };
 
-  const keywordMap: Record<string, string> = {
-    restaurant: 'food_restaurants',
-    grocery: 'food_groceries',
-    coffee: 'food_coffeeAndDrinks',
-    food: 'food',
-    transport: 'transport',
-    gas: 'transport_fuelAndGas',
-    shopping: 'shopping',
-    pharmacy: 'health_pharmacyAndMedicine',
-    health: 'health',
-  };
-
-  for (const [keyword, categoryId] of Object.entries(keywordMap)) {
-    // The map is a compiled-in guess at what a free-text answer meant, so its
-    // ids are checked against this account like any other: one may have been
-    // deleted, and a catalog need not carry every default this list names.
-    if (normalizedName.includes(keyword) && activeCategories.some(c => c.id === categoryId)) {
+  for (const [categoryId, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    // The table is a compiled-in guess at what a free-text answer meant, so
+    // its ids are checked against this account like any other: one may have
+    // been deleted, and a catalog need not carry every default this list
+    // names.
+    if (keywords.some(k => normalizedName.includes(k)) && activeCategories.some(c => c.id === categoryId)) {
       return { id: categoryId, matched: true };
     }
   }

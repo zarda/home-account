@@ -7,6 +7,7 @@ import {
   mapCategoryNameToId,
   matchCategoryName,
   fallbackCategoryFor,
+  CATEGORY_KEYWORDS,
   FALLBACK_CATEGORY_ID,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
@@ -383,7 +384,6 @@ describe('categorization.utils', () => {
     });
 
     it('matches a name in a locale that is not the active one', () => {
-      expect(mapCategoryNameToId('食料品', defaultCategories, untranslated)).toBe('food_groceries');
       expect(mapCategoryNameToId('雜貨', defaultCategories, untranslated)).toBe('food_groceries');
       expect(mapCategoryNameToId('交通', defaultCategories, untranslated)).toBe('transport');
     });
@@ -502,6 +502,47 @@ describe('categorization.utils', () => {
       // "Unknown" for it, and the row is not flagged for review.
       expect(matchCategoryName('gas station', defaultCategories, untranslated))
         .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+    });
+
+    /**
+     * The exact- and partial-name passes already read every shipped locale
+     * (they compare against `shippedNamesFor`, not the active bundle alone);
+     * only the keyword pass below them was English-only, so this section is
+     * scoped to what that pass alone can resolve: free text carrying no
+     * catalog name at all.
+     */
+    describe('locales', () => {
+      const catalog = defaultCatalog();
+
+      it('resolves a Japanese category name', () => {
+        expect(matchCategoryName('食料品', catalog, untranslated))
+          .toEqual({ id: 'food_groceries', matched: true });
+      });
+
+      it('matches a Japanese free-text keyword', () => {
+        expect(matchCategoryName('スターバックス コーヒー', catalog, untranslated))
+          .toEqual({ id: 'food_coffeeAndDrinks', matched: true });
+      });
+
+      it('matches a Traditional Chinese free-text keyword', () => {
+        expect(matchCategoryName('全聯 超市', catalog, untranslated))
+          .toEqual({ id: 'food_groceries', matched: true });
+      });
+
+      it('every keyword targets a category the default catalogue ships', () => {
+        // Built from the shipped groups, not written out, so a renamed or
+        // dropped default shows up here instead of the test only restating
+        // the table back to itself.
+        const expenseIds = new Set(
+          DEFAULT_EXPENSE_GROUPS.flatMap(group => [
+            group.id,
+            ...group.categories.map(item => `${group.id}_${item.nameKey.split('.').pop()}`),
+          ])
+        );
+        Object.keys(CATEGORY_KEYWORDS).forEach(id => {
+          expect(expenseIds.has(id)).withContext(id).toBeTrue();
+        });
+      });
     });
   });
 });
