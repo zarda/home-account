@@ -34,7 +34,7 @@ import {
   groupByCategoryAndType,
   roundMoney,
 } from '../utils/transaction-aggregation.utils';
-import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
+import { decodeTagsCell, encodeTagsCell, parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
 import { normalizeTags } from '../utils/tag.utils';
 import { locationSlot, toCreateTransactionDTO } from '../utils/import-dto.utils';
 
@@ -311,7 +311,7 @@ export class ExportService {
         t.currency,
         t.amountInBaseCurrency.toString(),
         t.note ?? '',
-        (t.tags ?? []).join('; '),
+        encodeTagsCell(t.tags ?? []),
         // Name only: coordinates belong in the JSON backup, which carries
         // the whole transaction.
         t.location?.name ?? '',
@@ -759,12 +759,14 @@ export class ExportService {
     const periodCol = this.findColumn(headers, ['period']);
     const recurringCol = this.findColumn(headers, ['recurring']);
     // The last three columns the export writes. Same optional contract again:
-    // out of the row-length guard, validated rather than trusted. Tags split
-    // on the export's own '; ' join — a tag containing that separator cannot
-    // survive, which is the join's fault, not the escaper's. A location cell
-    // becomes a name only; the file never carried coordinates, so none may
-    // be invented, and an empty cell must yield no key at all rather than
-    // `{ name: '' }`, which the rules would accept while meaning nothing.
+    // out of the row-length guard, validated rather than trusted. Tags are
+    // read by decodeTagsCell, which recognizes the JSON array encodeTagsCell
+    // falls back to for a tag containing '; ' and otherwise reads the plain
+    // split, so a file written before that fallback existed still imports.
+    // A location cell becomes a name only; the file never carried
+    // coordinates, so none may be invented, and an empty cell must yield no
+    // key at all rather than `{ name: '' }`, which the rules would accept
+    // while meaning nothing.
     const noteCol = this.findColumn(headers, ['note']);
     const tagsCol = this.findColumn(headers, ['tags']);
     const locationCol = this.findColumn(headers, ['location']);
@@ -819,7 +821,7 @@ export class ExportService {
       // A hand-edited file can repeat a tag in a second casing; the card keys
       // its chips by value and the filter only finds the normalized form.
       const tags = tagsCol >= 0 && tagsCol < values.length
-        ? normalizeTags(values[tagsCol].split('; '))
+        ? normalizeTags(decodeTagsCell(values[tagsCol]))
         : [];
 
       const locationName = locationCol >= 0 && locationCol < values.length

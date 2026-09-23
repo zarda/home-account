@@ -969,6 +969,26 @@ describe('ExportService', () => {
       expect(result[0].tags).toEqual(['a,b', 'c']);
     });
 
+    it("a tag containing '; ' survives export and import as one tag", async () => {
+      const result = await reimport([createTransaction({ tags: ['a; b', 'c'] })]);
+
+      expect(result[0].tags).toEqual(['a; b', 'c']);
+    });
+
+    it('a tag spelled as a JSON array survives export and import as one tag', async () => {
+      const result = await reimport([createTransaction({ tags: ['["x","y"]'] })]);
+
+      expect(result[0].tags).toEqual(['["x","y"]']);
+    });
+
+    it('a file in the previous format keeps its tags', async () => {
+      const text = 'Date,Description,Amount,Tags\n2026-06-01,Coffee,4.50,x; y\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].tags).toEqual(['x', 'y']);
+    });
+
     it('normalizes the tags a hand-edited file spells twice', async () => {
       // The card keys its chips by tag value and the filter only ever looks
       // for the normalized spelling, so two casings of one tag would show as
