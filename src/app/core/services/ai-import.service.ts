@@ -34,9 +34,11 @@ import {
 import { nextImportRowId } from '../utils/import-row-id.utils';
 import { normalizeTags } from '../utils/tag.utils';
 import {
+  categoryFitsType,
+  CategoryRowType,
   fallbackCategoryFor,
-  FALLBACK_CATEGORY_ID,
   gradeCategorySuggestion,
+  resolveCategoryId,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
@@ -47,6 +49,7 @@ import { GroundingHistoryService } from './grounding-history.service';
 import { TagMemoryService } from './tag-memory.service';
 import { TagSuggestionService } from './tag-suggestion.service';
 import { RecurringService } from './recurring.service';
+import { CategoryService } from './category.service';
 import {
   ImportResult,
   ImportWarning,
@@ -64,10 +67,21 @@ import {
   isBudgetPeriod,
   CATEGORY_MEMORY_CONFIDENCE,
   baseCurrencyOf,
+  Category,
+  CreateTransactionDTO,
   CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { imageMetadataOf, importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import {
+  imageMetadataOf,
+  importAmount,
+  locationSlotFrom,
+  readTransactionSnapshot,
+  resolveImportCurrency,
+  resolveImportDate,
+  toCreateTransactionDTO,
+  TransactionSnapshot,
+} from '../utils/import-dto.utils';
 import { sumByCurrency } from '../utils/import-review.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
@@ -113,6 +127,7 @@ export class AIImportService {
   private tagSuggestions = inject(TagSuggestionService);
   private tagMemory = inject(TagMemoryService);
   private recurringService = inject(RecurringService);
+  private categoryService = inject(CategoryService);
   private exportService = inject(ExportService);
   private duplicateService = inject(DuplicateDetectionService);
   private importHistoryService = inject(ImportHistoryService);
@@ -1173,6 +1188,8 @@ export class AIImportService {
       }
 
       const baseCurrency = baseCurrencyOf(this.authService.currentUser());
+      const categories = this.categoryService.categories();
+      const ruleIds = await this.backupRuleIds(data.transactions);
       const categorized: CategorizedImportTransaction[] = data.transactions.map(
         (t: Record<string, unknown>) => {
           // The same resolver every other door runs its date through, and with
@@ -1184,21 +1201,29 @@ export class AIImportService {
           // `.seconds` here by hand was what left that row silently dated
           // today, and a `date` of any other shape an Invalid Date.
           const resolved = resolveImportDate(t['date']);
+          const type = (t['type'] as 'income' | 'expense') || 'expense';
           const categoryId = typeof t['categoryId'] === 'string' && t['categoryId'] ? t['categoryId'] : undefined;
-          const money = resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency);
+          const recurringId = typeof t['recurringId'] === 'string' && ruleIds.has(t['recurringId'])
+            ? t['recurringId']
+            : undefined;
+          const read = readCurrencyCode(t['currency']);
+          const money = resolveImportCurrency(read, baseCurrency);
+          // The rate alone, and only when the file named the currency it
+          // converts from: a row that fell back to the base currency has
+          // nothing a foreign rate could apply to. readTransactionSnapshot
+          // already refuses a rate that is zero, negative or non-finite.
+          const snapshot = readTransactionSnapshot(t);
+          const fileRate = read && snapshot
+            ? { exchangeRate: snapshot.exchangeRate, baseCurrency: snapshot.baseCurrency, currency: read }
+            : undefined;
           return {
             id: nextImportRowId('json'),
             description: t['description'] as string || 'Unknown',
             amount: importAmount((t['amount'] as number) || 0, money.currency),
             ...money,
             date: resolved.date,
-            type: (t['type'] as 'income' | 'expense') || 'expense',
-            // A category the backup named is the reviewer's earlier pick and
-            // keeps the full grade; a row that had none is defaulted and
-            // graded the way every door grades a default (0045), so the
-            // chip's dot and the low_confidence tally see it.
-            suggestedCategoryId: categoryId ?? FALLBACK_CATEGORY_ID,
-            categoryConfidence: categoryId ? 1.0 : UNRESOLVED_CATEGORY_CONFIDENCE,
+            type,
+            ...this.gradeBackupCategory(categoryId, type, categories),
             isDuplicate: false,
             selected: true,
             // A backup row carries what its transaction held; anything absent
@@ -1211,6 +1236,8 @@ export class AIImportService {
             ...locationSlotFrom(t['location'] as TransactionLocation | undefined),
             ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
             ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {}),
+            ...(recurringId ? { recurringId } : {}),
+            ...(fileRate ? { fileRate } : {}),
             ...(resolved.dateAssumed ? { dateAssumed: true } : {})
           };
         }
@@ -1227,6 +1254,56 @@ export class AIImportService {
       return this.buildImportResult(file, 'json', 'backup_json', markedTransactions, duplicates);
     } finally {
       this.endRun();
+    }
+  }
+
+  /**
+   * The category a backup row is filed under, and what that is worth.
+   *
+   * The file's id earns the full grade only when this account still holds
+   * it, active, on the row's own side: a backup outlives the categories it
+   * names, and a file from another account names ones this account never
+   * had. Anything else lands on the row's own catch-all at the review grade,
+   * the way every door files an answer the catalog did not understand. An
+   * empty catalog has not loaded, so it can neither vouch for the id nor
+   * show that it is wrong — the id stays, graded for review.
+   */
+  private gradeBackupCategory(
+    categoryId: string | undefined,
+    type: CategoryRowType,
+    categories: Category[]
+  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
+    const catchAll = { suggestedCategoryId: fallbackCategoryFor(type), categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE };
+    if (!categoryId) return catchAll;
+    if (categories.length === 0) {
+      return { suggestedCategoryId: categoryId, categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE };
+    }
+    // An empty fallback turns the resolver into a plain lookup of an active id.
+    const held = resolveCategoryId(categoryId, categories, '');
+    const category = held ? categories.find(c => c.id === held) : undefined;
+    return category && categoryFitsType(category, type)
+      ? { suggestedCategoryId: category.id, categoryConfidence: 1.0 }
+      : catchAll;
+  }
+
+  /**
+   * The rule ids a backup's links may keep: every rule this account holds,
+   * paused ones included, since a paused rule still owns the rows it posted.
+   * One read for the file, and none when no row carries a link. A link that
+   * could not be checked is dropped with the rest — a dangling one is worse
+   * than none: the recurring detector files a linked row under its rule and
+   * never clusters it again, so a link to nothing hides the charge under a
+   * rule that does not exist.
+   */
+  private async backupRuleIds(rows: Record<string, unknown>[]): Promise<Set<string>> {
+    if (!rows.some(t => typeof t?.['recurringId'] === 'string' && t['recurringId'])) {
+      return new Set();
+    }
+    try {
+      return new Set((await this.recurringService.listAll()).map(rule => rule.id));
+    } catch (error) {
+      console.warn('[AIImport] Could not read recurring rules, keeping no backup links:', error);
+      return new Set();
     }
   }
 
@@ -1386,10 +1463,12 @@ export class AIImportService {
           const dto = attachedFiles.length
             ? { ...bareDto, receiptFiles: attachedFiles }
             : bareDto;
+          const snapshot = this.fileRateSnapshot(txn.fileRate, bareDto, baseCurrency);
+          const writeOptions = { skipBudgetRecalc: true, ...(snapshot ? { snapshot } : {}) };
 
           let savedId: string;
           try {
-            savedId = await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
+            savedId = await this.transactionService.addTransaction(dto, writeOptions);
           } catch (error) {
             // Both of these are about the images, not the row, and both leave
             // the batch rolled back with no id, upload or write behind them —
@@ -1406,7 +1485,7 @@ export class AIImportService {
             const imagesOnly =
               message === RECEIPT_IMAGE_LIMIT_ERROR || message === RECEIPT_ATTACH_FAILED;
             if (attachedFiles.length && imagesOnly) {
-              savedId = await this.transactionService.addTransaction(bareDto, { skipBudgetRecalc: true });
+              savedId = await this.transactionService.addTransaction(bareDto, writeOptions);
               if (message === RECEIPT_IMAGE_LIMIT_ERROR) {
                 receiptsSkipped++;
               } else {
@@ -1547,6 +1626,35 @@ export class AIImportService {
       console.error('[AIImport] Import saved; history read-back failed:', error);
       throw new Error(IMPORT_READBACK_FAILED);
     }
+  }
+
+  /**
+   * The conversion a backup row is written with: the file's rate over the
+   * amount being written now, never a figure computed when the file was
+   * read, since the card can have edited, split or merged the row since and
+   * `addTransaction` writes a snapshot verbatim. The product is the one
+   * `addTransaction` stamps a live row with — the amount times the rate,
+   * unrounded — so the stored figure differs from a live row's only in whose
+   * rate it used.
+   *
+   * Nothing when the rate no longer describes this write: the card changed
+   * the currency it converts from, or the file was stamped in a base currency
+   * this account does not keep. The row then converts at today's rate, like
+   * any row without a snapshot.
+   */
+  private fileRateSnapshot(
+    fileRate: CategorizedImportTransaction['fileRate'],
+    dto: Pick<CreateTransactionDTO, 'amount' | 'currency'>,
+    baseCurrency: string
+  ): TransactionSnapshot | undefined {
+    if (!fileRate || dto.currency !== fileRate.currency || fileRate.baseCurrency !== baseCurrency) {
+      return undefined;
+    }
+    return {
+      exchangeRate: fileRate.exchangeRate,
+      baseCurrency,
+      amountInBaseCurrency: dto.amount * fileRate.exchangeRate,
+    };
   }
 
   /**

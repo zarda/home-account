@@ -61,6 +61,7 @@ import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-pro
 import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CategoryService } from '../../../../core/services/category.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
@@ -70,6 +71,7 @@ import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/
 import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
 import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
+import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
@@ -2101,6 +2103,93 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(after.docs.filter(d => !before.has(d.id)).length)
         .withContext('nothing is confirmed here')
         .toBe(0);
+
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a backup row naming a category the account lacks reaches review on its catch-all, and a stamped rate is the one written',
+    async () => {
+      // The JSON door against the catalog the wizard itself loads and the
+      // write the rules accept. The service's suite stubs the catalog and
+      // mocks addTransaction, so only this case can say the category check
+      // reads the real signal and the snapshot built from the file's rate
+      // reaches the document. The stubbed CurrencyService answers 1 for every
+      // pair: a row converted at today's rate would store 1 and 2000, so the
+      // file's rate is the only way 0.0075 lands.
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const categoryService = TestBed.inject(CategoryService);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      // The wizard subscribes to the catalog when it is created; a file read
+      // before the first snapshot lands is graded against an empty list,
+      // which is the unit suite's own case.
+      await until(fixture, () => categoryService.categories().length > 0);
+
+      component.onFilesSelected([
+        new File(
+          [JSON.stringify({
+            transactions: [
+              { description: 'Model railway club', amount: -42, currency: 'USD', type: 'expense',
+                categoryId: 'deleted_hobby', date: { seconds: 1723593600 } },
+              { description: 'Shinjuku ramen', amount: -2000, currency: 'JPY', type: 'expense',
+                categoryId: 'food', date: { seconds: 1723593600 },
+                exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 999 }
+            ]
+          })],
+          'rate-backup.json',
+          { type: 'application/json' }
+        )
+      ]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 2);
+
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      const rows = component.extractedTransactions();
+      const cards = Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      expect(cards.length).toBe(2);
+      expect(rows[0].suggestedCategoryId).toBe('other_expense');
+      expect(rows[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      expect(cards[0].querySelector('.confidence-dot.low-confidence'))
+        .withContext('the file named a category this account does not have')
+        .not.toBeNull();
+      expect(rows[1].suggestedCategoryId).toBe('food');
+      expect(cards[1].querySelector('.confidence-dot.low-confidence'))
+        .withContext('the account has the category the file named')
+        .toBeNull();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.length).toBe(2);
+      const club = landed.find(d => d['description'] === 'Model railway club');
+      const ramen = landed.find(d => d['description'] === 'Shinjuku ramen');
+      expect(club?.['categoryId']).toBe('other_expense');
+      expect(ramen?.['exchangeRate']).toBe(0.0075);
+      expect(ramen?.['baseCurrency']).toBe('USD');
+      expect(ramen?.['amountInBaseCurrency']).toBe(2000 * 0.0075);
+      expect('fileRate' in (ramen ?? {})).withContext('a review-step mark, never a field').toBeFalse();
 
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));

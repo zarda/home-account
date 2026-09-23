@@ -20,7 +20,7 @@ import {
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
 import { parseDateInput } from '../utils/transaction-date.utils';
-import { datedToday } from '../utils/import-review.utils';
+import { datedToday, mergeImportRows, splitImportRow } from '../utils/import-review.utils';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -36,13 +36,15 @@ import { RagContextService } from './rag-context.service';
 import { TagMemoryService } from './tag-memory.service';
 import { TagSuggestionService } from './tag-suggestion.service';
 import { RecurringService } from './recurring.service';
+import { CategoryService } from './category.service';
 import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
-import { createRecurring, createTransaction } from './testing/test-data';
+import { createCategory, createRecurring, createTransaction } from './testing/test-data';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 import {
   CategorizedImportTransaction,
+  Category,
   DuplicateCheck,
   ImportHistory,
   User
@@ -67,6 +69,7 @@ describe('AIImportService', () => {
   let recurringService: jasmine.SpyObj<RecurringService>;
   let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let categories: WritableSignal<Category[]>;
   let rasterize: jasmine.Spy;
   let isOnlineSignal: WritableSignal<boolean>;
 
@@ -130,6 +133,17 @@ describe('AIImportService', () => {
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
       'trackAiAssistUsed',
     ]);
+    // What the account holds, as the loaded signal holds it. The backup door
+    // checks a row's own categoryId against this; the rest of the suite never
+    // reads it.
+    categories = signal<Category[]>([
+      createCategory({ id: 'food', type: 'expense' }),
+      createCategory({ id: 'housing', type: 'expense' }),
+      createCategory({ id: 'other_expense', type: 'expense' }),
+      createCategory({ id: 'archived_hobby', type: 'expense', isActive: false }),
+      createCategory({ id: 'employment_salary', type: 'income' }),
+      createCategory({ id: 'other_income', type: 'income' }),
+    ]);
 
     // Sensible defaults
         cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
@@ -172,7 +186,8 @@ describe('AIImportService', () => {
         { provide: TagMemoryService, useValue: tagMemory },
         { provide: RecurringService, useValue: recurringService },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
-        { provide: AnalyticsService, useValue: analytics }
+        { provide: AnalyticsService, useValue: analytics },
+        { provide: CategoryService, useValue: { categories } }
       ]
     });
 
@@ -2322,6 +2337,129 @@ describe('AIImportService', () => {
       expect(result.warnings.some(w => w.type === 'low_confidence')).toBeFalse();
     });
 
+    it('grades a category the account does not have as unresolved and files it under its type\'s catch-all', async () => {
+      // A backup outlives the categories it names — one deleted or archived
+      // since, or one from another account's file. Filed under the catch-all
+      // instead of the id as written, because nothing here can vouch for a
+      // category the account does not hold.
+      const backup = {
+        transactions: [
+          { description: 'Gadget', amount: -40, type: 'expense', categoryId: 'deleted_hobby' },
+          { description: 'Royalty', amount: 90, type: 'income', categoryId: 'deleted_side_gig' },
+          { description: 'Model kit', amount: -25, type: 'expense', categoryId: 'archived_hobby' },
+          { description: 'Groceries', amount: -5, type: 'expense', categoryId: 'food' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.map(t => t.suggestedCategoryId))
+        .toEqual(['other_expense', 'other_income', 'other_expense', 'food']);
+      expect(result.transactions.map(t => t.categoryConfidence))
+        .toEqual([UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE, 1]);
+      expect(result.warnings.find(w => w.type === 'low_confidence')?.message)
+        .withContext('the three the review has to look at, and not the one it can trust')
+        .toBe('3 transaction(s) have low categorization confidence');
+    });
+
+    it('refuses a category of the other type', async () => {
+      // The id exists, but on the income side: an expense filed there would
+      // count as earnings in every total that reads the category.
+      const backup = {
+        transactions: [
+          { description: 'Payroll fee', amount: -12, type: 'expense', categoryId: 'employment_salary' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('other_expense');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('files a row that names no category under its own type\'s catch-all', async () => {
+      const backup = { transactions: [{ description: 'Deposit', amount: 545, type: 'income' }] };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('other_income');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('keeps the id at the unresolved grade when the account\'s categories have not loaded', async () => {
+      // An empty list says nothing about the id: nothing can vouch for it, and
+      // nothing shows it is wrong, so it stays for the reviewer to look at.
+      categories.set([]);
+      const backup = {
+        transactions: [
+          { description: 'Groceries', amount: -5, type: 'expense', categoryId: 'food' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('food');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('carries a recurringId the account has', async () => {
+      recurringService.listAll.and.resolveTo([createRecurring({ id: 'rule-rent', name: 'Rent' })]);
+      const backup = {
+        transactions: [
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent', isRecurring: true }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].recurringId).toBe('rule-rent');
+      expect(result.transactions[0].isRecurring).toBeTrue();
+    });
+
+    it('drops one that names no rule', async () => {
+      // A dangling link is worse than none: the rule's own list and the
+      // subscription detector both read the field, and neither can resolve it.
+      recurringService.listAll.and.resolveTo([createRecurring({ id: 'rule-rent', name: 'Rent' })]);
+      const backup = {
+        transactions: [
+          { description: 'Gym', amount: -30, type: 'expense', recurringId: 'rule-deleted' },
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent' },
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect('recurringId' in result.transactions[0]).toBeFalse();
+      expect(result.transactions[1].recurringId).toBe('rule-rent');
+      expect(result.transactions[2].recurringId).toBe('rule-rent');
+      expect(recurringService.listAll)
+        .withContext('one read for the whole file')
+        .toHaveBeenCalledTimes(1);
+    });
+
+    it('carries no link it could not check', async () => {
+      recurringService.listAll.and.rejectWith(new Error('unavailable'));
+      spyOn(console, 'warn');
+      const backup = {
+        transactions: [
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.length).toBe(1);
+      expect('recurringId' in result.transactions[0]).toBeFalse();
+    });
+
     it('resolves a backup date the way every other import door does', async () => {
       const backup = {
         transactions: [
@@ -2473,6 +2611,144 @@ describe('AIImportService', () => {
       const args = progressSpy.calls.allArgs().map(([value]) => value);
       expect(args[0]).toBe(20);
       expect(args[args.length - 1]).toBe(0);
+    });
+  });
+
+  describe('a backup row\'s historical rate', () => {
+    // 2000 yen, stamped at 0.0075 to the dollar when the file was written.
+    // The file's own converted figure is deliberately not 2000 × 0.0075: it
+    // is never read, so a case that copied it would fail here.
+    const stamped = {
+      description: 'Ramen', amount: -2000, currency: 'JPY', type: 'expense',
+      date: { seconds: 1700000000 },
+      exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 999
+    };
+
+    const read = async (rows: object[]): Promise<CategorizedImportTransaction[]> =>
+      (await service.importFromJSON(
+        makeFile('backup.json', 'application/json', JSON.stringify({ transactions: rows }))
+      )).transactions;
+
+    const confirm = (rows: CategorizedImportTransaction[]) =>
+      service.confirmImport(rows, 'backup.json', 10, 'json', 'backup_json');
+
+    const writeOptions = () =>
+      transactionService.addTransaction.calls.allArgs().map(([, options]) => options);
+
+    beforeEach(() => {
+      importHistoryService.createPendingImport.and.resolveTo('hist-1');
+      importHistoryService.completeImport.and.resolveTo();
+      importHistoryService.getImportById.and.returnValue(of({ id: 'hist-1' } as ImportHistory));
+      transactionService.addTransaction.and.resolveTo('txn-id');
+    });
+
+    it('writes the file\'s historical rate', async () => {
+      const [row] = await read([stamped]);
+
+      // The rate travels on the row, never a converted figure a card edit
+      // could leave stale.
+      expect(row.fileRate).toEqual({ exchangeRate: 0.0075, baseCurrency: 'USD', currency: 'JPY' });
+
+      await confirm([row]);
+
+      // The product addTransaction stamps a live row with, over the row's
+      // amount at the moment it is written.
+      expect(writeOptions()).toEqual([{
+        skipBudgetRecalc: true,
+        snapshot: { exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 2000 * 0.0075 },
+      }]);
+      const [dto] = transactionService.addTransaction.calls.mostRecent().args;
+      expect('fileRate' in dto).withContext('a review-step mark, never a field').toBeFalse();
+    });
+
+    it('an amount edited on the card keeps the file\'s rate over the new amount', async () => {
+      const [row] = await read([stamped]);
+
+      await confirm([{ ...row, amount: 2400 }]);
+
+      expect(writeOptions()[0]?.snapshot).toEqual({
+        exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 2400 * 0.0075,
+      });
+    });
+
+    it('a split part is stamped from its own amount', async () => {
+      // splitImportRow spreads the row into both halves, so a whole-row figure
+      // carried on it would land on each half in full.
+      const [row] = await read([stamped]);
+      const [kept, part] = splitImportRow(row, 500, 'part-1')!;
+
+      await confirm([kept, part]);
+
+      expect(writeOptions().map(options => options?.snapshot)).toEqual([
+        { exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 1500 * 0.0075 },
+        { exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 500 * 0.0075 },
+      ]);
+    });
+
+    it('a merged row is stamped from its combined amount at the rate of the row it keeps', async () => {
+      // mergeImportRows spreads the target: its date is the merged row's date,
+      // so its rate is the one that day's figure is converted at.
+      const [target, source] = await read([
+        stamped,
+        { ...stamped, description: 'Gyoza', amount: -600, exchangeRate: 0.0071 }
+      ]);
+      const merged = mergeImportRows(target, source)!;
+
+      await confirm([merged]);
+
+      expect(writeOptions()[0]?.snapshot).toEqual({
+        exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 2600 * 0.0075,
+      });
+    });
+
+    it('a currency changed on the card, or a file stamped in another base currency, drops the rate', async () => {
+      // A yen rate says nothing about won, and a rate into euros says nothing
+      // about this account's dollars: both rows convert at today's rate, the
+      // way any row without a snapshot does.
+      const [yen, euroBased] = await read([
+        stamped,
+        { ...stamped, description: 'Croissant', baseCurrency: 'EUR' }
+      ]);
+
+      await confirm([{ ...yen, currency: 'KRW' }, euroBased]);
+
+      expect(writeOptions()).toEqual([{ skipBudgetRecalc: true }, { skipBudgetRecalc: true }]);
+    });
+
+    it('carries no rate for a row that names no currency, or whose rate is unusable', async () => {
+      const unnamed: Record<string, unknown> = { ...stamped };
+      delete unnamed['currency'];
+      const rows = await read([
+        unnamed,
+        { ...stamped, exchangeRate: 0 },
+        { ...stamped, exchangeRate: -0.0075 }
+      ]);
+
+      expect(rows.map(r => 'fileRate' in r)).toEqual([false, false, false]);
+    });
+
+    it('carries no rate that overflowed to Infinity', async () => {
+      // JSON.stringify turns Infinity into null before it ever reaches a
+      // file, so the only way this shape exists is a number literal wide
+      // enough to overflow on parse — JSON.parse('{"x":1e999}').x is
+      // Infinity. Written by hand rather than through read(), which would
+      // stringify the row and lose the overflow before importFromJSON ever
+      // sees it.
+      const file = makeFile(
+        'backup.json',
+        'application/json',
+        '{"transactions":[{"description":"Ramen","amount":-2000,"currency":"JPY",' +
+          '"type":"expense","date":{"seconds":1700000000},"exchangeRate":1e999,' +
+          '"baseCurrency":"USD","amountInBaseCurrency":999}]}'
+      );
+
+      const [row] = (await service.importFromJSON(file)).transactions;
+
+      expect('fileRate' in row).toBeFalse();
+
+      await confirm([row]);
+
+      expect(writeOptions()).toEqual([{ skipBudgetRecalc: true }]);
     });
   });
 

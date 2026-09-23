@@ -243,8 +243,21 @@ export interface CategorizedImportTransaction {
   isRecurring?: boolean;
   /** The active rule this row looks like, offered unchecked. Never written. */
   recurringMatch?: RecurringMatchSuggestion;
-  /** Set only when the user accepted the offered link. */
+  /**
+   * Set when the user accepted the offered link, or carried from a backup row
+   * whose rule this account still holds.
+   */
   recurringId?: string;
+  /**
+   * A review-step mark, never written as such: the conversion a backup row
+   * was stored with — its rate, never its converted figure. The card can
+   * change the amount after the file was read (an edit, a split, a merge),
+   * and `addTransaction` writes a snapshot verbatim, so the confirm step
+   * converts the row's amount at the moment it is written. `currency` is the
+   * one the rate converts from; a row whose currency no longer matches it is
+   * converted at today's rate instead.
+   */
+  fileRate?: { exchangeRate: number; baseCurrency: string; currency: string };
 }
 
 export interface DuplicateCheck {

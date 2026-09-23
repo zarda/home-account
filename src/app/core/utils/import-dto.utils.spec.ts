@@ -1,4 +1,4 @@
-import { imageMetadataOf, importAmount, locationSlot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
+import { imageMetadataOf, importAmount, locationSlot, readTransactionSnapshot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
 import { parseDateInput } from './transaction-date.utils';
 import { ProcessedTransaction } from '../services/ai-types';
 
@@ -345,6 +345,59 @@ describe('toCreateTransactionDTO and the review flags', () => {
       'USD'
     );
     expect('dateReviewed' in dto).toBeFalse();
+  });
+
+  it('never forwards fileRate — the confirm step converts with it, the DTO never carries it', () => {
+    const dto = toCreateTransactionDTO(
+      {
+        amount: 2000,
+        date: new Date(2026, 0, 1),
+        currency: 'JPY',
+        fileRate: { exchangeRate: 0.0075, baseCurrency: 'USD', currency: 'JPY' }
+      } as never,
+      'USD'
+    );
+    expect('fileRate' in dto).toBeFalse();
+    expect('exchangeRate' in dto).toBeFalse();
+    expect('amountInBaseCurrency' in dto).toBeFalse();
+  });
+});
+
+describe('readTransactionSnapshot', () => {
+  it('reads the conversion a stored row was written with', () => {
+    const record = {
+      amount: 1200, currency: 'THB',
+      exchangeRate: 0.029, baseCurrency: 'USD', amountInBaseCurrency: 34.78
+    };
+    expect(readTransactionSnapshot(record))
+      .toEqual({ exchangeRate: 0.029, baseCurrency: 'USD', amountInBaseCurrency: 34.78 });
+  });
+
+  it('reads nothing unless all three are there and well-typed', () => {
+    // A half-written snapshot is not a snapshot: the write falls back to
+    // today's rate rather than store a figure with no rate behind it.
+    const records: Record<string, unknown>[] = [
+      { baseCurrency: 'USD', amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: 'USD' },
+      { exchangeRate: '0.029', baseCurrency: 'USD', amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: '', amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: 840, amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: 'USD', amountInBaseCurrency: null },
+    ];
+    for (const record of records) {
+      expect(readTransactionSnapshot(record)).withContext(JSON.stringify(record)).toBeUndefined();
+    }
+  });
+
+  it('reads nothing when the base figure overflowed to infinity', () => {
+    // Written as text, the way a hand-edited file arrives: JSON.stringify
+    // writes Infinity as null, which the case above already refuses for
+    // being no number at all.
+    const record = JSON.parse('{"exchangeRate": 0.029, "baseCurrency": "USD", "amountInBaseCurrency": 1e999}');
+    expect(record.amountInBaseCurrency).withContext('precondition: the literal overflowed').toBe(Infinity);
+
+    expect(readTransactionSnapshot(record)).toBeUndefined();
   });
 });
 

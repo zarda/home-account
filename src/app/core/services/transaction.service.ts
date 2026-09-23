@@ -67,6 +67,7 @@ import {
   buildTransactionWhere
 } from '../utils/transaction-query.utils';
 import { endOfDay, monthWindow } from '../utils/transaction-date.utils';
+import { TransactionSnapshot } from '../utils/import-dto.utils';
 
 export interface TransactionMutation {
   kind: 'add' | 'update' | 'delete';
@@ -259,25 +260,26 @@ export class TransactionService {
    * Add a new transaction.
    *
    * `options.id` writes at a caller-chosen id (backup restore, and the offline
-   * queue replaying a row it already keyed). `options.snapshot` writes the
-   * base-currency conversion verbatim instead of recomputing it: a restore
-   * must not rewrite a row's historical rate at today's, which would both
-   * change stored figures and make restoring the same backup twice produce
-   * different documents. `options.goalSnapshot` is the same contract for a
-   * goal link: the pair is written verbatim and no goal counter is touched —
-   * mid-restore the goal may not even exist yet, and the restore flow
-   * recomputes every counter from the ledger afterwards. `data.goalId` is the
-   * live path instead: the link and the goal's counter commit in one
+   * queue replaying a row it already keyed). `options.snapshot` writes a
+   * caller-supplied base-currency conversion verbatim instead of recomputing
+   * it: a restore keeps a row's historical rate so restoring the same backup
+   * twice produces the same document, and the import wizard's JSON door
+   * stamps the rate a backup file recorded, because today's rate is not the
+   * one the file was written at. `options.goalSnapshot` is the same contract
+   * for a goal link: the pair is written verbatim and no goal counter is
+   * touched — mid-restore the goal may not even exist yet, and the restore
+   * flow recomputes every counter from the ledger afterwards. `data.goalId`
+   * is the live path instead: the link and the goal's counter commit in one
    * Firestore transaction.
    *
-   * `options.merge` and `options.createdAt` are restore-only too. Merging
-   * leaves keys the write does not mention alone, which is what stops a
-   * restore erasing the receipt fields a live row already carries — a backup
-   * holds no storage objects, so it can never re-supply them. The cost is
-   * that a restore can no longer *clear* a field the backup dropped. And
-   * `createdAt` has to come from the file for the same reason the rate does:
-   * stamping now would restamp every pre-existing row and make a second
-   * restore of the same file produce different documents.
+   * `options.merge` and `options.createdAt` are restore-only. Merging leaves
+   * keys the write does not mention alone, which is what stops a restore
+   * erasing the receipt fields a live row already carries — a backup holds no
+   * storage objects, so it can never re-supply them. The cost is that a
+   * restore can no longer *clear* a field the backup dropped. And
+   * `createdAt` has to come from the file for the same reason a restored rate
+   * does: stamping now would restamp every pre-existing row and make a
+   * second restore of the same file produce different documents.
    *
    * `options.skipBudgetRecalc` is for batch importers posting many rows in a
    * loop: recalculating per row reads and rewrites the same budgets over and
@@ -291,7 +293,7 @@ export class TransactionService {
       id?: string;
       merge?: boolean;
       createdAt?: Timestamp;
-      snapshot?: { exchangeRate: number; baseCurrency: string; amountInBaseCurrency: number };
+      snapshot?: TransactionSnapshot;
       goalSnapshot?: { goalId: string; goalAmount: number };
       skipBudgetRecalc?: boolean;
     }
@@ -325,7 +327,9 @@ export class TransactionService {
       let exchangeRate: number;
       let amountInBaseCurrency: number;
       if (options?.snapshot) {
-        // A restore carries the conversion the row was written with; keep it.
+        // The caller already computed this conversion — a restore's own
+        // record, or a backup door's historical rate — so it is kept rather
+        // than recomputed at today's rate.
         ({ baseCurrency, exchangeRate, amountInBaseCurrency } = options.snapshot);
       } else {
         baseCurrency = baseCurrencyOf(this.authService.currentUser());
