@@ -275,7 +275,6 @@ For each UNIQUE transaction/line item found, extract:
 - merchant: store name (optional)
 - category: transaction category like Restaurants, Groceries, Shopping (optional)
 - details: full context for this item — quantity, size, flavor, discount, tax info (optional)
-- wasMerged: true if this item appeared in multiple images and was deduplicated
 - mergedFromImages: [0,1] if from multiple images (optional)
 
 Lower "dateConfidence" when the date is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
@@ -300,7 +299,6 @@ Return ONLY a valid JSON array (no markdown):
     "dateConfidence": 0.95,
     "merchant": "Store name",
     "details": "×1",
-    "wasMerged": false,
     "receiptDetails": "Item name ×1 — 10.99\\nSubtotal 10.99\\nTax 0.88\\nTotal 11.87",
     "receiptTotal": 11.87,
     "location": "<branch or address as printed, or empty>",

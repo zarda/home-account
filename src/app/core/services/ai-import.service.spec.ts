@@ -1599,7 +1599,7 @@ describe('AIImportService', () => {
       expect(result.transactions[0].amount).toBe(301);
     });
 
-    it('keeps a lone item\'s own merged flag through consolidation', async () => {
+    it('a lone item is never merged, whatever the model says', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo', amount: 10, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 4, wasMerged: true }
@@ -1609,7 +1609,7 @@ describe('AIImportService', () => {
         makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
       ]);
 
-      expect(result.transactions[0].imageMetadata?.wasMerged).toBe(true);
+      expect(result.transactions[0].imageMetadata?.wasMerged).toBe(false);
     });
 
     it('should merge using AI-provided receipt details and a non-JPY currency', async () => {

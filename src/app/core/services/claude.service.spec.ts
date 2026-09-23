@@ -791,7 +791,9 @@ describe('ClaudeService', () => {
 
       expect(result[0].amount).toBe(10);
       expect(result[0].imageIndex).toBe(1);
-      expect(result[0].wasMerged).toBeTrue();
+      // Merged is the app's own verdict, reached later in consolidation —
+      // never a claim the model gets to make about its own extraction.
+      expect(result[0].wasMerged).toBeFalse();
       // The receipt-detail fields must survive normalisation so line items
       // can be consolidated and recorded in the transaction note
       expect(result[0].receiptId).toBe(2);

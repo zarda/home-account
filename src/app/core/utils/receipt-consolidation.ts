@@ -94,7 +94,10 @@ export function consolidateReceiptItems(
       // receipt content as its details when the AI provided it
       const only = groupItems[0];
       const base = only.receiptDetails ? { ...only, details: only.receiptDetails } : only;
-      result.push({ ...base, ...deriveAmount(groupItems, Math.abs(only.amount)) });
+      // A group of one never merged anything, whatever the extraction
+      // claimed for the item itself — that verdict is this function's alone
+      // to make, and it only makes it in the multi-item branch below.
+      result.push({ ...base, ...deriveAmount(groupItems, Math.abs(only.amount)), wasMerged: false });
     } else {
       // Multiple items from same receipt — merge into one transaction.
       // Amounts are absolute values, so refund/credit lines (type 'income')

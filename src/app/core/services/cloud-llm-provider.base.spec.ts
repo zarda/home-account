@@ -458,6 +458,26 @@ describe('CloudLLMProviderBase', () => {
     });
   });
 
+  describe('extractTransactionsFromMultipleImages merged flag', () => {
+    it("does not copy the model's own wasMerged claim", async () => {
+      // Whether an item was deduplicated across photos is decided later, by
+      // consolidation and reviewer merges — never taken on the model's word.
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
+            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1,
+            wasMerged: true, mergedFromImages: [0, 1] },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['a', 'b']);
+
+      expect(rows[0].wasMerged).toBeFalse();
+      expect(rows[0].mergedFromImages).toEqual([0, 1]);
+    });
+  });
+
   describe('extractJson', () => {
     it('strips markdown fences', () => {
       expect(provider.callExtractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');

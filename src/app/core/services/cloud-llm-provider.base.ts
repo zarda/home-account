@@ -432,7 +432,10 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,
         receiptTotal: readReceiptTotal(t.receiptTotal),
-        wasMerged: t.wasMerged || false,
+        // Never the model's own claim: whether an item was deduplicated
+        // across photos is decided later, by consolidation and reviewer
+        // merges, which both write this mark themselves.
+        wasMerged: false,
         mergedFromImages: t.mergedFromImages,
         // A missing date is patched with today's day-key above, and that
         // string parses just fine — so a claimed dateConfidence must not

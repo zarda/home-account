@@ -982,7 +982,9 @@ describe('GeminiService', () => {
       expect(result.length).toBe(2);
       expect(result[0].amount).toBe(100);
       expect(result[0].category).toBe('food_groceries');
-      expect(result[0].wasMerged).toBeTrue();
+      // Merged is the app's own verdict, reached later in consolidation —
+      // never a claim the model gets to make about its own extraction.
+      expect(result[0].wasMerged).toBeFalse();
       expect(result[0].mergedFromImages).toEqual([0, 1]);
       expect(result[0].receiptTotal).toBe(130);
       // Defaults for sparse item.

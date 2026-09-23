@@ -19,7 +19,7 @@ import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { MockAuthService } from '../../../../core/services/testing';
-import { blankImportRow } from '../../../../core/utils/import-review.utils';
+import { blankImportRow, splitImportRow } from '../../../../core/utils/import-review.utils';
 import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 
 function attemptStub() {
@@ -1508,6 +1508,25 @@ describe('ImportWizardComponent', () => {
       component.extractedTransactions.set(transactions);
 
       expect(component.duplicatesSkipped()).toBe(1);
+    });
+  });
+
+  describe('mergedItemsCount', () => {
+    it('counts one merged item after a merged row is split in two', () => {
+      const merged: CategorizedImportTransaction = {
+        ...mockTransactions[0],
+        imageMetadata: {
+          imageIndex: 0, imageId: 'image_0', positionInImage: 'middle', confidenceScore: 0.9,
+          receiptId: 1, wasMerged: true, mergedFromImages: [0, 1],
+        },
+      };
+      const [kept, part] = splitImportRow(merged, 2, 'split_1')!;
+
+      // The split part is a fraction of the receipt read once, not a second
+      // deduplicated item — only the remainder still carries the mark.
+      component.extractedTransactions.set([kept, part]);
+
+      expect(component.mergedItemsCount()).toBe(1);
     });
   });
 

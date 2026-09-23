@@ -352,7 +352,11 @@ export function splitImportRow(
     selected: true,
     date: new Date(row.date),
   };
-  if (row.imageMetadata) part.imageMetadata = { ...row.imageMetadata };
+  // mergedFromImages travels with the part — consolidation hardcodes a
+  // merged row's imageIndex to 0, so it is the only honest source list —
+  // but wasMerged itself does not: a fraction of a merged receipt is not a
+  // second deduplicated item, and only the remainder still reads as one.
+  if (row.imageMetadata) part.imageMetadata = { ...row.imageMetadata, wasMerged: false };
   delete part.notes;
   delete part.duplicateOf;
   delete part.recurringId;

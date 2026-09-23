@@ -520,13 +520,21 @@ describe('import-review.utils', () => {
       expect(kept.splitFrom).toBeUndefined();
     });
 
-    it('copies imageMetadata onto the part rather than sharing the original\'s object', () => {
+    it('a split part does not inherit the merged mark', () => {
       const meta: ImagePositionMetadata = {
         imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1,
+        wasMerged: true, mergedFromImages: [0, 1],
       };
-      const [, part] = splitImportRow(row({ imageMetadata: meta }), 1.2, 'split_1')!;
-      expect(part.imageMetadata).toEqual(meta);
+      const [kept, part] = splitImportRow(row({ imageMetadata: meta }), 1.2, 'split_1')!;
+
       expect(part.imageMetadata).not.toBe(meta);
+      expect(part.imageMetadata?.wasMerged).toBeFalse();
+      expect(kept.imageMetadata?.wasMerged).toBeTrue();
+      // Consolidation hardcodes imageIndex to 0 on a merged row, so
+      // mergedFromImages is the only honest source list for it — a part
+      // stripped of the field would fall back to imageSources' own
+      // [meta.imageIndex] and attach the wrong photo.
+      expect(imageSources(part.imageMetadata!)).toEqual([0, 1]);
     });
 
     it('drops notes, duplicateOf, recurringId, isRecurring and recurringMatch from the part entirely', () => {
