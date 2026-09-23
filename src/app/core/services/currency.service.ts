@@ -1,6 +1,7 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { DestroyRef, Injectable, inject, signal, computed } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { Observable, of } from 'rxjs';
+import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import {
   CurrencyInfo,
@@ -24,9 +25,34 @@ const CURRENCY_API_URL = 'https://open.er-api.com/v6/latest/USD';
 // from storing them per account.
 const RATES_CACHE_KEY = 'home-account.exchangeRates';
 
+// A boot that lands on `expired`/`fallback` gets this many refetch attempts
+// across the session, spent one per `online` event — not per minute or per
+// retry backoff — so a connection that flaps cannot burn them all before the
+// user even notices the stale line.
+const RATE_RETRY_LIMIT = 3;
+
 @Injectable({ providedIn: 'root' })
 export class CurrencyService {
   private translationService = inject(TranslationService);
+  private pwaService = inject(PwaService);
+  private destroyRef = inject(DestroyRef);
+
+  // Present only while a stale table (expired/fallback) is waiting on a
+  // reconnect to retry; armed once by initializeRates and torn down by
+  // whichever of retryOnReconnect and the constructor's DestroyRef.onDestroy
+  // callback ends the waiting first.
+  private onlineRetryHandler: (() => void) | null = null;
+  private retryAttempts = 0;
+  // The offline-queue.service.ts syncInProgress idiom: a flaky reconnect can
+  // fire `online` twice before the first attempt's fetch settles, and without
+  // this a second event would start a concurrent refreshRates() against the
+  // same rate-limited API and double-spend the budget above.
+  private retryInFlight = false;
+  // The boot fetch can outlive the injector: initializeRates's `finally` only
+  // arms the listener once that fetch settles, which can land after
+  // DestroyRef.onDestroy already ran. Without this flag, arming would attach
+  // a `window` listener nothing is left registered to remove.
+  private destroyed = false;
 
   // Signals
   currencies = signal<CurrencyInfo[]>(SUPPORTED_CURRENCIES);
@@ -48,6 +74,10 @@ export class CurrencyService {
 
   constructor() {
     this.initPromise = this.initializeRates();
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+      this.removeOnlineRetryListener();
+    });
   }
 
   // Initialize the rate table: a fresh cache is used as-is, otherwise a live
@@ -74,7 +104,52 @@ export class CurrencyService {
       }
     } finally {
       this.ratesInitialized.set(true);
+      this.armOnlineRetryIfNeeded();
     }
+  }
+
+  // A boot that missed the live table gets no retry of its own — only a
+  // reconnect can still bring it current this session. `online` fires on the
+  // OS's say-so alone, so PwaService.isOnline() (the offline-queue.service.ts
+  // idiom) confirms the connection actually carries traffic before spending
+  // one of the limited attempts on a portal or a still-dead radio. A destroyed
+  // instance never arms: see `destroyed`.
+  private armOnlineRetryIfNeeded(): void {
+    if (this.destroyed) return;
+
+    const source = this.rateSource();
+    if (source !== 'expired' && source !== 'fallback') return;
+
+    this.onlineRetryHandler = () => this.retryOnReconnect();
+    window.addEventListener('online', this.onlineRetryHandler);
+  }
+
+  private retryOnReconnect(): void {
+    if (this.retryInFlight) return;
+    if (!this.pwaService.isOnline()) return;
+    if (this.retryAttempts >= RATE_RETRY_LIMIT) {
+      this.removeOnlineRetryListener();
+      return;
+    }
+
+    this.retryAttempts += 1;
+    this.retryInFlight = true;
+    void this.refreshRates()
+      .then(() => this.removeOnlineRetryListener())
+      .catch(() => {
+        if (this.retryAttempts >= RATE_RETRY_LIMIT) {
+          this.removeOnlineRetryListener();
+        }
+      })
+      .finally(() => {
+        this.retryInFlight = false;
+      });
+  }
+
+  private removeOnlineRetryListener(): void {
+    if (!this.onlineRetryHandler) return;
+    window.removeEventListener('online', this.onlineRetryHandler);
+    this.onlineRetryHandler = null;
   }
 
   // Wait for exchange rates to be initialized

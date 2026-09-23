@@ -2,18 +2,20 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 /**
  * Which rung of the exchange-rate ladder the loaded table came from, under
  * the currency it converts to.
  *
- * Passive on purpose. The ladder runs once, from the service's constructor,
- * and `refreshRates` is a rejecting API with no recovery of its own, so a
- * "refresh now" control here would be an affordance for something the app
- * cannot yet honour; what the user needs first is to know that the figures
- * on screen are older than they look. Nothing read `lastUpdated` before
- * this — ADR 0037 named that gap while keeping the signal honest for it.
+ * Passive on purpose. A missed live table retries on its own once the
+ * connection returns (CurrencyService, bounded), but that recovery has no
+ * control here to trigger early and nothing to confirm beyond the rung
+ * itself flipping to `live` — what the user needs is to know that the
+ * figures on screen are older than they look, and when they stopped being
+ * current. Nothing read `lastUpdated` before this — ADR 0037 named that gap
+ * while keeping the signal honest for it.
  *
  * `live` and `cached` render the same line: a fresh cache and a live fetch
  * both mean the table is under `CACHE_DURATION_MS` old, which is the same
@@ -36,6 +38,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class RateStatusComponent {
   private currencyService = inject(CurrencyService);
   private dateFormat = inject(DateFormatService);
+  private localeFormat = inject(LocaleFormatService);
 
   /** Read-only here: the ladder is the only thing that names a rung. */
   readonly rateSource = computed(() => this.currencyService.rateSource());
@@ -47,13 +50,18 @@ export class RateStatusComponent {
   });
 
   /**
-   * The stamp, through the user's own date preference — set two fields above
-   * this one, so a fixed pattern here would visibly disagree with it. Read
-   * only by the three dated rungs; the constants rung has no real date and
-   * says so in words instead.
+   * The stamp: its date through the user's own date-format preference — set
+   * on the same Settings page, in the field right after the base currency this
+   * line sits under, so a fixed pattern here would visibly disagree with it —
+   * and its time in the locale's own format, since there is no clock
+   * preference to follow. Read only by the three dated rungs; the constants
+   * rung has no real date and says so in words instead.
    */
   readonly dateParam = computed(() => {
     const updated = this.currencyService.lastUpdated();
-    return { date: updated ? this.dateFormat.formatDate(updated) : '' };
+    return {
+      date: updated ? this.dateFormat.formatDate(updated) : '',
+      time: updated ? this.localeFormat.formatTime(updated) : '',
+    };
   });
 }
