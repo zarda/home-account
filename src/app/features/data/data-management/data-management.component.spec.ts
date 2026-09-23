@@ -1045,6 +1045,8 @@ describe('DataManagementComponent, through its own template', () => {
     fixture.detectChanges();
     expect(el().querySelector('mat-progress-bar')).not.toBeNull();
     expect(text('.progress-text')).toBe('settings.importingProgress:{"progress":40}');
+    expect(el().querySelector('mat-progress-bar')?.getAttribute('aria-label'))
+      .toBe('settings.importProgressLabel:{"progress":40}');
 
     component.importProgress.set(100);
     fixture.detectChanges();
@@ -1065,7 +1067,10 @@ describe('DataManagementComponent, through its own template', () => {
 
     const deleteAccount = (Array.from(el().querySelectorAll('.danger-item button')) as HTMLButtonElement[])[1];
     expect(deleteAccount.disabled).toBeTrue();
-    expect(el().querySelector('.danger-zone mat-progress-bar')).not.toBeNull();
+    const bar = el().querySelector('.danger-zone mat-progress-bar');
+    expect(bar).not.toBeNull();
+    // Too generic a state to earn its own catalog entry.
+    expect(bar?.getAttribute('aria-label')).toBe('common.loading');
   });
 
   it('reaches the receipt image manager from its own button', () => {

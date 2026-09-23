@@ -93,6 +93,7 @@
     "selectMonth": "Select Month",
     "selectYear": "Select Year",
     "loadingData": "Loading dashboard data...",
+    "refreshing": "Refreshing dashboard data",
     "spendingByCategory": "Spending by Category",
     "noExpenses": "No expenses yet",
     "addFirstTransaction": "Add your first transaction to get started",
@@ -266,6 +267,9 @@
     },
     "viewBudgets": "View budgets"
   },
+  "budgets": {
+    "progressLabel": "{{name}}: {{percent}}% of budget used"
+  },
   "goal": {
     "tabHint": "Save toward targets and plan projects",
     "addGoal": "Add Goal",
@@ -310,6 +314,9 @@
     "contributionFailed": "Could not record the contribution",
     "linkedBreakdown": "{{manual}} manual · {{linked}} from transactions",
     "currencyLocked": "Fixed once money is against this goal"
+  },
+  "goals": {
+    "progressLabel": "{{name}}: {{percent}}% of goal reached"
   },
   "reports": {
     "title": "Reports",
@@ -497,6 +504,7 @@
       "other": "{{count}} rows' categories could not be matched and will use the default category"
     },
     "importingProgress": "Importing... {{progress}}%",
+    "importProgressLabel": "Import progress: {{progress}}%",
     "importTransactions": {
       "one": "Import {{count}} Transaction",
       "other": "Import {{count}} Transactions"
@@ -1064,6 +1072,7 @@
     "viewHistory": "View History",
     "uploadStep": "Upload",
     "processingStep": "Processing",
+    "progressLabel": "Import progress: {{percent}}%",
     "reviewStep": "Review",
     "confirmStep": "Import",
     "dropzoneTitle": "Drop files here or click to upload",
@@ -1482,6 +1491,9 @@
     "removeAllConfirmTitle": "Remove all receipt images?",
     "removeAllConfirmMessage": "All {{count}} images are deleted permanently. The transaction itself is kept.",
     "removedAll": "{{count}} receipt images removed"
+  },
+  "receipts": {
+    "loading": "Loading receipt image"
   },
   "analytics": {
     "settingsTitle": "Usage statistics",

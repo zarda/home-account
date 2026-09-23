@@ -47,7 +47,8 @@
     [disabled]="!message.trim() || isSubmitting()"
   >
     @if (isSubmitting()) {
-      <mat-spinner diameter="20" class="btn-spinner"></mat-spinner>
+      <!-- The visible label beside it already announces the state. -->
+      <mat-spinner diameter="20" class="btn-spinner" aria-hidden="true"></mat-spinner>
       {{ 'about.feedback.sending' | translate }}
     } @else {
       <ng-container>

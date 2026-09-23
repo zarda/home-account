@@ -60,7 +60,7 @@
 
                 <div class="tile-actions">
                   @if (isBusy(group.transaction.id, image.slot)) {
-                    <mat-spinner diameter="24" />
+                    <mat-spinner diameter="24" [attr.aria-label]="'receipts.loading' | translate" />
                   } @else {
                     <button
                       mat-icon-button

@@ -36,7 +36,8 @@
         (click)="signInWithGoogle()"
       >
         @if (isLoading()) {
-          <mat-spinner diameter="20" class="inline-block me-2"></mat-spinner>
+          <!-- The visible label beside it already announces the state. -->
+          <mat-spinner diameter="20" class="inline-block me-2" aria-hidden="true"></mat-spinner>
           <span>{{ 'app.loading' | translate }}</span>
         } @else {
           <div class="btn-content">

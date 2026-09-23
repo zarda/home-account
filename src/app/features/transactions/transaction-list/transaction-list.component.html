@@ -9,7 +9,9 @@
   </div>
 } @else if (windowSource.fetchingEdge() === 'prev') {
   <div class="edge-row" aria-hidden="true">
-    <mat-spinner diameter="24" />
+    <!-- The parent carries the aria-hidden; a per-tag gate reads one
+         element at a time and cannot see it, so this repeats it. -->
+    <mat-spinner diameter="24" aria-hidden="true" />
   </div>
 }
 
@@ -293,7 +295,9 @@
   </div>
 } @else if (windowSource.fetchingEdge() === 'next') {
   <div class="edge-row" aria-hidden="true">
-    <mat-spinner diameter="24" />
+    <!-- The parent carries the aria-hidden; a per-tag gate reads one
+         element at a time and cannot see it, so this repeats it. -->
+    <mat-spinner diameter="24" aria-hidden="true" />
   </div>
 }
 

@@ -568,4 +568,32 @@ describe('CameraCaptureComponent processing overlay', () => {
     const thumbnail = fixture.nativeElement.querySelector('img.thumbnail') as HTMLImageElement;
     expect(thumbnail.alt).toBe('receiptImages.imageNumber');
   });
+
+  it("hides the process button's own spinner behind the overlay's", () => {
+    component.isProcessing.set(true);
+    fixture.detectChanges();
+
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('mat-dialog-actions button')
+    ) as HTMLButtonElement[];
+    const button = buttons.find((b) => b.querySelector('mat-spinner')) as HTMLButtonElement;
+    expect(button.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('names the process button with its idle key while busy, and carries neither while idle', () => {
+    // Retake, then process — the only two buttons mat-dialog-actions renders
+    // once an image is captured.
+    const processButton = () =>
+      (Array.from(fixture.nativeElement.querySelectorAll('mat-dialog-actions button')) as HTMLButtonElement[])[1];
+
+    component.isProcessing.set(true);
+    fixture.detectChanges();
+    expect(processButton().getAttribute('aria-busy')).toBe('true');
+    expect(processButton().getAttribute('aria-label')).toBe('import.processWithAI');
+
+    component.isProcessing.set(false);
+    fixture.detectChanges();
+    expect(processButton().getAttribute('aria-busy')).not.toBe('true');
+    expect(processButton().hasAttribute('aria-label')).toBeFalse();
+  });
 });

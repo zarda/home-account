@@ -93,6 +93,7 @@
     "selectMonth": "選擇月份",
     "selectYear": "選擇年份",
     "loadingData": "載入資料中...",
+    "refreshing": "正在重新整理儀表板資料",
     "spendingByCategory": "各類別支出",
     "noExpenses": "尚無支出",
     "addFirstTransaction": "新增您的第一筆交易",
@@ -254,6 +255,9 @@
     "alertSnackbarMore": "另有 {{count}} 個預算提醒",
     "viewBudgets": "查看預算"
   },
+  "budgets": {
+    "progressLabel": "{{name}}：已使用預算的 {{percent}}%"
+  },
   "goal": {
     "tabHint": "為目標儲蓄，並規劃專案",
     "addGoal": "新增目標",
@@ -298,6 +302,9 @@
     "contributionFailed": "無法記錄存入",
     "linkedBreakdown": "手動 {{manual}} · 來自交易 {{linked}}",
     "currencyLocked": "已有款項後即無法變更"
+  },
+  "goals": {
+    "progressLabel": "{{name}}：已達成目標的 {{percent}}%"
   },
   "reports": {
     "title": "報表",
@@ -467,6 +474,7 @@
     "moreTransactions": "...還有 {{count}} 筆交易",
     "csvUnmatchedCategories": "{{count}} 筆交易的類別無法比對，將使用預設類別",
     "importingProgress": "匯入中... {{progress}}%",
+    "importProgressLabel": "匯入進度：{{progress}}%",
     "importTransactions": "匯入 {{count}} 筆交易",
     "dangerZone": "危險區域",
     "irreversibleActions": "不可逆的操作",
@@ -1015,6 +1023,7 @@
     "startImport": "開始匯入",
     "uploadStep": "上傳檔案",
     "processingStep": "處理中",
+    "progressLabel": "匯入進度：{{percent}}%",
     "reviewStep": "檢閱",
     "confirmStep": "確認",
     "dropzoneTitle": "拖放檔案或點擊瀏覽",
@@ -1383,6 +1392,9 @@
     "removeAllConfirmTitle": "要刪除所有收據圖片嗎？",
     "removeAllConfirmMessage": "全部 {{count}} 張圖片將被永久刪除，交易本身會保留。",
     "removedAll": "已刪除 {{count}} 張收據圖片"
+  },
+  "receipts": {
+    "loading": "正在載入收據圖片"
   },
   "analytics": {
     "settingsTitle": "使用統計",

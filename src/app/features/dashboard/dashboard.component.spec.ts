@@ -1310,5 +1310,16 @@ describe('DashboardComponent', () => {
       const link = empty.querySelector('.customize-link');
       expect(link.getAttribute('href')).toBe('/settings?panel=dashboard');
     });
+
+    it('names the refetch bar for a period change once the first load has painted', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      fixture.componentInstance.isLoading.set(true);
+      fixture.detectChanges();
+
+      const bar = fixture.nativeElement.querySelector('.refetch-bar');
+      expect(bar.getAttribute('aria-label')).toBe('dashboard.refreshing');
+    });
   });
 });

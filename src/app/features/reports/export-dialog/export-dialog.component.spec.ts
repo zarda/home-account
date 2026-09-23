@@ -244,6 +244,14 @@ describe('ExportDialogComponent', () => {
       await component.export();
       expect(component.isExporting()).toBeFalse();
     });
+
+    it('hides the exporting spinner behind the visible label beside it', () => {
+      component.isExporting.set(true);
+      fixture.detectChanges();
+
+      const spinner = fixture.nativeElement.querySelector('mat-spinner');
+      expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+    });
   });
 
   describe('cancel', () => {

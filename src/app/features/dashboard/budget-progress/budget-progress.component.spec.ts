@@ -289,6 +289,11 @@ describe('BudgetProgressComponent', () => {
       expect(progressBar).toBeTruthy();
     });
 
+    it("names the progress bar with the budget's own name and percentage", () => {
+      const progressBar = fixture.nativeElement.querySelector('mat-progress-bar');
+      expect(progressBar.getAttribute('aria-label')).toBe('budgets.progressLabel');
+    });
+
     it('should render multiple budgets', () => {
       setBudgets([
         createMockBudget({ id: '1', name: 'Budget 1' }),

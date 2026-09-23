@@ -392,6 +392,11 @@ describe('BudgetProgressCardComponent', () => {
       expect(progressBar).toBeTruthy();
     });
 
+    it("names the progress bar with the budget's own name and percentage", () => {
+      const progressBar = fixture.nativeElement.querySelector('mat-progress-bar');
+      expect(progressBar.getAttribute('aria-label')).toBe('budgets.progressLabel');
+    });
+
     it('should display menu button', () => {
       const menuButton = fixture.nativeElement.querySelector('[mat-icon-button]');
       expect(menuButton).toBeTruthy();

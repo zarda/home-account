@@ -2292,4 +2292,27 @@ describe('TransactionFormComponent, through its own template', () => {
 
     expect(el().querySelector('.suggestion-chip')).toBeNull();
   });
+
+  it('hides the submit spinner behind aria-busy and the idle label as aria-label', () => {
+    render();
+    component.isSubmitting.set(true);
+    fixture.detectChanges();
+
+    const button = submit();
+    expect(button.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    // The visible label is replaced by the spinner while submitting, so the
+    // button's own name has to come from aria-label instead of content —
+    // this mode's idle key ('add'), same as what shows once idle again.
+    expect(button.getAttribute('aria-label')).toBe('transactions.addTransaction');
+  });
+
+  it("hides the locate spinner behind the button's own aria-label", () => {
+    render();
+    component.isLocating.set(true);
+    fixture.detectChanges();
+
+    const locate = el().querySelector('button[aria-label="transactions.useMyLocation"]') as HTMLElement;
+    expect(locate.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
+  });
 });

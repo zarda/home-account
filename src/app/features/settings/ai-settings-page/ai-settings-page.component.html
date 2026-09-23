@@ -132,10 +132,15 @@
             <button mat-flat-button
                     color="primary"
                     [disabled]="!geminiApiKey() || isTestingGemini()"
+                    [attr.aria-busy]="isTestingGemini()"
+                    [attr.aria-label]="isTestingGemini() ? ('settings.testApiKey' | translate) : null"
                     (click)="testGeminiApiKey()"
                     type="button">
               @if (isTestingGemini()) {
-                <mat-spinner diameter="18"></mat-spinner>
+                <!-- The visible label is replaced while testing, so the busy
+                     state reuses this same idle key as the button's name
+                     instead of leaving it nameless. -->
+                <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
               }
@@ -207,10 +212,15 @@
             <button mat-flat-button
                     color="primary"
                     [disabled]="!openaiApiKey() || isTestingOpenai()"
+                    [attr.aria-busy]="isTestingOpenai()"
+                    [attr.aria-label]="isTestingOpenai() ? ('settings.testApiKey' | translate) : null"
                     (click)="testOpenaiApiKey()"
                     type="button">
               @if (isTestingOpenai()) {
-                <mat-spinner diameter="18"></mat-spinner>
+                <!-- The visible label is replaced while testing, so the busy
+                     state reuses this same idle key as the button's name
+                     instead of leaving it nameless. -->
+                <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
               }
@@ -282,10 +292,15 @@
             <button mat-flat-button
                     color="primary"
                     [disabled]="!claudeApiKey() || isTestingClaude()"
+                    [attr.aria-busy]="isTestingClaude()"
+                    [attr.aria-label]="isTestingClaude() ? ('settings.testApiKey' | translate) : null"
                     (click)="testClaudeApiKey()"
                     type="button">
               @if (isTestingClaude()) {
-                <mat-spinner diameter="18"></mat-spinner>
+                <!-- The visible label is replaced while testing, so the busy
+                     state reuses this same idle key as the button's name
+                     instead of leaving it nameless. -->
+                <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
               }

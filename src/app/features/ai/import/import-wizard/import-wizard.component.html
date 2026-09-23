@@ -121,6 +121,7 @@
                 mode="determinate"
                 [value]="processingProgress()"
                 class="custom-progress"
+                [attr.aria-label]="'import.progressLabel' | translate: { percent: processingProgress() }"
               ></mat-progress-bar>
               <span class="progress-text">{{ processingProgress() }}%</span>
             </div>
@@ -439,6 +440,7 @@
               mode="determinate"
               [value]="processingProgress()"
               class="custom-progress"
+              [attr.aria-label]="'import.progressLabel' | translate: { percent: processingProgress() }"
             ></mat-progress-bar>
             @if (processingRow(); as row) {
               <p class="importing-status">{{ 'import.importingRow' | translate:{ done: row.done, total: row.total } }}</p>
@@ -459,7 +461,8 @@
             (click)="confirmImport()"
           >
             @if (isImporting()) {
-              <mat-spinner diameter="20"></mat-spinner>
+              <!-- The button's label text below is set unconditionally. -->
+              <mat-spinner diameter="20" aria-hidden="true"></mat-spinner>
             } @else {
               <mat-icon>file_download</mat-icon>
             }

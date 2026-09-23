@@ -29,7 +29,8 @@
 
   @if (isLoading()) {
     <div class="loading" role="status">
-      <mat-spinner diameter="28" />
+      <!-- The role=status text beside it already announces the state. -->
+      <mat-spinner diameter="28" aria-hidden="true" />
       <span>{{ 'aiSearch.interpreting' | translate }}</span>
     </div>
   }

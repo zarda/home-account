@@ -93,6 +93,7 @@
     "selectMonth": "月を選択",
     "selectYear": "年を選択",
     "loadingData": "データを読み込み中...",
+    "refreshing": "ダッシュボードのデータを更新中",
     "spendingByCategory": "カテゴリ別支出",
     "noExpenses": "支出なし",
     "addFirstTransaction": "最初の取引を追加してください",
@@ -254,6 +255,9 @@
     "alertSnackbarMore": "他 {{count}} 件の予算アラート",
     "viewBudgets": "予算を見る"
   },
+  "budgets": {
+    "progressLabel": "{{name}}：予算の{{percent}}%を使用"
+  },
   "goal": {
     "tabHint": "目標に向けて貯め、プロジェクトを計画しましょう",
     "addGoal": "目標を追加",
@@ -298,6 +302,9 @@
     "contributionFailed": "積み立てを記録できませんでした",
     "linkedBreakdown": "手動 {{manual}} · 取引から {{linked}}",
     "currencyLocked": "積み立てがあると変更できません"
+  },
+  "goals": {
+    "progressLabel": "{{name}}：目標の{{percent}}%達成"
   },
   "reports": {
     "title": "レポート",
@@ -467,6 +474,7 @@
     "moreTransactions": "...他{{count}}件の取引",
     "csvUnmatchedCategories": "カテゴリを特定できなかった{{count}}件の取引はデフォルトのカテゴリになります",
     "importingProgress": "インポート中... {{progress}}%",
+    "importProgressLabel": "インポートの進捗：{{progress}}%",
     "importTransactions": "{{count}}件の取引をインポート",
     "dangerZone": "危険ゾーン",
     "irreversibleActions": "取り消せない操作",
@@ -1015,6 +1023,7 @@
     "startImport": "インポートを開始",
     "uploadStep": "アップロード",
     "processingStep": "処理中",
+    "progressLabel": "インポートの進捗：{{percent}}%",
     "reviewStep": "確認",
     "confirmStep": "完了",
     "dropzoneTitle": "ファイルをドラッグ＆ドロップまたはクリックして選択",
@@ -1383,6 +1392,9 @@
     "removeAllConfirmTitle": "すべてのレシート画像を削除しますか？",
     "removeAllConfirmMessage": "{{count}} 枚の画像がすべて完全に削除されます。取引自体は残ります。",
     "removedAll": "レシート画像 {{count}} 枚を削除しました"
+  },
+  "receipts": {
+    "loading": "レシート画像を読み込み中"
   },
   "analytics": {
     "settingsTitle": "利用状況の統計",

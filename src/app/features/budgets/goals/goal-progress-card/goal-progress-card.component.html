@@ -47,6 +47,7 @@
         [mode]="'determinate'"
         [value]="barValue()"
         [color]="reached() ? 'accent' : 'primary'"
+        [attr.aria-label]="'goals.progressLabel' | translate: { name: goal().name, percent: percentage() }"
       />
       @if (reached()) {
         <p class="status reached-note">

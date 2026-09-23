@@ -540,5 +540,13 @@ describe('BudgetFormComponent', () => {
       expect(compiled.textContent?.includes('Cancel') || compiled.textContent?.includes('common.cancel')).toBe(true);
       expect(compiled.textContent?.includes('Create Budget') || compiled.textContent?.includes('budget.createBudget')).toBe(true);
     });
+
+    it("hides the submitting spinner: the button's label text stays visible beside it", () => {
+      component.isSubmitting.set(true);
+      fixture.detectChanges();
+
+      const spinner = fixture.nativeElement.querySelector('mat-spinner');
+      expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+    });
   });
 });

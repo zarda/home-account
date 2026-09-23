@@ -265,6 +265,9 @@ describe('TransactionFormComponent suggestion chips', () => {
       // stop; role=status is what announces it instead.
       expect(chip.tagName).not.toBe('BUTTON');
       expect(chip.getAttribute('role')).toBe('status');
+      // The role=status text beside it already announces the state, so the
+      // spinner is hidden rather than doubly named.
+      expect(chip.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
     });
   });
 

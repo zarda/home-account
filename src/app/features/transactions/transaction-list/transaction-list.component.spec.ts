@@ -164,6 +164,20 @@ describe('TransactionListComponent', () => {
       component.onRetry();
       expect(windowSource.retry).toHaveBeenCalled();
     });
+
+    it('hides both edge spinners: the row around each already carries the aria-hidden', () => {
+      windowSource.fetchingEdge.set('prev');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('.edge-row mat-spinner').getAttribute('aria-hidden')
+      ).toBe('true');
+
+      windowSource.fetchingEdge.set('next');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('.edge-row mat-spinner').getAttribute('aria-hidden')
+      ).toBe('true');
+    });
   });
 
   describe('empty state CTA', () => {

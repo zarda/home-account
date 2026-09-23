@@ -24,7 +24,11 @@
   } @else {
     <!-- Refetch (period change) keeps content mounted; a thin bar signals work -->
     @if (isRefetching()) {
-      <mat-progress-bar mode="indeterminate" class="refetch-bar" />
+      <mat-progress-bar
+        mode="indeterminate"
+        class="refetch-bar"
+        [attr.aria-label]="'dashboard.refreshing' | translate"
+      />
     }
 
     <!-- Financial Summary Cards (shared) -->

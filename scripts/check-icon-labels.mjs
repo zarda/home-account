@@ -67,6 +67,23 @@
  *   - A `mat-icon` inside a string that is not a template at all — a test
  *     fixture in a `.spec.ts`, say. Spec files are skipped for that reason.
  *
+ * A second, unrelated defect shares this file because it shares the shape:
+ * Angular Material's `mat-spinner`, `mat-progress-bar` and
+ * `mat-progress-spinner` all render `role="progressbar"` and none of them
+ * takes a name from anywhere — unlike a button or a heading, a progressbar's
+ * accessible name has no content to fall back to, so a bare one is silent by
+ * construction, on every route, for as long as it is on screen. The fix is
+ * either of two things, and only a human reading the surrounding markup can
+ * choose which: a translated `[attr.aria-label]`, when the indicator is the
+ * only thing saying work is happening; or a literal `aria-hidden="true"`,
+ * when it sits inside a button or a `role="status"` that already carries
+ * visible text and naming the indicator too would announce the same state
+ * twice. This rule only checks that ONE of those two escape hatches was
+ * used — same as the icon rule, it cannot tell a good `aria-label` from an
+ * empty one, and it cannot tell whether the control an `aria-hidden`
+ * indicator sits inside is actually the one announcing the state, only that
+ * something declared the choice deliberately.
+ *
  * Reference documentation lives in docs/accessibility.md.
  */
 
@@ -92,6 +109,26 @@ const NAMED = /role\s*=\s*"img"|aria-label/;
  * in `.` or `[`: `[attr.aria-hidden]=` and `[aria-hidden]=`.
  */
 const LITERAL_HIDDEN = /(?<![\w.[-])aria-hidden\s*=\s*"/;
+
+/** The opening tag of any of the three progress indicators. */
+const PROGRESS_TAG = /<mat-(spinner|progress-bar|progress-spinner)\b([^>]*)>/g;
+
+/**
+ * Any spelling that names the indicator: a literal, property-bound or
+ * attribute-bound `aria-label`, or `aria-labelledby` — which contains
+ * `aria-label` as a substring, so the one test covers both.
+ */
+const PROGRESS_NAMED = /aria-label/;
+
+/**
+ * A literal `aria-hidden="true"`, and nothing looser than that. Unlike
+ * MatIcon's constructor quirk above, nothing reads this attribute specially:
+ * a bound `[attr.aria-hidden]` is just as invisible to a screen reader as
+ * the literal form, but this gate cannot evaluate it, so it does not count —
+ * and `aria-hidden="false"` is a value someone wrote on purpose, which this
+ * rule takes at its word and still requires a name for.
+ */
+const PROGRESS_HIDDEN = /(?<![\w.[-])aria-hidden\s*=\s*"true"/;
 
 /**
  * Blanks comments while preserving every byte offset, so a line number taken
@@ -161,6 +198,29 @@ export function scan(source) {
   return hits;
 }
 
+/**
+ * Every progress indicator in one file's source that carries no accessible
+ * name and no literal `aria-hidden="true"`. Returns `{ line, tag, attrs }`
+ * for each.
+ */
+export function scanProgress(source) {
+  const masked = maskComments(source);
+  const hits = [];
+  PROGRESS_TAG.lastIndex = 0;
+  let match;
+  while ((match = PROGRESS_TAG.exec(masked)) !== null) {
+    const attrs = match[2];
+    if (PROGRESS_NAMED.test(attrs)) continue;
+    if (PROGRESS_HIDDEN.test(attrs)) continue;
+    hits.push({
+      line: lineOf(masked, match.index),
+      tag: `mat-${match[1]}`,
+      attrs: attrs.replace(/\s+/g, ' ').trim(),
+    });
+  }
+  return hits;
+}
+
 function walk(dir, found = []) {
   for (const entry of readdirSync(dir)) {
     if (SKIP_DIRS.has(entry)) continue;
@@ -182,19 +242,40 @@ function run() {
   const findings = [];
   let icons = 0;
   let named = 0;
+  let progressTags = 0;
+  let progressNamed = 0;
 
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
-    if (!source.includes('<mat-icon')) continue;
+    const hasIcon = source.includes('<mat-icon');
+    // A file with a progress indicator and no mat-icon must still be read,
+    // for the progress rule below.
+    const hasProgress = /<mat-(spinner|progress-bar|progress-spinner)\b/.test(source);
+    if (!hasIcon && !hasProgress) continue;
     const masked = maskComments(source);
-    ICON_TAG.lastIndex = 0;
-    let match;
-    while ((match = ICON_TAG.exec(masked)) !== null) {
-      icons++;
-      if (NAMED.test(match[1])) named++;
+
+    if (hasIcon) {
+      ICON_TAG.lastIndex = 0;
+      let match;
+      while ((match = ICON_TAG.exec(masked)) !== null) {
+        icons++;
+        if (NAMED.test(match[1])) named++;
+      }
+      for (const hit of scan(source)) {
+        findings.push({ rule: 'icon', site: `${posix(file)}:${hit.line}`, tag: 'mat-icon', attrs: hit.attrs });
+      }
     }
-    for (const hit of scan(source)) {
-      findings.push({ site: `${posix(file)}:${hit.line}`, attrs: hit.attrs });
+
+    if (hasProgress) {
+      PROGRESS_TAG.lastIndex = 0;
+      let match;
+      while ((match = PROGRESS_TAG.exec(masked)) !== null) {
+        progressTags++;
+        if (PROGRESS_NAMED.test(match[2]) || PROGRESS_HIDDEN.test(match[2])) progressNamed++;
+      }
+      for (const hit of scanProgress(source)) {
+        findings.push({ rule: 'progress', site: `${posix(file)}:${hit.line}`, tag: hit.tag, attrs: hit.attrs });
+      }
     }
   }
 
@@ -203,29 +284,61 @@ function run() {
     `Checked ${icons} mat-icon tag(s) across ${templates} template(s) and ` +
       `${files.length - templates} inline-template source file(s): ${named} carry an accessible name.`
   );
+  console.log(
+    `Checked ${progressTags} progress indicator tag(s) (mat-spinner, mat-progress-bar, ` +
+      `mat-progress-spinner): ${progressNamed} carry a name or are hidden inside a control ` +
+      `that already announces it.`
+  );
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
-    console.error(`\n${findings.length} icon(s) carry a name nothing can read:\n`);
-    for (const finding of findings) {
-      console.error(`  ${finding.site}  <mat-icon ${finding.attrs}>`);
-      console.error(`    → add a literal aria-hidden="false"\n`);
+    const iconFindings = findings.filter((f) => f.rule === 'icon');
+    const progressFindings = findings.filter((f) => f.rule === 'progress');
+
+    if (iconFindings.length > 0) {
+      console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
+      for (const finding of iconFindings) {
+        console.error(`  ${finding.site}  <${finding.tag} ${finding.attrs}>`);
+        console.error(`    → add a literal aria-hidden="false"\n`);
+      }
+      console.error(
+        `MatIcon sets aria-hidden="true" on itself at construction unless the\n` +
+          `template carries a literal aria-hidden attribute — a bound\n` +
+          `[attr.aria-hidden] does not count, because HostAttributeToken reads the\n` +
+          `static attribute. So role="img" and a bound aria-label are not enough on\n` +
+          `their own, and the icon is announced to nobody. Write aria-hidden="false"\n` +
+          `beside the label, as transaction-list.component.html:135 does. An icon\n` +
+          `that is meant to stay silent inside an already-labelled control takes a\n` +
+          `literal aria-hidden="true" instead, which this check accepts.\n` +
+          `Reference: ${DOC}.\n`
+      );
     }
-    console.error(
-      `MatIcon sets aria-hidden="true" on itself at construction unless the\n` +
-        `template carries a literal aria-hidden attribute — a bound\n` +
-        `[attr.aria-hidden] does not count, because HostAttributeToken reads the\n` +
-        `static attribute. So role="img" and a bound aria-label are not enough on\n` +
-        `their own, and the icon is announced to nobody. Write aria-hidden="false"\n` +
-        `beside the label, as transaction-list.component.html:135 does. An icon\n` +
-        `that is meant to stay silent inside an already-labelled control takes a\n` +
-        `literal aria-hidden="true" instead, which this check accepts.\n` +
-        `Reference: ${DOC}.\n`
-    );
+
+    if (progressFindings.length > 0) {
+      console.error(`\n${progressFindings.length} progress indicator(s) carry no accessible name:\n`);
+      for (const finding of progressFindings) {
+        console.error(`  ${finding.site}  <${finding.tag} ${finding.attrs}>`);
+        console.error(`    → add [attr.aria-label] with a translated key, or a literal\n` +
+          `      aria-hidden="true" if a control around it already announces the state\n`);
+      }
+      console.error(
+        `mat-spinner, mat-progress-bar and mat-progress-spinner all render\n` +
+          `role="progressbar" with no accessible name of their own — there is no\n` +
+          `content for one to come from, unlike a button or a heading. Name it with a\n` +
+          `translated [attr.aria-label], or hide the redundant progressbar node with a\n` +
+          `literal aria-hidden="true" when it sits inside a button or role="status"\n` +
+          `that already carries visible text for the same state.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
-  console.log(`Every named mat-icon carries a literal aria-hidden, so every one of them is announced as its author meant.`);
+  console.log(
+    `Every named mat-icon carries a literal aria-hidden, and every progress indicator ` +
+      `carries a name or is hidden inside the control that already announces it.`
+  );
 }
 
 function selfTest() {
@@ -304,6 +417,58 @@ function selfTest() {
     'the reported attributes are collapsed to one line',
     scan('<mat-icon\n  role="img"\n  [attr.aria-label]="x"\n>a</mat-icon>').map((hit) => hit.attrs),
     ['role="img" [attr.aria-label]="x"']
+  );
+
+  // --- the progress rule: must hit ---
+  const progressLines = (source) => scanProgress(source).map((hit) => hit.line);
+
+  check('a bare mat-progress-bar hits', progressLines('<mat-progress-bar mode="determinate"></mat-progress-bar>'), [1]);
+  check('a bare mat-spinner hits', progressLines('<mat-spinner diameter="20"></mat-spinner>'), [1]);
+  check('a bare mat-progress-spinner hits', progressLines('<mat-progress-spinner diameter="20"></mat-progress-spinner>'), [1]);
+  check(
+    'a bound [attr.aria-hidden] does not count as literal, so it still hits',
+    progressLines('<mat-spinner [attr.aria-hidden]="true"></mat-spinner>'),
+    [1]
+  );
+  check(
+    'aria-hidden="false" does not hide it from the tree, so it still hits',
+    progressLines('<mat-progress-bar aria-hidden="false"></mat-progress-bar>'),
+    [1]
+  );
+
+  // --- the progress rule: must not hit (the load-bearing half) ---
+  check('a literal aria-label names it', progressLines('<mat-spinner aria-label="Loading"></mat-spinner>'), []);
+  check(
+    'a bound [attr.aria-label] names it',
+    progressLines('<mat-progress-bar [attr.aria-label]="label() | translate"></mat-progress-bar>'),
+    []
+  );
+  check('aria-labelledby names it', progressLines('<mat-progress-bar aria-labelledby="x"></mat-progress-bar>'), []);
+  check(
+    'a literal aria-hidden="true" hides it inside a control that already announces the state',
+    progressLines('<mat-spinner aria-hidden="true"></mat-spinner>'),
+    []
+  );
+
+  // --- the progress rule: comments ---
+  check(
+    'a commented-out progress bar is not a progress bar (html comment)',
+    progressLines('<!-- <mat-progress-bar></mat-progress-bar> -->'),
+    []
+  );
+  check(
+    'a line comment in an inline template is masked, the next tag still checked',
+    progressLines('// <mat-spinner></mat-spinner>\n<mat-progress-bar></mat-progress-bar>'),
+    [2]
+  );
+
+  // --- the progress rule: reporting ---
+  check(
+    'the reported attributes are collapsed to one line',
+    scanProgress('<mat-progress-bar\n  mode="determinate"\n  [value]="v"\n></mat-progress-bar>').map(
+      (hit) => hit.attrs
+    ),
+    ['mode="determinate" [value]="v"']
   );
 
   const failed = cases.filter((c) => !c.ok);

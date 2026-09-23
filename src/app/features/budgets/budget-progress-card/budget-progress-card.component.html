@@ -36,7 +36,11 @@
       </span>
       <span class="percentage" [class]="statusClass()">{{ percentage().toFixed(0) }}%</span>
     </div>
-    <mat-progress-bar [value]="barValue()" [color]="progressColor()"></mat-progress-bar>
+    <mat-progress-bar
+      [value]="barValue()"
+      [color]="progressColor()"
+      [attr.aria-label]="'budgets.progressLabel' | translate: { name: budget().name, percent: percentage().toFixed(0) }"
+    ></mat-progress-bar>
     <div class="status-row">
       <span class="remaining" [class.over-budget]="isOverBudget()">{{ getRemainingText() }}</span>
       @if (showAlert()) {
