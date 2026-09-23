@@ -133,9 +133,11 @@ describe('AIImportService', () => {
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
       'trackAiAssistUsed',
     ]);
-    // What the account holds, as the loaded signal holds it. The backup door
-    // checks a row's own categoryId against this; the rest of the suite never
-    // reads it.
+    // What the account holds, as the loaded signal holds it. Every path here
+    // that files a typed row reads it for a category's side — the backup
+    // door's id, category memory's answer, the category a statement, PDF or
+    // receipt-photo extraction named, and the camera's cloud read — and the
+    // backup door also for whether the id is held and active.
     categories = signal<Category[]>([
       createCategory({ id: 'food', type: 'expense' }),
       createCategory({ id: 'housing', type: 'expense' }),
@@ -670,6 +672,25 @@ describe('AIImportService', () => {
       expect(row.amount).toBe(12.5);
       expect(row.type).toBe('income');
     });
+
+    it('files a typed row only under its own side of the ledger', () => {
+      // The camera's cloud read names a category per row. A refund it named
+      // an expense category, or left unnamed, still belongs on the income
+      // side; a name that fits the row keeps its own grade.
+      const rows = service.convertStrategyResultToCategories(processed([
+        { type: 'income', suggestedCategoryId: 'food', confidence: 0.9 },
+        { type: 'income', suggestedCategoryId: undefined, confidence: 0.9 },
+        { type: 'income', suggestedCategoryId: 'employment_salary', confidence: 0.85 },
+        { type: 'expense', suggestedCategoryId: 'employment_salary', confidence: 0.85 },
+      ]));
+
+      expect(rows.map(r => [r.suggestedCategoryId, r.categoryConfidence])).toEqual([
+        ['other_income', UNRESOLVED_CATEGORY_CONFIDENCE],
+        ['other_income', UNRESOLVED_CATEGORY_CONFIDENCE],
+        ['employment_salary', 0.85],
+        ['other_expense', UNRESOLVED_CATEGORY_CONFIDENCE],
+      ]);
+    });
   });
 
   describe('remembered categories', () => {
@@ -739,6 +760,9 @@ describe('AIImportService', () => {
       const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
       expect(asked.length).toBe(1);
       expect(asked[0].description).toBe('NEW PLACE');
+      // The row's own direction reaches the categoriser, which narrows its
+      // catalogue and checks its answer by it; the sign alone never does.
+      expect(asked[0].type).toBe('expense');
       // The model's answers must land back on the rows it was asked about.
       const starbucks = result.transactions.find(t => t.description === 'STARBUCKS');
       const newPlace = result.transactions.find(t => t.description === 'NEW PLACE');
@@ -1735,6 +1759,33 @@ describe('AIImportService', () => {
       expect(unresolved?.categoryConfidence).toBe(0.5);
     });
 
+    it("sends a row whose extraction named the other side's category to the ladder", async () => {
+      // A model can read a refund line as income and still name the
+      // receipt's expense category for it.
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_income', confidence: 0.6 }))
+      );
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'Refund', amount: 5, type: 'income', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'food' },
+        { date: '2024-06-01', description: 'Lunch', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9, category: 'food' },
+      ]);
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      const refund = result.transactions.find(t => t.description === 'Refund');
+      expect(refund?.suggestedCategoryId).toBe('other_income');
+      expect(refund?.categoryConfidence).toBe(0.6);
+      const lunch = result.transactions.find(t => t.description === 'Lunch');
+      expect(lunch?.suggestedCategoryId).toBe('food');
+      expect(lunch?.categoryConfidence).toBe(0.8);
+      expect(cloudLLMProvider.categorizeTransactions.calls.allArgs().map(([raws]) => raws.map(r => r.description)))
+        .toEqual([['Refund']]);
+    });
+
     it('should add a duplicate warning when duplicates are detected', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
@@ -2157,6 +2208,33 @@ describe('AIImportService', () => {
       const coffee = result.transactions.find(t => t.description === 'Coffee');
       expect(coffee?.suggestedCategoryId).toBe('food_coffee');
       expect(coffee?.categoryConfidence).toBe(0.95);
+    });
+
+    it('does not file a refund under the expense category its merchant is remembered by', async () => {
+      // Memory is keyed by merchant alone, and one merchant sits on both
+      // sides of the ledger: the shop's purchases and its refunds.
+      categories.update(list => [...list, createCategory({ id: 'shopping', type: 'expense' })]);
+      categoryMemory.lookup.and.returnValue('shopping');
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_income', confidence: 0.6 }))
+      );
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'AMAZON', amount: 30, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
+        { description: 'AMAZON', amount: 30, date: new Date(2024, 5, 3), type: 'income', currency: 'USD' },
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const [purchase, refund] = result.transactions;
+      expect(purchase.suggestedCategoryId).toBe('shopping');
+      expect(purchase.categoryConfidence).toBe(0.95);
+      expect(refund.suggestedCategoryId).not.toBe('shopping');
+      // The remembered answer is no answer for the refund, so it falls to the
+      // next rung: the model is asked about it, and only about it.
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.map(r => r.type)).toEqual(['income']);
+      expect(refund.suggestedCategoryId).toBe('other_income');
+      expect(refund.categoryConfidence).toBe(0.6);
     });
 
     it("keeps a category the file named, at full grade, and sends only the rest to the ladder", async () => {
@@ -2810,6 +2888,22 @@ describe('AIImportService', () => {
       expect(result[0].categoryConfidence).toBe(0.8);
       expect(result[1].suggestedCategoryId).toBe('other_expense');
       expect(result[1].categoryConfidence).toBe(0.3);
+    });
+
+    it("files a named category on the other side of the row's ledger as unresolved", async () => {
+      // A statement's "Other" resolves to other_expense whichever side the
+      // row is on; an income row is filed under its own catch-all instead,
+      // at the grade of an answer nobody could place.
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Interest', amount: 3, type: 'income', currency: 'USD', category: 'other_expense' },
+        { date: '2024-06-02', description: 'Payroll', amount: 900, type: 'income', currency: 'USD', category: 'employment_salary' },
+      ]);
+
+      expect(result[0].suggestedCategoryId).toBe('other_income');
+      expect(result[0].categoryConfidence).toBe(0.3);
+      // One on the row's own side keeps the extraction's grade.
+      expect(result[1].suggestedCategoryId).toBe('employment_salary');
+      expect(result[1].categoryConfidence).toBe(0.8);
     });
 
     it('should default category, currency, type and date when missing', async () => {

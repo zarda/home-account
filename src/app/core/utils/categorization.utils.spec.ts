@@ -353,6 +353,52 @@ describe('categorization.utils', () => {
         categoryAttempted: false,
       })).toEqual({ suggestedCategoryId: 'transport', categoryConfidence: 0.64 });
     });
+
+    /**
+     * A typed row — the camera's cloud read knows each row's side — is filed
+     * only under its own side of the ledger, the way every other door files
+     * one: a refund line the reader named a grocery category is an answer
+     * the catalog cannot take for it.
+     */
+    describe('for a typed row', () => {
+      const both = createCategory({ id: 'gifts', name: 'Gifts', type: 'both' });
+      const catalog = [...categories, both];
+
+      it('treats a named id from the other side as unresolved, on the row\'s own catch-all', () => {
+        expect(gradeCategorySuggestion(
+          { suggestedCategoryId: 'food_groceries', confidence: 0.92 }, 'income', catalog
+        )).toEqual({ suggestedCategoryId: 'other_income', categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE });
+        expect(gradeCategorySuggestion(
+          { suggestedCategoryId: 'employment_salary', confidence: 0.92 }, 'expense', catalog
+        )).toEqual({ suggestedCategoryId: FALLBACK_CATEGORY_ID, categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE });
+      });
+
+      it('keeps a named id on its own side, or on both, at its own confidence', () => {
+        expect(gradeCategorySuggestion(
+          { suggestedCategoryId: 'employment_salary', confidence: 0.92 }, 'income', catalog
+        )).toEqual({ suggestedCategoryId: 'employment_salary', categoryConfidence: 0.92 });
+        expect(gradeCategorySuggestion(
+          { suggestedCategoryId: 'gifts', confidence: 0.7 }, 'income', catalog
+        )).toEqual({ suggestedCategoryId: 'gifts', categoryConfidence: 0.7 });
+      });
+
+      it('keeps a named id the catalog cannot place, since nothing shows it is wrong', () => {
+        expect(gradeCategorySuggestion(
+          { suggestedCategoryId: 'not_in_catalog', confidence: 0.8 }, 'income', catalog
+        )).toEqual({ suggestedCategoryId: 'not_in_catalog', categoryConfidence: 0.8 });
+        expect(gradeCategorySuggestion(
+          { suggestedCategoryId: 'food_groceries', confidence: 0.8 }, 'income'
+        )).withContext('no catalog to check against').toEqual({ suggestedCategoryId: 'food_groceries', categoryConfidence: 0.8 });
+      });
+
+      it('files an unnamed income row on the income catch-all, graded by whether a categorizer looked at it', () => {
+        expect(gradeCategorySuggestion({ suggestedCategoryId: undefined, confidence: 0.9 }, 'income', catalog))
+          .toEqual({ suggestedCategoryId: 'other_income', categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE });
+        expect(gradeCategorySuggestion(
+          { suggestedCategoryId: undefined, confidence: 0.9, categoryAttempted: false }, 'income', catalog
+        )).toEqual({ suggestedCategoryId: 'other_income', categoryConfidence: UNCATEGORIZED_CATEGORY_CONFIDENCE });
+      });
+    });
   });
 
   describe('mapCategoryNameToId', () => {

@@ -456,18 +456,18 @@ export class AIImportService {
   /**
    * Convert a strategy result to review rows.
    *
-   * Public because the camera dialog converts the same result: its own copy
-   * dropped currencyFellBack, location and the photo mapping had to be
-   * rebuilt by hand, so a camera receipt reached the review card unable to
-   * show the mark or the address the wizard path shows for the identical
-   * ProcessingResult. The photo-mapping block below is the one the camera
-   * used to build; the wizard's single-image door (importFromImage) now
-   * stamps it too, which changes nothing there — convertParsedReceipt sets
-   * neither imageIndex nor receiptId, so a single-receipt scan still gets no
-   * block.
+   * Public because the camera dialog converts its result here too, beside
+   * `importFromImage` — the image branch of `importFromFile`, which the
+   * wizard, that method's only caller, never takes, since it sends every
+   * image to `importFromMultipleImages` or `importFromStatementImages`. One
+   * converter carries currencyFellBack, the location and the photo mapping
+   * to the review card the same way for both. The photo-mapping block is
+   * stamped only on a row that carries an `imageIndex` or a `receiptId`, and
+   * `processReceipt` sets neither, so a single-receipt scan gets no block.
    */
   convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
+    const categories = this.categoryService.categories();
 
     return result.transactions.map(tx => {
       const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
@@ -483,7 +483,9 @@ export class AIImportService {
         ...money,
         date: resolved.date,
         type: tx.type,
-        ...gradeCategorySuggestion(tx),
+        // Every strategy row carries a real type, so the category is held to
+        // that side of the ledger the way every other door holds it.
+        ...gradeCategorySuggestion(tx, tx.type, categories),
         isDuplicate: false,
         selected: true,
         notes: tx.notes,
@@ -681,8 +683,15 @@ export class AIImportService {
    * anything the user already corrected is answered from category memory
    * (CATEGORY_MEMORY_CONFIDENCE), the rest goes to the provider in one
    * grounded batch call when one is configured, and whatever no one could
-   * answer keeps the seeded floor — other_expense at 0.1, low enough that
-   * the review step flags it. One entry per input row, in input order.
+   * answer keeps the seeded floor — the row's own type's catch-all
+   * (`fallbackCategoryFor`) at UNCATEGORIZED_CATEGORY_CONFIDENCE, low enough
+   * that the review step flags it. One entry per input row, in input order.
+   *
+   * Memory is keyed by merchant alone, and one merchant can sit on both
+   * sides of the ledger — a shop's purchases and its refunds. A remembered
+   * category on the other side of a typed row's ledger is therefore no
+   * answer for that row, which climbs on to the provider like a merchant
+   * memory does not know.
    */
   private async categorizeWithLadder(
     rawTransactions: RawTransaction[],
@@ -691,7 +700,11 @@ export class AIImportService {
     // Anything the user has already corrected is settled — only the rest is
     // worth a model call.
     await this.categoryMemory.ensureLoaded();
-    const remembered = rawTransactions.map(t => this.categoryMemory.lookup(t.description));
+    const categories = this.categoryService.categories();
+    const remembered = rawTransactions.map(t => {
+      const categoryId = this.categoryMemory.lookup(t.description);
+      return categoryId && t.type && !this.onRowSide(categoryId, t.type, categories) ? null : categoryId;
+    });
 
     const categorized: CategorizedTransaction[] = rawTransactions.map((t) => ({
       ...t,
@@ -760,8 +773,17 @@ export class AIImportService {
     // Only the rows still uncategorised are worth the call — an
     // all-categorised batch skips categorizeWithLadder entirely rather than
     // pay for one with nothing to ask.
-    const uncategorizedIndexes = transactions
-      .map((t, index) => (t.category ? -1 : index))
+    //
+    // A name on the other side of a typed row's ledger is no answer for it:
+    // the prompt asks for income on a refund line yet gives only expense
+    // categories as its examples, so such a row goes to the ladder, which is
+    // typed, like one the extraction left unnamed.
+    const categories = this.categoryService.categories();
+    const named = transactions.map(t =>
+      t.category && (!t.type || this.onRowSide(t.category, t.type, categories)) ? t.category : undefined
+    );
+    const uncategorizedIndexes = named
+      .map((categoryId, index) => (categoryId ? -1 : index))
       .filter(index => index >= 0);
 
     const ladderResults = uncategorizedIndexes.length > 0
@@ -770,9 +792,9 @@ export class AIImportService {
 
     let ladderPosition = 0;
     const categorizedByAI: CategorizedTransaction[] = rawTransactions.map((raw, index) => {
-      const original = transactions[index];
-      return original.category
-        ? { ...raw, suggestedCategoryId: original.category, confidence: EXTRACTION_CATEGORY_GRADE }
+      const categoryId = named[index];
+      return categoryId
+        ? { ...raw, suggestedCategoryId: categoryId, confidence: EXTRACTION_CATEGORY_GRADE }
         : ladderResults[ladderPosition++];
     });
 
@@ -1317,6 +1339,18 @@ export class AIImportService {
   }
 
   /**
+   * Whether a category id can be filed under a row of this type: false only
+   * when the catalogue holds it on the other side of the ledger. An id the
+   * catalogue does not hold, or a catalogue that has not loaded, cannot show
+   * the id is wrong, so it passes — the backup door's rule for an empty
+   * catalogue, which rewrites nothing it cannot check.
+   */
+  private onRowSide(categoryId: string, type: CategoryRowType, categories: Category[]): boolean {
+    const category = categories.find(c => c.id === categoryId);
+    return !category || categoryFitsType(category, type);
+  }
+
+  /**
    * The rule ids a backup's links may keep: every rule this account holds,
    * paused ones included, since a paused rule still owns the rows it posted.
    * One read for the file, and none when no row carries a link. A link that
@@ -1360,11 +1394,16 @@ export class AIImportService {
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
     // Convert ExtractedTransaction to CategorizedImportTransaction
-    // If transaction already has a category from extraction, use it; otherwise
-    // its own type's catch-all — every row here carries a real type, never the
-    // sign-derived guess toCreateTransactionDTO falls back to.
+    // If transaction already has a category from extraction on its own side
+    // of the ledger, use it; otherwise its own type's catch-all — every row
+    // here carries a real type, never the sign-derived guess
+    // toCreateTransactionDTO falls back to. A statement's "Other" resolves to
+    // other_expense whichever side the row is on, so an income row answered
+    // that way lands on other_income, as an answer nobody could place.
+    const categories = this.categoryService.categories();
     return transactions.map(t => {
-      const suggestedCategoryId = t.category || fallbackCategoryFor(t.type);
+      const type = t.type || 'expense';
+      const named = t.category && this.onRowSide(t.category, type, categories) ? t.category : undefined;
       const resolved = resolveImportDate(t.date, t.dateConfidence);
       const money = resolveImportCurrency(t.currency, baseCurrency);
 
@@ -1374,14 +1413,15 @@ export class AIImportService {
         amount: importAmount(t.amount, money.currency),
         ...money,
         date: resolved.date,
-        type: t.type || 'expense',
-        suggestedCategoryId: suggestedCategoryId,
+        type,
+        suggestedCategoryId: named ?? fallbackCategoryFor(type),
         // The grade follows the evidence, on the applyCategorizations scale
         // (categorization.utils.ts): EXTRACTION_CATEGORY_GRADE when extraction
-        // actually named a category, the review grade when nothing usable
-        // answered — under the 0.5 review band, so a defaulted row is flagged
-        // instead of wearing the high chip it never earned. (ADR 0045)
-        categoryConfidence: t.category ? EXTRACTION_CATEGORY_GRADE : UNRESOLVED_CATEGORY_CONFIDENCE,
+        // actually named a category the row can take, the review grade when
+        // nothing usable answered — under the 0.5 review band, so a defaulted
+        // row is flagged instead of wearing the high chip it never earned.
+        // (ADR 0045)
+        categoryConfidence: named ? EXTRACTION_CATEGORY_GRADE : UNRESOLVED_CATEGORY_CONFIDENCE,
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         // A row that carries its own note (a CSV's Note column) keeps it
         // verbatim; formatItemNotes is for receipt item lists and splits

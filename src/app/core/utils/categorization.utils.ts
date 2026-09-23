@@ -19,9 +19,9 @@ export const FALLBACK_CATEGORY_ID = 'other_expense';
 export type CategoryRowType = 'income' | 'expense';
 
 /**
- * The catch-all a row with no resolvable category lands on, for review.
- * `undefined` — a caller that never learned the row's direction — keeps
- * today's single catch-all so every untyped door's behavior is unchanged.
+ * The catch-all a row with no resolvable category lands on, for review: an
+ * income row on `other_income`; an expense row, and a row whose caller never
+ * learned its direction (`undefined`), on `FALLBACK_CATEGORY_ID`.
  */
 export function fallbackCategoryFor(type: CategoryRowType | undefined): string {
   return type === 'income' ? 'other_income' : FALLBACK_CATEGORY_ID;
@@ -107,8 +107,8 @@ export function resolveCategoryId(
  * categories at all — a model cannot answer wrong from a menu that was never
  * shown. Filtering runs on the parent alone: a child is kept only because its
  * parent survived, never on its own `type`, so an excluded parent takes its
- * whole branch with it. Omitted, every active entry renders exactly as before
- * for the callers that do not yet know a row's direction.
+ * whole branch with it. A caller that does not know the rows' direction omits
+ * it, and every active entry renders.
  */
 export function buildCategoryPromptCatalog(
   categories: Category[],
@@ -196,24 +196,46 @@ export function applyCategorizations(
  * confidence, an answer that resolved to nothing earns the review grade, and
  * a row no categorizer ever looked at earns the floor.
  *
- * Deliberately total: both call sites sit inside a `try` whose `catch` falls
- * back to a fresh cloud extraction, so a throw here would silently cost a
- * second billable request. It therefore takes no catalog and performs no
- * lookup — resolution already happened upstream.
+ * A caller that knows the row's side passes it, with the catalog, and the row
+ * is then filed only under that side: a named id the catalog holds on the
+ * other side is an answer the row cannot take, graded as one that resolved to
+ * nothing, and an unnamed row lands on its own side's catch-all. An id the
+ * catalog does not hold, or a catalog that has not loaded, cannot show the id
+ * is wrong, so it stays. Without a type the side is never read: a named id is
+ * kept at the row's own confidence, and an unnamed row lands on
+ * `FALLBACK_CATEGORY_ID`.
+ *
+ * Deliberately total, for each of its two callers.
+ * `convertStrategyResultToCategories` grades every strategy row with it, and
+ * both of that converter's callers hold it inside a `try` whose `catch`
+ * starts a fresh extraction: the camera dialog, through
+ * `importFromMultipleImages`, and `importFromImage`, the image branch of
+ * `importFromFile`, through the provider's single-shot read. A throw here
+ * would silently cost a second billable request. The offline queue's drain
+ * calls it inside the per-row
+ * `try` that takes any throw for a transient failure and sends the whole
+ * image back through the queue's bounded retries, each of which would throw
+ * again. It therefore resolves nothing — resolution already happened
+ * upstream — and reads the catalog only to find the side of an id it was
+ * handed.
  */
 export function gradeCategorySuggestion(
-  row: Pick<ProcessedTransaction, 'suggestedCategoryId' | 'confidence' | 'categoryAttempted'>
+  row: Pick<ProcessedTransaction, 'suggestedCategoryId' | 'confidence' | 'categoryAttempted'>,
+  type?: CategoryRowType,
+  categories: readonly Category[] = []
 ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
-  if (row.suggestedCategoryId) {
+  const named = row.suggestedCategoryId;
+  const category = named && type ? categories.find(c => c.id === named) : undefined;
+  if (named && (!type || !category || categoryFitsType(category, type))) {
     return {
-      suggestedCategoryId: row.suggestedCategoryId,
+      suggestedCategoryId: named,
       categoryConfidence: row.confidence,
     };
   }
 
   return {
-    suggestedCategoryId: FALLBACK_CATEGORY_ID,
-    categoryConfidence: row.categoryAttempted === false
+    suggestedCategoryId: fallbackCategoryFor(type),
+    categoryConfidence: !named && row.categoryAttempted === false
       ? UNCATEGORIZED_CATEGORY_CONFIDENCE
       : UNRESOLVED_CATEGORY_CONFIDENCE,
   };
