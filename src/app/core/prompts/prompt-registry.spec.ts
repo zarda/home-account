@@ -684,6 +684,10 @@ describe('prompt registry', () => {
     it('never asks the model to default the date to today', () => {
       const prompt = render('receiptSummary');
       expect(prompt).toContain('use "" if not visible');
+      expect(prompt).toContain('"dateConfidence"');
+      expect(prompt).toContain('"amountConfidence"');
+      expect(prompt).toContain('never invent today');
+      expect(prompt).toContain('Use 0.0 for "dateConfidence"');
     });
   });
 

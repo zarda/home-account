@@ -857,7 +857,7 @@ describe('GeminiService', () => {
       expect(result[0].category).toBeUndefined();
     });
 
-    it('zeroes the date confidence when the model names no date, and leaves it unset when it does', async () => {
+    it('zeroes the date confidence when the model names no date, and leaves it unset when neither is reported', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
         merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
       })));
@@ -867,6 +867,23 @@ describe('GeminiService', () => {
         date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
       })));
       expect('dateConfidence' in (await service.extractTransactionsFromImage('abc'))[0]).toBeFalse();
+    });
+
+    it("forwards the model's date and amount grades", async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
+        dateConfidence: 0.82, amountConfidence: 0.64,
+      })));
+      const result = await service.extractTransactionsFromImage('abc');
+      expect(result[0].dateConfidence).toBe(0.82);
+      expect(result[0].amountConfidence).toBe(0.64);
+    });
+
+    it('grades a missing date 0 whatever the model said', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY', dateConfidence: 0.9,
+      })));
+      expect((await service.extractTransactionsFromImage('abc'))[0].dateConfidence).toBe(0);
     });
 
     it('rethrows on error and records lastError', async () => {

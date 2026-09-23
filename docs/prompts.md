@@ -98,6 +98,8 @@ Two prompts reach only some providers. Each is a capability gap rather than a de
 
 An exemption names concrete provider files, so an exempted prompt has to be rendered from one. Rendering it from the shared base fails the check: the base is the one file all three providers inherit, which is the opposite of single-provider. That is why Gemini's own `extractTransactionsFromImage` — the only operation where it answers a different prompt from the other two — stays in `gemini.service.ts`.
 
+`receiptSummary` also grades the date and the total it read, the `amountConfidence`/`dateConfidence` idiom every other receipt prompt already carries — read back through the same `readConfidence`, with a missing date forced to 0 whatever grade the model claimed for it.
+
 | Prompt | Sent by | Gap |
 |---|---|---|
 | `receiptSummary` | gemini | The other two go straight to statement extraction |

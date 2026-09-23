@@ -126,7 +126,9 @@ Return ONLY a JSON object (not an array):
   "location": "<branch or address as printed, or empty>",
   "country": "<ISO 3166-1 alpha-2 of the issuing country, or empty>",
   "receiptDetails": "Full receipt content reproduced line by line",
-  "suggestedCategory": "category name"
+  "suggestedCategory": "category name",
+  "amountConfidence": how clearly the total was legible, 0.0 to 1.0,
+  "dateConfidence": how clearly the date was legible, 0.0 to 1.0
 }
 
 Rules:
@@ -138,6 +140,7 @@ Rules:
 - country: ${COUNTRY_FIELD}
 - receiptDetails: Reproduce the FULL receipt content line by line, preserving all information visible on the receipt: every item with its price, quantity if shown, discounts, subtotals, tax lines, service charges, payment method, change, etc. Use newline to separate each line. Keep the receipt's own language and script exactly as printed — do not translate or transliterate. Shape: "<item> ×1 — 480\\n<item> ×2 — 760\\n<discount line> -100\\n<subtotal line> 1,140\\n<tax line> 104\\n<total line> 1,140\\nVISA ****1234"
 - suggestedCategory: One of: ${EXTRACTION_CATEGORY_NAMES}
+- Lower "amountConfidence" and "dateConfidence" when a figure is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
 
 Capture EVERYTHING on the receipt.`,
     expects: 'json',
