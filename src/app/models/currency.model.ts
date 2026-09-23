@@ -145,6 +145,31 @@ export function currencyInfoFor(code: string): CurrencyInfo | undefined {
 
 export type ExchangeRates = Record<string, number>;
 
+/**
+ * Keeps only entries a rate table can use for conversion: finite, positive
+ * numbers. A string, `NaN`, zero, a negative or `Infinity` would divide or
+ * multiply every amount in that currency into garbage, so they are dropped
+ * rather than coerced. An array is rejected outright rather than walked —
+ * `typeof [] === 'object'` would otherwise index rates by position (`'0'`,
+ * `'1'`, …) instead of by currency code. Returns `null` when fewer than two
+ * entries survive, because a single-entry table cannot express any
+ * cross-rate — shared by `CurrencyService`'s live fetch and its device-cache
+ * reader, the two paths that hand this function a body neither of them has
+ * verified yet.
+ */
+export function sanitizeRates(raw: unknown): ExchangeRates | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const rates: ExchangeRates = {};
+  for (const [code, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      rates[code] = value;
+    }
+  }
+  return Object.keys(rates).length >= 2 ? rates : null;
+}
+
 export interface CachedRates {
   rates: ExchangeRates;
   lastUpdated: Timestamp;

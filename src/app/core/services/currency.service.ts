@@ -10,7 +10,8 @@ import {
   SUPPORTED_CURRENCIES,
   currencyDecimalPlaces,
   currencyInfoFor,
-  isCurrencyCode
+  isCurrencyCode,
+  sanitizeRates
 } from '../../models';
 
 const CACHE_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -168,26 +169,23 @@ export class CurrencyService {
 
       // ExchangeRate-API returns { result: "success", rates: { USD: 1, ... } }
       // and reports failures in band: a rate-limited request comes back
-      // HTTP 200 carrying { result: "error", "error-type": "..." }. A body
-      // without a usable multi-entry table is a failure, not a no-op —
-      // resolving here is what left every currency converting 1:1.
-      if (
-        data?.result !== 'success' ||
-        typeof data.rates !== 'object' ||
-        !data.rates ||
-        Object.keys(data.rates).length < 2
-      ) {
+      // HTTP 200 carrying { result: "error", "error-type": "..." }. sanitizeRates
+      // also throws out a body that parses but carries no usable currency data —
+      // a wrong-typed, zero, negative or infinite entry per currency, or fewer
+      // than two survivors overall — so a malformed provider response cannot
+      // convert every currency 1:1 or divide by zero.
+      const rates = data?.result === 'success' ? sanitizeRates(data.rates) : null;
+      if (!rates) {
         throw new Error(
           `API returned an unusable body: ${data?.['error-type'] ?? data?.result ?? 'malformed'}`
         );
       }
 
-      const rates = new Map<string, number>(Object.entries(data.rates));
-      this.exchangeRates.set(rates);
+      this.exchangeRates.set(this.withBuiltInFallback(rates));
       this.lastUpdated.set(new Date());
       this.rateSource.set('live');
 
-      this.cacheRates(data.rates);
+      this.cacheRates(rates);
     } finally {
       this.isLoading.set(false);
     }
@@ -273,18 +271,12 @@ export class CurrencyService {
         return null;
       }
 
-      const rates: ExchangeRates = {};
-      for (const [code, value] of Object.entries(parsed.rates as Record<string, unknown>)) {
-        // Only include numeric values (exchange rates), skip anything else
-        if (typeof value === 'number') {
-          rates[code] = value;
-        }
-      }
-
-      // A table with fewer than two entries cannot express any cross-rate —
-      // it is indistinguishable from the constructor's USD-only placeholder.
-      // Refuse it so initialization falls through to a real source instead.
-      if (Object.keys(rates).length < 2) {
+      // Drops a wrong-typed, zero, negative or infinite entry the same way the
+      // fetch path does, and refuses a table with fewer than two survivors —
+      // indistinguishable from the constructor's USD-only placeholder — so
+      // initialization falls through to a real source instead.
+      const rates = sanitizeRates(parsed.rates);
+      if (!rates) {
         return null;
       }
 
@@ -307,11 +299,28 @@ export class CurrencyService {
   // in for a failed fetch, and a second isExpired() call would answer against
   // a later clock than the decision it is meant to report.
   private setRatesFromCache(cached: CachedRates, source: RateSource): void {
-    const rates = new Map<string, number>(Object.entries(cached.rates));
+    const rates = this.withBuiltInFallback(cached.rates);
     rates.set('USD', 1);
     this.exchangeRates.set(rates);
     this.lastUpdated.set(cached.lastUpdated.toDate());
     this.rateSource.set(source);
+  }
+
+  // A currency the compiled-in table knows (getDefaultRatesObject) that an
+  // accepted live or cached table is missing — sanitizeRates dropped its
+  // entry as malformed — keeps its compiled-in approximation here instead of
+  // falling through to getExchangeRate's `?? 1`: a dropped rate must not
+  // silently become a 1:1 conversion, the class of an earlier defect where
+  // every currency converted at par. A code the compiled-in table itself
+  // does not carry is untouched by this and still resolves via `?? 1` at
+  // read time. The accepted table's own values always win over the
+  // approximation, live or cached.
+  private withBuiltInFallback(rates: ExchangeRates): Map<string, number> {
+    const merged = new Map<string, number>(Object.entries(this.getDefaultRatesObject()));
+    for (const [code, value] of Object.entries(rates)) {
+      merged.set(code, value);
+    }
+    return merged;
   }
 
   // Get default rates as object (fallback when API is unavailable)

@@ -534,6 +534,40 @@ describe('CurrencyService rate initialization', () => {
     expect(service.lastUpdated()).toBeInstanceOf(Date);
   });
 
+  it('drops a string rate from a live body', async () => {
+    stubFetch({ result: 'success', rates: { ...FETCHED_RATES, BAD: '151.25' } });
+    const service = await buildService();
+
+    expect(service.exchangeRates().has('BAD')).toBeFalse();
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(151.25, 4);
+    const cached = JSON.parse(localStorage.getItem(RATES_CACHE_KEY) ?? '{}') as {
+      rates?: Record<string, unknown>;
+    };
+    expect(cached.rates?.['BAD']).toBeUndefined();
+  });
+
+  it('keeps the built-in rate when a live body drops a currency the constants know', async () => {
+    stubFetch({ result: 'success', rates: { ...FETCHED_RATES, JPY: 'bad' } });
+    const service = await buildService();
+
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(149.5, 4);
+    const cached = JSON.parse(localStorage.getItem(RATES_CACHE_KEY) ?? '{}') as {
+      rates?: Record<string, unknown>;
+    };
+    expect(cached.rates?.['JPY']).toBeUndefined();
+  });
+
+  it('falls back when a live body whose rates are all junk', async () => {
+    // USD survives sanitization on its own; one entry cannot express a
+    // cross-rate, so the whole table is refused the same way an empty one is.
+    stubFetch({ result: 'success', rates: { USD: 1, JPY: 'bad', EUR: -1 } });
+    const service = await buildService();
+
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(149.5, 4);
+    expect(service.rateSource()).toBe('fallback');
+    expect(localStorage.getItem(RATES_CACHE_KEY)).toBeNull();
+  });
+
   it('refuses a cached table with a single entry', async () => {
     // Indistinguishable from the constructor's USD-only placeholder — even
     // fresh, it must lose to the constants.
@@ -551,6 +585,21 @@ describe('CurrencyService rate initialization', () => {
 
     expect(service.exchangeRates().get('USD')).toBe(1);
     expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(157, 4);
+  });
+
+  it('the cache reader drops zero and negative rates', async () => {
+    // A fresh cache short-circuits the fetch, so this table restores as-is
+    // unless the reader itself filters it.
+    seedCache({ USD: 1, JPY: 0, MXN: -17.2, EUR: 0.92 }, HOUR_MS);
+    const service = await buildService();
+
+    // JPY is a currency the built-in table knows, so the dropped cached
+    // value keeps its compiled-in rate instead of vanishing into a 1:1
+    // conversion; MXN is not one of the constants, so it drops out entirely.
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(149.5, 4);
+    expect(service.exchangeRates().has('MXN')).toBeFalse();
+    expect(service.getExchangeRate('USD', 'EUR')).toBeCloseTo(0.92, 4);
+    expect(service.rateSource()).toBe('cached');
   });
 
   // Which rung the table came from, as the Settings marker reads it. Each
