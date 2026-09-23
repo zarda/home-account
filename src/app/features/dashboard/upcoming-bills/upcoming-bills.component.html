@@ -64,7 +64,10 @@
       }
 
       <div class="net-footer">
-        <span class="net-label">{{ 'dashboard.upcomingNet' | translate }}</span>
+        <span class="net-label">
+          {{ 'dashboard.upcomingNet' | translate }}
+          <span class="rate-caption">{{ 'common.atTodaysRate' | translate }}</span>
+        </span>
         <app-amount-display
           [amount]="net()"
           [currency]="baseCurrency()"

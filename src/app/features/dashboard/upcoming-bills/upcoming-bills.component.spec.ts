@@ -133,6 +133,15 @@ describe('UpcomingBillsComponent', () => {
     expect(currency.formatCurrency).toHaveBeenCalledWith(742.5, 'USD');
   });
 
+  // #429 P1: a scheduled occurrence has no write-time snapshot, so its net
+  // still converts live — the one figure on this card that must say so.
+  it('marks the scheduled net as converted at today\'s rate', () => {
+    render([occurrence()], -742.5);
+
+    const footer = fixture.nativeElement.querySelector('.net-footer');
+    expect(footer.textContent).toContain('common.atTodaysRate');
+  });
+
   it('shows the empty state and no net footer when nothing is scheduled', () => {
     render([]);
 

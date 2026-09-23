@@ -76,6 +76,7 @@ describe('overflow guard: category-breakdown grid tracks (#450)', () => {
             currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
             getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
             convert: (amount: number) => amount,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency,
           },
         },
         { provide: TranslationService, useValue: mockTranslationService },

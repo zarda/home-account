@@ -55,7 +55,8 @@
     "type": "Type",
     "category": "Category",
     "loading": "Loading...",
-    "retry": "Retry"
+    "retry": "Retry",
+    "atTodaysRate": "At today's rate"
   },
   "nav": {
     "dashboard": "Dashboard",

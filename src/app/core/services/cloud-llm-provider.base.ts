@@ -656,9 +656,11 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     return this.run('summary generation', async () => {
       const categories = this.categoryService.categories();
 
-      // Helper to convert amount to base currency (real-time conversion)
-      const toBaseCurrency = (amount: number, currency: string) =>
-        this.currencyService.convert(amount, currency, baseCurrency);
+      // Reads the base-currency snapshot each transaction was written with
+      // (docs/money-snapshots.md), so a summary generated after the live
+      // rate moves still totals the same as the report PDF and every other
+      // screen over the same period.
+      const toBaseCurrency = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
       // Prompt amounts: plain digits, no sub-digits for zero-decimal currencies
       const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
 
@@ -671,18 +673,18 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         const categoryName = this.translateCategoryName(category?.name);
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
-        existing.total += toBaseCurrency(t.amount, t.currency);
+        existing.total += toBaseCurrency(t);
         existing.count += 1;
         byCategory.set(t.categoryId, existing);
       }
 
       const totalIncome = transactions
         .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
+        .reduce((sum, t) => sum + toBaseCurrency(t), 0);
 
       const totalExpense = transactions
         .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
+        .reduce((sum, t) => sum + toBaseCurrency(t), 0);
 
       const categoryBreakdown = renderCategoryBreakdown(
         Array.from(byCategory.values())
@@ -696,11 +698,11 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       const expenseTransactions = transactions.filter(t => t.type === 'expense');
       const largestExpenses = renderLargestExpenses(
         [...expenseTransactions]
-          .sort((a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency))
+          .sort((a, b) => toBaseCurrency(b) - toBaseCurrency(a))
           .slice(0, 5)
           .map(t => ({
             description: t.description,
-            amount: fmt(toBaseCurrency(t.amount, t.currency)),
+            amount: fmt(toBaseCurrency(t)),
             categoryName: this.translateCategoryName(
               categories.find(c => c.id === t.categoryId)?.name
             ),

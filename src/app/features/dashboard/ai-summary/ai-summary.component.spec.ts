@@ -55,8 +55,9 @@ describe('AiSummaryComponent', () => {
     cloudLLM.generateSpendingSummary.and.resolveTo('Summary text');
     cloudLLM.getFinancialAdvice.and.resolveTo('Advice text');
 
-    currency = jasmine.createSpyObj('CurrencyService', ['convert', 'ensureRatesLoaded']);
+    currency = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase', 'ensureRatesLoaded']);
     currency.convert.and.callFake((a: number) => a);
+    currency.amountInBase.and.callFake((t: Transaction) => t.amountInBaseCurrency);
     currency.ensureRatesLoaded.and.resolveTo(undefined);
     const translation = jasmine.createSpyObj('TranslationService', ['t', 'currentLocale']);
     translation.t.and.callFake((k: string) => k);
@@ -133,20 +134,26 @@ describe('AiSummaryComponent', () => {
       expect(c.formatPeriod('Jan 2024')).toBe('Jan 2024');
     });
 
-    it('calculatePeriodTotal aggregates income, expense and categories', () => {
+    // #429 P1: this used to convert every past transaction at whatever rate
+    // was loaded when the summary generated, so the period total it fed the
+    // provider could disagree with every other figure over the same period.
+    it('calculatePeriodTotal reads the base-currency snapshot rather than a live conversion', () => {
       const fixture = build();
       fixture.componentRef.setInput('baseCurrency', 'USD');
       const c = fixture.componentInstance as unknown as {
         calculatePeriodTotal: (t: Transaction[]) => { income: number; expense: number; balance: number };
       };
       const total = c.calculatePeriodTotal([
-        createTransaction({ type: 'income', amount: 100 }),
-        createTransaction({ type: 'expense', amount: 40, categoryId: 'a' }),
-        createTransaction({ type: 'expense', amount: 10, categoryId: 'a' }),
+        createTransaction({ type: 'income', amount: 100, amountInBaseCurrency: 200 }),
+        createTransaction({ type: 'expense', amount: 40, amountInBaseCurrency: 90, categoryId: 'a' }),
+        createTransaction({ type: 'expense', amount: 10, amountInBaseCurrency: 10, categoryId: 'a' }),
       ]);
-      expect(total.income).toBe(100);
-      expect(total.expense).toBe(50);
-      expect(total.balance).toBe(50);
+      // The mock's `convert` is a 1:1 passthrough of `amount`; these totals
+      // can only come from amountInBase reading the stamped snapshot.
+      expect(total.income).toBe(200);
+      expect(total.expense).toBe(100);
+      expect(total.balance).toBe(100);
+      expect(currency.convert).not.toHaveBeenCalled();
     });
 
     it('describeFailure maps known error causes to localized keys', () => {
@@ -510,8 +517,9 @@ describe('AiSummaryComponent, through its own template', () => {
     llm.generateSpendingSummary.and.resolveTo('Summary text');
     llm.getFinancialAdvice.and.resolveTo('Advice text');
 
-    const currencySpy = jasmine.createSpyObj('CurrencyService', ['convert', 'ensureRatesLoaded']);
+    const currencySpy = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase', 'ensureRatesLoaded']);
     currencySpy.convert.and.callFake((a: number) => a);
+    currencySpy.amountInBase.and.callFake((t: Transaction) => t.amountInBaseCurrency);
     currencySpy.ensureRatesLoaded.and.resolveTo(undefined);
     const rag = jasmine.createSpyObj('RagContextService', ['buildSummaryGrounding']);
     rag.buildSummaryGrounding.and.returnValue('GROUNDING');

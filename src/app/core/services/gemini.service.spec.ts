@@ -104,11 +104,20 @@ describe('GeminiService', () => {
     categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
     categoryService.categories.and.returnValue(categories);
 
-    currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
+    currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
+      'convert',
+      'formatAmount',
+      'amountInBase',
+    ]);
     currencyService.formatAmount.and.callFake(
       (amount: number, code: string) => amount.toFixed(currencyDecimalPlaces(code)));
     // Identity conversion keeps amounts predictable in assertions.
     currencyService.convert.and.callFake((amount: number) => amount);
+    // Snapshot-or-identity, matching the fixtures below, which never diverge
+    // amountInBaseCurrency from amount.
+    currencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
 
     translationService = jasmine.createSpyObj<TranslationService>(
       'TranslationService',

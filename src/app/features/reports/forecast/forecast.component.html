@@ -38,7 +38,10 @@
       }
 
       <p class="forecast-summary">
-        {{ 'reports.forecastProjectedNet' | translate: { amount: projectedNetLabel() } }}
+        <span class="forecast-summary-text">
+          {{ 'reports.forecastProjectedNet' | translate: { amount: projectedNetLabel() } }}
+        </span>
+        <span class="rate-caption">{{ 'common.atTodaysRate' | translate }}</span>
       </p>
     }
   </mat-card-content>

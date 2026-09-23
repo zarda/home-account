@@ -114,7 +114,8 @@ describe('CategoryBreakdownComponent', () => {
     const mockCurrencyService = {
       currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
       getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
-      convert: (amount: number) => amount // 1:1 conversion for tests
+      convert: (amount: number) => amount, // 1:1 conversion for tests
+      amountInBase: (t: Transaction) => t.amountInBaseCurrency
     };
 
     await TestBed.configureTestingModule({
@@ -252,6 +253,24 @@ describe('CategoryBreakdownComponent', () => {
     });
   });
 
+  // #429 P1: this used to convert every past transaction at whatever rate was
+  // loaded when the tab rendered, so the total on this tab and the exported
+  // report of the same period could disagree.
+  describe('currency conversion', () => {
+    it('reads the base-currency snapshot rather than a live conversion', () => {
+      component.transactions = [
+        { ...mockTransactions[0], amount: 200, amountInBaseCurrency: 999, currency: 'EUR' },
+      ];
+      component.categories = mockCategories;
+      component.selectedType.set('expense');
+      fixture.detectChanges();
+
+      // The mock's `convert` is a 1:1 passthrough, so a total of 999 can only
+      // have come from amountInBase reading the stamped snapshot.
+      expect(component.total()).toBe(999);
+    });
+  });
+
   describe('getTransactionsForCategory', () => {
     beforeEach(() => {
       component.transactions = mockTransactions;
@@ -289,7 +308,8 @@ describe('CategoryBreakdownComponent', () => {
             useValue: {
               currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
               getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
-              convert: (amount: number) => amount
+              convert: (amount: number) => amount,
+              amountInBase: (t: Transaction) => t.amountInBaseCurrency
             }
           },
           { provide: TranslationService, useValue: mockTranslationService }

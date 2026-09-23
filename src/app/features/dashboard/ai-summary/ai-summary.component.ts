@@ -310,7 +310,10 @@ export class AiSummaryComponent {
 
   private calculatePeriodTotal(transactions: Transaction[]): MonthlyTotal {
     const baseCurrency = this.baseCurrency();
-    const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+    // Reads the write-time snapshot (docs/money-snapshots.md) rather than
+    // converting at today's rate, so the total fed to the provider agrees
+    // with every other figure over the same period.
+    const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
 
     const income = transactions
       .filter(t => t.type === 'income')

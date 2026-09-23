@@ -9,7 +9,7 @@ import { PromptId, RenderedPrompt } from '../prompts';
 import { Category } from '../../models';
 import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
-import { createCategory } from './testing';
+import { createCategory, createTransaction } from './testing';
 import { dayKey } from '../utils/transaction-date.utils';
 
 /**
@@ -120,9 +120,16 @@ describe('CloudLLMProviderBase', () => {
     const currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',
       'formatAmount',
+      'amountInBase',
     ]);
     currencyService.convert.and.callFake((amount: number) => amount);
     currencyService.formatAmount.and.callFake((amount: number) => amount.toFixed(2));
+    // Deliberately distinct from `convert`'s passthrough: reads the stamped
+    // snapshot so a site that still calls `convert` is caught rather than
+    // passing by coincidence.
+    currencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
 
     const translationService = jasmine.createSpyObj<TranslationService>('TranslationService', [
       't',
@@ -404,6 +411,44 @@ describe('CloudLLMProviderBase', () => {
       expect(result[CATEGORIZE_CHUNK_SIZE]).toEqual(['work']);
       // Nothing is shown to the user on this path.
       expect(provider.lastError()).toBeNull();
+    });
+  });
+
+  describe('generateSpendingSummary', () => {
+    it('reads each transaction\'s base-currency snapshot rather than converting live', async () => {
+      const income = createTransaction({
+        type: 'income',
+        amount: 50,
+        currency: 'EUR',
+        amountInBaseCurrency: 500,
+        exchangeRate: 5,
+        baseCurrency: 'USD',
+        categoryId: 'employment_salary',
+        description: 'Salary Payment',
+      });
+      const expense = createTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'EUR',
+        amountInBaseCurrency: 999,
+        exchangeRate: 9.99,
+        baseCurrency: 'USD',
+        categoryId: 'food_groceries',
+        description: 'Groceries run',
+      });
+
+      await provider.generateSpendingSummary([income, expense], 'This month', 'USD');
+
+      const prompt = provider.renderedSent[0].user;
+      // The snapshots (500/999), not what `convert`'s passthrough fake would
+      // report for the raw amounts (50/100).
+      expect(prompt).toContain('Total Income: 500.00 USD');
+      expect(prompt).toContain('Total Expenses: 999.00 USD');
+      expect(prompt).toContain('Net: -499.00 USD');
+      expect(prompt).toContain('Groceries: 999.00 USD (1 transactions)');
+      expect(prompt).toContain('- Groceries run: 999.00 USD (Groceries)');
+      expect(prompt).not.toContain('50.00');
+      expect(prompt).not.toContain('100.00');
     });
   });
 

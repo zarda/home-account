@@ -11,12 +11,17 @@ import { LocaleFormatService } from '../../../core/services/locale-format.servic
 import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
 
 function expenseTxn(overrides: Partial<Transaction> = {}): Transaction {
+  // The snapshot tracks an overridden `amount` by default — a fixture that
+  // set only `amount` used to leave a stale `amountInBaseCurrency: 100`
+  // behind it, invisible while every mock read `amount` directly through
+  // `convert`, and wrong the moment a mock reads the snapshot field instead.
+  const amount = overrides.amount ?? 100;
   return {
     id: 't1',
     userId: 'user1',
     type: 'expense',
-    amount: 100,
-    amountInBaseCurrency: 100,
+    amount,
+    amountInBaseCurrency: amount,
     exchangeRate: 1,
     currency: 'USD',
     categoryId: 'cat1',
@@ -33,14 +38,18 @@ describe('RecurringBreakdownComponent', () => {
   let component: RecurringBreakdownComponent;
   let fixture: ComponentFixture<RecurringBreakdownComponent>;
   let convertSpy: jasmine.Spy;
+  let amountInBaseSpy: jasmine.Spy;
 
   function txn(overrides: Partial<Transaction> = {}): Transaction {
+    // See expenseTxn's comment above: the snapshot must track an overridden
+    // `amount` by default.
+    const amount = overrides.amount ?? 100;
     return {
       id: 't1',
       userId: 'user1',
       type: 'expense',
-      amount: 100,
-      amountInBaseCurrency: 100,
+      amount,
+      amountInBaseCurrency: amount,
       exchangeRate: 1,
       currency: 'USD',
       categoryId: 'cat1',
@@ -55,8 +64,11 @@ describe('RecurringBreakdownComponent', () => {
 
   beforeEach(async () => {
     convertSpy = jasmine.createSpy('convert').and.callFake((amount: number) => amount);
+    amountInBaseSpy = jasmine.createSpy('amountInBase')
+      .and.callFake((t: Transaction) => t.amountInBaseCurrency);
     const mockCurrencyService = {
       convert: convertSpy,
+      amountInBase: amountInBaseSpy,
     };
 
     await TestBed.configureTestingModule({
@@ -158,17 +170,20 @@ describe('RecurringBreakdownComponent', () => {
     });
   });
 
+  // #429 P1: this card used to convert every past transaction at whatever
+  // rate was loaded, so its totals could disagree with the same period's
+  // report totals.
   describe('currency conversion', () => {
-    it('converts amounts through CurrencyService.convert', () => {
-      convertSpy.and.callFake((amount: number) => amount * 2);
-      component.transactions = [
-        txn({ id: 't1', amount: 50, currency: 'EUR', isRecurring: true }),
-      ];
+    it('reads the base-currency snapshot through CurrencyService.amountInBase', () => {
+      amountInBaseSpy.and.callFake((t: Transaction) => t.amountInBaseCurrency * 2);
+      const transaction = txn({ id: 't1', amount: 50, currency: 'EUR', isRecurring: true });
+      component.transactions = [transaction];
       component.currency = 'USD';
       fixture.detectChanges();
 
       expect(component.recurringTotal()).toBe(100);
-      expect(convertSpy).toHaveBeenCalledWith(50, 'EUR', 'USD');
+      expect(amountInBaseSpy).toHaveBeenCalledWith(transaction, 'USD');
+      expect(convertSpy).not.toHaveBeenCalled();
     });
   });
 });
@@ -199,7 +214,13 @@ describe('RecurringBreakdownComponent, through its own template', () => {
     await TestBed.configureTestingModule({
       imports: [RecurringBreakdownComponent, NoopAnimationsModule],
       providers: [
-        { provide: CurrencyService, useValue: { convert: (amount: number) => amount } },
+        {
+          provide: CurrencyService,
+          useValue: {
+            convert: (amount: number) => amount,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+          },
+        },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
       ],

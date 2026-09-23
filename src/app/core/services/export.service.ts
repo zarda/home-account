@@ -346,10 +346,10 @@ export class ExportService {
    * Per-category totals for the period, both sides of the ledger.
    *
    * Conversion goes through `amountInBase` — the write-time snapshot every
-   * other surface in the app reads — rather than a live `convert()`. The
-   * export dialog's own `toBaseCurrency` converts live and is a standing
-   * divergence; matching it here would make a legacy row total one way in
-   * this file and another way on every screen that shows the same period.
+   * figure over past transactions reads (docs/money-snapshots.md) — rather
+   * than a live `convert()`, so this file's totals agree with the export
+   * dialog's own report and with every other screen that shows the same
+   * period.
    */
   private categorySummaryTotals(
     transactions: Transaction[],

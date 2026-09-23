@@ -28,5 +28,13 @@
   .forecast-summary {
     margin: 12px 0 0;
     font-weight: 500;
+
+    // Projected occurrences have no write-time snapshot, so the net still
+    // converts live — this says so beside the figure it qualifies.
+    .rate-caption {
+      font-size: 13px;
+      font-weight: 400;
+      opacity: 0.75;
+    }
   }
 }

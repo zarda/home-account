@@ -91,8 +91,9 @@ describe('ExportDialogComponent', () => {
     });
     mockTranslationService.getIntlLocale.and.returnValue('en-US');
 
-    mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['convert']);
+    mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase']);
     mockCurrencyService.convert.and.callFake((amount: number) => amount);
+    mockCurrencyService.amountInBase.and.callFake((t: Transaction) => t.amount);
 
     await TestBed.configureTestingModule({
       imports: [ExportDialogComponent, NoopAnimationsModule],
@@ -249,6 +250,85 @@ describe('ExportDialogComponent', () => {
     it('should close dialog with false', () => {
       component.cancel();
       expect(mockDialogRef.close).toHaveBeenCalledWith(false);
+    });
+  });
+
+  // #429 P1: the report PDF used to convert every past transaction at
+  // whatever rate happened to be loaded, so the same period printed a
+  // different total here than on every screen that reads the write-time
+  // snapshot. The stub below makes `convert` and `amountInBase` disagree, so
+  // only reading the snapshot can produce the expected figure.
+  describe('the report PDF, built from the base-currency snapshot', () => {
+    let snapshotComponent: ExportDialogComponent;
+    let snapshotFixture: ComponentFixture<ExportDialogComponent>;
+    let snapshotDialogRef: jasmine.SpyObj<MatDialogRef<ExportDialogComponent>>;
+    let snapshotExportService: jasmine.SpyObj<ExportService>;
+    let snapshotCurrencyService: jasmine.SpyObj<CurrencyService>;
+
+    const snapshotTransactions: Transaction[] = [
+      {
+        id: 't2',
+        userId: 'user1',
+        type: 'expense',
+        amount: 100,
+        amountInBaseCurrency: 150,
+        exchangeRate: 1.5,
+        currency: 'EUR',
+        categoryId: 'cat1',
+        description: 'Dinner',
+        date: Timestamp.fromDate(new Date(2024, 5, 15)),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        isRecurring: false,
+      },
+    ];
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+
+      snapshotDialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+      snapshotExportService = jasmine.createSpyObj('ExportService', ['exportToPDF', 'downloadBlobWithPicker']);
+      snapshotExportService.exportToPDF.and.returnValue(Promise.resolve(new Blob(['pdf'], { type: 'application/pdf' })));
+      snapshotExportService.downloadBlobWithPicker = jasmine.createSpy('downloadBlobWithPicker').and.returnValue(Promise.resolve(true));
+
+      snapshotCurrencyService = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase']);
+      // A regression that read convert() would double the stamped total.
+      snapshotCurrencyService.convert.and.callFake((amount: number) => amount * 2);
+      snapshotCurrencyService.amountInBase.and.callFake((t: Transaction) => t.amountInBaseCurrency);
+
+      await TestBed.configureTestingModule({
+        imports: [ExportDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: snapshotDialogRef },
+          {
+            provide: MAT_DIALOG_DATA,
+            useValue: {
+              transactions: snapshotTransactions,
+              categories: mockCategories,
+              dateRange: { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) },
+              currency: 'USD',
+            },
+          },
+          { provide: ExportService, useValue: snapshotExportService },
+          { provide: TranslationService, useValue: mockTranslationService },
+          { provide: CurrencyService, useValue: snapshotCurrencyService },
+        ],
+        schemas: [NO_ERRORS_SCHEMA],
+      }).compileComponents();
+
+      snapshotFixture = TestBed.createComponent(ExportDialogComponent);
+      snapshotComponent = snapshotFixture.componentInstance;
+      snapshotFixture.detectChanges();
+    });
+
+    it("carries the stamped snapshot's total, not a live conversion", async () => {
+      snapshotComponent.selectedFormat = 'pdf';
+      await snapshotComponent.export();
+
+      expect(snapshotCurrencyService.amountInBase).toHaveBeenCalledWith(snapshotTransactions[0], 'USD');
+      const reportData = snapshotExportService.exportToPDF.calls.mostRecent().args[0];
+      expect(reportData.summary.expense).toBe(150);
+      expect(reportData.summary.byCategory).toEqual([{ categoryId: 'cat1', total: 150 }]);
     });
   });
 });

@@ -55,7 +55,8 @@
     "type": "類型",
     "category": "分類",
     "loading": "載入中...",
-    "retry": "重試"
+    "retry": "重試",
+    "atTodaysRate": "以今日匯率"
   },
   "nav": {
     "dashboard": "儀表板",

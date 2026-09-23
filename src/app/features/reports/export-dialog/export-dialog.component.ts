@@ -156,9 +156,12 @@ export class ExportDialogComponent {
     );
   }
 
-  // Convert transaction amount to user's base currency dynamically
+  // Base-currency value of a transaction for the report totals below. Reads
+  // the write-time snapshot (docs/money-snapshots.md) rather than converting
+  // at today's rate, so this report and every other screen that reads the
+  // same period's transactions total them the same way.
   private toBaseCurrency(t: Transaction): number {
-    return this.currencyService.convert(t.amount, t.currency, this.data.currency);
+    return this.currencyService.amountInBase(t, this.data.currency);
   }
 
   private async exportPDF(dateStr: string): Promise<boolean> {

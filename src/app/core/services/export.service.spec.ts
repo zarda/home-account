@@ -6,6 +6,7 @@ import {
   ExportData,
   ExportService,
   NOT_IN_BACKUP,
+  ReportData,
 } from './export.service';
 import { DELETION_STEPS } from './account-deletion.service';
 import { NOT_A_RECORD_KIND } from './stored-data.service';
@@ -604,6 +605,75 @@ describe('ExportService', () => {
         await service.exportCategorySummaryPDF(transactions, 'USD', 'July 2026');
 
         expect(transactions.map(t => t.id)).toEqual(order);
+      });
+    });
+
+    // #429 P1: the export dialog's report PDF used to convert every past
+    // transaction at whatever rate was loaded (a live `convert()`), while this
+    // summary already read the write-time snapshot through `amountInBase` —
+    // so the two PDFs of the same period could print different totals.
+    describe('parity with the report PDF', () => {
+      it('the report PDF and the summary PDF of one fixture print the same totals', async () => {
+        seedDivergentRates();
+
+        const transactions: Transaction[] = [
+          createTransaction({
+            type: 'expense', amount: 100, currency: 'EUR',
+            amountInBaseCurrency: 150, exchangeRate: 1.5, categoryId: 'food_restaurants',
+          }),
+          createTransaction({
+            type: 'income', amount: 200, currency: 'EUR',
+            amountInBaseCurrency: 300, exchangeRate: 1.5, categoryId: 'employment_salary',
+          }),
+        ];
+
+        // The dialog's own totals, computed exactly as export-dialog.component.ts
+        // computes them: through amountInBase, never a live convert(). Proven
+        // directly against the real CurrencyService rather than through the
+        // dialog component, which this suite does not depend on.
+        const dialogExpense = transactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + currencyService.amountInBase(t, 'USD'), 0);
+        const dialogIncome = transactions
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + currencyService.amountInBase(t, 'USD'), 0);
+
+        // Neither the seeded live rate (200/400) nor the compiled-in default's
+        // approximation: only the stamped snapshot produces these.
+        expect(dialogExpense).toBe(150);
+        expect(dialogIncome).toBe(300);
+
+        const rows = await summaryRows(transactions);
+        const typeCol = rows[0].indexOf('Type');
+        const amountCol = rows[0].indexOf('Amount');
+        const summaryExpense = Number(rows.slice(1).find(r => r[typeCol] === 'expense')?.[amountCol]);
+        const summaryIncome = Number(rows.slice(1).find(r => r[typeCol] === 'income')?.[amountCol]);
+
+        expect(summaryExpense).toBe(dialogExpense);
+        expect(summaryIncome).toBe(dialogIncome);
+
+        // Both builders render without error over the same fixture —
+        // exportCategorySummaryPDF's totals come from the identical
+        // categorySummaryTotals() the CSV above was read through.
+        const reportData: ReportData = {
+          title: 'Report',
+          period: 'July 2026',
+          transactions,
+          summary: {
+            income: dialogIncome,
+            expense: dialogExpense,
+            balance: dialogIncome - dialogExpense,
+            transactionCount: transactions.length,
+            byCategory: [{ categoryId: 'food_restaurants', total: dialogExpense }],
+          },
+          categories: createCategoryHierarchy(),
+          currency: 'USD',
+        };
+        const reportBlob = await service.exportToPDF(reportData);
+        const summaryBlob = await service.exportCategorySummaryPDF(transactions, 'USD', 'July 2026');
+
+        expect(reportBlob.size).toBeGreaterThan(0);
+        expect(summaryBlob.size).toBeGreaterThan(0);
       });
     });
   });

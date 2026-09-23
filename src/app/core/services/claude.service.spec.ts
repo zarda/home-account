@@ -63,7 +63,11 @@ describe('ClaudeService', () => {
 
   beforeEach(() => {
     mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
-    mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
+    mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
+      'convert',
+      'formatAmount',
+      'amountInBase',
+    ]);
     mockCurrencyService.formatAmount.and.callFake(
       (amount: number, code: string) => amount.toFixed(currencyDecimalPlaces(code)));
     mockTranslationService = jasmine.createSpyObj<TranslationService>('TranslationService', [
@@ -73,6 +77,11 @@ describe('ClaudeService', () => {
 
     mockCategoryService.categories.and.returnValue(categories);
     mockCurrencyService.convert.and.callFake((amount: number) => amount);
+    // Snapshot-or-identity, matching the fixtures below, which never diverge
+    // amountInBaseCurrency from amount.
+    mockCurrencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
     mockTranslationService.t.and.callFake((key: string) => key);
     mockTranslationService.currentLocale.and.returnValue('en');
 
