@@ -78,6 +78,23 @@ describe('RecentTransactionsComponent', () => {
     expect(dateFormat.formatRelativeDate).toHaveBeenCalled();
   });
 
+  // The card projects no menu and opts out of the drawer, so the row button
+  // and the row's own click are the whole of what opens a transaction here.
+  it('navigates from a row by its button or by a click anywhere on it', () => {
+    const navSpy = spyOn(router, 'navigate');
+    fixture.componentRef.setInput('transactions', [
+      { id: 't1', description: 'Coffee', amount: 5, currency: 'USD', type: 'expense', categoryId: 'c1', date: Timestamp.fromDate(new Date(2026, 5, 15)) } as Transaction,
+    ]);
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('app-transaction-row') as HTMLElement;
+    (row.querySelector('.row-activate') as HTMLElement).click();
+    (row.querySelector('.row-date') as HTMLElement).click();
+
+    const opened: Parameters<Router['navigate']> = [['/transactions'], { queryParams: { date: '2026-06-15' } }];
+    expect(navSpy.calls.allArgs()).toEqual([opened, opened]);
+  });
+
   it('onAddTransaction navigates to the transactions page in add mode', () => {
     const navSpy = spyOn(router, 'navigate');
     component.onAddTransaction();

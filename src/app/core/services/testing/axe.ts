@@ -63,21 +63,16 @@ export const DISABLED_RULES = [
 ] as const;
 
 /**
- * Why each rule below is allowed to fire. These are the three classes the
- * walkthrough still carries; they are debts with names, not exemptions — the
- * point of freezing them is that the NEXT violation fails, on any route,
- * without anybody remembering to look.
+ * Why each rule below is allowed to fire: the classes the walkthrough still
+ * carries. They are debts with names, not exemptions — the point of freezing
+ * them is that the NEXT violation fails, on any route, without anybody
+ * remembering to look.
  */
 export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {
   'aria-progressbar-name':
     "Material's mat-spinner and mat-progress-bar render role=\"progressbar\" with no " +
     'accessible name. Ours are the shared LoadingSpinnerComponent and the budget progress ' +
     'bars; the fix is a translated [attr.aria-label] on each, plus a catalog key.',
-  'nested-interactive':
-    'A transaction row is role="button" and contains its own focusable controls (the note ' +
-    'button, the row menu). Screen readers flatten the descendants away. Fixing it means ' +
-    'reworking how a row is activated, which is a change to the most-used surface in the ' +
-    'app and not something to slip into a gate commit.',
 };
 
 /**
@@ -94,12 +89,11 @@ export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {
  */
 export const KNOWN_VIOLATIONS: Readonly<Record<string, readonly string[]>> = {
   '/dashboard': ['aria-progressbar-name'],
-  '/transactions': ['nested-interactive'],
   '/budgets': ['aria-progressbar-name'],
   '/reports': ['aria-progressbar-name'],
   '/settings': ['aria-progressbar-name'],
   '/about': ['aria-progressbar-name'],
-  // /data was clean on the first run and stays that way by this omission.
+  // /data and /transactions freeze nothing, and stay clean by this omission.
 };
 
 /** The options every pass shares, so the smoke run and the fixture agree. */

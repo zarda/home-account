@@ -126,8 +126,9 @@ describe('the axe harness', () => {
       const results = {
         violations: [{ id: 'nested-interactive', nodes: [{ target: ['.a'] }] }],
       } as Parameters<typeof unexpectedViolations>[0];
+      const fixtureTable = { '/transactions': ['nested-interactive'] };
 
-      expect(unexpectedViolations(results, '/data')).toEqual([
+      expect(unexpectedViolations(results, '/data', fixtureTable)).toEqual([
         'nested-interactive (1): .a',
       ]);
     });

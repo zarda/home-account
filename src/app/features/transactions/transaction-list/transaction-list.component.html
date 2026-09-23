@@ -45,13 +45,14 @@
           (edit)="edit.emit(transaction)"
           (delete)="confirmDelete(transaction)"
         >
-          <!-- Trailing overflow actions -->
+          <!-- Trailing overflow actions. A sibling of the row button, not
+               inside it, so its name has to say which row it acts on. -->
           <button
             mat-icon-button
             class="row-menu-btn"
             [matMenuTriggerFor]="mobileMenu"
             (click)="$event.stopPropagation()"
-            [attr.aria-label]="'common.moreActions' | translate"
+            [attr.aria-label]="'common.moreActionsFor' | translate: { description: transaction.description }"
           >
             <mat-icon>more_vert</mat-icon>
           </button>

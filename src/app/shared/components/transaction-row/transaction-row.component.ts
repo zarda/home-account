@@ -36,6 +36,13 @@ import { LocationLabelPipe } from '../../pipes/location-label.pipe';
   templateUrl: './transaction-row.component.html',
   styleUrl: './transaction-row.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // On the host rather than the template: a template click or keydown on an
+  // element with no tabindex fails interactive-supports-focus, and the row's
+  // wrapper must not be a tab stop — it holds tab stops of its own.
+  host: {
+    '(click)': 'onActivate($event)',
+    '(keydown.escape)': 'closeSwipe()',
+  },
 })
 export class TransactionRowComponent {
   transaction = input.required<Transaction>();
@@ -48,7 +55,13 @@ export class TransactionRowComponent {
    */
   swipeActions = input(false);
 
-  /** Emitted on click / Enter / Space anywhere on the row. */
+  /**
+   * Emitted on a click anywhere on the row outside its own controls, and on
+   * Enter / Space on the row button — which reach the host as that button's
+   * click. Not emitted while the swipe drawer is open: the swipe directive
+   * stops that click in its capture phase and closes the drawer instead, as it
+   * stops the click a drag leaves behind.
+   */
   activate = output<Transaction>();
 
   /** Emitted by the drawer's Edit action. */
@@ -63,6 +76,7 @@ export class TransactionRowComponent {
   // element crosses over through this query instead.
   protected swipeDrawer = viewChild<ElementRef<HTMLElement>>('swipeDrawer');
   private swipeReveal = viewChild(SwipeRevealDirective);
+  private host: HTMLElement = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
@@ -123,6 +137,17 @@ export class TransactionRowComponent {
     return this.currencyService.formatCurrency(transaction.amount, transaction.currency);
   }
 
+  // One string for the amount on screen and the amount in the row button's
+  // name, so the two cannot disagree.
+  signedAmount(): string {
+    return `${this.transaction().type === 'income' ? '+' : '-'}${this.formatAmount()}`;
+  }
+
+  // Unique per page: a transaction appears in at most one list on a route.
+  splitIndicatorId(): string {
+    return `transaction-split-${this.transaction().id}`;
+  }
+
   // Secondary line for foreign-currency rows: what the row counts as in the
   // user's base currency (write-time snapshot; live conversion for legacy
   // rows). Null for rows already in the base currency.
@@ -139,22 +164,43 @@ export class TransactionRowComponent {
   }
 
   /**
-   * The whole row opens the transaction, except for one strip of it.
+   * The host's click: the whole row opens the transaction, except where
+   * something else inside it owns the click.
+   *
+   * The row button's click lands here as well: Enter and Space on it arrive
+   * as its click, so the keyboard opens the row through this one path, once.
+   * What arrives from the surface is what its swipe directive lets through.
+   * The directive's capture-phase click listener takes the click a drag
+   * synthesizes, and while the drawer is open it takes every click on the
+   * surface, the row button's included, and closes the drawer instead — a
+   * press on an open row puts the drawer back rather than opening the
+   * editor. The row's key listeners open nothing themselves: the host's
+   * Escape closes the drawer, and the directive's capture-phase keydown only
+   * clears the mark a drag left, so a drag that produced no click cannot
+   * swallow the click a key press becomes.
+   *
+   * A control inside the row answers its own click, whether or not its
+   * caller remembered to stop it: the drawer's buttons, the maps link, the
+   * projected menu trigger and anything its menu renders in place.
    *
    * `.row-category` scrolls horizontally, and on a platform that draws a
    * classic scrollbar that scrollbar sits inside the row's hit area. Dragging
    * it is a scroll, not a tap, but the click still bubbles here and would open
    * the editor under the reader's cursor. A click below the scroller's content
    * box is a click on its scrollbar, and nothing else.
-   *
-   * Keyboard activation calls this with no event and is never affected.
    */
-  onActivate(event?: Event): void {
-    if (event instanceof MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target?.classList.contains('row-category') && event.offsetY > target.clientHeight) {
-        return;
-      }
+  onActivate(event: Event): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (
+      event instanceof MouseEvent &&
+      target?.classList.contains('row-category') &&
+      event.offsetY > target.clientHeight
+    ) {
+      return;
+    }
+    const control = target?.closest('button, a, [role="menuitem"]');
+    if (control && !control.classList.contains('row-activate') && this.host.contains(control)) {
+      return;
     }
     this.activate.emit(this.transaction());
   }

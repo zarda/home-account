@@ -32,7 +32,10 @@ import { SwipeRevealHandle, SwipeRevealRegistry } from './swipe-reveal.registry'
  *     anything.
  *   - The row's tap-to-activate: any drag suppresses the click that follows
  *     it (capture phase, before the row's own handler), and a tap while open
- *     closes rather than activates.
+ *     closes rather than activates. The next pointerdown or key press stands
+ *     the suppression down, since the click it waits for has either come or
+ *     is never coming; the keyboard's own click on an open row then closes
+ *     it, as a tap does.
  *
  * State (open/closed, events, the `swipe-open` class on the host's parent)
  * settles synchronously on pointerup; the transition that follows is only
@@ -171,6 +174,18 @@ export class SwipeRevealDirective implements SwipeRevealHandle, AfterViewInit, O
     this.state = 'idle';
   };
 
+  private readonly onKeyDown = (): void => {
+    // Any click the browser synthesizes for a drag follows its pointerup in
+    // the same task, so once the drag has ended, a key going down means that
+    // click has come and gone. A flag still standing belongs to a drag that
+    // produced none — a touch that travelled is no tap, and no click follows
+    // it — and would swallow the click a key press on the row's own button
+    // is about to become, leaving the open drawer open and the press
+    // unanswered. Mid-drag the click is still to come: a held modifier's
+    // repeats must not let it through.
+    if (this.state !== 'dragging') this.suppressClick = false;
+  };
+
   private readonly onClickCapture = (event: MouseEvent): void => {
     if (this.suppressClick) {
       // The click the browser synthesizes after a drag. Capture phase, so it
@@ -204,6 +219,7 @@ export class SwipeRevealDirective implements SwipeRevealHandle, AfterViewInit, O
       this.host.addEventListener('pointerup', this.onPointerUp);
       this.host.addEventListener('pointercancel', this.onPointerCancel);
       this.host.addEventListener('click', this.onClickCapture, true);
+      this.host.addEventListener('keydown', this.onKeyDown, true);
     });
   }
 
@@ -213,6 +229,7 @@ export class SwipeRevealDirective implements SwipeRevealHandle, AfterViewInit, O
     this.host.removeEventListener('pointerup', this.onPointerUp);
     this.host.removeEventListener('pointercancel', this.onPointerCancel);
     this.host.removeEventListener('click', this.onClickCapture, true);
+    this.host.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('pointerdown', this.onDocumentPointerDown);
     if (this.settleTimer) clearTimeout(this.settleTimer);
     this.registry.closed(this);

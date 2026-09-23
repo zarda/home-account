@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { TransactionRowComponent } from './transaction-row.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -11,6 +12,7 @@ describe('TransactionRowComponent', () => {
   let fixture: ComponentFixture<TransactionRowComponent>;
   let component: TransactionRowComponent;
   let currentUser: ReturnType<typeof signal<User | null>>;
+  let translate: jasmine.Spy<(key: string, params?: Record<string, string | number>) => string>;
 
   const categories = new Map<string, Category>([
     ['food', createCategory({ id: 'food', name: 'Groceries', icon: 'shopping_cart', color: '#ff5722' })],
@@ -36,6 +38,7 @@ describe('TransactionRowComponent', () => {
     currentUser = signal<User | null>(
       createUser({ preferences: { baseCurrency: 'USD' } as User['preferences'] })
     );
+    translate = jasmine.createSpy('t').and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
       imports: [TransactionRowComponent],
@@ -44,7 +47,7 @@ describe('TransactionRowComponent', () => {
         { provide: AuthService, useValue: { currentUser } },
         // The drawer's labels go through the translate pipe, which tolerates
         // a partial mock that stubs only t().
-        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        { provide: TranslationService, useValue: { t: translate } },
       ],
     }).compileComponents();
 
@@ -170,18 +173,83 @@ describe('TransactionRowComponent', () => {
     expect(emitted.length).toBe(0);
   });
 
-  it('emits activate on click and keyboard activation', () => {
+  it('leaves the wrapper a plain container: no role, no tab stop, no listeners of its own', () => {
     setTransaction({});
     const emitted: Transaction[] = [];
     component.activate.subscribe((t: Transaction) => emitted.push(t));
 
-    const row: HTMLElement = fixture.nativeElement.querySelector('.transaction-row');
-    row.click();
-    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    // A role="button" wrapper around the drawer's buttons, the projected menu
+    // and the maps link is axe's nested-interactive: a screen reader flattens
+    // a button's descendants away, and those controls with them.
+    const wrapper = fixture.debugElement.query(By.css('.transaction-row'));
+    const row = wrapper.nativeElement as HTMLElement;
+    expect(row.getAttribute('role')).withContext('not a button').toBeNull();
+    expect(row.getAttribute('tabindex')).withContext('not a tab stop').toBeNull();
+    expect(wrapper.listeners.map(listener => listener.name))
+      .withContext('the pointer is answered on the host, the keyboard by the row button')
+      .toEqual([]);
 
-    expect(emitted.length).toBe(2);
-    expect(row.getAttribute('role')).toBe('button');
-    expect(row.getAttribute('tabindex')).toBe('0');
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(emitted.length).withContext('keys on the wrapper open nothing').toBe(0);
+  });
+
+  it("renders the row's primary line as a native button named for the whole row", () => {
+    setTransaction({ type: 'expense', amount: 42, currency: 'USD' });
+
+    const button = fixture.nativeElement.querySelector('button.row-activate') as HTMLButtonElement;
+    expect(button).withContext('the row button').not.toBeNull();
+    expect(button.getAttribute('type')).withContext('never a form submit').toBe('button');
+    expect(button.querySelector('.row-description')).withContext('description inside').not.toBeNull();
+    expect(button.querySelector('.row-amount .amount')).withContext('amount inside').not.toBeNull();
+    expect(button.querySelector('button, a, input, select, textarea, [tabindex]'))
+      .withContext('nothing interactive nested inside the button')
+      .toBeNull();
+
+    // The date sits on the meta line, outside the button, so the name carries
+    // it; a button's name otherwise stops at its own content.
+    expect(button.getAttribute('aria-label')).toBe('transactions.rowLabel');
+    expect(translate).toHaveBeenCalledWith('transactions.rowLabel', {
+      description: 'Weekly shop',
+      amount: '-USD 42.00',
+      date: component.relativeDate(),
+    });
+  });
+
+  it('describes a split row by its split badge, which the name overrides', () => {
+    setTransaction({ id: 'tx-split', splitGroupId: 'group-1' } as Partial<Transaction>);
+
+    // aria-label replaces the button's content as its name, so the badge's own
+    // label inside it would go unread without this reference.
+    const button = fixture.nativeElement.querySelector('.row-activate') as HTMLElement;
+    const badge = fixture.nativeElement.querySelector('.split-indicator') as HTMLElement;
+    expect(badge.id).withContext('badge addressable').toBeTruthy();
+    expect(button.getAttribute('aria-describedby')).toBe(badge.id);
+
+    setTransaction({ id: 'tx-whole' });
+    expect(button.getAttribute('aria-describedby'))
+      .withContext('a whole purchase is described by nothing')
+      .toBeNull();
+  });
+
+  it('opens once on a click anywhere on the row', () => {
+    setTransaction({});
+    const emitted: Transaction[] = [];
+    component.activate.subscribe((t: Transaction) => emitted.push(t));
+
+    const root: HTMLElement = fixture.nativeElement;
+    for (const selector of [
+      '.row-activate',
+      '.row-description',
+      'app-category-chip',
+      '.row-category',
+      '.row-date',
+      '.transaction-row',
+    ]) {
+      const before = emitted.length;
+      (root.querySelector(selector) as HTMLElement).click();
+      expect(emitted.length - before).withContext(`one activation from ${selector}`).toBe(1);
+    }
   });
 
   it('pins the projected actions slot to the surface corner, out of the flow', () => {
@@ -257,13 +325,25 @@ describe('TransactionRowComponent', () => {
     expect(emitted.length).withContext('scrollbar click swallowed').toBe(0);
   });
 
-  it('still activates on keyboard, which passes no event at all', () => {
+  it('opens once per Enter or Space on the row button', () => {
     setTransaction({});
     const emitted: Transaction[] = [];
     component.activate.subscribe((t) => emitted.push(t));
+    const button = fixture.nativeElement.querySelector('.row-activate') as HTMLButtonElement;
 
-    component.onActivate();
-    expect(emitted.length).toBe(1);
+    // A synthetic key event has no default action, so the click a native
+    // button fires for Enter (on keydown) and Space (on keyup) is dispatched
+    // by hand. What this pins is that nothing else answers the keys: a key
+    // handler anywhere between the button and the host would count every
+    // press twice.
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    button.click();
+    expect(emitted.length).withContext('Enter').toBe(1);
+
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    button.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+    button.click();
+    expect(emitted.length).withContext('Space').toBe(2);
   });
 
   it('collapses the trailing actions slot when nothing is projected into it', () => {
@@ -410,6 +490,63 @@ describe('TransactionRowComponent with swipe actions', () => {
     expect(component.activated)
       .withContext('an action tap must never double as opening the editor')
       .toEqual([]);
+  });
+
+  it('never opens the row from the projected menu button', () => {
+    // The list stops the menu click itself, but the row cannot lean on every
+    // caller remembering to: a control inside the row answers its own click.
+    (host.querySelector('.menu-probe') as HTMLElement).click();
+
+    expect(component.activated).toEqual([]);
+  });
+
+  it('closes the drawer on Escape from any control in the row', () => {
+    const surface = host.querySelector('.row-surface') as HTMLElement;
+    const row = host.querySelector('.transaction-row') as HTMLElement;
+    const description = host.querySelector('.row-description') as HTMLElement;
+    const swipeOpen = (): void => {
+      pointer(description, 'pointerdown', 300, 20);
+      pointer(surface, 'pointermove', 288, 21);
+      pointer(surface, 'pointermove', 140, 22);
+      pointer(surface, 'pointerup', 140, 22);
+    };
+
+    for (const selector of ['.row-activate', '.swipe-action-delete', '.menu-probe']) {
+      swipeOpen();
+      expect(row.classList).withContext(`opened before Escape on ${selector}`).toContain('swipe-open');
+
+      (host.querySelector(selector) as HTMLElement).dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+      );
+      expect(row.classList).withContext(`Escape on ${selector} put it back`).not.toContain('swipe-open');
+    }
+    expect(component.activated).withContext('neither the drags nor the keys opened it').toEqual([]);
+  });
+
+  it('closes an open drawer on Enter on the row button, and opens the row on the next', () => {
+    const surface = host.querySelector('.row-surface') as HTMLElement;
+    const row = host.querySelector('.transaction-row') as HTMLElement;
+    const description = host.querySelector('.row-description') as HTMLElement;
+    const button = host.querySelector('.row-activate') as HTMLButtonElement;
+    const enter = (): void => {
+      // A synthetic key event has no default action: the click a native
+      // button fires for Enter is dispatched by hand.
+      button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      button.click();
+    };
+
+    pointer(description, 'pointerdown', 300, 20);
+    pointer(surface, 'pointermove', 288, 21);
+    pointer(surface, 'pointermove', 140, 22);
+    pointer(surface, 'pointerup', 140, 22);
+    expect(row.classList).withContext('swipe opened the drawer').toContain('swipe-open');
+
+    enter();
+    expect(row.classList).withContext('the first Enter put the drawer back').not.toContain('swipe-open');
+    expect(component.activated).withContext('and did not open the row').toEqual([]);
+
+    enter();
+    expect(component.activated).withContext('the second Enter opens it').toEqual([component.transaction]);
   });
 
   it('opens on a left swipe and closes on Escape', () => {

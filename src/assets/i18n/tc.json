@@ -30,6 +30,7 @@
     "close": "關閉",
     "back": "返回",
     "moreActions": "更多操作",
+    "moreActionsFor": "{{description}}的更多操作",
     "remove": "移除",
     "refresh": "重新整理",
     "moveUp": "上移",
@@ -206,6 +207,7 @@
     "splitOffline": "分拆需要網路連線",
     "splitOfflineHint": "分拆需要網路連線，請重新連線，或先以單一類別儲存。",
     "splitPart": "分拆消費的一部分",
+    "rowLabel": "{{description}}，{{amount}}，{{date}}",
     "deleteSplitPartMessage": "要刪除「{{description}}」的這個部分嗎？其他部分會保留。"
   },
   "budget": {

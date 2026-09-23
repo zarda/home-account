@@ -86,6 +86,44 @@ app-category-chip {
   touch-action: pan-y;
 }
 
+/* Line 1 is the row's button, and wears none of a button's own look: the
+   head's flex line above and the text styles below are all that show. Each
+   reset is spelled out rather than `all: unset`, which would also return
+   box-sizing to content-box and push the 44px reserve past the row's edge.
+   The reserve rule further down outranks the padding reset here. */
+.row-activate {
+  appearance: none;
+  box-sizing: border-box;
+  inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: inherit;
+}
+
+/* The ring goes round the row, not the button: the button is one line of
+   three, and what a keyboard user is choosing is the whole row. Inset,
+   because the mobile list and the dashboard card both clip at the row's
+   edge. */
+.row-activate:focus-visible {
+  outline: none;
+}
+
+.transaction-row:has(.row-activate:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+// styles.scss widens every ring under high contrast by matching
+// :focus-visible, which this element never is.
+:host-context(.high-contrast) .transaction-row:has(.row-activate:focus-visible) {
+  outline-width: 3px;
+}
+
 /* min-width is a floor, not a width: below about seven characters' worth the
    description wraps one word per line and stops being readable, so at that
    point the head wraps the amount down instead. With a zero basis this floor

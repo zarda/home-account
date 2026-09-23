@@ -1,12 +1,8 @@
-<div
-  class="transaction-row"
-  role="button"
-  tabindex="0"
-  (click)="onActivate($event)"
-  (keydown.enter)="onActivate()"
-  (keydown.space)="$event.preventDefault(); onActivate()"
-  (keydown.escape)="closeSwipe()"
->
+<!-- Not a button: it holds the drawer's buttons, the projected menu and the
+     maps link, and a button's descendants are flattened away for assistive
+     technology. The pointer is answered on the component host (see
+     onActivate); the keyboard by .row-activate below. -->
+<div class="transaction-row">
   <!-- Edit and Delete parked behind the surface, revealed by a left swipe.
        While closed the buttons are clipped off-canvas, so they leave the
        keyboard and accessibility tree — the pinned menu is that route. -->
@@ -62,8 +58,16 @@
     />
 
     <div class="row-body">
-      <!-- Line 1: what it was, and what it cost. -->
-      <div class="row-head">
+      <!-- Line 1: what it was, and what it cost — and the row's one native
+           control, so Enter and Space arrive as its own click. It holds
+           nothing interactive. Its name carries the date because the date
+           sits outside it, on line 3. -->
+      <button
+        type="button"
+        class="row-head row-activate"
+        [attr.aria-label]="'transactions.rowLabel' | translate: { description: transaction().description, amount: signedAmount(), date: relativeDate() }"
+        [attr.aria-describedby]="transaction().splitGroupId ? splitIndicatorId() : null"
+      >
         <span class="row-description">
           {{ transaction().description }}
           @if (transaction().receiptUrl) {
@@ -77,28 +81,31 @@
           <!-- No query backs this: splitGroupId on the row is the whole
                signal, so the badge costs nothing past what the list already
                fetched. Informative, not decorative — it is the only way a
-               screen reader learns this row is one part of a larger purchase. -->
+               screen reader learns this row is one part of a larger purchase.
+               The button's aria-label replaces its content as its name, so
+               the button points back here with aria-describedby. -->
           @if (transaction().splitGroupId) {
             <!-- MatIcon hides itself from assistive technology unless the
                  template carries a literal aria-hidden — a bound attribute
                  does not count, so this is the only way the label above is
                  ever read. -->
-            <mat-icon class="split-indicator" role="img" aria-hidden="false" [attr.aria-label]="'transactions.splitPart' | translate">call_split</mat-icon>
+            <mat-icon class="split-indicator" role="img" aria-hidden="false" [attr.id]="splitIndicatorId()" [attr.aria-label]="'transactions.splitPart' | translate">call_split</mat-icon>
           }
         </span>
         <!-- appFitText rather than a truncation: a shortened amount reads as
-             a different number, so it scales to fit and keeps every digit. -->
-        <div class="row-amount">
+             a different number, so it scales to fit and keeps every digit.
+             A span, as everything inside a button must be phrasing content. -->
+        <span class="row-amount">
           <span
             class="amount"
             appFitText
             [class.income]="transaction().type === 'income'"
             [class.expense]="transaction().type === 'expense'"
           >
-            {{ transaction().type === 'income' ? '+' : '-' }}{{ formatAmount() }}
+            {{ signedAmount() }}
           </span>
-        </div>
-      </div>
+        </span>
+      </button>
 
       <!-- Line 2: where it belongs — category, place, tags. -->
       <span class="row-category">

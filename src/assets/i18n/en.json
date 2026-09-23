@@ -30,6 +30,7 @@
     "close": "Close",
     "back": "Back",
     "moreActions": "More actions",
+    "moreActionsFor": "More actions for {{description}}",
     "remove": "Remove",
     "refresh": "Refresh",
     "moveUp": "Move up",
@@ -215,6 +216,7 @@
     "splitOffline": "Splitting needs a connection",
     "splitOfflineHint": "Splitting needs a connection — reconnect, or save this purchase to one category.",
     "splitPart": "Part of a split purchase",
+    "rowLabel": "{{description}}, {{amount}}, {{date}}",
     "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay."
   },
   "budget": {
