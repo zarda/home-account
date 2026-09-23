@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
@@ -9,9 +9,9 @@ import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angu
 import { Router } from '@angular/router';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
+import { MatSelectChange, MatSelectModule } from '@angular/material/select';
 import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
-import { Subscription, debounceTime, distinctUntilChanged, filter } from 'rxjs';
+import { Observable, Subscription, debounceTime, distinctUntilChanged, filter } from 'rxjs';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -37,6 +37,7 @@ import {
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
 import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { CurrencyCodeDialogComponent } from '../../../shared/components/currency-code-dialog/currency-code-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -91,6 +92,16 @@ interface DialogData {
   mode: 'add' | 'edit';
   transaction?: Transaction;
 }
+
+/**
+ * The currency select's last option, which opens the code dialog rather than
+ * standing for a currency; never three letters, so it cannot collide with a
+ * code. The select writes it to the control before `selectionChange` can put
+ * the pick back, so `currencyEdits$` filters it out once for both currency
+ * subscribers: to the goal labels, the split remainder and the session
+ * memory it never happened.
+ */
+const OTHER_CURRENCY = 'other-currency';
 
 @Component({
   selector: 'app-transaction-form',
@@ -151,8 +162,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private destroyRef = inject(DestroyRef);
   /** True from a scan that fell back until the user settles the currency; what makes a hand edit worth remembering. */
   private scanCurrencyFellBack = false;
+  /** The currency control's own edits, the placeholder filtered out once for both subscribers below; see OTHER_CURRENCY. */
+  private currencyEdits$!: Observable<string>;
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
+  @ViewChild('currencySelect', { read: ElementRef }) currencySelect?: ElementRef<HTMLElement>;
 
   form!: FormGroup;
   isSubmitting = signal(false);
@@ -274,8 +288,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   /**
    * A currency this transaction uses that the picker does not list.
    *
-   * Extraction can produce any currency the rates endpoint knows, which is far
-   * more than the nineteen the picker curates. Without an option to match,
+   * Extraction and the code dialog behind the select's last option can each
+   * produce any currency the rates endpoint knows, which is far more than the
+   * nineteen the picker curates. Without an option to match,
    * `mat-select` finds nothing selected and opening the form to edit anything
    * else would silently rewrite the currency — so the row's own code is added
    * for as long as the form is showing it.
@@ -287,6 +302,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     const extra = this.unlistedCurrency();
     return extra ? [...curated, extra] : curated;
   });
+  /** What the select's last option is bound to; see `onCurrencySelected`. */
+  readonly otherCurrency = OTHER_CURRENCY;
   expenseCategories = this.categoryService.expenseCategories;
   incomeCategories = this.categoryService.incomeCategories;
 
@@ -418,7 +435,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (location?.lat !== undefined && location?.lng !== undefined) {
       this.locationCoords.set({ lat: location.lat, lng: location.lng });
     }
-    this.form.get('currency')?.valueChanges
+    this.currencyEdits$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(code => this.onCurrencyEdited(String(code ?? '')));
   }
@@ -584,9 +601,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       locationName: [transaction?.location?.name || ''],
     });
 
+    // The one filtered stream both currency subscribers read; see OTHER_CURRENCY.
+    this.currencyEdits$ = this.form.get('currency')!.valueChanges
+      .pipe(filter(code => code !== OTHER_CURRENCY));
+
     // Mirror the currency into its signal for the goal option labels.
     this.formCurrency.set(transaction?.currency || defaultCurrency);
-    this.form.get('currency')?.valueChanges.subscribe((currency) => {
+    this.currencyEdits$.subscribe((currency) => {
       this.formCurrency.set(currency || '');
     });
 
@@ -1166,6 +1187,43 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   dismissCurrencySuggestion(): void {
     this.suggestedCurrency.set(null);
+  }
+
+  /**
+   * The select's last option: a code the curated list does not carry, typed
+   * into the code dialog. The pick is put back before anything reads it, and
+   * the dialog's answer goes in the way a scanned code does —
+   * `ensureCurrencyListed` first, so the select has an option to show it by,
+   * then the control, whose subscribers take it as the hand edit it is.
+   *
+   * `panelOpen` gates the dialog itself (WCAG 3.2.2): on a closed, focused
+   * select, ArrowDown/ArrowUp/End/PageDown and typeahead select an option —
+   * including the placeholder — without ever opening the panel, and Material
+   * still fires `selectionChange` for that. A pick made from the open panel
+   * (click, or Enter/Space on the highlighted option) still reads `panelOpen`
+   * true here: the select closes only after this event is done firing.
+   *
+   * Focus goes back to the select by element: a clicked option takes focus
+   * and leaves with its panel, so the dialog's default — the element focused
+   * when it opened — would be a detached node.
+   */
+  onCurrencySelected(event: MatSelectChange): void {
+    if (event.value !== OTHER_CURRENCY) return;
+    const control = this.form.get('currency')!;
+    control.setValue(this.formCurrency(), { emitEvent: false });
+    if (!event.source.panelOpen) return;
+    this.dialog
+      .open<CurrencyCodeDialogComponent, void, string>(CurrencyCodeDialogComponent, {
+        width: '400px',
+        restoreFocus: this.currencySelect?.nativeElement ?? true,
+      })
+      .afterClosed()
+      .subscribe(code => {
+        if (!code) return;
+        this.ensureCurrencyListed(code);
+        control.setValue(code);
+        this.cdr.markForCheck();
+      });
   }
 
   /**

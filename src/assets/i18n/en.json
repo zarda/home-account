@@ -815,6 +815,12 @@
     "chf": "Swiss Franc",
     "nzd": "New Zealand Dollar"
   },
+  "currency": {
+    "otherCurrency": "Other currency…",
+    "enterCode": "Enter a currency code",
+    "invalidCode": "Not a currency code — use its three letters, such as ISK",
+    "noRateYet": "No exchange rate for {{code}} yet, so it cannot be converted"
+  },
   "categoryNames": {
     "food": "Food & Drinks",
     "restaurants": "Restaurants",

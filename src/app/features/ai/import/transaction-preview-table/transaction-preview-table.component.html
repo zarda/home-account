@@ -29,6 +29,9 @@
                 <span class="option-label">{{ option.code }} · {{ option.nameKey | translate }}</span>
               </button>
             }
+            <button mat-menu-item type="button" (click)="chooseOtherCurrency()">
+              <span class="option-label">{{ 'currency.otherCurrency' | translate }}</span>
+            </button>
           </ng-template>
         </mat-menu>
       }
@@ -231,6 +234,9 @@
                       <span class="option-label">{{ option.code }} · {{ option.nameKey | translate }}</span>
                     </button>
                   }
+                  <button mat-menu-item type="button" (click)="chooseOtherCurrency(row)">
+                    <span class="option-label">{{ 'currency.otherCurrency' | translate }}</span>
+                  </button>
                 </ng-template>
               </mat-menu>
               <button

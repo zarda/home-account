@@ -18,6 +18,7 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
 import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { CurrencyCodeDialogComponent } from '../../../../shared/components/currency-code-dialog/currency-code-dialog.component';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -1081,6 +1082,9 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
             getSupportedCurrencies: () => [{ code: 'USD', nameKey: 'currencies.usd', symbol: '$' }],
             getCurrencyInfo: () => undefined,
             formatCurrency: (amount: number, code: string) => `${code} ${amount}`,
+            // What the code dialog asks before it lets a typed code through;
+            // every rate is loaded here, so only the ISO check can refuse.
+            canRepresentCurrency: () => true,
           },
         },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
@@ -4312,6 +4316,169 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       component.applyCurrencyToSelected('JPY');
 
       expect(mockAnnouncer.announce).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // #430 (P7): both currency menus end with an entry for a code the curated
+  // list does not carry. The root MatDialog's open is spied, as removing a
+  // row spies it: what is asserted here is which dialog is asked, where focus
+  // goes back to, and that its answer takes the path a listed pick takes —
+  // the dialog's own refusals are its own suite's. One case lets the real
+  // dialog open, to prove the two ends meet.
+  describe('a currency outside the curated list', () => {
+    let open: jasmine.Spy;
+    let answer: Subject<string | undefined>;
+
+    const chip = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .currency-chip`) as HTMLButtonElement;
+    const bulkTrigger = () => fixture.nativeElement.querySelector('.bulk-currency') as HTMLButtonElement;
+    const current = (id: string) => component.transactions.find(t => t.id === id);
+    const restoreFocus = () => (open.calls.mostRecent().args[1] as { restoreFocus?: unknown }).restoreFocus;
+
+    beforeEach(() => {
+      answer = new Subject<string | undefined>();
+      open = spyOn(TestBed.inject(MatDialog), 'open').and.returnValue({ afterClosed: () => answer } as never);
+    });
+
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    // Every emission is handed back as the input, the loop the wizard runs.
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.transactionsUpdated.subscribe(next => fixture.componentRef.setInput('transactions', next));
+      fixture.detectChanges();
+    }
+
+    /** The lazy menu's items, which do not exist until it is opened. */
+    function openMenu(trigger: HTMLElement): HTMLElement[] {
+      trigger.click();
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item'));
+    }
+
+    function chooseOther(trigger: HTMLElement): void {
+      const items = openMenu(trigger);
+      items[items.length - 1].click();
+      fixture.detectChanges();
+    }
+
+    function reply(code: string | undefined): void {
+      answer.next(code);
+      answer.complete();
+      fixture.detectChanges();
+    }
+
+    it('ends the row\'s own menu with it, after every curated code', () => {
+      render([makeRow({ id: 'a' })]);
+
+      const labels = openMenu(chip('a')).map(item => item.textContent?.trim());
+
+      expect(labels).toEqual(['USD · currencies.usd', 'currency.otherCurrency']);
+    });
+
+    it('sets the row to ISK through updateCurrency, blanking notice and all', () => {
+      render([makeRow({ id: 'a', amount: 0.4 }), makeRow({ id: 'b' })]);
+      const update = spyOn(component, 'updateCurrency').and.callThrough();
+
+      chooseOther(chip('a'));
+
+      expect(open).toHaveBeenCalledOnceWith(CurrencyCodeDialogComponent, jasmine.any(Object));
+      expect(restoreFocus())
+        .withContext('the entry leaves with its menu, so focus goes back to the chip itself')
+        .toBe(chip('a'));
+
+      reply('ISK');
+
+      expect(update).toHaveBeenCalledOnceWith(jasmine.objectContaining({ id: 'a' }), 'ISK');
+      expect(current('a')?.currency).toBe('ISK');
+      expect(current('a')?.editedOnCard).toBeTrue();
+      expect(current('b')?.currency).withContext('another row is not this menu\'s').toBe('USD');
+      expect(chip('a').textContent).toContain('ISK');
+      // 0.4 in a currency with no minor unit is nothing. NotificationService
+      // is real in this describe, so its own announce lands on this spy.
+      expect(mockAnnouncer.announce)
+        .toHaveBeenCalledOnceWith('import.bulkCurrencyBlanked:{"count":1,"currency":"ISK"}', 'polite');
+    });
+
+    it('ends the bulk menu with it too, and sets every selected row through applyCurrencyToSelected', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'b', amount: 0.4 }), makeRow({ id: 'c', selected: false })]);
+      const apply = spyOn(component, 'applyCurrencyToSelected').and.callThrough();
+
+      const items = openMenu(bulkTrigger());
+      expect(items.map(item => item.textContent?.trim())).toEqual(['USD · currencies.usd', 'currency.otherCurrency']);
+      items[items.length - 1].click();
+      fixture.detectChanges();
+
+      expect(open).toHaveBeenCalledOnceWith(CurrencyCodeDialogComponent, jasmine.any(Object));
+      expect(restoreFocus()).toBe(bulkTrigger());
+
+      reply('ISK');
+
+      expect(apply).toHaveBeenCalledOnceWith('ISK');
+      expect(['a', 'b', 'c'].map(id => current(id)?.currency)).toEqual(['ISK', 'ISK', 'USD']);
+      expect(mockAnnouncer.announce)
+        .toHaveBeenCalledOnceWith('import.bulkCurrencyBlanked:{"count":1,"currency":"ISK"}', 'polite');
+    });
+
+    it('changes nothing when the dialog closes with no code', () => {
+      render([makeRow({ id: 'a' })]);
+      const emitted = emissions();
+
+      chooseOther(chip('a'));
+      reply(undefined);
+
+      expect(emitted.length).toBe(0);
+      expect(current('a')?.currency).toBe('USD');
+    });
+
+    it('applies the answer to the row as the batch holds it when the answer lands', () => {
+      render([makeRow({ id: 'a' })]);
+      chooseOther(chip('a'));
+      // While the question is open the wizard can hand back a new object
+      // under the same id — a re-check reconciling its verdict.
+      fixture.componentRef.setInput('transactions', [makeRow({ id: 'a', duplicateOf: 'stored-1' })]);
+      fixture.detectChanges();
+
+      reply('ISK');
+
+      expect(current('a')?.currency).toBe('ISK');
+      expect(current('a')?.duplicateOf).withContext('the newer row, not the one the press captured').toBe('stored-1');
+    });
+
+    it('drops the answer for a row that left the batch while the question was open', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'b' })]);
+      chooseOther(chip('a'));
+      fixture.componentRef.setInput('transactions', [current('b')!]);
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      reply('ISK');
+
+      expect(emitted.length).toBe(0);
+      expect(current('b')?.currency).toBe('USD');
+    });
+
+    it('opens the real dialog, and ISK typed there reaches the row', async () => {
+      open.and.callThrough();
+      render([makeRow({ id: 'a' })]);
+
+      chooseOther(chip('a'));
+      await fixture.whenStable();
+      const dialog = document.querySelector('app-currency-code-dialog') as HTMLElement;
+      expect(dialog).withContext('the dialog the entry opens').not.toBeNull();
+      const input = dialog.querySelector('input') as HTMLInputElement;
+      input.value = 'ISK';
+      input.dispatchEvent(new Event('input'));
+      (dialog.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(current('a')?.currency).toBe('ISK');
+      expect(chip('a').textContent).toContain('ISK');
+      expect(document.activeElement).withContext('focus back on the chip the menu hung from').toBe(chip('a'));
     });
   });
 });

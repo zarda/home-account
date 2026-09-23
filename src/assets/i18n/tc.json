@@ -764,6 +764,12 @@
     "chf": "瑞士法郎",
     "nzd": "紐西蘭幣"
   },
+  "currency": {
+    "otherCurrency": "其他貨幣…",
+    "enterCode": "輸入貨幣代碼",
+    "invalidCode": "這不是貨幣代碼，請輸入三個字母，例如 ISK",
+    "noRateYet": "尚無 {{code}} 的匯率，因此無法換算"
+  },
   "categoryNames": {
     "food": "餐飲",
     "restaurants": "餐廳",

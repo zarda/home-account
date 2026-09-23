@@ -180,10 +180,11 @@
 
           <mat-form-field appearance="outline" class="currency-field">
             <mat-label>{{ 'settings.currency' | translate }}</mat-label>
-            <mat-select formControlName="currency">
+            <mat-select #currencySelect formControlName="currency" (selectionChange)="onCurrencySelected($event)">
               @for (curr of currencies(); track curr.code) {
                 <mat-option [value]="curr.code">{{ curr.code }}</mat-option>
               }
+              <mat-option [value]="otherCurrency">{{ 'currency.otherCurrency' | translate }}</mat-option>
             </mat-select>
           </mat-form-field>
         </div>

@@ -63,6 +63,7 @@ import { LocationLabelPipe } from '../../../../shared/pipes/location-label.pipe'
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { CurrencyCodeDialogComponent } from '../../../../shared/components/currency-code-dialog/currency-code-dialog.component';
 
 /**
  * The fields a row edits in place, each with the input its editor focuses
@@ -416,6 +417,43 @@ export class TransactionPreviewTableComponent {
         this.translationService.t('import.bulkCurrencyBlanked', { count: blanked, currency: code })
       );
     }
+  }
+
+  /**
+   * The last entry in both currency menus: a code the curated list does not
+   * carry, typed into the code dialog. The answer takes the path a listed
+   * pick takes — `updateCurrency` for the row's own menu,
+   * `applyCurrencyToSelected` for the bulk one — so the rounding, the
+   * blanking notice, the session memory and the mark all follow it. It is
+   * applied to the batch as the batch holds it when the answer lands, found
+   * by id, the rule `removeRow` keeps for the same reason.
+   *
+   * Focus goes back to the menu's own trigger by element: the entry that
+   * opened the dialog leaves with its menu, so the dialog's default — the
+   * element focused when it opened — would be a detached node, and focus
+   * would drop to the document root.
+   */
+  chooseOtherCurrency(row?: CategorizedImportTransaction): void {
+    const trigger = this.host.nativeElement.querySelector<HTMLElement>(
+      row ? this.inRow(row, '.currency-chip') : '.bulk-currency'
+    );
+    this.dialog
+      .open<CurrencyCodeDialogComponent, void, string>(CurrencyCodeDialogComponent, {
+        width: '400px',
+        restoreFocus: trigger ?? true,
+      })
+      .afterClosed()
+      .subscribe(code => {
+        if (!code) return;
+        if (row) {
+          const current = this.transactions.find(t => t.id === row.id);
+          if (!current) return;
+          this.updateCurrency(current, code);
+        } else {
+          this.applyCurrencyToSelected(code);
+        }
+        this.cdr.markForCheck();
+      });
   }
 
   currencyFellBackTooltip(): string {

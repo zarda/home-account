@@ -764,6 +764,12 @@
     "chf": "スイスフラン",
     "nzd": "ニュージーランドドル"
   },
+  "currency": {
+    "otherCurrency": "その他の通貨…",
+    "enterCode": "通貨コードを入力",
+    "invalidCode": "通貨コードではありません。ISK のような3文字で入力してください",
+    "noRateYet": "{{code}} の為替レートがまだないため、換算できません"
+  },
   "categoryNames": {
     "food": "飲食",
     "restaurants": "レストラン",

@@ -33,6 +33,7 @@ import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dia
 import { ReceiptViewerDialogComponent } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { CurrencyCodeDialogComponent } from '../../../shared/components/currency-code-dialog/currency-code-dialog.component';
 import { AIImportService } from '../../../core/services/ai-import.service';
 import { Router } from '@angular/router';
 import { CategoryService } from '../../../core/services/category.service';
@@ -1948,6 +1949,8 @@ describe('TransactionFormComponent, through its own template', () => {
   let dialogRefSpy: jasmine.SpyObj<MatDialogRef<TransactionFormComponent>>;
   let strategySpy: jasmine.SpyObj<AIStrategyService>;
   let online: ReturnType<typeof signal<boolean>>;
+  let transactionsSpy: jasmine.SpyObj<TransactionService>;
+  let sessionSpy: jasmine.SpyObj<CurrencyChoiceSessionService>;
 
   const el = () => fixture.nativeElement as HTMLElement;
   const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
@@ -2011,6 +2014,7 @@ describe('TransactionFormComponent, through its own template', () => {
     transactions.addTransaction.and.resolveTo('new-id');
     transactions.updateTransaction.and.resolveTo(undefined);
     transactions.getTransactionDatesForMonth.and.returnValue(of(new Map()));
+    transactionsSpy = transactions;
 
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
     currency.getSupportedCurrencies.and.returnValue([
@@ -2026,6 +2030,7 @@ describe('TransactionFormComponent, through its own template', () => {
     const session = jasmine.createSpyObj<CurrencyChoiceSessionService>(
       'CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
     session.current.and.returnValue(null);
+    sessionSpy = session;
     const quota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
     quota.canAddImages.and.resolveTo(true);
 
@@ -2314,5 +2319,169 @@ describe('TransactionFormComponent, through its own template', () => {
 
     const locate = el().querySelector('button[aria-label="transactions.useMyLocation"]') as HTMLElement;
     expect(locate.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  // #430 (P7): the select's last option opens the code dialog rather than
+  // standing for a value of its own. Its open is spied; the dialog's
+  // refusals are its own suite's. The spy goes on the form's own MatDialog,
+  // not the one this TestBed provides: rendered, the form imports
+  // MatDialogModule, whose MatDialog provider is the one it injects. The
+  // answer is a Subject, held open past the click, so a case can tell the
+  // previous value being restored (synchronous, before any answer) apart
+  // from the dialog's own answer (later, on `reply`) — a same-tick `of()`
+  // answer would hide that ordering, and production dialogs are never
+  // same-tick.
+  describe('a currency outside the curated list', () => {
+    let open: jasmine.Spy;
+    let answer: Subject<string | undefined>;
+
+    const currencySelect = () => el().querySelector('mat-select[formControlName="currency"]') as HTMLElement;
+    const shown = () => currencySelect().querySelector('.mat-mdc-select-value-text')?.textContent?.trim();
+    const restoreFocus = () => (open.calls.mostRecent().args[1] as { restoreFocus?: unknown }).restoreFocus;
+    const fellBack = () => {
+      (component as unknown as { scanCurrencyFellBack: boolean }).scanCurrencyFellBack = true;
+    };
+
+    function renderWithDialogAnswer(data?: { mode: 'add' | 'edit'; transaction?: Transaction }): void {
+      render(data);
+      answer = new Subject<string | undefined>();
+      open = spyOn(fixture.componentRef.injector.get(MatDialog), 'open')
+        .and.returnValue({ afterClosed: () => answer } as never);
+    }
+
+    function reply(code: string | undefined): void {
+      answer.next(code);
+      answer.complete();
+      fixture.detectChanges();
+    }
+
+    /** The currency select's panel renders into the CDK overlay. */
+    function openCurrencyOptions(): HTMLElement[] {
+      (currencySelect().querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-select-panel mat-option'));
+    }
+
+    function chooseOther(): void {
+      const options = openCurrencyOptions();
+      options[options.length - 1].click();
+      fixture.detectChanges();
+    }
+
+    /**
+     * ArrowDown/ArrowUp/End/PageDown (and typeahead) select an option on a
+     * closed, focused select without ever opening its panel — Material's own
+     * key manager does this, not a click or Enter on an open list. `keyCode`
+     * is what `_handleClosedKeydown` and the key manager read; `key` alone
+     * dispatches an event they ignore.
+     */
+    function pressOnClosedSelect(keyCode: number, times = 1): void {
+      const select = currencySelect();
+      select.focus();
+      for (let i = 0; i < times; i++) {
+        select.dispatchEvent(new KeyboardEvent('keydown', { keyCode, bubbles: true, cancelable: true }));
+      }
+      fixture.detectChanges();
+    }
+
+    it('ends the select with an entry that opens the code dialog, and leaves the pick alone on a dismissal', () => {
+      renderWithDialogAnswer();
+      // A scan that fell back is when a hand pick is remembered, so the
+      // entry passing through the control would be caught here.
+      fellBack();
+
+      const options = openCurrencyOptions();
+      expect(options.map(o => o.textContent?.trim())).toEqual(['USD', 'EUR', 'currency.otherCurrency']);
+      options[options.length - 1].click();
+      fixture.detectChanges();
+
+      expect(open).toHaveBeenCalledOnceWith(CurrencyCodeDialogComponent, jasmine.any(Object));
+      expect(restoreFocus())
+        .withContext('the option leaves with its panel, so focus goes back to the select')
+        .toBe(currencySelect());
+      // The previous value is already back, before the dialog (still open) answers.
+      expect(component.form.get('currency')?.value).toBe('USD');
+      expect(component.formCurrency()).toBe('USD');
+      expect(shown()).toBe('USD');
+
+      reply(undefined);
+
+      expect(component.form.get('currency')?.value).toBe('USD');
+      expect(component.formCurrency()).toBe('USD');
+      expect(shown()).toBe('USD');
+      expect(sessionSpy.remember).not.toHaveBeenCalled();
+    });
+
+    it('sets ISK from the dialog, lists it, and stores ISK on save', async () => {
+      renderWithDialogAnswer();
+      fellBack();
+
+      chooseOther();
+      // Still the field's previous value: the dialog has not answered yet.
+      expect(component.form.get('currency')?.value).toBe('USD');
+
+      reply('ISK');
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(component.form.get('currency')?.value).toBe('ISK');
+      expect(component.formCurrency()).toBe('ISK');
+      expect(shown()).toBe('ISK');
+      expect(sessionSpy.remember)
+        .withContext('a code picked by hand settles a fallen-back scan like any other pick')
+        .toHaveBeenCalledOnceWith('ISK');
+      expect(openCurrencyOptions().map(o => o.textContent?.trim()))
+        .toEqual(['USD', 'EUR', 'ISK', 'currency.otherCurrency']);
+      (document.querySelector('.cdk-overlay-backdrop') as HTMLElement).click();
+      fixture.detectChanges();
+
+      type('amount', '1200');
+      type('description', 'Blue Lagoon');
+      component.form.get('categoryId')?.setValue('food');
+      fixture.detectChanges();
+      submit().click();
+      await fixture.whenStable();
+
+      expect(transactionsSpy.addTransaction).toHaveBeenCalledTimes(1);
+      expect(transactionsSpy.addTransaction.calls.mostRecent().args[0].currency).toBe('ISK');
+    });
+
+    // WCAG 3.2.2: reaching the placeholder by keyboard on a closed select
+    // must not itself pop a modal. `renderWithDialogAnswer`'s spy proves
+    // that directly — a real dialog opening at all would call it.
+    it('keeps the previous currency and opens nothing when ArrowDown reaches the placeholder on a closed select', async () => {
+      // Starts on EUR, the option right before the placeholder: one ArrowDown
+      // reaches it directly, with no real currency picked along the way to
+      // confuse "the previous value" with (USD would cross EUR first, and
+      // landing on a real option mid-flight is its own legitimate pick).
+      renderWithDialogAnswer({ mode: 'edit', transaction: createTransaction({ currency: 'EUR' }) });
+      fellBack();
+      // The select syncs its active item to the current value on a microtask
+      // (`_initializeSelection`); awaited first so the single press below
+      // starts from EUR rather than racing that sync.
+      await fixture.whenStable();
+
+      pressOnClosedSelect(40 /* DOWN_ARROW */, 1);
+
+      expect(open).not.toHaveBeenCalled();
+      expect(component.form.get('currency')?.value).toBe('EUR');
+      expect(component.formCurrency()).toBe('EUR');
+      expect(shown()).toBe('EUR');
+      expect(sessionSpy.remember).not.toHaveBeenCalled();
+    });
+
+    it('keeps the previous currency and opens nothing when End reaches the placeholder on a closed select', async () => {
+      renderWithDialogAnswer();
+      fellBack();
+      await fixture.whenStable();
+
+      pressOnClosedSelect(35 /* END */);
+
+      expect(open).not.toHaveBeenCalled();
+      expect(component.form.get('currency')?.value).toBe('USD');
+      expect(component.formCurrency()).toBe('USD');
+      expect(shown()).toBe('USD');
+      expect(sessionSpy.remember).not.toHaveBeenCalled();
+    });
   });
 });

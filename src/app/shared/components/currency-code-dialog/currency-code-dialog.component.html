@@ -1,0 +1,33 @@
+<form class="p-6" [formGroup]="form" (ngSubmit)="confirm()">
+  <h2 mat-dialog-title class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+    {{ 'currency.enterCode' | translate }}
+  </h2>
+
+  <mat-dialog-content>
+    <mat-form-field appearance="outline" class="w-full">
+      <mat-label>{{ 'settings.currency' | translate }}</mat-label>
+      <input
+        matInput
+        class="code-input"
+        formControlName="code"
+        autocomplete="off"
+        autocapitalize="characters"
+        spellcheck="false"
+      />
+      @if (code.hasError('invalidCode')) {
+        <mat-error>{{ 'currency.invalidCode' | translate }}</mat-error>
+      } @else if (code.hasError('noRateYet')) {
+        <mat-error>{{ 'currency.noRateYet' | translate: { code: code.getError('noRateYet').code } }}</mat-error>
+      }
+    </mat-form-field>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end" class="gap-3">
+    <button mat-stroked-button type="button" class="cancel-button" (click)="cancel()">
+      {{ 'common.cancel' | translate }}
+    </button>
+    <button mat-flat-button color="primary" type="submit">
+      {{ 'common.confirm' | translate }}
+    </button>
+  </mat-dialog-actions>
+</form>
