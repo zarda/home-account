@@ -63,22 +63,16 @@ export const DISABLED_RULES = [
 ] as const;
 
 /**
- * Why each rule below is allowed to fire, as of the pass's first run. These
- * are the four classes the walkthrough found on its first green build; they
- * are debts with names, not exemptions — the point of freezing them is that
- * the NEXT violation fails, on any route, without anybody remembering to
- * look.
+ * Why each rule below is allowed to fire. These are the three classes the
+ * walkthrough still carries; they are debts with names, not exemptions — the
+ * point of freezing them is that the NEXT violation fails, on any route,
+ * without anybody remembering to look.
  */
 export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {
   'aria-progressbar-name':
     "Material's mat-spinner and mat-progress-bar render role=\"progressbar\" with no " +
     'accessible name. Ours are the shared LoadingSpinnerComponent and the budget progress ' +
     'bars; the fix is a translated [attr.aria-label] on each, plus a catalog key.',
-  'color-contrast':
-    'Real, and in LIGHT mode, which the token-pair audit in check-contrast.mjs does not ' +
-    'reach: it scores declared token pairs, and these are rendered elements whose colour ' +
-    'comes from a utility class or an inherited value. The sites are the dashboard stat ' +
-    "cards' .stat-label-suffix and the transaction row's .row-date.",
   'nested-interactive':
     'A transaction row is role="button" and contains its own focusable controls (the note ' +
     'button, the row menu). Screen readers flatten the descendants away. Fixing it means ' +
@@ -99,8 +93,8 @@ export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {
  * table is short enough to read.
  */
 export const KNOWN_VIOLATIONS: Readonly<Record<string, readonly string[]>> = {
-  '/dashboard': ['aria-progressbar-name', 'color-contrast'],
-  '/transactions': ['color-contrast', 'nested-interactive'],
+  '/dashboard': ['aria-progressbar-name'],
+  '/transactions': ['nested-interactive'],
   '/budgets': ['aria-progressbar-name'],
   '/reports': ['aria-progressbar-name'],
   '/settings': ['aria-progressbar-name'],
@@ -141,7 +135,11 @@ export function summarizeViolations(results: AxeResults): string[] {
 }
 
 /** The same lines, with every violation this route already carried dropped. */
-export function unexpectedViolations(results: AxeResults, route: string): string[] {
-  const known = KNOWN_VIOLATIONS[route] ?? [];
-  return summarizeViolations(results).filter(line => !known.includes(line.split(' ')[0]));
+export function unexpectedViolations(
+  results: AxeResults,
+  route: string,
+  known: Readonly<Record<string, readonly string[]>> = KNOWN_VIOLATIONS
+): string[] {
+  const frozen = known[route] ?? [];
+  return summarizeViolations(results).filter(line => !frozen.includes(line.split(' ')[0]));
 }

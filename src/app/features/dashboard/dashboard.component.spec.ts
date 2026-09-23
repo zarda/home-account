@@ -1273,6 +1273,14 @@ describe('DashboardComponent', () => {
       expect(grid.style.getPropertyValue('--dashboard-areas')).toBe(fixture.componentInstance.gridAreas());
     });
 
+    it('gives the subtitle the muted-text token class', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const subtitle = fixture.nativeElement.querySelector('[header-subtitle]');
+      expect(subtitle.classList.contains('dashboard-subtitle')).toBe(true);
+    });
+
     it('links the customize anchor to the dashboard panel in settings', () => {
       const fixture = build();
       fixture.detectChanges();

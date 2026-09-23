@@ -836,6 +836,10 @@ describe('TransactionsComponent, through its own template', () => {
     render();
 
     expect(text('[header-title-suffix]')).toBe(`(${component.transactionCount()})`);
+    // The count clears AA on --text-muted; a Tailwind gray utility measured
+    // under it on both themes' page-header background.
+    expect(el().querySelector('[header-title-suffix]')?.classList.contains('transaction-count'))
+      .toBeTrue();
   });
 
   it('shows the spinner instead of the list while the first window loads', () => {
