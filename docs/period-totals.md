@@ -98,7 +98,11 @@ The page's existing result-count live region announces **one combined
 message per reset** — count plus totals — once the sweep for that reset
 settles, whichever of the two lands first. Later refolds do not re-announce.
 Over-cap and unavailable announce their state in place of figures; the
-explicit Calculate announces the totals when its sweep lands. Announced
+explicit Calculate announces the totals when its sweep lands. Both are
+current state, which the next filter or sort change makes stale, so both are
+announced in `'replace'` mode: a run of changes does not queue a backlog of
+figures a later change has already replaced
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)). Announced
 amounts are words, not glyphs: no '−', no WORD JOINER — a negative value is
 spoken through `transactions.negativeAmount`.
 

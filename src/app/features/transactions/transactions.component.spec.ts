@@ -588,6 +588,8 @@ describe('TransactionsComponent', () => {
     });
   });
 
+  // A result count and its totals are current state: the next filter or sort
+  // change makes them stale, so each replaces any still waiting to be spoken.
   it('announces the plain result count when totals were never wired for the reset', fakeAsync(() => {
     // The idle branch (e.g. signed out): today's behavior, count only.
     const fixture = build();
@@ -598,7 +600,7 @@ describe('TransactionsComponent', () => {
     fixture.detectChanges();
     tick();
     expect(announcer.announce).toHaveBeenCalledTimes(1);
-    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultCountAnnouncement');
+    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultCountAnnouncement', 'polite', 'replace');
   }));
 
   it('announces count and totals as one message, once per reset, after the sweep settles', fakeAsync(() => {
@@ -618,7 +620,7 @@ describe('TransactionsComponent', () => {
     fixture.detectChanges();
     tick();
     expect(announcer.announce).toHaveBeenCalledTimes(1);
-    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultWithTotalsAnnouncement');
+    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultWithTotalsAnnouncement', 'polite', 'replace');
 
     // A later refold (rates, language) changes the figures silently.
     periodTotals.totals.set({ income: 500, expense: 300, balance: 150, count: 8 });
@@ -637,7 +639,7 @@ describe('TransactionsComponent', () => {
     tick();
 
     expect(announcer.announce).toHaveBeenCalledTimes(1);
-    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultWithTotalsAnnouncement');
+    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultWithTotalsAnnouncement', 'polite', 'replace');
   }));
 
   it('onCalculateTotals announces the totals once the explicit sweep lands', async () => {
@@ -652,7 +654,7 @@ describe('TransactionsComponent', () => {
     await component.onCalculateTotals();
 
     expect(periodTotals.calculate).toHaveBeenCalled();
-    expect(announcer.announce).toHaveBeenCalledWith('transactions.totalsAnnouncement');
+    expect(announcer.announce).toHaveBeenCalledWith('transactions.totalsAnnouncement', 'polite', 'replace');
   });
 
   it('onCalculateTotals stays silent when the sweep was superseded', async () => {

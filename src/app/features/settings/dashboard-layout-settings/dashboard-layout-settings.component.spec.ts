@@ -182,6 +182,8 @@ describe('DashboardLayoutSettingsComponent', () => {
       fixture.detectChanges();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('settings.dashboardLayoutSaveFailed');
+      // The failed save is an event, so the correction queues behind the
+      // position it corrects rather than replacing it.
       expect(announcer.announce.calls.allArgs()).toEqual([
         [
           t('settings.dashboardCardMoved', {
@@ -189,6 +191,8 @@ describe('DashboardLayoutSettingsComponent', () => {
             position: 2,
             total: 5,
           }),
+          'polite',
+          'replace',
         ],
         [
           t('settings.dashboardCardMoveReverted', {
@@ -213,8 +217,12 @@ describe('DashboardLayoutSettingsComponent', () => {
       expect(auth.updateUserPreferences).toHaveBeenCalledOnceWith({
         dashboardLayout: { order: ['upcoming', 'recent', 'chart', 'insights', 'budgets'], hidden: [] },
       });
+      // A position is current state: a later move makes it stale, so it
+      // replaces any position still waiting to be spoken.
       expect(announcer.announce).toHaveBeenCalledOnceWith(
-        t('settings.dashboardCardMoved', { card: 'dashboard.recentTransactions', position: 2, total: 5 })
+        t('settings.dashboardCardMoved', { card: 'dashboard.recentTransactions', position: 2, total: 5 }),
+        'polite',
+        'replace'
       );
       expect(rows()).toEqual(['upcoming', 'recent', 'chart', 'insights', 'budgets']);
     });
