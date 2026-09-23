@@ -11,7 +11,9 @@ import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
-import { createCategory, createTransaction, createUser, createTranslationStub } from '../../../core/services/testing';
+import {
+  createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
+} from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
   let cloudLLM: jasmine.SpyObj<CloudLLMProviderService>;
@@ -154,6 +156,61 @@ describe('AiSummaryComponent', () => {
       expect(c.describeFailure(new Error('API key not valid'))).toBe('ai.invalidApiKey');
       expect(c.describeFailure(new Error('429 rate limit exceeded'))).toBe('ai.rateLimited');
       expect(c.describeFailure(new Error('other'), 'ai.adviceFallback')).toBe('ai.adviceFallback');
+    });
+  });
+
+  describe('cacheKey', () => {
+    // #429 P2: the key used to fold in only `txIds.slice(0, 100)` — about five
+    // ids — so a period whose first five transactions matched but whose later
+    // ones differed was served a stale cached summary.
+    it('keys two sets differently when they share only their first five ids', () => {
+      const fixture = build();
+      const it = internals(fixture.componentInstance);
+      // Long enough that five of them alone exceed the old 100-char slice,
+      // so the sixth (differing) transaction was never even reached.
+      const shared = Array.from(
+        { length: 5 }, (_, i) => createTransaction({ id: `shared-transaction-id-${i}` }));
+
+      fixture.componentRef.setInput('transactions', [...shared, createTransaction({ id: 'tail-a' })]);
+      const keyA = it.cacheKey();
+
+      fixture.componentRef.setInput('transactions', [...shared, createTransaction({ id: 'tail-b' })]);
+      const keyB = it.cacheKey();
+
+      expect(keyA).not.toBe(keyB);
+    });
+
+    it('changes the key when a transaction is edited, even though its id set is unchanged', () => {
+      const fixture = build();
+      const it = internals(fixture.componentInstance);
+      const base = [
+        createTransaction({ id: 'a', updatedAt: createTimestamp(new Date('2026-01-01T00:00:00Z')) }),
+        createTransaction({ id: 'b', updatedAt: createTimestamp(new Date('2026-01-02T00:00:00Z')) }),
+      ];
+      fixture.componentRef.setInput('transactions', base);
+      const before = it.cacheKey();
+
+      fixture.componentRef.setInput('transactions', [
+        base[0],
+        { ...base[1], updatedAt: createTimestamp(new Date('2026-01-03T00:00:00Z')) },
+      ]);
+      const after = it.cacheKey();
+
+      expect(before).not.toBe(after);
+    });
+
+    it('keys the same set the same regardless of transaction order', () => {
+      const fixture = build();
+      const it = internals(fixture.componentInstance);
+      const set = [createTransaction({ id: 'a' }), createTransaction({ id: 'b' }), createTransaction({ id: 'c' })];
+
+      fixture.componentRef.setInput('transactions', set);
+      const forward = it.cacheKey();
+
+      fixture.componentRef.setInput('transactions', [...set].reverse());
+      const reversed = it.cacheKey();
+
+      expect(forward).toBe(reversed);
     });
   });
 
