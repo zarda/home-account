@@ -88,6 +88,15 @@ export const IMPORT_READBACK_FAILED = 'IMPORT_HISTORY_READBACK_FAILED';
 export const IMPORT_READBACK_TIMEOUT_MS = 5000;
 
 /**
+ * The grade for a category the extraction itself named, on the same 0-1
+ * scale the categorization ladder grades its own answers on — ADR 0045's
+ * evidence rule (`t.category ? 0.8 : 0.3`). Kept at or above 0.5, the
+ * `low_confidence` warning threshold, so a merged row naming its own
+ * category is never flagged for the review that grade exists to spare it.
+ */
+const EXTRACTION_CATEGORY_GRADE = 0.8;
+
+/**
  * Re-exported from their new home so the dialogs and specs that import the
  * codes from here keep compiling. The definitions moved to the util because
  * parseAIError needs them and the strategy service needs parseAIError.
@@ -720,7 +729,27 @@ export class AIImportService {
       type: t.type
     }));
 
-    const categorizedByAI = await this.categorizeWithLadder(rawTransactions, history);
+    // A row the extraction already named a category for has no ladder
+    // opinion to blend with: sending it through anyway would pair the
+    // extraction's own id with a grade that answers a different question.
+    // Only the rows still uncategorised are worth the call — an
+    // all-categorised batch skips categorizeWithLadder entirely rather than
+    // pay for one with nothing to ask.
+    const uncategorizedIndexes = transactions
+      .map((t, index) => (t.category ? -1 : index))
+      .filter(index => index >= 0);
+
+    const ladderResults = uncategorizedIndexes.length > 0
+      ? await this.categorizeWithLadder(uncategorizedIndexes.map(index => rawTransactions[index]), history)
+      : [];
+
+    let ladderPosition = 0;
+    const categorizedByAI: CategorizedTransaction[] = rawTransactions.map((raw, index) => {
+      const original = transactions[index];
+      return original.category
+        ? { ...raw, suggestedCategoryId: original.category, confidence: EXTRACTION_CATEGORY_GRADE }
+        : ladderResults[ladderPosition++];
+    });
 
     // Convert to CategorizedImportTransaction with image metadata
     return categorizedByAI.map((t, index) => {
@@ -736,7 +765,7 @@ export class AIImportService {
         ...money,
         date: resolved.date,
         type: original.type,
-        suggestedCategoryId: original.category || t.suggestedCategoryId,
+        suggestedCategoryId: t.suggestedCategoryId,
         categoryConfidence: t.confidence,
         notes: this.formatItemNotes(original.details),
         fieldConfidence: (original.amountConfidence !== undefined || resolved.dateConfidence !== undefined)
@@ -1241,11 +1270,11 @@ export class AIImportService {
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
         // The grade follows the evidence, on the applyCategorizations scale
-        // (categorization.utils.ts): 0.8 when extraction actually named a
-        // category, the review grade when nothing usable answered — under the
-        // 0.5 review band, so a defaulted row is flagged instead of wearing
-        // the high chip it never earned. (ADR 0045)
-        categoryConfidence: t.category ? 0.8 : UNRESOLVED_CATEGORY_CONFIDENCE,
+        // (categorization.utils.ts): EXTRACTION_CATEGORY_GRADE when extraction
+        // actually named a category, the review grade when nothing usable
+        // answered — under the 0.5 review band, so a defaulted row is flagged
+        // instead of wearing the high chip it never earned. (ADR 0045)
+        categoryConfidence: t.category ? EXTRACTION_CATEGORY_GRADE : UNRESOLVED_CATEGORY_CONFIDENCE,
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         // A row that carries its own note (a CSV's Note column) keeps it
         // verbatim; formatItemNotes is for receipt item lists and splits

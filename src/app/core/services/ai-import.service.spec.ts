@@ -1638,6 +1638,14 @@ describe('AIImportService', () => {
       // catalog id; that id wins over the ladder's answer (the documented
       // precedence), while an unresolved name arrives as undefined and the
       // ladder's answer stands.
+      //
+      // The ladder's own grade is pinned away from 0.8 here so a row that
+      // wrongly reached the ladder would show it: the extraction-carried id
+      // must come with its own grade, not whatever the ladder happened to
+      // answer for the batch it was sent.
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'food', confidence: 0.6 }))
+      );
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
@@ -1652,7 +1660,64 @@ describe('AIImportService', () => {
       const resolved = result.transactions.find(t => t.description === 'X');
       const unresolved = result.transactions.find(t => t.description === 'Y');
       expect(resolved?.suggestedCategoryId).toBe('transport');
+      expect(resolved?.categoryConfidence).toBe(0.8);
       expect(unresolved?.suggestedCategoryId).toBe('food');
+    });
+
+    it('sends only uncategorised rows to the ladder', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+        { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+      ]);
+
+      await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.length).toBe(1);
+    });
+
+    it('makes no ladder call when every row already carries a category', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+        { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9, category: 'dining' },
+      ]);
+
+      await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      expect(cloudLLMProvider.categorizeTransactions.calls.count()).toBe(0);
+    });
+
+    it("takes the ladder's pair for a row the extraction left uncategorised", async () => {
+      // Keyed by the ladder call's own position rather than by content, so a
+      // categorised neighbour smuggled into the same batch would shift which
+      // pair this row receives.
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map((r, i) => ({ ...r, suggestedCategoryId: `ladder_${i}`, confidence: 0.5 + i * 0.1 }))
+      );
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+        { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+        { date: '2024-06-01', description: 'Z', amount: 7, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'bottom', confidence: 0.9, receiptId: 10, category: 'entertainment' },
+      ]);
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      const unresolved = result.transactions.find(t => t.description === 'Y');
+      expect(unresolved?.suggestedCategoryId).toBe('ladder_0');
+      expect(unresolved?.categoryConfidence).toBe(0.5);
     });
 
     it('should add a duplicate warning when duplicates are detected', async () => {
