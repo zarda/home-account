@@ -2646,16 +2646,18 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
-    'a removed row is never written, and leaves no verdict behind',
+    'an edited row asks before it leaves, is never written once it has, and leaves no verdict behind',
     async () => {
       // The card's own suite proves removeRow takes the row off the card
-      // and moves focus to its neighbour, and the wizard's spec, over a
-      // mocked detector, that a gone row's verdict is pruned. Only here
-      // does a real re-check run for the edited row first, so there is a
-      // genuine verdict to prune rather than one asserted into place, and
-      // only here does confirmImport follow the removal all the way to
-      // storage: the row's photo, still sitting in sourceFiles under the
-      // batch's own imageIndex, must never reach the emulator.
+      // and moves focus to its neighbour, and asks first over a spied
+      // dialog; the wizard's spec, over a mocked detector, that a gone row's
+      // verdict is pruned. Only here does the real confirm dialog stand
+      // between the edited row and its removal, and a real re-check run for
+      // the edit first, so there is a genuine verdict to prune rather than
+      // one asserted into place; and only here does confirmImport follow the
+      // removal all the way to storage: the row's photo, still sitting in
+      // sourceFiles under the batch's own imageIndex, must never reach the
+      // emulator.
       stubReceiptSeams();
       TestBed.configureTestingModule({
         providers: [
@@ -2764,9 +2766,26 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .withContext('the edit earned the row a genuine verdict to prune')
         .toBeTrue();
 
+      // The edit is the reviewer's own work, so Remove asks first. The real
+      // dialog renders in the CDK overlay, outside the fixture, and nothing
+      // here loads a catalog, so its buttons read as the keys they were given.
+      const dialogButton = (label: string) =>
+        Array.from(document.querySelectorAll<HTMLButtonElement>('app-confirm-dialog button'))
+          .find(b => b.textContent?.trim() === label);
+
       cards()[1].querySelector<HTMLButtonElement>('.remove-trigger')!.click();
-      fixture.detectChanges();
-      expect(cards().length).toBe(1);
+      await until(fixture, () => !!dialogButton('common.cancel'));
+      expect(cards().length).withContext('nothing leaves while the question is open').toBe(2);
+      dialogButton('common.cancel')!.click();
+      await until(fixture, () => !document.querySelector('app-confirm-dialog'));
+      expect(component.extractedTransactions().map(t => t.amount))
+        .withContext('Cancel keeps the row and the edit on it')
+        .toEqual([551, 553]);
+
+      cards()[1].querySelector<HTMLButtonElement>('.remove-trigger')!.click();
+      await until(fixture, () => !!dialogButton('common.remove'));
+      dialogButton('common.remove')!.click();
+      await until(fixture, () => cards().length === 1 && !document.querySelector('app-confirm-dialog'));
 
       // Focus after a removal is set by the same afterNextRender hook, and
       // in this zone-run suite it runs in the zone's own tick, not inside

@@ -375,6 +375,14 @@ describe('toCreateTransactionDTO and the review flags', () => {
     expect('importFailure' in dto).toBeFalse();
     expect('importAttempts' in dto).toBeFalse();
   });
+
+  it('never forwards editedOnCard — the mark Remove reads before it asks, not a field', () => {
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), editedOnCard: true } as never,
+      'USD'
+    );
+    expect('editedOnCard' in dto).toBeFalse();
+  });
 });
 
 describe('readTransactionSnapshot', () => {

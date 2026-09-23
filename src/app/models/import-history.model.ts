@@ -225,6 +225,16 @@ export interface CategorizedImportTransaction {
    * transaction of its own the reviewer made on purpose, not a repeat.
    */
   splitFrom?: string;
+  /**
+   * A review-step mark, never written: the reviewer changed what this row
+   * says on the card — a field's value, a date answer, a split or a merge.
+   * Set by each of those handlers rather than by the card's shared row
+   * replacement, which also carries selection, a duplicate overrule, a
+   * dismissed currency offer and a recurring link: answers about the row
+   * that cost nothing to give again. Remove asks first on a row carrying it
+   * (`rowCarriesReviewerWork`).
+   */
+  editedOnCard?: true;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)

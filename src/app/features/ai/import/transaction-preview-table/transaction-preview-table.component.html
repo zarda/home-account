@@ -373,9 +373,10 @@
             }
             <!-- Unconditional, blank and flagged alike: a blank
                  hand-added row has no other way off the card. It
-                 asks nothing on any row, flagged included, because
-                 Deselect — not a dialog — is the reversible
-                 answer. -->
+                 asks first only on a row carrying the reviewer's
+                 own work — an edit, a split or a merge; on any
+                 other row, flagged included, it asks nothing,
+                 because Deselect is the reversible answer. -->
             <button type="button" class="extra-add remove-trigger" [attr.aria-label]="removeLabel(row)" (click)="removeRow(row)">
               <mat-icon aria-hidden="true">delete_outline</mat-icon>
               <span>{{ 'common.remove' | translate }}</span>

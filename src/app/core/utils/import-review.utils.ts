@@ -284,6 +284,26 @@ export function parseAmountInput(raw: string): number | null {
 }
 
 /**
+ * Whether taking this row off the card would throw away something the
+ * reviewer made there — the one case Remove asks before it acts. Three
+ * readings, because a row carries that work three ways: the mark every
+ * editing handler on the card sets (`editedOnCard`); a part a split took off
+ * another row (`splitFrom`), which the split creates rather than edits; and
+ * a row a merge folded another receipt into (`mergedReceiptIds`, written by
+ * nothing but a reviewer's merge), whose removal would take that receipt's
+ * photo with it.
+ *
+ * Nothing else counts. A scanned row as it arrived is the reader's work, and
+ * one press takes it off (ADR 0108). Selection, a duplicate overruled, a
+ * currency offer dismissed and a recurring link taken or let go are answers
+ * about the row rather than content in it, each one press to give again, so
+ * none of them sets the mark.
+ */
+export function rowCarriesReviewerWork(row: CategorizedImportTransaction): boolean {
+  return !!row.editedOnCard || row.splitFrom !== undefined || !!row.imageMetadata?.mergedReceiptIds?.length;
+}
+
+/**
  * Which source images a row's evidence actually comes from: every image
  * consolidation merged into it, or its own single image when nothing was
  * merged. The receipt-attachment planner (`receipt-attachment.utils.ts`)

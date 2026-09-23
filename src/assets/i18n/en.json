@@ -1312,6 +1312,8 @@
     "mergeIntoLabel": "Merge {{description}} into another row",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "Remove {{description}}",
+    "removeRowTitle": "Remove this row?",
+    "removeRowConfirm": "Your changes to {{description}} will be lost. To leave it out of this import and keep them, deselect it instead.",
     "announceRowRemoved": "{{description}} removed",
     "addLocation": "Add location",
     "addPlaceName": "Add a place name",

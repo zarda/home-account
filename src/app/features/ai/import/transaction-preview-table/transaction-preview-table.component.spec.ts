@@ -3,7 +3,9 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
+import { MatDialog } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
+import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorizedImportTransaction } from '../../../../models';
@@ -15,6 +17,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
 import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -3819,6 +3822,280 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(fixture.nativeElement.querySelector(`[data-row-id="${added.id}"]`)).withContext('gone').toBeNull();
       expect(document.activeElement).withContext('the previous row\'s own control').toBe(removeTrigger('existing'));
+    });
+  });
+
+  // #430: Remove asks first on a row carrying the reviewer's own work, and a
+  // bare scanned row still leaves in one press (ADR 0108). The root MatDialog's
+  // open is spied rather than a dialog rendered: what is asserted is the
+  // question asked and what each answer does, and the answer is a Subject so
+  // the moment between asking and answering can be looked at too. The
+  // dialog's own template is its own suite's.
+  describe('removing a row the reviewer worked on', () => {
+    let open: jasmine.Spy;
+    let answer: Subject<boolean>;
+
+    const removeTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .remove-trigger`) as HTMLButtonElement | null;
+    const rowIds = () => component.transactions.map(t => t.id);
+    const current = (id: string) => component.transactions.find(t => t.id === id)!;
+    const blur = (value: string) => ({ type: 'blur', target: { value } }) as unknown as Event;
+
+    beforeEach(() => {
+      answer = new Subject<boolean>();
+      open = spyOn(TestBed.inject(MatDialog), 'open').and.returnValue({ afterClosed: () => answer } as never);
+    });
+
+    // Every emission is handed back as the input, the loop the wizard runs:
+    // it is what re-renders a row after an edit made by a direct call, so a
+    // trigger pressed afterwards carries the row as it now stands rather than
+    // the object the card first rendered.
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.transactionsUpdated.subscribe(next => fixture.componentRef.setInput('transactions', next));
+      fixture.detectChanges();
+    }
+
+    function pressRemove(id: string): void {
+      removeTrigger(id)!.click();
+      fixture.detectChanges();
+    }
+
+    function reply(confirmed: boolean): void {
+      answer.next(confirmed);
+      answer.complete();
+      fixture.detectChanges();
+    }
+
+    it('a bare scanned row removes in one press', () => {
+      render([
+        makeRow({ id: 'a' }),
+        makeRow({
+          id: 'scanned',
+          fieldConfidence: { amount: 0.4 },
+          currencyFellBack: true,
+          dateAssumed: true,
+          imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1 },
+        }),
+      ]);
+      const emitted = emissions();
+
+      pressRemove('scanned');
+
+      expect(open).not.toHaveBeenCalled();
+      expect(emitted.length).toBe(1);
+      expect(rowIds()).toEqual(['a']);
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith('import.announceRowRemoved:{"description":"Coffee Shop"}');
+    });
+
+    it('a row edited on the card asks first, and Cancel keeps it', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+
+      pressRemove('edited');
+
+      expect(open).toHaveBeenCalledOnceWith(ConfirmDialogComponent, jasmine.objectContaining({
+        data: {
+          title: 'import.removeRowTitle',
+          message: 'import.removeRowConfirm:{"description":"Coffee Shop"}',
+          confirmLabel: 'common.remove',
+          cancelLabel: 'common.cancel',
+          confirmColor: 'warn',
+          icon: 'delete',
+        },
+      }));
+
+      reply(false);
+
+      expect(emitted.length).withContext('nothing emitted').toBe(0);
+      expect(rowIds()).toEqual(['a', 'edited']);
+      expect(removeTrigger('edited')).withContext('still on the card').not.toBeNull();
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    it('Confirm removes it and announces it', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+
+      pressRemove('edited');
+      expect(emitted.length).withContext('nothing leaves while the question is open').toBe(0);
+      expect(mockAnnouncer.announce).withContext('nothing is said while the question is open').not.toHaveBeenCalled();
+
+      reply(true);
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).toEqual(['a']);
+      expect(removeTrigger('edited')).toBeNull();
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith('import.announceRowRemoved:{"description":"Coffee Shop"}');
+    });
+
+    it('hands focus to the next row\'s Remove once the removal is confirmed', async () => {
+      render([makeRow({ id: 'edited', editedOnCard: true }), makeRow({ id: 'b' })]);
+
+      pressRemove('edited');
+      reply(true);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(removeTrigger('b'));
+    });
+
+    it('names a row with no description by its placeholder in the question', () => {
+      render([makeRow({ id: 'blank', description: '', editedOnCard: true })]);
+
+      pressRemove('blank');
+
+      expect(open.calls.mostRecent().args[1].data.message)
+        .toBe('import.removeRowConfirm:{"description":"import.untitledRow"}');
+    });
+
+    it('removes the row it asked about even when the row was replaced under its id while the question was open', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+      pressRemove('edited');
+
+      // What the wizard does whenever a re-check reconciles a verdict: the
+      // same ids, new objects. The listener still holds the one it rendered.
+      component.transactions = component.transactions.map(t => ({ ...t }));
+      reply(true);
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).toEqual(['a']);
+    });
+
+    it('does nothing on Confirm for a row that already left the batch', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+      pressRemove('edited');
+
+      component.transactions = [current('a')];
+      reply(true);
+
+      expect(emitted.length).toBe(0);
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    // One case per handler that records the reviewer's own content. Each
+    // edit runs on the card as rendered, and the row it leaves is pressed
+    // through its own rendered trigger, so what is asked about is the row
+    // the template now holds rather than the one the case started with.
+    describe('each edit that asks before its row is removed', () => {
+      interface EditCase {
+        name: string;
+        row?: Partial<CategorizedImportTransaction>;
+        attention?: boolean;
+        act: (row: CategorizedImportTransaction) => void;
+        target?: () => string;
+      }
+      const cases: EditCase[] = [
+        { name: 'the description', act: row => { component.startEdit(row, 'description'); component.commitDescription(row, blur('Tea')); } },
+        { name: 'the amount', act: row => { component.startEdit(row, 'amount'); component.commitAmount(row, blur('7')); } },
+        { name: 'the type flipped', act: row => component.toggleType(row) },
+        { name: 'the currency, on the row', act: row => component.updateCurrency(row, 'JPY') },
+        { name: 'the currency, in bulk', act: () => component.applyCurrencyToSelected('JPY') },
+        { name: 'the category', act: row => component.updateCategory(row, 'transport') },
+        { name: 'a tag added', act: row => { component.startEdit(row, 'tag'); component.commitTag(row, blur('lunch')); } },
+        { name: 'a tag removed', row: { tags: ['lunch'] }, act: row => component.removeTag(row, 'lunch') },
+        { name: 'the place name', act: row => { component.startEdit(row, 'place'); component.commitPlaceName(row, blur('Shibuya')); } },
+        { name: 'the location removed', row: { location: { name: 'Shibuya', country: 'JP' } }, act: row => component.removeLocation(row) },
+        { name: 'the country', act: row => component.setCountry(row, 'JP') },
+        { name: 'a day picked', act: row => component.updateDate(row, new Date(2024, 0, 20)) },
+        { name: 'the date kept', act: row => component.keepDate(row) },
+        { name: 'every date kept at once', attention: true, act: () => component.keepAllDates() },
+        { name: 'the note', act: row => { component.updateNotesDraft(row, 'split with Ken'); component.commitNotes(row); } },
+        { name: 'the half a split keeps', act: row => { component.startEdit(row, 'split'); component.commitSplit(row, blur('2')); } },
+        {
+          name: 'the part a split takes off',
+          act: row => { component.startEdit(row, 'split'); component.commitSplit(row, blur('2')); },
+          target: () => component.transactions.find(t => t.splitFrom === 'edited')!.id,
+        },
+        { name: 'the survivor of a merge', act: row => component.mergeInto(current('other'), row) },
+      ];
+
+      for (const edit of cases) {
+        it(`asks after ${edit.name}`, () => {
+          component.dateAttentionIds = new Set(edit.attention ? ['edited'] : []);
+          render([makeRow({ id: 'other' }), makeRow({ id: 'edited', ...edit.row })]);
+
+          edit.act(current('edited'));
+          fixture.detectChanges();
+          pressRemove(edit.target?.() ?? 'edited');
+
+          expect(open).toHaveBeenCalledTimes(1);
+        });
+      }
+    });
+
+    // The passes through the shared row replacement that are answers about
+    // the row, not content in it: each is one press to give again.
+    describe('each answer that still removes in one press', () => {
+      interface AnswerCase {
+        name: string;
+        row?: Partial<CategorizedImportTransaction>;
+        act: (row: CategorizedImportTransaction) => void;
+      }
+      const cases: AnswerCase[] = [
+        { name: 'deselected', act: row => component.toggleSelection(row, false) },
+        {
+          name: 'deselected and selected again',
+          act: row => { component.toggleSelection(row, false); component.toggleSelection(current('edited'), true); },
+        },
+        {
+          name: 'cleared as not a duplicate',
+          row: { isDuplicate: true, duplicateOf: 'stored-1', selected: false },
+          act: row => component.clearDuplicate(row),
+        },
+        {
+          name: 'its currency offer dismissed',
+          row: { currencyFellBack: true, currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } },
+          act: row => component.dismissCurrencySuggestion(row),
+        },
+        {
+          name: 'its recurring link taken and let go',
+          row: { recurringMatch: { id: 'rule-1', name: 'Rent', sourceIsRecurring: false } },
+          act: row => { component.toggleRecurringLink(row, true); component.toggleRecurringLink(current('edited'), false); },
+        },
+        // A pick that lands on the value the row already has changes
+        // nothing, so it is exactly as inert as an answer about the row.
+        { name: 'given the currency it already has', act: row => component.updateCurrency(row, 'USD') },
+        { name: 'given the category it already has', act: row => component.updateCategory(row, 'food') },
+        {
+          name: 'given the country it already has',
+          row: { location: { country: 'JP' } },
+          act: row => component.setCountry(row, 'JP'),
+        },
+      ];
+
+      for (const answered of cases) {
+        it(`removes a row ${answered.name} without asking`, () => {
+          render([makeRow({ id: 'other' }), makeRow({ id: 'edited', ...answered.row })]);
+
+          answered.act(current('edited'));
+          fixture.detectChanges();
+          pressRemove('edited');
+
+          expect(open).not.toHaveBeenCalled();
+          expect(rowIds()).toEqual(['other']);
+        });
+      }
+    });
+
+    it('a bulk currency pick leaves a row already in that currency unmarked, even though the batch changes', () => {
+      render([
+        makeRow({ id: 'already', currency: 'JPY', selected: true }),
+        makeRow({ id: 'changed', currency: 'USD', selected: true }),
+      ]);
+
+      component.applyCurrencyToSelected('JPY');
+      fixture.detectChanges();
+
+      pressRemove('already');
+      expect(open).withContext('untouched by the switch, so it asks nothing').not.toHaveBeenCalled();
+      expect(rowIds()).toEqual(['changed']);
+
+      pressRemove('changed');
+      expect(open).withContext('the row the switch actually changed still asks').toHaveBeenCalledTimes(1);
     });
   });
 

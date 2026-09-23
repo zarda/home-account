@@ -1213,6 +1213,8 @@
     "mergeIntoLabel": "將「{{description}}」合併到其他列",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "移除「{{description}}」",
+    "removeRowTitle": "要移除這一列嗎？",
+    "removeRowConfirm": "您對「{{description}}」所做的變更將會遺失。若要保留變更但不匯入，請改為取消勾選。",
     "announceRowRemoved": "已移除「{{description}}」",
     "addLocation": "新增地點",
     "addPlaceName": "新增地點名稱",

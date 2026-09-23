@@ -8,6 +8,7 @@ import {
   mergeableRow,
   needsDateAnswer,
   parseAmountInput,
+  rowCarriesReviewerWork,
   rowIsUnfilled,
   sameSplit,
   splitImportRow,
@@ -966,6 +967,95 @@ describe('import-review.utils', () => {
       mergeImportRows(t, s);
       expect(t).toEqual(tSnapshot);
       expect(s).toEqual(sSnapshot);
+    });
+  });
+
+  describe('rowCarriesReviewerWork', () => {
+    // A scanned row wearing every mark a reader leaves on one, so a false
+    // below cannot come from a row too bare to hold anything.
+    const scanned = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      fieldConfidence: { amount: 0.4, date: 0.9 },
+      currencyFellBack: true,
+      dateAssumed: true,
+      receiptCountry: 'JP',
+      notes: 'おにぎり',
+      tags: ['lunch'],
+      imageMetadata: {
+        imageIndex: 0,
+        imageId: 'image_0',
+        positionInImage: 'top',
+        confidenceScore: 0.9,
+        receiptId: 1,
+        wasMerged: true,
+        mergedFromImages: [0, 1],
+      },
+      ...overrides,
+    });
+
+    it('is false for a bare scanned row', () => {
+      expect(rowCarriesReviewerWork(scanned())).toBeFalse();
+    });
+
+    it('is true for a row edited on the card', () => {
+      expect(rowCarriesReviewerWork(scanned({ editedOnCard: true }))).toBeTrue();
+    });
+
+    it('is true for a part split off another row', () => {
+      expect(rowCarriesReviewerWork(scanned({ splitFrom: 'r0' }))).toBeTrue();
+    });
+
+    it('is true for a row that absorbed another receipt in a merge', () => {
+      const meta = scanned().imageMetadata!;
+      expect(rowCarriesReviewerWork(scanned({ imageMetadata: { ...meta, mergedReceiptIds: [2] } }))).toBeTrue();
+      expect(rowCarriesReviewerWork(scanned({ imageMetadata: { ...meta, mergedReceiptIds: [] } })))
+        .withContext('an emptied list absorbed nothing')
+        .toBeFalse();
+    });
+
+    it('reads the mark mergeImportRows itself leaves on the survivor', () => {
+      const photo = (receiptId: number): ImagePositionMetadata => ({
+        imageIndex: receiptId - 1,
+        imageId: `image_${receiptId - 1}`,
+        positionInImage: 'top',
+        confidenceScore: 0.9,
+        receiptId,
+      });
+      const merged = mergeImportRows(
+        scanned({ id: 'target', imageMetadata: photo(1) }),
+        scanned({ id: 'source', imageMetadata: photo(2) })
+      )!;
+      expect(rowCarriesReviewerWork(merged)).toBeTrue();
+    });
+
+    it('is false for a row whose only change is an answer that costs nothing to give again', () => {
+      // The row each of these handlers leaves: deselected, selected again, a
+      // duplicate overruled, a currency offer dismissed, a recurring link
+      // taken and let go. None of them is content the reviewer typed.
+      expect(rowCarriesReviewerWork(scanned({ selected: false }))).withContext('deselected').toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ selected: true }))).withContext('re-selected').toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ isDuplicate: false, duplicateOf: undefined, selected: true })))
+        .withContext('cleared as not a duplicate')
+        .toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ currencySuggestion: undefined })))
+        .withContext('currency suggestion dismissed')
+        .toBeFalse();
+      const match = { id: 'rule-1', name: 'Rent', sourceIsRecurring: false };
+      expect(rowCarriesReviewerWork(scanned({ recurringMatch: match, recurringId: 'rule-1', isRecurring: true })))
+        .withContext('recurring link taken')
+        .toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ recurringMatch: match, recurringId: undefined, isRecurring: false })))
+        .withContext('recurring link let go')
+        .toBeFalse();
     });
   });
 });

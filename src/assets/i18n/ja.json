@@ -1213,6 +1213,8 @@
     "mergeIntoLabel": "{{description}}を別の行に結合",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "{{description}}を削除",
+    "removeRowTitle": "この行を削除しますか？",
+    "removeRowConfirm": "{{description}}に加えた変更は失われます。変更を残したままインポートから外すには、代わりに選択を解除してください。",
     "announceRowRemoved": "{{description}}を削除しました",
     "addLocation": "場所を追加",
     "addPlaceName": "場所の名前を追加",
