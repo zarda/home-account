@@ -30,14 +30,39 @@ import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component'
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/duplicate-warning.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
-import { NotificationService } from '../../../../core/services/notification.service';
+import {
+  NOTIFICATION_DURATION_MS,
+  NotificationService,
+  NotificationTone,
+} from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { importFailureKey, needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
+import { importFailureKey, joinSentences, needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
+
+/**
+ * How much longer a confirm round's notice stays up for each sentence past
+ * its first. The round's outcome, the rows it set aside and the photos that
+ * did not attach share one snackbar, and a tone's own duration is sized for
+ * one sentence.
+ */
+const ROUND_NOTICE_MS_PER_EXTRA_SENTENCE = 2000;
+
+/**
+ * Where a sentence ends: at a full-width stop wherever it stands, since
+ * Japanese and Chinese put no space after one, and at a Latin stop only
+ * before whitespace or the end, so the dots inside a figure or a dotted
+ * name end nothing.
+ */
+const SENTENCE_END = /[。！？]|[.!?](?=\s|$)/;
+
+/** How many sentences a text holds, a last one without a stop included. */
+function countSentences(text: string): number {
+  return text.split(SENTENCE_END).filter(sentence => !!sentence.trim()).length;
+}
 
 @Component({
   selector: 'app-import-wizard',
@@ -973,24 +998,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         provenance
       );
 
-      if (result.receiptsSkipped) {
-        // The rows saved; only their photos hit the image quota. Said
-        // distinctly, because "partial" here would invite re-importing rows
-        // that already landed.
-        this.notifications.info(this.t('import.importPhotosSkipped', {
-          count: result.receiptsSkipped
-        }));
-      }
-
-      if (result.receiptsFailed) {
-        // Also saved, also photo-less, but for a reason the user can act on:
-        // the photo could not be uploaded at all. Separate from the quota
-        // message because the next step differs — one is a plan limit, the
-        // other a file to re-attach from the transaction (#334).
-        this.notifications.info(this.t('import.importPhotosFailed', {
-          count: result.receiptsFailed
-        }));
-      }
+      // Rows that saved without their photos. Said as sentences of their own
+      // rather than folded into a failure count, because "partial" here would
+      // invite re-importing rows that already landed; and the two reasons stay
+      // apart because the next step differs — the image quota is a plan
+      // limit, a failed upload a file to re-attach from the transaction
+      // (#334). They ride the round's one notice below, whichever it is: a
+      // snackbar replaces the one before it, so a notice of their own would
+      // leave either them or the round's outcome unread.
+      const photoSentences = [
+        result.receiptsSkipped
+          ? this.t('import.importPhotosSkipped', { count: result.receiptsSkipped })
+          : '',
+        result.receiptsFailed
+          ? this.t('import.importPhotosFailed', { count: result.receiptsFailed })
+          : '',
+      ];
 
       if (result.errorCount > 0) {
         // Some rows were rejected (a zero-amount summary line, a rules
@@ -1045,27 +1068,31 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         );
         this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
 
-        this.notifications.error(this.t('import.importPartial', {
+        // One notice for the round, since a snackbar replaces the one before
+        // it: the rows set aside this round — counted, not named, since each
+        // row's own reason renders on its card — and the photo sentences ride
+        // in the same notice as the round's count rather than a second one
+        // that would wipe it out.
+        const partial = this.t('import.importPartial', {
           success: result.successCount,
           failed: result.errorCount,
           total: result.successCount + result.errorCount,
-        }));
-        // One notice for every row set aside this round, not one per row:
-        // NotificationService shows a single snackbar at a time, so a second
-        // or third call here would only ever leave the last row's name on
-        // screen. Each row's own reason already renders on its card.
-        if (setAside.length) {
-          this.notifications.error(this.t('import.importPartialSetAside', {
-            count: setAside.length,
-          }));
-        }
+        });
+        const setAsideSentence = setAside.length
+          ? this.t('import.importPartialSetAside', { count: setAside.length })
+          : '';
+        this.raiseRoundNotice('error', [partial, setAsideSentence, ...photoSentences]);
 
         this.returnToReview();
         return;
       }
 
+      // Every selected row saved. A photo that did not come with its row is
+      // something to act on — not a failure of the import, and not a plain
+      // success either — so a round carrying a photo sentence is info-toned.
       const message = this.t('import.importComplete', { count: result.successCount });
-      this.notifications.success(message);
+      const photoMissing = photoSentences.some(sentence => !!sentence);
+      this.raiseRoundNotice(photoMissing ? 'info' : 'success', [message, ...photoSentences]);
 
       // Navigate back to transactions with showAll to see imported data
       this.router.navigate(['/transactions'], {
@@ -1090,6 +1117,21 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     } finally {
       this.isImporting.set(false);
     }
+  }
+
+  /**
+   * A confirm round's one notice: its parts joined, up for the tone's own
+   * duration and `ROUND_NOTICE_MS_PER_EXTRA_SENTENCE` more for each sentence
+   * past the first, so the last is still on screen to be read. The sentences
+   * are counted in the joined text rather than taken one a part, since a
+   * part can carry two (`import.importPhotosFailed` does, in en and ja). An
+   * empty part is no sentence and adds no time.
+   */
+  private raiseRoundNotice(tone: NotificationTone, parts: readonly string[]): void {
+    const message = parts.reduce(joinSentences, '');
+    const durationMs =
+      NOTIFICATION_DURATION_MS[tone] + Math.max(0, countSentences(message) - 1) * ROUND_NOTICE_MS_PER_EXTRA_SENTENCE;
+    this.notifications[tone](message, { durationMs });
   }
 
   /**

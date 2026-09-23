@@ -19,7 +19,7 @@ import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { MockAuthService } from '../../../../core/services/testing';
-import { blankImportRow, splitImportRow } from '../../../../core/utils/import-review.utils';
+import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
 import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 
 function attemptStub() {
@@ -1280,7 +1280,7 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(mockImportService.confirmImport).toHaveBeenCalled();
-      expect(notifications.success).toHaveBeenCalledWith('import.importComplete');
+      expect(notifications.success).toHaveBeenCalledWith('import.importComplete', { durationMs: 3000 });
     }));
 
     it('should navigate to transactions page on success', fakeAsync(() => {
@@ -1338,7 +1338,20 @@ describe('ImportWizardComponent', () => {
       }
     }));
 
-    it('says when photos were skipped for the image quota, without failing the import', fakeAsync(() => {
+    it('raises a success notice, up for the default time, when every row saved and no photo went missing', fakeAsync(() => {
+      component.confirmImport();
+      tick();
+
+      expect(notifications.success).toHaveBeenCalledOnceWith('import.importComplete', { durationMs: 3000 });
+      expect(notifications.info).not.toHaveBeenCalled();
+      expect(notifications.error).not.toHaveBeenCalled();
+    }));
+
+    it('says when photos were skipped for the image quota, in the round\'s one notice, info-toned', fakeAsync(() => {
+      // One notice per round: a snackbar replaces the one before it, so a
+      // photo notice of its own ahead of the round's notice would not stay on
+      // screen long enough to read. Every row saved, but a photo that did not
+      // come with it is something to act on, so the notice is not a success.
       mockImportService.confirmImport.and.returnValue(Promise.resolve({
         id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
         source: 'image' as const, fileType: 'receipt_image' as const,
@@ -1350,14 +1363,20 @@ describe('ImportWizardComponent', () => {
       component.confirmImport();
       tick();
 
-      expect(notifications.info).toHaveBeenCalledWith('import.importPhotosSkipped');
-      expect(notifications.success).toHaveBeenCalledWith('import.importComplete');
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        joinSentences('import.importComplete', 'import.importPhotosSkipped'),
+        { durationMs: 5000 }
+      );
+      expect(mockTranslationService.t).toHaveBeenCalledWith('import.importPhotosSkipped', { count: 2 });
+      expect(notifications.success).not.toHaveBeenCalled();
+      expect(notifications.error).not.toHaveBeenCalled();
       expect(mockRouter.navigate).toHaveBeenCalled();
     }));
 
-    it('says when photos could not be uploaded, without calling the import partial', fakeAsync(() => {
+    it('says when photos could not be uploaded, info-toned, without calling the import partial', fakeAsync(() => {
       // The rows landed; only their photos did not. Calling this partial would
-      // invite re-importing transactions that already saved (#334).
+      // invite re-importing transactions that already saved (#334), and
+      // calling it a success would leave the photo unattended.
       mockImportService.confirmImport.and.returnValue(Promise.resolve({
         id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
         source: 'image' as const, fileType: 'receipt_image' as const,
@@ -1369,10 +1388,79 @@ describe('ImportWizardComponent', () => {
       component.confirmImport();
       tick();
 
-      expect(notifications.info).toHaveBeenCalledWith('import.importPhotosFailed');
-      expect(notifications.info).not.toHaveBeenCalledWith('import.importPhotosSkipped');
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        joinSentences('import.importComplete', 'import.importPhotosFailed'),
+        { durationMs: 5000 }
+      );
+      expect(mockTranslationService.t).toHaveBeenCalledWith('import.importPhotosFailed', { count: 1 });
+      expect(mockTranslationService.t).not.toHaveBeenCalledWith('import.importPhotosSkipped', jasmine.anything());
+      expect(notifications.success).not.toHaveBeenCalled();
       expect(notifications.error).not.toHaveBeenCalled();
-      expect(notifications.success).toHaveBeenCalledWith('import.importComplete');
+    }));
+
+    // The photo-failure sentence is two sentences in en and in ja, where no
+    // space follows the full stop, and each is read before the notice goes.
+    for (const [locale, photosFailed] of [
+      ['en', 'The transactions were saved, but 1 receipt photo could not be uploaded. You can attach it from the transaction.'],
+      ['ja', '取引は保存されましたが、レシート写真1枚をアップロードできませんでした。取引の画面から添付し直せます。'],
+    ] as const) {
+      it(`gives the notice time for every sentence a part carries, not one a part (${locale})`, fakeAsync(() => {
+        mockTranslationService.t.and.callFake((key: string) =>
+          key === 'import.importPhotosFailed' ? photosFailed : key
+        );
+        mockImportService.confirmImport.and.returnValue(Promise.resolve({
+          id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+          source: 'image' as const, fileType: 'receipt_image' as const,
+          fileName: 'r.png', fileSize: 10, transactionCount: 1, successCount: 1,
+          skippedCount: 0, errorCount: 0, totalIncome: 0, totalExpenses: 10503,
+          duplicatesSkipped: 0, status: 'completed' as const, receiptsFailed: 1
+        }));
+
+        component.confirmImport();
+        tick();
+
+        // Three sentences: the info tone's three seconds and two more for each
+        // sentence past the first.
+        expect(notifications.info).toHaveBeenCalledOnceWith(
+          joinSentences('import.importComplete', photosFailed),
+          { durationMs: 7000 }
+        );
+      }));
+    }
+
+    it('carries the set-aside and photo sentences in the partial import\'s one error notice', fakeAsync(() => {
+      // The rows that did save can still have lost their photos. Raised as
+      // notices of their own, the photo sentences and the partial count would
+      // replace one another on screen, leaving only the last to read.
+      component.extractedTransactions.set([
+        { ...mockTransactions[0], id: 'a' },
+        { ...mockTransactions[0], id: 'b' },
+        { ...mockTransactions[0], id: 'c', importAttempts: 1 },
+      ]);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'image' as const, fileType: 'receipt_image' as const,
+        fileName: 'r.png', fileSize: 10, transactionCount: 2, successCount: 2,
+        skippedCount: 0, errorCount: 1, totalIncome: 0, totalExpenses: 5,
+        duplicatesSkipped: 0, status: 'partial' as const, receiptsSkipped: 1, receiptsFailed: 1,
+        errors: [{ row: 3, transactionId: 'c', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      // Four sentences: the error's own five seconds and two more for each
+      // sentence past the first, so the last is still on screen to be read.
+      expect(notifications.error).toHaveBeenCalledOnceWith(
+        joinSentences(
+          joinSentences(joinSentences('import.importPartial', 'import.importPartialSetAside'), 'import.importPhotosSkipped'),
+          'import.importPhotosFailed'
+        ),
+        { durationMs: 11000 }
+      );
+      expect(notifications.info).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
     }));
 
     it('should set isImporting to false after completion', fakeAsync(() => {
@@ -1423,7 +1511,8 @@ describe('ImportWizardComponent', () => {
 
       // No navigation — leaving would destroy the only copy of the rows.
       expect(mockRouter.navigate).not.toHaveBeenCalled();
-      expect(notifications.error).toHaveBeenCalledWith('import.importPartial');
+      // Nothing was set aside on a first failure, so the count stands alone.
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.importPartial', { durationMs: 5000 });
       expect(notifications.success).not.toHaveBeenCalled();
       expect(component.extractedTransactions().map(t => t.id)).toEqual(['dup', 'b']);
       expect(component.extractedTransactions()[0].selected).toBeFalse();
@@ -1479,12 +1568,15 @@ describe('ImportWizardComponent', () => {
       const row = component.extractedTransactions().find(t => t.id === 'a')!;
       expect(row.importFailure).toBe('import.rowFailedAmount');
       expect(row.importAttempts).toBe(1);
-      // One failure re-offers the row; it stops short of setting it aside.
+      // One failure re-offers the row; it stops short of setting it aside,
+      // so the round's notice is its count alone.
       expect(row.selected).toBeTrue();
-      expect(notifications.error).not.toHaveBeenCalledWith('import.importPartialSetAside');
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.importPartial', { durationMs: 5000 });
+      expect(mockTranslationService.t)
+        .not.toHaveBeenCalledWith('import.importPartialSetAside', jasmine.anything());
     }));
 
-    it('a row that fails twice comes back deselected and is named in the notice', fakeAsync(() => {
+    it('a row that fails twice comes back deselected and is counted in the notice', fakeAsync(() => {
       component.extractedTransactions.set([{ ...mockTransactions[0], id: 'a', description: 'Coffee' }]);
       const refusal = {
         id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
@@ -1512,6 +1604,7 @@ describe('ImportWizardComponent', () => {
       // Same id, refused a second time — the wizard reads the row's own
       // running count, not the response, so a fresh confirmImport stub with
       // the same shape is enough to drive the second failure.
+      notifications.error.calls.reset();
       mockImportService.confirmImport.and.returnValue(Promise.resolve(refusal));
       component.confirmImport();
       tick();
@@ -1522,17 +1615,22 @@ describe('ImportWizardComponent', () => {
         .toBeFalse();
       expect(row.importAttempts).toBe(2);
       expect(row.importFailure).toBe('import.rowFailedConnection');
-      // One notice for the whole round, carrying how many rows it set aside
-      // — not the row's own description, which its card already shows.
-      expect(notifications.error).toHaveBeenCalledWith('import.importPartialSetAside');
+      // One notice for the whole round, carrying the round's count and how
+      // many rows it set aside — not the row's own description, which its
+      // card already shows. A second notice would replace the first on
+      // screen, and the count with it.
+      expect(notifications.error).toHaveBeenCalledOnceWith(
+        joinSentences('import.importPartial', 'import.importPartialSetAside'),
+        { durationMs: 7000 }
+      );
       expect(mockTranslationService.t)
         .toHaveBeenCalledWith('import.importPartialSetAside', { count: 1 });
     }));
 
-    it('names every set-aside row in one notice, not one per row', fakeAsync(() => {
-      // NotificationService shows a single snackbar at a time — a call per
-      // row would leave only the last row's name on screen with two rows
-      // set aside in the same round.
+    it('counts every set-aside row in one notice, not one per row', fakeAsync(() => {
+      // NotificationService shows a single snackbar at a time — a notice per
+      // row would leave only the last one on screen with two rows set aside
+      // in the same round.
       component.extractedTransactions.set([
         { ...mockTransactions[0], id: 'a', description: 'Coffee', importAttempts: 1 },
         { ...mockTransactions[0], id: 'b', description: 'Lunch', importAttempts: 1 },
@@ -1554,9 +1652,10 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(component.extractedTransactions().every(t => !t.selected)).toBeTrue();
-      const setAsideCalls = notifications.error.calls.allArgs()
-        .filter(args => args[0] === 'import.importPartialSetAside');
-      expect(setAsideCalls.length).toBe(1);
+      expect(notifications.error).toHaveBeenCalledOnceWith(
+        joinSentences('import.importPartial', 'import.importPartialSetAside'),
+        { durationMs: 7000 }
+      );
       expect(mockTranslationService.t)
         .toHaveBeenCalledWith('import.importPartialSetAside', { count: 2 });
     }));

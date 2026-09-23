@@ -5,6 +5,21 @@ import { TranslationService } from './translation.service';
 
 export type NotificationTone = 'success' | 'error' | 'info';
 
+/** How long each tone's snackbar stays up when a caller names no duration. */
+export const NOTIFICATION_DURATION_MS: Readonly<Record<NotificationTone, number>> = {
+  success: 3000,
+  info: 3000,
+  error: 5000,
+};
+
+export interface NotificationOptions {
+  /**
+   * How long the snackbar stays up. For a notice longer than the one
+   * sentence the tone's own duration was sized for.
+   */
+  durationMs?: number;
+}
+
 /**
  * One place for transient user feedback. Wraps the single snackbar call
  * shape (message + a Close action + a tone-appropriate duration) and pairs
@@ -21,28 +36,27 @@ export class NotificationService {
   private announcer = inject(AnnouncerService);
   private translation = inject(TranslationService);
 
-  /** Confirmation of a completed action (polite announce, 3s). */
-  success(message: string): void {
-    this.show(message, 'success');
+  /** Confirmation of a completed action (polite announce, 3s by default). */
+  success(message: string, options?: NotificationOptions): void {
+    this.show(message, 'success', options);
   }
 
-  /** Neutral status update (polite announce, 3s). */
-  info(message: string): void {
-    this.show(message, 'info');
+  /** Neutral status update (polite announce, 3s by default). */
+  info(message: string, options?: NotificationOptions): void {
+    this.show(message, 'info', options);
   }
 
-  /** A failure the user should read (assertive announce, 5s). */
-  error(message: string): void {
-    this.show(message, 'error');
+  /** A failure the user should read (assertive announce, 5s by default). */
+  error(message: string, options?: NotificationOptions): void {
+    this.show(message, 'error', options);
   }
 
-  private show(message: string, tone: NotificationTone): void {
+  private show(message: string, tone: NotificationTone, options?: NotificationOptions): void {
     if (!message) return;
-    const isError = tone === 'error';
     this.snackBar.open(message, this.translation.t('common.close'), {
-      duration: isError ? 5000 : 3000,
+      duration: options?.durationMs ?? NOTIFICATION_DURATION_MS[tone],
       panelClass: `snackbar-${tone}`,
     });
-    this.announcer.announce(message, isError ? 'assertive' : 'polite');
+    this.announcer.announce(message, tone === 'error' ? 'assertive' : 'polite');
   }
 }

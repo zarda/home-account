@@ -56,6 +56,21 @@ describe('NotificationService', () => {
     expect(announcer.announce).toHaveBeenCalledWith('Heads up', 'polite');
   });
 
+  it('keeps the snackbar up for the duration a caller asks for, in every tone', () => {
+    service.success('Saved. 2 photos were skipped', { durationMs: 5000 });
+    service.info('Saved. 1 photo failed', { durationMs: 7000 });
+    service.error('1 of 3 failed. 1 set aside', { durationMs: 9000 });
+
+    expect(snackBar.open.calls.allArgs().map(([, , config]) => config?.duration)).toEqual([5000, 7000, 9000]);
+  });
+
+  it('falls back to the tone\'s own duration when a caller names none', () => {
+    service.success('Saved', {});
+    service.error('Failed', {});
+
+    expect(snackBar.open.calls.allArgs().map(([, , config]) => config?.duration)).toEqual([3000, 5000]);
+  });
+
   it('does nothing for an empty message', () => {
     service.success('');
     expect(snackBar.open).not.toHaveBeenCalled();
