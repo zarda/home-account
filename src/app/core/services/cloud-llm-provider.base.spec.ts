@@ -108,6 +108,7 @@ describe('CloudLLMProviderBase', () => {
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense' }),
     createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
     createCategory({ id: 'other_expense', name: 'Other', type: 'expense' }),
+    createCategory({ id: 'employment_salary', name: 'Salary', type: 'income' }),
   ];
 
   beforeEach(() => {
@@ -215,7 +216,12 @@ describe('CloudLLMProviderBase', () => {
   });
 
   describe('categorizeTransactions chunking', () => {
-    const row = (i: number) => ({ description: `Row ${i}`, amount: -5, date: new Date() });
+    const row = (i: number, type?: 'income' | 'expense') => ({
+      description: `Row ${i}`,
+      amount: -5,
+      date: new Date(),
+      ...(type ? { type } : {}),
+    });
     const answer = (
       entries: { index: number; categoryId: string; confidence: number }[]
     ): ProviderResponse => ({ text: JSON.stringify(entries), truncated: false });
@@ -280,6 +286,58 @@ describe('CloudLLMProviderBase', () => {
       expect(firstChunk.every(r => r.confidence === 0.1)).toBeTrue();
       expect(result[CATEGORIZE_CHUNK_SIZE].suggestedCategoryId).toBe('transport');
       expect(result[CATEGORIZE_CHUNK_SIZE].confidence).toBe(0.7);
+    });
+
+    /**
+     * The catalog rendered into the prompt is one shared thing per request,
+     * built before the chunk loop — so it can only be narrowed when every row
+     * in the batch agrees on a direction. One row of the other type, or one
+     * that never learned its type at all, has to see everything.
+     */
+    describe('the catalog offered', () => {
+      it('offers only expense categories for an all-expense batch', async () => {
+        const rows = [row(0, 'expense'), row(1, 'expense')];
+        provider.response = answer(
+          rows.map((_, i) => ({ index: i, categoryId: 'food_groceries', confidence: 0.9 }))
+        );
+
+        await provider.categorizeTransactions(rows);
+
+        expect(provider.renderedSent[0].user).toContain('food_groceries');
+        expect(provider.renderedSent[0].user).not.toContain('employment_salary');
+      });
+
+      it('offers every category for a mixed batch', async () => {
+        const rows = [row(0, 'expense'), row(1, 'income')];
+        provider.response = answer(
+          rows.map((_, i) => ({ index: i, categoryId: 'food_groceries', confidence: 0.9 }))
+        );
+
+        await provider.categorizeTransactions(rows);
+
+        expect(provider.renderedSent[0].user).toContain('employment_salary');
+      });
+
+      it('offers every category for an untyped batch', async () => {
+        const rows = [row(0), row(1)];
+        provider.response = answer(
+          rows.map((_, i) => ({ index: i, categoryId: 'food_groceries', confidence: 0.9 }))
+        );
+
+        await provider.categorizeTransactions(rows);
+
+        expect(provider.renderedSent[0].user).toContain('employment_salary');
+      });
+    });
+
+    it("a failed chunk's income row falls back to other_income", async () => {
+      spyOn(console, 'error');
+      provider.failWith = new Error('categorization exploded');
+
+      const result = await provider.categorizeTransactions([row(0, 'income')]);
+
+      expect(result[0].suggestedCategoryId).toBe('other_income');
+      expect(result[0].confidence).toBe(0.1);
     });
   });
 

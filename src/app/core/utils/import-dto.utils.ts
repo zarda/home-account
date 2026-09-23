@@ -1,5 +1,5 @@
 import { BudgetPeriod, CreateTransactionDTO, ImagePositionMetadata, roundToMinorUnit, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
-import { FALLBACK_CATEGORY_ID } from './categorization.utils';
+import { fallbackCategoryFor } from './categorization.utils';
 import { parseDateInput } from './transaction-date.utils';
 
 /**
@@ -200,7 +200,10 @@ export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: strin
     type: row.type ?? (row.amount >= 0 ? 'income' : 'expense'),
     amount: importAmount(row.amount, currency),
     currency,
-    categoryId: row.categoryId || FALLBACK_CATEGORY_ID,
+    // The row's own declared direction, never the sign-derived guess above:
+    // a bare amount says nothing trustworthy about which catch-all it belongs
+    // under, so an untyped row keeps landing on the one this app has always used.
+    categoryId: row.categoryId || fallbackCategoryFor(row.type),
     description: row.description || 'Imported transaction',
     date: row.date,
     ...(row.note ? { note: row.note } : {}),

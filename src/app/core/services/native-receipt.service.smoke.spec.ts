@@ -65,6 +65,10 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
   // resolving an answer onto it, would resurrect a category the user removed.
   const DELETED_ID = 'food_restaurants';
   const DELETED_NAME = 'Restaurants';
+  // An income default, beside the expense-only custom and deleted ones: every
+  // scan this pipeline reads is a purchase, never a deposit.
+  const INCOME_ID = 'employment_salary';
+  const INCOME_NAME = 'Salary';
 
   let app: FirebaseApp;
   let auth: Auth;
@@ -116,6 +120,10 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     await setDoc(categoryDoc(DELETED_ID), {
       id: DELETED_ID, userId: uid, name: 'categoryNames.restaurants', icon: 'restaurant',
       color: '#e64a19', type: 'expense', order: 12, isActive: false, isDefault: true,
+    });
+    await setDoc(categoryDoc(INCOME_ID), {
+      id: INCOME_ID, userId: uid, name: 'categoryNames.salary', icon: 'payments',
+      color: '#4caf50', type: 'income', order: 13, isActive: true, isDefault: true,
     });
   });
 
@@ -215,6 +223,19 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     // builder serves only public/, so no locale bundle is loadable here.
     expect(sent.some(line => line.startsWith(`${CUSTOM_ID}:`))).toBeTrue();
     expect(sent.filter(line => line.startsWith(`${DELETED_ID}:`))).toEqual([]);
+  });
+
+  it('sends no income category over the live Firestore merge', async () => {
+    await scanAnswering(CUSTOM_NAME);
+
+    const sent = appleMock.parseReceiptText.calls.mostRecent().args[0].categories ?? [];
+    expect(sent.filter(line => line.startsWith(`${INCOME_ID}:`))).toEqual([]);
+  });
+
+  it('does not resolve a scan onto an income category read off the live merge', async () => {
+    const transaction = await scanAnswering(INCOME_NAME);
+
+    expect(transaction.suggestedCategoryId).toBeUndefined();
   });
 
   it('grades an answer the live catalog cannot place for review, not by how well Vision read', async () => {

@@ -27,7 +27,8 @@ import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import {
   applyCategorizations,
   buildCategoryPromptCatalog,
-  FALLBACK_CATEGORY_ID,
+  CategoryRowType,
+  fallbackCategoryFor,
   mapCategoryNameToId,
   matchCategoryName,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
@@ -73,6 +74,18 @@ import {
  * exactly what a whole-batch request did to a long CSV import.
  */
 export const CATEGORIZE_CHUNK_SIZE = 25;
+
+/**
+ * The one direction a whole categorization batch can be offered a narrowed
+ * catalog for. A single request builds one shared catalog for every row in
+ * it (chunking only splits how many rows are asked about at once), so
+ * narrowing it is only sound when every row agrees on a direction — one
+ * untyped row, or a genuine mix, has to see everything.
+ */
+function batchRowType(transactions: RawTransaction[]): CategoryRowType | undefined {
+  const [first, ...rest] = transactions;
+  return first?.type && rest.every(t => t.type === first.type) ? first.type : undefined;
+}
 
 /** One model answer, as much of it as the shared operations need. */
 export interface ProviderResponse {
@@ -465,8 +478,16 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     this.assertTextTransport();
 
     const categories = this.categoryService.categories();
-    const categoryCatalog = buildCategoryPromptCatalog(categories, name =>
-      this.translateCategoryName(name)
+    // Every row typed and pointing the same way is the one case a single
+    // shared catalog can safely narrow; anything else — one row untyped, or
+    // rows pointing different ways — is offered every active category, and
+    // applyCategorizations then files each typed row's answer under its own
+    // side.
+    const batchType = batchRowType(transactions);
+    const categoryCatalog = buildCategoryPromptCatalog(
+      categories,
+      name => this.translateCategoryName(name),
+      batchType
     );
 
     // One request per chunk, sequentially: applyCategorizations matches
@@ -493,13 +514,14 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
 
           return applyCategorizations(chunk, categorizations, categories);
         },
-        // Every row of the failed chunk lands on the fallback category at a
+        // Every row of the failed chunk lands on its own fallback category —
+        // an income row on other_income, same as a resolved one would — at a
         // confidence low enough that the review step flags all of them; the
         // other chunks keep their real answers.
         () =>
           chunk.map(t => ({
             ...t,
-            suggestedCategoryId: FALLBACK_CATEGORY_ID,
+            suggestedCategoryId: fallbackCategoryFor(t.type),
             confidence: UNCATEGORIZED_CATEGORY_CONFIDENCE,
           }))
       );

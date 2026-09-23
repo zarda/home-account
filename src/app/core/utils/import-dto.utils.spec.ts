@@ -6,7 +6,9 @@ describe('toCreateTransactionDTO', () => {
   const date = new Date(2026, 5, 1);
 
   it('builds a bare row into exactly the six required keys', () => {
-    const dto = toCreateTransactionDTO({ amount: 5, date }, 'USD');
+    // Declared, not sign-derived: the fallback below reads this field alone,
+    // so an income row's own type is what has to be present to prove it.
+    const dto = toCreateTransactionDTO({ type: 'income', amount: 5, date }, 'USD');
 
     // The exact key set is the contract: an undefined-valued optional key
     // here would ride through addTransaction's spreads and into Firestore,
@@ -17,7 +19,7 @@ describe('toCreateTransactionDTO', () => {
     expect(dto.type).toBe('income');
     expect(dto.amount).toBe(5);
     expect(dto.currency).toBe('USD');
-    expect(dto.categoryId).toBe('other_expense');
+    expect(dto.categoryId).toBe('other_income');
     expect(dto.description).toBe('Imported transaction');
     expect(dto.date).toBe(date);
   });

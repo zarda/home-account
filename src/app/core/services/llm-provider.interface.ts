@@ -11,6 +11,7 @@ import {
   Transaction,
   TransactionLocation,
 } from '../../models';
+import type { CategoryRowType } from '../utils/categorization.utils';
 
 /**
  * What the providers hand back, declared where the contract that uses them
@@ -52,6 +53,14 @@ export interface RawTransaction {
   description: string;
   amount: number;
   date: Date;
+  /**
+   * Present only when the caller already knows the row's direction — the
+   * categorization ladder's two typed callers. Absent for every other caller,
+   * which keeps its categorization behavior exactly as before: every
+   * type-based filter and check in categorization.utils runs only when this
+   * is set.
+   */
+  type?: CategoryRowType;
 }
 
 export interface CategorizedTransaction extends RawTransaction {

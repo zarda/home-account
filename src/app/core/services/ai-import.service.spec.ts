@@ -2047,7 +2047,9 @@ describe('AIImportService', () => {
       const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
 
       expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
-      expect(result.transactions.every(t => t.suggestedCategoryId === 'other_expense')).toBeTrue();
+      // Coffee is an expense, Refund is income: each row's own floor, not one
+      // shared catch-all.
+      expect(result.transactions.map(t => t.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
       expect(result.transactions.every(t => t.categoryConfidence === 0.1)).toBeTrue();
       expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
       expect(result.confidence).toBeLessThan(0.5);

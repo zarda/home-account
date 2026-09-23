@@ -20,10 +20,14 @@ describe('NativeReceiptService', () => {
   // A display-name fixture here is a catalog the app never produces, and it
   // is how the raw-key payload stayed green.
   const categories = [
-    { id: 'food', name: 'categoryNames.food', isActive: true },
-    { id: 'food_groceries', name: 'categoryNames.groceries', parentId: 'food', isActive: true },
-    { id: 'food_coffeeAndDrinks', name: 'categoryNames.coffeeAndDrinks', parentId: 'food', isActive: true },
-    { id: 'food_restaurants', name: 'categoryNames.restaurants', parentId: 'food', isActive: false },
+    { id: 'food', name: 'categoryNames.food', type: 'expense', isActive: true },
+    { id: 'food_groceries', name: 'categoryNames.groceries', type: 'expense', parentId: 'food', isActive: true },
+    { id: 'food_coffeeAndDrinks', name: 'categoryNames.coffeeAndDrinks', type: 'expense', parentId: 'food', isActive: true },
+    { id: 'food_restaurants', name: 'categoryNames.restaurants', type: 'expense', parentId: 'food', isActive: false },
+    // Every scan this service reads is a purchase, never a deposit — this
+    // entry exists only to prove the model is never offered it, and that an
+    // answer naming it does not resolve.
+    { id: 'employment_salary', name: 'categoryNames.salary', type: 'income', isActive: true },
   ] as Category[];
 
   // The active locale's bundle, as TranslationService would serve it. The
@@ -34,6 +38,7 @@ describe('NativeReceiptService', () => {
     'categoryNames.groceries': 'Groceries',
     'categoryNames.coffeeAndDrinks': 'Coffee & Drinks',
     'categoryNames.restaurants': 'Restaurants',
+    'categoryNames.salary': 'Salary',
   };
 
   const ocrResult: VisionOCRResult = {
@@ -258,6 +263,28 @@ describe('NativeReceiptService', () => {
       expect(sent.filter(line => line.includes('categoryNames.'))).toEqual([]);
       // The user deleted Restaurants; offering it would resurrect the category.
       expect(sent.filter(line => line.includes('Restaurants'))).toEqual([]);
+    });
+
+    it('sends the on-device model no income category', async () => {
+      // Every scan this pipeline reads is a purchase, never a deposit.
+      await service.processImage(imageFile());
+
+      const sent = appleMock.parseReceiptText.calls.mostRecent().args[0].categories!;
+      expect(sent.filter(line => line.startsWith('employment_salary:'))).toEqual([]);
+    });
+
+    it("does not resolve the model's answer to an income category", async () => {
+      appleMock.parseReceiptText.and.resolveTo({
+        merchant: 'Shop', date: '2026-01-15', amount: 10, currency: 'USD',
+        category: 'Salary', details: '',
+      });
+
+      const transaction = (await service.processImage(imageFile())).transactions[0];
+
+      // The catalog handed to the resolver excluded this answer entirely, so
+      // it comes back unresolved rather than filed under a category the model
+      // was never offered.
+      expect(transaction.suggestedCategoryId).toBeUndefined();
     });
 
     /**

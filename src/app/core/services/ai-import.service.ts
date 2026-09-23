@@ -34,6 +34,7 @@ import {
 import { nextImportRowId } from '../utils/import-row-id.utils';
 import { normalizeTags } from '../utils/tag.utils';
 import {
+  fallbackCategoryFor,
   FALLBACK_CATEGORY_ID,
   gradeCategorySuggestion,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
@@ -660,7 +661,7 @@ export class AIImportService {
 
     const categorized: CategorizedTransaction[] = rawTransactions.map((t) => ({
       ...t,
-      suggestedCategoryId: FALLBACK_CATEGORY_ID,
+      suggestedCategoryId: fallbackCategoryFor(t.type),
       confidence: UNCATEGORIZED_CATEGORY_CONFIDENCE
     }));
 
@@ -715,7 +716,8 @@ export class AIImportService {
     const rawTransactions: RawTransaction[] = transactions.map((t, i) => ({
       description: t.description,
       amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-      date: resolutions[i].date
+      date: resolutions[i].date,
+      type: t.type
     }));
 
     const categorizedByAI = await this.categorizeWithLadder(rawTransactions, history);
@@ -1099,7 +1101,8 @@ export class AIImportService {
       const rawRows: RawTransaction[] = extractedTransactions.map(t => ({
         description: t.description,
         amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-        date: parseDateInput(t.date) ?? new Date()
+        date: parseDateInput(t.date) ?? new Date(),
+        type: t.type
       }));
       const laddered = await this.categorizeWithLadder(rawRows, history);
       laddered.forEach((row, index) => {
@@ -1221,9 +1224,11 @@ export class AIImportService {
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
     // Convert ExtractedTransaction to CategorizedImportTransaction
-    // If transaction already has a category from extraction, use it; otherwise suggest 'other_expense'
+    // If transaction already has a category from extraction, use it; otherwise
+    // its own type's catch-all — every row here carries a real type, never the
+    // sign-derived guess toCreateTransactionDTO falls back to.
     return transactions.map(t => {
-      const suggestedCategoryId = t.category || 'other_expense';
+      const suggestedCategoryId = t.category || fallbackCategoryFor(t.type);
       const resolved = resolveImportDate(t.date, t.dateConfidence);
       const money = resolveImportCurrency(t.currency, baseCurrency);
 

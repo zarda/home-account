@@ -11,6 +11,28 @@ import { categoryNames as jaCategoryNames } from '../../../assets/i18n/ja.json';
 export const FALLBACK_CATEGORY_ID = 'other_expense';
 
 /**
+ * A row's direction, when whatever built it already knows one. `'both'` is
+ * deliberately excluded: it describes a catalog entry that serves either
+ * direction, never the row itself, which is always one or the other once its
+ * type is known at all.
+ */
+export type CategoryRowType = 'income' | 'expense';
+
+/**
+ * The catch-all a row with no resolvable category lands on, for review.
+ * `undefined` — a caller that never learned the row's direction — keeps
+ * today's single catch-all so every untyped door's behavior is unchanged.
+ */
+export function fallbackCategoryFor(type: CategoryRowType | undefined): string {
+  return type === 'income' ? 'other_income' : FALLBACK_CATEGORY_ID;
+}
+
+/** Whether a catalog entry can be offered to, or accepted from, a row of the given direction. */
+export function categoryFitsType(category: Category, type: CategoryRowType): boolean {
+  return category.type === 'both' || category.type === type;
+}
+
+/**
  * Tried and failed: something was asked to categorize the row and the catalog
  * did not understand the answer. Under the 0.5 review band, so the chip asks
  * for a second look.
@@ -80,14 +102,23 @@ export function resolveCategoryId(
  * Render the category catalog for a categorization prompt. Active parents
  * appear as `id: Name`, their active children as `id: Parent / Child` so the
  * model can pick the most specific entry without extra prose.
+ *
+ * `type`, when given, keeps a row from being offered the other direction's
+ * categories at all — a model cannot answer wrong from a menu that was never
+ * shown. Filtering runs on the parent alone: a child is kept only because its
+ * parent survived, never on its own `type`, so an excluded parent takes its
+ * whole branch with it. Omitted, every active entry renders exactly as before
+ * for the callers that do not yet know a row's direction.
  */
 export function buildCategoryPromptCatalog(
   categories: Category[],
-  translate: (name: string) => string
+  translate: (name: string) => string,
+  type?: CategoryRowType
 ): string {
   const active = categories.filter(c => c.isActive);
+  const parents = active.filter(c => !c.parentId && (type === undefined || categoryFitsType(c, type)));
   const lines: string[] = [];
-  for (const parent of active.filter(c => !c.parentId)) {
+  for (const parent of parents) {
     lines.push(`${parent.id}: ${translate(parent.name)}`);
     for (const child of active.filter(c => c.parentId === parent.id)) {
       lines.push(`${child.id}: ${translate(parent.name)} / ${translate(child.name)}`);
@@ -109,6 +140,9 @@ interface CategorizationEntry {
  * as "needs review"):
  * - no entry for an index -> 0.3
  * - entry with an ID not in the active catalog -> fallback category at 0.3
+ * - a typed row whose ID resolves to the other direction's category -> that
+ *   row's own fallback at 0.3 — the catalog it was offered excluded this
+ *   answer, so an ID landing there anyway is not a real resolution
  * - valid ID with a numeric confidence -> that value clamped to [0, 1]
  * - valid ID without a usable confidence -> 0.8
  */
@@ -126,16 +160,18 @@ export function applyCategorizations(
     if (!match) {
       return {
         ...t,
-        suggestedCategoryId: FALLBACK_CATEGORY_ID,
+        suggestedCategoryId: fallbackCategoryFor(t.type),
         confidence: UNRESOLVED_CATEGORY_CONFIDENCE,
       };
     }
-    const categoryId = resolveCategoryId(match.categoryId, categories);
+    const categoryId = resolveCategoryId(match.categoryId, categories, fallbackCategoryFor(t.type));
     const isValidId = categoryId === match.categoryId;
+    const resolvedCategory = isValidId ? categories.find(c => c.id === categoryId) : undefined;
+    const fitsType = !t.type || !resolvedCategory || categoryFitsType(resolvedCategory, t.type);
     return {
       ...t,
-      suggestedCategoryId: categoryId,
-      confidence: isValidId
+      suggestedCategoryId: fitsType ? categoryId : fallbackCategoryFor(t.type),
+      confidence: isValidId && fitsType
         ? normalizeConfidence(match.confidence, 0.8)
         : UNRESOLVED_CATEGORY_CONFIDENCE,
     };

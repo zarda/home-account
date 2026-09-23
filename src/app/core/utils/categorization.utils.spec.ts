@@ -6,6 +6,7 @@ import {
   gradeCategorySuggestion,
   mapCategoryNameToId,
   matchCategoryName,
+  fallbackCategoryFor,
   FALLBACK_CATEGORY_ID,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
@@ -22,6 +23,7 @@ describe('categorization.utils', () => {
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense', parentId: 'food' }),
     createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
     createCategory({ id: 'dormant', name: 'Dormant', type: 'expense', isActive: false }),
+    createCategory({ id: 'employment_salary', name: 'Salary', type: 'income' }),
   ];
 
   // Default catalog entries as CategoryService writes them: the name is the
@@ -46,12 +48,13 @@ describe('categorization.utils', () => {
    */
   const defaultCatalog = (): Category[] =>
     [...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].flatMap(group => [
-      createCategory({ id: group.id, name: group.nameKey }),
+      createCategory({ id: group.id, name: group.nameKey, type: group.type }),
       ...group.categories.map(item =>
         createCategory({
           id: `${group.id}_${item.nameKey.split('.').pop()}`,
           name: item.nameKey,
           parentId: group.id,
+          type: group.type,
         })
       ),
     ]);
@@ -129,6 +132,53 @@ describe('categorization.utils', () => {
       );
       expect(catalog).toBe('food: Translated');
     });
+
+    /**
+     * A row's own direction, when the caller knows it, narrows the catalog it
+     * is offered: a model cannot answer wrong from a menu that never showed
+     * the other side. `defaultCatalog()` plus one explicit both-type entry —
+     * the shipped defaults carry none — is the realistic shape this actually
+     * runs over, expense and income groups alike.
+     */
+    describe('a row type is given', () => {
+      const wholeCatalog = (): Category[] => [
+        ...defaultCatalog(),
+        createCategory({ id: 'other', name: 'categoryNames.other', type: 'both' }),
+      ];
+
+      it('renders only expense and both-type categories for an expense row', () => {
+        const lines = buildCategoryPromptCatalog(wholeCatalog(), identity, 'expense').split('\n');
+
+        expect(lines).toContain('food: categoryNames.food');
+        expect(lines).toContain('other: categoryNames.other');
+        expect(lines.some(l => l.startsWith('employment'))).toBeFalse();
+        expect(lines.some(l => l.startsWith('other_income'))).toBeFalse();
+      });
+
+      it('drops a child whose parent the type excludes', () => {
+        // The child's own type would fit; only the parent's does not. Proves
+        // the filter runs on the parent alone, the way a real default's child
+        // never can — every shipped child shares its parent's type.
+        const mismatched: Category[] = [
+          createCategory({ id: 'employment', name: 'Employment', type: 'income' }),
+          createCategory({
+            id: 'employment_oddChild', name: 'Odd', type: 'expense', parentId: 'employment',
+          }),
+        ];
+
+        expect(buildCategoryPromptCatalog(mismatched, identity, 'expense')).toBe('');
+      });
+
+      it('renders every active category when no type is given', () => {
+        // Today's behaviour, pinned: an untyped caller must still see the
+        // whole catalog, income and expense alike.
+        const lines = buildCategoryPromptCatalog(wholeCatalog(), identity).split('\n');
+
+        expect(lines).toContain('food: categoryNames.food');
+        expect(lines).toContain('employment_salary: categoryNames.employment / categoryNames.salary');
+        expect(lines).toContain('other: categoryNames.other');
+      });
+    });
   });
 
   describe('applyCategorizations', () => {
@@ -195,6 +245,55 @@ describe('categorization.utils', () => {
       expect(result[0].suggestedCategoryId).toBe(FALLBACK_CATEGORY_ID);
       expect(result[1].suggestedCategoryId).toBe('transport');
       expect(result[1].confidence).toBe(0.7);
+    });
+
+    /**
+     * A typed row's answer has to be its own type's category — otherwise the
+     * chip would show a salary line filed as an expense category, or the
+     * reverse. An untyped row (the cases above) is never checked at all.
+     */
+    describe('a row carries its own type', () => {
+      it('refuses an answer whose category is the other type', () => {
+        const expenseRow: RawTransaction[] = [
+          { description: 'Salary', amount: 3000, date: new Date(), type: 'expense' },
+        ];
+        const expenseResult = applyCategorizations(
+          expenseRow,
+          [{ index: 0, categoryId: 'employment_salary', confidence: 0.9 }],
+          categories
+        );
+        expect(expenseResult[0].suggestedCategoryId).toBe(FALLBACK_CATEGORY_ID);
+        expect(expenseResult[0].confidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+
+        const incomeRow: RawTransaction[] = [
+          { description: 'Refund', amount: 20, date: new Date(), type: 'income' },
+        ];
+        const incomeResult = applyCategorizations(
+          incomeRow,
+          [{ index: 0, categoryId: 'food', confidence: 0.9 }],
+          categories
+        );
+        expect(incomeResult[0].suggestedCategoryId).toBe('other_income');
+        expect(incomeResult[0].confidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      });
+
+      it('an unanswered income row falls back to other_income', () => {
+        const incomeRow: RawTransaction[] = [
+          { description: 'Refund', amount: 20, date: new Date(), type: 'income' },
+        ];
+        const result = applyCategorizations(incomeRow, [], categories);
+
+        expect(result[0].suggestedCategoryId).toBe('other_income');
+        expect(result[0].confidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      });
+    });
+  });
+
+  describe('fallbackCategoryFor', () => {
+    it('answers each type\'s own catch-all, and the expense one when the type is unknown', () => {
+      expect(fallbackCategoryFor('expense')).toBe(FALLBACK_CATEGORY_ID);
+      expect(fallbackCategoryFor('income')).toBe('other_income');
+      expect(fallbackCategoryFor(undefined)).toBe(FALLBACK_CATEGORY_ID);
     });
   });
 

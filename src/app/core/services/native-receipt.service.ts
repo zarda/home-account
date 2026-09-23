@@ -5,7 +5,7 @@ import { CategoryService } from './category.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { parseReceiptOcrText } from './receipt-text-parser';
-import { buildCategoryPromptCatalog, matchCategoryName } from '../utils/categorization.utils';
+import { buildCategoryPromptCatalog, categoryFitsType, matchCategoryName } from '../utils/categorization.utils';
 import {
   printedLocationSlot,
   readCountryCode,
@@ -112,8 +112,11 @@ export class NativeReceiptService {
     // The same two chokepoints as the cloud providers (ADR 0046): the stored
     // name of every default category is an i18n key, so the model's vocabulary
     // is the shared catalog rendering — active entries only, translated
-    // `id: Name` lines — and never the keys themselves.
-    const catalog = buildCategoryPromptCatalog(categories, translate);
+    // `id: Name` lines — and never the keys themselves. Every scan this
+    // pipeline reads is a purchase, never a deposit, so the catalog and the
+    // resolver both stay on the expense side of the account.
+    const catalog = buildCategoryPromptCatalog(categories, translate, 'expense');
+    const expenseCategories = categories.filter(c => categoryFitsType(c, 'expense'));
     const extraction = await this.appleIntelligence.parseReceiptText({
       text: ocrResult.text,
       // An empty catalog splits to [''], which the plugin would render as a
@@ -123,9 +126,11 @@ export class NativeReceiptService {
 
     // Ids resolve first, then display names in every shipped locale, then
     // keywords; `matched` keeps an answer we failed to understand
-    // distinguishable from a deliberate "Other".
+    // distinguishable from a deliberate "Other". Resolving against the same
+    // expense-only list the model was offered keeps an income category it
+    // knows from elsewhere from resolving here at all.
     const match = extraction.category
-      ? matchCategoryName(extraction.category, categories, translate)
+      ? matchCategoryName(extraction.category, expenseCategories, translate)
       : undefined;
     const country = readCountryCode(extraction.country);
     // The model answers `YYYY-MM-DD`, which the Date constructor reads as UTC
