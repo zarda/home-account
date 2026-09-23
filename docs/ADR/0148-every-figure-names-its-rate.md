@@ -16,15 +16,16 @@ Every transaction carries the base-currency figure it was written with, and
 `CurrencyService.amountInBase` reads it —
 [money-snapshots.md](../money-snapshots.md) states the rule, and 0093 applied
 it to the category summary export on the grounds that a figure over the past
-should not move when the market does. Five figures over past transactions did
+should not move when the market does. Six figures over past transactions did
 not follow it, and the export dialog showed the cost: its report PDF
 converted every row at today's rate while the summary PDF beside it read the
 snapshots, so the two files could print different totals for one period —
 0093's first gap. The reports page's category, country and recurring
 breakdowns converted live too, each citing another as its reason — the
 country card's was [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md)'s
-gap — and so did the period total the AI summary card hands its advice
-request.
+gap — and so did both halves of the AI summary: the period total the card
+hands its advice request, and the totals the spending-summary prompt itself
+quotes.
 
 Three figures cannot follow the rule, because they are over money that has
 not moved yet: the Upcoming card's *Scheduled net*, the weekly recap's bills
@@ -65,14 +66,24 @@ returns.**
 
 ### The past reads its snapshot
 
-Five sites move from `convert(t.amount, t.currency, base)` to
+Six sites move from `convert(t.amount, t.currency, base)` to
 `amountInBase(t, base)`:
 
 - the export dialog's report totals, so the report PDF and the summary PDF
   total one period the same way;
 - the reports page's category, country and recurring breakdowns;
 - the AI summary card's period total, the figure its advice request is built
-  on.
+  on;
+- the spending-summary prompt's income, expenses, category breakdown and
+  largest expenses, which `CloudLLMProviderBase.generateSpendingSummary`
+  builds for all three providers — so the summary's narrative and the
+  advice beside it quote the same totals for one period. The same prompt's
+  budget limits and goal amounts keep `convert`: they are a budget's and a
+  goal's own figures, not written transactions, and carry no snapshot to
+  read — the goal half is
+  [0021](0021-one-goal-model-carries-savings-and-projects.md)'s gap,
+  unchanged. A budget's spent figure in that prompt is summed from the
+  category totals, so it reads the snapshots with them.
 
 `amountInBase` prefers the stored figure and converts live only where the
 stored one cannot be trusted — no snapshot, one stamped against another base
@@ -191,9 +202,9 @@ unchanged; the constants carry no stamp.
 
 ## Consequences
 
-- **Both PDFs, the reports page, the dashboard and the AI summary's period
-  total agree for one period**, and a period whose rates have moved since no
-  longer moves with them.
+- **Both PDFs, the reports page, the dashboard and the AI summary — its
+  period total and the totals its prompt quotes — agree for one period**, and
+  a period whose rates have moved since no longer moves with them.
 - **The summary's old cache entries are orphans.** A key of the old shape is
   never read again, since the cache reads exact keys only, and it goes when the
   session does.
@@ -231,6 +242,11 @@ unchanged; the constants carry no stamp.
   which was harmless while every stub read `convert` and wrong the moment one
   read `amountInBase`. They now derive the snapshot from the amount, the way
   the shared test factory already does.
+- **The AI summary totals its period twice.** The card sums the period for
+  its advice request, and `generateSpendingSummary` sums the same
+  transactions again for its prompt; moving the first alone would have left
+  the narrative quoting today's-rate totals beside advice built on the
+  snapshots.
 - **`PwaService` fetches on `online` too.** Its own listener probes
   reachability, so a spec counting `fetch` calls counts both; the retry specs
   count calls to the rates endpoint only, or, where the count must be one
@@ -241,12 +257,6 @@ unchanged; the constants carry no stamp.
 
 ## Known gaps
 
-- **The spending-summary prompt itself still converts at today's rate.**
-  `CloudLLMProviderBase.generateSpendingSummary` sums the period's income,
-  expenses, category breakdown and largest expenses through `convert`, so the
-  summary's narrative and the advice beside it can quote different totals for
-  one period on an account with foreign rows whose rates have moved. The
-  prompt's grounding, built by `RagContextService`, already reads the snapshot.
 - **A code no table knows still converts at 1:1.** The fill-in covers the
   nineteen curated codes. A code outside both the accepted table and the
   constants still reaches `getExchangeRate`'s `?? 1`, unchanged.
@@ -266,7 +276,7 @@ unchanged; the constants carry no stamp.
 - **`formatTime` has two hand-rolled siblings.** The import history and the
   security activity list still call `toLocaleTimeString` themselves, against
   two different locale sources — #438's second part.
-- **The reason for reading the snapshot is restated at each of the five
+- **The reason for reading the snapshot is restated at each of the six
   sites** rather than stated once.
 - **No spec measures the three captions at phone width.** The rules that keep
   them from overflowing were read, not measured.

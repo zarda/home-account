@@ -424,8 +424,12 @@ Three behaviours are deliberate and worth knowing:
   scheduled occurrence has not been written, so it carries no base-currency
   snapshot to prefer, and a converted figure beside an amount the user typed
   reads as a wrong number. The net has to add unlike currencies up, so it
-  converts at today's rate — the one figure on the dashboard that is not a
-  write-time snapshot.
+  converts at today's rate and says so: **At today's rate**
+  (`common.atTodaysRate`) stands beside it. It is one of three figures over
+  money not yet moved that cannot read a snapshot — the weekly recap's bills
+  due and the forecast's projected net are the others, and each carries the
+  same caption ([money-snapshots.md](money-snapshots.md),
+  [ADR 0148](ADR/0148-every-figure-names-its-rate.md)).
 
 [ADR 0091](ADR/0091-the-upcoming-card-reads-the-live-schedule-not-the-ledger.md)
 has the rest, including why the subscription lives outside `loadData()`.

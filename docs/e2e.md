@@ -24,8 +24,8 @@ the account's own key.
 
 That is the point of it — nothing else in the repo exercises the wire — and it
 is the reason for every constraint below. Read the whole thing as one rule:
-**the run is a reader with exactly four permitted writes, and it puts all
-four back.**
+**the run is a reader with eight permitted writes, each named in *What a run
+may touch*, and it puts every one of them back.**
 
 The seeded alternative is [`docs/ui-audit/tools/`](ui-audit/tools/), which
 renders a demo account against the emulators and is the right instrument for
@@ -87,7 +87,14 @@ start date*, and the dashboard's own schedule reader, with `dash` bound to
 `ng.getComponent(document.querySelector('app-dashboard'))`:
 `typeof dash.recurringService.getUpcomingSchedule` is `'function'` on this
 branch and `'undefined'` where the dashboard still read
-`getNextOccurrences`. For another branch it is whatever that branch added. A
+`getNextOccurrences`. For the import grades, the review step's voice and the
+frozen accessibility findings it is the served catalog and a transaction row:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).import.stepSealed`
+is defined on this branch and `undefined` on `ba5950e`, and on
+`/transactions` below 768px, where the list renders rows rather than its
+table, `document.querySelector('app-transaction-row button.row-activate') !== null`
+is `true`, where `ba5950e`'s row is a `role="button"` wrapper with no button
+of its own. For another branch it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
 
@@ -136,9 +143,9 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full
 window, and a pane behaves differently enough to cost a run before it is
-understood. None of these is a property of the app bar the ninth, which
-is the app's own timing; eight of the eleven have produced a false failure,
-the ninth cost a run a second provider call, the tenth stops a run
+understood. None of these is a property of the app bar the tenth, which
+is the app's own timing; nine of the twelve have produced a false failure,
+the tenth cost a run a second provider call, the eleventh stops a run
 before it starts, and the last is a door nothing in a pane opens — its
 only control on the page is a switch with a write behind it.
 
@@ -179,6 +186,13 @@ only control on the page is a switch with a write behind it.
   390px emulation also raises the root font to 20.8px, so a label reads
   18.2px where a phone reads 14 — the fit is what is pinned, never the
   number.
+- **A hidden pane holds a CSS transition at its first frame.** A transition
+  advances with the browser's frames, so an element that transitions its
+  colour keeps reporting the colour it started from: after a theme switch the
+  bottom navigation's active pill, whose background eases over 0.15s, read
+  its dark fill behind the light glyph — 1.31:1 — where the settled pill reads
+  6.15:1. Finish what is running before reading a computed colour,
+  `document.getAnimations().forEach(a => a.finish())`, or front the pane.
 - **A desktop-only door needs a pane genuinely wide enough for the table.**
   The list swaps to the table at `min-width: 768px`, so below that the row's
   note icon does not exist and journey 2 silently becomes journey 4.
@@ -256,14 +270,15 @@ only the difference counts.
 
 ## What a run may touch
 
-Six writes are authorised — five on the account, one on the device only.
-Each is put back before the run ends, and the restore is *confirmed on
-screen*, not assumed. The other eight rows write nothing at all and are
-listed with them anyway: four still cost the account a real provider call,
-two not even that, one leaves a notification standing in the operating system
-rather than anything on the account, and one leaves a file on disk — what an
-import journey, a raised notification or an export leaves behind is worth
-stating rather than leaving to be inferred.
+Eight writes are authorised — seven on the account, one on the device only.
+Each is put back before the run ends, and the restore is *confirmed* — on
+screen, or by a server read where nothing on screen shows it — not assumed.
+The other nine rows write
+nothing at all and are listed with them anyway: four still cost the account a
+real provider call, two not even that, one leaves a notification standing in
+the operating system rather than anything on the account, and two leave a
+file on disk — what an import journey, a raised notification or an export
+leaves behind is worth stating rather than leaving to be inferred.
 
 | Action | What it writes | How it is put back |
 |---|---|---|
@@ -274,18 +289,23 @@ stating rather than leaving to be inferred.
 | The dashboard layout editor | `preferences.dashboardLayout` | Reset, then reloaded and read back absent |
 | A purchase split in the form | Three transaction documents — a remainder row and two parts, sharing one `splitGroupId` and one `createdAt` — where an unsplit add would have written one | Each of the three deleted through the list, and a search for the journey's own description confirmed to return none |
 | Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme classes it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the root element's classes restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
-| Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
+| Scanning a receipt | Provider requests of up to three kinds under the account's own key, all before the review step. The extraction, always: one request, and on Gemini a second model only when the first was rate-limited. A categorization call, grounded in the account's recent corrections only where grounding is on, only for the rows the extraction named no category for on their own side and whose merchant the category memory does not answer on that side. A tag-suggestion call only for the rows the extraction and the tag memory left untagged, and only where the account's grounding is on and it has a vocabulary to offer. Either call goes as one request per 25 rows. When analytics consent is on, one `ai_assist_used` event (`receipt_scan`) as the scan starts and one `receipt_import` event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
 | Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
 | Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications({ tag: 'e2e-14' }).then(ns => ns.forEach(n => n.close()))` — by tag, so a bill reminder the account's own sweep raised in this profile is left standing |
 | Resuming a rule whose end date has passed (journey 35) | Nothing. The service refuses before any write; the rule's own fields are read back unchanged | Nothing to undo |
 | Exporting a backup (journey 39) | Nothing on the account. Eleven server-only collection reads, and one JSON file in this browser profile's download folder holding the account's full ledger in clear text | The file is deleted at the end of the run. The restore picker is handed the same file and **cancelled** at the preview, so nothing is written back |
-| Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, and one queue record that reaches `completed` | The row deleted through the list, which removes its receipt object with it; the list count read back; the completed queue entry cleared from the AI settings page |
+| Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, one queue record that reaches `completed`, and — for an expense row — the `spent` of any budget on its category: the drain's `addTransaction` recomputes `spent` and `spentPeriod` on every active budget on the row's category and stamps its `updatedAt` | The row deleted through the list, which removes its receipt object with it and recomputes the budget; the list count read back; the completed queue entry cleared from the AI settings page. The delete's recompute writes `spent` and `spentPeriod` afresh and stamps `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
+| Importing a scanned receipt (journeys 46 and 50) | Everything *Scanning a receipt* writes, then at **Import**: one transaction document, one storage object under its id, one import-history record naming it, the `spent` of any budget on its category, and the category memory's entry for the receipt's merchant — with the tag memory's beside it where the row was offered a tag | Three restores, each confirmed by a read: the row deleted through the list, which removes its receipt object with it and recomputes the budget, and a search for its description read back empty; the import-history record the Import wrote deleted on `/import/history` by its own **Delete**, and the list read back without it; and every memory entry the Import added or changed — the category memory's for the merchant, and the tag memory's where one was written — through the two memory services, reached from the wizard before the Import. An entry the Import added is removed with `forget(merchantKey)`, and a server read (`exportAll()`) finds the key gone. An entry the merchant already had is put back with `restore(entry)` from a server read taken before the Import — the category memory's `categoryId`, `sampleDescription` and `count`, the tag memory's `tags`, `suppressed`, `sampleDescription` and `count` — and a second server read finds each of those fields as it was first read. Its `updatedAt` is not put back: the write stamps it with the time of the restore. Nor are a budget's fields: the delete's recompute writes `spent` and `spentPeriod` afresh on every active budget on the row's category and stamps its `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run. Those stamps, and such a refreshed figure, are what a run leaves changed. Journey 46 has both scripts |
+| Importing the two-row CSV on `/data` (journey 53) | Two transaction documents, and the `spent` of any budget on the expense row's category: the door writes the rows without a recompute each, then recomputes `spent` and `spentPeriod` once on every active budget on that category and stamps its `updatedAt`; the income row moves no budget. No provider call, no import record and no memory | Both deleted through the list, and a search for `e2e-53` read back empty. Deleting the expense row recomputes the same budgets, writing `spent` and `spentPeriod` afresh and stamping `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
+| Exporting the transactions CSV (journey 53) | Nothing on the account. One server-only read of every transaction, and one CSV file in this browser profile's download folder holding them all in clear text | The file is deleted at the end of the run |
 
 The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
 unconfirmed leaves nothing behind — which is why the import journeys end by
-reading Import History and the Transactions list and finding them unchanged.
+reading Import History and the Transactions list and finding them unchanged,
+all but journeys 46 and 53, which import on purpose and are put back by their
+own rows above.
 A row removed on the review step leaves nothing behind, the way an
 unconfirmed extraction does. A backup file does not open an attempt at all:
 that handle is opened for receipt images and for nothing else. The confirm
@@ -303,7 +323,7 @@ Import never is.
 
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
-never Save — and nothing is created, edited, deleted or imported.
+never Save — and nothing else is created, edited, deleted or imported.
 
 **Clear the recap's device state at the end**, from the page console:
 
@@ -469,6 +489,64 @@ const input = document.querySelector('app-file-dropzone input[type=file]');
 input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
 ```
 
+**A backup naming a category the account lacks, for journey 47.** Two rows,
+one of each type, both naming a category id no account has — written beside
+the others as `backup-47.json`:
+
+```json
+{
+  "transactions": [
+    {
+      "description": "Journey 47 expense row",
+      "amount": 6.5,
+      "currency": "USD",
+      "type": "expense",
+      "categoryId": "e2e-47-no-such-category",
+      "date": { "seconds": 1773576000, "nanoseconds": 0 }
+    },
+    {
+      "description": "Journey 47 income row",
+      "amount": 20,
+      "currency": "USD",
+      "type": "income",
+      "categoryId": "e2e-47-no-such-category",
+      "date": { "seconds": 1773576000, "nanoseconds": 0 }
+    }
+  ]
+}
+```
+
+It goes in on the wizard's input exactly as `backup.json` does. The two types
+are the point: each row should land on its **own** side's catch-all.
+
+**A two-row CSV in the export's own shape, for journey 53.** Written after
+journey 53's export, because two of its cells are copied from that file,
+beside the others as `e2e-53.csv`:
+
+```
+Date,Type,Category,Description,Amount,Currency,Amount (Base),Note,Tags,Location,Period,Recurring
+<today>,income,<an income category>,e2e-53 income,20,<base>,,,,,,
+<today>,expense,<an expense category>,e2e-53 expense,3,<base>,,,"[""a; b""]",,,
+```
+
+The header is the export's first line, verbatim. `<today>` is today's date as
+`YYYY-MM-DD`, so the list's default window shows both rows; `<base>` is the
+account's base currency. Each `<… category>` is a **Category** cell copied
+from a row of that type in the export — a name this account demonstrably holds,
+in the language it exported in — and neither may be *Other* or *Other
+Income*: an unmatched name lands on those, so a match there proves nothing.
+The Tags cell is one tag containing the separator, in the JSON form the export
+itself writes for such a tag ([csv-format.md](csv-format.md)), quoted and with
+its quotes doubled. It goes on the data page's own hidden input:
+
+```js
+const blob = await (await fetch('http://127.0.0.1:8123/e2e-53.csv')).blob();
+const file = new File([blob], 'e2e-53.csv', { type: 'text/csv' });
+const dt = new DataTransfer(); dt.items.add(file);
+const input = document.querySelector('app-data-management input[type=file]');
+input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+```
+
 ## The journeys
 
 | # | Journey | What only a real browser can show | Screenshots |
@@ -518,6 +596,18 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 43 | The theme toggle's checked segment carries no empty strip | Material's reserved checkmark space, measured in a real layout at the width the container query answers | `43-toggle-padding-375.png` |
 | 44 | The dropzone speaks the account's language | Two messages that were English literals in the source, resolved from the catalogs in the page | `44-dropzone-message.png` |
 | 45 | The three chips read in dark mode | A contrast ratio a script computes from tokens, checked against what the browser actually composites on a real card | `45-chips-dark.png`, `45-chips-light.png` |
+| 46 | A receipt is graded and offered its own type's categories | The categoriser's real request body for a real receipt — or its absence — and the card's flags against the grades the provider returned | `46-review-card.png` |
+| 47 | The backup door checks the category | A backup naming a category this account lacks landing on each row's own side's catch-all, flagged for review | `47-backup-catch-all.png` |
+| 48 | The review card announces | The live region's own text after each change on a real card, and one voice where a snackbar already speaks | `48-announced.png` |
+| 49 | The held Continue reveals | A press on a button that reads disabled, scrolling to the row that holds it and putting the caret in its empty field | `49-revealed-row.png` |
+| 50 | The sealed steps | The lock on every step header while a real write runs | `50-sealed-headers.png` |
+| 51 | An off-list currency | A code typed into a real dialog reaching a review row and the form's select, and a closed select's arrow key opening nothing | `51-code-dialog.png` |
+| 52 | Remove asks for an edited row | The question over a row carrying work made on the card, and Cancel keeping it | `52-remove-question.png` |
+| 53 | The CSV round trip | A real export's header, and a file in that shape imported with its categories and a tag containing the separator | `53-csv-preview.png`, `53-csv-rows.png` |
+| 54 | One figure, one rate | Two surfaces agreeing over the account's real rows, and the caption on the figures that cannot read a snapshot, at phone width | `54-rate-caption.png` |
+| 55 | The rate line tells the time | The time a table was fetched, in the account's own clock format | `55-rate-line.png` |
+| 56 | Progress indicators and the row button | Accessible names in the rendered tree, and a row's keyboard and pointer paths at phone width | `56-row-focus.png` |
+| 57 | The colour pairs where they are painted | Computed colours against the backgrounds actually behind them, in both themes | `57-pairs-dark.png`, `57-pairs-light.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1106,8 +1196,12 @@ list with its description editor open and the caret in it, the hint *Fill in
 Continue enables, and focus lands on the scanned row's own **Remove** — the
 previous row's, since the removed one was last.
 
-Then **Remove** on the scanned row, the list's last one left: the card goes,
-the empty state stands in its place — *No transactions to import* — the
+Then **Remove** on the scanned row, the list's last one left. **Keep** was an
+answer made on the card, so this row carries the user's own work and Remove
+asks first — *Remove this row?*
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)); journey 52
+reads that question, and here it is answered **Remove**. The card goes, the
+empty state stands in its place — *No transactions to import* — the
 header reads *0 / 0*, Continue is disabled again with nothing left to select,
 and focus lands on **Add a row**. Both landings are focus readings left to
 the specs, where the pane cannot show them.
@@ -2397,6 +2491,437 @@ is unchanged from before the branch.
 mode, and the stat cards that share the tokens, still read as they did.
 
 Shots: the three chips in dark, and the same three in light.
+
+### 46. A receipt is graded and offered its own type's categories
+
+`/import/file`, with `jp.png` fed as journey 8 feeds it, and a `window.fetch`
+wrapper armed before the file goes in. This journey's review step is shared:
+journeys 49, 48, 51 and 52 run on it in that order, journey 57 reads its
+receipt badge there, and journey 50 watches its Import. Read them first — the
+step is left only once. The Import at the end is the one receipt write this
+run is authorised to make ([What a run may touch](#what-a-run-may-touch)).
+
+**Arm the wrapper.** The pane's network log may record same-origin requests
+only ([Panes and viewports](#panes-and-viewports)), so it is no evidence about
+a provider request either way. Record the bodies bound for the three provider
+hosts and pass every call through — journey 19's shape, recording rather than
+failing:
+
+```js
+window.__j46 = { fetch: window.fetch, bodies: [] };
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input
+    : input instanceof URL ? input.href : input.url;
+  if (/^https:\/\/(generativelanguage\.googleapis\.com|api\.openai\.com|api\.anthropic\.com)\//.test(url)) {
+    window.__j46.bodies.push(typeof init?.body === 'string' ? init.body : '');
+  }
+  return window.__j46.fetch.call(window, input, init);
+};
+```
+
+**Know which provider will be asked.** The Gemini client looks `fetch` up on
+every request, so the wrapper sees its calls. The Claude and OpenAI clients
+keep the `fetch` they found when they were built, which is before any wrapper
+a run can arm, so a request to either never reaches the list. Two requests
+matter here, and each has its own select in `/ai`'s **Provider Preferences**
+card: the extraction goes to the provider **Receipt Scanning** names
+(`llmProviderPreferences.receiptScanning`), and the categoriser to the one
+**Categorization** names (`llmProviderPreferences.categorization`). Read both
+first. The card renders only when more than one provider is configured; with
+one key, both requests go to it. The first criterion below is about the
+categoriser, so it needs **Categorization** on Gemini — under Claude or OpenAI
+it is left to the specs, and the run's report says so — and its opening
+check, that the list holds the extraction request, needs **Receipt Scanning**
+on Gemini as well.
+
+**Process with AI** → the processing step → **Continue** → Review.
+
+**Pass — the categoriser is offered one side of the ledger, or not asked.**
+`window.__j46.bodies` holds at least the extraction request. Either a body
+carrying *Categorize these transactions* lists, under *Available categories:*,
+no income parent — no line beginning `employment:`, `self_employment:`,
+`investments:`, `rental:`, `government:` or `other_income:` — or there is no
+such body at all. A row whose extraction already named a category on its own
+side of the ledger is not sent to the categoriser. A row the extraction left
+unnamed, or named for the other side, goes to the ladder, whose first rung is
+category memory: a merchant it remembers on the row's side is answered there,
+with no provider call either, and only a row that rung cannot answer is sent,
+and then the body is there to read. So for this purchase an absent body is
+itself the evidence, and the row's `categoryConfidence` says which answered
+it — 0.8 for the extraction's own category, 0.95 for memory's
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+
+**Pass — the flags match the grades.** Read the row's grades off the wizard,
+`ng.getComponent(document.querySelector('app-import-wizard')).extractedTransactions()[0].fieldConfidence`.
+The amount carries its `.verify-flag` exactly when `amount` is under 0.7, and
+the date button carries `needs-verify` exactly when `date` is. The *Dated Aug
+14, 2026 — keep it?* chip is journey 8's question about a past day, not a
+grade, and stands either way.
+
+Record the row's description. Run journeys 49, 48, 51 and 52 and journey 57's
+badge reading, then **Keep** the date and **Continue** → the confirm step.
+
+**Read the memory the Import will teach.** Confirming writes the receipt's
+merchant into the category memory, and into the tag memory where the row was
+offered a tag — new entries, or changed ones the account already had. Both
+services are root singletons, reachable through the wizard's import
+service while the wizard is on the page; the Import's move to `/transactions`
+is an in-app navigation, so the references kept here outlive it:
+
+```js
+const svc = ng.getComponent(document.querySelector('app-import-wizard')).importService;
+window.__j46.memory = { category: svc.categoryMemory, tag: svc.tagMemory };
+window.__j46.before = {
+  category: await svc.categoryMemory.exportAll(),
+  tag: await svc.tagMemory.exportAll(),
+};
+```
+
+Arm journey 50's observer, and **Import 1 Transaction**.
+
+**Pass — the write.** The wizard lands on `/transactions`, and the row is
+there under the description recorded. Delete it through the list — its receipt
+goes with it — and search for the description: none. Then go to
+`/import/history` through the app's own links — **Your Data** in the
+navigation, then its **View History** button — and delete the record the
+Import wrote by its own **Delete**; the list reads back without it. Both links
+are the app's router, so `window` and what this journey keeps on it survive
+the move. Typing the address or a pane `navigate` loads the page afresh and
+drops `window`. `sessionStorage` would not carry what the restore needs: the
+two `before` arrays would serialise, but the restore calls the two memory
+services themselves — live root singletons, reached through a wizard that is
+gone by then — and a live service does not. Then, still on that page, put the
+memory back — every entry the Import added or changed, and nothing else.
+`exportAll()` is a server read:
+
+```js
+const { memory, before } = window.__j46;
+const FIELDS = {
+  category: ['categoryId', 'sampleDescription', 'count'],
+  tag: ['tags', 'suppressed', 'sampleDescription', 'count'],
+};
+const same = (kind, a, b) =>
+  FIELDS[kind].every(f => JSON.stringify(a[f]) === JSON.stringify(b[f]));
+const touched = {};
+for (const kind of ['category', 'tag']) {
+  touched[kind] = [];
+  for (const entry of await memory[kind].exportAll()) {
+    const was = before[kind].find(e => e.merchantKey === entry.merchantKey);
+    if (was && same(kind, was, entry)) continue;
+    await (was ? memory[kind].restore(was) : memory[kind].forget(entry.merchantKey));
+    touched[kind].push(entry.merchantKey);
+  }
+}
+const back = async kind => {
+  const now = await memory[kind].exportAll();
+  return now.length === before[kind].length && before[kind].every(was => {
+    const entry = now.find(e => e.merchantKey === was.merchantKey);
+    return entry !== undefined && same(kind, was, entry);
+  });
+};
+({ touched, back: { category: await back('category'), tag: await back('tag') } });
+```
+
+`FIELDS` names what each memory's `restore` writes back, and all it can: an
+entry's `updatedAt` is stamped by the write itself, so a restored entry carries
+the time of the restore and the comparison leaves that field out.
+
+**Pass — the restore.** `touched.category` names the receipt's merchant, and
+both `back` flags are `true`: a second server read finds each memory holding
+exactly the merchants it held before the Import — an added entry gone — and
+every one of them carrying the fields in `FIELDS` as they were first read.
+Reload, which drops the wrapper with the page.
+
+One shot: the review card with its flags, before any of the journeys below
+touch it.
+
+### 47. The backup door checks the category
+
+`/import/file`, `backup-47.json` on the wizard's input
+([Fixtures](#fixtures)) → the processing step → **Continue** → Review. Leave
+before Import.
+
+**Pass — each row on its own side's catch-all.** The expense row's category
+chip reads *Other* and the income row's *Other Income*, the account's own
+catch-alls for each side, and each carries the low-confidence dot —
+`.confidence-dot.low-confidence` — where a category the account still holds
+would carry the full one
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)). The
+header reads *2 / 2*, and nothing is written: leave by the wizard's back
+arrow, and Transactions and `/import/history` are unchanged.
+
+One shot: the two cards.
+
+### 48. The review card announces
+
+On journey 46's review step, after journey 49. Each change below is read back
+out of the CDK live announcer's own element, in a step of its own after the
+change: the announcer writes on a timer of its own, so a read in the same
+script finds the sentence before.
+
+```js
+document.querySelector('.cdk-live-announcer-element').textContent;
+```
+
+- **A tag, filed and removed.** **Add tag** on the scanned row → `e2e-48` →
+  Enter → *Tag e2e-48 added to {description}*. Its chip's remove → *Tag e2e-48
+  removed from {description}*. The row is back to the tags it arrived with.
+- **The country.** The location chip's country menu → **No country** →
+  *Country removed from {description}*. Picking a country instead says
+  nothing, by design.
+- **An amount the currency cannot hold.** **Add a row**, description
+  `e2e-48`, Enter. Its currency chip → **USD**, unless it already reads USD →
+  amount **0.40** → Enter. Then its chip → **JPY**: the amount goes back to its
+  *Add an amount* placeholder, the snackbar reads *1 amount rounds to nothing
+  in JPY — add it again*, and the live element carries that same sentence, once
+  — it is the snackbar's own announcement, not a second one
+  ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
+
+**Pass:** three sentences for three changes, each naming the row, and the
+blanked amount spoken once. The `e2e-48` row stays for journeys 51 and 52.
+
+One shot: the snackbar over the blanked row.
+
+### 49. The held Continue reveals
+
+On journey 46's review step, first of the four. **Add a row**; press Escape
+in its open description editor, so the row stays blank. Press **Continue**.
+
+**Pass — nothing advances.** The stepper is still on Review,
+`ng.getComponent(document.querySelector('app-import-wizard')).stepper.selectedIndex`
+reading `2`, and Continue reads `aria-disabled="true"`: it looks held, and a
+press still reaches it.
+
+**Pass — the row that holds it is revealed.** The blank row's card is
+scrolled into the middle of `.transactions-list` as far as the list can
+scroll, and `document.activeElement` is its `.amount-input` — the field it is
+missing. An unfilled row outranks the scanned row's date question.
+
+Press Escape in the amount field, then **Remove** on the blank row: it goes
+in one press, with no question — it carries nothing made on the card — and
+the live element reads *an untitled row removed*.
+
+One shot: the revealed row with the caret in its amount field.
+
+### 50. The sealed steps
+
+Journey 46's Import, watched. The write takes a moment, and the lock stands
+only while it runs, so arm an observer on the confirm step before pressing
+Import:
+
+```js
+window.__j50 = { most: 0, label: null };
+const heads = () => [...document.querySelectorAll('.mat-step-header')];
+window.__j50.observer = new MutationObserver(() => {
+  const sealed = heads().filter(h => h.querySelector('mat-icon.seal-icon'));
+  if (sealed.length > window.__j50.most) {
+    window.__j50.most = sealed.length;
+    window.__j50.label = sealed[0].querySelector('mat-icon.seal-icon').getAttribute('aria-label');
+  }
+});
+window.__j50.observer.observe(document.querySelector('app-import-wizard'),
+  { childList: true, subtree: true });
+```
+
+The route change after the write keeps `window` — it is the app's own router,
+not a page load — so read `window.__j50` on `/transactions`, then
+`window.__j50.observer.disconnect()`.
+
+**Pass:** `most` reached **4**, every step header, and `label` reads *Step
+locked while the import is in progress* in the account's language. The lock's
+leaving is the smoke's to pin: after a successful write the wizard is gone,
+and the emulator case drives a refused one back to Review and finds none.
+
+One shot, if the window allows: the headers mid-write. A shot taken by hand
+usually misses it; the observer's record is the evidence either way.
+
+### 51. An off-list currency
+
+On journey 46's review step, on journey 48's `e2e-48` row, then in the add
+form.
+
+**The card.** The row's currency chip → the menu's last item, *Other
+currency…* → the dialog, *Enter a currency code*. Type `XYZ` → **Confirm**:
+*Not a currency code — use its three letters, such as ISK*, and the dialog
+stays. Clear it, type `isk` → **Confirm**: the dialog closes, the chip reads
+**ISK**, and focus is back on the chip. Where the session is on the built-in
+rates alone, `ISK` is refused instead with *No exchange rate for ISK yet, so it
+cannot be converted* — which is the other half of the dialog, and a pass of its
+own; the Settings rate line says which rung is loaded.
+
+**The form**, after journey 46's restore. `/transactions` → **Add** → the
+currency select → *Other currency…* → the same dialog → `ISK` → **Confirm**:
+the select reads ISK and lists it among its options. Then focus the closed
+select and press **End**: the value moves to the last option and straight back,
+and **no dialog opens** — a keypress on a closed select is not a request for a
+dialog. **Cancel** the form; nothing is saved.
+
+One shot: the dialog with its refusal showing.
+
+### 52. Remove asks for an edited row
+
+On journey 46's review step, on the `e2e-48` row — a description typed and a
+currency chosen on the card, so it carries work made there. **Remove**.
+
+**Pass — the question.** *Remove this row?* — *Your changes to e2e-48 will be
+lost. To leave it out of this import and keep them, deselect it instead.*
+Answer **Cancel** (the pane's Escape reaches no dialog): the row stays with its
+edits, and focus is back on its **Remove**.
+
+**Pass — the answer.** **Remove** again, and answer **Remove**: the row goes,
+the live element reads *e2e-48 removed*, and focus lands on the scanned row's
+own **Remove**. Only the scanned row is left for journey 46's Import.
+
+One shot: the question over the row.
+
+### 53. The CSV round trip
+
+`/data`, the data hub Settings leads to. The door is offline: no provider call
+and no import record.
+
+**The export.** **Transactions CSV** → save the file where the browser offers.
+Read its first line from a terminal (`head -1` on the saved file).
+
+**Pass — the header is the contract's.** `Date,Type,Category,Description,Amount,Currency,Amount (Base),Note,Tags,Location,Period,Recurring`
+([csv-format.md](csv-format.md)).
+
+Write `e2e-53.csv` from it ([Fixtures](#fixtures)) and hand it to the data
+page's own hidden input.
+
+**Pass — the preview matches every category.** Two rows, and no *rows'
+categories could not be matched* line under them:
+`ng.getComponent(document.querySelector('app-data-management')).unmatchedCategoryCount()`
+reads `0` ([ADR 0150](ADR/0150-the-csv-reads-back-what-it-writes.md)).
+
+**Import 2 Transactions** → *Confirm Import* → **Import** (the one CSV write
+this run is authorised to make) → *2 transactions imported*.
+
+**Pass — both rows, as the file named them.** On `/transactions`, `e2e-53
+income` and `e2e-53 expense` stand under the two categories copied into the
+file, and the expense row carries **one** tag, `a; b` — not two.
+
+Delete both through the list, and search `e2e-53`: none. Delete the exported
+file at the end of the run.
+
+Two shots: the preview, and the two rows in the list.
+
+### 54. One figure, one rate
+
+`/dashboard` and `/reports`, both on this month. Read-only.
+
+**Pass — one figure.** The dashboard's **Total Expenses** card and the
+**Total Expenses** on `/reports`' Categories tab read the same figure for the
+month. Both sum the rows' write-time snapshots
+([ADR 0148](ADR/0148-every-figure-names-its-rate.md)) and neither reconverts a
+foreign row at today's rate, so they agree even on an account whose foreign
+rows' rates have moved since they were written.
+
+**Pass — the captions.** The dashboard's Upcoming card reads *Scheduled net*
+with **At today's rate** beside it; so does the weekly recap's bills line where
+the recap is on, and the forecast's projected net on `/reports`. At 375px each
+caption stays inside its card, wrapping rather than overflowing: no spec
+measures them at that width.
+
+One shot: the Upcoming card's net with its caption.
+
+### 55. The rate line tells the time
+
+Settings → **Preferences**, the line under the base-currency select. Read-only;
+journey 19's ladder machinery is not used.
+
+**Pass:** on a live or saved table the line reads a date **and** a time —
+*Exchange rates updated {date} at {time}*, or *Could not update exchange rates
+— using saved rates from {date} at {time}* — with the time on the locale's own
+clock: `2:05 PM` in English, `14:05` in Japanese. On the built-in rates it
+names neither, which is correct: the constants carry no stamp.
+
+One shot: the line.
+
+### 56. Progress indicators and the row button
+
+**Every indicator has a name or is hidden.** On `/budgets` and `/dashboard`:
+
+```js
+[...document.querySelectorAll('[role="progressbar"]')]
+  .filter(el => !el.closest('[aria-hidden="true"]'))
+  .filter(el => !(el.getAttribute('aria-label') ?? '').trim()
+    && !el.getAttribute('aria-labelledby'))
+  .map(el => el.outerHTML.slice(0, 120));
+```
+
+**Pass:** `[]` on both, with the budget and goal bars present to be counted.
+A loading spinner stands only while a page fetches; whether one was caught is
+noted rather than forced.
+
+**The row button**, on `/transactions` at 375px, where the list renders rows.
+Tab from the controls above the list until focus reaches the first row.
+
+**Pass — two stops, menu first.** Focus lands on the row's menu button, named
+*More actions for {description}*, then on `button.row-activate`, named
+*{description}, {amount}, {date}*, with the ring drawn round the whole row
+([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+
+**Pass — every way in opens the row once, and only the row.** Enter on the
+row button opens the edit form → **Cancel**. A click on the row's category
+strip opens it → **Cancel**. A click on the menu button opens the menu and
+not the form; close it from its backdrop. A leftward swipe on the row still
+reveals **Edit** and **Delete**, which are left untouched; a tap on the row
+closes the drawer again.
+
+One shot: the focused row with its ring.
+
+### 57. The colour pairs where they are painted
+
+The pairs the contrast gate scores, measured where they are painted, in dark
+and then light. Switch the theme on the root element the way journey 19 does
+— never the Settings control, which writes `preferences.theme` — and put the
+root's classes back at the end.
+
+```js
+const lum = c => {
+  const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(v => {
+    v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const behind = el => {
+  for (let n = el; n; n = n.parentElement) {
+    const c = getComputedStyle(n).backgroundColor;
+    if (c !== 'transparent' && !/,\s*0\)$/.test(c)) return c;
+  }
+  return getComputedStyle(document.body).backgroundColor;
+};
+const ratio = el => {
+  const a = lum(getComputedStyle(el).color), b = lum(behind(el));
+  return ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)).toFixed(2);
+};
+```
+
+`behind` takes the first background that is not transparent; one whose alpha
+is between 0 and 1 is composited over what lies under it, and a ratio read
+against it is approximate — say so where it happens. In a hidden pane, finish
+the page's transitions after each theme switch and before any reading
+([Panes and viewports](#panes-and-viewports)).
+
+- **The add form's type toggle**: `.type-toggle .mat-button-toggle-checked`,
+  once on Expense and once on Income. **Cancel** the form.
+- **A review card's receipt badge**: `.receipt-badge`, on journey 46's review
+  step.
+- **The period selector**: `.period-toggle .mat-button-toggle-checked`, and
+  `.period-chip` where a custom period already stands — the run does not pick
+  one to make it.
+- **The bottom navigation at 375px**: the active `.nav-item`'s label, and the
+  glyph in its `.icon-pill`.
+- **The stat cards**: on `/reports?tab=monthly`, the glyph in the
+  `.stat-icon.tone-neutral` box of *Best Month* and *Worst Month* — the only
+  stat cards on the default, neutral tone, shown when the period holds a
+  transaction — and on `/dashboard` the card labels, `.stat-label`.
+
+**Pass:** every text reads at least 4.5:1 in both themes, and the two glyphs
+— the active pill's and the stat-card icon's — at least 3:1, the bar for a
+non-text graphic ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+
+Two shots: the pairs in dark, and in light.
 
 ## Evidence
 

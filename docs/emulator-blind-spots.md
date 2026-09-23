@@ -244,7 +244,7 @@ beside itself instead of passing for what the door receives today.
 ## What the axe pass can and cannot see
 
 `app.smoke.spec.ts`'s `expectPage()` runs axe-core over every page it opens,
-WCAG 2.1 A and AA, scoped to the routed element. Three properties of the
+WCAG 2.1 A and AA, scoped to the routed element. Four properties of the
 harness bound what that can honestly mean, and none of them is about axe:
 
 - **i18n is not served.** Karma's asset config does not publish the catalogs,
@@ -260,6 +260,20 @@ harness bound what that can honestly mean, and none of them is about axe:
   `landmark-one-main`, `landmark-unique`, `landmark-banner-is-top-level`,
   `page-has-heading-one`, `bypass`, `region`) — a landmark rule has no meaning
   when the thing being audited is a fragment.
+- **It renders one theme per run, and the host picks it.** The walkthrough's
+  account keeps the default `theme: 'system'`, and nothing in the harness pins
+  a colour scheme, so `ThemeService` follows the `prefers-color-scheme` of the
+  machine running Chrome. A run sees light or dark, never both, and nothing it
+  prints says which. A contrast failure that exists in only one theme is
+  invisible to a run in the other: the dashboard's subtitle, gray-500 on the
+  light page background at 4.43:1, passes in dark, and the runs that emptied
+  the contrast freeze rendered dark — axe reported the page background as
+  `#121212`. It was found by reading the pairs
+  ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+  The pass's first runs had rendered light, which is how
+  [ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md) came to
+  record two failures in light mode. Where a finding depends on the theme,
+  measure both in a browser — journeys 45 and 57 in [e2e.md](e2e.md) do.
 
 And it sweeps only the routes the walkthrough visits: `/dashboard`,
 `/transactions`, `/budgets`, `/reports`, `/settings`, `/data` and `/about`.
@@ -270,9 +284,12 @@ accessibility. `wcag22aa` is left out on purpose: its headline rule,
 on a mobile-first layout, and the 40px hit boxes are pinned by the component
 specs at the widths they were designed for.
 
-The violations that already stood when the pass was wired in are frozen per
-route in `core/services/testing/axe.ts`, each with its reason. They are debts
-with names: the freeze exists so the next one fails.
+The freeze table in `core/services/testing/axe.ts` is empty. The violations
+that stood when the pass was wired in were frozen per route, each with its
+reason, and all of them are fixed
+([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+The table stays: a new violation fails the run on any route, and the only way
+past is a row with its reason.
 
 ## A rule that tightens, and the data already stored (#454)
 
@@ -317,7 +334,7 @@ bearing rather than belt-and-braces.
 | An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 | A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
-| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px with unserved i18n | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px with unserved i18n, in the one theme the host resolves | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
 
 ## When you add another one
 

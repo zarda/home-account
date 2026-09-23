@@ -278,6 +278,20 @@ converted under its own code, showing that code where there is no translated
 name. Sub-unit digits come from `Intl` rather than a maintained list, so JPY and
 KRW render as whole numbers without anyone remembering to add them.
 
+**A code the list does not carry can be typed.** The review card's currency
+menu and its **Currency for selected** menu both end with *Other currency…*,
+and so does the transaction form's currency select. It opens a dialog that
+takes a three-letter code and refuses two things: a code the runtime's own ISO
+table does not know (*Not a currency code — use its three letters, such as
+ISK*), and a real code no loaded rate table can convert (*No exchange rate for
+ISK yet, so it cannot be converted*) — such a code would otherwise convert
+one-to-one against the base currency. On the card the answer is applied the
+way a listed pick is, rounding and the blanking notice included; in the form it
+joins the select's options, and on a closed select an arrow key that lands on
+the last option opens nothing. A receipt the model read as the wrong real code
+can now be put right on the card or afterwards
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
+
 ## Categories
 
 Extraction resolves to a catalog id rather than a display name wherever it can,
@@ -308,15 +322,18 @@ is left out, because the name passes already catch any answer containing it.
 
 **A row is offered its own side of the catalogue.** A row that knows whether
 it is income or an expense carries that as an explicit `type` — never read
-from the amount's sign, which a zero-amount expense gets wrong. A receipt is
-always an expense, so the on-device model is shown the expense side only. The
-batch categorizer sends one catalogue per request, so it narrows the list only
-when every row it was handed points the same way, as on the multi-image
-receipt path; a CSV batch mixes both sides and keeps the full list. Either way
-the answer is checked: a typed row whose answer lands on the other side is
-refused and graded for review. And a row nobody could place is filed under
-its own side's catch-all — `other_income` for income, `other_expense` for an
-expense
+from the amount's sign, which a zero-amount expense gets wrong. A receipt read
+on the device is always an expense, so the on-device model is shown the
+expense side only. The batch categorizer sends one catalogue per request, so
+it narrows the list only when every row it was handed points the same way, as
+a multi-image batch of purchases does; a CSV batch mixes both sides and keeps
+the full list, and so does a receipt batch that sends it a refund beside a
+purchase. Either way the answer is checked: a typed row whose answer lands on
+the other side is refused and graded for review. A category an extraction
+named on the other side is no answer either — receipt photos send such a row
+to the categorizer, and a statement, a PDF or the camera's cloud read grades
+it for review. And a row nobody could place is filed under its own side's
+catch-all — `other_income` for income, `other_expense` for an expense
 ([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md),
 closing [ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)'s income
 gap).
@@ -474,9 +491,18 @@ question the reviewer was never shown. A row in another currency is never
 listed, because nothing here converts.
 
 **Remove** takes the row off the batch, and it stands on every row — filled,
-blank and flagged alike, unlike the other two. It asks nothing: **Deselect**
-is the reversible answer, on the same card and one tap away, so a
-confirmation would guard a mistake that already has a cheap remedy. What
+blank and flagged alike, unlike the other two. A row exactly as it arrived
+leaves in one press: **Deselect** is the reversible answer, on the same card
+and one tap away, and a rescan gives the row back. A row carrying work made on
+the card asks first — one edited there (any field, the income/expense flip, a
+tag, a date answer, a note), a part a split made, or the survivor of a merge —
+*Remove this row?*, naming Deselect as the way to leave it out and keep the
+changes. A choice that changed nothing — a category or currency picked again,
+say — marks nothing, and selecting, overruling a duplicate, dismissing a
+currency offer or taking and releasing a rule link are not work either. The
+answer applies to the row as the batch holds it when it lands, found by id,
+since a re-check can replace the row while the question is open
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)). What
 leaves with the row is everything keyed on its id — the card's editing state
 and drafts, the wizard's overrule, re-check stamp and duplicate verdict, and
 its entry in the receipt-row set (ADR 0108, amended for #400) — and
@@ -525,17 +551,34 @@ billing cap renders as the wizard's typed error card (with its retry or
 go-to-settings action) instead of "no transactions found", and the strategy
 layer can fall back between engines on the throw. A row whose date could not be
 read cannot fail the batch either — it is re-dated and marked instead, as
-below. A partial save keeps the failed rows on the review step — ticked,
-editable and re-confirmable, with their duplicate mark and duplicate check
-cleared — **and** every row the reviewer had left unticked, exactly as it
-was: only the saved rows leave, so a second confirm cannot double-import
-them and a deselected row is still there to change one's mind about
+below. A partial save keeps the failed rows on the review step — editable and
+re-confirmable, with their duplicate mark and duplicate check cleared —
+**and** every row the user had left unticked, exactly as it was: only the saved
+rows leave, so a second confirm cannot double-import them and a deselected row
+is still there to change one's mind about
 ([ADR 0120](ADR/0120-a-partial-import-keeps-every-row-it-did-not-write.md)).
+**A failed row says why.** Its reason stands under the card — the amount could
+not be saved, the connection dropped, or an unknown reason — chosen from the
+failed write's own error code, which the import record now keeps beside the
+message: a Firestore refusal's message is prose that never contains its code.
+**A second failure sets it aside.** A row comes back ticked after its first
+failure and unticked after its second, so the same refusal is not resubmitted
+on its own; ticking it again is the user's choice. One notice per round counts
+the rows set aside, rather than one per row, since a snackbar replaces the one
+before it
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 The completion toast carries both counts, and both are counts of the rows
 that were submitted — so the step can hold more rows than the sentence
-mentions. The failed rows it offers back are the ones the record **names by
-id**, not by position: the record's `row` number counts the submitted subset,
-which is not what the reviewer is looking at once anything has been deselected
+mentions. In a round that sets a row aside, the set-aside count is the second
+sentence of that same toast rather than a toast of its own: a second toast
+would replace the first on screen before it could be read, though the two
+announcements would be placed in the live region in turn — whether a screen
+reader finishes the first before it speaks the second is the reader's own
+policy ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)'s known
+gaps). The failed rows it offers back are the
+ones the record **names by id**, not by position: the record's `row` number
+counts the submitted subset, which is not what the reviewer is looking at once
+anything has been deselected
 ([ADR 0115](ADR/0115-a-failed-row-is-named-by-its-id.md)). While the write
 runs, the confirm step's bar and the line under it are the import service's
 own progress — the row being written out of the total — rather than figures

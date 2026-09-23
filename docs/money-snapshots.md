@@ -42,14 +42,18 @@ can only come from unloaded rates at write time.
 
 **Read by** the figures over transactions already written: the dashboard's
 totals, the transaction list, the reports page's tabs and cards, both PDF
-exports and the category summary file, budgets' `spent`, and the period total
-the AI summary card hands its advice request. The report PDF, the category,
-country and recurring breakdowns and that summary total moved over in
+exports and the category summary file, budgets' `spent`, the period total the
+AI summary card hands its advice request, and the totals the spending-summary
+prompt quotes — the income, expenses, category breakdown and largest expenses
+`CloudLLMProviderBase.generateSpendingSummary` builds for every provider. The
+report PDF, the category, country and recurring breakdowns and both halves of
+the AI summary moved over in
 [ADR 0148](ADR/0148-every-figure-names-its-rate.md) — each had converted every
 row at today's rate, so the two PDFs of one period could print different
-totals. One figure over written rows still converts live: the spending-summary
-prompt's, whose totals `CloudLLMProviderBase.generateSpendingSummary` builds
-through `convert`.
+totals, and the summary could quote totals the dashboard around it did not
+show. The same prompt's budget limits and goal amounts still convert at
+today's rate: they are a budget's and a goal's own figures, not written rows,
+and carry no snapshot to read.
 
 **Three figures cannot read it, and say so.** A scheduled occurrence is not a
 written row, so a figure over money that has not moved yet has no snapshot to
