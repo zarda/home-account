@@ -292,12 +292,12 @@
 
 ::ng-deep .type-toggle .mat-button-toggle-checked.expense {
   background-color: var(--color-expense-light);
-  color: var(--color-expense);
+  color: var(--color-expense-text);
 }
 
 ::ng-deep .type-toggle .mat-button-toggle-checked.income {
   background-color: var(--color-income-light);
-  color: var(--color-income);
+  color: var(--color-income-text);
 }
 
 .amount-section {
