@@ -49,6 +49,7 @@ import {
   needsDateAnswer,
   parseAmountInput,
   rowCarriesReviewerWork,
+  rowIsUnfilled,
   splitImportRow,
   withoutFieldConfidence,
 } from '../../../../core/utils/import-review.utils';
@@ -876,6 +877,48 @@ export class TransactionPreviewTableComponent {
     );
   }
 
+  /**
+   * Where a held Continue press routes: `disabledInteractive` keeps the
+   * wizard's button clickable at `aria-disabled` rather than truly disabled,
+   * because a native `disabled` button eats the click and leaves nobody
+   * pointed at the row that is holding it (#430). An unfilled row outranks
+   * an unanswered date — its placeholder is the only sign anything is wrong,
+   * where a date question already carries its own chip.
+   */
+  revealFirstBlocking(): boolean {
+    const unfilled = this.transactions.find(rowIsUnfilled);
+    if (unfilled) {
+      this.scrollRowIntoView(unfilled);
+      this.startEdit(unfilled, amountIsUnfilled(unfilled) ? 'amount' : 'description');
+      return true;
+    }
+    const unanswered = this.transactions.find(t => needsDateAnswer(t, this.attention(t)));
+    if (unanswered) {
+      this.scrollRowIntoView(unanswered);
+      this.focusWhenRendered(this.inRow(unanswered, '.date-chip'));
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Centred rather than merely visible: the batch scrolls inside its own
+   * list, not the page, and a row left flush with the scroller's edge is as
+   * easy to miss again as one still off it.
+   */
+  private scrollRowIntoView(row: CategorizedImportTransaction): void {
+    this.host.nativeElement.querySelector<HTMLElement>(this.inRow(row))?.scrollIntoView({
+      block: 'center',
+      behavior: this.prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  }
+
+  /** Both of check-motion.mjs's own kill-switches: the OS query, and the in-app preference it mirrors onto the document root. */
+  private prefersReducedMotion(): boolean {
+    return matchMedia('(prefers-reduced-motion: reduce)').matches
+      || document.documentElement.classList.contains('reduced-motion');
+  }
+
   private formattedDate(row: CategorizedImportTransaction): string {
     return this.localeFormat.formatDate(row.date);
   }
@@ -934,9 +977,14 @@ export class TransactionPreviewTableComponent {
     );
   }
 
-  /** Scoped to one card: there is one of every control per row inside the @for. */
-  private inRow(row: CategorizedImportTransaction, selector: string): string {
-    return `[data-row-id="${CSS.escape(row.id)}"] ${selector}`;
+  /**
+   * Scoped to one card: there is one of every control per row inside the
+   * @for. An omitted selector names the card itself — scrollRowIntoView's
+   * own target, the one thing here with nothing under EDITORS to reach it by.
+   */
+  private inRow(row: CategorizedImportTransaction, selector = ''): string {
+    const card = `[data-row-id="${CSS.escape(row.id)}"]`;
+    return selector ? `${card} ${selector}` : card;
   }
 
   /**

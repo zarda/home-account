@@ -2065,6 +2065,85 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
   });
 
+  /**
+   * #430: a native `disabled` Continue eats the click, so the wizard keeps
+   * the button clickable (disabledInteractive) and routes a held press here.
+   * revealFirstBlocking is the one thing that has to find the row and put
+   * the reviewer in it — scrolling and focus are both proven through the
+   * card's own template, the reason this lives in the rendering describe
+   * (ADR 0144) rather than beside the template-blanked cases above.
+   */
+  describe('revealFirstBlocking', () => {
+    function render(rows: CategorizedImportTransaction[], attention: string[] = []): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.dateAttentionIds = new Set(attention);
+      fixture.detectChanges();
+    }
+
+    const card = (id: string) => fixture.nativeElement.querySelector(`[data-row-id="${id}"]`) as HTMLElement;
+
+    it('scrolls the first unfilled row into view and focuses its empty amount', async () => {
+      const blank = makeRow({ id: 'blank', amount: 0 });
+      render([makeRow({ id: 'ok' }), blank]);
+      const scroll = spyOn(card('blank'), 'scrollIntoView');
+
+      const held = component.revealFirstBlocking();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(held).toBeTrue();
+      expect(scroll).toHaveBeenCalledWith(jasmine.objectContaining({ block: 'center', behavior: 'smooth' }));
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('[data-row-id="blank"] .amount-input'));
+    });
+
+    it('focuses the description when only that is missing', async () => {
+      const blank = makeRow({ id: 'blank', description: '' });
+      render([blank]);
+      spyOn(card('blank'), 'scrollIntoView');
+
+      component.revealFirstBlocking();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('[data-row-id="blank"] .description-input'));
+    });
+
+    it('reveals the first row with an unanswered date question once every row is filled', async () => {
+      const asked = makeRow({ id: 'asked' });
+      render([makeRow({ id: 'ok' }), asked], ['asked']);
+      const scroll = spyOn(card('asked'), 'scrollIntoView');
+
+      const held = component.revealFirstBlocking();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(held).toBeTrue();
+      expect(scroll).toHaveBeenCalled();
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-asked'));
+    });
+
+    it('returns false and reveals nothing once the step is clear', () => {
+      const row = makeRow({ id: 'ok' });
+      render([row]);
+      const scroll = spyOn(card('ok'), 'scrollIntoView');
+
+      expect(component.revealFirstBlocking()).toBeFalse();
+      expect(scroll).not.toHaveBeenCalled();
+    });
+
+    it('scrolls without animation under prefers-reduced-motion', () => {
+      spyOn(window, 'matchMedia').and.returnValue({ matches: true } as MediaQueryList);
+      const blank = makeRow({ id: 'blank', amount: 0 });
+      render([blank]);
+      const scroll = spyOn(card('blank'), 'scrollIntoView');
+
+      component.revealFirstBlocking();
+
+      expect(scroll).toHaveBeenCalledWith(jasmine.objectContaining({ behavior: 'auto' }));
+    });
+  });
+
   describe('the bulk keep on the header', () => {
     const keepAll = () => fixture.nativeElement.querySelector('button.keep-dates') as HTMLButtonElement | null;
     const questionChips = () =>

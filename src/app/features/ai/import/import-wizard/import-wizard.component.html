@@ -360,8 +360,9 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="selectedCount() === 0 || unansweredDates() > 0 || unfilledRows() > 0"
-            (click)="stepper.next()"
+            disabledInteractive
+            [disabled]="!reviewComplete()"
+            (click)="onReviewContinue()"
           >
             {{ 'common.continue' | translate }}
             <span class="count-badge">{{ selectedCount() }}</span>

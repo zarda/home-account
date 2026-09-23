@@ -388,7 +388,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
 
       expect(component.stepper.selectedIndex).toBe(2);
-      expect(continueButton().disabled).toBeTrue();
+      expect(continueButton().getAttribute('aria-disabled')).toBe('true');
       expect(host.querySelector('.dates-hint')).not.toBeNull();
 
       // The stepper header reaches Confirm from here with the question open.
@@ -405,7 +405,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       fixture.detectChanges();
 
       expect(host.querySelector('.dates-hint')).toBeNull();
-      expect(continueButton().disabled).toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled')).toBeNull();
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();
@@ -1783,7 +1783,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
 
       expect(component.stepper.selectedIndex).toBe(2);
-      expect(continueButton().disabled).withContext('the scanned row is complete').toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled'))
+        .withContext('the scanned row is complete')
+        .toBeNull();
 
       host.querySelector<HTMLButtonElement>('.add-row')!.click();
       fixture.detectChanges();
@@ -1794,7 +1796,26 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .toBe(cards()[1].querySelector('.inline-input'));
       expect(component.unfilledRows()).toBe(1);
       expect(host.querySelector('.rows-hint')).not.toBeNull();
-      expect(continueButton().disabled).toBeTrue();
+      expect(continueButton().getAttribute('aria-disabled')).toBe('true');
+
+      // disabledInteractive keeps the button clickable at aria-disabled, so
+      // the press below reaches onReviewContinue rather than being eaten —
+      // and lands on the row that is still holding it (#430).
+      (document.activeElement as HTMLElement).blur();
+      continueButton().click();
+      fixture.detectChanges();
+
+      expect(component.stepper.selectedIndex).withContext('a held press does not advance').toBe(2);
+      const revealedAmount = cards()[1].querySelector<HTMLInputElement>('.amount-input')!;
+      expect(document.activeElement)
+        .withContext('the amount is the field the row is missing')
+        .toBe(revealedAmount);
+
+      // Escape rather than leaving 0 in the field: a blur on an unreadable
+      // amount holds the editor open (commitAmount's own refusal), which
+      // would otherwise survive the trip to Confirm and back below.
+      revealedAmount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
 
       // The stepper header reaches Confirm from here with the row still empty.
       component.stepper.selectedIndex = 3;
@@ -1835,7 +1856,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       expect(component.unfilledRows()).toBe(0);
       expect(host.querySelector('.rows-hint')).toBeNull();
-      expect(continueButton().disabled).toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled')).toBeNull();
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();
@@ -2436,9 +2457,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(component.extractedTransactions().map(t => [t.imageMetadata?.receiptId, card.receiptPhotos(t)]))
         .withContext('both halves name the one receipt and its one photo')
         .toEqual([[1, '1'], [1, '1']]);
-      expect(continueButton().disabled)
+      expect(continueButton().getAttribute('aria-disabled'))
         .withContext('the part is born filled, so nothing holds Continue')
-        .toBeFalse();
+        .toBeNull();
 
       // Enter with the original's description left standing: the editor
       // closes and the row keeps what it was born with.
@@ -2813,7 +2834,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(component.duplicateChecks().some(c => c.transactionId === secondId))
         .withContext('no verdict is kept for a row that left the batch')
         .toBeFalse();
-      expect(continueButton().disabled).toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled')).toBeNull();
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();

@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -76,6 +76,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private injector = inject(Injector);
 
   @ViewChild('stepper') stepper!: MatStepper;
+  /**
+   * Reached from `onReviewContinue` rather than through an output: a held
+   * press has no change to emit, only a row on the card beneath this
+   * component's own template to find and scroll to (#430).
+   */
+  table = viewChild(TransactionPreviewTableComponent);
 
   // JSON here is the backup door (importFromJSON) — the share sheet stays
   // shorter (share-intake.service.ts) since a share is never where a backup
@@ -272,9 +278,29 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   // The linear stepper refuses next() on an incomplete step. The camera
   // hand-off's stepper is not linear and lets the header jump straight to
   // Confirm, which is why the Import button carries the same guard itself.
+  // Reads selectedCount() rather than selectedTransactionIds(): the latter is
+  // a mirror updated at each mutation's own call site, while selectedCount()
+  // is read live off extractedTransactions() the way unansweredDates(),
+  // unfilledRows() and the Import button's own guard already do — one row
+  // count behind every gate on this step, not two that merely agree so far.
   reviewComplete = computed(() =>
-    this.selectedTransactionIds().size > 0 && this.unansweredDates() === 0 && this.unfilledRows() === 0
+    this.selectedCount() > 0 && this.unansweredDates() === 0 && this.unfilledRows() === 0
   );
+
+  /**
+   * The Continue press, on a button `disabledInteractive` keeps clickable at
+   * `aria-disabled` rather than truly disabled: a native `disabled` button
+   * eats the click, and nothing else would carry a held press to the row
+   * that is holding it. Clear advances exactly as the plain `stepper.next()`
+   * this replaces did (#430).
+   */
+  onReviewContinue(): void {
+    if (this.reviewComplete()) {
+      this.stepper.next();
+      return;
+    }
+    this.table()?.revealFirstBlocking();
+  }
 
   /**
    * What the review card denominates a hand-added row in when there is no

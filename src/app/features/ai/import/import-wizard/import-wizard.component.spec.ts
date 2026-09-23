@@ -390,9 +390,65 @@ describe('ImportWizardComponent', () => {
     });
 
     it('should return true when transactions are selected', () => {
-      component.selectedTransactionIds.set(new Set(['txn1']));
+      component.extractedTransactions.set(mockTransactions);
 
       expect(component.reviewComplete()).toBeTrue();
+    });
+  });
+
+  describe('onReviewContinue', () => {
+    // #430: a native `disabled` Continue eats the click, so the button stays
+    // clickable (disabledInteractive) and every press reaches here. Which of
+    // the two things a press can do is all this suite can pin — that
+    // `disabledInteractive` itself renders `aria-disabled` and that a held
+    // press actually moves focus into the card is the smoke suite's case,
+    // the same split `reviewComplete` above draws.
+    function stubTable(): jasmine.SpyObj<{ revealFirstBlocking(): boolean }> {
+      const table = jasmine.createSpyObj('TransactionPreviewTableComponent', ['revealFirstBlocking']);
+      component.table = (() => table) as unknown as typeof component.table;
+      return table;
+    }
+
+    function stubStepper(): jasmine.SpyObj<{ next(): void }> {
+      const stepper = jasmine.createSpyObj('MatStepper', ['next']);
+      component.stepper = stepper as unknown as MatStepper;
+      return stepper;
+    }
+
+    it('reveals instead of advancing on a held review step', () => {
+      const table = stubTable();
+      const stepper = stubStepper();
+      // Nothing selected: reviewComplete() is false.
+
+      component.onReviewContinue();
+
+      expect(table.revealFirstBlocking).toHaveBeenCalled();
+      expect(stepper.next).not.toHaveBeenCalled();
+    });
+
+    // reviewComplete() reads selectedCount(), which is live off
+    // extractedTransactions() — the row set a deselect-all leaves in place.
+    // A press here must not advance just because rows exist.
+    it('neither advances nor throws when rows exist but none are selected', () => {
+      const table = stubTable();
+      table.revealFirstBlocking.and.returnValue(false);
+      const stepper = stubStepper();
+      component.extractedTransactions.set(mockTransactions.map(t => ({ ...t, selected: false })));
+
+      expect(() => component.onReviewContinue()).not.toThrow();
+
+      expect(stepper.next).not.toHaveBeenCalled();
+    });
+
+    it('advances on a clear step', () => {
+      const table = stubTable();
+      const stepper = stubStepper();
+      component.extractedTransactions.set(mockTransactions);
+
+      component.onReviewContinue();
+
+      expect(stepper.next).toHaveBeenCalled();
+      expect(table.revealFirstBlocking).not.toHaveBeenCalled();
     });
   });
 
