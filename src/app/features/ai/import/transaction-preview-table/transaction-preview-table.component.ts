@@ -105,6 +105,15 @@ const EDITORS = {
 
 type EditField = keyof typeof EDITORS;
 
+/**
+ * What every handler that records the reviewer's own work writes beside its
+ * change. The mark is what Remove asks about (`rowCarriesReviewerWork`); the
+ * failure reason goes with it because it describes the row as it was
+ * submitted, and a row the reviewer has since changed would otherwise go on
+ * saying it could not be saved beside the fix.
+ */
+const EDITED_ON_CARD = { editedOnCard: true, importFailure: undefined } as const;
+
 /** One datalist per card instance: two on a page must not answer to one id. */
 let vocabularyListSeq = 0;
 
@@ -238,9 +247,9 @@ export class TransactionPreviewTableComponent {
    * It does not set `editedOnCard`. Selection, a duplicate overrule, a
    * dismissed currency offer and a recurring link come through here too, and
    * none of them is work Remove should ask before throwing away; each
-   * handler that records the reviewer's own content sets the mark itself,
-   * and the bulk currency switch, the bulk Keep, a split and a merge never
-   * come through here at all.
+   * handler that records the reviewer's own content spreads
+   * `EDITED_ON_CARD` itself, and the bulk currency switch, the bulk Keep, a
+   * split and a merge never come through here at all.
    */
   private replaceRow(
     transaction: CategorizedImportTransaction,
@@ -270,7 +279,7 @@ export class TransactionPreviewTableComponent {
   toggleType(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, {
       type: transaction.type === 'income' ? 'expense' : 'income',
-      editedOnCard: true,
+      ...EDITED_ON_CARD,
     });
   }
 
@@ -279,7 +288,7 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(transaction, {
       suggestedCategoryId: categoryId,
       categoryConfidence: 1.0, // User confirmed
-      editedOnCard: true,
+      ...EDITED_ON_CARD,
     });
   }
 
@@ -350,7 +359,7 @@ export class TransactionPreviewTableComponent {
       amount: roundToMinorUnit(transaction.amount, code),
       currencyFellBack: false,
       currencySuggestion: undefined,
-      editedOnCard: true,
+      ...EDITED_ON_CARD,
     });
     if (blanked) {
       this.notifications.info(
@@ -407,7 +416,7 @@ export class TransactionPreviewTableComponent {
             amount: roundToMinorUnit(t.amount, code),
             currencyFellBack: false,
             currencySuggestion: undefined,
-            editedOnCard: true,
+            ...EDITED_ON_CARD,
           }
         : t
     );
@@ -525,7 +534,7 @@ export class TransactionPreviewTableComponent {
   // its place — the same landing setCountry names — or the bare editor when
   // the row's own place editor was open.
   removeLocation(transaction: CategorizedImportTransaction): void {
-    this.replaceRow(transaction, { location: undefined, receiptCountry: undefined, editedOnCard: true });
+    this.replaceRow(transaction, { location: undefined, receiptCountry: undefined, ...EDITED_ON_CARD });
     this.announcer.announce(
       this.translationService.t('import.announceLocationRemoved', { description: this.announceDescription(transaction) })
     );
@@ -619,7 +628,7 @@ export class TransactionPreviewTableComponent {
           ? { ...location, country: undefined }
           : undefined,
       receiptCountry: undefined,
-      editedOnCard: true,
+      ...EDITED_ON_CARD,
     });
     if (!code) {
       this.announcer.announce(
@@ -632,7 +641,7 @@ export class TransactionPreviewTableComponent {
   // The chip goes with the tag; the add trigger is the strip's unconditional
   // control, or the bare input when that row's own tag editor was open.
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
-    this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag), editedOnCard: true });
+    this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag), ...EDITED_ON_CARD });
     this.announcer.announce(
       this.translationService.t('import.announceTagRemoved', { description: this.announceDescription(transaction), tag })
     );
@@ -845,7 +854,7 @@ export class TransactionPreviewTableComponent {
    */
   private dateAnswered(row: CategorizedImportTransaction): Partial<CategorizedImportTransaction> {
     return {
-      editedOnCard: true,
+      ...EDITED_ON_CARD,
       dateReviewed: true,
       dateAssumed: undefined,
       dateImplausible: undefined,
@@ -1064,7 +1073,7 @@ export class TransactionPreviewTableComponent {
     // An emptied field is a reviewer starting over, not one asking for a row
     // that reads as nothing in the list.
     if (!description || description === row.description) return;
-    this.replaceRow(row, { description, editedOnCard: true });
+    this.replaceRow(row, { description, ...EDITED_ON_CARD });
   }
 
   /**
@@ -1097,10 +1106,10 @@ export class TransactionPreviewTableComponent {
     if (!name) {
       const location = { ...row.location };
       delete location.name;
-      this.replaceRow(row, { location: location.country ? location : undefined, editedOnCard: true });
+      this.replaceRow(row, { location: location.country ? location : undefined, ...EDITED_ON_CARD });
       return;
     }
-    this.replaceRow(row, { location: { ...row.location, name }, editedOnCard: true });
+    this.replaceRow(row, { location: { ...row.location, name }, ...EDITED_ON_CARD });
   }
 
   /**
@@ -1123,7 +1132,7 @@ export class TransactionPreviewTableComponent {
     const tags = row.tags ?? [];
     this.closeEdit(row, event.type === 'keydown');
     if (!tag || normalizeTags(tags).includes(tag)) return;
-    this.replaceRow(row, { tags: [...tags, tag], editedOnCard: true });
+    this.replaceRow(row, { tags: [...tags, tag], ...EDITED_ON_CARD });
     this.announcer.announce(
       this.translationService.t('import.announceTagAdded', { description: this.announceDescription(row), tag })
     );
@@ -1188,7 +1197,7 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(row, {
       amount,
       fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'amount'),
-      editedOnCard: true,
+      ...EDITED_ON_CARD,
     });
   }
 
@@ -1245,8 +1254,16 @@ export class TransactionPreviewTableComponent {
     const before = this.transactions.slice(0, index);
     const after = this.transactions.slice(index + 1);
     // The part is known by its splitFrom; the half left behind has only
-    // this mark to say the split happened to it.
-    this.transactions = [...before, { ...kept, editedOnCard: true }, part, ...after];
+    // this mark to say the split happened to it. Neither half is the row
+    // that was refused, so neither keeps its reason or its count of failed
+    // attempts — carried, the count would set a half aside on its own first
+    // failure.
+    this.transactions = [
+      ...before,
+      { ...kept, ...EDITED_ON_CARD, importAttempts: undefined },
+      { ...part, importFailure: undefined, importAttempts: undefined },
+      ...after,
+    ];
     this.emitChanges();
     this.cdr.markForCheck();
     this.focusWhenRendered(this.inRow(part, EDITORS.description.input));
@@ -1388,8 +1405,10 @@ export class TransactionPreviewTableComponent {
     const folded = mergeImportRows(dest, source);
     if (!folded) return;
     // mergedReceiptIds records a merge only between two receipts' rows; the
-    // mark records every one.
-    const merged: CategorizedImportTransaction = { ...folded, editedOnCard: true };
+    // mark records every one. The survivor is not the row that was refused,
+    // so it keeps neither the reason nor the count of failed attempts —
+    // carried, the count would set it aside on its own first failure.
+    const merged: CategorizedImportTransaction = { ...folded, ...EDITED_ON_CARD, importAttempts: undefined };
     this.forgetRow(source.id);
     this.transactions = this.transactions.filter(t => t !== source).map(t => t === dest ? merged : t);
     this.emitChanges();
@@ -1556,7 +1575,7 @@ export class TransactionPreviewTableComponent {
     if (this.isEditing(row, 'notes')) this.closeEdit(row, false);
     const notes = draft?.trim() || undefined;
     if (draft === undefined || notes === row.notes) return;
-    this.replaceRow(row, { notes, editedOnCard: true });
+    this.replaceRow(row, { notes, ...EDITED_ON_CARD });
   }
 
   /**

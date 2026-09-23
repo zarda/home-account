@@ -280,7 +280,9 @@ export interface CategorizedImportTransaction {
   /**
    * A review-step mark, never written: the catalog key `importFailureKey`
    * resolved the last time this row's own confirm attempt was refused.
-   * Absent on a row nobody has tried yet. Read instead of `ImportError.message`
+   * Absent on a row nobody has tried yet, and cleared by every edit the card
+   * marks with `editedOnCard`: it describes the row as it was submitted, not
+   * as the reviewer has since changed it. Read instead of `ImportError.message`
    * itself, which is a raw code or a provider's English — not this codebase's
    * to put on screen untranslated.
    */
@@ -291,7 +293,8 @@ export interface CategorizedImportTransaction {
    * and returns the row deselected once it reaches 2 — re-offering the same
    * refusal forever would be a loop with no way out, and re-selecting a
    * set-aside row is the reviewer's own choice, not something a third
-   * automatic attempt should assume.
+   * automatic attempt should assume. A split clears it on both halves, the
+   * one keeping the id included: neither is the row that was refused.
    */
   importAttempts?: number;
 }

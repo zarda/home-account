@@ -540,6 +540,19 @@ describe('TransactionPreviewTableComponent', () => {
       expect(byId.get('outside')).toBe(before[5]);
       expect(component.unansweredCount()).toBe(0);
     });
+
+    it("clears a failed row's reason on every row it answers, and on no other", () => {
+      component.transactions = rows().map(t => ({ ...t, importFailure: 'import.rowFailedAmount', importAttempts: 1 }));
+
+      component.keepAllDates();
+
+      const byId = new Map(component.transactions.map(t => [t.id, t]));
+      expect(byId.get('asked')!.importFailure).toBeUndefined();
+      expect(byId.get('assumed')!.importFailure).toBeUndefined();
+      expect(byId.get('outside')!.importFailure)
+        .withContext('a row nobody asked about is not a row the answer changed')
+        .toBe('import.rowFailedAmount');
+    });
   });
 
   describe('row edits', () => {
@@ -586,6 +599,21 @@ describe('TransactionPreviewTableComponent', () => {
       expect(emitted.length).toBe(2);
       expect(emitted[0]).not.toBe(emitted[1]);
     });
+
+    it("clears a failed row's reason with the reviewer's edit, and only then", () => {
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      component.transactions = rows().map(r => ({ ...r, ...failed }));
+
+      // Ticking a row back in is not a change to what failed.
+      component.toggleSelection(component.transactions[0], true);
+      expect(component.transactions[0].importFailure).toBe('import.rowFailedAmount');
+
+      component.updateCategory(component.transactions[0], 'transport');
+      component.toggleType(component.transactions[1]);
+
+      expect(component.transactions.map(t => t.importFailure)).toEqual([undefined, undefined]);
+      expect(component.transactions.every(t => t.editedOnCard)).toBeTrue();
+    });
   });
 
   describe('currency edits', () => {
@@ -620,6 +648,23 @@ describe('TransactionPreviewTableComponent', () => {
       component.applyCurrencyToSelected('JPY');
 
       expect(emitted[0].map(t => t.currency)).toEqual(['JPY', 'USD', 'JPY']);
+    });
+
+    it("clears a failed row's reason on every row the bulk switch changes, and on no other", () => {
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      component.transactions = [
+        makeRow({ id: 'switched', currency: 'USD', selected: true, ...failed }),
+        makeRow({ id: 'unselected', currency: 'USD', selected: false, ...failed }),
+        makeRow({ id: 'already', currency: 'JPY', selected: true, ...failed }),
+      ];
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(component.transactions.map(t => [t.id, t.importFailure])).toEqual([
+        ['switched', undefined],
+        ['unselected', 'import.rowFailedAmount'],
+        ['already', 'import.rowFailedAmount'],
+      ]);
     });
 
     it('lists the row\'s own code when the picker does not curate it', () => {
@@ -1242,6 +1287,29 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.import-failure-reason')).toBeNull();
+  });
+
+  it('drops the reason once the reviewer edits the row', () => {
+    // The reason describes the row as it was submitted; a row the reviewer
+    // has since fixed is not that row, and saying it could not be saved
+    // would argue against the fix.
+    component.transactions = [makeRow({ importFailure: 'import.rowFailedAmount', importAttempts: 1 })];
+    component.categories = [];
+    fixture.detectChanges();
+    const emitted = emissions();
+
+    (fixture.nativeElement.querySelector('.description-section .inline-edit') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const box = fixture.nativeElement.querySelector('.description-input') as HTMLInputElement;
+    box.value = 'Kissaten Ueshima';
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    fixture.detectChanges();
+
+    expect(emitted.length).toBe(1);
+    expect(emitted[0][0].importFailure).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.import-failure-reason'))
+      .withContext('a fixed row stops saying it could not be saved')
+      .toBeNull();
   });
 
   /**
@@ -3270,6 +3338,35 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       box.dispatchEvent(new KeyboardEvent('keydown', { key }));
     }
 
+    it("clears a failed row's reason on both halves", () => {
+      render([makeRow({ id: 'txn1', amount: 10, importFailure: 'import.rowFailedAmount', importAttempts: 1 })]);
+      expect(fixture.nativeElement.querySelector('.import-failure-reason')).withContext('precondition').not.toBeNull();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '4');
+      fixture.detectChanges();
+
+      expect(component.transactions.length).toBe(2);
+      expect(component.transactions.map(t => t.importFailure)).toEqual([undefined, undefined]);
+      expect(fixture.nativeElement.querySelector('.import-failure-reason')).toBeNull();
+    });
+
+    it("starts both halves' failed-attempt count afresh", () => {
+      // Neither half is the row that was refused. Carrying its count would
+      // set a half aside on its own first failure, as though it had already
+      // failed once.
+      render([makeRow({ id: 'txn1', amount: 10, importFailure: 'import.rowFailedAmount', importAttempts: 1 })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '4');
+      fixture.detectChanges();
+
+      expect(component.transactions.length).toBe(2);
+      expect(component.transactions.map(t => t.importAttempts)).toEqual([undefined, undefined]);
+    });
+
     it('renders on a filled row and not on a row with no amount', () => {
       render([makeRow({ id: 'filled' }), makeRow({ id: 'empty', amount: 0 })]);
 
@@ -3716,6 +3813,35 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted.length).toBe(1);
       expect(emitted[0].map(t => t.id)).withContext('the source gone, the target kept').toEqual(['b']);
       expect(emitted[0][0].amount).withContext('b\'s id, summed').toBe(17.5);
+    });
+
+    it("clears the survivor's failure reason, since the row it describes is not the one that merged", () => {
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5, ...failed });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12, ...failed });
+      render([a, b]);
+      const emitted = emissions();
+
+      component.mergeInto(a, b);
+      fixture.detectChanges();
+
+      expect(emitted[0].map(t => [t.id, t.importFailure])).toEqual([['b', undefined]]);
+      expect(fixture.nativeElement.querySelector('.import-failure-reason')).toBeNull();
+    });
+
+    it("starts the survivor's failed-attempt count afresh", () => {
+      // The merged row is not the row that was refused. Carrying the
+      // target's count would set it aside on its own first failure.
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5, ...failed });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12, ...failed });
+      render([a, b]);
+      const emitted = emissions();
+
+      component.mergeInto(a, b);
+      fixture.detectChanges();
+
+      expect(emitted[0].map(t => [t.id, t.importAttempts])).toEqual([['b', undefined]]);
     });
 
     it('does nothing when the source or the target has left the batch by the time the click lands', () => {
