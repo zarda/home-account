@@ -34,6 +34,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { countryOptions } from '../../../../core/utils/country-options.utils';
 import {
@@ -136,6 +137,7 @@ export class TransactionPreviewTableComponent {
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private cdr = inject(ChangeDetectorRef);
   private notifications = inject(NotificationService);
+  private announcer = inject(AnnouncerService);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
@@ -303,9 +305,12 @@ export class TransactionPreviewTableComponent {
   /**
    * The figure follows the currency it is stored in — ADR 0109's rule,
    * applied here to a change of currency rather than of figure. A figure
-   * that rounds to nothing leaves the row unfilled, which the placeholder
-   * and the Continue gate already say; unlike the typed amount, the chip
-   * has no editor to hold open, so there is nothing to refuse into.
+   * that rounds to nothing leaves the row unfilled — the placeholder and
+   * the Continue gate both say so, but neither is anywhere near the chip
+   * this edit is made from, so a row blanked here is exactly as unnoticed
+   * as one a bulk switch blanks; the count is 1 rather than a distinct
+   * wording, so applyCurrencyToSelected's own notice is the one voice for
+   * both (#430).
    */
   updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
     // Chosen by the user, so whatever the source failed to read no longer
@@ -315,12 +320,23 @@ export class TransactionPreviewTableComponent {
     if (this.recordFellBackEligibility(transaction)) {
       this.currencySession.remember(code);
     }
+    // Read ahead of replaceRow: after it, the row's amount is already
+    // rounded and a row that was blank to start looks the same as one this
+    // edit just blanked.
+    const blanked =
+      !amountIsUnfilled(transaction) &&
+      amountIsUnfilled({ ...transaction, amount: roundToMinorUnit(transaction.amount, code) });
     this.replaceRow(transaction, {
       currency: code,
       amount: roundToMinorUnit(transaction.amount, code),
       currencyFellBack: false,
       currencySuggestion: undefined,
     });
+    if (blanked) {
+      this.notifications.info(
+        this.translationService.t('import.bulkCurrencyBlanked', { count: 1, currency: code })
+      );
+    }
   }
 
   /**
@@ -394,6 +410,23 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
+   * The name a row-change announcement uses: its description, or a stand-in
+   * when there is none. This slot sits inside a sentence — "Tag lunch added
+   * to {{description}}" — so the stand-in has to be a noun phrase a
+   * screen-reader user can parse there, not editDescriptionLabel's
+   * imperative placeholder ("Add a description"), which would read as
+   * "Tag lunch added to Add a description". A hand-added row can be tagged,
+   * placed or removed before anything is typed into it, and every announce
+   * call needs the same answer rather than each deciding on its own whether
+   * to say nothing instead.
+   */
+  private announceDescription(row: CategorizedImportTransaction): string {
+    return descriptionIsUnfilled(row)
+      ? this.translationService.t('import.untitledRow')
+      : row.description;
+  }
+
+  /**
    * The reviewer's overrule of a duplicate verdict. The verdict was decided
    * inside the import doors, on inputs the reviewer could not change, and it
    * was what deselected the row — so the overrule selects it again. The
@@ -402,6 +435,12 @@ export class TransactionPreviewTableComponent {
    */
   clearDuplicate(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { isDuplicate: false, duplicateOf: undefined, selected: true });
+    // The badge and its own visual state carry this for a sighted reviewer;
+    // a screen reader on a card of twenty rows has no equivalent unless the
+    // change is announced here (#430).
+    this.announcer.announce(
+      this.translationService.t('import.announceNotDuplicate', { description: this.announceDescription(transaction) })
+    );
     // The button goes with the badge, and a focused element that leaves the
     // DOM drops focus at the document root; the description trigger beneath
     // is the row's nearest control, the one the editors' exits hand back to.
@@ -425,6 +464,9 @@ export class TransactionPreviewTableComponent {
   // the row's own place editor was open.
   removeLocation(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { location: undefined, receiptCountry: undefined });
+    this.announcer.announce(
+      this.translationService.t('import.announceLocationRemoved', { description: this.announceDescription(transaction) })
+    );
     this.focusWhenRendered(this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input'));
   }
 
@@ -495,6 +537,11 @@ export class TransactionPreviewTableComponent {
    * That withdrawal takes the country button off the card with the chip, so
    * the add trigger that replaces it is where focus goes instead — a
    * selector that matches nothing would drop focus at the document root.
+   *
+   * Only the withdrawal is announced: picking a country is a choice made
+   * from the very menu open in front of the reviewer, but withdrawing one
+   * can take the chip — and the country with it — off a row they may have
+   * moved on from already (#430).
    */
   setCountry(row: CategorizedImportTransaction, code: string | null): void {
     const location = row.location;
@@ -506,6 +553,11 @@ export class TransactionPreviewTableComponent {
           : undefined,
       receiptCountry: undefined,
     });
+    if (!code) {
+      this.announcer.announce(
+        this.translationService.t('import.announceCountryRemoved', { description: this.announceDescription(row) })
+      );
+    }
     this.focusWhenRendered(this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
   }
 
@@ -513,6 +565,9 @@ export class TransactionPreviewTableComponent {
   // control, or the bare input when that row's own tag editor was open.
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
     this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
+    this.announcer.announce(
+      this.translationService.t('import.announceTagRemoved', { description: this.announceDescription(transaction), tag })
+    );
     this.focusWhenRendered(this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input'));
   }
 
@@ -939,6 +994,9 @@ export class TransactionPreviewTableComponent {
     this.closeEdit(row, event.type === 'keydown');
     if (!tag || normalizeTags(tags).includes(tag)) return;
     this.replaceRow(row, { tags: [...tags, tag] });
+    this.announcer.announce(
+      this.translationService.t('import.announceTagAdded', { description: this.announceDescription(row), tag })
+    );
   }
 
   /**
@@ -1231,6 +1289,9 @@ export class TransactionPreviewTableComponent {
     this.transactions = this.transactions.filter(t => t !== row);
     this.emitChanges();
     this.cdr.markForCheck();
+    this.announcer.announce(
+      this.translationService.t('import.announceRowRemoved', { description: this.announceDescription(row) })
+    );
     this.focusWhenRendered(
       ...(neighbour ? [this.inRow(neighbour, '.remove-trigger')] : []),
       '.add-row'

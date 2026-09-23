@@ -2245,6 +2245,36 @@ describe('ImportWizardComponent', () => {
       expect(component.duplicateChecks().find(c => c.transactionId === 'txn2')).toBeUndefined();
       expect(component.rechecksInFlight()).toBe(0);
     }));
+
+    it('announces how many verdicts a re-check flips', fakeAsync(() => {
+      // txn1's own edit flips it, and the within-batch pass — run over every
+      // row, not only the edited one — flips txn2 in the same cycle: a
+      // reviewer watching only txn1 would otherwise never learn txn2 moved.
+      populate(fresh());
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', true)]);
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([
+        { transactionId: 'txn2', isDuplicate: true, matchType: 'within_batch', existingTransactionId: 'txn1', confidence: 0.9 },
+      ]);
+
+      edit('txn1', { date: yesterday() });
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).toBeTrue();
+      expect(row('txn2').isDuplicate).toBeTrue();
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith('import.announceVerdictsChanged');
+      expect(mockTranslationService.t).toHaveBeenCalledWith('import.announceVerdictsChanged', { count: 2 });
+    }));
+
+    it('says nothing when a re-check flips no verdict', fakeAsync(() => {
+      populate(fresh());
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
+
+      edit('txn1', { date: yesterday() });
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).toBeFalse();
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    }));
   });
 
   // Every case above blanks the template, so none of them can see which card

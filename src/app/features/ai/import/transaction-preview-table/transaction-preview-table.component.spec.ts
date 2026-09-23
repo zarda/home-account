@@ -12,6 +12,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
 import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
 
@@ -805,6 +806,26 @@ describe('TransactionPreviewTableComponent', () => {
         'import.bulkCurrencyBlanked:{"count":1,"currency":"JPY"}'
       );
     });
+
+    it('a per-row currency change that blanks the amount raises the bulk switch\'s message', () => {
+      const row = makeRow({ currency: 'USD', amount: 0.4 });
+      component.transactions = [row];
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        'import.bulkCurrencyBlanked:{"count":1,"currency":"JPY"}'
+      );
+    });
+
+    it('a per-row change that does not blank says nothing', () => {
+      const row = makeRow({ currency: 'USD', amount: 12.34 });
+      component.transactions = [row];
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(notifications.info).not.toHaveBeenCalled();
+    });
   });
 
   describe('suggested fields', () => {
@@ -1019,6 +1040,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
   let fixture: ComponentFixture<TransactionPreviewTableComponent>;
   let component: TransactionPreviewTableComponent;
   let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
   const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
     id: 'txn1',
@@ -1036,6 +1058,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
   beforeEach(async () => {
     currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
@@ -1058,6 +1081,10 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
           },
         },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
+        // No NotificationService mock here: the "one voice" case below needs
+        // the real service's own announce call to land on this spy, so a
+        // second one from this component's own code would be caught.
+        { provide: AnnouncerService, useValue: mockAnnouncer },
       ],
     }).compileComponents();
 
@@ -3764,6 +3791,143 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(fixture.nativeElement.querySelector(`[data-row-id="${added.id}"]`)).withContext('gone').toBeNull();
       expect(document.activeElement).withContext('the previous row\'s own control').toBe(removeTrigger('existing'));
+    });
+  });
+
+  // #430: several row actions changed a row somewhere the reviewer was not
+  // looking with nothing announced to a screen reader. One case per event,
+  // each firing its handler directly — the DOM path to it is already covered
+  // by the describe above; what is new here is the announcement.
+  describe('every row mutation announces itself', () => {
+    it('announces a row no longer a duplicate', () => {
+      const row = makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.clearDuplicate(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceNotDuplicate:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('announces a filed tag', () => {
+      const row = makeRow({ tags: [] });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+      component.startEdit(row, 'tag');
+
+      component.commitTag(row, { type: 'blur', target: { value: 'lunch' } } as unknown as Event);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceTagAdded:{"description":"Coffee Shop","tag":"lunch"}'
+      );
+    });
+
+    it('announces a removed tag', () => {
+      const row = makeRow({ tags: ['lunch'] });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeTag(row, 'lunch');
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceTagRemoved:{"description":"Coffee Shop","tag":"lunch"}'
+      );
+    });
+
+    it('announces a withdrawn country', () => {
+      const row = makeRow({ location: { name: 'Shibuya', country: 'JP' } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.setCountry(row, null);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCountryRemoved:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('says nothing when a country is picked — only its withdrawal is announced', () => {
+      const row = makeRow({ location: { name: 'Shibuya' } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.setCountry(row, 'KR');
+
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    it('announces a removed location', () => {
+      const row = makeRow({ location: { name: 'Shibuya', country: 'JP' } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeLocation(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceLocationRemoved:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('announces a removed row', () => {
+      const row = makeRow();
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeRow(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceRowRemoved:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('announces a hand-added blank row by its placeholder, not an empty description', () => {
+      const row = makeRow({ description: '' });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeRow(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceRowRemoved:{"description":"import.untitledRow"}'
+      );
+    });
+
+    it('announces a tag removed from a blank row by its placeholder, not an empty description', () => {
+      const row = makeRow({ description: '', tags: ['lunch'] });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeTag(row, 'lunch');
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceTagRemoved:{"description":"import.untitledRow","tag":"lunch"}'
+      );
+    });
+
+    it('leaves the bulk currency switch\'s own notice as the one voice for a row it blanks', () => {
+      // NotificationService is not mocked in this describe, so its real
+      // announce call lands on this same spy — proving the component does
+      // not also call the announcer directly for the row applyCurrencyToSelected
+      // already raises notifications.info for.
+      const row = makeRow({ amount: 0.4, selected: true });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledTimes(1);
     });
   });
 });

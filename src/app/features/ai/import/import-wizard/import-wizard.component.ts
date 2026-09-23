@@ -29,6 +29,7 @@ import { TransactionPreviewTableComponent } from '../transaction-preview-table/t
 import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/duplicate-warning.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
@@ -58,6 +59,7 @@ import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/
 })
 export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private notifications = inject(NotificationService);
+  private announcer = inject(AnnouncerService);
   private importService = inject(AIImportService);
   private duplicateService = inject(DuplicateDetectionService);
   private receiptAttempts = inject(ReceiptAttemptService);
@@ -768,6 +770,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * its verdict changed; an unchanged verdict leaves the row, and the
    * reviewer's own selection of it, alone. A twin gets no duplicateOf, as
    * processFiles gives it none: the check names a batch row, not a document.
+   *
+   * A flip can land on a row the reviewer edited earlier and moved on from
+   * — the within-batch pass re-derives every row's verdict, not only the
+   * one just edited — so however many flipped is announced once the rewrite
+   * is applied, the same way a failed read already says so (#430).
    */
   private async recheckDuplicates(ids: Set<string>): Promise<void> {
     const seq = ++this.recheckSeq;
@@ -811,9 +818,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         const duplicateOf = check?.matchType === 'within_batch' ? undefined : check?.existingTransactionId;
         return { ...row, isDuplicate: flagged, duplicateOf, selected: !flagged };
       });
+      const flipped = reconciled.filter((row, i) => row.isDuplicate !== rows[i].isDuplicate).length;
       this.duplicateChecks.set(merged);
       this.extractedTransactions.set(reconciled);
       this.updateSelectedIds();
+      if (flipped > 0) {
+        this.announcer.announce(this.t('import.announceVerdictsChanged', { count: flipped }));
+      }
     } finally {
       this.rechecksInFlight.update(n => n - 1);
     }
