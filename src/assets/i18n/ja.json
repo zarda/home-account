@@ -1026,6 +1026,7 @@
     "progressLabel": "インポートの進捗：{{percent}}%",
     "reviewStep": "確認",
     "confirmStep": "完了",
+    "stepSealed": "インポート中はこのステップをロックしています",
     "dropzoneTitle": "ファイルをドラッグ＆ドロップまたはクリックして選択",
     "dropzoneHint": "CSV、PDF、画像、JSON バックアップに対応",
     "browseFiles": "ファイルを選択",

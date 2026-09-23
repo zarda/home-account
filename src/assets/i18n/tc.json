@@ -1026,6 +1026,7 @@
     "progressLabel": "匯入進度：{{percent}}%",
     "reviewStep": "檢閱",
     "confirmStep": "確認",
+    "stepSealed": "匯入進行中，此步驟已鎖定",
     "dropzoneTitle": "拖放檔案或點擊瀏覽",
     "dropzoneHint": "支援 CSV、PDF、圖片和 JSON 備份",
     "browseFiles": "瀏覽檔案",

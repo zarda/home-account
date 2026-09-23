@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
@@ -49,6 +50,7 @@ import { importFailureKey, needsDateAnswer, rowIsUnfilled, sumByCurrency } from 
     MatProgressSpinnerModule,
     MatProgressBarModule,
     MatChipsModule,
+    MatTooltipModule,
     FileDropzoneComponent,
     TransactionPreviewTableComponent,
     DuplicateWarningComponent,

@@ -1914,8 +1914,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const host = fixture.nativeElement as HTMLElement;
       const component = fixture.componentInstance;
+      const translation = TestBed.inject(TranslationService);
       const steps = () => component.stepper.steps.toArray();
       const headers = () => Array.from(host.querySelectorAll<HTMLElement>('.mat-step-header'));
+      const lockIcons = () =>
+        headers().map(header => header.querySelector<HTMLElement>('mat-icon.seal-icon'));
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();
@@ -1933,6 +1936,15 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(component.isImporting()).toBeTrue();
       expect(steps().every(step => !step.editable))
         .withContext('every step is sealed, not just the one behind')
+        .toBeTrue();
+
+      // The seal is visible, not just enforced: every step header carries a
+      // named lock icon while the write is in flight.
+      expect(lockIcons().every(icon => icon !== null))
+        .withContext('every header shows the lock while the import writes')
+        .toBeTrue();
+      expect(lockIcons().every(icon => icon?.getAttribute('aria-label') === translation.t('import.stepSealed')))
+        .withContext('the lock names itself for the reader, not just the eye')
         .toBeTrue();
 
       headers()[2].click();
@@ -1985,6 +1997,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       expect(component.isImporting()).toBeFalse();
       expect(steps().every(step => step.editable)).toBeTrue();
+      expect(lockIcons().every(icon => icon === null))
+        .withContext('the lock is gone once every step reopens')
+        .toBeTrue();
       expect(component.extractedTransactions().length).toBe(1);
       expect(component.extractedTransactions()[0].amount).toBe(545);
       expect(host.querySelectorAll('.transaction-card').length)
