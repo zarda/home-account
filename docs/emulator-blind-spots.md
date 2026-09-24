@@ -253,7 +253,12 @@ harness bound what that can honestly mean, and none of them is about axe:
   needs and useless to a rule about content. Contrast is unaffected: the real
   stylesheets compile.
 - **Karma's window is 756px**, so this is a phone and small-tablet audit. A
-  rule that only fires on a desktop layout is never reached.
+  rule that only fires on a desktop layout is never reached. And the frame
+  the specs render in is short — 413px tall where it was measured — and
+  `color-contrast` reports no node below that fold. The category chip's
+  orange tile failed at 1.95:1 in light on `/dashboard` and `/budgets` as
+  well as on `/transactions`; only the `/transactions` rows sat inside the
+  frame, and only they were reported.
 - **The run is scoped to the routed element**, because Karma's `debug.html`
   owns the `<html>` element, a banner and its own headings. Eight page-level
   rules are therefore disabled by name (`html-has-lang`, `document-title`,
@@ -263,12 +268,16 @@ harness bound what that can honestly mean, and none of them is about axe:
 - **It renders one theme per run, and the host picks it.** The walkthrough's
   account keeps the default `theme: 'system'`, and nothing in the harness pins
   a colour scheme, so `ThemeService` follows the `prefers-color-scheme` of the
-  machine running Chrome. A run sees light or dark, never both, and nothing it
-  prints says which. A contrast failure that exists in only one theme is
-  invisible to a run in the other: the dashboard's subtitle, gray-500 on the
-  light page background at 4.43:1, passes in dark, and the runs that emptied
-  the contrast freeze rendered dark — axe reported the page background as
-  `#121212`. It was found by reading the pairs
+  machine running Chrome: light on the CI runner, dark on a Mac in dark mode.
+  A run sees light or dark, never both, and nothing it prints says which. A
+  contrast failure that exists in only one theme is seen only where that
+  theme renders. The category chip's orange tile, 1.95:1 on its own tint in
+  light, passed every run on a Mac in dark mode and failed CI's. The
+  dashboard's subtitle, gray-500 on the light page background at 4.43:1,
+  passes in dark; the runs that emptied the contrast freeze rendered dark —
+  axe reported the page background as `#121212` — and CI's light run had
+  `color-contrast` frozen on `/dashboard`, so it was found by reading the
+  pairs
   ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
   The pass's first runs had rendered light, which is how
   [ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md) came to
@@ -290,6 +299,24 @@ reason, and all of them are fixed
 ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
 The table stays: a new violation fails the run on any route, and the only way
 past is a row with its reason.
+
+**Running the walkthrough in the other theme.** The repo commits no Karma
+config — the builder supplies its own defaults — so nothing pins the scheme,
+and a local run on a Mac in dark mode can pass what CI fails. To pin it, write
+a Karma config of your own outside the tree: a copy of `getBuiltInKarmaConfig`
+in `node_modules/@angular/build/src/builders/karma/karma-config.js`, its
+plugins required from the workspace, with a custom launcher on
+`ChromeHeadless` that adds `--blink-settings=preferredColorScheme=1` for light
+or `=0` for dark. Hand it to the builder with `--karma-config` and name the
+launcher in `--browsers`:
+
+```bash
+npx firebase emulators:exec --only auth,storage,firestore --project demo-home-account \
+  "npx ng test --watch=false --karma-config=<config> --browsers=<launcher> --include='**/app.smoke.spec.ts'"
+```
+
+Without one, plain `ChromeHeadless` follows the machine's appearance, so
+switching the Mac to light before the run has the same effect for that run.
 
 ## A rule that tightens, and the data already stored (#454)
 
@@ -334,7 +361,7 @@ bearing rather than belt-and-braces.
 | An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 | A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
-| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px with unserved i18n, in the one theme the host resolves | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px and above the frame's fold, with unserved i18n, in the one theme the host resolves (light on CI) | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
 
 ## When you add another one
 

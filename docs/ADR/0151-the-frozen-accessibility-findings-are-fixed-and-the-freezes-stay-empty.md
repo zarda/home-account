@@ -32,7 +32,12 @@ twice.
 **The contrast freeze had gone stale the other way.** The two sites axe had
 named on `/dashboard` and `/transactions` were already fixed, but the freeze
 was by rule id per route, so it now hid whatever else fired under
-`color-contrast` on those two routes.
+`color-contrast` on those two routes. On the CI runner, which renders the
+light theme, that included the category chip on `/transactions`: its tile
+paints a category's own colour on a tint of that colour, and the orange
+tile's icon measured 1.95:1 (`#ff9800` on `#fff2df`). The runs that emptied
+the freeze rendered dark, where the chip passed, so CI's light run was the
+first to report it.
 
 **The transaction row was a button around buttons.** The wrapper was
 `role="button"` with a tab stop and its own click, Enter and Space handlers,
@@ -181,20 +186,66 @@ rendered modes.
 
 ### Three light-grey texts move onto `--text-muted`
 
-With `color-contrast` unfrozen, axe reported one node: the count beside the
-Transactions title, whose `dark:` variant — gray-500 on the dark page — reads
-3.87:1. It moved to a component class on `--text-muted` (6.93:1 in light,
-7.38:1 in dark), and so did two siblings on the same Tailwind pairs: the
-budget period on the dashboard's budget card, which renders only once a
-budget is active and which axe did not report, and the dashboard's
+With `color-contrast` unfrozen, the run in dark reported one node: the count
+beside the Transactions title, whose `dark:` variant — gray-500 on the dark
+page — reads 3.87:1. It moved to a component class on `--text-muted` (6.93:1
+in light, 7.38:1 in dark), and so did two siblings on the same Tailwind
+pairs: the budget period on the dashboard's budget card, which renders only
+once a budget is active and which axe did not report, and the dashboard's
 subtitle.
 
 **The subtitle fails in light only**, gray-500 on the light page background at
-4.43:1, and its `dark:` partner passes. The runs that unfroze the rule
-rendered the dark theme. The walkthrough's account keeps the default
-`theme: 'system'` and nothing in the harness pins a colour scheme, so the pass
-renders whichever theme the host's `prefers-color-scheme` resolves, one per
-run; this one was found by reading the pairs, not by the pass.
+4.43:1, and its `dark:` partner passes. The walkthrough's account keeps the
+default `theme: 'system'` and nothing in the harness pins a colour scheme, so
+the pass renders whichever theme the host's `prefers-color-scheme` resolves,
+one per run: light on the CI runner, dark on a Mac in dark mode. The runs
+that unfroze the rule rendered dark and could not see the subtitle; CI's
+light run renders it, but `/dashboard`'s rule-id freeze hid every
+`color-contrast` node on that route. It was found by reading the pairs, and
+CI's light run now passes it.
+
+### A category's colour is moved until it reads on its own tint
+
+`CategoryChipComponent` paints a category's icon — and, as a pill, its label
+— in the category's colour on a tint of the same colour. The tint was that
+colour at alpha `0x20` in light and `0x40` in dark, and the foreground was
+the colour itself in light and the colour lightened 30% in dark, so a light
+category colour could not clear AA in light whatever lay beneath.
+
+**The tint is composited once and painted opaque.** A chip is rendered on the
+transaction list's card, on Material cards on the dashboard, budgets and
+reports, on the settings category list's `--surface-subtle`, and under a
+row's hover and highlight tones, and a translucent tint takes on whichever
+is underneath, so no one foreground could be shown to clear AA on all of
+them. The tint is now mixed over `--surface-card` — `CHIP_SURFACE`, `#ffffff`
+in light and `#1e1e1e` in dark — at the strength it had, and painted opaque:
+the icon and the label sit on that colour and no other. Every resting
+surface is within 13 levels a channel of the card in either theme, so a tile
+looks as it did.
+
+**The foreground moves only as far as it must.** `ensureContrast`, in
+`core/utils/color-contrast.utils.ts`, mixes the category's colour towards
+black in light and towards white in dark, in a hundred steps, and keeps the
+first shade that reaches 4.5:1 on the tile. Mixing towards black or white
+moves the lightness and keeps the hue: the orange tile's icon is `#a16000` in
+light, at 4.54:1, and a colour that already clears is left as it is, as that
+orange is on its dark tint at 4.70:1. Where black or white itself falls
+short, the answer is whichever of the two contrasts more. A colour that is
+not opaque hex, `#rgb` or `#rrggbb`, cannot be measured: it passes through
+unchanged, on the plain card surface. Three-digit hex is read — the budget
+card's `#666` fallback used to become `#66620` — and a colour without its
+`#` is normalised. Relative luminance uses sRGB's 0.04045 threshold, the one
+axe uses.
+
+**The gate is the chip's spec, not `contrast:check`.** A category's colour is
+data — picked from the category dialog's palette, or carried in a backup —
+so no token table can score it. `category-chip.component.spec.ts` renders a
+tile and a pill for every colour in the default catalogue and four hostile
+ones (`#FFFF00`, `#FFFFFF`, `#000000`, `#777777`), in both themes, and
+measures the computed colour against the computed background by the WCAG
+formula written out in the spec rather than the utility's. It asserts the
+tile opaque and the hue kept, and holds `CHIP_SURFACE` to the stylesheet's
+`--surface-card` in both themes.
 
 ### The sign-in transition names what it moves
 
@@ -256,6 +307,11 @@ own, a frozen row among them.
   tint beneath a handful. A `-text` token moves those and nothing else.
 - **Deleting the freeze tables once empty.** An empty table is the mechanism
   working: the next finding either fails or is recorded, with its reason.
+- **A darker foreground on the translucent tint.** The tint takes on the
+  surface under it, and a chip sits on half a dozen, so a foreground chosen
+  against one could not be shown to clear AA on the rest.
+- **Scoring category colours in `contrast:check`.** Its table pairs tokens;
+  a category's colour is stored on the category and passes through none.
 
 ## Consequences
 
@@ -279,14 +335,20 @@ own, a frozen row among them.
   next and read a computed colour read the dark palette. The file now clears
   both theme classes after each case, and the budget card's assertion
   resolves `--text-muted` at the moment it compares.
-- **Nothing deploys.** Styles, templates and scripts only.
+- **A category tile is opaque.** On a hovered or highlighted row it keeps its
+  resting colour rather than taking on the row's tone, and a light
+  category's icon and label read darker in light than the colour picked for
+  it.
+- **Nothing deploys.** Styles, templates, components and scripts only.
 
 ## Departures from the issue
 
 - **The contrast unfreeze fixed three sites, not two.** The issue named the
   count and the budget period. Axe reported the count alone; the budget
   period moved because it is the same failing pair, and the subtitle because
-  its light pairing fails where the pass never looked.
+  its light pairing fails, on a route whose freeze hid it from the light run.
+- **The category chip was not in the issue.** It failed in light only, and
+  surfaced when CI's light run met the emptied freeze on `/transactions`.
 - **The busy buttons were not in the issue.** Hiding their spinners was; a
   button whose only content is a hidden spinner has no name, so they carry
   one while busy.
@@ -297,8 +359,13 @@ own, a frozen row among them.
 
 ## Things that only became apparent while building
 
-- **The pass renders one theme.** Which one is the host's; the subtitle is
-  the case a dark run cannot see.
+- **The pass renders one theme, the host's**: light on the CI runner, dark on
+  a Mac in dark mode. The subtitle is the case a dark run cannot see, and the
+  category chip the case a green run in dark let through to CI.
+- **The pass measures above the fold only.** The orange tile failed at 1.95:1
+  on `/dashboard` (two chips) and `/budgets` (one) as well, and axe reported
+  neither: Karma's frame was 413px tall where it was measured, and those
+  chips sat below it. Only the `/transactions` rows sat inside it.
 - **A spec leaked the dark theme into the rest of the suite.** A colour
   assertion that passed alone failed in the full run, deterministically, at
   the same place.
@@ -328,10 +395,21 @@ own, a frozen row among them.
   page (two), the data page and the note translation. No freeze named them:
   the contrast table scores `--color-error` on its tint, not on the card, and
   the axe pass measures only what is on screen, in one theme.
-- **The axe pass renders one theme per run, the host's.** A failure that
-  exists only in the other theme is invisible to that run, and no run prints
-  which theme it rendered. 0145's other bounds stand: a phone-width audit of
-  seven routes.
+- **The axe pass renders one theme per run, the host's** — light on the CI
+  runner, dark on a Mac in dark mode. A failure that exists only in the other
+  theme is invisible to that run, no run prints which theme it rendered, and
+  nothing committed pins one; a developer runs the other through a Karma
+  launcher of their own, as
+  [../emulator-blind-spots.md](../emulator-blind-spots.md) describes. 0145's
+  other bounds stand: a phone-width audit of seven routes.
+- **The axe pass measures only what is above the fold.** `color-contrast`
+  reports no node below Karma's frame, so a failure further down a route
+  goes unreported, as the orange tile's did on `/dashboard` and `/budgets`.
+- **Three places paint a category's colour on its own tint without the
+  chip.** The dashboard's upcoming bills, the recurring rules page and the
+  category dialog's preview each set the colour with `20` appended as the
+  background and the raw colour on the icon, so a light category fails there
+  as it did in the chip.
 - **The row's name repeats.** The menu button before it names the
   description, and the date line after it is read again; and the button's
   label silences the receipt count inside it.

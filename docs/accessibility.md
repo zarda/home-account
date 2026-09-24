@@ -367,6 +367,22 @@ frozen, if at all, in `axe.ts`'s `KNOWN_VIOLATIONS`, by rule id per route with
 its reason — never in `KNOWN_FAILURES`. `--color-income` and `--color-expense`
 are named as fills in `NOT_PAINTED`: nothing paints either as text.
 
+**A category's colour is not a token.** The category chip paints a
+category's icon, and as a pill its label, in the category's own colour on a
+tint of it, and that colour is data — picked from the category dialog's
+palette, or carried in a backup — so no row in `PAIRS` can score it. Painted
+on a translucent tint of itself, a light category measures 1.95:1 in light —
+the orange tile, `#ff9800` on `#fff2df` — so the tint is composited over
+`--surface-card` and painted opaque, the foreground sits on one known colour
+whatever surface holds the chip, and `ensureContrast`
+(`core/utils/color-contrast.utils.ts`) mixes the colour towards black in
+light and towards white in dark, keeping its hue, until it reads 4.5:1
+there. The gate is `category-chip.component.spec.ts`: it measures the
+painted tile and pill for every default category's colour and four hostile
+ones, in both themes, and holds the composited surface to the stylesheet's
+`--surface-card`
+([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+
 ## What is tested
 
 - `sidebar.component.spec.ts` and `bottom-nav.component.spec.ts` register real
@@ -425,19 +441,31 @@ are named as fills in `NOT_PAINTED`: nothing paints either as text.
   [emulator-blind-spots.md](emulator-blind-spots.md): i18n is not served,
   Karma's window is 756px, eight page-level rules are disabled because the run
   is scoped to the routed element, four routes (`/ai`, `/search-history`,
-  `/import/file`, `/import/history`) are never opened — and each run renders
-  the one theme the host's `prefers-color-scheme` resolves, so a failure that
-  exists only in the other theme is invisible to it. The dashboard's subtitle
-  failed in light only, at 4.43:1, and was found by reading. Everything outside
-  that is still a hand-written spec, and nothing sweeps for the next instance
-  of a class nobody has met.
+  `/import/file`, `/import/history`) are never opened, and `color-contrast`
+  reports nothing below the fold of Karma's frame. Each run renders the one
+  theme the host's `prefers-color-scheme` resolves — light on the CI runner,
+  dark on a Mac in dark mode — so a failure that exists only in the other
+  theme is seen only where that theme renders, and nothing committed pins it;
+  the same page says how to run the other. The dashboard's subtitle failed in
+  light only, at 4.43:1, and was found by reading; the category chip failed in
+  light only, passed the runs in dark, and was found by CI's light run.
+  Everything outside that is still a hand-written spec, and nothing sweeps for
+  the next instance of a class nobody has met.
 - **Contrast is measured for the pairs somebody listed.** `npm run
   contrast:check` scores a hand-written table of the pairs the app actually
   paints, in all four rendered modes, and every failure it has found is fixed.
   What it cannot see is a colour that is not a token — a hex literal in a
-  component stylesheet, a Material default, a Tailwind utility class — or a
-  pair nobody added a row for. The axe pass is the other
-  half of that: it measures what a rendered page paints, in its one theme.
+  component stylesheet, a Material default, a Tailwind utility class, a
+  category's own colour — or a pair nobody added a row for. The category
+  chip's spec measures that colour; the axe pass is the other half of the
+  rest: it measures what a rendered page paints, above the fold, in its one
+  theme.
+- **Three places paint a category's colour on its own tint without the
+  chip.** The dashboard's upcoming bills, the recurring rules page and the
+  category dialog's preview each set the colour with `20` appended as the
+  background and the raw colour on the icon, so a light category fails there
+  as it did in the chip
+  ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
 - **Eighteen places paint `--color-error` as a foreground on the card**, where
   it measures 3.76:1 in light and passes in dark. The table scores
   `--color-error` on its own tint only, and the axe pass measures only what is
