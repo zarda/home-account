@@ -372,7 +372,9 @@ category's icon, and as a pill its label, in the category's own colour on a
 tint of it, and that colour is data — picked from the category dialog's
 palette, or carried in a backup — so no row in `PAIRS` can score it. Painted
 on a translucent tint of itself, a light category measures 1.95:1 in light —
-the orange tile, `#ff9800` on `#fff2df` — so the tint is composited over
+the orange tile, `#ff9800` on `#fff2df` — and a dark one, even lightened 30%,
+measures 3.95:1 in dark — `#9C27B0` as `#ba68c8` on `#3e2043`; every default
+colour fails in one theme or the other. So the tint is composited over
 `--surface-card` and painted opaque, the foreground sits on one known colour
 whatever surface holds the chip, and `ensureContrast`
 (`core/utils/color-contrast.utils.ts`) mixes the colour towards black in
@@ -442,15 +444,32 @@ ones, in both themes, and holds the composited surface to the stylesheet's
   Karma's window is 756px, eight page-level rules are disabled because the run
   is scoped to the routed element, four routes (`/ai`, `/search-history`,
   `/import/file`, `/import/history`) are never opened, and `color-contrast`
-  reports nothing below the fold of Karma's frame. Each run renders the one
-  theme the host's `prefers-color-scheme` resolves — light on the CI runner,
-  dark on a Mac in dark mode — so a failure that exists only in the other
-  theme is seen only where that theme renders, and nothing committed pins it;
-  the same page says how to run the other. The dashboard's subtitle failed in
-  light only, at 4.43:1, and was found by reading; the category chip failed in
-  light only, passed the runs in dark, and was found by CI's light run.
-  Everything outside that is still a hand-written spec, and nothing sweeps for
-  the next instance of a class nobody has met.
+  reports nothing below the fold of Karma's frame (the next gap). Each run
+  renders the one theme the host's `prefers-color-scheme` resolves — light on
+  the CI runner, dark on a Mac in dark mode — so a failure that exists only
+  in the other theme is seen only where that theme renders, and nothing
+  committed pins it; the same page says how to run the other. The dashboard's
+  subtitle failed in light only, at 4.43:1, and was found by reading. The
+  category chip failed in both themes — thirteen of the sixteen default
+  colours in light, four in dark, `#E91E63` in both — and CI's light run was
+  the first to report it: the walkthrough seeds one category, orange, which
+  failed in light at 1.95:1 and passed in dark at 5.85:1, and none of the
+  colours that failed in dark. Everything outside that is still a
+  hand-written spec, and nothing sweeps for the next instance of a class
+  nobody has met.
+- **The axe pass measures only the top 413px of a page.** Karma's frame is
+  756px wide and 413px tall and scrolls inside its own body, and axe's
+  `color-contrast` rule does not apply to a node below that fold: the node
+  is neither a pass nor a violation, and scrolled into the frame it is
+  measured like any other. On `/transactions` the seeded rows' chips sit
+  inside the frame. On `/budgets` the budget card's chip starts 445px down,
+  and on `/dashboard` the two recent-transaction chips start at 591px and
+  675px, the spending chart's legend at 1426px and the budget card's icon at
+  1602px, so none of those is measured. Two of them fail in light on the
+  walkthrough's own orange category — the legend's white glyph at 2.16:1
+  and the budget card's orange icon at 2.06:1, both among the sites listed
+  below that paint a category's colour without the chip — and the smoke
+  walkthrough passes regardless.
 - **Contrast is measured for the pairs somebody listed.** `npm run
   contrast:check` scores a hand-written table of the pairs the app actually
   paints, in all four rendered modes, and every failure it has found is fixed.
@@ -460,11 +479,40 @@ ones, in both themes, and holds the composited surface to the stylesheet's
   chip's spec measures that colour; the axe pass is the other half of the
   rest: it measures what a rendered page paints, above the fold, in its one
   theme.
-- **Three places paint a category's colour on its own tint without the
-  chip.** The dashboard's upcoming bills, the recurring rules page and the
-  category dialog's preview each set the colour with `20` appended as the
-  background and the raw colour on the icon, so a light category fails there
-  as it did in the chip
+- **Ten components paint a category's colour without the chip**, so the
+  correction the chip applies never reaches them. Figures are for the
+  sixteen default colours.
+  *On a tint of itself*, in both themes: the dashboard's upcoming bills
+  (`upcoming-bills.component.html`), the recurring rules page
+  (`recurring-transactions.component.html`) and the category dialog's
+  preview (`category-form-dialog.component.html`) paint the raw colour on
+  the icon over the colour with `20` appended, which takes on the surface
+  beneath — the Material card's `#f4f2fc` / `#1a1b22`, `--surface-card` and
+  `--surface-subtle` respectively, and a paused rule's card is drawn at 70%
+  opacity besides. Thirteen colours fail there in light, down to 1.75:1
+  (`#8BC34A`), and six to eight in dark, down to 2.08:1 (`#3F51B5`).
+  *On the surface beneath, with no tint of its own*: the dashboard's budget
+  card icon on `--surface-subtle` (`budget-progress.component.html`,
+  `#FF9800` at 2.06:1 in light); the import review's category button and its
+  menu (`category-suggestion.component.html`); the category pickers of the
+  transaction form — its options, the field showing the choice, and its
+  suggestion chip — of the split parts, the budget form and the recurring
+  dialog, whose select panel is `#efedf6` / `#1f1f26`; and the category
+  dialog's icon grid, on its selected icon. Thirteen fail in light, down to
+  1.75:1, and five in dark — `#9C27B0`, `#E91E63`, `#607D8B`, `#3F51B5` and
+  `#795548` — down to 2.26:1.
+  *White on the colour*, the same in both themes: the dashboard spending
+  chart's legend tile (`spending-chart.component.html`, its glyph white in
+  `spending-chart.component.scss`) and the category dialog's selected
+  swatch. `#FF9800` measures 2.16:1, `#4CAF50` 2.78:1 and the `#9E9E9E`
+  fallback 2.68:1; all but `#9C27B0`, `#3F51B5` and `#795548` fail.
+  The dialog's own palette, fifteen Tailwind 500s, fails the same way: all
+  fifteen on the preview in light and ten in dark, and twelve under the
+  white check. Each site is left for a follow-up, which can put the chip
+  there or pass the colour through `ensureContrast` against the surface it
+  sits on. The bars and chart segments filled with a category's colour are
+  graphics beside a printed amount or percentage, not text, and are not
+  counted
   ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
 - **Eighteen places paint `--color-error` as a foreground on the card**, where
   it measures 3.76:1 in light and passes in dark. The table scores
