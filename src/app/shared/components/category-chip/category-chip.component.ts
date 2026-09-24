@@ -3,7 +3,40 @@ import { ChangeDetectionStrategy, Component, Input, inject } from '@angular/core
 import { MatIconModule } from '@angular/material/icon';
 import { Category } from '../../../models';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-import { ThemeService } from '../../../core/services/theme.service';
+import { EffectiveTheme, ThemeService } from '../../../core/services/theme.service';
+import {
+  WCAG_AA_TEXT,
+  compositeOver,
+  ensureContrast,
+  parseHexColor,
+  toHexColor,
+} from '../../../core/utils/color-contrast.utils';
+
+/**
+ * The surface a chip's tint is composited over: the stylesheet's
+ * --surface-card in each theme (the spec reads the stylesheet to hold the two
+ * together).
+ *
+ * A chip is rendered on more than one surface — the transaction list's card,
+ * Material cards on the dashboard, budgets and reports, the settings category
+ * list's --surface-subtle, and whatever hover or highlight tone the row under
+ * it takes (#3d3d3d in dark) — and a translucent tint takes on whichever is
+ * underneath, so no one foreground could be shown to clear AA on all of them.
+ * Composited once and painted opaque, the tint is the only background the
+ * glyph and label ever sit on. The card is the surface chosen because most
+ * chips sit on it, and every resting surface above is within 13 levels a
+ * channel of it in either theme.
+ */
+export const CHIP_SURFACE: Readonly<Record<EffectiveTheme, string>> = {
+  light: '#ffffff',
+  dark: '#1e1e1e',
+};
+
+/** The tint's strength, heavier in dark so the tile still reads as coloured. */
+const TINT_ALPHA: Readonly<Record<EffectiveTheme, number>> = {
+  light: 0x20 / 0xff,
+  dark: 0x40 / 0xff,
+};
 
 /**
  * Category color chip in two appearances:
@@ -117,35 +150,30 @@ export class CategoryChipComponent {
     return this.category?.name ?? this.label;
   }
 
+  /**
+   * The category's colour, tinted over the card surface and painted opaque.
+   * A colour that is not opaque hex cannot be tinted, so the chip keeps the
+   * plain surface and the colour is left to the glyph.
+   */
   getBackgroundColor(color: string): string {
-    // Use higher opacity in dark mode for better visibility
-    const opacity = this.themeService.effectiveTheme() === 'dark' ? '40' : '20';
-    return color + opacity;
+    const theme = this.themeService.effectiveTheme();
+    const rgb = parseHexColor(color);
+    const surface = parseHexColor(CHIP_SURFACE[theme])!;
+    return rgb ? toHexColor(compositeOver(rgb, TINT_ALPHA[theme], surface)) : CHIP_SURFACE[theme];
   }
 
+  /**
+   * The category's colour, moved only as far as it must be to reach AA on
+   * its own tint: darker in light, lighter in dark, same hue. Both the tile's
+   * icon and the pill's icon and label are painted with it.
+   */
   getTextColor(color: string): string {
-    // In dark mode, use a lighter shade of the color for better contrast
-    if (this.themeService.effectiveTheme() === 'dark') {
-      return this.lightenColor(color, 30);
-    }
-    return color;
-  }
-
-  private lightenColor(hex: string, percent: number): string {
-    // Remove # if present
-    const cleanHex = hex.replace('#', '');
-
-    // Parse RGB values
-    const r = parseInt(cleanHex.substring(0, 2), 16);
-    const g = parseInt(cleanHex.substring(2, 4), 16);
-    const b = parseInt(cleanHex.substring(4, 6), 16);
-
-    // Lighten each channel
-    const newR = Math.min(255, Math.round(r + (255 - r) * (percent / 100)));
-    const newG = Math.min(255, Math.round(g + (255 - g) * (percent / 100)));
-    const newB = Math.min(255, Math.round(b + (255 - b) * (percent / 100)));
-
-    // Convert back to hex
-    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+    const theme = this.themeService.effectiveTheme();
+    return ensureContrast(
+      color,
+      this.getBackgroundColor(color),
+      WCAG_AA_TEXT,
+      theme === 'dark' ? 'lighten' : 'darken'
+    );
   }
 }
