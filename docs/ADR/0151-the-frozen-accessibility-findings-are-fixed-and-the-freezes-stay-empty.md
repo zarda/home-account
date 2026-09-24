@@ -34,12 +34,14 @@ named on `/dashboard` and `/transactions` were already fixed, but the freeze
 was by rule id per route, so it now hid whatever else fired under
 `color-contrast` on those two routes. On the CI runner, which renders the
 light theme, that included the category chip on `/transactions`: its tile
-paints a category's own colour on a tint of that colour, and the orange
-tile's icon measured 1.95:1 (`#ff9800` on `#fff2df`). The runs that emptied
-the freeze rendered dark, where the orange chip passed at 5.85:1, so CI's
-light run was the first to report it. Orange is the one category the
-walkthrough seeds; the default colours that failed in dark are seeded
-nowhere, so no run of either theme rendered them.
+paints a category's own colour on a tint of that colour, and the orange tile's
+icon measured 1.95:1 (`#ff9800` on `#fff2df`). The runs that emptied the
+freeze rendered dark, where the orange chip passed at 5.85:1, so CI's light
+run was the first to report it. Orange is the one category the walkthrough's
+rows and budget use; the default colours, the ones that failed in dark among
+them, render only in the Categories panel on `/settings`, which the
+walkthrough leaves collapsed, and axe measures nothing hidden, so no run of
+either theme measured them.
 
 **The transaction row was a button around buttons.** The wrapper was
 `role="button"` with a tab stop and its own click, Enter and Space handlers,
@@ -237,15 +239,15 @@ black in light and towards white in dark, in a hundred steps, and keeps the
 first shade that reaches 4.5:1 on the tile. Mixing towards black or white
 moves the lightness and keeps the hue: the orange tile's icon is `#a16000` in
 light, at 4.54:1, and a colour that already clears is left as it is, as that
-orange is on its dark tint at 4.70:1. Where black or white itself falls
-short, the answer is whichever of the two contrasts more. Hex is read as
-`#rgb` or `#rrggbb`, or either with an alpha of `f` or `ff`, which is
-opaque and paints the same colour. Anything else — a translucent alpha, a
-named colour, `rgb()` — cannot be measured: it passes through unchanged, on
-the plain card surface. Three-digit hex is read — the budget card's `#666`
-fallback used to become `#66620` — and a colour without its `#` is
-normalised. Relative luminance uses sRGB's 0.04045 threshold, the one axe
-uses.
+orange is on its dark tint at 4.70:1. Where black or white itself falls short,
+the answer is whichever of the two contrasts more. Hex is read as `#rgb`,
+`#rgbf`, `#rrggbb` or `#rrggbbff`; the second and fourth carry an opaque alpha
+and paint the same colour as the first and third. Anything else — a
+translucent alpha, a named colour, `rgb()` — cannot be measured: it passes
+through unchanged, on the plain card surface. Three-digit hex is read — the
+budget card's `#666` fallback used to become `#66620` — and a colour without
+its `#` is normalised. Relative luminance uses sRGB's 0.04045 threshold, the
+one axe uses.
 
 **The gate is the chip's spec, not `contrast:check`.** A category's colour is
 data — picked from the category dialog's palette, or carried in a backup —
@@ -381,9 +383,10 @@ own, a frozen row among them.
 
 - **The pass renders one theme, the host's**: light on the CI runner, dark on
   a Mac in dark mode. The subtitle is the case a dark run cannot see, and the
-  category chip the case a green run in dark let through to CI: the one
-  colour the walkthrough seeds passed in dark, and the colours that failed
-  there are not seeded, so neither theme's run could report them.
+  category chip the case a green run in dark let through to CI: the one colour
+  the walkthrough's rows use passed in dark, and the colours that failed there
+  render only in the collapsed Categories panel on `/settings`, so neither
+  theme's run could report them.
 - **The pass measures above the fold only.** The orange tile failed on
   `/dashboard` (two chips) and `/budgets` (one) as well — at 1.78:1 there,
   its tint mixed over the Material card's `#f4f2fc` rather than the list's
@@ -427,25 +430,27 @@ own, a frozen row among them.
   [../emulator-blind-spots.md](../emulator-blind-spots.md) describes. 0145's
   other bounds stand: a phone-width audit of seven routes.
 - **The axe pass measures only what is above the fold.** Karma's frame is
-  413px tall, and `color-contrast` does not apply to a node below it, so a
-  failure further down a route goes unreported, as the orange tile's did on
-  `/dashboard` and `/budgets`. Two still do, on `/dashboard`, in light, on
-  the walkthrough's own orange category: the spending chart's legend and the
-  budget card's icon, from the next gap.
+  413px tall, and axe leaves a node below it incomplete rather than failing it
+  — the harness reads violations only — so a failure further down a route goes
+  unreported, as the orange tile's did on `/dashboard` and `/budgets`. Two
+  still do, on `/dashboard`, on the walkthrough's own orange category: the
+  budget card's icon in light, and the spending chart's legend, whose white
+  glyph fails in both themes — both from the next gap.
 - **Ten components paint a category's colour without the chip**, and so
   without its correction. The dashboard's upcoming bills, the recurring rules
   page and the category dialog's preview paint the raw colour on the colour
   with `20` appended, in both themes. The dashboard's budget card, the import
-  review's category button and menu, the category pickers of the
-  transaction form, the split parts, the budget form and the recurring
-  dialog, and the category dialog's icon grid paint it straight on the
-  surface beneath. The dashboard spending chart's legend and the category
-  dialog's selected swatch put a white glyph on it. Where the colour is the
-  foreground, thirteen of the sixteen default colours fail in light, down to
-  1.75:1, and five to eight fail in dark; a white glyph fails on the same
-  thirteen in both themes, `#FF9800` at 2.16:1. The sites and their figures
-  are listed in [../accessibility.md](../accessibility.md), for a follow-up
-  that can put the chip there or pass the colour through `ensureContrast`.
+  review's category button and menu, the category pickers of the transaction
+  form, the split parts, the budget form and the recurring dialog, and the
+  category dialog's icon grid paint it straight on the surface beneath. The
+  dashboard spending chart's legend and the category dialog's selected swatch
+  put a white glyph on it. Where the colour is the foreground, thirteen of the
+  sixteen default colours fail in light, down to 1.75:1, and five to eight
+  fail in dark; a white glyph fails on the same thirteen in both themes,
+  `#FF9800` at 2.16:1, and on twelve of the fifteen palette colours the swatch
+  grid draws. The sites and their figures are listed in
+  [../accessibility.md](../accessibility.md), for a follow-up that can put the
+  chip there or pass the colour through `ensureContrast`.
 - **The row's name repeats.** The menu button before it names the
   description, and the date line after it is read again; and the button's
   label silences the receipt count inside it.

@@ -254,22 +254,23 @@ harness bound what that can honestly mean, and none of them is about axe:
   stylesheets compile.
 - **Karma's window is 756px**, so this is a phone and small-tablet audit. A
   rule that only fires on a desktop layout is never reached.
-- **Only the top 413px of a page is measured.** The frame the specs render
-  in is 413px tall where it was measured and scrolls inside its own body,
-  and `color-contrast` does not apply to a node below that fold: the node is
-  neither a pass nor a violation, and scrolled into the frame it is measured
-  like any other. On `/transactions` both seeded rows sit inside the frame.
-  On `/budgets` the budget card's chip starts 445px down, and on
-  `/dashboard` the two recent-transaction chips start at 591px and 675px,
-  the spending chart's legend at 1426px and the budget card's icon at
-  1602px. So the category chip's orange tile, which failed in light at
-  1.95:1 on `/transactions` and at 1.78:1 on `/dashboard` and `/budgets` —
-  its tint mixed there over the Material card's `#f4f2fc` — was reported
-  on `/transactions` only. And two failures on the walkthrough's own orange
-  category go unreported in light: the legend's white glyph at 2.16:1 and
-  the budget card's orange icon on `--surface-subtle` at 2.06:1, two of the
-  sites [accessibility.md](accessibility.md) lists as painting a category's
-  colour without the chip.
+- **Only the top 413px of a page is measured.** The frame the specs render in
+  is 413px tall where it was measured and scrolls inside its own body, and
+  `color-contrast` cannot measure a node below that fold: axe leaves it
+  incomplete rather than failing it, the harness reads violations only, and
+  scrolled into the frame the node is measured like any other. On
+  `/transactions` both seeded rows sit inside the frame. On `/budgets` the
+  budget card's chip starts 445px down, and on `/dashboard` the two
+  recent-transaction chips start at 591px and 675px, the spending chart's
+  legend at 1426px and the budget card's icon at 1602px. So the category
+  chip's orange tile, which failed in light at 1.95:1 on `/transactions` and
+  at 1.78:1 on `/dashboard` and `/budgets` — its tint mixed there over the
+  Material card's `#f4f2fc` — was reported on `/transactions` only. And two
+  failures on the walkthrough's own orange category go unreported: the budget
+  card's orange icon on `--surface-subtle` at 2.06:1 in light, and the
+  legend's white glyph at 2.16:1 in both themes, two of the sites
+  [accessibility.md](accessibility.md) lists as painting a category's colour
+  without the chip.
 - **The run is scoped to the routed element**, because Karma's `debug.html`
   owns the `<html>` element, a banner and its own headings. Eight page-level
   rules are therefore disabled by name (`html-has-lang`, `document-title`,
@@ -281,17 +282,18 @@ harness bound what that can honestly mean, and none of them is about axe:
   a colour scheme, so `ThemeService` follows the `prefers-color-scheme` of the
   machine running Chrome: light on the CI runner, dark on a Mac in dark mode.
   A run sees light or dark, never both, and nothing it prints says which. A
-  contrast failure that exists in only one theme is seen only where that
-  theme renders. The category chip's orange tile, 1.95:1 on its own tint in
-  light, passed every run on a Mac in dark mode and failed CI's. The chip
-  failed in dark too — `#9C27B0`, `#E91E63`, `#3F51B5` and `#795548` on
-  their dark tints — but orange is the one category the walkthrough seeds,
-  so no run of either theme rendered a colour that failed there. The
-  dashboard's subtitle, gray-500 on the light page background at 4.43:1,
-  passes in dark; the runs that emptied the contrast freeze rendered dark —
-  axe reported the page background as `#121212` — and CI's light run had
-  `color-contrast` frozen on `/dashboard`, so it was found by reading the
-  pairs
+  contrast failure that exists in only one theme is seen only where that theme
+  renders. The category chip's orange tile, 1.95:1 on its own tint in light,
+  passed every run on a Mac in dark mode and failed CI's. The chip failed in
+  dark too — `#9C27B0`, `#E91E63`, `#3F51B5` and `#795548` on their dark tints
+  — but orange is the one category the walkthrough's rows and budget use, and
+  the default colours render only in the Categories panel on `/settings`,
+  which the walkthrough leaves collapsed; axe measures nothing hidden, so no
+  run of either theme measured a colour that failed there. The dashboard's
+  subtitle, gray-500 on the light page background at 4.43:1, passes in dark;
+  the runs that emptied the contrast freeze rendered dark — axe reported the
+  page background as `#121212` — and CI's light run had `color-contrast`
+  frozen on `/dashboard`, so it was found by reading the pairs
   ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
   The pass's first runs had rendered light, which is how
   [ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md) came to
