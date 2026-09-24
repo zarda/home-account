@@ -20,8 +20,28 @@ describe('parseHexColor', () => {
     expect(parseHexColor(' #fff ')).toEqual([255, 255, 255]);
   });
 
+  it('reads a fully opaque alpha channel as the plain colour', () => {
+    expect(parseHexColor('#ff9800ff')).toEqual([255, 152, 0]);
+    expect(parseHexColor('#FF9800FF')).toEqual([255, 152, 0]);
+    expect(parseHexColor('ff9800ff')).toEqual([255, 152, 0]);
+    expect(parseHexColor('#fa0f')).toEqual([255, 170, 0]);
+    expect(parseHexColor('#FA0F')).toEqual([255, 170, 0]);
+  });
+
   it('returns null for anything it cannot read as opaque hex', () => {
-    for (const value of ['red', 'rgb(1, 2, 3)', '#ff980080', '#ggg', '', 'transparent']) {
+    for (const value of [
+      'red',
+      'rgb(1, 2, 3)',
+      '#ff980080',
+      '#ff9800fe',
+      '#ff980000',
+      '#fa08',
+      '#fa0e',
+      '#ff9800f',
+      '#ggg',
+      '',
+      'transparent',
+    ]) {
       expect(parseHexColor(value)).withContext(value).toBeNull();
     }
   });
@@ -77,8 +97,10 @@ describe('compositeOver', () => {
   });
 
   it('blends to whole channels, the way a browser paints a translucent fill', () => {
-    // #ff9800 at alpha 0x20 on white is the #fff2df axe measured under the
-    // transaction row's icon.
+    // Green comes to 152 × 32/255 + 255 × 223/255 = 242.07 and blue to 223,
+    // so whole channels make #fff2df. A contrast check measures the same
+    // value, since axe-core rounds each channel after it composites a
+    // translucent background over what is beneath it.
     expect(compositeOver([255, 152, 0], 0x20 / 0xff, [255, 255, 255])).toEqual([255, 242, 223]);
   });
 });
@@ -133,8 +155,17 @@ describe('ensureContrast', () => {
     expect(ensureContrast('#ff9800', '#000000', 22, 'darken')).toBe('#ffffff');
   });
 
+  it('corrects a colour written with an opaque alpha channel like any other', () => {
+    const plain = ensureContrast('#ff9800', '#fff2df', WCAG_AA_TEXT, 'darken');
+    expect(plain).not.toBe('#ff9800');
+    expect(ensureContrast('#ff9800ff', '#fff2df', WCAG_AA_TEXT, 'darken')).toBe(plain);
+    expect(ensureContrast('#f90f', '#fff2df', WCAG_AA_TEXT, 'darken'))
+      .toBe(ensureContrast('#f90', '#fff2df', WCAG_AA_TEXT, 'darken'));
+  });
+
   it('passes a colour it cannot read through unchanged', () => {
     expect(ensureContrast('rebeccapurple', '#ffffff', WCAG_AA_TEXT, 'darken')).toBe('rebeccapurple');
+    expect(ensureContrast('#ff980080', '#ffffff', WCAG_AA_TEXT, 'darken')).toBe('#ff980080');
     expect(ensureContrast('#ff9800', 'transparent', WCAG_AA_TEXT, 'darken')).toBe('#ff9800');
   });
 });

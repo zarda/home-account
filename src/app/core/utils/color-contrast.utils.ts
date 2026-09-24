@@ -20,13 +20,16 @@ function channelwise(channel: (index: 0 | 1 | 2) => number): Rgb {
 
 /**
  * `#rgb` or `#rrggbb` (the hash optional) to its channels, or null for
- * anything else: a named colour, `rgb()`, or hex carrying its own alpha,
- * whose painted value depends on what is under it.
+ * anything else: a named colour, `rgb()`, or hex whose alpha is translucent,
+ * whose painted value depends on what is under it. An alpha of `f` or `ff`
+ * is fully opaque, so `#rgbf` and `#rrggbbff` paint exactly what `#rgb` and
+ * `#rrggbb` paint and are read as those.
  */
 export function parseHexColor(color: string): Rgb | null {
   const hex = (color ?? '').trim().replace(/^#/, '');
-  if (!/^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return null;
-  const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+  const match = /^(?:([0-9a-f]{3})f?|([0-9a-f]{6})(?:ff)?)$/i.exec(hex);
+  if (!match) return null;
+  const full = match[2] ?? match[1].split('').map(c => c + c).join('');
   return channelwise(i => parseInt(full.slice(i * 2, i * 2 + 2), 16));
 }
 

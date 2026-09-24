@@ -104,9 +104,23 @@ describe('CategoryChipComponent', () => {
       expect(component.getTextColor('ffffff')).toBe('#ffffff');
     });
 
+    it('corrects a colour written with an opaque alpha channel like any other', () => {
+      for (const theme of ['light', 'dark'] as const) {
+        mockThemeService.effectiveTheme.and.returnValue(theme);
+        expect(component.getBackgroundColor('#FF9800FF'))
+          .withContext(theme)
+          .toBe(component.getBackgroundColor('#FF9800'));
+        expect(component.getTextColor('#FF9800FF'))
+          .withContext(theme)
+          .toBe(component.getTextColor('#FF9800'));
+      }
+    });
+
     it('passes a colour it cannot read through unchanged', () => {
       mockThemeService.effectiveTheme.and.returnValue('light');
       expect(component.getTextColor('rebeccapurple')).toBe('rebeccapurple');
+      expect(component.getTextColor('#FF980080')).toBe('#FF980080');
+      expect(component.getBackgroundColor('#FF980080')).toBe(CHIP_SURFACE.light);
     });
   });
 
