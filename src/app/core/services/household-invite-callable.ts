@@ -6,6 +6,7 @@ import type {
   httpsCallable
 } from '@angular/fire/functions';
 import type { HouseholdInviteMail } from '../../models';
+import { EMULATOR_HOSTS, type EmulatorHosts } from '../../../environments/emulators';
 
 /**
  * Where inviteToHousehold is deployed (functions/src/index.ts sets it for
@@ -40,12 +41,6 @@ export interface HouseholdInviteResponse {
 
 export type HouseholdInviteCallable = (request: HouseholdInviteRequest) => Promise<HouseholdInviteResponse>;
 
-/** Where a local Functions emulator listens. */
-export interface FunctionsEmulatorHost {
-  host: string;
-  port: number;
-}
-
 /** The three Functions SDK calls the seam makes. */
 export interface FunctionsSdk {
   getFunctions: typeof getFunctions;
@@ -55,7 +50,7 @@ export interface FunctionsSdk {
 
 export interface HouseholdInviteCallableOptions {
   /** The Functions emulator to call instead of the deployed function; none by default. */
-  emulator?: FunctionsEmulatorHost | null;
+  emulator?: EmulatorHosts['functions'] | null;
   /** Loads the Functions SDK. */
   loadSdk?: () => Promise<FunctionsSdk>;
 }
@@ -109,6 +104,20 @@ export function createHouseholdInviteCallable(
 }
 
 /**
+ * The token's own factory: the deployed function, or the Functions emulator
+ * the `emulators` build names. Runs in an injection context. The hosts and the
+ * loader are parameters for the spec; the unit build compiles the committed,
+ * null hosts.
+ */
+export function householdInviteCallableFactory(
+  hosts: EmulatorHosts | null = EMULATOR_HOSTS,
+  loadSdk?: () => Promise<FunctionsSdk>,
+  injector: EnvironmentInjector = inject(EnvironmentInjector)
+): HouseholdInviteCallable {
+  return createHouseholdInviteCallable(injector, { emulator: hosts?.functions ?? null, loadSdk });
+}
+
+/**
  * How HouseholdService sends an invite. A token so a spec or a smoke suite
  * can stand in for the deployed function without the Functions SDK.
  */
@@ -116,6 +125,6 @@ export const HOUSEHOLD_INVITE_CALLABLE = new InjectionToken<HouseholdInviteCalla
   'HOUSEHOLD_INVITE_CALLABLE',
   {
     providedIn: 'root',
-    factory: () => createHouseholdInviteCallable(inject(EnvironmentInjector))
+    factory: () => householdInviteCallableFactory()
   }
 );

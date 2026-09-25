@@ -6,8 +6,12 @@ import {
   HOUSEHOLD_FUNCTIONS_REGION,
   HOUSEHOLD_INVITE_CALLABLE,
   HouseholdInviteRequest,
-  createHouseholdInviteCallable
+  createHouseholdInviteCallable,
+  householdInviteCallableFactory
 } from './household-invite-callable';
+// The hosts the `emulators` build configuration swaps in; imported directly
+// because the unit build compiles the committed, null EMULATOR_HOSTS.
+import { EMULATOR_HOSTS as EMULATOR_BUILD_HOSTS } from '../../../environments/emulators.on';
 
 describe('household invite callable seam', () => {
   const fakeApp = { name: 'fake-app' } as unknown as FirebaseApp;
@@ -118,5 +122,43 @@ describe('household invite callable seam', () => {
     const invite = createHouseholdInviteCallable(injector(), { loadSdk });
 
     await expectAsync(invite(request)).toBeRejectedWith(refusal);
+  });
+
+  // The token's own factory: what HouseholdService gets unless a spec or a
+  // smoke suite provides the token itself.
+  describe('the default factory', () => {
+    const build = (hosts?: typeof EMULATOR_BUILD_HOSTS) =>
+      TestBed.runInInjectionContext(() => householdInviteCallableFactory(hosts, loadSdk));
+
+    it('connects the Functions emulator on 127.0.0.1:5001 and keeps asia-east1 when the build names hosts', async () => {
+      await build(EMULATOR_BUILD_HOSTS)(request);
+
+      // The emulator routes by region as well, so the pin still decides the
+      // URL: /<project>/asia-east1/inviteToHousehold.
+      expect(sdk.getFunctions).toHaveBeenCalledOnceWith(fakeApp, 'asia-east1');
+      expect(sdk.connectFunctionsEmulator).toHaveBeenCalledOnceWith(fakeFunctions as never, '127.0.0.1', 5001);
+      expect(callableFn).toHaveBeenCalledOnceWith(request);
+    });
+
+    it('calls the deployed function in asia-east1 when the build names no hosts', async () => {
+      await build(null)(request);
+
+      expect(sdk.getFunctions).toHaveBeenCalledOnceWith(fakeApp, 'asia-east1');
+      expect(sdk.connectFunctionsEmulator).not.toHaveBeenCalled();
+    });
+
+    it('defaults to the committed hosts, which name no emulator', async () => {
+      await build()(request);
+
+      expect(sdk.getFunctions).toHaveBeenCalledOnceWith(fakeApp, 'asia-east1');
+      expect(sdk.connectFunctionsEmulator).not.toHaveBeenCalled();
+    });
+
+    it('touches nothing before an invite is sent', () => {
+      build(EMULATOR_BUILD_HOSTS);
+
+      expect(loadSdk).not.toHaveBeenCalled();
+      expect(appFactory).not.toHaveBeenCalled();
+    });
   });
 });

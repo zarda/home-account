@@ -6,16 +6,24 @@ import { provideRouter } from '@angular/router';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideFirebaseApp, initializeApp, getApp } from '@angular/fire/app';
-import { provideAuth, initializeAuth, browserLocalPersistence, getAuth } from '@angular/fire/auth';
+import {
+  Auth,
+  provideAuth,
+  initializeAuth,
+  browserLocalPersistence,
+  getAuth,
+  connectAuthEmulator,
+} from '@angular/fire/auth';
 import {
   provideFirestore,
   initializeFirestore,
+  connectFirestoreEmulator,
   persistentLocalCache,
   persistentMultipleTabManager,
   FirestoreSettings,
   PersistentTabManager,
 } from '@angular/fire/firestore';
-import { provideStorage, getStorage } from '@angular/fire/storage';
+import { FirebaseStorage, provideStorage, getStorage, connectStorageEmulator } from '@angular/fire/storage';
 import { provideRemoteConfig, getRemoteConfig } from '@angular/fire/remote-config';
 import { provideAnalytics, initializeAnalytics, setConsent } from '@angular/fire/analytics';
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
@@ -26,6 +34,7 @@ import { Capacitor } from '@capacitor/core';
 
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
+import { EMULATOR_HOSTS, type EmulatorHosts } from '../environments/emulators';
 import { TranslationService } from './core/services/translation.service';
 import { ThemeService } from './core/services/theme.service';
 import { AccessibilityService } from './core/services/accessibility.service';
@@ -84,12 +93,70 @@ export function firestorePersistentCacheSettings(): FirestoreSettings {
  * default parameters so the spec can assert that wiring with fakes: booting
  * a real Firestore instance inside the Karma suite leaves background work
  * that stalls the browser teardown.
+ *
+ * With emulator hosts (the `emulators` build only) the instance is connected
+ * before anything can use it: the SDK refuses a connect after the first read
+ * or write.
  */
 export function appFirestoreFactory(
   initialize: typeof initializeFirestore = initializeFirestore,
   app: typeof getApp = getApp,
+  hosts: EmulatorHosts | null = EMULATOR_HOSTS,
+  connect: typeof connectFirestoreEmulator = connectFirestoreEmulator,
 ): ReturnType<typeof initializeFirestore> {
-  return initialize(app(), firestorePersistentCacheSettings());
+  const firestore = initialize(app(), firestorePersistentCacheSettings());
+  if (hosts) {
+    connect(firestore, hosts.firestore.host, hosts.firestore.port);
+  }
+  return firestore;
+}
+
+/**
+ * Factory behind provideAuth.
+ *
+ * Capacitor gets local-storage persistence: IndexedDB under the capacitor://
+ * scheme leaves onAuthStateChanged hanging. The web keeps getAuth()'s default
+ * (IndexedDB) persistence and popup resolver.
+ *
+ * With emulator hosts the connect runs straight after the instance exists,
+ * before a restored session's token refresh can go to the live Auth service;
+ * the SDK refuses a connect once the instance has been used. The
+ * collaborators are default parameters for app.config.spec.ts, as
+ * appFirestoreFactory's are.
+ */
+export function appAuthFactory(
+  isNative: () => boolean = () => Capacitor.isNativePlatform(),
+  initialize: typeof initializeAuth = initializeAuth,
+  get: typeof getAuth = getAuth,
+  app: typeof getApp = getApp,
+  hosts: EmulatorHosts | null = EMULATOR_HOSTS,
+  connect: typeof connectAuthEmulator = connectAuthEmulator,
+): Auth {
+  const auth = isNative()
+    ? initialize(app(), { persistence: browserLocalPersistence })
+    : get(app());
+  if (hosts) {
+    connect(auth, hosts.auth.url, { disableWarnings: true });
+  }
+  return auth;
+}
+
+/**
+ * Factory behind provideStorage. With emulator hosts the instance is connected
+ * before any upload or download can use it. The collaborators are default
+ * parameters for app.config.spec.ts, as appFirestoreFactory's are.
+ */
+export function appStorageFactory(
+  get: typeof getStorage = getStorage,
+  app: typeof getApp = getApp,
+  hosts: EmulatorHosts | null = EMULATOR_HOSTS,
+  connect: typeof connectStorageEmulator = connectStorageEmulator,
+): FirebaseStorage {
+  const storage = get(app());
+  if (hosts) {
+    connect(storage, hosts.storage.host, hosts.storage.port);
+  }
+  return storage;
 }
 
 /**
@@ -187,19 +254,11 @@ export const appConfig: ApplicationConfig = {
     provideNativeDateAdapter(),
     provideHttpClient(),
     provideFirebaseApp(() => initializeApp(environment.firebase)),
-    provideAuth(() => {
-      if (Capacitor.isNativePlatform()) {
-        // Use browserLocalPersistence for Capacitor to avoid IndexedDB issues
-        // with the capacitor:// scheme that cause onAuthStateChanged to hang
-        return initializeAuth(getApp(), {
-          persistence: browserLocalPersistence,
-        });
-      }
-      // Use default (IndexedDB) persistence for web
-      return getAuth();
-    }),
+    // Each factory is wrapped rather than passed: a provider factory is
+    // handed the injector, which would land in the first defaulted parameter.
+    provideAuth(() => appAuthFactory()),
     provideFirestore(() => appFirestoreFactory()),
-    provideStorage(() => getStorage()),
+    provideStorage(() => appStorageFactory()),
     // Remote-tunable app parameters (e.g. receipt image limits). Fetch
     // policy, in-app defaults, and typed accessors live in
     // RemoteConfigService — see docs/remote-config.md.

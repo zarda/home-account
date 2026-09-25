@@ -4,6 +4,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "start:emulators": "ng serve --configuration emulators --port 4300",
     "build": "ng build",
     "build:prod": "ng build --configuration=production",
     "watch": "ng build --watch --configuration development",

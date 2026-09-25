@@ -1,24 +1,36 @@
 import { EnvironmentInjector, EnvironmentProviders, createEnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FirebaseApp } from '@angular/fire/app';
-import { FirestoreSettings, initializeFirestore } from '@angular/fire/firestore';
+import { Auth, browserLocalPersistence, connectAuthEmulator, getAuth, initializeAuth } from '@angular/fire/auth';
+import { FirestoreSettings, connectFirestoreEmulator, initializeFirestore } from '@angular/fire/firestore';
+import { FirebaseStorage, connectStorageEmulator, getStorage } from '@angular/fire/storage';
 import { Analytics, AnalyticsSettings, initializeAnalytics, setConsent } from '@angular/fire/analytics';
 
 import {
   appAnalyticsFactory,
+  appAuthFactory,
   appFirestoreFactory,
+  appStorageFactory,
   firestoreCacheTabManager,
   firestorePersistentCacheSettings,
   provideAppAnalytics,
 } from './app.config';
+// The hosts the `emulators` build configuration swaps in; imported directly
+// because the unit build compiles the committed, null EMULATOR_HOSTS.
+import { EMULATOR_HOSTS as EMULATOR_BUILD_HOSTS } from '../environments/emulators.on';
 
 // The Firestore cache wiring is asserted through the exported factories
 // (rather than through a live Firestore instance) because instantiating the
 // SDK inside the Karma suite leaves background work that stalls the browser
 // teardown after the run completes.
 //
+// The emulator connects go through the same kind of seam: each factory takes
+// the hosts and the connect call as defaulted parameters, and the fakes stand
+// in for the SDK.
+//
 // Known limitation: the final links — appConfig actually handing
-// `() => appFirestoreFactory()` to provideFirestore, and
+// `() => appFirestoreFactory()`, `() => appAuthFactory()` and
+// `() => appStorageFactory()` to their providers, and
 // firestorePersistentCacheSettings actually forwarding the tab manager into
 // persistentLocalCache — are single lines that cannot be asserted without
 // booting Firebase or probing private SDK fields, so they stay covered by
@@ -78,6 +90,190 @@ describe('appFirestoreFactory', () => {
     ];
     expect(calledApp).toBe(app);
     expect(settings.localCache?.kind).toBe('persistent');
+  });
+
+  describe('emulator hosts', () => {
+    const app = { name: 'test-app' } as unknown as FirebaseApp;
+    let order: string[];
+    let firestore: ReturnType<typeof initializeFirestore>;
+    let initialize: jasmine.Spy;
+    let connect: jasmine.Spy;
+
+    beforeEach(() => {
+      order = [];
+      firestore = {} as ReturnType<typeof initializeFirestore>;
+      initialize = jasmine.createSpy('initializeFirestore').and.callFake(() => {
+        order.push('initialize');
+        return firestore;
+      });
+      connect = jasmine.createSpy('connectFirestoreEmulator').and.callFake(() => void order.push('connect'));
+    });
+
+    it('should connect the Firestore emulator on 127.0.0.1:8080 right after initializing', () => {
+      const result = appFirestoreFactory(
+        initialize as unknown as typeof initializeFirestore,
+        () => app,
+        EMULATOR_BUILD_HOSTS,
+        connect as unknown as typeof connectFirestoreEmulator,
+      );
+
+      // Any read or write before the connect goes to the real project, and
+      // the SDK refuses a connect once the instance has been used.
+      expect(result).toBe(firestore);
+      expect(connect).toHaveBeenCalledOnceWith(firestore, '127.0.0.1', 8080);
+      expect(order).toEqual(['initialize', 'connect']);
+    });
+
+    it('should connect nothing when the build names no hosts', () => {
+      const result = appFirestoreFactory(
+        initialize as unknown as typeof initializeFirestore,
+        () => app,
+        null,
+        connect as unknown as typeof connectFirestoreEmulator,
+      );
+
+      expect(result).toBe(firestore);
+      expect(connect).not.toHaveBeenCalled();
+    });
+
+    it('should default to the committed hosts, which name no emulator', () => {
+      appFirestoreFactory(
+        initialize as unknown as typeof initializeFirestore,
+        () => app,
+        undefined,
+        connect as unknown as typeof connectFirestoreEmulator,
+      );
+
+      expect(connect).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('appAuthFactory', () => {
+  const app = { name: 'test-app' } as unknown as FirebaseApp;
+  let order: string[];
+  let auth: Auth;
+  let initialize: jasmine.Spy;
+  let get: jasmine.Spy;
+  let connect: jasmine.Spy;
+
+  beforeEach(() => {
+    order = [];
+    auth = { name: 'fake-auth' } as unknown as Auth;
+    initialize = jasmine.createSpy('initializeAuth').and.callFake(() => {
+      order.push('initializeAuth');
+      return auth;
+    });
+    get = jasmine.createSpy('getAuth').and.callFake(() => {
+      order.push('getAuth');
+      return auth;
+    });
+    connect = jasmine.createSpy('connectAuthEmulator').and.callFake(() => void order.push('connect'));
+  });
+
+  function build(isNative: boolean, hosts?: typeof EMULATOR_BUILD_HOSTS): Auth {
+    return appAuthFactory(
+      () => isNative,
+      initialize as unknown as typeof initializeAuth,
+      get as unknown as typeof getAuth,
+      () => app,
+      hosts,
+      connect as unknown as typeof connectAuthEmulator,
+    );
+  }
+
+  it('should keep the default (IndexedDB) persistence on the web', () => {
+    expect(build(false, null)).toBe(auth);
+    expect(get).toHaveBeenCalledOnceWith(app);
+    expect(initialize).not.toHaveBeenCalled();
+  });
+
+  it('should use local-storage persistence on Capacitor', () => {
+    // IndexedDB under the capacitor:// scheme leaves onAuthStateChanged
+    // hanging, so the native shell must never get the default persistence.
+    expect(build(true, null)).toBe(auth);
+    expect(initialize).toHaveBeenCalledOnceWith(app, { persistence: browserLocalPersistence });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('should connect the Auth emulator on http://127.0.0.1:9099 right after creating the instance', () => {
+    expect(build(false, EMULATOR_BUILD_HOSTS)).toBe(auth);
+
+    // Before the connect, a restored session would be refreshed against the
+    // real project; after the first use the SDK refuses to connect at all.
+    expect(connect).toHaveBeenCalledOnceWith(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    expect(order).toEqual(['getAuth', 'connect']);
+  });
+
+  it('should connect the Auth emulator on the Capacitor path too', () => {
+    build(true, EMULATOR_BUILD_HOSTS);
+
+    expect(connect).toHaveBeenCalledOnceWith(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    expect(order).toEqual(['initializeAuth', 'connect']);
+  });
+
+  it('should connect nothing when the build names no hosts', () => {
+    build(false, null);
+    build(true, null);
+
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('should default to the committed hosts, which name no emulator', () => {
+    build(false);
+
+    expect(connect).not.toHaveBeenCalled();
+  });
+});
+
+describe('appStorageFactory', () => {
+  const app = { name: 'test-app' } as unknown as FirebaseApp;
+  let order: string[];
+  let storage: FirebaseStorage;
+  let get: jasmine.Spy;
+  let connect: jasmine.Spy;
+
+  beforeEach(() => {
+    order = [];
+    storage = { app } as unknown as FirebaseStorage;
+    get = jasmine.createSpy('getStorage').and.callFake(() => {
+      order.push('getStorage');
+      return storage;
+    });
+    connect = jasmine.createSpy('connectStorageEmulator').and.callFake(() => void order.push('connect'));
+  });
+
+  function build(hosts?: typeof EMULATOR_BUILD_HOSTS): FirebaseStorage {
+    return appStorageFactory(
+      get as unknown as typeof getStorage,
+      () => app,
+      hosts,
+      connect as unknown as typeof connectStorageEmulator,
+    );
+  }
+
+  it('should take the storage instance of the current app', () => {
+    expect(build(null)).toBe(storage);
+    expect(get).toHaveBeenCalledOnceWith(app);
+  });
+
+  it('should connect the Storage emulator on 127.0.0.1:9199 right after creating the instance', () => {
+    expect(build(EMULATOR_BUILD_HOSTS)).toBe(storage);
+
+    expect(connect).toHaveBeenCalledOnceWith(storage, '127.0.0.1', 9199);
+    expect(order).toEqual(['getStorage', 'connect']);
+  });
+
+  it('should connect nothing when the build names no hosts', () => {
+    build(null);
+
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('should default to the committed hosts, which name no emulator', () => {
+    build();
+
+    expect(connect).not.toHaveBeenCalled();
   });
 });
 
