@@ -64,6 +64,11 @@ export const routes: Routes = [
           import('./features/data/data-hub.component').then(m => m.DataHubComponent)
       },
       {
+        path: 'household',
+        loadComponent: () =>
+          import('./features/household/household.component').then(m => m.HouseholdComponent)
+      },
+      {
         path: 'search-history',
         loadComponent: () =>
           import('./features/ai/search-history/search-answer-history.component')

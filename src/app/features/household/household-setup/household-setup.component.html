@@ -1,0 +1,109 @@
+<section class="setup-card" aria-labelledby="household-invites-title">
+  <!-- Script focuses it when a declined invite, or a member view this setup
+       replaced, took focus with it; Tab passes it by. -->
+  <h2 id="household-invites-title" class="setup-title" tabindex="-1">
+    <mat-icon>mail</mat-icon>
+    <span>{{ 'household.setup.invitesTitle' | translate }}</span>
+  </h2>
+
+  @if (invites().length === 0) {
+    <p class="setup-text">{{ 'household.setup.noInvites' | translate }}</p>
+  } @else {
+    <ul class="invite-list">
+      @for (view of invites(); track view.invite.id) {
+        <li class="invite">
+          <div class="invite-details">
+            <span class="invite-name" [id]="view.nameId">{{ view.invite.householdName }}</span>
+            @if (view.invite.inviterName) {
+              <span class="invite-meta">
+                {{ 'household.setup.invitedBy' | translate: { name: view.invite.inviterName } }}
+              </span>
+            }
+            <!-- The name is whatever the inviter chose to call themself; the
+                 address is the one their provider vouched for. -->
+            @if (view.inviterEmail) {
+              <span class="invite-meta invite-from">
+                {{ 'household.setup.invitedFrom' | translate: { email: view.inviterEmail } }}
+              </span>
+            } @else {
+              <span class="invite-meta invite-from is-unverified">
+                {{ 'household.setup.inviterUnverified' | translate }}
+              </span>
+            }
+            <span class="invite-meta" [class.is-expired]="view.expired">
+              @if (view.expired) {
+                {{ 'household.setup.expired' | translate: { date: view.expiry } }}
+              } @else {
+                {{ 'household.setup.expires' | translate: { date: view.expiry } }}
+              }
+            </span>
+          </div>
+          <div class="invite-actions">
+            <button
+              mat-stroked-button
+              type="button"
+              class="invite-decline"
+              [attr.aria-describedby]="view.nameId"
+              [disabled]="answering() !== null"
+              disabledInteractive
+              (click)="decline(view.invite)"
+            >
+              {{ 'household.setup.decline' | translate }}
+            </button>
+            @if (!view.expired) {
+              <button
+                mat-flat-button
+                color="primary"
+                type="button"
+                class="invite-accept"
+                [attr.aria-describedby]="view.nameId"
+                [disabled]="answering() !== null"
+                disabledInteractive
+                (click)="accept(view.invite)"
+              >
+                {{ 'household.setup.accept' | translate }}
+              </button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</section>
+
+<section class="setup-card" aria-labelledby="household-create-title">
+  <h2 id="household-create-title" class="setup-title">
+    <mat-icon>groups</mat-icon>
+    <span>{{ 'household.setup.createTitle' | translate }}</span>
+  </h2>
+  <p class="setup-text">{{ 'household.setup.createDescription' | translate }}</p>
+
+  <form class="create-form" [formGroup]="form" (ngSubmit)="create()">
+    <mat-form-field appearance="outline" class="name-field">
+      <mat-label>{{ 'household.setup.nameLabel' | translate }}</mat-label>
+      <input
+        matInput
+        name="householdName"
+        formControlName="name"
+        autocomplete="off"
+        [attr.maxlength]="maxLength"
+      />
+      <mat-hint align="end">{{ form.controls.name.value.length }}/{{ maxLength }}</mat-hint>
+      @if (form.controls.name.invalid) {
+        <mat-error>{{ 'household.errors.name' | translate: { max: maxLength } }}</mat-error>
+      }
+    </mat-form-field>
+
+    <button
+      mat-flat-button
+      color="primary"
+      type="submit"
+      class="create-household"
+      [disabled]="creating()"
+      disabledInteractive
+    >
+      <mat-icon>add</mat-icon>
+      {{ 'household.setup.create' | translate }}
+    </button>
+  </form>
+</section>

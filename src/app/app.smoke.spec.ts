@@ -37,6 +37,8 @@ import {
   connectFirestoreEmulator,
   collection,
   addDoc,
+  doc,
+  setDoc,
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
@@ -46,6 +48,13 @@ import { addDays } from './core/utils/transaction-date.utils';
 import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
+import { HouseholdService } from './core/services/household.service';
+import {
+  getDocumentAsOwner,
+  setDocumentAsOwner,
+  stringField,
+  timestampField
+} from './core/services/testing/emulator-admin';
 import { MockAuthService, createMockUser, runAxe, unexpectedViolations } from './core/services/testing';
 import { BUDGET_TABS } from './features/budgets/budgets.component';
 import { REPORT_TABS } from './features/reports/reports.component';
@@ -64,11 +73,12 @@ describe('App routes (emulator smoke test)', () => {
   const STORAGE_HOST = '127.0.0.1';
   const STORAGE_PORT = 9199;
   const AUTH_URL = 'http://127.0.0.1:9099';
-  // Raised from 60s when the axe pass joined expectPage: eight routes plus
+  // Raised from 60s when the axe pass joined expectPage: nine routes plus
   // the tab variants, and `color-contrast` — the rule with the most to say
   // here, and the slowest — costs a few seconds on a page the size of the
-  // dashboard.
-  const WALKTHROUGH_TIMEOUT = 150000;
+  // dashboard. Raised again when /household's member view joined: a second
+  // household page, with the rows, cards and members of a formed household.
+  const WALKTHROUGH_TIMEOUT = 180000;
 
   let app: FirebaseApp;
   let auth: Auth;
@@ -137,9 +147,11 @@ describe('App routes (emulator smoke test)', () => {
    *
    * The routes this reaches are the walkthrough's: /dashboard,
    * /transactions, /budgets (both tabs), /reports (all five), /settings,
-   * /data, /about and /login. Four routes are never visited by this spec
-   * and are therefore **unswept**: /ai, /search-history, /import/file and
-   * /import/history — see docs/emulator-blind-spots.md.
+   * /data, /household (its setup state, then its member view once the
+   * walkthrough's account forms a household), /about and /login. Four routes are
+   * never visited by this spec and are therefore **unswept**: /ai,
+   * /search-history, /import/file and /import/history — see
+   * docs/emulator-blind-spots.md.
    */
   async function expectNoAxeViolations(url: string): Promise<void> {
     const element = harness.routeNativeElement;
@@ -164,12 +176,13 @@ describe('App routes (emulator smoke test)', () => {
    * to keep up with the router, and a stubbed router cannot show that.
    *
    * Gated on a link for the route actually being on screen. The surfaces
-   * this harness renders do not carry all eight destinations — /settings,
-   * /data and /about have no link here — and a route with no link is not a
-   * failure. The gate tests for the anchor, not the attribute, so a
-   * regression that drops aria-current still fails on every route that does
-   * have one. Where both surfaces render they mark the same route, so the
-   * assertion is on the distinct set of destinations rather than a count.
+   * this harness renders do not carry all nine destinations — /settings,
+   * /data, /household and /about have no link here — and a route with no
+   * link is not a failure. The gate tests for the anchor, not the
+   * attribute, so a regression that drops aria-current still fails on every
+   * route that does have one. Where both surfaces render they mark the same
+   * route, so the assertion is on the distinct set of destinations rather
+   * than a count.
    */
   function expectCurrentRouteMarked(url: string): void {
     const doc = harness.routeNativeElement?.ownerDocument;
@@ -448,12 +461,79 @@ describe('App routes (emulator smoke test)', () => {
             ) ?? []
           ).some(cell => /^\d+$/.test(cell.textContent?.trim() ?? ''))
       );
-      // The sixth child route. It has no seeded data of its own, so the
-      // landmark is the whole assertion: what it proves is that the route
-      // resolves its component at all, which is the part that changed when
-      // the layout's children stopped being imported eagerly.
+      // A signed-in account with no household lands on the setup. The
+      // household listeners the page opens close when it is left, and it is
+      // left here, well before the app is deleted below: a listener still
+      // streaming into deleteApp surfaces as an unhandled error.
+      await expectPage('/household', 'household.title', 'household.setup.createTitle', 'app-household');
+
+      // The member view, swept too: it holds most of the page's markup. The
+      // account forms a household through the service's own commits, which
+      // the rules check, and one invite written the way the callable writes
+      // it puts the mail-status copy on the page. A goal with a checklist,
+      // one item ticked, puts the read-only card's disabled boxes in the
+      // sweep; it is added only now, so no page swept above changes. The
+      // service updates the profile's pointer, so the profile has to exist
+      // first.
+      await addDoc(collection(firestore, `users/${uid}/goals`), {
+        userId: uid,
+        kind: 'project',
+        name: 'Kitchen',
+        targetAmount: 900,
+        contributedAmount: 150,
+        currency: 'USD',
+        items: [
+          { name: 'Kettle', amount: 150, done: true },
+          { name: 'Toaster', amount: 750, done: false }
+        ],
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      await setDoc(doc(firestore, `users/${uid}`), {
+        email: 'test@example.com',
+        displayName: 'Test User',
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        preferences: { baseCurrency: 'USD', language: 'en' }
+      });
+      const householdService = TestBed.inject(HouseholdService);
+      const householdId = await householdService.create('Home');
+      const stored = await getDocumentAsOwner(`households/${householdId}`);
+      await setDocumentAsOwner(`householdInvites/${householdId}_walkthrough-invitee`, {
+        householdId: stringField(householdId),
+        householdCreatedAt: { timestampValue: String(stored?.['createdAt']?.['timestampValue']) },
+        householdName: stringField('Home'),
+        inviterUid: stringField(uid),
+        inviterName: stringField('Test User'),
+        inviterEmail: stringField('test@example.com'),
+        inviteeUid: stringField('walkthrough-invitee'),
+        inviteeEmail: stringField('robin@example.test'),
+        locale: stringField('en'),
+        createdAt: timestampField(),
+        expiresAt: timestampField(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
+        mail: stringField('held')
+      });
+      // Still on /household: the page swaps to the member view as the
+      // listeners hear the household, with no navigation to wait on.
+      await waitForDom('the member view, with its rows, its budget and goal, its members and its pending invite', () => {
+        const text = pageText();
+        return ['Blue Bottle Coffee', 'Groceries Budget', 'Toaster', 'household.members.dissolveHeading',
+          'household.members.mailHeld'].every(shown => text.includes(shown));
+      });
+      expectScreenName('/household', 'app-household');
+      expectCurrentRouteMarked('/household');
+      await expectNoAxeViolations('/household');
+      // The about page has no seeded data of its own, so the landmark is the
+      // whole assertion: what it proves is that the route resolves its
+      // component at all, which is the part that changed when the layout's
+      // children stopped being imported eagerly.
       await expectPage('/about', 'about.title', undefined, 'app-about');
       expect(TestBed.inject(Router).url).toBe('/about');
+
+      // The household page is closed, and its listeners with it; the
+      // erasure path dissolves with one-shot reads and needs none.
+      await householdService.deleteAll();
 
       // Drain in-flight async work before shutting Firebase down, so nothing
       // races the teardown into the afterAll window: the exchange-rate

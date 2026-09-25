@@ -162,6 +162,7 @@ table can enumerate.
 | `settings` | `settings` | nav |
 | `ai` | `ai` | settings |
 | `data` | `data` | sidebar |
+| `household` | `household` | sidebar, settings |
 | `about` | `about` | sidebar |
 | `search-history` | `search-history` | smart-search dialog |
 | `import/file` | `import/file` | import wizard |

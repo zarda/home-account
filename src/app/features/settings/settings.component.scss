@@ -184,6 +184,10 @@
     &.data-icon {
       background: linear-gradient(135deg, #0288d1, #01579b);
     }
+
+    &.household-icon {
+      background: linear-gradient(135deg, #2e7d32, #1b5e20);
+    }
   }
 
   .link-card-content {
@@ -213,6 +217,14 @@
     transform: translateX(4px);
     color: var(--color-accent);
   }
+}
+
+// A card that is a real link needs the link reset. Its focus ring is the
+// app-wide :focus-visible one (styles.scss), which also carries the
+// high-contrast widening a local ring would outrank.
+a.settings-link-card {
+  color: inherit;
+  text-decoration: none;
 }
 
 @media (max-width: 768px) {

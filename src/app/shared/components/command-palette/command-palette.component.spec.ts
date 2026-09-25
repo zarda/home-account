@@ -23,6 +23,7 @@ const EN_LABELS: Record<string, string> = {
   'nav.reports': 'Reports',
   'nav.ai': 'AI',
   'nav.data': 'Your Data',
+  'nav.household': 'Household',
   'nav.settings': 'Settings',
   'nav.about': 'About',
   'nav.searchHistory': 'Search History',
@@ -120,6 +121,14 @@ describe('CommandPaletteComponent', () => {
       'ai.scanReceipt',
     ]);
     expect(rows().length).toBe(component.filtered().length);
+  });
+
+  it('lists the household page among the destinations', () => {
+    expect(component.navResults().map(command => command.labelKey)).toContain('nav.household');
+
+    type('house');
+
+    expect(component.filtered().map(command => command.labelKey)).toEqual(['nav.household']);
   });
 
   /**

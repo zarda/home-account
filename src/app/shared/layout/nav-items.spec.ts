@@ -23,6 +23,17 @@ describe('navItemFor', () => {
     expect(() => navItemFor('/no-such-route')).toThrowError(/no-such-route/);
   });
 
+  it('places the household page right after reports, under its own key and icon', () => {
+    const routes = NAV_ITEMS.map((item) => item.route);
+
+    expect(routes.indexOf('/household')).toBe(routes.indexOf('/reports') + 1);
+    expect(navItemFor('/household')).toEqual({
+      labelKey: 'nav.household',
+      icon: 'groups',
+      route: '/household',
+    });
+  });
+
   it('keeps the two lists free of duplicate routes', () => {
     const routes = [...NAV_ITEMS, ...PALETTE_ONLY_ITEMS].map((item) => item.route);
     expect(new Set(routes).size).toBe(routes.length);
@@ -56,7 +67,7 @@ describe('the palette and the router agree', () => {
    * Every path the router can actually render, absolute and slash-prefixed.
    * A pathless or empty-path entry contributes nothing itself but passes its
    * prefix to its children, which is how the `MainLayoutComponent` shell's
-   * eleven children resolve; a `redirectTo` entry is an alias for a path
+   * twelve children resolve; a `redirectTo` entry is an alias for a path
    * already counted, and `**` is the catch-all.
    */
   function renderableRoutes(config: Routes, prefix = ''): string[] {
