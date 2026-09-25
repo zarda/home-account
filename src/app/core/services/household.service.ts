@@ -1,4 +1,5 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import type { AbstractControl, ValidationErrors } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { Timestamp, deleteField, serverTimestamp } from '@angular/fire/firestore';
 import type { FunctionsError } from '@angular/fire/functions';
@@ -19,6 +20,56 @@ import { errorCode, isRefused } from '../utils/firebase-error.utils';
 
 /** firestore.rules, householdNameValid. */
 export const HOUSEHOLD_NAME_MAX_LENGTH = 60;
+
+/**
+ * Whether a household name is one the rules accept once trimmed, as it is
+ * stored. Every form that takes a name judges it by this, as the service
+ * does before it writes one.
+ */
+export function householdNameValid(name: string): boolean {
+  const length = name.trim().length;
+  return length > 0 && length <= HOUSEHOLD_NAME_MAX_LENGTH;
+}
+
+/** householdNameValid as a form control's validator. */
+export function householdNameValidator(control: AbstractControl<string>): ValidationErrors | null {
+  return householdNameValid(control.value) ? null : { householdName: true };
+}
+
+/**
+ * The longest address the invite callable accepts: MAX_EMAIL_LENGTH in
+ * functions/src/household-invite.ts, a separate build. The functions test
+ * household-client-mirrors.test.ts fails when the two differ.
+ */
+const INVITE_EMAIL_MAX_LENGTH = 254;
+
+/**
+ * Whether an address, trimmed as invite() sends it, has the shape the invite
+ * callable accepts (normalizeInviteEmail in functions/src/household-invite.ts):
+ * something on both sides of exactly one @, no space or control character,
+ * at most INVITE_EMAIL_MAX_LENGTH characters. A form judging by it never
+ * refuses what the callable would take, nor sends what it would only refuse.
+ */
+export function inviteEmailValid(email: string): boolean {
+  const address = email.trim();
+  const parts = address.split('@');
+  return (
+    address.length > 0 &&
+    address.length <= INVITE_EMAIL_MAX_LENGTH &&
+    !hasSpaceOrControl(address) &&
+    parts.length === 2 &&
+    !!parts[0] &&
+    !!parts[1]
+  );
+}
+
+function hasSpaceOrControl(text: string): boolean {
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f || /\s/.test(char)) return true;
+  }
+  return false;
+}
 
 /** firestore.rules, memberShapeValid. */
 const MEMBER_NAME_MAX_LENGTH = 100;
@@ -137,6 +188,8 @@ export class HouseholdService {
   private readonly receivedDocs = signal<HouseholdInvite[]>([]);
   private readonly sentDocs = signal<HouseholdInvite[]>([]);
   private readonly lostAccessFlag = signal(false);
+  /** The own member document as the server last confirmed it, while live. */
+  private readonly confirmedOwn = signal<{ householdId: string; member: HouseholdMember } | null>(null);
 
   readonly status = computed<HouseholdStatus>(() => {
     if (!this.connected()) return 'idle';
@@ -180,6 +233,8 @@ export class HouseholdService {
   private liveHouseholdId: string | null = null;
   /** A household this client is itself leaving, so its own deletion is not reported as lost access. */
   private endingOwnMembership: string | null = null;
+  /** The identity last written to the own member document in this membership. */
+  private identityAsked: string | null = null;
 
   private profileSub: Subscription | null = null;
   private receivedSub: Subscription | null = null;
@@ -203,6 +258,17 @@ export class HouseholdService {
         this.closeListeners();
         this.open(uid);
       });
+    });
+
+    // The member document is how the others see the account, and nothing
+    // else writes it after the join: a rename in Settings reaches it here,
+    // the next time the account's own page holds the live document. Like the
+    // listeners, this acts only while a page holds a connection.
+    effect(() => {
+      const own = this.confirmedOwn();
+      this.auth.currentUser();
+      const online = this.pwa.isOnline();
+      if (own && online) untracked(() => this.showAsProfile(own.householdId, own.member));
     });
   }
 
@@ -253,10 +319,14 @@ export class HouseholdService {
    * Joins through the invite addressed to the caller. The joiner cannot read
    * the household before it belongs to it, so the generation comes from the
    * invite, copied unchanged: the rules compare it to the microsecond.
+   *
+   * Answers the household's name as the new member can now read it. The
+   * invite holds a copy made when it was sent, which a rename since then
+   * leaves behind; that copy is the answer only when the read fails.
    */
-  async accept(householdId: string): Promise<void> {
+  async accept(householdId: string): Promise<string> {
     const uid = this.requireUser();
-    await this.attempt(async () => {
+    return this.attempt(async () => {
       // The rules would refuse the commit; a connected page already knows why.
       if (this.uid === uid && this.status() === 'member') {
         throw new HouseholdError(this.t('household.errors.alreadyMember'));
@@ -296,6 +366,8 @@ export class HouseholdService {
         if (!isRefused(error) || !read.invite) throw error;
         throw await this.joinRefusal(uid, householdId, read.invite, read.pointer ?? null, error);
       }
+      const joined = await this.firestore.getDocument<Household>(householdPath(householdId)).catch(() => null);
+      return joined?.name || (read.invite as HouseholdInvite).householdName;
     });
   }
 
@@ -494,8 +566,12 @@ export class HouseholdService {
       this.liveHouseholdId = householdId;
       this.lostAccessFlag.set(false);
       this.attachMembership(uid, householdId, data);
+      // Compared only against what the server holds: a cached copy can be
+      // older than a write this account made on another device.
+      if (confirmed) this.confirmedOwn.set({ householdId, member: data });
       return;
     }
+    this.confirmedOwn.set(null);
     if (!confirmed) {
       // Only the server says the document is gone. An uncached document
       // reads null offline, and a local delete not yet committed may still
@@ -574,6 +650,8 @@ export class HouseholdService {
     this.ownSub = null;
     this.detachMembership();
     this.liveHouseholdId = null;
+    this.confirmedOwn.set(null);
+    this.identityAsked = null;
   }
 
   private detachMembership(): void {
@@ -741,6 +819,34 @@ export class HouseholdService {
   }
 
   /**
+   * Rewrites the own member document's name and picture when the profile
+   * shows the account otherwise. The rules let a member change exactly these
+   * two fields of its own document. Compared as identity() writes them,
+   * clipped and filtered, or a name the rules clip would be written again at
+   * every answer. A failure is left alone: it is a removal or a dissolve
+   * racing the write, or a lost connection. The same identity is asked for
+   * once per membership the page attaches to, so a refused write is not
+   * retried at every answer the listener brings.
+   */
+  private showAsProfile(householdId: string, stored: HouseholdMember): void {
+    const uid = this.uid;
+    if (!uid || stored.uid !== uid) return;
+    const wanted = this.identity(uid);
+    if (stored.displayName === wanted.displayName && stored.photoURL === wanted.photoURL) return;
+    const asked = `${householdId}|${wanted.displayName}|${wanted.photoURL ?? ''}`;
+    if (asked === this.identityAsked) return;
+    this.identityAsked = asked;
+    this.firestore
+      .runTransaction(async tx => {
+        tx.update(this.ref(memberPath(householdId, uid)), {
+          displayName: wanted.displayName,
+          photoURL: wanted.photoURL ?? deleteField()
+        });
+      })
+      .catch(() => undefined);
+  }
+
+  /**
    * How the caller appears to the other members, within the rules' limits.
    * A picture the rules would refuse is left out rather than refusing the
    * whole write.
@@ -757,11 +863,10 @@ export class HouseholdService {
   }
 
   private validName(name: string): string {
-    const clean = name.trim();
-    if (!clean || clean.length > HOUSEHOLD_NAME_MAX_LENGTH) {
+    if (!householdNameValid(name)) {
       throw new HouseholdError(this.t('household.errors.name', { max: HOUSEHOLD_NAME_MAX_LENGTH }));
     }
-    return clean;
+    return name.trim();
   }
 
   private requireUser(): string {

@@ -7,18 +7,21 @@ import { HouseholdComponent } from './household.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
 import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
 import { HouseholdPlansComponent } from './household-plans/household-plans.component';
+import { HouseholdMembersComponent } from './household-members/household-members.component';
 import { HouseholdService, HouseholdStatus } from '../../core/services/household.service';
 import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { createTranslationStub } from '../../core/services/testing';
 import { Household, HouseholdMember } from '../../models';
+import { HouseholdPageFocus } from './household-focus';
 
-/** The setup state has its own spec; here only its presence is the question. */
+/** The setup state has its own spec; here only its presence, and its first heading, are the question. */
 @Component({
   selector: 'app-household-setup',
   standalone: true,
-  template: '',
+  template: '<h2 id="household-invites-title" tabindex="-1">Invites for you</h2><button type="button">Create</button>',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 class StubSetupComponent {}
@@ -27,7 +30,7 @@ class StubSetupComponent {}
 @Component({
   selector: 'app-household-overview',
   standalone: true,
-  template: '',
+  template: '<h2 id="household-overview-title" tabindex="-1">Income and spending</h2>',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 class StubOverviewComponent {
@@ -44,6 +47,15 @@ class StubOverviewComponent {
 class StubPlansComponent {
   readonly ledger = inject(HouseholdLedgerService);
 }
+
+/** The members and their management have their own spec; here only where they sit is the question. */
+@Component({
+  selector: 'app-household-members',
+  standalone: true,
+  template: '<button type="button" class="stub-leave">Leave</button>',
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+class StubMembersComponent {}
 
 const HOUSEHOLD: Household = {
   id: 'h1',
@@ -70,6 +82,7 @@ describe('HouseholdComponent', () => {
   let online: ReturnType<typeof signal<boolean>>;
   let members: ReturnType<typeof signal<HouseholdMember[]>>;
   let ledger: { setMembers: jasmine.Spy };
+  let catchUp: jasmine.Spy;
   let service: {
     status: typeof status;
     household: typeof household;
@@ -89,6 +102,15 @@ describe('HouseholdComponent', () => {
     fixture.detectChanges();
   }
 
+  /** Lets afterNextRender run: it fires on the app's own tick, which detectChanges alone does not run. */
+  async function settleFocus(): Promise<void> {
+    render();
+    await fixture.whenStable();
+    TestBed.tick();
+  }
+
+  const pageFocus = (): HouseholdPageFocus => fixture.debugElement.injector.get(HouseholdPageFocus);
+
   beforeEach(async () => {
     status = signal<HouseholdStatus>('idle');
     household = signal<Household | null>(null);
@@ -96,6 +118,7 @@ describe('HouseholdComponent', () => {
     online = signal(true);
     members = signal<HouseholdMember[]>([]);
     ledger = { setMembers: jasmine.createSpy('setMembers') };
+    catchUp = jasmine.createSpy('catchUpRecurringTransactions').and.resolveTo([]);
     service = {
       status,
       household,
@@ -113,16 +136,17 @@ describe('HouseholdComponent', () => {
       providers: [
         { provide: HouseholdService, useValue: service },
         { provide: PwaService, useValue: { isOnline: online } },
-        { provide: TranslationService, useValue: createTranslationStub() }
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: RecurringService, useValue: { catchUpRecurringTransactions: catchUp } }
       ]
     })
       .overrideComponent(HouseholdComponent, {
         remove: {
-          imports: [HouseholdSetupComponent, HouseholdOverviewComponent, HouseholdPlansComponent],
+          imports: [HouseholdSetupComponent, HouseholdOverviewComponent, HouseholdPlansComponent, HouseholdMembersComponent],
           providers: [HouseholdLedgerService]
         },
         add: {
-          imports: [StubSetupComponent, StubOverviewComponent, StubPlansComponent],
+          imports: [StubSetupComponent, StubOverviewComponent, StubPlansComponent, StubMembersComponent],
           providers: [{ provide: HouseholdLedgerService, useValue: ledger }]
         }
       })
@@ -142,6 +166,114 @@ describe('HouseholdComponent', () => {
       fixture.destroy();
 
       expect(service.disconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it("catches up the viewer's own recurring rules as it opens, as the dashboard does", () => {
+      expect(catchUp).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets a failed catch-up pass without a word', async () => {
+      const consoleError = spyOn(console, 'error');
+      catchUp.and.rejectWith(new Error('offline'));
+      fixture.destroy();
+      fixture = TestBed.createComponent(HouseholdComponent);
+      render();
+      await fixture.whenStable();
+
+      expect(catchUp).toHaveBeenCalledTimes(2);
+      expect(consoleError).not.toHaveBeenCalled();
+    });
+  });
+
+  // Every swap of what the page shows takes the focused element with it.
+  describe('where focus goes when an action swaps what the page shows', () => {
+    it("moves to the member view's first heading once a create or join lands", async () => {
+      status.set('none');
+      render();
+      pageFocus().afterSwapTo('member');
+      await settleFocus();
+      expect(document.activeElement).withContext('not before the swap').not.toBe(
+        element().querySelector('#household-invites-title')
+      );
+
+      household.set(HOUSEHOLD);
+      status.set('member');
+      await settleFocus();
+
+      expect(document.activeElement).toBe(element().querySelector('#household-overview-title'));
+      expect(pageFocus().awaited()).withContext('once, not at every later swap').toBeNull();
+    });
+
+    it("moves to the setup's first heading once a leave or dissolve lands", async () => {
+      household.set(HOUSEHOLD);
+      status.set('member');
+      render();
+      element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();
+      pageFocus().afterSwapTo('none');
+
+      household.set(null);
+      status.set('none');
+      await settleFocus();
+
+      expect(document.activeElement).toBe(element().querySelector('#household-invites-title'));
+    });
+
+    it('moves nothing on a first load, or on a swap nobody here asked for', async () => {
+      status.set('none');
+      await settleFocus();
+      expect(document.activeElement).toBe(document.body);
+
+      household.set(HOUSEHOLD);
+      status.set('member');
+      await settleFocus();
+
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('moves into the setup when access is lost with focus on the view that went', async () => {
+      household.set(HOUSEHOLD);
+      status.set('member');
+      render();
+      element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();
+
+      household.set(null);
+      status.set('none');
+      lostAccess.set(true);
+      await settleFocus();
+
+      expect(document.activeElement).toBe(element().querySelector('#household-invites-title'));
+      expect(text()).toContain('household.lostAccess');
+    });
+
+    it('moves to what replaces the notice after a retry', async () => {
+      service.disconnect.and.callFake(() => status.set('idle'));
+      status.set('unavailable');
+      render();
+      const retry = element().querySelector<HTMLButtonElement>('button.household-retry') as HTMLButtonElement;
+      retry.focus();
+
+      retry.click();
+      await settleFocus();
+      expect(status()).toBe('loading');
+
+      household.set(HOUSEHOLD);
+      status.set('member');
+      await settleFocus();
+
+      expect(document.activeElement).toBe(element().querySelector('#household-overview-title'));
+    });
+
+    it('moves to the retry that came back when a retry fails again', async () => {
+      service.disconnect.and.callFake(() => status.set('idle'));
+      status.set('unavailable');
+      render();
+      element().querySelector<HTMLButtonElement>('button.household-retry')?.click();
+      await settleFocus();
+
+      status.set('unavailable');
+      await settleFocus();
+
+      expect(document.activeElement).toBe(element().querySelector('button.household-retry'));
     });
   });
 
@@ -180,6 +312,22 @@ describe('HouseholdComponent', () => {
       expect(header()?.textContent).not.toContain('household.subtitle');
       expect(element().querySelector('app-household-setup')).toBeNull();
       expect(element().querySelector('mat-spinner')).toBeNull();
+    });
+
+    it('shows the members last in the member view, after the budgets and goals', () => {
+      household.set(HOUSEHOLD);
+      status.set('member');
+      render();
+
+      const sections = Array.from(element().querySelectorAll('.member-view > *')).map(node => node.tagName.toLowerCase());
+      expect(sections).toEqual(['app-household-overview', 'app-household-plans', 'app-household-members']);
+    });
+
+    it('shows no members section outside the member view', () => {
+      status.set('none');
+      render();
+
+      expect(element().querySelector('app-household-members')).toBeNull();
     });
 
     it('says the household could not be loaded, and a retry reconnects', () => {

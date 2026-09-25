@@ -99,6 +99,7 @@ and `duration` arrived in 1.27.140.
 | `ai_assist_used` | An AI feature issued a real provider request (cache hits and local fallbacks excluded). | `feature` | `src/app/core/services/ai-import.service.ts`, `src/app/core/services/nl-search.service.ts`, `src/app/core/services/note-translation.service.ts`, `src/app/core/services/receipt-translation.service.ts`, `src/app/core/services/weekly-recap.service.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/dashboard/ai-summary/ai-summary.component.ts`, `src/app/features/reports/insights/insight-narrative/insight-narrative.component.ts` | 1.16.91 |
 | `settings_change` | A tracked preference was saved from profile settings. | `setting` | `src/app/features/settings/profile-settings/profile-settings.component.ts`, `src/app/features/settings/accessibility-settings/accessibility-settings.component.ts` | 1.16.91 |
 | `search_history_used` | A stored search record was reopened, refreshed or applied. Never fires for collapsing one. | `action` | `src/app/features/ai/search-history/search-answer-history.component.ts`, `src/app/shared/components/ai-search-dialog/ai-search-dialog.component.ts` | 1.23.116 |
+| `household_action` | A household action succeeded: starting one, or accepting or declining an invite, from the setup; inviting, revoking, renaming, removing, leaving or dissolving from the member view. A refusal or failure sends nothing, and neither does the page's own clearing of a stale pointer. | `action` | `src/app/features/household/household-members/household-members.component.ts`, `src/app/features/household/household-setup/household-setup.component.ts` | 26.9.167 |
 <!-- analytics-registry:end -->
 
 ### Parameter values
@@ -121,7 +122,7 @@ and `duration` arrived in 1.27.140.
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative`, `translation` (a note or receipt photo read back in the UI language — neither the note nor the image is ever sent here), `recap` (the weekly recap's sentence — figures and category names only) |
 | `setting` | `theme`, `language`, `currency`, `font_scale`, `high_contrast`, `reduced_motion` |
-| `action` | `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent |
+| `action` | Per event. `search_history_used`: `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent. `household_action`: `create`, `accept`, `decline` (the setup), `invite`, `revoke`, `rename`, `remove`, `leave`, `dissolve` (the member view) — never the household's name, an invitee's address, or which member an action concerned |
 
 ### What is deliberately not tagged
 

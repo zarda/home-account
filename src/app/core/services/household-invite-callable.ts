@@ -17,6 +17,14 @@ export const HOUSEHOLD_FUNCTIONS_REGION = 'asia-east1';
 
 export const HOUSEHOLD_INVITE_FUNCTION = 'inviteToHousehold';
 
+/**
+ * How long the callable waits on the mail before it answers:
+ * INVITE_MAIL_DEADLINE_MS in functions/src/household-invite-handler.ts. The
+ * handler imports the Functions runtime, so the client keeps a copy; the
+ * functions test household-client-mirrors.test.ts fails when the two differ.
+ */
+export const INVITE_MAIL_DEADLINE_MS = 10_000;
+
 export interface HouseholdInviteRequest {
   householdId: string;
   email: string;

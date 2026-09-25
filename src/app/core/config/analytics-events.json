@@ -87,5 +87,21 @@
     "params": {
       "action": ["reopen", "refresh", "apply"]
     }
+  },
+  "household_action": {
+    "since": "26.9.167",
+    "params": {
+      "action": [
+        "create",
+        "invite",
+        "revoke",
+        "accept",
+        "decline",
+        "leave",
+        "remove",
+        "dissolve",
+        "rename"
+      ]
+    }
   }
 }

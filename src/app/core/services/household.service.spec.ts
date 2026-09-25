@@ -1,11 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, computed, signal } from '@angular/core';
+import { FormControl } from '@angular/forms';
 import { Observable, Subject } from 'rxjs';
 import { Timestamp, deleteField, serverTimestamp } from '@angular/fire/firestore';
 import {
   HOUSEHOLD_NAME_MAX_LENGTH,
   HouseholdError,
-  HouseholdService
+  HouseholdService,
+  householdNameValid,
+  householdNameValidator,
+  inviteEmailValid
 } from './household.service';
 import { HOUSEHOLD_INVITE_CALLABLE } from './household-invite-callable';
 import { DocumentWithMetadata, FirestoreService } from './firestore.service';
@@ -30,6 +34,71 @@ type Where = { field: string; op: string; value: unknown }[] | undefined;
 const confirmed = (data: HouseholdMember | null): OwnMember => ({ data, fromCache: false, hasPendingWrites: false });
 /** The own member document as the local cache answered it. */
 const cached = (data: HouseholdMember | null): OwnMember => ({ data, fromCache: true, hasPendingWrites: false });
+
+/**
+ * The one name rule the setup's create form, the owner's rename field and the
+ * service itself all judge by: the rules' 1–60 characters, after trimming.
+ */
+describe('householdNameValid', () => {
+  it('accepts one character, and sixty', () => {
+    expect(householdNameValid('A')).toBeTrue();
+    expect(householdNameValid('n'.repeat(HOUSEHOLD_NAME_MAX_LENGTH))).toBeTrue();
+  });
+
+  it('judges the name as it will be stored, trimmed', () => {
+    expect(householdNameValid(`  ${'n'.repeat(HOUSEHOLD_NAME_MAX_LENGTH)}  `)).toBeTrue();
+    expect(householdNameValid('   ')).toBeFalse();
+  });
+
+  it('refuses an empty name, and one over sixty characters', () => {
+    expect(householdNameValid('')).toBeFalse();
+    expect(householdNameValid('n'.repeat(HOUSEHOLD_NAME_MAX_LENGTH + 1))).toBeFalse();
+  });
+
+  it('judges a form control by the same rule', () => {
+    expect(householdNameValidator(new FormControl(' The Lins ', { nonNullable: true }))).toBeNull();
+    expect(householdNameValidator(new FormControl('  ', { nonNullable: true }))).toEqual({ householdName: true });
+    expect(
+      householdNameValidator(new FormControl('n'.repeat(HOUSEHOLD_NAME_MAX_LENGTH + 1), { nonNullable: true }))
+    ).toEqual({ householdName: true });
+  });
+});
+
+/**
+ * The invite form's shape check: normalizeInviteEmail's in
+ * functions/src/household-invite.ts, whose test lists the same cases.
+ */
+describe('inviteEmailValid', () => {
+  it('accepts an address, judged trimmed as invite() sends it', () => {
+    expect(inviteEmailValid('sam@example.com')).toBeTrue();
+    expect(inviteEmailValid('  Sam@Example.COM ')).toBeTrue();
+  });
+
+  it('refuses what cannot be an address', () => {
+    for (const value of [
+      '',
+      '   ',
+      'no-at-sign',
+      '@example.com',
+      'sam@',
+      'a@b@example.com',
+      'sam @example.com',
+      'sam\t@example.com',
+      'sam\u0000@example.com',
+      'sam\u007f@example.com'
+    ]) {
+      expect(inviteEmailValid(value)).withContext(JSON.stringify(value)).toBeFalse();
+    }
+  });
+
+  it('admits 254 characters and refuses 255', () => {
+    const at254 = `${'a'.repeat(64)}@${'b'.repeat(185)}.com`;
+    expect(at254.length).toBe(254);
+    expect(inviteEmailValid(at254)).toBeTrue();
+    expect(inviteEmailValid(`  ${at254}  `)).toBeTrue();
+    expect(inviteEmailValid(`a${at254}`)).toBeFalse();
+  });
+});
 
 describe('HouseholdService', () => {
   const ME = 'me';
@@ -75,9 +144,12 @@ describe('HouseholdService', () => {
     ...overrides
   }) as User;
 
+  // Shown as the profile shows the account, so a live member document here
+  // has nothing for the service to bring into line.
   const member = (overrides: Partial<HouseholdMember> = {}): HouseholdMember => ({
     uid: ME,
     displayName: 'Me',
+    photoURL: 'https://lh3.googleusercontent.com/a/me',
     role: 'member',
     since: CREATED,
     joinedAt: CREATED,
@@ -216,6 +288,9 @@ describe('HouseholdService', () => {
   }
 
   const shape = (commits: Write[][]) => commits.map(writes => writes.map(w => `${w.op} ${w.path}`));
+
+  /** Lets a write the service did not await settle. */
+  const fixtureSettled = () => new Promise<void>(resolve => setTimeout(resolve));
 
   /**
    * Answers server reads from a queue per query: the collection path plus
@@ -601,6 +676,130 @@ describe('HouseholdService', () => {
     });
   });
 
+  // The member document holds how the others see the account, copied from
+  // its profile at joining; the profile can be renamed at any time after.
+  describe('how the account is shown to the others', () => {
+    const OWN_PATH = `households/${HID}/members/${ME}`;
+
+    function attach(stored: OwnMember): void {
+      service.connect();
+      profile$.next({ id: ME, householdId: HID });
+      own$.next(stored);
+    }
+
+    it('brings its member document into line with the profile once the server confirms the document', async () => {
+      const commits = recordCommits();
+
+      attach(confirmed(member({ displayName: 'Old name' })));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([[{
+        op: 'update',
+        path: OWN_PATH,
+        data: { displayName: 'Me', photoURL: 'https://lh3.googleusercontent.com/a/me' }
+      }]]);
+    });
+
+    it('writes nothing when the document already shows the profile', async () => {
+      const commits = recordCommits();
+
+      attach(confirmed(member()));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([]);
+    });
+
+    it('follows a rename made while the page is open', async () => {
+      const commits = recordCommits();
+      attach(confirmed(member()));
+      TestBed.tick();
+
+      user.set(userFixture({ displayName: 'Samuel' }));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits.map(writes => writes.map(w => w.data))).toEqual([[
+        { displayName: 'Samuel', photoURL: 'https://lh3.googleusercontent.com/a/me' }
+      ]]);
+    });
+
+    it('removes a picture the rules would refuse rather than keeping the old one', async () => {
+      user.set(userFixture({ photoURL: 'https://example.test/me.png' }));
+      const commits = recordCommits();
+
+      attach(confirmed(member()));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([[{ op: 'update', path: OWN_PATH, data: { displayName: 'Me', photoURL: deleteField() } }]]);
+    });
+
+    it('compares the clipped name the rules take, so a long one is written once, not at every answer', async () => {
+      user.set(userFixture({ displayName: 'n'.repeat(150) }));
+      const commits = recordCommits();
+
+      attach(confirmed(member({ displayName: 'n'.repeat(100) })));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([]);
+    });
+
+    it('waits for the server: a document the cache answered writes nothing', async () => {
+      const commits = recordCommits();
+
+      attach(cached(member({ displayName: 'Old name' })));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([]);
+    });
+
+    it('writes nothing offline, and catches up once the connection returns', async () => {
+      online.set(false);
+      const commits = recordCommits();
+      attach(confirmed(member({ displayName: 'Old name' })));
+      TestBed.tick();
+      await fixtureSettled();
+      expect(commits).toEqual([]);
+
+      online.set(true);
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits.length).toBe(1);
+    });
+
+    it('asks once: a refused write is not tried again at every answer, and says nothing', async () => {
+      const commits = recordCommits(() => firebaseError('permission-denied'));
+      const transactions = firestore.runTransaction as jasmine.Spy;
+
+      attach(confirmed(member({ displayName: 'Old name' })));
+      TestBed.tick();
+      await Promise.resolve();
+      own$.next(confirmed(member({ displayName: 'Old name' })));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(transactions).toHaveBeenCalledTimes(1);
+      expect(commits).toEqual([]);
+      expectNoConsoleNoise();
+    });
+
+    it('writes nothing for a membership the page no longer holds', async () => {
+      const commits = recordCommits();
+      attach(confirmed(member({ displayName: 'Old name' })));
+      service.disconnect();
+
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([]);
+    });
+  });
+
   describe('forming and joining', () => {
     it('forms a household, its owner document and the pointer in one commit, stamped with the server time', async () => {
       const householdId = await service.create('  Home  ');
@@ -678,6 +877,23 @@ describe('HouseholdService', () => {
       expect(data['since']).toBe(stored.householdCreatedAt);
       expect(firestore.txDeleteSpy.calls.map(c => c.args[0])).toEqual([`householdInvites/${HID}_${ME}`]);
       expect(firestore.txUpdateSpy.calls.map(c => c.args)).toEqual([[`users/${ME}`, { householdId: HID }]]);
+    });
+
+    it("answers the household's name as the new member now reads it, not the invite's copy", async () => {
+      firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc({ householdName: 'Home' }));
+      firestore.setMockDocument(`users/${ME}`, userFixture());
+      const reads = readsFor({ [`households/${HID}`]: householdDoc({ name: 'Renamed home' }) });
+
+      expect(await service.accept(HID)).toBe('Renamed home');
+      expect(reads).toHaveBeenCalledOnceWith(`households/${HID}`);
+    });
+
+    it("answers the invite's copy of the name when the household cannot be read after joining", async () => {
+      firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc({ householdName: 'Home' }));
+      firestore.setMockDocument(`users/${ME}`, userFixture());
+      spyOn(firestore, 'getDocument').and.rejectWith(firebaseError('unavailable'));
+
+      expect(await service.accept(HID)).toBe('Home');
     });
 
     it('leaves expiry to the rules: an invite this device\'s clock calls expired still joins when the server admits it', async () => {

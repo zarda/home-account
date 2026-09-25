@@ -1,12 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
 import {
-  AbstractControl,
-  FormControl,
-  FormGroup,
-  FormGroupDirective,
-  ReactiveFormsModule,
-  ValidationErrors
-} from '@angular/forms';
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+  viewChild
+} from '@angular/core';
+import { FormControl, FormGroup, FormGroupDirective, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -16,10 +21,13 @@ import { MatInputModule } from '@angular/material/input';
 import {
   HOUSEHOLD_NAME_MAX_LENGTH,
   HouseholdError,
-  HouseholdService
+  HouseholdService,
+  householdNameValidator
 } from '../../../core/services/household.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
   ConfirmDialogComponent,
@@ -27,17 +35,14 @@ import {
 } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { HouseholdInvite } from '../../../models';
-
-/** The rules' bounds on a household name, judged after trimming as the service does. */
-function householdName(control: AbstractControl<string>): ValidationErrors | null {
-  const length = control.value.trim().length;
-  return length > 0 && length <= HOUSEHOLD_NAME_MAX_LENGTH ? null : { householdName: true };
-}
+import { FocusContext, HouseholdPageFocus, focusWhenRendered } from '../household-focus';
 
 interface InviteView {
   invite: HouseholdInvite;
   /** The DOM id of the household's name, which describes the invite's buttons. */
   nameId: string;
+  /** The inviter's verified address; null when their provider vouched for none. */
+  inviterEmail: string | null;
   expired: boolean;
   expiry: string;
 }
@@ -48,7 +53,14 @@ interface InviteView {
  *
  * Joining discloses first, in a confirm: from the moment it commits, every
  * member reads the joiner's records, and the receipt photos go with them
- * through links no rule governs.
+ * through links no rule governs. The confirm names the inviter by the address
+ * their provider verified, or says there is none: the name on the invite is
+ * one the inviter chose.
+ *
+ * Each button stays focusable while an answer is on its way, so focus is not
+ * dropped on the document; the answer in flight is what refuses a second
+ * press. Declining takes the invite's row, and focus, away, so focus goes on to
+ * the list's heading.
  */
 @Component({
   selector: 'app-household-setup',
@@ -64,10 +76,20 @@ export class HouseholdSetupComponent {
   private readonly translation = inject(TranslationService);
   private readonly dateFormat = inject(DateFormatService);
   private readonly dialog = inject(MatDialog);
+  private readonly analytics = inject(AnalyticsService);
+  private readonly isOnline = inject(PwaService).isOnline;
+  private readonly pageFocus = inject(HouseholdPageFocus);
+  private readonly focus: FocusContext = {
+    host: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
+    injector: inject(Injector),
+    destroyRef: inject(DestroyRef)
+  };
+  /** A declined invite whose row, and the focus on it, has yet to go. */
+  private readonly declined = signal<string | null>(null);
 
   readonly maxLength = HOUSEHOLD_NAME_MAX_LENGTH;
   readonly form = new FormGroup({
-    name: new FormControl('', { nonNullable: true, validators: [householdName] })
+    name: new FormControl('', { nonNullable: true, validators: [householdNameValidator] })
   });
   /**
    * The submit marked the directive submitted, and Material shows an invalid
@@ -89,10 +111,22 @@ export class HouseholdSetupComponent {
     return this.household.receivedInvites().map(invite => ({
       invite,
       nameId: `household-invite-${invite.id}`,
+      inviterEmail: invite.inviterEmail || null,
       expired: invite.expiresAt.toMillis() <= now,
       expiry: this.dateFormat.formatDate(invite.expiresAt)
     }));
   });
+
+  constructor() {
+    effect(() => {
+      const declined = this.declined();
+      if (declined === null || this.invites().some(view => view.invite.id === declined)) return;
+      untracked(() => {
+        this.declined.set(null);
+        focusWhenRendered(this.focus, ['#household-invites-title']);
+      });
+    });
+  }
 
   async create(): Promise<void> {
     if (this.creating()) return;
@@ -104,7 +138,9 @@ export class HouseholdSetupComponent {
     try {
       await this.household.create(name.value.trim());
       this.formDirective().resetForm();
+      this.pageFocus.afterSwapTo('member');
       this.notification.success(this.translation.t('household.setup.created'));
+      this.analytics.trackHouseholdAction({ action: 'create' });
     } catch (error) {
       this.notification.error(this.messageOf(error));
     } finally {
@@ -114,9 +150,19 @@ export class HouseholdSetupComponent {
 
   accept(invite: HouseholdInvite): void {
     if (this.answering()) return;
+    // The service refuses offline too, but only once it is called, which is
+    // after the whole disclosure has been read and confirmed; it still
+    // catches a connection lost while the dialog is open.
+    if (!this.isOnline()) {
+      this.notification.error(this.translation.t('household.errors.offline'));
+      return;
+    }
+    const from = invite.inviterEmail
+      ? this.translation.t('household.setup.acceptFrom', { email: invite.inviterEmail })
+      : this.translation.t('household.setup.acceptFromUnverified');
     const data: ConfirmDialogData = {
       title: this.translation.t('household.setup.acceptTitle', { name: invite.householdName }),
-      message: this.translation.t('household.setup.acceptDisclosure', { name: invite.householdName }),
+      message: this.translation.t('household.setup.acceptDisclosure', { from, name: invite.householdName }),
       confirmLabel: this.translation.t('household.setup.acceptConfirm'),
       icon: 'groups'
     };
@@ -131,14 +177,19 @@ export class HouseholdSetupComponent {
   async decline(invite: HouseholdInvite): Promise<void> {
     await this.answer(invite, async () => {
       await this.household.decline(invite.householdId);
+      this.declined.set(invite.id);
       this.notification.success(this.translation.t('household.setup.declined'));
+      this.analytics.trackHouseholdAction({ action: 'decline' });
     });
   }
 
+  /** The page the join lands on is headed by the household's current name, so the toast says that one too. */
   private async join(invite: HouseholdInvite): Promise<void> {
     await this.answer(invite, async () => {
-      await this.household.accept(invite.householdId);
-      this.notification.success(this.translation.t('household.setup.joined', { name: invite.householdName }));
+      const name = await this.household.accept(invite.householdId);
+      this.pageFocus.afterSwapTo('member');
+      this.notification.success(this.translation.t('household.setup.joined', { name }));
+      this.analytics.trackHouseholdAction({ action: 'accept' });
     });
   }
 

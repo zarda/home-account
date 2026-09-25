@@ -1,0 +1,155 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.members {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.members-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+
+  mat-icon {
+    font-size: var(--text-xl);
+    width: 1em;
+    height: 1em;
+    color: var(--color-primary);
+  }
+}
+
+.member-list,
+.invite-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+// A line holds its details and its button while both fit; the button drops
+// below rather than squeezing a name or an address.
+.member,
+.invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.member-details,
+.invite-details {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member-details app-member-chip {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.member-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  // Level with the name beside the chip's avatar: its 1.5em avatar and
+  // 0.375em gap, at the chip's size rather than this line's smaller one.
+  padding-inline-start: calc(1.875 * var(--text-base));
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+// The primary colour as a label on the card: the pair check-contrast.mjs
+// scores for exactly that.
+.member.is-owner .member-role {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.members-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--border-primary);
+}
+
+.members-subtitle {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.members-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.invite-form,
+.rename-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.members-field {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.members-field-button {
+  // Level with the outline field's box rather than with its hint line.
+  margin-block-start: 8px;
+}
+
+.invite-email {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  // An address may be one unbroken word longer than the line.
+  overflow-wrap: anywhere;
+}
+
+.invite-meta {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+
+  &.is-expired {
+    color: var(--color-warning-text);
+  }
+}
+
+.members-end {
+  align-items: flex-start;
+}
