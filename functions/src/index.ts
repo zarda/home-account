@@ -1,5 +1,6 @@
 import { setGlobalOptions } from 'firebase-functions';
 import { onDocumentCreated } from 'firebase-functions/firestore';
+import { onCall } from 'firebase-functions/https';
 import { onObjectDeleted, onObjectFinalized } from 'firebase-functions/storage';
 import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
@@ -10,6 +11,12 @@ import { getRemoteConfig } from 'firebase-admin/remote-config';
 import { getStorage } from 'firebase-admin/storage';
 
 import { composeFeedbackEmail } from './compose-feedback-email';
+import { householdInviteAdminDeps } from './household-invite-admin-deps';
+import {
+  HouseholdInviteDeps,
+  INVITE_MAIL_DEADLINE_MS,
+  handleHouseholdInvite,
+} from './household-invite-handler';
 import { sendMail } from './mailer';
 import {
   FALLBACK_FREE_LIMIT,
@@ -21,8 +28,13 @@ import {
   receiptPrefixFor,
 } from './receipt-quota';
 
-// Firestore lives in asia-east1 (firebase.json), so the trigger runs beside
-// it. maxInstances bounds cost: feedback volume is human-scale by definition.
+// Firestore lives in asia-east1 (firebase.json), so every function runs beside
+// it; only the storage triggers override the region, as they must.
+// maxInstances bounds cost: feedback and invites are human-scale by
+// definition, and the one instance serves requests concurrently (the Cloud Run
+// default), so an invite a user waits on does not queue behind another's mail
+// send. For the same reason it serializes nothing: the storage triggers add
+// concurrency: 1, and the invite takes its seat inside a transaction.
 setGlobalOptions({ region: 'asia-east1', maxInstances: 1 });
 
 initializeApp();
@@ -94,6 +106,46 @@ export const onFeedbackCreated = onDocumentCreated(
       logger.error('feedback mail failed', error);
     }
   }
+);
+
+/**
+ * The invite handler's Admin SDK deps, wired to this project's Firestore,
+ * Auth, SMTP secrets and logger. What each dep does, and the shape guards it
+ * holds, are in ./household-invite-admin-deps.
+ */
+function householdInviteDeps(): HouseholdInviteDeps {
+  return householdInviteAdminDeps({
+    firestore: getFirestore(),
+    auth: getAuth(),
+    sendMail: mail =>
+      sendMail(
+        {
+          host: smtpHost.value(),
+          port: Number(smtpPort.value()),
+          user: smtpUser.value(),
+          pass: smtpPass.value(),
+          timeoutMs: INVITE_MAIL_DEADLINE_MS,
+        },
+        { ...mail, from: smtpUser.value() }
+      ),
+    log: {
+      warn: (message, context) => logger.warn(message, context ?? {}),
+      // The error goes positionally, for the reason recountReceiptQuota gives.
+      error: (message, error, context) => logger.error(message, error, context ?? {}),
+    },
+  });
+}
+
+/**
+ * An owner invites someone to their household by email. Callable rather than
+ * a client write: resolving an address to an account needs the Admin SDK, and
+ * the invite, the quotas and the mail budget are documents no client may write.
+ * The four SMTP secrets are the feedback trigger's; the operator address is
+ * not bound, because an invite is mailed to the invitee.
+ */
+export const inviteToHousehold = onCall(
+  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass] },
+  request => handleHouseholdInvite(householdInviteDeps(), request)
 );
 
 /**
