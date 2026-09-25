@@ -9,6 +9,7 @@ import {
   DEFAULT_EXPENSE_GROUPS,
   DEFAULT_INCOME_GROUPS
 } from '../../models';
+import { defaultCategories, mergeCategories } from '../utils/category-merge.utils';
 
 @Injectable({ providedIn: 'root' })
 export class CategoryService {
@@ -58,9 +59,7 @@ export class CategoryService {
       { orderBy: [{ field: 'order', direction: 'asc' }] }
     ).pipe(
       map(userCategories => {
-        // Merge user categories with defaults
-        const defaultCategories = this.generateDefaultCategories();
-        const mergedCategories = this.mergeCategories(defaultCategories, userCategories);
+        const mergedCategories = mergeCategories(defaultCategories(), userCategories);
         this.categories.set(mergedCategories);
         return mergedCategories;
       })
@@ -69,7 +68,7 @@ export class CategoryService {
 
   // Get default system categories
   getDefaultCategories(): Category[] {
-    return this.generateDefaultCategories();
+    return defaultCategories();
   }
 
   // Get category by ID
@@ -285,7 +284,7 @@ export class CategoryService {
     const userId = this.authService.userId();
     if (!userId) return;
 
-    const defaultCategories = this.generateDefaultCategories();
+    const builtIns = defaultCategories();
 
     // Check if user already has categories
     const existingCategories = await this.firestoreService.getCollection<Category>(
@@ -297,7 +296,7 @@ export class CategoryService {
     }
 
     // Create default categories for user
-    const createPromises = defaultCategories.map(category =>
+    const createPromises = builtIns.map(category =>
       this.firestoreService.setDocument(
         `${this.userCategoriesPath}/${category.id}`,
         { ...category, userId }
@@ -305,102 +304,6 @@ export class CategoryService {
     );
 
     await Promise.all(createPromises);
-  }
-
-  // Generate flat list of default categories from groups
-  private generateDefaultCategories(): Category[] {
-    const categories: Category[] = [];
-    let order = 0;
-
-    // Helper to extract key name from translation key for ID generation
-    const getKeyName = (nameKey: string): string => {
-      const parts = nameKey.split('.');
-      return parts[parts.length - 1];
-    };
-
-    // Process expense groups
-    for (const group of DEFAULT_EXPENSE_GROUPS) {
-      // Add group as parent category
-      categories.push({
-        id: group.id,
-        userId: null,
-        name: group.nameKey,  // Store translation key as name
-        icon: group.icon,
-        color: group.color,
-        type: 'expense',
-        order: order++,
-        isActive: true,
-        isDefault: true
-      });
-
-      // Add subcategories
-      for (const item of group.categories) {
-        const keyName = getKeyName(item.nameKey);
-        categories.push({
-          id: `${group.id}_${keyName}`,
-          userId: null,
-          name: item.nameKey,  // Store translation key as name
-          icon: item.icon,
-          color: group.color,
-          type: 'expense',
-          parentId: group.id,
-          order: order++,
-          isActive: true,
-          isDefault: true
-        });
-      }
-    }
-
-    // Process income groups
-    for (const group of DEFAULT_INCOME_GROUPS) {
-      // Add group as parent category
-      categories.push({
-        id: group.id,
-        userId: null,
-        name: group.nameKey,  // Store translation key as name
-        icon: group.icon,
-        color: group.color,
-        type: 'income',
-        order: order++,
-        isActive: true,
-        isDefault: true
-      });
-
-      // Add subcategories
-      for (const item of group.categories) {
-        const keyName = getKeyName(item.nameKey);
-        categories.push({
-          id: `${group.id}_${keyName}`,
-          userId: null,
-          name: item.nameKey,  // Store translation key as name
-          icon: item.icon,
-          color: group.color,
-          type: 'income',
-          parentId: group.id,
-          order: order++,
-          isActive: true,
-          isDefault: true
-        });
-      }
-    }
-
-    return categories;
-  }
-
-  // Merge default categories with user custom categories
-  private mergeCategories(
-    defaults: Category[],
-    userCategories: Category[]
-  ): Category[] {
-    const userCategoryIds = new Set(userCategories.map(c => c.id));
-
-    // Filter out defaults that have been overridden by user
-    const filteredDefaults = defaults.filter(d => !userCategoryIds.has(d.id));
-
-    // Combine and sort by order
-    return [...filteredDefaults, ...userCategories].sort(
-      (a, b) => a.order - b.order
-    );
   }
 
   // Get parent categories (groups)

@@ -2,12 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { of, firstValueFrom } from 'rxjs';
-import { BudgetService } from './budget.service';
+import { BudgetService, isSpentCurrent } from './budget.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
 import { CurrencyService } from './currency.service';
-import { Budget, Transaction } from '../../models';
+import { Budget, BudgetPeriod, Transaction } from '../../models';
 import { dayKey } from '../utils/transaction-date.utils';
 
 describe('BudgetService', () => {
@@ -880,6 +880,136 @@ describe('BudgetService', () => {
       expect(mockFirestoreService.getCollectionFromServer).toHaveBeenCalledWith(
         path, { orderBy: [{ field: 'name', direction: 'asc' }] });
       expect(mockFirestoreService.getCollection).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('isSpentCurrent', () => {
+    interface PeriodCase {
+      label: string;
+      period: BudgetPeriod;
+      anchor: Date;
+      now: Date;
+      spentPeriod: string | undefined;
+      endDate?: Date;
+      current: boolean;
+    }
+
+    // 2 September 2026 is a Wednesday, so the weekly periods open on
+    // Wednesdays: 16 and 23 September.
+    const weeklyAnchor = new Date(2026, 8, 2);
+    const monthlyAnchor = new Date(2024, 0, 1);
+    const day31Anchor = new Date(2026, 0, 31);
+    const yearlyAnchor = new Date(2024, 3, 15);
+
+    const cases: PeriodCase[] = [
+      { label: 'weekly, stamped with the period that opened today', period: 'weekly',
+        anchor: weeklyAnchor, now: new Date(2026, 8, 23, 0, 0), spentPeriod: '2026-09-23', current: true },
+      { label: 'weekly, stamped with the period that closed last night', period: 'weekly',
+        anchor: weeklyAnchor, now: new Date(2026, 8, 23, 0, 0), spentPeriod: '2026-09-16', current: false },
+      { label: 'weekly, on the last minute of the stamped period', period: 'weekly',
+        anchor: weeklyAnchor, now: new Date(2026, 8, 22, 23, 59), spentPeriod: '2026-09-16', current: true },
+      { label: 'weekly, unstamped', period: 'weekly',
+        anchor: weeklyAnchor, now: new Date(2026, 8, 23, 9, 0), spentPeriod: undefined, current: false },
+
+      { label: 'monthly, stamped with this month', period: 'monthly',
+        anchor: monthlyAnchor, now: new Date(2026, 7, 1, 9, 0), spentPeriod: '2026-08-01', current: true },
+      { label: 'monthly, stamped with last month', period: 'monthly',
+        anchor: monthlyAnchor, now: new Date(2026, 7, 1, 9, 0), spentPeriod: '2026-07-01', current: false },
+      { label: 'monthly, late on the last day of the stamped month', period: 'monthly',
+        anchor: monthlyAnchor, now: new Date(2026, 6, 31, 23, 0), spentPeriod: '2026-07-01', current: true },
+      { label: 'monthly, stamped with a later period than now', period: 'monthly',
+        anchor: monthlyAnchor, now: new Date(2026, 7, 20, 9, 0), spentPeriod: '2026-09-01', current: false },
+      { label: 'monthly, day-31 anchor on the clamped 28 February', period: 'monthly',
+        anchor: day31Anchor, now: new Date(2026, 1, 28, 12, 0), spentPeriod: '2026-02-28', current: true },
+      { label: 'monthly, day-31 anchor, January stamp on the clamped 28 February', period: 'monthly',
+        anchor: day31Anchor, now: new Date(2026, 1, 28, 12, 0), spentPeriod: '2026-01-31', current: false },
+      { label: 'monthly, day-31 anchor, January stamp on 27 February', period: 'monthly',
+        anchor: day31Anchor, now: new Date(2026, 1, 27, 12, 0), spentPeriod: '2026-01-31', current: true },
+      { label: 'monthly, a user end date already passed does not move the start', period: 'monthly',
+        anchor: monthlyAnchor, now: new Date(2026, 7, 20, 9, 0), spentPeriod: '2026-08-01',
+        endDate: new Date(2026, 7, 10), current: true },
+      { label: 'monthly, unstamped', period: 'monthly',
+        anchor: monthlyAnchor, now: new Date(2026, 7, 1, 9, 0), spentPeriod: undefined, current: false },
+
+      { label: 'yearly, the day before the anniversary', period: 'yearly',
+        anchor: yearlyAnchor, now: new Date(2026, 3, 14, 23, 0), spentPeriod: '2025-04-15', current: true },
+      { label: 'yearly, last year\'s stamp at the anniversary midnight', period: 'yearly',
+        anchor: yearlyAnchor, now: new Date(2026, 3, 15, 0, 0), spentPeriod: '2025-04-15', current: false },
+      { label: 'yearly, this year\'s stamp at the anniversary midnight', period: 'yearly',
+        anchor: yearlyAnchor, now: new Date(2026, 3, 15, 0, 0), spentPeriod: '2026-04-15', current: true },
+      { label: 'yearly, unstamped', period: 'yearly',
+        anchor: yearlyAnchor, now: new Date(2026, 3, 15, 9, 0), spentPeriod: undefined, current: false },
+    ];
+
+    function budgetFor(
+      c: Pick<PeriodCase, 'period' | 'anchor' | 'spentPeriod' | 'endDate'>,
+      id: string
+    ): Budget {
+      return {
+        ...mockBudgets[0],
+        id,
+        period: c.period,
+        startDate: Timestamp.fromDate(c.anchor),
+        spent: 450,
+        spentPeriod: c.spentPeriod,
+        ...(c.endDate ? { endDate: Timestamp.fromDate(c.endDate) } : {}),
+      };
+    }
+
+    /**
+     * What BudgetService itself decides at `now`: it passes a current `spent`
+     * through and shows a stale one as 0. Read synchronously: the mocked
+     * stream is `of`, so the first value arrives inside the subscribe call.
+     */
+    function serviceKeepsSpent(budget: Budget, now: Date): boolean {
+      jasmine.clock().mockDate(now);
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([budget]));
+      let seen: Budget[] | undefined;
+      service.getBudgets().subscribe(value => (seen ??= value)).unsubscribe();
+      expect(seen).withContext('the stream emitted synchronously').toBeDefined();
+      return seen![0].spent === budget.spent;
+    }
+
+    beforeEach(() => {
+      jasmine.clock().install();
+      // The stale branch queues a recalculation; a missing document ends it
+      // before it reaches any write.
+      mockFirestoreService.getDocument.and.resolveTo(null);
+    });
+
+    afterEach(() => {
+      jasmine.clock().uninstall();
+    });
+
+    cases.forEach((c, i) => {
+      it(`agrees with the service's own decision: ${c.label}`, () => {
+        const budget = budgetFor(c, `case-${i}`);
+
+        const kept = serviceKeepsSpent(budget, c.now);
+
+        expect(isSpentCurrent(budget, c.now)).withContext(c.label).toBe(kept);
+        expect(kept).withContext(c.label).toBe(c.current);
+      });
+    });
+
+    it('decides from the `now` it is given, not the clock', () => {
+      // The clock sits in 2030, where an August 2026 stamp would be stale.
+      jasmine.clock().mockDate(new Date(2030, 0, 1));
+      const budget = budgetFor(
+        { period: 'monthly', anchor: monthlyAnchor, spentPeriod: '2026-08-01' }, 'b');
+
+      expect(isSpentCurrent(budget, new Date(2026, 7, 1, 9, 0))).toBeTrue();
+    });
+
+    it('does not write to the budget it is given', () => {
+      // Frozen down to its Timestamp: spec modules are strict, so any write
+      // throws and fails the test before the assertion is reached.
+      const stale = budgetFor(
+        { period: 'monthly', anchor: monthlyAnchor, spentPeriod: '2026-07-01' }, 'b');
+      Object.freeze(stale.startDate);
+      Object.freeze(stale);
+
+      expect(isSpentCurrent(stale, new Date(2026, 7, 1, 9, 0))).toBeFalse();
     });
   });
 });

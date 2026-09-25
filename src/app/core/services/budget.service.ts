@@ -23,6 +23,32 @@ import {
   baseCurrencyOf
 } from '../../models';
 
+/**
+ * Whether a stored `spent` covers the budget period containing `now`.
+ *
+ * `spent` is stamped with the dayKey of the period start it was summed for.
+ * Read in any other period — or unstamped, on docs from before the stamp
+ * existed — it is another period's number. A user-set end date only closes a
+ * period early and never moves its start, so it plays no part.
+ *
+ * The answer holds only in the time zone that wrote the stamp. The anchor, the
+ * window and dayKey are all read in local time, so a caller in another zone
+ * can put the same start on a neighbouring day (a Tokyo-midnight anchor on the
+ * 1st is the 31st in New York) and reject a current figure. Only the writer
+ * re-stamps, so for that caller the figure stays rejected.
+ *
+ * This only decides. What a stale figure costs is the caller's: the owner's
+ * BudgetService shows 0 and queues a recalculation, and a reader that cannot
+ * write the document can only show 0.
+ */
+export function isSpentCurrent(
+  budget: Pick<Budget, 'period' | 'startDate' | 'spentPeriod'>,
+  now: Date
+): boolean {
+  const { start } = budgetPeriodWindow(budget.period, budget.startDate.toDate(), now);
+  return budget.spentPeriod === dayKey(start);
+}
+
 @Injectable({ providedIn: 'root' })
 export class BudgetService {
   private firestoreService = inject(FirestoreService);
@@ -111,20 +137,14 @@ export class BudgetService {
     );
   }
 
-  /** dayKey of the start of the period `spent` would cover right now. */
-  private currentPeriodStamp(budget: Budget): string {
-    return dayKey(this.getBudgetPeriodDates(budget).start);
-  }
-
   /**
-   * A stored `spent` belongs to the period stamped on it. Read in any later
-   * period — or unstamped, on docs from before the stamp existed — it is a
-   * previous period's number: render 0 instead and queue one self-healing
-   * recalculation, so the first day of a period never shows last period's
-   * spend or raises its exceeded alert.
+   * A `spent` that isSpentCurrent rejects belongs to another period, or has
+   * no stamp: render 0 instead and queue one self-healing recalculation, so
+   * the first day of a period never shows the previous period's spend or
+   * raises its exceeded alert.
    */
   private freshenSpent(budget: Budget): Budget {
-    if (budget.spentPeriod === this.currentPeriodStamp(budget)) {
+    if (isSpentCurrent(budget, new Date())) {
       return budget;
     }
     this.queueStaleRecalc(budget.id);
