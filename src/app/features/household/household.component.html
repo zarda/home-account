@@ -24,7 +24,9 @@
 
   @switch (status()) {
     @case ('member') {
-      <div class="member-view"></div>
+      <div class="member-view">
+        <app-household-overview />
+      </div>
     }
     @case ('none') {
       <app-household-setup />

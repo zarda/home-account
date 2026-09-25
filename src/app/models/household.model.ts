@@ -25,7 +25,10 @@ export interface HouseholdMember {
   uid: string;
   /** At most 100 characters. */
   displayName: string;
-  /** https only, at most 2048 characters; omitted when there is no picture. */
+  /**
+   * On one of Google's account-picture hosts, at most 2048 characters (see
+   * isMemberPhotoUrl); omitted when there is no picture.
+   */
   photoURL?: string;
   role: HouseholdRole;
   /** The household's `createdAt` at the time of joining. */
@@ -33,6 +36,26 @@ export interface HouseholdMember {
   joinedAt: Timestamp;
   /** `${householdId}_${uid}`: the invite a member joined through. The owner has none. */
   inviteId?: string;
+}
+
+/** Who a member is, as the household page shows them beside a figure or a row. */
+export type HouseholdMemberIdentity = Pick<HouseholdMember, 'uid' | 'displayName' | 'photoURL'>;
+
+/** The longest picture address a member document may hold. */
+export const MEMBER_PHOTO_MAX_LENGTH = 2048;
+
+/**
+ * Google's account-picture hosts. Every member's browser loads every other
+ * member's picture, so whoever serves it learns each viewer's address and
+ * when they open the household page; the app signs in with Google only, so
+ * no genuine picture is served from anywhere else. memberPhotoValid in
+ * firestore.rules holds the same pattern.
+ */
+const MEMBER_PHOTO_PATTERN = /^https:\/\/lh[3-6]\.googleusercontent\.com\/.*$/;
+
+/** A picture a member document may name, and so one a page may load. */
+export function isMemberPhotoUrl(url: string | null | undefined): url is string {
+  return typeof url === 'string' && url.length <= MEMBER_PHOTO_MAX_LENGTH && MEMBER_PHOTO_PATTERN.test(url);
 }
 
 /**
@@ -62,7 +85,14 @@ export interface HouseholdInvite {
   householdCreatedAt: Timestamp;
   householdName: string;
   inviterUid: string;
+  /** The inviter's sign-in name. Self-asserted: the inviter chose it. */
   inviterName: string;
+  /**
+   * The inviter's sign-in address as their provider verified it, or null when
+   * it did not: what the invitee is shown beside the name before joining.
+   * Read as null when absent.
+   */
+  inviterEmail?: string | null;
   inviteeUid: string;
   inviteeEmail: string;
   /** The inviter's app language when the invite was sent. */

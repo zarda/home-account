@@ -731,8 +731,14 @@ service cloud.firestore {
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }
 
+    // Google's account-picture hosts only: every member's browser loads each
+    // member's picture, so any other host would learn each viewer's address
+    // and when they open the household page. isMemberPhotoUrl in
+    // src/app/models/household.model.ts holds the same pattern.
     function memberPhotoValid(url) {
-      return url is string && url.size() <= 2048 && url.matches('https://.*');
+      return url is string
+        && url.size() <= 2048
+        && url.matches('https://lh[3-6][.]googleusercontent[.]com/.*');
     }
 
     function memberShapeValid(uid) {

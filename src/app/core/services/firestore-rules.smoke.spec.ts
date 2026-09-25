@@ -2563,6 +2563,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
       householdName: stringField('Home'),
       inviterUid: stringField(String(household['ownerId']?.['stringValue'])),
       inviterName: stringField('Inviter'),
+      inviterEmail: stringField('inviter@example.test'),
       inviteeUid: stringField(invitee.uid),
       inviteeEmail: stringField(`${invitee.name}@example.test`),
       locale: stringField('en'),
@@ -2690,11 +2691,12 @@ describe('firestore.rules households (emulator smoke test)', () => {
       await expectAllowed(createCommit(owner, newHouseholdId()), 'the create commit');
     });
 
-    it('accepts a name of 60 characters and a display name of 100', async () => {
+    it('accepts a name of 60 characters, a display name of 100 and a photo URL of 2048', async () => {
+      const photoHost = 'https://lh3.googleusercontent.com/a/';
       await expectAllowed(
         createCommit(owner, newHouseholdId(), {
           household: { name: 'n'.repeat(60) },
-          member: { displayName: 'd'.repeat(100), photoURL: 'https://example.test/me.png' }
+          member: { displayName: 'd'.repeat(100), photoURL: photoHost + 'p'.repeat(2048 - photoHost.length) }
         }),
         'a create at the length limits'
       );
@@ -2776,9 +2778,18 @@ describe('firestore.rules households (emulator smoke test)', () => {
       await expectAllowed(
         lite.updateDoc(memberRef(peer, householdId), {
           displayName: 'Peer again',
-          photoURL: 'https://example.test/peer.png'
+          photoURL: 'https://lh4.googleusercontent.com/a/peer'
         }),
         'a self-update of the display fields'
+      );
+    });
+
+    it('lets a member drop its own photo, as the app does when the profile has none the rules take', async () => {
+      const householdId = await formWithPeer();
+      await lite.updateDoc(memberRef(peer, householdId), { photoURL: 'https://lh4.googleusercontent.com/a/peer' });
+      await expectAllowed(
+        lite.updateDoc(memberRef(peer, householdId), { displayName: 'Peer again', photoURL: lite.deleteField() }),
+        'a self-update removing the photo'
       );
     });
 
@@ -2885,6 +2896,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
           householdName: 'Home',
           inviterUid: owner.uid,
           inviterName: 'owner',
+          inviterEmail: 'owner@example.test',
           inviteeUid: peer.uid,
           inviteeEmail: 'peer@example.test',
           locale: 'en',
@@ -3422,15 +3434,27 @@ describe('firestore.rules households (emulator smoke test)', () => {
 
     it('refuses a photo URL that is not https', async () => {
       await expectDenied(
-        createCommit(owner, newHouseholdId(), { member: { photoURL: 'http://example.test/me.png' } }),
+        createCommit(owner, newHouseholdId(), { member: { photoURL: 'http://lh3.googleusercontent.com/a/me' } }),
         'an http photo'
       );
+    });
+
+    it("refuses a photo URL on any host but Google's account-picture hosts", async () => {
+      // Every member's browser loads the picture: its host would learn each
+      // viewer's address and when they open the household page.
+      for (const photoURL of [
+        'https://example.test/me.png',
+        'https://lh3.googleusercontent.com.example.test/a/me',
+        'https://lh7.googleusercontent.com/a/me'
+      ]) {
+        await expectDenied(createCommit(owner, newHouseholdId(), { member: { photoURL } }), photoURL);
+      }
     });
 
     it('refuses a photo URL over 2048 characters', async () => {
       await expectDenied(
         createCommit(owner, newHouseholdId(), {
-          member: { photoURL: `https://example.test/${'p'.repeat(2048)}` }
+          member: { photoURL: `https://lh3.googleusercontent.com/${'p'.repeat(2048)}` }
         }),
         'an oversized photo URL'
       );
@@ -3481,15 +3505,19 @@ describe('firestore.rules households (emulator smoke test)', () => {
       await expectDenied(lite.updateDoc(householdRef(owner, householdId), { name: '' }), 'renaming to nothing');
     });
 
-    it('refuses a self-update to an oversized display name or an http photo', async () => {
+    it('refuses a self-update to an oversized display name, an http photo or a photo on another host', async () => {
       const householdId = await formWithPeer();
       await expectDenied(
         lite.updateDoc(memberRef(peer, householdId), { displayName: 'd'.repeat(101) }),
         'a 101-character display name update'
       );
       await expectDenied(
-        lite.updateDoc(memberRef(peer, householdId), { photoURL: 'http://example.test/p.png' }),
+        lite.updateDoc(memberRef(peer, householdId), { photoURL: 'http://lh3.googleusercontent.com/a/p' }),
         'an http photo update'
+      );
+      await expectDenied(
+        lite.updateDoc(memberRef(peer, householdId), { photoURL: 'https://example.test/p.png' }),
+        'a photo update to another host'
       );
     });
   });

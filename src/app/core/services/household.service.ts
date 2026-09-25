@@ -7,7 +7,14 @@ import { AuthService } from './auth.service';
 import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { HOUSEHOLD_INVITE_CALLABLE, HouseholdInviteResponse } from './household-invite-callable';
-import { Household, HouseholdInvite, HouseholdMember, User } from '../../models';
+import {
+  Household,
+  HouseholdInvite,
+  HouseholdMember,
+  HouseholdMemberIdentity,
+  User,
+  isMemberPhotoUrl
+} from '../../models';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
 
 /** firestore.rules, householdNameValid. */
@@ -15,7 +22,6 @@ export const HOUSEHOLD_NAME_MAX_LENGTH = 60;
 
 /** firestore.rules, memberShapeValid. */
 const MEMBER_NAME_MAX_LENGTH = 100;
-const MEMBER_PHOTO_MAX_LENGTH = 2048;
 
 /**
  * The most documents one commit deletes. Firestore allows the rules twenty
@@ -734,17 +740,19 @@ export class HouseholdService {
     return live;
   }
 
-  /** How the caller appears to the other members, within the rules' limits. */
-  private identity(uid: string): Pick<HouseholdMember, 'uid' | 'displayName' | 'photoURL'> {
+  /**
+   * How the caller appears to the other members, within the rules' limits.
+   * A picture the rules would refuse is left out rather than refusing the
+   * whole write.
+   */
+  private identity(uid: string): HouseholdMemberIdentity {
     const user = this.auth.currentUser();
-    const identity: Pick<HouseholdMember, 'uid' | 'displayName' | 'photoURL'> = {
+    const identity: HouseholdMemberIdentity = {
       uid,
       displayName: clip((user?.displayName ?? '').trim(), MEMBER_NAME_MAX_LENGTH)
     };
     const photo = user?.photoURL;
-    if (photo && photo.length <= MEMBER_PHOTO_MAX_LENGTH && /^https:\/\/.*$/.test(photo)) {
-      identity.photoURL = photo;
-    }
+    if (isMemberPhotoUrl(photo)) identity.photoURL = photo;
     return identity;
   }
 

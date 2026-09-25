@@ -1,0 +1,116 @@
+<section class="overview" aria-labelledby="household-overview-title">
+  <div class="overview-head">
+    <h2 id="household-overview-title" class="overview-title">
+      <mat-icon>account_balance_wallet</mat-icon>
+      <span>{{ 'household.overview.title' | translate }}</span>
+    </h2>
+    <app-period-selector (selectionChange)="onPeriodSelection($event)" />
+  </div>
+
+  @for (notice of notices(); track notice.kind + '/' + notice.member.uid) {
+    <p class="overview-note" [class.is-info]="notice.kind === 'truncated'" role="status">
+      @switch (notice.kind) {
+        @case ('unavailable') {
+          <mat-icon>block</mat-icon>
+          <span>{{ 'household.overview.unavailable' | translate: { name: notice.name || ('household.unnamedMember' | translate) } }}</span>
+        }
+        @case ('incomplete') {
+          <mat-icon>warning</mat-icon>
+          <span>{{ 'household.overview.incomplete' | translate: { name: notice.name || ('household.unnamedMember' | translate) } }}</span>
+        }
+        @case ('categoriesIncomplete') {
+          <mat-icon>warning</mat-icon>
+          <span>{{ 'household.overview.categoriesIncomplete' | translate: { name: notice.name || ('household.unnamedMember' | translate) } }}</span>
+        }
+        @case ('truncated') {
+          <mat-icon>info</mat-icon>
+          <span>{{ 'household.overview.truncated' | translate: { name: notice.name || ('household.unnamedMember' | translate), cap: rowCap } }}</span>
+        }
+      }
+    </p>
+  }
+
+  @switch (state()) {
+    @case ('offline') {
+      <div class="overview-card">
+        <app-empty-state
+          icon="cloud_off"
+          [title]="'household.overview.offlineTitle' | translate"
+          [description]="'household.overview.offlineDescription' | translate"
+        />
+      </div>
+    }
+    @case ('loading') {
+      <app-loading-spinner [message]="'household.overview.loading' | translate" />
+    }
+    @default {
+      <app-financial-summary
+        [income]="combined().income"
+        [expenses]="combined().expense"
+        [balance]="combined().balance"
+        [currency]="baseCurrency()"
+      />
+
+      <section class="overview-card" aria-labelledby="household-by-member-title">
+        <h3 id="household-by-member-title" class="overview-subtitle">
+          {{ 'household.overview.byMember' | translate }}
+        </h3>
+        <ul class="member-lines">
+          @for (line of memberLines(); track line.member.uid) {
+            <li class="member-line">
+              <app-member-chip class="member-line-who" [member]="line.member" />
+              @if (line.notLoaded) {
+                <p class="member-not-loaded">{{ 'household.overview.notLoaded' | translate }}</p>
+              } @else {
+                <dl class="member-figures">
+                  <div class="member-figure">
+                    <dt>{{ 'common.income' | translate }}</dt>
+                    <dd class="figure-value income" appFitText>{{ line.income }}</dd>
+                  </div>
+                  <div class="member-figure">
+                    <dt>{{ 'common.expense' | translate }}</dt>
+                    <dd class="figure-value expense" appFitText>{{ line.expense }}</dd>
+                  </div>
+                  <div class="member-figure">
+                    <dt>{{ 'common.balance' | translate }}</dt>
+                    <dd class="figure-value" [class.negative]="line.negative" appFitText>{{ line.balance }}</dd>
+                  </div>
+                </dl>
+              }
+            </li>
+          }
+        </ul>
+      </section>
+
+      <section class="overview-card" aria-labelledby="household-rows-title">
+        <h3 id="household-rows-title" class="overview-subtitle">
+          {{ 'household.overview.transactionsTitle' | translate }}
+        </h3>
+        @if (rows().length === 0) {
+          <app-empty-state
+            size="sm"
+            icon="receipt_long"
+            [title]="'household.overview.emptyTitle' | translate"
+            [description]="'household.overview.emptyDescription' | translate"
+          />
+        } @else {
+          <!-- A list, so its length is read out: the rows themselves are
+               text, with no control to count them by. -->
+          <ul class="overview-rows">
+            @for (view of rows(); track view.key) {
+              <li class="overview-row">
+                <app-transaction-row
+                  [transaction]="view.row"
+                  [categories]="view.categories"
+                  [member]="view.member"
+                  [interactive]="false"
+                  [swipeActions]="false"
+                />
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    }
+  }
+</section>

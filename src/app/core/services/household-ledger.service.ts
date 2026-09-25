@@ -8,7 +8,7 @@ import {
   Budget,
   Category,
   Goal,
-  HouseholdMember,
+  HouseholdMemberIdentity,
   Transaction,
   baseCurrencyOf
 } from '../../models';
@@ -24,9 +24,6 @@ import { TypeTotals, compareIds, sumByType } from '../utils/transaction-aggregat
  * complete.
  */
 export const HOUSEHOLD_LEDGER_ROW_CAP = 500;
-
-/** Who a figure belongs to: the parts of a member document the page shows. */
-export type LedgerMember = Pick<HouseholdMember, 'uid' | 'displayName' | 'photoURL'>;
 
 /** A member's transaction in the merged list, marked with whose it is. */
 export interface LedgerRow extends Transaction {
@@ -44,21 +41,22 @@ export interface LedgerBudget extends Budget {
 
 /** One member's income and expense in the period, in the viewer's base currency. */
 export interface MemberTotals {
-  member: LedgerMember;
+  member: HouseholdMemberIdentity;
   totals: TypeTotals;
 }
 
 export interface MemberBudgets {
-  member: LedgerMember;
+  member: HouseholdMemberIdentity;
   budgets: LedgerBudget[];
 }
 
 export interface MemberGoals {
-  member: LedgerMember;
+  member: HouseholdMemberIdentity;
   goals: Goal[];
 }
 
-type LedgerKind = 'transactions' | 'categories' | 'budgets' | 'goals';
+/** The four things read of each member, one listener each. */
+export type LedgerKind = 'transactions' | 'categories' | 'budgets' | 'goals';
 
 /** What one member's listeners have said; a field is undefined until its listener answers. */
 interface MemberFeed {
@@ -148,9 +146,9 @@ function asPeerRow(row: Transaction, memberUid: string): LedgerRow {
  *
  * Any other listener failure is logged and says nothing about sharing. What
  * the member last showed stays. A listener that failed before it ever
- * answered puts the member in `incomplete`, since what it shows may be
- * partial; a period change clears that for its transactions, which it reads
- * afresh.
+ * answered puts the member in `incomplete` under that listener's kind, since
+ * what that kind shows for them may be partial; a period change clears the
+ * transactions entry, which it reads afresh.
  *
  * Money figures are in the viewer's base currency, through the same
  * amountInBase the dashboard folds with, so they follow a rates or base
@@ -162,7 +160,7 @@ export class HouseholdLedgerService {
   private readonly auth = inject(AuthService);
   private readonly currency = inject(CurrencyService);
 
-  private readonly members = signal<readonly LedgerMember[]>([]);
+  private readonly members = signal<readonly HouseholdMemberIdentity[]>([]);
   private readonly feeds = signal<ReadonlyMap<string, MemberFeed>>(new Map());
   private readonly window = signal<DateWindow | null>(null);
   /** Every listed member has an entry, emptied when its listeners are closed. */
@@ -231,24 +229,31 @@ export class HouseholdLedgerService {
   );
 
   /** Listed members whose documents the rules refused, in list order. */
-  readonly unavailable = computed<LedgerMember[]>(() => {
+  readonly unavailable = computed<HouseholdMemberIdentity[]>(() => {
     const feeds = this.feeds();
     return this.members().filter(member => feeds.get(member.uid)?.refused);
   });
 
   /** Shown members whose period holds more rows than HOUSEHOLD_LEDGER_ROW_CAP. */
-  readonly truncated = computed<LedgerMember[]>(() =>
+  readonly truncated = computed<HouseholdMemberIdentity[]>(() =>
     this.shownTruncated().filter(({ part }) => part).map(({ member }) => member)
   );
 
   /**
-   * Shown members one of whose listeners failed before it answered: their
-   * figures may be partial. Distinct from `unavailable`, which is the rules
-   * ending the sharing.
+   * For each kind, the shown members, in list order, whose listener of that
+   * kind failed before it answered: what that kind shows for them may be
+   * partial. Kept apart by kind so each section speaks only for what it
+   * shows: a goals failure says nothing about a member's income. Distinct
+   * from `unavailable`, which is the rules ending the sharing.
    */
-  readonly incomplete = computed<LedgerMember[]>(() =>
-    this.shownFailed().filter(({ part }) => part.length > 0).map(({ member }) => member)
-  );
+  readonly incomplete = computed<Readonly<Record<LedgerKind, HouseholdMemberIdentity[]>>>(() => {
+    const byKind: Record<LedgerKind, HouseholdMemberIdentity[]> =
+      { transactions: [], categories: [], budgets: [], goals: [] };
+    for (const { member, part } of this.shownFailed()) {
+      for (const kind of new Set(part)) byKind[kind].push(member);
+    }
+    return byKind;
+  });
 
   /** A shown member's listener has not answered yet. */
   readonly loading = computed(() => {
@@ -272,12 +277,12 @@ export class HouseholdLedgerService {
    * still listed keeps its listeners, a refused one included: the rules
    * already answered for it.
    */
-  setMembers(members: readonly LedgerMember[]): void {
+  setMembers(members: readonly HouseholdMemberIdentity[]): void {
     // Untracked: the page calls this from an effect, and a listener can
     // answer synchronously inside it.
     untracked(() => {
       if (this.destroyed) return;
-      const listed = new Map<string, LedgerMember>();
+      const listed = new Map<string, HouseholdMemberIdentity>();
       for (const member of members) if (!listed.has(member.uid)) listed.set(member.uid, member);
 
       for (const uid of [...this.listeners.keys()]) {

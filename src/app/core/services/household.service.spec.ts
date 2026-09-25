@@ -68,7 +68,7 @@ describe('HouseholdService', () => {
     id: ME,
     email: 'me@example.test',
     displayName: 'Me',
-    photoURL: 'https://example.test/me.png',
+    photoURL: 'https://lh3.googleusercontent.com/a/me',
     createdAt: CREATED,
     lastLoginAt: CREATED,
     preferences: { baseCurrency: 'USD', language: 'en' },
@@ -613,7 +613,7 @@ describe('HouseholdService', () => {
         [`households/${householdId}/members/${ME}`, {
           uid: ME,
           displayName: 'Me',
-          photoURL: 'https://example.test/me.png',
+          photoURL: 'https://lh3.googleusercontent.com/a/me',
           role: 'owner',
           since: serverTimestamp(),
           joinedAt: serverTimestamp()
@@ -624,13 +624,23 @@ describe('HouseholdService', () => {
     });
 
     it('clips a long display name and leaves out a picture that is not https', async () => {
-      user.set(userFixture({ displayName: 'n'.repeat(150), photoURL: 'http://example.test/me.png' }));
+      user.set(userFixture({ displayName: 'n'.repeat(150), photoURL: 'http://lh3.googleusercontent.com/a/me' }));
 
       const householdId = await service.create('Home');
 
       const memberData = firestore.txSetSpy.calls
         .find(c => c.args[0] === `households/${householdId}/members/${ME}`)!.args[1] as Record<string, unknown>;
       expect(memberData['displayName']).toBe('n'.repeat(100));
+      expect('photoURL' in memberData).toBeFalse();
+    });
+
+    it("leaves out a picture served from anywhere but Google's account-picture hosts, which the rules refuse", async () => {
+      user.set(userFixture({ photoURL: 'https://example.test/me.png' }));
+
+      const householdId = await service.create('Home');
+
+      const memberData = firestore.txSetSpy.calls
+        .find(c => c.args[0] === `households/${householdId}/members/${ME}`)!.args[1] as Record<string, unknown>;
       expect('photoURL' in memberData).toBeFalse();
     });
 
@@ -659,7 +669,7 @@ describe('HouseholdService', () => {
       expect(data).toEqual({
         uid: ME,
         displayName: 'Me',
-        photoURL: 'https://example.test/me.png',
+        photoURL: 'https://lh3.googleusercontent.com/a/me',
         role: 'member',
         since: CREATED,
         joinedAt: serverTimestamp(),

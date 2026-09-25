@@ -9,14 +9,16 @@ import {
   viewChild,
 } from '@angular/core';
 
+import { NgTemplateOutlet } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category, receiptImageCount, baseCurrencyOf} from '../../../models';
+import { Transaction, Category, HouseholdMemberIdentity, receiptImageCount, baseCurrencyOf} from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { CategoryChipComponent } from '../category-chip/category-chip.component';
+import { MemberChipComponent } from '../member-chip/member-chip.component';
 import { FitTextDirective } from '../../directives/fit-text.directive';
 import { SwipeRevealDirective } from '../../directives/swipe-reveal.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -26,13 +28,23 @@ import { LocationLabelPipe } from '../../pipes/location-label.pipe';
  * One transaction-row anatomy (category tile beside a three-line text stack:
  * description with the signed amount, the category strip, date with the
  * converted amount; a pinned trailing actions slot; an optional swipe drawer)
- * shared by the dashboard recent-transactions card and the transactions
- * mobile list — previously duplicated and drifting.
+ * shared by the dashboard recent-transactions card, the transactions mobile
+ * list and, read-only with the member named on line 3, the household list —
+ * previously duplicated and drifting.
  */
 @Component({
   selector: 'app-transaction-row',
   standalone: true,
-  imports: [MatIconModule, CategoryChipComponent, FitTextDirective, SwipeRevealDirective, TranslatePipe, LocationLabelPipe],
+  imports: [
+    NgTemplateOutlet,
+    MatIconModule,
+    CategoryChipComponent,
+    MemberChipComponent,
+    FitTextDirective,
+    SwipeRevealDirective,
+    TranslatePipe,
+    LocationLabelPipe,
+  ],
   templateUrl: './transaction-row.component.html',
   styleUrl: './transaction-row.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +66,18 @@ export class TransactionRowComponent {
    * is the fast path for touch. The dashboard passes nothing and stays inert.
    */
   swipeActions = input(false);
+
+  /**
+   * False for a row that only shows: line 1 is plain text rather than the
+   * row button, the row answers no click or key, and the location is never
+   * a link. With swipeActions false and nothing projected, nothing in the
+   * row is a control. The household list mixes every member's rows, and
+   * no row opens from there, since most belong to someone else.
+   */
+  interactive = input(true);
+
+  /** Whose row this is, named on line 3; a list mixing several people's rows passes it. */
+  member = input<HouseholdMemberIdentity | null>(null);
 
   /**
    * Emitted on a click anywhere on the row outside its own controls, and on
@@ -125,8 +149,10 @@ export class TransactionRowComponent {
    * name-only location stays plain text: linking a typed name would send a
    * typo to a confidently wrong destination. The URL form is the documented
    * cross-platform Maps search, which resolves on web, Android and WKWebView.
+   * A row that only shows links nowhere.
    */
   mapsUrl(): string | null {
+    if (!this.interactive()) return null;
     const location = this.transaction().location;
     if (location?.lat === undefined || location?.lng === undefined) return null;
     return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
@@ -188,8 +214,11 @@ export class TransactionRowComponent {
    * it is a scroll, not a tap, but the click still bubbles here and would open
    * the editor under the reader's cursor. A click below the scroller's content
    * box is a click on its scrollbar, and nothing else.
+   *
+   * A row that only shows opens nothing, whatever was clicked.
    */
   onActivate(event: Event): void {
+    if (!this.interactive()) return;
     const target = event.target instanceof Element ? event.target : null;
     if (
       event instanceof MouseEvent &&

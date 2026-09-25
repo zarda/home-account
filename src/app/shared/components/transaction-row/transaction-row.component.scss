@@ -42,6 +42,16 @@
   }
 }
 
+/* A row that only shows answers no press, so it offers none: no pointer, no
+   hover tone. */
+.transaction-row.row-static {
+  cursor: auto;
+
+  &:hover {
+    background-color: transparent;
+  }
+}
+
 /* Everything visible at rest rides this one surface, so the swipe gesture can
    move the row as a unit. Transparent on purpose: the row's hover tone and
    the list's row-highlight flash paint on the host and show through, moved or
@@ -320,6 +330,26 @@ app-category-chip {
   align-items: baseline;
   gap: 8px;
   touch-action: pan-y;
+}
+
+/* With a member on it, line 3 leads with who and when side by side, and the
+   converted amount keeps the trailing edge through its auto margin. A name
+   runs to 100 characters, so this line may wrap: the converted amount drops
+   to a line of its own, still flush to the end, before anything is
+   squeezed. Rows without a member keep the one-line rule above. */
+.row-meta.has-member {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  row-gap: 2px;
+
+  .amount-converted {
+    margin-inline-start: auto;
+  }
+}
+
+.row-member {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .row-date {

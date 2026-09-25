@@ -12,10 +12,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import { HouseholdService, HouseholdStatus } from '../../core/services/household.service';
+import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
 import { PwaService } from '../../core/services/pwa.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
 
 /**
@@ -24,11 +26,15 @@ import { HouseholdSetupComponent } from './household-setup/household-setup.compo
  *
  * The page holds the household listeners for exactly as long as it is on
  * screen (ADR 0009): HouseholdService opens nothing until a page connects.
+ *
+ * It also provides the one HouseholdLedgerService its member-view sections
+ * share, so every section reads the same listeners, closed with the page.
  */
 @Component({
   selector: 'app-household',
   standalone: true,
   imports: [
+    HouseholdOverviewComponent,
     HouseholdSetupComponent,
     LoadingSpinnerComponent,
     MatButtonModule,
@@ -37,11 +43,13 @@ import { HouseholdSetupComponent } from './household-setup/household-setup.compo
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [HouseholdLedgerService],
   templateUrl: './household.component.html',
   styleUrl: './household.component.scss'
 })
 export class HouseholdComponent implements OnInit {
   private readonly householdService = inject(HouseholdService);
+  private readonly ledger = inject(HouseholdLedgerService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly status = this.householdService.status;
@@ -55,6 +63,10 @@ export class HouseholdComponent implements OnInit {
   private lossTidied = false;
 
   constructor() {
+    // The members list is empty outside the member view, so leaving it
+    // closes every member's listeners too.
+    effect(() => this.ledger.setMembers(this.householdService.members()));
+
     effect(() => {
       const status = this.status();
       const lost = this.lostAccess();

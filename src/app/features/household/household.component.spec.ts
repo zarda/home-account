@@ -1,15 +1,17 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { HouseholdComponent } from './household.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
+import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
 import { HouseholdService, HouseholdStatus } from '../../core/services/household.service';
+import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
 import { PwaService } from '../../core/services/pwa.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { createTranslationStub } from '../../core/services/testing';
-import { Household } from '../../models';
+import { Household, HouseholdMember } from '../../models';
 
 /** The setup state has its own spec; here only its presence is the question. */
 @Component({
@@ -20,12 +22,31 @@ import { Household } from '../../models';
 })
 class StubSetupComponent {}
 
+/** The overview has its own spec; here the question is which ledger it is given. */
+@Component({
+  selector: 'app-household-overview',
+  standalone: true,
+  template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+class StubOverviewComponent {
+  readonly ledger = inject(HouseholdLedgerService);
+}
+
 const HOUSEHOLD: Household = {
   id: 'h1',
   name: 'The Lins',
   ownerId: 'owner-1',
   createdAt: Timestamp.fromMillis(1_700_000_000_000)
 };
+
+const member = (uid: string, displayName: string): HouseholdMember => ({
+  uid,
+  displayName,
+  role: uid === 'owner-1' ? 'owner' : 'member',
+  since: HOUSEHOLD.createdAt,
+  joinedAt: HOUSEHOLD.createdAt
+});
 
 // Rendered throughout (ADR 0144): which state the page shows is the thing
 // under test, and only the template can say.
@@ -35,9 +56,12 @@ describe('HouseholdComponent', () => {
   let household: ReturnType<typeof signal<Household | null>>;
   let lostAccess: ReturnType<typeof signal<boolean>>;
   let online: ReturnType<typeof signal<boolean>>;
+  let members: ReturnType<typeof signal<HouseholdMember[]>>;
+  let ledger: { setMembers: jasmine.Spy };
   let service: {
     status: typeof status;
     household: typeof household;
+    members: typeof members;
     lostAccess: typeof lostAccess;
     connect: jasmine.Spy;
     disconnect: jasmine.Spy;
@@ -58,9 +82,12 @@ describe('HouseholdComponent', () => {
     household = signal<Household | null>(null);
     lostAccess = signal(false);
     online = signal(true);
+    members = signal<HouseholdMember[]>([]);
+    ledger = { setMembers: jasmine.createSpy('setMembers') };
     service = {
       status,
       household,
+      members,
       lostAccess,
       connect: jasmine.createSpy('connect').and.callFake(() => {
         if (status() === 'idle') status.set('loading');
@@ -78,8 +105,14 @@ describe('HouseholdComponent', () => {
       ]
     })
       .overrideComponent(HouseholdComponent, {
-        remove: { imports: [HouseholdSetupComponent] },
-        add: { imports: [StubSetupComponent] }
+        remove: {
+          imports: [HouseholdSetupComponent, HouseholdOverviewComponent],
+          providers: [HouseholdLedgerService]
+        },
+        add: {
+          imports: [StubSetupComponent, StubOverviewComponent],
+          providers: [{ provide: HouseholdLedgerService, useValue: ledger }]
+        }
       })
       .compileComponents();
 
@@ -153,6 +186,62 @@ describe('HouseholdComponent', () => {
       expect(service.disconnect).toHaveBeenCalledTimes(1);
       expect(service.connect).toHaveBeenCalledTimes(1);
       expect(service.disconnect).toHaveBeenCalledBefore(service.connect);
+    });
+  });
+
+  describe('the ledger', () => {
+    const overview = (): StubOverviewComponent | null => {
+      const host = fixture.debugElement.query(debug => debug.name === 'app-household-overview');
+      return host ? (host.componentInstance as StubOverviewComponent) : null;
+    };
+
+    it('is the one the member view\'s overview reads', () => {
+      household.set(HOUSEHOLD);
+      status.set('member');
+      render();
+
+      expect(element().querySelector('.member-view app-household-overview')).not.toBeNull();
+      expect(overview()?.ledger).toBe(ledger as unknown as HouseholdLedgerService);
+    });
+
+    it('is given nobody outside the member view', () => {
+      status.set('none');
+      render();
+
+      expect(ledger.setMembers).toHaveBeenCalled();
+      expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([]);
+      expect(overview()).toBeNull();
+    });
+
+    it('is given every member, and each change to them', () => {
+      const owner = member('owner-1', 'Alex');
+      const peer = member('peer-1', 'Sam');
+      household.set(HOUSEHOLD);
+      status.set('member');
+      members.set([owner, peer]);
+      render();
+
+      expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([owner, peer]);
+
+      members.set([owner]);
+      render();
+
+      expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([owner]);
+    });
+
+    it('lets them go when the membership ends', () => {
+      const owner = member('owner-1', 'Alex');
+      household.set(HOUSEHOLD);
+      status.set('member');
+      members.set([owner]);
+      render();
+
+      household.set(null);
+      status.set('none');
+      members.set([]);
+      render();
+
+      expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([]);
     });
   });
 

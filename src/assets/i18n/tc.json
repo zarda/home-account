@@ -1608,6 +1608,7 @@
     "unavailable": "無法載入家庭。",
     "offline": "你目前離線。顯示的內容可能不是最新的，變更家庭需要網路連線。",
     "lostAccess": "你已不在該家庭中。擁有者已將你移除，或已解散家庭。",
+    "unnamedMember": "成員",
     "setup": {
       "createTitle": "建立家庭",
       "createDescription": "你將成為擁有者，並可用電子郵件邀請同住的人。",
@@ -1626,6 +1627,21 @@
       "acceptConfirm": "加入",
       "joined": "已加入「{{name}}」。",
       "declined": "已拒絕邀請。"
+    },
+    "overview": {
+      "title": "收入與支出",
+      "loading": "正在載入家庭的收支…",
+      "byMember": "各成員",
+      "transactionsTitle": "所有成員的交易",
+      "emptyTitle": "此期間沒有交易",
+      "emptyDescription": "此期間家庭中沒有成員記錄任何交易。",
+      "offlineTitle": "離線時沒有可顯示的內容",
+      "offlineDescription": "此期間的家庭收支尚未載入到此裝置。連線後即可查看。",
+      "unavailable": "無法讀取{{name}}的記錄。對方可能已不在此家庭中。",
+      "incomplete": "{{name}}的部分交易無法載入，因此數字可能不完整。",
+      "categoriesIncomplete": "{{name}}的部分類別無法載入，因此部分交易的類別可能顯示為未知。",
+      "notLoaded": "尚未載入到此裝置。連線後即可查看其收支。",
+      "truncated": "{{name}}此期間的交易超過{{cap}}筆。只顯示並計算最新的{{cap}}筆。"
     },
     "errors": {
       "signedOut": "你已登出。請重新登入後再傳送邀請。",

@@ -1,0 +1,49 @@
+// Sized in em throughout: the chip follows the text it sits in.
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375em;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.member-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5em;
+  block-size: 1.5em;
+  border-radius: 50%;
+  // Crops the square picture to the circle.
+  overflow: hidden;
+  background: var(--color-primary-light);
+  color: var(--color-primary-text);
+  line-height: 1;
+}
+
+.member-photo {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+.member-initial {
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.member-placeholder {
+  font-size: 1.125em;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+}
+
+// A name may be up to 100 characters and one long word: it wraps rather than
+// being cut.
+.member-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

@@ -12,7 +12,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import {
   HOUSEHOLD_LEDGER_ROW_CAP,
   HouseholdLedgerService,
-  LedgerMember
+  LedgerKind
 } from './household-ledger.service';
 import { FirestoreService, QueryOptions } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -22,7 +22,7 @@ import { TranslationService } from './translation.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { createTranslationStub } from './testing/translation-stub';
 import { createBudget, createCategory, createTransaction } from './testing/test-data';
-import { Category, Goal, Transaction, User } from '../../models';
+import { Category, Goal, HouseholdMemberIdentity, Transaction, User } from '../../models';
 import { defaultCategories } from '../utils/category-merge.utils';
 import {
   DateWindow,
@@ -33,8 +33,12 @@ import {
   startOfMonth
 } from '../utils/transaction-date.utils';
 
-type Kind = 'transactions' | 'categories' | 'budgets' | 'goals';
+type Kind = LedgerKind;
 const KINDS: readonly Kind[] = ['transactions', 'categories', 'budgets', 'goals'];
+
+/** What `incomplete` holds with nothing failed; a case spreads its own kinds over it. */
+const NOTHING_FAILED: Record<Kind, HouseholdMemberIdentity[]> =
+  { transactions: [], categories: [], budgets: [], goals: [] };
 
 interface Listener {
   path: string;
@@ -46,9 +50,13 @@ describe('HouseholdLedgerService', () => {
   const ME = 'me';
   const KAI = 'kai';
   const SAM = 'sam';
-  const me: LedgerMember = { uid: ME, displayName: 'Me' };
-  const kai: LedgerMember = { uid: KAI, displayName: 'Kai', photoURL: 'https://example.test/kai.png' };
-  const sam: LedgerMember = { uid: SAM, displayName: 'Sam' };
+  const me: HouseholdMemberIdentity = { uid: ME, displayName: 'Me' };
+  const kai: HouseholdMemberIdentity = {
+    uid: KAI,
+    displayName: 'Kai',
+    photoURL: 'https://lh3.googleusercontent.com/a/kai'
+  };
+  const sam: HouseholdMemberIdentity = { uid: SAM, displayName: 'Sam' };
 
   // Closes mid-morning on its last day: the listener must still ask through
   // the last millisecond of that day, in the runtime's own zone.
@@ -119,7 +127,7 @@ describe('HouseholdLedgerService', () => {
     for (const kind of KINDS) latest(uid, kind).subject.next(docs[kind] ?? []);
   }
 
-  function follow(members: LedgerMember[], period: DateWindow = AUGUST): void {
+  function follow(members: HouseholdMemberIdentity[], period: DateWindow = AUGUST): void {
     ledger.setPeriod(period);
     ledger.setMembers(members);
   }
@@ -483,7 +491,7 @@ describe('HouseholdLedgerService', () => {
 
       expect(ledgerLogs(consoleWarn)).toEqual([['[HouseholdLedgerService] The goals listener stopped:', failure]]);
       expect(ledger.unavailable()).toEqual([]);
-      expect(ledger.incomplete()).toEqual([]);
+      expect(ledger.incomplete()).toEqual(NOTHING_FAILED);
       expect(ledger.rows().map(r => r.id)).toEqual([kept.id]);
       expect(ledger.goalsByMember().find(entry => entry.member.uid === KAI)!.goals.length).toBe(1);
       expect(errorHandler.handleError).not.toHaveBeenCalled();
@@ -497,7 +505,7 @@ describe('HouseholdLedgerService', () => {
       latest(KAI, 'transactions').subject.error(failure);
       for (const kind of ['categories', 'budgets', 'goals'] as const) latest(KAI, kind).subject.next([]);
 
-      expect(ledger.incomplete()).toEqual([kai]);
+      expect(ledger.incomplete()).toEqual({ ...NOTHING_FAILED, transactions: [kai] });
       expect(ledger.unavailable()).toEqual([]);
       expect(ledger.loading()).toBeFalse();
       expect(ledger.totalsByMember().map(entry => [entry.member.uid, entry.totals.count])).toEqual([[ME, 1], [KAI, 0]]);
@@ -512,20 +520,20 @@ describe('HouseholdLedgerService', () => {
       latest(KAI, 'goals').subject.error(firebaseError('internal'));
       latest(KAI, 'categories').subject.next([]);
       latest(KAI, 'budgets').subject.next([]);
-      expect(ledger.incomplete()).toEqual([kai]);
+      expect(ledger.incomplete()).toEqual({ ...NOTHING_FAILED, transactions: [kai], goals: [kai] });
 
       ledger.setPeriod(SEPTEMBER);
       latest(KAI, 'transactions').subject.next([row(KAI, { date: Timestamp.fromDate(new Date(2026, 8, 2)) })]);
       latest(ME, 'transactions').subject.next([]);
 
       // Its goals listener is still the one that failed, so its plans may be partial.
-      expect(ledger.incomplete()).toEqual([kai]);
+      expect(ledger.incomplete()).toEqual({ ...NOTHING_FAILED, goals: [kai] });
       expect(ledger.loading()).toBeFalse();
 
       ledger.setMembers([me]);
       ledger.setMembers([me, kai]);
       answer(KAI, {});
-      expect(ledger.incomplete()).toEqual([]);
+      expect(ledger.incomplete()).toEqual(NOTHING_FAILED);
     });
 
     it('clears a failure that only the transactions listener had once it is reopened', () => {
@@ -533,12 +541,29 @@ describe('HouseholdLedgerService', () => {
       answer(ME, {});
       latest(KAI, 'transactions').subject.error(firebaseError('unavailable'));
       for (const kind of ['categories', 'budgets', 'goals'] as const) latest(KAI, kind).subject.next([]);
-      expect(ledger.incomplete()).toEqual([kai]);
+      expect(ledger.incomplete()).toEqual({ ...NOTHING_FAILED, transactions: [kai] });
 
       ledger.setPeriod(SEPTEMBER);
 
-      expect(ledger.incomplete()).toEqual([]);
+      expect(ledger.incomplete()).toEqual(NOTHING_FAILED);
       expect(ledger.loading()).toBeTrue();
+    });
+
+    it('files each unheard failure under its own kind, so a page can say what may be partial', () => {
+      follow([me, kai, sam]);
+      answer(ME, {});
+      latest(KAI, 'categories').subject.error(firebaseError('internal'));
+      latest(SAM, 'budgets').subject.error(firebaseError('internal'));
+      latest(KAI, 'goals').subject.error(firebaseError('internal'));
+      answer(KAI, { transactions: [], budgets: [] });
+      answer(SAM, { transactions: [], categories: [], goals: [] });
+
+      expect(ledger.incomplete()).toEqual({
+        transactions: [],
+        categories: [kai],
+        budgets: [sam],
+        goals: [kai]
+      });
     });
   });
 

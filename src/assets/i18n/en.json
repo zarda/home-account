@@ -1731,6 +1731,7 @@
     "unavailable": "Your household couldn't be loaded.",
     "offline": "You're offline. What's shown may be out of date, and household changes need a connection.",
     "lostAccess": "You're no longer in that household. The owner removed you or dissolved it.",
+    "unnamedMember": "A member",
     "setup": {
       "createTitle": "Start a household",
       "createDescription": "You'll be its owner, and can invite the people you live with by email.",
@@ -1749,6 +1750,21 @@
       "acceptConfirm": "Join",
       "joined": "You joined {{name}}.",
       "declined": "Invite declined."
+    },
+    "overview": {
+      "title": "Income and spending",
+      "loading": "Loading the household's figures…",
+      "byMember": "By member",
+      "transactionsTitle": "Everyone's transactions",
+      "emptyTitle": "No transactions in this period",
+      "emptyDescription": "Nobody in the household recorded a transaction in this period.",
+      "offlineTitle": "Nothing to show offline",
+      "offlineDescription": "This period's household figures haven't been loaded on this device. Connect to see them.",
+      "unavailable": "{{name}}'s records can't be read. They may no longer be in the household.",
+      "incomplete": "Some of {{name}}'s transactions couldn't be loaded, so their figures may be incomplete.",
+      "categoriesIncomplete": "Some of {{name}}'s categories couldn't be loaded, so some of their transactions may show an unknown category.",
+      "notLoaded": "Not loaded on this device. Connect to see their figures.",
+      "truncated": "{{name}} has more than {{cap}} transactions in this period. Only the newest {{cap}} are shown and counted."
     },
     "errors": {
       "signedOut": "You're signed out. Sign in again to send invites.",
