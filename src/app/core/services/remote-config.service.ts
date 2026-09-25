@@ -19,8 +19,9 @@ const MIN_FETCH_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
  * defaults until the first fetch activates, and to the remote template
  * values afterwards — so a limit can be tuned from the Firebase console
  * without shipping a release. Deployments that never configure a remote
- * template (e.g. self-hosted Firebase projects), offline starts, and unit
- * tests all silently keep the defaults.
+ * template (e.g. self-hosted Firebase projects), offline starts, builds
+ * served against the local emulators, and unit tests all silently keep the
+ * defaults.
  *
  * Remote Config is for tunable knobs and flags only: values are readable
  * by every client, so never put secrets here, and never derive a user's

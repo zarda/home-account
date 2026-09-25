@@ -217,6 +217,24 @@ export function provideAppAnalytics(
 }
 
 /**
+ * Remote Config providers, or none at all.
+ *
+ * Remote Config has no emulator. With emulator hosts (the `emulators` build
+ * only) a fetch would send that build's demo API key to the live Installations
+ * and Remote Config endpoints, which refuse it on every start. Withholding the
+ * token keeps that off every path, not only RemoteConfigService's: its
+ * optional inject comes back null and the in-app defaults stay in effect.
+ */
+export function provideAppRemoteConfig(
+  hosts: EmulatorHosts | null = EMULATOR_HOSTS,
+): EnvironmentProviders {
+  if (hosts) {
+    return makeEnvironmentProviders([]);
+  }
+  return provideRemoteConfig(() => getRemoteConfig());
+}
+
+/**
  * Locale data for the two non-English languages. Angular ships only `en` in
  * the bundle; without these, anything reading LOCALE_ID for `ja` or
  * `zh-Hant` throws "Missing locale data" at runtime rather than degrading.
@@ -261,8 +279,9 @@ export const appConfig: ApplicationConfig = {
     provideStorage(() => appStorageFactory()),
     // Remote-tunable app parameters (e.g. receipt image limits). Fetch
     // policy, in-app defaults, and typed accessors live in
-    // RemoteConfigService — see docs/remote-config.md.
-    provideRemoteConfig(() => getRemoteConfig()),
+    // RemoteConfigService — see docs/remote-config.md. The emulators build
+    // gets no token and keeps the defaults (provideAppRemoteConfig).
+    provideAppRemoteConfig(),
     // Usage statistics, opt-in and lazy: the Analytics token is not resolved —
     // no gtag, no cookie, no request — until AnalyticsService reads the
     // account's stored preference and finds it switched on. See

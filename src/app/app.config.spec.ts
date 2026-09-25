@@ -5,6 +5,7 @@ import { Auth, browserLocalPersistence, connectAuthEmulator, getAuth, initialize
 import { FirestoreSettings, connectFirestoreEmulator, initializeFirestore } from '@angular/fire/firestore';
 import { FirebaseStorage, connectStorageEmulator, getStorage } from '@angular/fire/storage';
 import { Analytics, AnalyticsSettings, initializeAnalytics, setConsent } from '@angular/fire/analytics';
+import { RemoteConfig } from '@angular/fire/remote-config';
 
 import {
   appAnalyticsFactory,
@@ -14,6 +15,7 @@ import {
   firestoreCacheTabManager,
   firestorePersistentCacheSettings,
   provideAppAnalytics,
+  provideAppRemoteConfig,
 } from './app.config';
 // The hosts the `emulators` build configuration swaps in; imported directly
 // because the unit build compiles the committed, null EMULATOR_HOSTS.
@@ -285,9 +287,10 @@ describe('appStorageFactory', () => {
 // prevent.
 
 /**
- * provideAppAnalytics returns EnvironmentProviders, whose provider array is
- * only reachable through the internal field. Resolving the token instead is
- * not an option for the positive case, per the note above.
+ * provideAppAnalytics and provideAppRemoteConfig return EnvironmentProviders,
+ * whose provider array is only reachable through the internal field. Resolving
+ * the token instead is not an option for the positive case: it builds a real
+ * SDK instance, per the note above.
  */
 function providerCount(providers: EnvironmentProviders): number {
   return (providers as unknown as { ɵproviders: unknown[] }).ɵproviders.length;
@@ -397,5 +400,28 @@ describe('provideAppAnalytics', () => {
     expect(providerCount(provideAppAnalytics(() => false, () => true))).toBeGreaterThan(0);
     expect(providerCount(provideAppAnalytics(() => true, () => true))).toBe(0);
     expect(providerCount(provideAppAnalytics(() => false, () => false))).toBe(0);
+  });
+});
+
+describe('provideAppRemoteConfig', () => {
+  it('should withhold the Remote Config token from a build served against the emulators', () => {
+    const injector = createEnvironmentInjector(
+      [provideAppRemoteConfig(EMULATOR_BUILD_HOSTS)],
+      TestBed.inject(EnvironmentInjector),
+    );
+
+    // Remote Config has no emulator. Once the token resolves, RemoteConfigService
+    // fetches with the emulators build's demo API key from the live endpoints,
+    // which refuse it; with nothing to resolve, it keeps its in-app defaults.
+    expect(injector.get(RemoteConfig, null)).toBeNull();
+  });
+
+  it('should register the Remote Config providers only when the build names no emulator', () => {
+    expect(providerCount(provideAppRemoteConfig(null))).toBeGreaterThan(0);
+    expect(providerCount(provideAppRemoteConfig(EMULATOR_BUILD_HOSTS))).toBe(0);
+  });
+
+  it('should default to the committed hosts, which name no emulator', () => {
+    expect(providerCount(provideAppRemoteConfig())).toBeGreaterThan(0);
   });
 });
