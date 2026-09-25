@@ -33,14 +33,12 @@
   background: var(--surface-card);
 
   // Primary-tinted fill for the selected segment in both themes (the
-  // default surface fill was nearly invisible in light mode) and no
-  // redundant checkmark — the fill is the selected signal.
+  // default surface fill was nearly invisible in light mode). The fill is
+  // the selected signal, so the group hides Material's checkmark through its
+  // hideSingleSelectionIndicator input: hiding the checkmark with CSS leaves
+  // the inline space Material reserves for it on the selected segment.
   --mat-button-toggle-selected-state-background-color: var(--color-primary-light);
   --mat-button-toggle-selected-state-text-color: var(--color-primary-text);
-
-  ::ng-deep .mat-button-toggle-checkbox-wrapper {
-    display: none;
-  }
 }
 
 // Custom Period Picker

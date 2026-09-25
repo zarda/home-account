@@ -11,6 +11,7 @@ import {
   LedgerRow,
   MemberTotals
 } from '../../../core/services/household-ledger.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
@@ -21,13 +22,15 @@ import {
   createLocaleFormatStub,
   createTransaction,
   createTranslationStub,
-  createUser
+  createUser,
+  TranslationStub
 } from '../../../core/services/testing';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
 import { Category, HouseholdMemberIdentity, User } from '../../../models';
 import { TypeTotals } from '../../../core/utils/transaction-aggregation.utils';
 import { clampWindowToNow, periodWindow } from '../../../core/utils/transaction-date.utils';
+import en from '../../../../assets/i18n/en.json';
 
 interface FakeLedger {
   rows: WritableSignal<LedgerRow[]>;
@@ -60,6 +63,19 @@ const samCategories = new Map<string, Category>([
   ['custom-1', createCategory({ id: 'custom-1', name: 'Tea shop', icon: 'local_cafe' })]
 ]);
 
+/**
+ * en.json's period labels below the tablet breakpoint. The Karma window is
+ * wider than that breakpoint, so the selector shows its long label there:
+ * both keys carry the short copy so a phone-width strip holds what a phone
+ * shows.
+ */
+const PHONE_PERIOD_LABELS: Record<string, string> = Object.fromEntries(
+  (['thisMonth', 'lastMonth', 'last3Months', 'thisYear'] as const).flatMap(period => {
+    const short = en.dashboard[`${period}Short` as const];
+    return [[`dashboard.${period}Short`, short], [`dashboard.${period}`, short]];
+  })
+);
+
 function row(memberUid: string, id: string, overrides: Partial<LedgerRow> = {}): LedgerRow {
   return {
     ...createTransaction({ id, categoryId: 'custom-1', currency: 'USD', ...overrides }),
@@ -74,6 +90,7 @@ describe('HouseholdOverviewComponent', () => {
   let ledger: FakeLedger;
   let online: WritableSignal<boolean>;
   let viewer: WritableSignal<User | null>;
+  let announce: jasmine.Spy;
 
   const element = (): HTMLElement => fixture.nativeElement as HTMLElement;
   const text = (): string => element().textContent ?? '';
@@ -126,6 +143,7 @@ describe('HouseholdOverviewComponent', () => {
       (amount: number, code: string) => `${amount < 0 ? '-' : ''}${code} ${Math.abs(amount).toFixed(2)}`
     );
     currency.amountInBase.and.callFake((t: { amount: number }) => t.amount);
+    announce = jasmine.createSpy('announce');
 
     await TestBed.configureTestingModule({
       imports: [HouseholdOverviewComponent],
@@ -139,7 +157,8 @@ describe('HouseholdOverviewComponent', () => {
         },
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: TranslationService, useValue: createTranslationStub() },
-        { provide: LocaleFormatService, useValue: createLocaleFormatStub() }
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        { provide: AnnouncerService, useValue: { announce } }
       ]
     }).compileComponents();
 
@@ -370,6 +389,40 @@ describe('HouseholdOverviewComponent', () => {
       expect(document.activeElement).toBe(more);
     });
 
+    it('says how many rows are shown, and where the new ones went, at a press that leaves some hidden', () => {
+      twoAndAHalfPages();
+
+      press();
+
+      const shown = `household.overview.shownCount:${JSON.stringify({ shown: PAGE * 2, total: TOTAL })}`;
+      expect(announce.calls.allArgs()).toEqual([[shown, 'polite', 'replace']]);
+    });
+
+    it('says nothing at the press that shows the last rows, which moves focus to them instead', () => {
+      twoAndAHalfPages();
+      press();
+      announce.calls.reset();
+
+      press();
+
+      expect(moreButton()).toBeNull();
+      expect(announce).not.toHaveBeenCalled();
+    });
+
+    it('says nothing when the list starts again for another period or other members', () => {
+      twoAndAHalfPages();
+      press();
+      announce.calls.reset();
+
+      element().querySelector<HTMLButtonElement>('mat-button-toggle[value="lastMonth"] button')?.click();
+      render();
+      ledger.totalsByMember.update(lines => [...lines, { member: kai, totals: totals(0, 0, 0) }]);
+      render();
+
+      expect(rowsShown().length).toBe(PAGE);
+      expect(announce).not.toHaveBeenCalled();
+    });
+
     it('moves focus to the first row the last press revealed, as the button goes', async () => {
       twoAndAHalfPages();
       press();
@@ -408,6 +461,10 @@ describe('HouseholdOverviewComponent', () => {
 
       const heading = element().querySelector<HTMLElement>('#household-rows-title') as HTMLElement;
       expect(emptyState()).toContain('household.overview.emptyTitle');
+      expect(element().querySelector('app-empty-state h4')?.textContent)
+        .withContext("the empty list's title sits inside the list's own heading, not beside it")
+        .toContain('household.overview.emptyTitle');
+      expect(element().querySelector('app-empty-state h3')).toBeNull();
       expect(document.activeElement).toBe(heading);
       expect(heading.getAttribute('tabindex')).withContext('script can focus it, Tab does not').toBe('-1');
     });
@@ -571,6 +628,19 @@ describe('HouseholdOverviewComponent', () => {
       expect(text()).toContain('household.overview.unavailable:{"name":"household.unnamedMember"}');
     });
 
+    it('names an unnamed member in the middle of a sentence in its own form', () => {
+      const anon: HouseholdMemberIdentity = { uid: 'anon', displayName: '' };
+      ledger.incomplete.set({ ...NOTHING_FAILED, transactions: [anon], categories: [anon] });
+      ledger.truncated.set([anon]);
+      render();
+
+      expect(text()).toContain('household.overview.incomplete:{"name":"household.unnamedMemberInline"}');
+      expect(text()).toContain('household.overview.categoriesIncomplete:{"name":"household.unnamedMemberInline"}');
+      expect(text())
+        .withContext('a sentence the name begins keeps the capitalised form')
+        .toContain(`household.overview.truncated:{"name":"household.unnamedMember","cap":${HOUSEHOLD_LEDGER_ROW_CAP}}`);
+    });
+
     it('says nothing while every member reads in full', () => {
       expect(element().querySelector('.overview-note')).toBeNull();
     });
@@ -587,6 +657,25 @@ describe('HouseholdOverviewComponent', () => {
     });
 
     afterEach(() => host.remove());
+
+    it('fits the period toggle in its strip, so the strip neither scrolls nor draws a scrollbar', () => {
+      // The strip's width depends on the labels, so it is measured with the
+      // short ones a phone shows (en.json) rather than the echoed keys.
+      const translation = TestBed.inject(TranslationService) as unknown as TranslationStub;
+      const echo = translation.t;
+      translation.t = (key, params) => PHONE_PERIOD_LABELS[key] ?? echo(key, params);
+      translation.translationsVersion.update(version => version + 1);
+      answered();
+      render();
+
+      const strip = element().querySelector('.period-toggle-scroller') as HTMLElement;
+      // An echoed key is wider than any label, so a strip still showing one
+      // measures the wrong copy.
+      expect(strip.textContent).withContext('an echoed key in the strip').not.toContain('dashboard.');
+      expect(strip.textContent).toContain(PHONE_PERIOD_LABELS['dashboard.lastMonthShort']);
+      expect(strip.scrollWidth).withContext('the toggle overflows its strip').toBeLessThanOrEqual(strip.clientWidth);
+      expect(strip.offsetHeight).withContext('the strip draws a horizontal scrollbar').toBe(strip.clientHeight);
+    });
 
     it('keeps the heading, the period, every member line and every row inside the section', () => {
       answered();
