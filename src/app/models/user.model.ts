@@ -9,6 +9,12 @@ export interface User {
   lastLoginAt: Timestamp;
   preferences: UserPreferences;
   subscription?: UserSubscription; // Absent = free tier
+  /**
+   * The household this account belongs to; absent when none. Written by the
+   * account itself, so the rules treat it only as a pointer to the member
+   * documents that decide membership.
+   */
+  householdId?: string;
 }
 
 export type SubscriptionTier = 'free' | 'premium';

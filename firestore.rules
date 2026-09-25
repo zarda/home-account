@@ -644,6 +644,175 @@ service cloud.firestore {
         && d.revision is int && d.revision > 0;
     }
 
+    // ---- households ----
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function householdPath(householdId) {
+      return /databases/$(database)/documents/households/$(householdId);
+    }
+
+    function memberPath(householdId, uid) {
+      return /databases/$(database)/documents/households/$(householdId)/members/$(uid);
+    }
+
+    function invitePath(inviteId) {
+      return /databases/$(database)/documents/householdInvites/$(inviteId);
+    }
+
+    // The profile pointer is written by the profile's own account, so it is
+    // only ever a hint of where to look: nothing is granted on it alone. What
+    // grants is the member documents it leads to.
+    function householdOf(uid) {
+      return get(userPath(uid)).data.get('householdId', null);
+    }
+
+    // The generation stamp. A household id can be formed again after a
+    // dissolve, and nothing guarantees every member document of the old one
+    // was swept (an offline device, a chunk that failed). A member document
+    // counts only while its `since` equals the live household's `createdAt`,
+    // so an orphan from an earlier generation grants nothing.
+    function memberAt(householdId, uid, createdAt) {
+      return exists(memberPath(householdId, uid))
+        && get(memberPath(householdId, uid)).data.since == createdAt;
+    }
+
+    function memberOf(householdId, uid) {
+      return memberAt(householdId, uid, get(householdPath(householdId)).data.createdAt);
+    }
+
+    // A live member reads only the member documents of its own generation:
+    // an orphan left under a re-formed id names people the reader may never
+    // have shared a household with. A list must filter on `since` for the
+    // rules to prove this of every document it returns.
+    function liveGenerationRead(householdId, since) {
+      let createdAt = get(householdPath(householdId)).data.createdAt;
+      return memberAt(householdId, request.auth.uid, createdAt) && since == createdAt;
+    }
+
+    // Lookup budget: a read may make ten document lookups. The owner of the
+    // data short-circuits before this runs; a peer costs the owner's profile,
+    // both member documents and the household the two share — four.
+    function householdPeer(ownerUid) {
+      let householdId = householdOf(ownerUid);
+      return isAuthenticated()
+        && householdId is string
+        && memberOf(householdId, ownerUid)
+        && memberOf(householdId, request.auth.uid);
+    }
+
+    function householdNameValid(name) {
+      return name is string && name.size() >= 1 && name.size() <= 60;
+    }
+
+    // createdAt is the request time, never a client value: it is the
+    // generation every member document is stamped against, and a chosen value
+    // could be made to match an orphan's. The owner's member document and the
+    // pointer land in the same commit, so a household never exists without
+    // the membership that owns it, and one account cannot hold two.
+    function householdCreateValid(householdId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['name', 'ownerId', 'createdAt', 'updatedAt'])
+        && d.keys().hasAll(['name', 'ownerId', 'createdAt'])
+        && d.ownerId == request.auth.uid
+        && householdNameValid(d.name)
+        && d.createdAt == request.time
+        && (!('updatedAt' in d) || d.updatedAt is timestamp)
+        && existsAfter(memberPath(householdId, request.auth.uid))
+        && getAfter(userPath(request.auth.uid)).data.get('householdId', null) == householdId;
+    }
+
+    function householdUpdateValid() {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys().hasOnly(['name', 'updatedAt'])
+        && householdNameValid(d.name)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function memberPhotoValid(url) {
+      return url is string && url.size() <= 2048 && url.matches('https://.*');
+    }
+
+    function memberShapeValid(uid) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+             'uid', 'displayName', 'photoURL', 'role', 'since', 'joinedAt', 'inviteId'
+           ])
+        && d.keys().hasAll(['uid', 'displayName', 'role', 'since', 'joinedAt'])
+        && d.uid == uid
+        && d.displayName is string
+        && d.displayName.size() <= 100
+        && (!('photoURL' in d) || memberPhotoValid(d.photoURL))
+        && d.role in ['owner', 'member']
+        && d.since is timestamp
+        && d.joinedAt is timestamp
+        && (!('inviteId' in d) || d.inviteId is string);
+    }
+
+    // The owner's document is written only in the commit that forms the
+    // household: the household must not have existed before it.
+    function foundingOwner(householdId) {
+      return getAfter(householdPath(householdId)).data.ownerId == request.auth.uid
+        && !exists(householdPath(householdId));
+    }
+
+    // A joiner cannot read the household before it belongs to it, so the
+    // generation it is admitted to comes from the invite. Matching both the
+    // invite's stamp and the live createdAt means an invite issued before a
+    // dissolve admits nobody to what was formed after it. The invite is
+    // consumed in the same commit, so it admits once.
+    function invitedMember(householdId, uid) {
+      let inviteId = householdId + '_' + uid;
+      let invite = get(invitePath(inviteId)).data;
+      let d = request.resource.data;
+      return exists(householdPath(householdId))
+        && d.get('inviteId', null) == inviteId
+        && invite.inviteeUid == uid
+        && invite.householdId == householdId
+        && invite.expiresAt > request.time
+        && d.since == invite.householdCreatedAt
+        && !existsAfter(invitePath(inviteId));
+    }
+
+    // Every membership is created together with the pointer that names it:
+    // with the profile's guarded pointer change below, that is what keeps an
+    // account to one household. The owner joined through no invite, so its
+    // document names none.
+    function memberCreateValid(householdId, uid) {
+      let d = request.resource.data;
+      return uid == request.auth.uid
+        && memberShapeValid(uid)
+        && d.since == getAfter(householdPath(householdId)).data.createdAt
+        && getAfter(userPath(uid)).data.get('householdId', null) == householdId
+        && (d.role == 'owner'
+            ? (!('inviteId' in d) && foundingOwner(householdId))
+            : invitedMember(householdId, uid));
+    }
+
+    // The membership a profile's pointer named is gone once the write lands:
+    // no pointer, or its member document or its household no longer exists.
+    // Guarding the delete with the same condition as the pointer change is
+    // what stops a delete-and-re-create of the profile from shedding a live
+    // membership. It reads the existing profile, so a caller guards the case
+    // where there is none.
+    function formerMembershipGone(userId) {
+      let former = resource.data.get('householdId', null);
+      return former == null
+        || !existsAfter(memberPath(former, userId))
+        || !existsAfter(householdPath(former));
+    }
+
+    function householdPointerValid(userId) {
+      let d = request.resource.data;
+      return formerMembershipGone(userId)
+        && (!('householdId' in d)
+            || (d.householdId is string
+                && d.householdId.size() > 0
+                && existsAfter(memberPath(d.householdId, userId))));
+    }
+
     // ---- user profile ----
 
     function userOptionalsValid(d) {
@@ -652,12 +821,15 @@ service cloud.firestore {
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }
 
-    // photoURL is omitted, not null, when the provider has no picture.
+    // photoURL is omitted, not null, when the provider has no picture. A
+    // profile is born with no household: a pointer only ever arrives in the
+    // commit that creates the membership it names.
     function userCreateValid() {
       let d = request.resource.data;
       return d.keys().hasAll([
              'email', 'displayName', 'createdAt', 'lastLoginAt', 'preferences'
            ])
+        && !('householdId' in d)
         && d.email is string
         && d.displayName is string
         && d.createdAt is timestamp
@@ -666,7 +838,7 @@ service cloud.firestore {
         && userOptionalsValid(d);
     }
 
-    function userUpdateValid() {
+    function userUpdateValid(userId) {
       let d = request.resource.data;
       return (!touched('email') || ('email' in d && d.email is string))
         && (!touched('displayName') || ('displayName' in d && d.displayName is string))
@@ -674,6 +846,7 @@ service cloud.firestore {
         && (!touched('lastLoginAt')
             || ('lastLoginAt' in d && d.lastLoginAt is timestamp))
         && (!touched('preferences') || ('preferences' in d && d.preferences is map))
+        && (!touched('householdId') || householdPointerValid(userId))
         && userOptionalsValid(d);
     }
 
@@ -716,12 +889,18 @@ service cloud.firestore {
       // Users can only read/write their own document
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && userCreateValid();
-      allow update: if isOwner(userId) && userUpdateValid();
-      allow delete: if isOwner(userId);
+      allow update: if isOwner(userId) && userUpdateValid(userId);
+      // A profile that is already gone has nothing to shed, so a retried
+      // erasure still succeeds.
+      allow delete: if isOwner(userId)
+        && (resource == null || formerMembershipGone(userId));
+
+      // The four kinds a household shares, readable by the other members.
+      // Writes stay the owner's alone.
 
       // Transactions subcollection
       match /transactions/{transactionId} {
-        allow read: if isOwner(userId);
+        allow read: if isOwner(userId) || householdPeer(userId);
         allow create: if isOwner(userId) && txCreateValid(userId);
         allow update: if isOwner(userId) && txUpdateValid(userId);
         allow delete: if isOwner(userId);
@@ -729,7 +908,7 @@ service cloud.firestore {
 
       // Budgets subcollection
       match /budgets/{budgetId} {
-        allow read: if isOwner(userId);
+        allow read: if isOwner(userId) || householdPeer(userId);
         allow create: if isOwner(userId) && budgetCreateValid(userId);
         allow update: if isOwner(userId) && budgetUpdateValid(userId);
         allow delete: if isOwner(userId);
@@ -737,7 +916,7 @@ service cloud.firestore {
 
       // Goals subcollection
       match /goals/{goalId} {
-        allow read: if isOwner(userId);
+        allow read: if isOwner(userId) || householdPeer(userId);
         allow create: if isOwner(userId) && goalCreateValid(userId);
         allow update: if isOwner(userId) && goalUpdateValid(userId);
         allow delete: if isOwner(userId);
@@ -745,7 +924,7 @@ service cloud.firestore {
 
       // Categories subcollection
       match /categories/{categoryId} {
-        allow read: if isOwner(userId);
+        allow read: if isOwner(userId) || householdPeer(userId);
         allow create: if isOwner(userId) && categoryCreateValid(userId);
         allow update: if isOwner(userId) && categoryUpdateValid(userId);
         allow delete: if isOwner(userId);
@@ -907,6 +1086,71 @@ service cloud.firestore {
           'quota'
         ]);
       }
+    }
+
+    // A household (#71). Read only by its live members; formed, renamed and
+    // dissolved only by its owner. A dissolve deletes every other member
+    // document first, in commits small enough for the lookup budget, then
+    // the household with the owner's own document and pointer.
+    match /households/{householdId} {
+      // memberOf, with the generation taken from the household being read
+      // rather than from a second lookup of it.
+      allow get: if isAuthenticated()
+        && memberAt(householdId, request.auth.uid, resource.data.createdAt);
+      allow create: if isAuthenticated() && householdCreateValid(householdId);
+      allow update: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid
+        && householdUpdateValid();
+      allow delete: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid
+        && !existsAfter(memberPath(householdId, request.auth.uid));
+
+      match /members/{memberUid} {
+        // One's own document is always readable, so a member whose document
+        // is gone hears not-found rather than a refusal; a live member asking
+        // for a document that is gone hears the same.
+        allow get: if isAuthenticated()
+          && (memberUid == request.auth.uid
+              || (resource == null && memberOf(householdId, request.auth.uid))
+              || (resource != null && liveGenerationRead(householdId, resource.data.since)));
+        allow list: if isAuthenticated()
+          && liveGenerationRead(householdId, resource.data.since);
+        allow create: if isAuthenticated() && memberCreateValid(householdId, memberUid);
+        // Who a member is and when it joined are fixed; only how it is shown
+        // may change.
+        allow update: if isAuthenticated()
+          && memberUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['displayName', 'photoURL'])
+          && memberShapeValid(memberUid);
+        // Leaving (anyone but the owner of a household that survives the
+        // write — the owner dissolves instead), removal by the live
+        // household's owner, or tidying once the household is gone.
+        allow delete: if isAuthenticated() && (
+          (memberUid == request.auth.uid
+            && (!existsAfter(householdPath(householdId))
+                || getAfter(householdPath(householdId)).data.ownerId != request.auth.uid))
+          || (memberUid != request.auth.uid
+            && exists(householdPath(householdId))
+            && get(householdPath(householdId)).data.ownerId == request.auth.uid)
+          || !exists(householdPath(householdId))
+        );
+      }
+    }
+
+    // Invites are written only by the invite callable through the Admin SDK,
+    // which bypasses these rules: it looks the address up, checks the member
+    // cap and the quotas, and stamps the generation the invite admits to. A
+    // client that could write one could name any generation and any account.
+    // Either party may read or delete one; a list must filter on the
+    // caller's own side. The callable's quota and mail-budget documents
+    // (inviteQuotas, mailBudget) have no block at all: the default deny below
+    // is the rule for them.
+    match /householdInvites/{inviteId} {
+      allow read, delete: if isAuthenticated()
+        && (resource.data.inviterUid == request.auth.uid
+            || resource.data.inviteeUid == request.auth.uid);
+      allow create, update: if false;
     }
 
     // Deny all other access by default
