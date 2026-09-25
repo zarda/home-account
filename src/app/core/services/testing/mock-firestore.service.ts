@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
+import type { DocumentWithMetadata } from '../firestore.service';
 
 // Simple spy implementation that works without jasmine in production builds
 interface SpyCall {
@@ -47,6 +48,9 @@ export class MockFirestoreService {
   private _runTransactionSpy = new SimpleSpy();
   private _txUpdateSpy = new SimpleSpy();
   private _txSetSpy = new SimpleSpy();
+  private _txGetSpy = new SimpleSpy();
+  private _txDeleteSpy = new SimpleSpy();
+  private _subscribeToDocumentWithMetadataSpy = new SimpleSpy();
 
   get getDocumentSpy() { return this._getDocumentSpy; }
   get getCollectionSpy() { return this._getCollectionSpy; }
@@ -62,6 +66,9 @@ export class MockFirestoreService {
   get runTransactionSpy() { return this._runTransactionSpy; }
   get txUpdateSpy() { return this._txUpdateSpy; }
   get txSetSpy() { return this._txSetSpy; }
+  get txGetSpy() { return this._txGetSpy; }
+  get txDeleteSpy() { return this._txDeleteSpy; }
+  get subscribeToDocumentWithMetadataSpy() { return this._subscribeToDocumentWithMetadataSpy; }
 
   /**
    * Invoked at the start of every runTransaction call, before the callback's
@@ -100,6 +107,9 @@ export class MockFirestoreService {
     this._runTransactionSpy.reset();
     this._txUpdateSpy.reset();
     this._txSetSpy.reset();
+    this._txGetSpy.reset();
+    this._txDeleteSpy.reset();
+    this._subscribeToDocumentWithMetadataSpy.reset();
     this.beforeTransaction = undefined;
   }
 
@@ -196,6 +206,13 @@ export class MockFirestoreService {
     return of(data);
   }
 
+  // Answers as the server would: a seeded document, or a confirmed absence.
+  subscribeToDocumentWithMetadata<T>(path: string): Observable<DocumentWithMetadata<T>> {
+    this._subscribeToDocumentWithMetadataSpy.call(path);
+    const data = (this.mockData.get(path) as T) ?? null;
+    return of({ data, fromCache: false, hasPendingWrites: false });
+  }
+
   async addDocument<T>(collectionPath: string, data: T): Promise<string> {
     this._addDocumentSpy.call(collectionPath, data);
     const id = `mock-id-${Date.now()}`;
@@ -253,6 +270,7 @@ export class MockFirestoreService {
     const buffered: (() => void)[] = [];
     const tx = {
       get: async (ref: { path: string }) => {
+        this._txGetSpy.call(ref.path);
         const data = this.mockData.get(ref.path);
         return {
           exists: () => data !== undefined && data !== null,
@@ -274,6 +292,7 @@ export class MockFirestoreService {
         });
       },
       delete: (ref: { path: string }) => {
+        this._txDeleteSpy.call(ref.path);
         buffered.push(() => this.mockData.delete(ref.path));
       },
     };

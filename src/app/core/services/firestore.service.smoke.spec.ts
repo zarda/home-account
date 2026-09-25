@@ -11,10 +11,12 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  disableNetwork,
+  enableNetwork,
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
-import { FirestoreService, PageQueryOptions, PageResult } from './firestore.service';
+import { DocumentWithMetadata, FirestoreService, PageQueryOptions, PageResult } from './firestore.service';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -472,6 +474,57 @@ describe('FirestoreService reads, writes and subscriptions (emulator smoke test)
         .subscribe({ error: e => errors.push(e) });
 
       await waitFor(() => errors.length === 1, 'the permission error');
+      sub.unsubscribe();
+    });
+
+    it('subscribeToDocumentWithMetadata says which emissions the server confirmed, including metadata-only ones', async () => {
+      const emissions: DocumentWithMetadata<Row>[] = [];
+      const last = () => emissions[emissions.length - 1];
+      const confirmed = (e: DocumentWithMetadata<Row>) => !e.fromCache && !e.hasPendingWrites;
+      const sub = service.subscribeToDocumentWithMetadata<Row>(`${path}/rw-meta-doc`)
+        .subscribe(emission => emissions.push(emission));
+
+      try {
+        await waitFor(() => emissions.some(confirmed), 'a server-confirmed emission');
+        expect(emissions.find(confirmed)!.data).toBeNull();
+
+        const beforeWrite = emissions.length;
+        await setDoc(doc(firestore, `${path}/rw-meta-doc`), legalRow(62));
+        await waitFor(() => emissions.some(e => e.data?.id === 'rw-meta-doc' && confirmed(e)),
+          'the written doc, confirmed by the server');
+        expect(last().data!.amount).toBe(72);
+        // The local write was heard first, from a listener already in sync:
+        // fromCache false alone would have passed it off as confirmed.
+        expect(emissions.slice(beforeWrite).find(e => e.data?.id === 'rw-meta-doc'))
+          .toEqual(jasmine.objectContaining({ fromCache: false, hasPendingWrites: true }));
+
+        // Going offline changes no data, only where the snapshot came from:
+        // a listener without metadata changes would stay silent here.
+        const before = emissions.length;
+        await disableNetwork(firestore);
+        await waitFor(() => emissions.length > before && last().fromCache, 'the from-cache emission');
+        expect(last().data!.id).toBe('rw-meta-doc');
+
+        await enableNetwork(firestore);
+        await waitFor(() => confirmed(last()), 'the server again');
+      } finally {
+        await enableNetwork(firestore);
+        sub.unsubscribe();
+      }
+
+      const countWhenUnsubscribed = emissions.length;
+      await deleteDoc(doc(firestore, `${path}/rw-meta-doc`));
+      await new Promise(resolve => setTimeout(resolve, 150));
+      expect(emissions.length).toBe(countWhenUnsubscribed);
+    }, 20000);
+
+    it('subscribeToDocumentWithMetadata forwards a rules denial as an error', async () => {
+      const errors: { code?: string }[] = [];
+      const sub = service.subscribeToDocumentWithMetadata('users/somebody-else')
+        .subscribe({ error: e => errors.push(e) });
+
+      await waitFor(() => errors.length === 1, 'the permission error');
+      expect(errors[0].code).toBe('permission-denied');
       sub.unsubscribe();
     });
   });

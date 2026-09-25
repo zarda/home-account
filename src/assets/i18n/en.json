@@ -1720,5 +1720,26 @@
     "stale": "Open the app to update this month",
     "updated": "Updated {{date}}",
     "budgetDetail": "{{spent}} of {{limit}}"
+  },
+  "household": {
+    "errors": {
+      "signedOut": "You're signed out. Sign in again to send invites.",
+      "email": "That doesn't look like an email address.",
+      "locale": "Invites can't be sent from this version of the app. Update it and try again.",
+      "household": "This household no longer exists.",
+      "notOwner": "Only the household's owner can do that.",
+      "self": "You can't invite yourself.",
+      "quota": "You've sent as many invites as allowed for now. Try again later.",
+      "noAccount": "No account uses that email address. Ask them to sign in to the app once, then invite them again.",
+      "member": "That person is already in this household.",
+      "full": "This household is full. Pending invites count toward the limit.",
+      "elsewhere": "That person already belongs to another household.",
+      "offline": "You're offline. Household changes need a connection.",
+      "name": "Enter a household name of up to {{max}} characters.",
+      "expired": "This invite has expired. Ask the owner to send a new one.",
+      "inviteGone": "This invite is no longer available. It may have been withdrawn.",
+      "alreadyMember": "You already belong to a household. Leave or dissolve it before joining another one.",
+      "ownerLeaves": "As the owner, you can't leave. Dissolve the household instead."
+    }
   }
 }
