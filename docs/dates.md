@@ -200,14 +200,20 @@ consecutive periods cannot overlap or leave a gap.
 - `weekly-recap.smoke.spec.ts` — those bounds against stored `Timestamp`s,
   seeded on the first and last milliseconds of the recapped week and one
   millisecond outside each.
+- `household-ledger.service.smoke.spec.ts` — another household member's rows,
+  read through the rules for a whole local month, seeded on the first and last
+  milliseconds of that month and one millisecond outside each. Its unit spec,
+  `household-ledger.service.spec.ts`, checks that a period ending mid-morning
+  is still read through the last millisecond of its final local day.
 - The `test:dates` include list is the enumeration of unit specs whose
   assertions depend on the zone, and `test:smoke:dates` is the same statement
   for the emulator suite — `period-window`, `transaction.service`,
-  `recurring.service`, `reminder.service` and `weekly-recap`, run under
-  `TZ=America/New_York` and `TZ=Asia/Tokyo` inside one `emulators:exec` by
-  `npm run smoke:dates` (ADR 0050). Anything asserting a calendar day or a
-  window bound belongs in one of the two lists; a spec left out of both is
-  only ever run at one offset.
+  `recurring.service`, `reminder.service`, `weekly-recap` and
+  `household-ledger.service`, run under `TZ=America/New_York` and
+  `TZ=Asia/Tokyo` inside one `emulators:exec` by `npm run smoke:dates`
+  (ADR 0050). Anything asserting a calendar day or a window bound belongs in
+  one of the two lists; a spec left out of both is only ever run at one
+  offset.
 - `import-dto.utils.spec.ts` is left out **on purpose**, and this is the
   place that says so, so it is not re-filed. Every `resolveImportDate` case
   there freezes the clock with `jasmine.clock().mockDate` and then compares

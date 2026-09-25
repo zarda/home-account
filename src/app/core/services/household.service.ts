@@ -8,6 +8,7 @@ import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { HOUSEHOLD_INVITE_CALLABLE, HouseholdInviteResponse } from './household-invite-callable';
 import { Household, HouseholdInvite, HouseholdMember, User } from '../../models';
+import { errorCode, isRefused } from '../utils/firebase-error.utils';
 
 /** firestore.rules, householdNameValid. */
 export const HOUSEHOLD_NAME_MAX_LENGTH = 60;
@@ -82,13 +83,6 @@ function chunked<T>(items: T[]): T[][] {
   }
   return chunks;
 }
-
-function codeOf(error: unknown): string | undefined {
-  const code = (error as { code?: unknown } | null)?.code;
-  return typeof code === 'string' ? code : undefined;
-}
-
-const isRefused = (error: unknown) => codeOf(error) === 'permission-denied';
 
 /** Clips to a length the rules accept without splitting a surrogate pair. */
 function clip(text: string, max: number): string {
@@ -782,7 +776,7 @@ export class HouseholdService {
     if (error instanceof HouseholdError) return error;
     const refusal = this.refusalMessage(error);
     if (refusal) return new HouseholdError(refusal, { cause: error });
-    const code = codeOf(error);
+    const code = errorCode(error);
     if (!this.pwa.isOnline() || code === 'unavailable' || code === 'deadline-exceeded') {
       return new HouseholdError(this.t('household.errors.offline'), { cause: error });
     }
@@ -796,7 +790,7 @@ export class HouseholdService {
    * and must not read as "no account uses that address".
    */
   private refusalMessage(error: unknown): string | null {
-    if (!codeOf(error)?.startsWith('functions/')) return null;
+    if (!errorCode(error)?.startsWith('functions/')) return null;
     const details = (error as FunctionsError).details;
     const reason = details !== null && typeof details === 'object'
       ? (details as { reason?: unknown }).reason

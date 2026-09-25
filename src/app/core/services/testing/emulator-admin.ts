@@ -23,8 +23,8 @@ const FIRESTORE_EMULATOR_ORIGIN = 'http://127.0.0.1:8080';
 /** The demo project every smoke suite runs against. */
 const PROJECT_ID = 'demo-home-account';
 
-/** One Firestore REST typed value, e.g. `{ integerValue: '5' }`. */
-export type EmulatorField = Record<string, string>;
+/** One Firestore REST typed value, e.g. `{ integerValue: '5' }` or `{ booleanValue: true }`. */
+export type EmulatorField = Record<string, string | boolean>;
 
 /** REST carries integers as strings; a bare number would arrive as a double. */
 export function integerField(value: number): EmulatorField {
@@ -37,6 +37,11 @@ export function timestampField(value: Date = new Date()): EmulatorField {
 
 export function stringField(value: string): EmulatorField {
   return { stringValue: value };
+}
+
+/** REST carries a boolean as a JSON boolean, not as a string. */
+export function booleanField(value: boolean): EmulatorField {
+  return { booleanValue: value };
 }
 
 function documentUrl(path: string): string {
