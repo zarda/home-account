@@ -1641,7 +1641,8 @@
       "incomplete": "{{name}}的部分交易無法載入，因此數字可能不完整。",
       "categoriesIncomplete": "{{name}}的部分類別無法載入，因此部分交易與預算的類別可能顯示為未知。",
       "notLoaded": "尚未載入到此裝置。連線後即可查看其收支。",
-      "truncated": "{{name}}此期間的交易超過{{cap}}筆。只顯示並計算最新的{{cap}}筆。"
+      "truncated": "{{name}}此期間的交易超過{{cap}}筆。只顯示並計算最新的{{cap}}筆。",
+      "showMore": "顯示更多（還有{{count}}筆）"
     },
     "plans": {
       "title": "預算與目標",

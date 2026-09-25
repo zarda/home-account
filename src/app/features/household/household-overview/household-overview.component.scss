@@ -179,3 +179,17 @@ app-period-selector {
 .overview-row + .overview-row {
   border-block-start: 1px solid var(--surface-muted);
 }
+
+// Its label counts what is left, which outgrows a phone's width: the button
+// takes a second line rather than spilling out of Material's fixed height.
+.overview-more {
+  display: flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  block-size: auto;
+  min-block-size: 40px;
+  margin-block-start: 12px;
+  margin-inline: auto;
+  padding-block: 8px;
+  overflow-wrap: anywhere;
+}

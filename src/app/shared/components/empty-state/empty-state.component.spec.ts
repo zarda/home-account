@@ -32,6 +32,19 @@ describe('EmptyStateComponent', () => {
     expect(root.textContent).toContain('No data');
   });
 
+  it('titles itself with a third-level heading unless told another level', () => {
+    const headings = (): string[] =>
+      Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6') as NodeListOf<Element>)
+        .map(heading => `${heading.tagName}:${heading.textContent?.trim()}`);
+    expect(headings()).toEqual(['H3:No data']);
+
+    for (const level of [2, 4] as const) {
+      fixture.componentRef.setInput('headingLevel', level);
+      fixture.detectChanges();
+      expect(headings()).toEqual([`H${level}:No data`]);
+    }
+  });
+
   it('emits action when the button is clicked', () => {
     fixture.componentRef.setInput('actionLabel', 'Add');
     fixture.detectChanges();

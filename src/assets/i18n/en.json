@@ -1764,7 +1764,11 @@
       "incomplete": "Some of {{name}}'s transactions couldn't be loaded, so their figures may be incomplete.",
       "categoriesIncomplete": "Some of {{name}}'s categories couldn't be loaded, so some of their transactions and budgets may show an unknown category.",
       "notLoaded": "Not loaded on this device. Connect to see their figures.",
-      "truncated": "{{name}} has more than {{cap}} transactions in this period. Only the newest {{cap}} are shown and counted."
+      "truncated": "{{name}} has more than {{cap}} transactions in this period. Only the newest {{cap}} are shown and counted.",
+      "showMore": {
+        "one": "Show more ({{count}} transaction remaining)",
+        "other": "Show more ({{count}} transactions remaining)"
+      }
     },
     "plans": {
       "title": "Budgets and goals",

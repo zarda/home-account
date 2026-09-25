@@ -39,13 +39,17 @@ import { MatButtonModule } from '@angular/material/button';
         >
       </div>
 
-      <h3
-        class="font-medium text-gray-900 dark:text-gray-100 mb-1"
-        [class.text-lg]="size === 'md'"
-        [class.text-base]="size === 'sm'"
-      >
-        {{ title }}
-      </h3>
+      @switch (headingLevel) {
+        @case (2) {
+          <h2 [class]="headingClass">{{ title }}</h2>
+        }
+        @case (4) {
+          <h4 [class]="headingClass">{{ title }}</h4>
+        }
+        @default {
+          <h3 [class]="headingClass">{{ title }}</h3>
+        }
+      }
 
       @if (description) {
         <p
@@ -78,5 +82,14 @@ export class EmptyStateComponent {
   @Input() actionIcon?: string;
   /** 'sm' shrinks the icon circle, type, and padding for in-card use. */
   @Input() size: 'sm' | 'md' = 'md';
+  /**
+   * The title's heading level. Inside a section already headed at level 3,
+   * a level-3 title would read as a section beside it rather than its content.
+   */
+  @Input() headingLevel: 2 | 3 | 4 = 3;
   @Output() action = new EventEmitter<void>();
+
+  get headingClass(): string {
+    return `font-medium text-gray-900 dark:text-gray-100 mb-1 ${this.size === 'md' ? 'text-lg' : 'text-base'}`;
+  }
 }

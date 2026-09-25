@@ -3,7 +3,7 @@ import { WritableSignal, computed, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
-import { HouseholdOverviewComponent } from './household-overview.component';
+import { HOUSEHOLD_OVERVIEW_ROW_PAGE, HouseholdOverviewComponent } from './household-overview.component';
 import {
   HOUSEHOLD_LEDGER_ROW_CAP,
   HouseholdLedgerService,
@@ -261,6 +261,264 @@ describe('HouseholdOverviewComponent', () => {
     });
   });
 
+  // Eight members at the ledger's cap is thousands of rows, each a row
+  // component with fitted text, so the list is rendered a page at a time.
+  describe('its rows, a page at a time', () => {
+    const PAGE = HOUSEHOLD_OVERVIEW_ROW_PAGE;
+    // Two and a half pages: three of every five rows are Alex's.
+    const TOTAL = PAGE * 2.5;
+    const ALEXS = TOTAL * 3 / 5;
+    const SAMS = TOTAL - ALEXS;
+
+    /** Newest first, as the ledger merges them: three of every five are Alex's. */
+    const many = (count: number): LedgerRow[] =>
+      Array.from({ length: count }, (_, at) =>
+        row(at % 5 < 3 ? 'alex' : 'sam', `tx-${at}`, { description: `Row ${at}`, type: 'expense', amount: 1 })
+      );
+
+    const moreButton = (): HTMLButtonElement | null =>
+      element().querySelector<HTMLButtonElement>('button.overview-more');
+    const described = (): string[] => rowsShown().map(debug =>
+      (debug.componentInstance as TransactionRowComponent).transaction().description
+    );
+    const rowItem = (at: number): HTMLElement =>
+      (rowsShown()[at].nativeElement as HTMLElement).closest('li') as HTMLElement;
+    const remaining = (count: number): string => `household.overview.showMore:{"count":${count}}`;
+
+    function press(): void {
+      moreButton()?.click();
+      render();
+    }
+
+    /** Renders, then lets afterNextRender run: it fires on the app's own tick, which detectChanges alone does not run. */
+    async function settle(): Promise<void> {
+      render();
+      await fixture.whenStable();
+      TestBed.tick();
+    }
+
+    /** Two and a half pages of rows in the period, one unit spent on each. */
+    function twoAndAHalfPages(): void {
+      ledger.totalsByMember.set([
+        { member: alex, totals: totals(0, ALEXS, ALEXS) },
+        { member: sam, totals: totals(0, SAMS, SAMS) }
+      ]);
+      ledger.combined.set(totals(0, TOTAL, TOTAL));
+      ledger.categoriesByMember.set(new Map([['alex', alexCategories], ['sam', samCategories]]));
+      ledger.rows.set(many(TOTAL));
+      ledger.loading.set(false);
+      render();
+    }
+
+    function expectEveryRowCounted(): void {
+      const cards = Array.from(element().querySelectorAll('app-stat-card')).map(card => card.textContent ?? '');
+      expect(cards[1]).withContext("the household's spending").toContain(`USD ${TOTAL.toFixed(2)}`);
+      const spent = (name: string) => memberLine(name)?.querySelectorAll('.member-figure dd')[1].textContent?.trim();
+      expect(spent('Alex')).toBe(`USD ${ALEXS.toFixed(2)}`);
+      expect(spent('Sam Ito')).toBe(`USD ${SAMS.toFixed(2)}`);
+    }
+
+    it('shows the newest page, and a button naming how many are left', () => {
+      twoAndAHalfPages();
+
+      expect(rowsShown().length).toBe(PAGE);
+      expect(described()[0]).toBe('Row 0');
+      expect(described()[PAGE - 1]).toBe(`Row ${PAGE - 1}`);
+      const more = moreButton();
+      expect(more).withContext('offered below the list').not.toBeNull();
+      expect(more?.hasAttribute('mat-stroked-button')).toBeTrue();
+      expect(more?.textContent).toContain(remaining(TOTAL - PAGE));
+      expect(element().querySelector('.overview-rows button')).withContext('the list itself holds no control')
+        .toBeNull();
+    });
+
+    it('shows the next page at each press, until none are left', () => {
+      twoAndAHalfPages();
+
+      press();
+      expect(rowsShown().length).toBe(PAGE * 2);
+      expect(described()[PAGE]).toBe(`Row ${PAGE}`);
+      expect(described()[PAGE * 2 - 1]).toBe(`Row ${PAGE * 2 - 1}`);
+      expect(moreButton()?.textContent).toContain(remaining(TOTAL - PAGE * 2));
+
+      press();
+      expect(rowsShown().length).toBe(TOTAL);
+      expect(described()[TOTAL - 1]).toBe(`Row ${TOTAL - 1}`);
+      expect(moreButton()).toBeNull();
+    });
+
+    it('counts every row in the totals, shown or not', () => {
+      twoAndAHalfPages();
+      expectEveryRowCounted();
+
+      press();
+      expectEveryRowCounted();
+
+      press();
+      expectEveryRowCounted();
+    });
+
+    it('keeps focus on the button while more are left', async () => {
+      twoAndAHalfPages();
+      const more = moreButton() as HTMLButtonElement;
+      more.focus();
+
+      press();
+      await settle();
+
+      expect(moreButton()).withContext('the same button, not a new one').toBe(more);
+      expect(document.activeElement).toBe(more);
+    });
+
+    it('moves focus to the first row the last press revealed, as the button goes', async () => {
+      twoAndAHalfPages();
+      press();
+      moreButton()?.focus();
+
+      press();
+      await settle();
+
+      expect(moreButton()).toBeNull();
+      expect(document.activeElement).toBe(rowItem(PAGE * 2));
+      expect(element().querySelectorAll('.overview-rows [tabindex]').length)
+        .withContext('only the row focus was sent to can take it, and not by Tab')
+        .toBe(1);
+      expect(rowItem(PAGE * 2).getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('moves focus to the last row shown when a change in the rows takes the focused button away', async () => {
+      twoAndAHalfPages();
+      press();
+      moreButton()?.focus();
+
+      ledger.rows.set(many(PAGE * 2));
+      await settle();
+
+      expect(moreButton()).toBeNull();
+      expect(document.activeElement).withContext('not dropped on the document').toBe(rowItem(PAGE * 2 - 1));
+      expect(element().querySelectorAll('.overview-rows [tabindex]').length).toBe(1);
+    });
+
+    it("moves focus to the list's heading when a change leaves no rows at all", async () => {
+      twoAndAHalfPages();
+      moreButton()?.focus();
+
+      ledger.rows.set([]);
+      await settle();
+
+      const heading = element().querySelector<HTMLElement>('#household-rows-title') as HTMLElement;
+      expect(emptyState()).toContain('household.overview.emptyTitle');
+      expect(document.activeElement).toBe(heading);
+      expect(heading.getAttribute('tabindex')).withContext('script can focus it, Tab does not').toBe('-1');
+    });
+
+    it('leaves focus where the viewer moved it when a change takes the button away', async () => {
+      twoAndAHalfPages();
+      moreButton()?.focus();
+      const lastMonth = element().querySelector<HTMLElement>('mat-button-toggle[value="lastMonth"] button') as HTMLElement;
+      lastMonth.focus();
+
+      ledger.rows.set(many(PAGE));
+      await settle();
+
+      expect(moreButton()).toBeNull();
+      expect(document.activeElement).toBe(lastMonth);
+      expect(element().querySelectorAll('.overview-rows [tabindex]').length).toBe(0);
+    });
+
+    it('still moves focus on when the button fires a blur as it is taken away', async () => {
+      twoAndAHalfPages();
+      const more = moreButton() as HTMLButtonElement;
+      more.focus();
+
+      // Chromium fires blur on a focused element as it leaves the page, and
+      // may do so before anything here has seen the rows change.
+      ledger.rows.set(many(PAGE));
+      more.blur();
+      await settle();
+
+      expect(moreButton()).toBeNull();
+      expect(document.activeElement).toBe(rowItem(PAGE - 1));
+    });
+
+    it('leaves focus where the viewer moved it as the rows changed', async () => {
+      twoAndAHalfPages();
+      moreButton()?.focus();
+      const lastMonth = element().querySelector<HTMLElement>('mat-button-toggle[value="lastMonth"] button') as HTMLElement;
+
+      ledger.rows.set(many(PAGE));
+      lastMonth.focus();
+      await settle();
+
+      expect(moreButton()).toBeNull();
+      expect(document.activeElement).toBe(lastMonth);
+    });
+
+    it('takes no focus when the viewer had already let it go from the button', async () => {
+      twoAndAHalfPages();
+      const more = moreButton() as HTMLButtonElement;
+      more.focus();
+      more.blur();
+
+      ledger.rows.set(many(PAGE));
+      await settle();
+
+      expect(moreButton()).toBeNull();
+      expect(document.activeElement).toBe(document.body);
+      expect(element().querySelectorAll('.overview-rows [tabindex]').length).toBe(0);
+    });
+
+    it('starts again from the newest page when the period changes', () => {
+      twoAndAHalfPages();
+      press();
+      expect(rowsShown().length).toBe(PAGE * 2);
+
+      element().querySelector<HTMLButtonElement>('mat-button-toggle[value="lastMonth"] button')?.click();
+      render();
+
+      expect(rowsShown().length).toBe(PAGE);
+      expect(moreButton()?.textContent).toContain(remaining(TOTAL - PAGE));
+    });
+
+    it('starts again from the newest page when the members change', () => {
+      twoAndAHalfPages();
+      press();
+      expect(rowsShown().length).toBe(PAGE * 2);
+
+      ledger.totalsByMember.update(lines => [...lines, { member: kai, totals: totals(0, 0, 0) }]);
+      render();
+
+      expect(rowsShown().length).toBe(PAGE);
+    });
+
+    it('keeps what it shows when rows arrive for the same members', () => {
+      twoAndAHalfPages();
+      press();
+
+      ledger.rows.set(many(TOTAL + 1));
+      ledger.totalsByMember.update(lines => lines.map(line => ({ ...line })));
+      render();
+
+      expect(rowsShown().length).toBe(PAGE * 2);
+      expect(moreButton()?.textContent).toContain(remaining(TOTAL + 1 - PAGE * 2));
+    });
+
+    it('offers no button with a page of rows or fewer', () => {
+      twoAndAHalfPages();
+      ledger.rows.set(many(PAGE - 1));
+      render();
+
+      expect(rowsShown().length).toBe(PAGE - 1);
+      expect(moreButton()).toBeNull();
+
+      ledger.rows.set(many(PAGE));
+      render();
+
+      expect(rowsShown().length).toBe(PAGE);
+      expect(moreButton()).toBeNull();
+    });
+  });
+
   describe('its notes about members', () => {
     beforeEach(() => {
       answered();
@@ -359,6 +617,31 @@ describe('HouseholdOverviewComponent', () => {
         expect(rect.left).withContext(`${label} starts inside`).toBeGreaterThanOrEqual(section.left - 0.5);
         expect(rect.right).withContext(`${label} ends inside`).toBeLessThanOrEqual(section.right + 0.5);
       }
+    });
+
+    it('keeps the button for more rows inside the section, its label taking a second line', () => {
+      answered();
+      ledger.rows.set(Array.from({ length: HOUSEHOLD_OVERVIEW_ROW_PAGE * 1.5 }, (_, at) =>
+        row('alex', `tx-${at}`, { description: `Row ${at}`, type: 'expense', amount: 1 })
+      ));
+      render();
+
+      const section = (element().querySelector('.overview') as HTMLElement).getBoundingClientRect();
+      const more = element().querySelector<HTMLElement>('button.overview-more') as HTMLElement;
+      const box = more.getBoundingClientRect();
+      expect(box.left).withContext('the button starts inside').toBeGreaterThanOrEqual(section.left - 0.5);
+      expect(box.right).withContext('the button ends inside').toBeLessThanOrEqual(section.right + 0.5);
+      // Measured at the label: the outlined button's own ripple layer sits a
+      // pixel out over its border, so the button's scroll size always leads
+      // its client size by one.
+      const label = more.querySelector('.mdc-button__label') as HTMLElement;
+      expect(label.scrollWidth).withContext('the label wraps within itself').toBeLessThanOrEqual(label.clientWidth);
+      const text = label.getBoundingClientRect();
+      expect(text.left).toBeGreaterThanOrEqual(box.left - 0.5);
+      expect(text.right).toBeLessThanOrEqual(box.right + 0.5);
+      expect(text.top).withContext('the label sits inside the button').toBeGreaterThanOrEqual(box.top - 0.5);
+      expect(text.bottom).toBeLessThanOrEqual(box.bottom + 0.5);
+      expect(box.height).withContext('the button grew to take the second line').toBeGreaterThan(40);
     });
   });
 

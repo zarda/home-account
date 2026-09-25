@@ -1,6 +1,8 @@
 <section class="overview" aria-labelledby="household-overview-title">
   <div class="overview-head">
-    <h2 id="household-overview-title" class="overview-title">
+    <!-- Script focuses it when the setup this view replaced took focus with
+         it; Tab passes it by. -->
+    <h2 id="household-overview-title" class="overview-title" tabindex="-1">
       <mat-icon>account_balance_wallet</mat-icon>
       <span>{{ 'household.overview.title' | translate }}</span>
     </h2>
@@ -16,11 +18,11 @@
         }
         @case ('incomplete') {
           <mat-icon>warning</mat-icon>
-          <span>{{ 'household.overview.incomplete' | translate: { name: notice.name || ('household.unnamedMember' | translate) } }}</span>
+          <span>{{ 'household.overview.incomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
         }
         @case ('categoriesIncomplete') {
           <mat-icon>warning</mat-icon>
-          <span>{{ 'household.overview.categoriesIncomplete' | translate: { name: notice.name || ('household.unnamedMember' | translate) } }}</span>
+          <span>{{ 'household.overview.categoriesIncomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
         }
         @case ('truncated') {
           <mat-icon>info</mat-icon>
@@ -83,13 +85,16 @@
       </section>
 
       <section class="overview-card" aria-labelledby="household-rows-title">
-        <h3 id="household-rows-title" class="overview-subtitle">
+        <!-- Script focuses it when the rows' button goes with focus on it and
+             no row is left to take it; Tab passes it by. -->
+        <h3 id="household-rows-title" class="overview-subtitle" tabindex="-1">
           {{ 'household.overview.transactionsTitle' | translate }}
         </h3>
         @if (rows().length === 0) {
           <app-empty-state
             size="sm"
             icon="receipt_long"
+            [headingLevel]="4"
             [title]="'household.overview.emptyTitle' | translate"
             [description]="'household.overview.emptyDescription' | translate"
           />
@@ -98,7 +103,7 @@
                text, with no control to count them by. -->
           <ul class="overview-rows">
             @for (view of rows(); track view.key) {
-              <li class="overview-row">
+              <li class="overview-row" [attr.tabindex]="view.key === focusRowKey() ? -1 : null">
                 <app-transaction-row
                   [transaction]="view.row"
                   [categories]="view.categories"
@@ -109,6 +114,19 @@
               </li>
             }
           </ul>
+          @if (hiddenCount() > 0) {
+            <button
+              mat-stroked-button
+              type="button"
+              class="overview-more"
+              (click)="showMore()"
+              (focus)="onMoreFocus()"
+              (blur)="onMoreBlur()"
+            >
+              <mat-icon>expand_more</mat-icon>
+              <span>{{ 'household.overview.showMore' | translate: { count: hiddenCount() } }}</span>
+            </button>
+          }
         }
       </section>
     }
