@@ -434,6 +434,31 @@ describe('HouseholdLedgerService', () => {
       expect(firestore.deleteDocumentSpy.calls.length).toBe(0);
       expect(firestore.runTransactionSpy.calls.length).toBe(0);
     });
+
+    it('waits on the budgets and goals apart from the period\'s rows, and again for a member who joins', () => {
+      follow([me, kai]);
+      expect(ledger.plansLoading()).toBeTrue();
+
+      for (const uid of [ME, KAI]) {
+        latest(uid, 'categories').subject.next([]);
+        latest(uid, 'budgets').subject.next([]);
+      }
+      expect(ledger.plansLoading()).withContext('goals unanswered').toBeTrue();
+      for (const uid of [ME, KAI]) latest(uid, 'goals').subject.next([]);
+
+      expect(ledger.loading()).withContext('the rows are still out').toBeTrue();
+      expect(ledger.plansLoading()).toBeFalse();
+
+      for (const uid of [ME, KAI]) latest(uid, 'transactions').subject.next([]);
+      ledger.setPeriod(SEPTEMBER);
+      expect(ledger.loading()).withContext('a new period re-reads the rows').toBeTrue();
+      expect(ledger.plansLoading()).withContext('and nothing the plans show').toBeFalse();
+
+      ledger.setMembers([me, kai, sam]);
+      expect(ledger.plansLoading()).toBeTrue();
+      answer(SAM, {});
+      expect(ledger.plansLoading()).toBeFalse();
+    });
   });
 
   describe('limits', () => {

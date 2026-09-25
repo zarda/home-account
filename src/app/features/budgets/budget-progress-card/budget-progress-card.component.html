@@ -1,5 +1,5 @@
 <mat-card class="budget-card">
-  <!-- Header: icon, name, menu -->
+  <!-- Header: icon, name, and the menu unless read-only -->
   <div class="card-header">
     <app-category-chip
       appearance="tile"
@@ -8,31 +8,37 @@
     />
 
     <div class="header-content">
-      <h3 class="budget-name">{{ budget().name }}</h3>
+      @if (headingLevel() === 4) {
+        <h4 class="budget-name">{{ budget().name }}</h4>
+      } @else {
+        <h3 class="budget-name">{{ budget().name }}</h3>
+      }
       <span class="budget-meta">{{ getPeriodLabel(budget().period) }}</span>
     </div>
 
-    <button mat-icon-button [matMenuTriggerFor]="menu" class="menu-btn" [attr.aria-label]="'common.moreActions' | translate">
-      <mat-icon>more_vert</mat-icon>
-    </button>
-    <mat-menu #menu="matMenu">
-      <button mat-menu-item (click)="edit.emit()">
-        <mat-icon>edit</mat-icon>
-        <span>{{ 'common.edit' | translate }}</span>
+    @if (!readOnly()) {
+      <button mat-icon-button [matMenuTriggerFor]="menu" class="menu-btn" [attr.aria-label]="'common.moreActions' | translate">
+        <mat-icon>more_vert</mat-icon>
       </button>
-      <button mat-menu-item (click)="delete.emit()" class="delete-item">
-        <mat-icon>delete</mat-icon>
-        <span>{{ 'common.delete' | translate }}</span>
-      </button>
-    </mat-menu>
+      <mat-menu #menu="matMenu">
+        <button mat-menu-item (click)="edit.emit()">
+          <mat-icon>edit</mat-icon>
+          <span>{{ 'common.edit' | translate }}</span>
+        </button>
+        <button mat-menu-item (click)="delete.emit()" class="delete-item">
+          <mat-icon>delete</mat-icon>
+          <span>{{ 'common.delete' | translate }}</span>
+        </button>
+      </mat-menu>
+    }
   </div>
 
   <!-- Progress section -->
   <div class="progress-section">
     <div class="amount-row">
       <span class="amount-text">
-        <span class="spent" [class.over-budget]="isOverBudget()">{{ formatCurrency(budget().spent) }}</span>
-        <span class="limit">/ {{ formatCurrency(budget().amount) }}</span>
+        <span class="spent" [class.over-budget]="isOverBudget()" appFitText>{{ formatCurrency(budget().spent) }}</span>
+        <span class="limit" appFitText>/ {{ formatCurrency(budget().amount) }}</span>
       </span>
       <span class="percentage" [class]="statusClass()">{{ percentage().toFixed(0) }}%</span>
     </div>

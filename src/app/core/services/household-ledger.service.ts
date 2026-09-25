@@ -263,6 +263,16 @@ export class HouseholdLedgerService {
     );
   });
 
+  /**
+   * A shown member's categories, budgets or goals have not answered yet:
+   * what a view of the budgets and goals waits on. The period's rows are left
+   * out, since a period change re-reads only those. Categories stay in, as a
+   * budget is shown with its category.
+   */
+  readonly plansLoading = computed(() =>
+    this.shown().some(({ feed }) => !feed.categories || !feed.budgets || !feed.goals)
+  );
+
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;

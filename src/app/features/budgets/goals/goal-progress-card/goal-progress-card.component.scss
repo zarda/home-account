@@ -2,6 +2,17 @@
   display: flex;
   flex-direction: column;
 
+  // Read-only, the checklist's boxes are disabled, and Material draws a
+  // disabled box's label at 38% of the text colour: about 2.5:1. On the
+  // household page that checklist is the only way to read another member's
+  // items, so it keeps the text's own colours, and the boxes their own.
+  &.read-only {
+    --mat-checkbox-disabled-label-color: var(--text-primary);
+    --mat-checkbox-disabled-selected-icon-color: var(--mat-sys-primary);
+    --mat-checkbox-disabled-selected-checkmark-color: var(--mat-sys-on-primary);
+    --mat-checkbox-disabled-unselected-icon-color: var(--text-muted);
+  }
+
   .goal-header {
     display: flex;
     align-items: flex-start;
@@ -108,9 +119,11 @@
     .item-label {
       overflow-wrap: anywhere;
 
+      // The line through marks it done; a token colour, not an opacity,
+      // keeps it readable, and lets the high-contrast theme reach it.
       &.done {
         text-decoration: line-through;
-        opacity: 0.6;
+        color: var(--text-muted);
       }
     }
 

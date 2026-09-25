@@ -1639,9 +1639,19 @@
       "offlineDescription": "此期間的家庭收支尚未載入到此裝置。連線後即可查看。",
       "unavailable": "無法讀取{{name}}的記錄。對方可能已不在此家庭中。",
       "incomplete": "{{name}}的部分交易無法載入，因此數字可能不完整。",
-      "categoriesIncomplete": "{{name}}的部分類別無法載入，因此部分交易的類別可能顯示為未知。",
+      "categoriesIncomplete": "{{name}}的部分類別無法載入，因此部分交易與預算的類別可能顯示為未知。",
       "notLoaded": "尚未載入到此裝置。連線後即可查看其收支。",
       "truncated": "{{name}}此期間的交易超過{{cap}}筆。只顯示並計算最新的{{cap}}筆。"
+    },
+    "plans": {
+      "title": "預算與目標",
+      "loading": "正在載入家庭的預算與目標…",
+      "empty": "沒有進行中的預算或目標。",
+      "notLoaded": "尚未載入到此裝置。連線後即可查看其預算與目標。",
+      "readFailed": "部分預算或目標無法載入。",
+      "stale": "{{name}}此期間的支出金額尚未更新，因此這裡顯示為0。",
+      "budgetsIncomplete": "{{name}}的部分預算無法載入，因此可能未全部顯示。",
+      "goalsIncomplete": "{{name}}的部分目標無法載入，因此可能未全部顯示。"
     },
     "errors": {
       "signedOut": "你已登出。請重新登入後再傳送邀請。",

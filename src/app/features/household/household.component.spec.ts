@@ -6,6 +6,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { HouseholdComponent } from './household.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
 import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
+import { HouseholdPlansComponent } from './household-plans/household-plans.component';
 import { HouseholdService, HouseholdStatus } from '../../core/services/household.service';
 import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
 import { PwaService } from '../../core/services/pwa.service';
@@ -30,6 +31,17 @@ class StubSetupComponent {}
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 class StubOverviewComponent {
+  readonly ledger = inject(HouseholdLedgerService);
+}
+
+/** The budgets and goals have their own spec; here the question is where they sit and which ledger they read. */
+@Component({
+  selector: 'app-household-plans',
+  standalone: true,
+  template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+class StubPlansComponent {
   readonly ledger = inject(HouseholdLedgerService);
 }
 
@@ -106,11 +118,11 @@ describe('HouseholdComponent', () => {
     })
       .overrideComponent(HouseholdComponent, {
         remove: {
-          imports: [HouseholdSetupComponent, HouseholdOverviewComponent],
+          imports: [HouseholdSetupComponent, HouseholdOverviewComponent, HouseholdPlansComponent],
           providers: [HouseholdLedgerService]
         },
         add: {
-          imports: [StubSetupComponent, StubOverviewComponent],
+          imports: [StubSetupComponent, StubOverviewComponent, StubPlansComponent],
           providers: [{ provide: HouseholdLedgerService, useValue: ledger }]
         }
       })
@@ -194,6 +206,10 @@ describe('HouseholdComponent', () => {
       const host = fixture.debugElement.query(debug => debug.name === 'app-household-overview');
       return host ? (host.componentInstance as StubOverviewComponent) : null;
     };
+    const plans = (): StubPlansComponent | null => {
+      const host = fixture.debugElement.query(debug => debug.name === 'app-household-plans');
+      return host ? (host.componentInstance as StubPlansComponent) : null;
+    };
 
     it('is the one the member view\'s overview reads', () => {
       household.set(HOUSEHOLD);
@@ -204,6 +220,18 @@ describe('HouseholdComponent', () => {
       expect(overview()?.ledger).toBe(ledger as unknown as HouseholdLedgerService);
     });
 
+    it('is the one the budgets and goals read, shown after the overview', () => {
+      household.set(HOUSEHOLD);
+      status.set('member');
+      render();
+
+      const sections = Array.from(element().querySelectorAll('.member-view > *')).map(node => node.tagName.toLowerCase());
+      expect(sections.indexOf('app-household-plans'))
+        .withContext('after the overview')
+        .toBe(sections.indexOf('app-household-overview') + 1);
+      expect(plans()?.ledger).toBe(ledger as unknown as HouseholdLedgerService);
+    });
+
     it('is given nobody outside the member view', () => {
       status.set('none');
       render();
@@ -211,6 +239,7 @@ describe('HouseholdComponent', () => {
       expect(ledger.setMembers).toHaveBeenCalled();
       expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([]);
       expect(overview()).toBeNull();
+      expect(plans()).toBeNull();
     });
 
     it('is given every member, and each change to them', () => {

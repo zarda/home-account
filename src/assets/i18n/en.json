@@ -1762,9 +1762,19 @@
       "offlineDescription": "This period's household figures haven't been loaded on this device. Connect to see them.",
       "unavailable": "{{name}}'s records can't be read. They may no longer be in the household.",
       "incomplete": "Some of {{name}}'s transactions couldn't be loaded, so their figures may be incomplete.",
-      "categoriesIncomplete": "Some of {{name}}'s categories couldn't be loaded, so some of their transactions may show an unknown category.",
+      "categoriesIncomplete": "Some of {{name}}'s categories couldn't be loaded, so some of their transactions and budgets may show an unknown category.",
       "notLoaded": "Not loaded on this device. Connect to see their figures.",
       "truncated": "{{name}} has more than {{cap}} transactions in this period. Only the newest {{cap}} are shown and counted."
+    },
+    "plans": {
+      "title": "Budgets and goals",
+      "loading": "Loading the household's budgets and goals…",
+      "empty": "No active budgets or goals.",
+      "notLoaded": "Not loaded on this device. Connect to see their budgets and goals.",
+      "readFailed": "Some budgets or goals here couldn't be loaded.",
+      "stale": "{{name}}'s spending for this period hasn't been updated yet, so it shows 0 here.",
+      "budgetsIncomplete": "Some of {{name}}'s budgets couldn't be loaded, so not all of them may be shown.",
+      "goalsIncomplete": "Some of {{name}}'s goals couldn't be loaded, so not all of them may be shown."
     },
     "errors": {
       "signedOut": "You're signed out. Sign in again to send invites.",

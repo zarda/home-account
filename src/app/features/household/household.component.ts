@@ -18,6 +18,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
+import { HouseholdPlansComponent } from './household-plans/household-plans.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
 
 /**
@@ -35,6 +36,7 @@ import { HouseholdSetupComponent } from './household-setup/household-setup.compo
   standalone: true,
   imports: [
     HouseholdOverviewComponent,
+    HouseholdPlansComponent,
     HouseholdSetupComponent,
     LoadingSpinnerComponent,
     MatButtonModule,

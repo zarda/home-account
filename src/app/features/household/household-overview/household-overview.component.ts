@@ -157,9 +157,11 @@ export class HouseholdOverviewComponent {
 
   /**
    * Only what this section shows is spoken for: an unread transactions
-   * listener leaves a member's figures partial, an unread categories one
-   * leaves some rows unlabelled, and unread budgets or goals belong to the
-   * section that shows those.
+   * listener leaves a member's figures partial, and unread budgets or goals
+   * belong to the section that shows those. An unread categories listener
+   * leaves some rows unlabelled here and some budget cards in the budgets
+   * and goals section; the page always shows the two together, so this one
+   * note speaks for both.
    */
   readonly notices = computed<MemberNotice[]>(() => {
     const notice = (kind: MemberNotice['kind']) => (member: HouseholdMemberIdentity): MemberNotice =>
