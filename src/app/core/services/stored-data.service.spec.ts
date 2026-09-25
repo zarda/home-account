@@ -49,6 +49,13 @@ describe('StoredDataService', () => {
         .toEqual([]);
     });
 
+    // Membership is shared state, not this account's records: the data hub
+    // has no row for it and the backup does not carry it.
+    it('excuses the household step as a membership, not a record', () => {
+      expect(NOT_A_RECORD_KIND['household'])
+        .toBe('A membership shared with other accounts, managed on the Household page.');
+    });
+
     it('does not both catalogue a step and excuse it', () => {
       const both = STORED_DATA_KINDS.filter(kind => kind.id in NOT_A_RECORD_KIND).map(k => k.id);
 

@@ -164,6 +164,7 @@ export const NOT_A_RECORD_KIND: Readonly<Record<string, string>> = {
   shareStash: 'Device-local: files shared into the app await import on this device.',
   reminders: 'Device-local: the log of what this device has already raised.',
   weeklyRecap: 'Device-local: the recap week this device has already shown.',
+  household: 'A membership shared with other accounts, managed on the Household page.',
   userDoc: 'The profile document itself, managed from Settings.',
   authUser: 'The Firebase Auth user, not a collection of records.'
 };

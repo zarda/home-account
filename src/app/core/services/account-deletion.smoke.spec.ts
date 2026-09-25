@@ -2,6 +2,7 @@
 // packages). @angular/fire bundles its own pinned Firebase major, so instances
 // built from the root packages are incompatible with the service layer.
 import { TestBed } from '@angular/core/testing';
+import { createEnvironmentInjector, EnvironmentInjector, Provider } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
@@ -9,13 +10,16 @@ import {
   getAuth,
   connectAuthEmulator,
   signInAnonymously,
+  signOut,
   deleteUser,
   Auth
 } from '@angular/fire/auth';
 import {
   getFirestore,
   connectFirestoreEmulator,
+  collection,
   doc,
+  getDocsFromServer,
   setDoc,
   Firestore,
   Timestamp
@@ -26,10 +30,25 @@ import { openDB } from 'idb';
 import { AccountDeletionService } from './account-deletion.service';
 import { AuthService } from './auth.service';
 import { FirestoreService } from './firestore.service';
+import { HouseholdService } from './household.service';
+import { HOUSEHOLD_INVITE_CALLABLE } from './household-invite-callable';
+import { PwaService } from './pwa.service';
 import { StorageService } from './storage.service';
+import { TransactionService } from './transaction.service';
+import { TranslationService } from './translation.service';
+import { createTranslationStub } from './testing/translation-stub';
+import { User } from '../../models';
 import { SHARE_STASH_DB, SHARE_STASH_STORE, ShareStashStore } from './share-stash.store';
 import { reminderSentStorageKey } from './reminder.service';
 import { weeklyRecapStorageKeys } from '../utils/weekly-recap.utils';
+import {
+  EmulatorField,
+  getDocumentAsOwner,
+  patchFieldsAsOwner,
+  setDocumentAsOwner,
+  stringField,
+  timestampField
+} from './testing/emulator-admin';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -43,13 +62,33 @@ silenceFirebaseWarnings();
  * firestore.rules), that the receipt object leaves Storage, and that the
  * auth user itself is gone at the end.
  *
+ * The household cases prove the order the rules impose: a profile whose
+ * pointer names a live membership cannot be deleted, so the cascade leaves
+ * or dissolves first, and when that step fails before its leave or dissolve
+ * commits, the profile and the auth user both stay for the retry. An invite
+ * that arrives while the records are erased is swept before the auth user
+ * goes. Every household write goes through the real
+ * HouseholdService on both sides. The other account gets a service stack of
+ * its own through a child EnvironmentInjector (the
+ * transaction-receipts.smoke.spec.ts pattern) over a second app. Two full
+ * clients is the most one file holds: each keeps a listen stream open,
+ * Chrome allows six connections per host, and the admin REST reads and
+ * writes need the rest. Invites are written past the rules, as the invite
+ * callable writes them.
+ *
+ * Every case signs in an account of its own, since each ends with that
+ * account erased or holding a household.
+ *
  * The AuthService stub keeps the heavyweight real service out of the DI
  * graph: reauthentication is stubbed as a no-op because the anonymous user
  * signs in freshly here (recent login by construction) and anonymous
  * accounts cannot re-run a Google flow. deleteFirebaseUser only records its
- * call: the rules make every read owner-only, so the emptied collections are
- * only assertable while the session still exists. The real deleteUser runs
- * directly afterwards, once nothing readable is left to check.
+ * call: the profile and most kinds are readable by their owner alone, and
+ * the four a household shares are readable by a peer only while the pointer
+ * names a live membership, which the cascade ends first. So the emptied
+ * collections are only assertable while the session still exists. The real
+ * deleteUser runs directly afterwards, once nothing readable is left to
+ * check.
  *
  * Runs only under the emulators:
  *   npm run test:smoke
@@ -62,17 +101,25 @@ describe('AccountDeletionService (emulator smoke test)', () => {
   const STORAGE_HOST = '127.0.0.1';
   const STORAGE_PORT = 9199;
 
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
   let app: FirebaseApp;
   let auth: Auth;
   let firestore: Firestore;
   let storage: Storage;
   let uid: string;
 
+  /** The account on the other side of each household case. */
+  let other: { app: FirebaseApp; firestore: Firestore; uid: string; user: User };
+  let otherInjector: EnvironmentInjector;
+  let otherHousehold: HouseholdService;
+
   let service: AccountDeletionService;
   let firestoreService: FirestoreService;
   let storageService: StorageService;
 
   const RECEIPT_TX_ID = 'smoke-del-rx';
+  const SHARED_TX_ID = 'smoke-del-shared';
 
   beforeAll(async () => {
     app = initializeApp(
@@ -89,41 +136,79 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     storage = getStorage(app);
     connectStorageEmulator(storage, STORAGE_HOST, STORAGE_PORT);
 
-    const credential = await signInAnonymously(auth);
-    uid = credential.user.uid;
-  });
+    const otherApp = initializeApp(
+      { apiKey: 'fake-api-key', projectId: 'demo-home-account' },
+      `account-deletion-smoke-other-${Date.now()}`
+    );
+    const otherAuth = getAuth(otherApp);
+    connectAuthEmulator(otherAuth, AUTH_URL, { disableWarnings: true });
+    const otherFirestore = getFirestore(otherApp);
+    connectFirestoreEmulator(otherFirestore, FIRESTORE_HOST, FIRESTORE_PORT);
+    const otherUid = (await signInAnonymously(otherAuth)).user.uid;
+    const otherProfile = {
+      email: 'other@example.test',
+      displayName: 'Other',
+      createdAt: Timestamp.now(),
+      lastLoginAt: Timestamp.now(),
+      preferences: { baseCurrency: 'USD', language: 'en' }
+    };
+    other = {
+      app: otherApp,
+      firestore: otherFirestore,
+      uid: otherUid,
+      user: { id: otherUid, ...otherProfile } as User
+    };
+    await setDoc(doc(otherFirestore, `users/${otherUid}`), otherProfile);
+  }, 30000);
 
   afterAll(async () => {
-    await deleteApp(app).catch(() => undefined);
+    for (const each of [app, other?.app]) {
+      if (each) await deleteApp(each).catch(() => undefined);
+    }
   });
 
-  /** One valid document per subcollection, shaped to pass firestore.rules. */
-  async function seedEverything(): Promise<void> {
-    const now = Timestamp.now();
+  /** The other account's services, identical to the TestBed's but for its app and uid. */
+  function otherStack(): Provider[] {
+    return [
+      HouseholdService,
+      FirestoreService,
+      { provide: Firestore, useValue: other.firestore },
+      { provide: AuthService, useValue: { userId: () => other.uid, currentUser: () => other.user } },
+      { provide: PwaService, useValue: { isOnline: () => true } },
+      { provide: TranslationService, useValue: createTranslationStub() },
+      {
+        provide: HOUSEHOLD_INVITE_CALLABLE,
+        useValue: () => Promise.reject(new Error('the functions emulator is not part of the smoke run'))
+      }
+    ];
+  }
 
-    await setDoc(doc(firestore, `users/${uid}`), {
+  beforeEach(async () => {
+    await signOut(auth);
+    uid = (await signInAnonymously(auth)).user.uid;
+    // The rules clear a pointer only once its membership is gone, and an
+    // earlier case may have left the other account's household live.
+    await patchFieldsAsOwner(`users/${other.uid}`, { householdId: null });
+  });
+
+  function seedProfile(): Promise<void> {
+    const now = Timestamp.now();
+    return setDoc(doc(firestore, `users/${uid}`), {
       email: 'smoke@example.test',
       displayName: 'Smoke',
       createdAt: now,
       lastLoginAt: now,
       preferences: { baseCurrency: 'USD', language: 'en' }
     });
+  }
 
-    await setDoc(doc(firestore, `users/${uid}/transactions/${RECEIPT_TX_ID}`), {
-      userId: uid,
-      type: 'expense',
-      amount: 12.5,
-      currency: 'USD',
-      amountInBaseCurrency: 12.5,
-      exchangeRate: 1,
-      categoryId: 'food_groceries',
-      description: 'deletion smoke',
-      date: now,
-      createdAt: now,
-      updatedAt: now,
-      isRecurring: false,
-      receiptUrl: await uploadReceipt()
-    });
+  /** One valid document per subcollection, shaped to pass firestore.rules. */
+  async function seedEverything(): Promise<void> {
+    const now = Timestamp.now();
+
+    await seedProfile();
+
+    await seedTransaction(RECEIPT_TX_ID, 12.5, 'deletion smoke', { receiptUrl: await uploadReceipt() });
 
     await setDoc(doc(firestore, `users/${uid}/categories/smoke-del-cat`), {
       userId: uid,
@@ -268,6 +353,86 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     return storageService.uploadReceipt(uid, RECEIPT_TX_ID, file);
   }
 
+  /**
+   * A transaction shaped to pass firestore.rules. With no arguments it has no
+   * receipt: the kind of row a household peer reads.
+   */
+  function seedTransaction(
+    id = SHARED_TX_ID,
+    amount = 8,
+    description = 'household deletion smoke',
+    extra: Record<string, unknown> = {}
+  ): Promise<void> {
+    const now = Timestamp.now();
+    return setDoc(doc(firestore, `users/${uid}/transactions/${id}`), {
+      userId: uid,
+      type: 'expense',
+      amount,
+      currency: 'USD',
+      amountInBaseCurrency: amount,
+      exchangeRate: 1,
+      categoryId: 'food_groceries',
+      description,
+      date: now,
+      createdAt: now,
+      updatedAt: now,
+      isRecurring: false,
+      ...extra
+    });
+  }
+
+  /**
+   * A household's generation as stored, as the REST string read back: a
+   * value rebuilt from a Date would lose the microseconds the join rule
+   * compares.
+   */
+  async function storedGeneration(householdId: string): Promise<EmulatorField> {
+    const createdAt = (await getDocumentAsOwner(`households/${householdId}`))?.['createdAt']?.['timestampValue'];
+    if (typeof createdAt !== 'string') throw new Error(`households/${householdId} has no stored createdAt`);
+    return { timestampValue: createdAt };
+  }
+
+  /** An invite as the callable writes it, past the rules that refuse every client create. */
+  async function seedInvite(
+    householdId: string,
+    generation: EmulatorField,
+    inviterUid: string,
+    inviteeUid: string
+  ): Promise<string> {
+    const inviteId = `${householdId}_${inviteeUid}`;
+    await setDocumentAsOwner(`householdInvites/${inviteId}`, {
+      householdId: stringField(householdId),
+      householdCreatedAt: generation,
+      householdName: stringField('Home'),
+      inviterUid: stringField(inviterUid),
+      inviterName: stringField('Inviter'),
+      inviterEmail: stringField('inviter@example.test'),
+      inviteeUid: stringField(inviteeUid),
+      inviteeEmail: stringField(`${inviteeUid}@example.test`),
+      locale: stringField('en'),
+      createdAt: timestampField(),
+      expiresAt: timestampField(new Date(Date.now() + 7 * DAY_MS)),
+      mail: stringField('sent')
+    });
+    return inviteId;
+  }
+
+  /** The other account's read of this account's rows, which the rules decide by membership. */
+  const otherReadsRows = () => getDocsFromServer(collection(other.firestore, `users/${uid}/transactions`));
+
+  /**
+   * Runs `look` when the cascade reaches its first record step: after the
+   * household step, and before anything is erased.
+   */
+  function onFirstRecordStep(look: () => Promise<void>): void {
+    const transactions = TestBed.inject(TransactionService);
+    const erase = transactions.deleteAllTransactions.bind(transactions);
+    spyOn(transactions, 'deleteAllTransactions').and.callFake(async () => {
+      await look();
+      return erase();
+    });
+  }
+
   let deleteFirebaseUserCalls = 0;
 
   beforeEach(() => {
@@ -297,6 +462,12 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     service = TestBed.inject(AccountDeletionService);
     firestoreService = TestBed.inject(FirestoreService);
     storageService = TestBed.inject(StorageService);
+    otherInjector = createEnvironmentInjector(otherStack(), TestBed.inject(EnvironmentInjector));
+    otherHousehold = otherInjector.get(HouseholdService);
+  });
+
+  afterEach(() => {
+    otherInjector.destroy();
   });
 
   it('erases every subcollection, the receipt, the user document, and the auth user', async () => {
@@ -386,5 +557,106 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     expect(user).not.toBeNull();
     await deleteUser(user!);
     expect(auth.currentUser).toBeNull();
+  }, 60000);
+
+  it('leaves a member\'s household first, with the invites addressed to it, which ends the owner\'s reads', async () => {
+    await seedProfile();
+    await seedTransaction();
+    const householdId = await otherHousehold.create('Theirs');
+    await seedInvite(householdId, await storedGeneration(householdId), other.uid, uid);
+    // Still pending after the join, which deletes only the invite it
+    // accepts. It arrived before the join: the callable refuses to invite a
+    // live member of another household.
+    const pending = await seedInvite(`elsewhere${Date.now()}`, timestampField(), 'someone-else', uid);
+    await TestBed.inject(HouseholdService).accept(householdId);
+    expect((await otherReadsRows()).size).toBe(1);
+
+    // Looked at while the profile and the row are both still there, so a
+    // refused read is the leave's doing and not the erasure's.
+    let afterLeaving: { read: string; profile: unknown; row: unknown } | undefined;
+    onFirstRecordStep(async () => {
+      afterLeaving = {
+        read: await otherReadsRows().then(() => 'allowed', (error: { code?: string }) => String(error.code)),
+        profile: await getDocumentAsOwner(`users/${uid}`),
+        row: await getDocumentAsOwner(`users/${uid}/transactions/${SHARED_TX_ID}`)
+      };
+    });
+
+    const report = await service.deleteAccount();
+
+    expect(report.failed).toEqual([]);
+    expect(report.ok).toBeTrue();
+    expect(deleteFirebaseUserCalls).toBe(1);
+    expect(afterLeaving?.read).toBe('permission-denied');
+    expect(afterLeaving?.profile).not.toBeNull();
+    expect(afterLeaving?.row).not.toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`householdInvites/${pending}`)).toBeNull();
+    expect(await getDocumentAsOwner(`users/${uid}`)).toBeNull();
+    // The household is the owner's, and outlives a member leaving it.
+    expect(await getDocumentAsOwner(`households/${householdId}`)).not.toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${other.uid}`)).not.toBeNull();
+  }, 60000);
+
+  it('sweeps an invite that arrives while the records are erased', async () => {
+    await seedProfile();
+    // The callable admits an invite to an account with no live membership
+    // for as long as its auth user exists, which is to the cascade's end.
+    let late: string | undefined;
+    onFirstRecordStep(async () => {
+      late = await seedInvite(`late${Date.now()}`, timestampField(), 'someone-else', uid);
+    });
+
+    const report = await service.deleteAccount();
+
+    expect(report.failed).toEqual([]);
+    expect(deleteFirebaseUserCalls).toBe(1);
+    expect(late).toBeDefined();
+    expect(await getDocumentAsOwner(`householdInvites/${late}`)).toBeNull();
+  }, 60000);
+
+  it('dissolves an owner\'s household first, with every member and every invite it sent', async () => {
+    await seedProfile();
+    const householdId = await TestBed.inject(HouseholdService).create('Home');
+    const generation = await storedGeneration(householdId);
+    await seedInvite(householdId, generation, uid, other.uid);
+    await otherHousehold.accept(householdId);
+    const sent = await seedInvite(householdId, generation, uid, `ghost-${Date.now()}`);
+
+    const report = await service.deleteAccount();
+
+    expect(report.failed).toEqual([]);
+    expect(report.ok).toBeTrue();
+    expect(deleteFirebaseUserCalls).toBe(1);
+    expect(await getDocumentAsOwner(`households/${householdId}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${other.uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`householdInvites/${sent}`)).toBeNull();
+    expect(await getDocumentAsOwner(`users/${uid}`)).toBeNull();
+  }, 60000);
+
+  it('keeps the profile, its pointer and the auth user for a retry when the household step fails', async () => {
+    await seedProfile();
+    const household = TestBed.inject(HouseholdService);
+    const householdId = await household.create('Home');
+    const deleteAll = spyOn(household, 'deleteAll').and.rejectWith(new Error('the household step failed'));
+
+    const report = await service.deleteAccount();
+
+    expect(report.ok).toBeFalse();
+    expect(report.failed.map(f => f.step)).toEqual(['household', 'userDoc']);
+    // The rules' refusal, not a fault of the step itself.
+    expect((report.failed[1].error as { code?: string }).code).toBe('permission-denied');
+    expect(deleteFirebaseUserCalls).toBe(0);
+    expect((await getDocumentAsOwner(`users/${uid}`))?.['householdId']).toEqual(stringField(householdId));
+    expect(await getDocumentAsOwner(`households/${householdId}`)).not.toBeNull();
+
+    deleteAll.and.callThrough();
+    const retry = await service.deleteAccount();
+
+    expect(retry.failed).toEqual([]);
+    expect(deleteFirebaseUserCalls).toBe(1);
+    expect(await getDocumentAsOwner(`households/${householdId}`)).toBeNull();
+    expect(await getDocumentAsOwner(`users/${uid}`)).toBeNull();
   }, 60000);
 });
