@@ -79,6 +79,18 @@
   font-weight: 600;
 }
 
+/* Sized here rather than by a utility class: a Material icon ships its own
+   line-height, and a font-size set without one drops the glyph off its row. */
+.seal-icon {
+  vertical-align: text-bottom;
+  margin-inline-start: 4px;
+  font-size: var(--text-base);
+  width: var(--text-base);
+  height: var(--text-base);
+  line-height: var(--text-base);
+  color: var(--text-muted);
+}
+
 /* Step Content */
 .step-content {
   padding: 8px 0 24px;

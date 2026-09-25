@@ -63,10 +63,11 @@ export class CountryBreakdownComponent {
     return this._currency();
   }
 
-  // `convert` rather than the stored `amountInBase` snapshot, matching the
-  // Categories tab this card sits in.
+  // Reads the write-time snapshot (CurrencyService.amountInBase,
+  // docs/money-snapshots.md) rather than converting at today's rate, so this
+  // card and the exported report of the same period total the same way.
   private toBaseCurrency = (t: Transaction): number =>
-    this.currencyService.convert(t.amount, t.currency, this._currency());
+    this.currencyService.amountInBase(t, this._currency());
 
   private breakdown = computed(() =>
     groupExpensesByCountry(this._transactions(), this.toBaseCurrency));

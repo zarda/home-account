@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { locationSlotFrom } from '../utils/import-dto.utils';
+import { locationSlotFrom, readTransactionSnapshot } from '../utils/import-dto.utils';
 import { Timestamp } from '@angular/fire/firestore';
 
 import {
@@ -267,6 +267,7 @@ export class BackupRestoreService {
 
     for (const transaction of data.transactions) {
       try {
+        const snapshot = readTransactionSnapshot(transaction);
         const dto: CreateTransactionDTO = {
           type: transaction.type,
           amount: transaction.amount,
@@ -302,17 +303,7 @@ export class BackupRestoreService {
           // budgets section, below.
           skipBudgetRecalc: true,
           createdAt: toTimestamp(transaction.createdAt),
-          ...(typeof transaction.exchangeRate === 'number'
-            && typeof transaction.amountInBaseCurrency === 'number'
-            && transaction.baseCurrency
-            ? {
-              snapshot: {
-                exchangeRate: transaction.exchangeRate,
-                baseCurrency: transaction.baseCurrency,
-                amountInBaseCurrency: transaction.amountInBaseCurrency,
-              },
-            }
-            : {}),
+          ...(snapshot ? { snapshot } : {}),
           // A goal link restores verbatim, counters untouched: its goal may
           // not exist yet (goals restore after transactions), and the
           // recompute pass below settles every counter from the ledger.

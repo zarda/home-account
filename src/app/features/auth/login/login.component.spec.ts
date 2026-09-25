@@ -170,6 +170,9 @@ describe('LoginComponent', () => {
 
       const button = fixture.nativeElement.querySelector('button[mat-raised-button]');
       expect(button.disabled).toBe(true);
+      // The visible "Loading..." label beside it already announces the
+      // state, so the spinner itself stays out of the accessibility tree.
+      expect(button.querySelector('mat-spinner').getAttribute('aria-hidden')).toBe('true');
 
       tick(100);
       fixture.detectChanges();

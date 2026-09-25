@@ -111,7 +111,8 @@
       <button mat-flat-button color="primary" type="submit"
               [disabled]="form.invalid || isSubmitting()">
         @if (isSubmitting()) {
-          <mat-spinner diameter="20" class="inline-block me-2"></mat-spinner>
+          <!-- The button's label text below is set unconditionally. -->
+          <mat-spinner diameter="20" class="inline-block me-2" aria-hidden="true"></mat-spinner>
         }
         {{ data.mode === 'add' ? ('budget.createBudget' | translate) : ('transactions.saveChanges' | translate) }}
       </button>

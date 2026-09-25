@@ -135,6 +135,14 @@ describe('AiSearchDialogComponent', () => {
     expect(nlSearch.search).not.toHaveBeenCalled();
   });
 
+  it('hides the interpreting spinner behind the role=status text beside it', () => {
+    component.isLoading.set(true);
+    fixture.detectChanges();
+
+    const spinner = fixture.nativeElement.querySelector('.loading mat-spinner');
+    expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+  });
+
   describe('filter results', () => {
     it('shows the interpreted filters as chips', async () => {
       await searchWith({

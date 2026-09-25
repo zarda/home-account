@@ -264,9 +264,34 @@ describe('BudgetProgressComponent', () => {
       ).toBe(true);
     });
 
+    it("wears the token class instead of the gray-400/gray-500 utility pair", () => {
+      const period = fixture.nativeElement.querySelector('.budget-period') as HTMLElement;
+      expect(period.classList.contains('budget-period')).toBe(true);
+      // --text-muted resolves differently per theme (and per a11y class) on
+      // document.documentElement, which this spec doesn't control — proving
+      // .budget-period wears the token means resolving the token itself
+      // here, not asserting whichever theme happened to be active when the
+      // suite reached this test.
+      const tokenValue = getComputedStyle(document.documentElement)
+        .getPropertyValue('--text-muted')
+        .trim();
+      const probe = document.createElement('span');
+      probe.style.color = tokenValue;
+      document.body.appendChild(probe);
+      const expectedColor = getComputedStyle(probe).color;
+      probe.remove();
+
+      expect(getComputedStyle(period).color).toBe(expectedColor);
+    });
+
     it('should display progress bar', () => {
       const progressBar = fixture.nativeElement.querySelector('mat-progress-bar');
       expect(progressBar).toBeTruthy();
+    });
+
+    it("names the progress bar with the budget's own name and percentage", () => {
+      const progressBar = fixture.nativeElement.querySelector('mat-progress-bar');
+      expect(progressBar.getAttribute('aria-label')).toBe('budgets.progressLabel');
     });
 
     it('should render multiple budgets', () => {

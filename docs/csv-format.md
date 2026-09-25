@@ -6,9 +6,11 @@ including a category with a comma in it, a note with a line break, and a
 description that starts with `=`.
 
 Why the file is treated as a contract rather than a rendering, and what was
-rejected on the way, is in [ADR 0011](ADR/0011-the-csv-file-is-a-contract.md).
-This document is the part you need when exporting, re-importing, or adding a
-column.
+rejected on the way, is in [ADR 0011](ADR/0011-the-csv-file-is-a-contract.md);
+how the importer came to read the Category column back, and the tags cell to
+survive a tag containing its own separator, is in
+[ADR 0150](ADR/0150-the-csv-reads-back-what-it-writes.md). This document is
+the part you need when exporting, re-importing, or adding a column.
 
 ## The two formats
 
@@ -33,9 +35,9 @@ Note, Tags, Location, Period, Recurring
 |---|---|
 | `Date` | `yyyy-MM-dd`, the **local** calendar day the app displays — not the UTC rendering of the same instant |
 | `Type` | `income` or `expense` |
-| `Category` | the translated category name, in the locale that exported |
+| `Category` | the category's own translated name — never *Parent / Child* — in the locale that exported; `Unknown` for a row whose category id the catalogue does not hold |
 | `Amount` / `Amount (Base)` | plain decimals, never guarded, so `SUM()` works on the column |
-| `Tags` | joined with `; ` in one cell |
+| `Tags` | joined with `; ` in one cell — or, when a tag contains `; ` or the join would start with `[`, a JSON array of strings (`["a; b","c"]`) |
 | `Location` | the place name only; coordinates and the country stay in the JSON backup |
 | `Period` | `weekly`, `monthly`, `yearly`, or empty |
 | `Recurring` | `true`, or empty |
@@ -47,14 +49,19 @@ Note, Tags, Location, Period, Recurring
 | date, type, amount, currency | yes | yes | yes |
 | description, note, tags, location name | yes | — | yes |
 | budget period, recurring flag | yes | — | yes |
-| **category** | written, **not read back** | written, not read back | yes |
+| **category** | by name — see below | by name | yes, by id |
 | location coordinates, country, ids | — | — | yes |
 | **receipt images** | — | — | see below |
 
-**Category is written but never re-imported.** The importer has no `category`
-probe, so every row from a CSV lands in the catch-all category and has to be
-recategorised by hand. The column is there for reading the file, not for
-restoring from it. This is the sharpest reason not to treat a CSV as a backup.
+**Category comes back by name, and only an exact one.** The importer matches
+the cell against the account's active categories of the row's own type —
+stored names, custom names, and every shipped locale's rendering, since the
+file does not say which locale wrote it — and takes a match only when exactly
+one entry answers. A name that matches nothing, or that two entries of one type
+share, is not guessed at: the row takes its type's catch-all, `other_income`
+or `other_expense`. That is the sharpest reason a CSV is still not a backup —
+a category the account has since deleted, or two custom categories that share
+a name, cannot come back through it, where the JSON backup carries the id.
 
 **Summary is lossy on purpose.** It drops description, note, tags and location,
 so carrying a period would not make it round-trip — it would only cost it the
@@ -103,8 +110,7 @@ snapshot where it has one, so the summary agrees with the figures on screen for
 the same period rather than re-converting history at today's rates.
 
 **It does not import.** Nothing about it round-trips: the totals are not
-transactions, and the importer has no `category` probe in any case. Export
-detailed if you intend to import again.
+transactions. Export detailed if you intend to import again.
 
 ### `summary` and `summary-csv` are different things
 
@@ -154,11 +160,16 @@ Rows are written `\n`-terminated. The importer accepts `\n`, `\r\n` and a lone
 **Settings → Import CSV** accepts a bank or another app's export. It is one of
 two doors: the AI import wizard also accepts a CSV, and its rows climb the same
 categorization ladder as image imports (#258) — a merchant the user already
-corrected is answered from category memory, the rest go to the configured
+corrected is answered from category memory when the remembered category is on
+the row's own side of the ledger, the rest go to the configured
 provider in grounded batch calls, and whatever no one can answer keeps a
 low-confidence floor the review step flags. Settings → Import CSV stays
-model-free. Either way, columns are matched by name, case-insensitively, on a
-substring:
+model-free. A Category column is read first on both doors: a row whose cell
+names a category exactly keeps it — on the wizard at full grade, without a
+model call — and only the rest are categorised, by the ladder on the wizard and
+as the type's catch-all on Settings → Import CSV, whose preview says how many
+rows that will be. Either way, columns are matched by name,
+case-insensitively, on a substring:
 
 | Column | Header names accepted |
 |---|---|
@@ -171,7 +182,8 @@ substring:
 | period | `period` |
 | recurring | `recurring` |
 | note | `note` |
-| tags | `tags` — the cell splits on `; `, the export's own join, and each tag is normalized the way the form normalizes a typed one |
+| category | `category` — matched exactly by name over the row's own type, as above |
+| tags | `tags` — a cell that starts with `[` and parses as a JSON array of strings is read as that array; any other cell splits on `; `, the export's own join, which is what a file written before the JSON form still imports through. Each tag is normalized the way the form normalizes a typed one |
 | location | `location` — the cell becomes the place name; coordinates are never invented |
 
 Amount is the only truly required value: a row too short to reach the date,
@@ -192,6 +204,11 @@ column, `debit` and `credit` are used instead.
   and on the data hub's alike: `179.33 JPY` imports as `179`, because the yen
   has no minor unit to keep the fraction in
   ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)).
+- A **category** cell that names no active category of the row's type
+  exactly, or names two, is not guessed at: the row takes its type's
+  catch-all. Settings → Import CSV counts those rows on its preview —
+  *N rows' categories could not be matched and will use the default
+  category* — and a file with no Category column counts none.
 - A **period** outside `weekly`/`monthly`/`yearly` is dropped. This matters
   because the match is a substring: a statement carrying a `Statement Period`
   column lands on the period probe with a value like `2024-01 to 2024-02`, and
@@ -209,18 +226,14 @@ column, `debit` and `credit` are used instead.
 
 ## Known gaps
 
-- **A tag containing the literal `; ` cannot round-trip.** The export joins
-  tags with `; `, and on the way back a separator inside a tag is
-  indistinguishable from a boundary. The escaper is not the problem — commas,
-  quotes and newlines inside a tag survive — the join is.
 - **A spreadsheet may show the guard.** The apostrophe reliably stops evaluation
   everywhere, but whether it is displayed varies by application and version. The
   importer strips it back off; a file edited and re-saved by a spreadsheet that
   displays it will keep it as literal text.
-- **The Category column is not imported at all**, from this app's exports or
-  anyone else's. There is no `category` probe, so nothing a file says about
-  categories survives the trip. Exported names are translated into whichever
-  locale exported, which is part of why matching on them was never attempted.
-  On the wizard path the suggestion now comes from the categorization ladder
-  rather than the file (#258); Settings → Import CSV still files every row
-  under the catch-all.
+- **A category is matched by name, not by id.** A category deleted since the
+  export, or two custom categories of one type sharing a name, take the
+  catch-all; the preview says how many rows, not which.
+- **An older file's Tags cell can be misread as JSON.** A cell written before
+  the JSON form existed that happens to parse as an array of strings — the
+  single tag `["x","y"]`, or the two tags `["a` and `b"]` joined as
+  `["a; b"]` — is read as that array.

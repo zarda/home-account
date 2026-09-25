@@ -2,11 +2,13 @@ import {
   blankImportRow,
   datedToday,
   imageSources,
+  importFailureKey,
   joinSentences,
   mergeImportRows,
   mergeableRow,
   needsDateAnswer,
   parseAmountInput,
+  rowCarriesReviewerWork,
   rowIsUnfilled,
   sameSplit,
   splitImportRow,
@@ -200,6 +202,52 @@ describe('import-review.utils', () => {
       const row = blankImportRow('manual_1', previous, 'USD');
 
       expect(row.date).not.toBe(previous.date);
+    });
+  });
+
+  describe('importFailureKey', () => {
+    it('maps the amount guard\'s own sentinel to the amount reason', () => {
+      expect(importFailureKey({ message: 'INVALID_TRANSACTION_AMOUNT' })).toBe('import.rowFailedAmount');
+    });
+
+    it('maps a Firestore permission denial to the connection reason by its code, not its prose', () => {
+      // The message is what a FirestoreError actually carries — text meant
+      // for a console, never the code as a substring — so a classifier that
+      // read only the message could never place this one.
+      expect(importFailureKey({
+        code: 'permission-denied',
+        message: 'Missing or insufficient permissions.',
+      })).toBe('import.rowFailedConnection');
+    });
+
+    it('maps the other Firestore codes a dropped connection surfaces as', () => {
+      expect(importFailureKey({ code: 'unavailable', message: 'The service is currently unavailable.' }))
+        .toBe('import.rowFailedConnection');
+      expect(importFailureKey({ code: 'deadline-exceeded', message: 'Deadline exceeded.' }))
+        .toBe('import.rowFailedConnection');
+      expect(importFailureKey({ code: 'resource-exhausted', message: 'Quota exceeded.' }))
+        .toBe('import.rowFailedConnection');
+    });
+
+    it('does not fall back to the message ladder once a code is present', () => {
+      // A code that is not one of the connection codes is a real answer —
+      // "this failed for a reason unrelated to the connection" — not a
+      // missing one, so it must not fall through to a substring guess.
+      expect(importFailureKey({ code: 'not-found', message: 'permission-denied unavailable network' }))
+        .toBe('import.rowFailedUnknown');
+    });
+
+    it('falls back to the message ladder for an error with no code at all', () => {
+      // A dropped fetch (a plain TypeError) carries no Firestore code — the
+      // ladder is what parseAIError already reads a provider's own failure
+      // by, kept here for exactly this shape.
+      expect(importFailureKey({ message: 'network error' })).toBe('import.rowFailedConnection');
+      expect(importFailureKey({ message: 'UNAVAILABLE' })).toBe('import.rowFailedConnection');
+    });
+
+    it('falls back to unknown for anything neither reading places', () => {
+      expect(importFailureKey({ message: 'refused' })).toBe('import.rowFailedUnknown');
+      expect(importFailureKey({ message: '' })).toBe('import.rowFailedUnknown');
     });
   });
 
@@ -520,13 +568,21 @@ describe('import-review.utils', () => {
       expect(kept.splitFrom).toBeUndefined();
     });
 
-    it('copies imageMetadata onto the part rather than sharing the original\'s object', () => {
+    it('a split part does not inherit the merged mark', () => {
       const meta: ImagePositionMetadata = {
         imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1,
+        wasMerged: true, mergedFromImages: [0, 1],
       };
-      const [, part] = splitImportRow(row({ imageMetadata: meta }), 1.2, 'split_1')!;
-      expect(part.imageMetadata).toEqual(meta);
+      const [kept, part] = splitImportRow(row({ imageMetadata: meta }), 1.2, 'split_1')!;
+
       expect(part.imageMetadata).not.toBe(meta);
+      expect(part.imageMetadata?.wasMerged).toBeFalse();
+      expect(kept.imageMetadata?.wasMerged).toBeTrue();
+      // Consolidation hardcodes imageIndex to 0 on a merged row, so
+      // mergedFromImages is the only honest source list for it — a part
+      // stripped of the field would fall back to imageSources' own
+      // [meta.imageIndex] and attach the wrong photo.
+      expect(imageSources(part.imageMetadata!)).toEqual([0, 1]);
     });
 
     it('drops notes, duplicateOf, recurringId, isRecurring and recurringMatch from the part entirely', () => {
@@ -911,6 +967,95 @@ describe('import-review.utils', () => {
       mergeImportRows(t, s);
       expect(t).toEqual(tSnapshot);
       expect(s).toEqual(sSnapshot);
+    });
+  });
+
+  describe('rowCarriesReviewerWork', () => {
+    // A scanned row wearing every mark a reader leaves on one, so a false
+    // below cannot come from a row too bare to hold anything.
+    const scanned = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      fieldConfidence: { amount: 0.4, date: 0.9 },
+      currencyFellBack: true,
+      dateAssumed: true,
+      receiptCountry: 'JP',
+      notes: 'おにぎり',
+      tags: ['lunch'],
+      imageMetadata: {
+        imageIndex: 0,
+        imageId: 'image_0',
+        positionInImage: 'top',
+        confidenceScore: 0.9,
+        receiptId: 1,
+        wasMerged: true,
+        mergedFromImages: [0, 1],
+      },
+      ...overrides,
+    });
+
+    it('is false for a bare scanned row', () => {
+      expect(rowCarriesReviewerWork(scanned())).toBeFalse();
+    });
+
+    it('is true for a row edited on the card', () => {
+      expect(rowCarriesReviewerWork(scanned({ editedOnCard: true }))).toBeTrue();
+    });
+
+    it('is true for a part split off another row', () => {
+      expect(rowCarriesReviewerWork(scanned({ splitFrom: 'r0' }))).toBeTrue();
+    });
+
+    it('is true for a row that absorbed another receipt in a merge', () => {
+      const meta = scanned().imageMetadata!;
+      expect(rowCarriesReviewerWork(scanned({ imageMetadata: { ...meta, mergedReceiptIds: [2] } }))).toBeTrue();
+      expect(rowCarriesReviewerWork(scanned({ imageMetadata: { ...meta, mergedReceiptIds: [] } })))
+        .withContext('an emptied list absorbed nothing')
+        .toBeFalse();
+    });
+
+    it('reads the mark mergeImportRows itself leaves on the survivor', () => {
+      const photo = (receiptId: number): ImagePositionMetadata => ({
+        imageIndex: receiptId - 1,
+        imageId: `image_${receiptId - 1}`,
+        positionInImage: 'top',
+        confidenceScore: 0.9,
+        receiptId,
+      });
+      const merged = mergeImportRows(
+        scanned({ id: 'target', imageMetadata: photo(1) }),
+        scanned({ id: 'source', imageMetadata: photo(2) })
+      )!;
+      expect(rowCarriesReviewerWork(merged)).toBeTrue();
+    });
+
+    it('is false for a row whose only change is an answer that costs nothing to give again', () => {
+      // The row each of these handlers leaves: deselected, selected again, a
+      // duplicate overruled, a currency offer dismissed, a recurring link
+      // taken and let go. None of them is content the reviewer typed.
+      expect(rowCarriesReviewerWork(scanned({ selected: false }))).withContext('deselected').toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ selected: true }))).withContext('re-selected').toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ isDuplicate: false, duplicateOf: undefined, selected: true })))
+        .withContext('cleared as not a duplicate')
+        .toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ currencySuggestion: undefined })))
+        .withContext('currency suggestion dismissed')
+        .toBeFalse();
+      const match = { id: 'rule-1', name: 'Rent', sourceIsRecurring: false };
+      expect(rowCarriesReviewerWork(scanned({ recurringMatch: match, recurringId: 'rule-1', isRecurring: true })))
+        .withContext('recurring link taken')
+        .toBeFalse();
+      expect(rowCarriesReviewerWork(scanned({ recurringMatch: match, recurringId: undefined, isRecurring: false })))
+        .withContext('recurring link let go')
+        .toBeFalse();
     });
   });
 });

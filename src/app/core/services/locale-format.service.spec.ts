@@ -73,6 +73,38 @@ describe('LocaleFormatService', () => {
     });
   });
 
+  describe('time', () => {
+    const moment = new Date(2026, 7, 19, 14, 5);
+
+    const expected = (locale: string) =>
+      new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(moment);
+
+    it('formats hour and minute in English', () => {
+      useLocale('en-US');
+      expect(service.formatTime(moment)).toBe(expected('en-US'));
+    });
+
+    it('follows the locale\'s own clock, not a fixed one, in Japanese', () => {
+      useLocale('ja-JP');
+      expect(service.formatTime(moment)).toBe(expected('ja-JP'));
+    });
+
+    it('follows the locale\'s own clock in Traditional Chinese', () => {
+      useLocale('zh-Hant-TW');
+      expect(service.formatTime(moment)).toBe(expected('zh-Hant-TW'));
+    });
+
+    it('accepts a Firestore Timestamp as well as a Date', () => {
+      expect(service.formatTime(Timestamp.fromDate(moment))).toBe(service.formatTime(moment));
+    });
+
+    it('returns an empty string for a missing or unparseable value', () => {
+      expect(service.formatTime(null)).toBe('');
+      expect(service.formatTime(undefined)).toBe('');
+      expect(service.formatTime('not a date')).toBe('');
+    });
+  });
+
   describe('ranges', () => {
     const from = new Date(2026, 7, 1);
     const to = new Date(2026, 7, 19);
@@ -184,6 +216,15 @@ describe('LocaleFormatService', () => {
       service.formatNumber(2, '1.0-0');
 
       expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it('reuses one time formatter per locale', () => {
+      const spy = spyOn(Intl, 'DateTimeFormat').and.callThrough();
+
+      service.formatTime(new Date(2026, 7, 19, 9, 0));
+      service.formatTime(new Date(2026, 7, 19, 10, 30));
+
+      expect(spy).toHaveBeenCalledTimes(1);
     });
   });
 

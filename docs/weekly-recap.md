@@ -87,9 +87,11 @@ writes, which is the same reason the reminder service does not own one
 count is the part that belongs in a recap, and a name repeated here is text
 the user typed for a different surface.
 
-**The bills line converts live.** A scheduled occurrence has not been written
-yet, so there is no base-currency snapshot to prefer
-([ADR 0091](ADR/0091-the-upcoming-card-reads-the-live-schedule-not-the-ledger.md)).
+**The bills line converts live, and says so.** A scheduled occurrence has not
+been written yet, so there is no base-currency snapshot to prefer
+([ADR 0091](ADR/0091-the-upcoming-card-reads-the-live-schedule-not-the-ledger.md)),
+and **At today's rate** stands beside the figure
+([ADR 0148](ADR/0148-every-figure-names-its-rate.md)).
 Its window is the seven days ahead, not the fortnight the Upcoming card shows
 — a week's story reads beside a week — and occurrences already past are left
 to that card rather than counted here as money still to move.

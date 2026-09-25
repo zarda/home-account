@@ -77,7 +77,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0070](0070-accessibility-preferences-ride-the-account-and-land-on-the-root.md) | Accessibility preferences ride the account, and land on the root | Accepted | 2026-08-27 |
 | [0071](0071-direction-comes-from-the-locale-and-physical-css-is-frozen.md) | Direction comes from the locale, and physical CSS is frozen | Accepted | 2026-08-27 |
 | [0072](0072-onboarding-runs-once-and-never-against-a-fallback-profile.md) | Onboarding runs once, and never against a fallback profile | Accepted; re-run door added by 0076 | 2026-08-27 |
-| [0073](0073-shortcuts-live-in-the-shell-and-the-palette-reads-the-sidebars-list.md) | Shortcuts live in the shell, and the palette reads the sidebar's list | Accepted | 2026-08-27 |
+| [0073](0073-shortcuts-live-in-the-shell-and-the-palette-reads-the-sidebars-list.md) | Shortcuts live in the shell, and the palette reads the sidebar's list | Accepted; amended by 0149 | 2026-08-27 |
 | [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted; amended by 0099; amended by 0100; amended for #374 | 2026-08-28 |
 | [0075](0075-a-successful-import-remembers-the-transactions-it-created.md) | A successful import remembers the transactions it created | Accepted; extends 0065 | 2026-08-28 |
 | [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md) | The welcome replays on request, and a first login speaks the browser's language | Accepted; reverses a gap of 0072 | 2026-08-28 |
@@ -151,6 +151,11 @@ reverse — why a thing is the way it is, not how to use it.
 | [0144](0144-a-blanked-template-is-paired-with-a-describe-that-renders-it.md) | A blanked template is paired with a describe that renders it | Accepted; states a convention 0128 named as a limitation | 2026-09-21 |
 | [0145](0145-a-class-found-by-reading-becomes-a-gate.md) | A class found by reading becomes a gate | Accepted; extends 0032; closes gaps of 0058, 0123 and 0139; closes three gaps of accessibility.md | 2026-09-21 |
 | [0146](0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) | An icon that carries a label is not hidden, and a stored category id is never empty | Accepted | 2026-09-21 |
+| [0147](0147-a-row-is-graded-by-what-its-door-can-vouch-for.md) | A row is graded by what its door can vouch for | Accepted; closes gaps of 0045, 0046, 0049, 0053, 0079, 0111, 0113 and 0116; narrows gaps of 0013, 0063 and 0113 | 2026-09-24 |
+| [0148](0148-every-figure-names-its-rate.md) | Every figure names its rate | Accepted; extends 0093; closes gaps of 0037, 0042, 0068, 0091, 0093 and 0127 | 2026-09-24 |
+| [0149](0149-the-review-step-says-what-it-changed.md) | The review step says what it changed | Accepted; amends 0073; narrows 0108's decision; closes gaps of 0062, 0101, 0102, 0103, 0107, 0108, 0120 and 0121; narrows a gap of 0062 | 2026-09-24 |
+| [0150](0150-the-csv-reads-back-what-it-writes.md) | The CSV reads back what it writes | Accepted; closes the non-round-trip of 0011; closes gaps of 0045 and 0059 | 2026-09-24 |
+| [0151](0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md) | The frozen accessibility findings are fixed, and the freezes stay empty | Accepted; closes a gap of 0145; closes two gaps of accessibility.md | 2026-09-24 |
 
 ## What belongs here
 

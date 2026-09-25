@@ -30,6 +30,7 @@
     "close": "關閉",
     "back": "返回",
     "moreActions": "更多操作",
+    "moreActionsFor": "{{description}}的更多操作",
     "remove": "移除",
     "refresh": "重新整理",
     "moveUp": "上移",
@@ -55,7 +56,8 @@
     "type": "類型",
     "category": "分類",
     "loading": "載入中...",
-    "retry": "重試"
+    "retry": "重試",
+    "atTodaysRate": "以今日匯率"
   },
   "nav": {
     "dashboard": "儀表板",
@@ -91,6 +93,7 @@
     "selectMonth": "選擇月份",
     "selectYear": "選擇年份",
     "loadingData": "載入資料中...",
+    "refreshing": "正在重新整理儀表板資料",
     "spendingByCategory": "各類別支出",
     "noExpenses": "尚無支出",
     "addFirstTransaction": "新增您的第一筆交易",
@@ -205,6 +208,7 @@
     "splitOffline": "分拆需要網路連線",
     "splitOfflineHint": "分拆需要網路連線，請重新連線，或先以單一類別儲存。",
     "splitPart": "分拆消費的一部分",
+    "rowLabel": "{{description}}，{{amount}}，{{date}}",
     "deleteSplitPartMessage": "要刪除「{{description}}」的這個部分嗎？其他部分會保留。"
   },
   "budget": {
@@ -251,6 +255,9 @@
     "alertSnackbarMore": "另有 {{count}} 個預算提醒",
     "viewBudgets": "查看預算"
   },
+  "budgets": {
+    "progressLabel": "{{name}}：已使用預算的 {{percent}}%"
+  },
   "goal": {
     "tabHint": "為目標儲蓄，並規劃專案",
     "addGoal": "新增目標",
@@ -295,6 +302,9 @@
     "contributionFailed": "無法記錄存入",
     "linkedBreakdown": "手動 {{manual}} · 來自交易 {{linked}}",
     "currencyLocked": "已有款項後即無法變更"
+  },
+  "goals": {
+    "progressLabel": "{{name}}：已達成目標的 {{percent}}%"
   },
   "reports": {
     "title": "報表",
@@ -411,8 +421,8 @@
     "language": "語言",
     "currency": "貨幣",
     "ratesLabel": "匯率",
-    "ratesLive": "匯率已於 {{date}} 更新",
-    "ratesExpired": "無法更新匯率，改用 {{date}} 儲存的匯率",
+    "ratesLive": "匯率已於 {{date}} {{time}} 更新",
+    "ratesExpired": "無法更新匯率，改用 {{date}} {{time}} 儲存的匯率",
     "ratesBuiltIn": "無法取得匯率，改用內建的概略匯率",
     "displayName": "顯示名稱",
     "theme": "主題",
@@ -462,7 +472,9 @@
     "uploadHint": "支援銀行匯出和備份檔案",
     "previewTransactions": "預覽：找到 {{count}} 筆交易",
     "moreTransactions": "...還有 {{count}} 筆交易",
+    "csvUnmatchedCategories": "{{count}} 筆交易的類別無法比對，將使用預設類別",
     "importingProgress": "匯入中... {{progress}}%",
+    "importProgressLabel": "匯入進度：{{progress}}%",
     "importTransactions": "匯入 {{count}} 筆交易",
     "dangerZone": "危險區域",
     "irreversibleActions": "不可逆的操作",
@@ -752,6 +764,12 @@
     "chf": "瑞士法郎",
     "nzd": "紐西蘭幣"
   },
+  "currency": {
+    "otherCurrency": "其他貨幣…",
+    "enterCode": "輸入貨幣代碼",
+    "invalidCode": "這不是貨幣代碼，請輸入三個字母，例如 ISK",
+    "noRateYet": "尚無 {{code}} 的匯率，因此無法換算"
+  },
   "categoryNames": {
     "food": "餐飲",
     "restaurants": "餐廳",
@@ -1011,8 +1029,10 @@
     "startImport": "開始匯入",
     "uploadStep": "上傳檔案",
     "processingStep": "處理中",
+    "progressLabel": "匯入進度：{{percent}}%",
     "reviewStep": "檢閱",
     "confirmStep": "確認",
+    "stepSealed": "匯入進行中，此步驟已鎖定",
     "dropzoneTitle": "拖放檔案或點擊瀏覽",
     "dropzoneHint": "支援 CSV、PDF、圖片和 JSON 備份",
     "browseFiles": "瀏覽檔案",
@@ -1038,7 +1058,9 @@
     "duplicatesDescription": "這些交易與現有紀錄相似",
     "duplicate": "重複",
     "notADuplicate": "不是重複項目 — 匯入",
+    "announceNotDuplicate": "「{{description}}」不是重複項目",
     "recheckFailed": "無法重新檢查重複項目 — 先前的判定維持不變。若您確定，請使用「不是重複項目」。",
+    "announceVerdictsChanged": "已更新 {{count}} 項重複判定",
     "excludeDuplicates": "排除重複項目",
     "includeDuplicates": "包含重複項目",
     "matchExact": "完全相符",
@@ -1051,6 +1073,10 @@
     "importComplete": "已成功匯入 {{count}} 筆交易",
     "importFailed": "匯入失敗",
     "importPartial": "已匯入 {{total}} 筆中的 {{success}} 筆（{{failed}} 筆無法儲存）",
+    "importPartialSetAside": "{{count}} 筆已連續兩次儲存失敗，已被排除，請重新勾選以再試一次",
+    "rowFailedAmount": "此筆交易的金額無法儲存。請確認金額後再試一次。",
+    "rowFailedConnection": "儲存前連線中斷。請檢查你的網路連線後再試一次。",
+    "rowFailedUnknown": "此列因不明原因無法儲存。請再試一次，或將其移除。",
     "importingRow": "正在匯入第 {{done}} 筆，共 {{total}} 筆...",
     "importPhotosSkipped": "交易已儲存，但已達圖片儲存上限，{{count}} 張收據照片未附加",
     "importPhotosFailed": "交易已儲存，但有 {{count}} 張收據照片無法上傳，可從該筆交易再次附加。",
@@ -1167,6 +1193,7 @@
     "setCurrency": "變更貨幣（目前 {{currency}}）",
     "setCurrencyForSelected": "所選項目的貨幣",
     "removeLocation": "移除建議的地點",
+    "announceLocationRemoved": "已從「{{description}}」移除地點",
     "currencyFromCountry": "看起來是{{country}}的收據，要改用 {{currency}} 嗎？",
     "currencySuggested": "要改用 {{currency}} 嗎？",
     "acceptCurrencySuggestion": "這一列改用 {{currency}}",
@@ -1176,10 +1203,13 @@
     "currencyReasonLocale": "依裝置的地區設定",
     "currencyReasonPosition": "依您目前的位置",
     "removeTag": "移除標籤 {{tag}}",
+    "announceTagAdded": "已在「{{description}}」新增標籤 {{tag}}",
+    "announceTagRemoved": "已從「{{description}}」移除標籤 {{tag}}",
     "addTag": "新增標籤",
     "newTag": "新標籤",
     "addRow": "新增一列",
     "addDescription": "新增說明",
+    "untitledRow": "未命名的項目",
     "addAmount": "新增金額",
     "bulkCurrencyBlanked": "有 {{count}} 筆金額在 {{currency}} 下四捨五入為零，請重新輸入",
     "splitRow": "分割",
@@ -1190,11 +1220,15 @@
     "mergeIntoLabel": "將「{{description}}」合併到其他列",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "移除「{{description}}」",
+    "removeRowTitle": "要移除這一列嗎？",
+    "removeRowConfirm": "您對「{{description}}」所做的變更將會遺失。若要保留變更但不匯入，請改為取消勾選。",
+    "announceRowRemoved": "已移除「{{description}}」",
     "addLocation": "新增地點",
     "addPlaceName": "新增地點名稱",
     "editPlaceName": "編輯地點名稱（{{name}}）",
     "placeName": "地點名稱",
     "setCountry": "設定國家",
+    "announceCountryRemoved": "已從「{{description}}」移除國家",
     "changeCountry": "國家：{{country}} — 變更",
     "noCountry": "無國家",
     "matchWithinBatch": "此次匯入中重複",
@@ -1367,6 +1401,9 @@
     "removeAllConfirmTitle": "要刪除所有收據圖片嗎？",
     "removeAllConfirmMessage": "全部 {{count}} 張圖片將被永久刪除，交易本身會保留。",
     "removedAll": "已刪除 {{count}} 張收據圖片"
+  },
+  "receipts": {
+    "loading": "正在載入收據圖片"
   },
   "analytics": {
     "settingsTitle": "使用統計",

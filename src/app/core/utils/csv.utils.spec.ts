@@ -1,5 +1,7 @@
 import {
   CSV_FORMULA_TRIGGERS,
+  decodeTagsCell,
+  encodeTagsCell,
   escapeCsvCell,
   parseCsvRows,
   toCsvRow,
@@ -135,6 +137,71 @@ describe('csv.utils', () => {
     it('leaves an ordinary value alone', () => {
       expect(unguardCsvCell('Coffee')).toBe('Coffee');
       expect(unguardCsvCell('')).toBe('');
+    });
+  });
+
+  describe('encodeTagsCell and decodeTagsCell', () => {
+    it('joins with the classic separator when no tag contains it', () => {
+      expect(encodeTagsCell(['a', 'b'])).toBe('a; b');
+    });
+
+    it('writes a JSON array when a tag contains the separator', () => {
+      expect(encodeTagsCell(['a; b', 'c'])).toBe('["a; b","c"]');
+    });
+
+    it('reads the classic form', () => {
+      expect(decodeTagsCell('a; b')).toEqual(['a', 'b']);
+    });
+
+    it('reads the JSON form', () => {
+      expect(decodeTagsCell('["a; b","c"]')).toEqual(['a; b', 'c']);
+    });
+
+    it('falls back to the split for a legacy cell that only starts with [', () => {
+      expect(decodeTagsCell('[draft]; x')).toEqual(['[draft]', 'x']);
+    });
+
+    it('falls back to the split for a JSON array of non-strings', () => {
+      expect(decodeTagsCell('[1,2]')).toEqual(['[1,2]']);
+    });
+
+    it('round-trips the JSON cell through the CSV escaper unchanged', () => {
+      // The JSON form carries both a comma and quotes, exactly the two
+      // characters escapeCsvCell quotes a cell for — proof the encoding
+      // needs no escaper change of its own.
+      const cell = encodeTagsCell(['a; b', 'c']);
+
+      const [[roundTripped]] = parseCsvRows(toCsvRow([cell]));
+
+      expect(roundTripped).toBe(cell);
+    });
+
+    it('writes the JSON form for a single tag that is itself a JSON string array', () => {
+      // The classic join of one tag is the tag itself, so it would come out
+      // as `["x","y"]` — indistinguishable from the JSON form of two tags.
+      const tags = ['["x","y"]'];
+
+      expect(decodeTagsCell(encodeTagsCell(tags))).toEqual(tags);
+    });
+
+    it('writes the JSON form for a join that merely starts with [ but is not valid JSON', () => {
+      // The classic join, `[draft]; x`, starts with `[` but does not parse as
+      // JSON, so today's reader would still split it correctly. The writer
+      // goes by the same `[` test as the reader rather than trying to predict
+      // what will parse, so it still moves to the JSON form here.
+      const tags = ['[draft]', 'x'];
+
+      expect(encodeTagsCell(tags)).toBe(JSON.stringify(tags));
+      expect(decodeTagsCell(encodeTagsCell(tags))).toEqual(tags);
+    });
+
+    it('round-trips a tag holding both the separator and a quote through the full CSV pipeline', () => {
+      const tags = ['a; b"c', 'd'];
+
+      const cell = encodeTagsCell(tags);
+      const [[roundTripped]] = parseCsvRows(toCsvRow([cell]));
+
+      expect(decodeTagsCell(roundTripped)).toEqual(tags);
     });
   });
 

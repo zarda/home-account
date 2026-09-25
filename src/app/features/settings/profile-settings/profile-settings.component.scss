@@ -54,7 +54,7 @@
     background: var(--color-primary-light, color-mix(in srgb, var(--color-accent) 14%, transparent));
 
     .mat-button-toggle-label-content {
-      color: var(--color-accent);
+      color: var(--color-primary-text);
       font-weight: 600;
     }
   }

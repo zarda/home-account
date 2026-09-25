@@ -109,8 +109,12 @@ Behaviour worth knowing:
   box lands on the first row, and roving stops at both ends. Focus is what a
   screen reader follows; an active-index highlight is not.
 - **The result count is announced** on every keystroke, with no debounce.
-  `LiveAnnouncer` is polite, so each message replaces the previous one in the
-  live region rather than queueing behind it.
+  Announcements otherwise wait their turn, and a count is current state, so
+  the palette announces in `'replace'` mode: each count drops any count still
+  waiting, but never a queued event such as a notice or an alert. While typing
+  continues, a count goes out at most once a turn — the CDK announcer's delay
+  and then the announcer's gap — each the latest count at that moment; when
+  typing stops, the last count is the last count placed.
 - **The chosen command runs after the close, not beside it.** Both action
   branches open a dialog of their own, and starting one while the palette is
   still animating out stacks two dialogs whose focus restoration then fights.

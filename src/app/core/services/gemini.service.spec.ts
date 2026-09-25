@@ -104,11 +104,20 @@ describe('GeminiService', () => {
     categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
     categoryService.categories.and.returnValue(categories);
 
-    currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
+    currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
+      'convert',
+      'formatAmount',
+      'amountInBase',
+    ]);
     currencyService.formatAmount.and.callFake(
       (amount: number, code: string) => amount.toFixed(currencyDecimalPlaces(code)));
     // Identity conversion keeps amounts predictable in assertions.
     currencyService.convert.and.callFake((amount: number) => amount);
+    // Snapshot-or-identity, matching the fixtures below, which never diverge
+    // amountInBaseCurrency from amount.
+    currencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
 
     translationService = jasmine.createSpyObj<TranslationService>(
       'TranslationService',
@@ -857,7 +866,7 @@ describe('GeminiService', () => {
       expect(result[0].category).toBeUndefined();
     });
 
-    it('zeroes the date confidence when the model names no date, and leaves it unset when it does', async () => {
+    it('zeroes the date confidence when the model names no date, and leaves it unset when neither is reported', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
         merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
       })));
@@ -867,6 +876,23 @@ describe('GeminiService', () => {
         date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
       })));
       expect('dateConfidence' in (await service.extractTransactionsFromImage('abc'))[0]).toBeFalse();
+    });
+
+    it("forwards the model's date and amount grades", async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
+        dateConfidence: 0.82, amountConfidence: 0.64,
+      })));
+      const result = await service.extractTransactionsFromImage('abc');
+      expect(result[0].dateConfidence).toBe(0.82);
+      expect(result[0].amountConfidence).toBe(0.64);
+    });
+
+    it('grades a missing date 0 whatever the model said', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY', dateConfidence: 0.9,
+      })));
+      expect((await service.extractTransactionsFromImage('abc'))[0].dateConfidence).toBe(0);
     });
 
     it('rethrows on error and records lastError', async () => {
@@ -965,7 +991,9 @@ describe('GeminiService', () => {
       expect(result.length).toBe(2);
       expect(result[0].amount).toBe(100);
       expect(result[0].category).toBe('food_groceries');
-      expect(result[0].wasMerged).toBeTrue();
+      // Merged is the app's own verdict, reached later in consolidation —
+      // never a claim the model gets to make about its own extraction.
+      expect(result[0].wasMerged).toBeFalse();
       expect(result[0].mergedFromImages).toEqual([0, 1]);
       expect(result[0].receiptTotal).toBe(130);
       // Defaults for sparse item.

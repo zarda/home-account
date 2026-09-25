@@ -27,6 +27,10 @@
   gap: 16px;
 }
 
+.dashboard-subtitle {
+  color: var(--text-muted);
+}
+
 // Thin refetch indicator: sits at the top of the content area on period
 // change without displacing anything (content stays mounted below it).
 .refetch-bar {

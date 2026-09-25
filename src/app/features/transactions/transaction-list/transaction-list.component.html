@@ -9,7 +9,9 @@
   </div>
 } @else if (windowSource.fetchingEdge() === 'prev') {
   <div class="edge-row" aria-hidden="true">
-    <mat-spinner diameter="24" />
+    <!-- The parent carries the aria-hidden; a per-tag gate reads one
+         element at a time and cannot see it, so this repeats it. -->
+    <mat-spinner diameter="24" aria-hidden="true" />
   </div>
 }
 
@@ -45,13 +47,14 @@
           (edit)="edit.emit(transaction)"
           (delete)="confirmDelete(transaction)"
         >
-          <!-- Trailing overflow actions -->
+          <!-- Trailing overflow actions. A sibling of the row button, not
+               inside it, so its name has to say which row it acts on. -->
           <button
             mat-icon-button
             class="row-menu-btn"
             [matMenuTriggerFor]="mobileMenu"
             (click)="$event.stopPropagation()"
-            [attr.aria-label]="'common.moreActions' | translate"
+            [attr.aria-label]="'common.moreActionsFor' | translate: { description: transaction.description }"
           >
             <mat-icon>more_vert</mat-icon>
           </button>
@@ -292,7 +295,9 @@
   </div>
 } @else if (windowSource.fetchingEdge() === 'next') {
   <div class="edge-row" aria-hidden="true">
-    <mat-spinner diameter="24" />
+    <!-- The parent carries the aria-hidden; a per-tag gate reads one
+         element at a time and cannot see it, so this repeats it. -->
+    <mat-spinner diameter="24" aria-hidden="true" />
   </div>
 }
 

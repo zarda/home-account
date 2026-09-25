@@ -65,6 +65,67 @@ silently.
 appending to it would break the match between accessible name and visible text.
 That is what `aria-current` is for.
 
+### A progress indicator is named, or hidden inside the control that names it
+
+Material renders `mat-spinner`, `mat-progress-bar` and `mat-progress-spinner`
+as `role="progressbar"` with no content to take a name from. Each one in the
+tree either carries a name — `[attr.aria-label]` through `translate`, such as
+*Refreshing dashboard data* or *{name}: {percent}% of budget used* — or a
+literal `aria-hidden="true"`, because it sits inside a control whose own text
+already says what is happening, where a name would say it twice. The shared
+`LoadingSpinnerComponent` names itself with its `message`, or `common.loading`.
+
+**A button whose label a spinner replaces keeps its name.** Hiding the spinner
+inside such a button would leave it with no name at all while it is busy, so
+it carries `aria-busy` and, only while busy, its idle label as `aria-label`
+(the *Test API key* buttons, the transaction form's submit, the camera's
+process button). Idle, the visible text names it.
+
+**Check:**
+
+```bash
+npm run icon-labels:check
+```
+
+`scripts/check-icon-labels.mjs` holds two rules over every template: a
+`mat-icon` carrying `role="img"` or a label also carries a literal
+`aria-hidden` ([ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md)),
+and every progress indicator carries an `aria-label` in any form, an
+`aria-labelledby`, or a literal `aria-hidden="true"` — `"false"` and a bound
+value hide nothing
+([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+It reads the markup, so it cannot tell a useful label from a useless one, nor
+whether the control a hidden indicator sits in really announces the state;
+and it reads each tag alone, so an indicator under a hidden parent repeats the
+attribute.
+
+## A transaction row is a button beside its controls
+
+The row's first line — description and amount — is a native
+`<button class="row-head row-activate">`, named *{description}, {amount},
+{date}* (`transactions.rowLabel`). The row around it is a plain container: no
+role, no tab stop, no listener in its template. Before
+[ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)
+the whole row was a `role="button"` holding the swipe drawer's buttons, the
+menu trigger and the maps link, and a button's descendants are flattened away
+for assistive technology.
+
+- **The keyboard reaches the button; the pointer reaches the host.** Enter or
+  Space on the button is one native click; a click anywhere else on the row,
+  the category strip included, is answered by the component host's own click
+  listener, which leaves a click on one of the row's own controls, or on the
+  strip's scrollbar, to that control. Escape anywhere in the row closes the
+  drawer.
+- **The menu comes first, and names its row** — *More actions for
+  {description}* — because it no longer sits inside a named row. It precedes
+  the row button in DOM order, which is Tab order: the list's reserve rules
+  need `.row-actions` as the surface's first child.
+- **A split part says so.** The button's `aria-label` replaces its content's
+  name, so on a split part the button points at the split badge with
+  `aria-describedby`.
+- **The ring is drawn on the row**, inset, through
+  `.transaction-row:has(.row-activate:focus-visible)`.
+
 ## Announcements
 
 A live-region announcement made before a write settles is a claim, and a
@@ -84,6 +145,73 @@ for the optimistic-write pattern this follows.
 The rule generalizes beyond that one control: anywhere an announcement is
 made ahead of a write rather than after it, a failure path needs its own
 announcement, not only its own visual notification.
+
+**One voice per event.** `NotificationService` already announces every
+snackbar it shows, so a change a snackbar reports is never announced a second
+time beside it.
+
+**One announcement at a time.** `AnnouncerService` queues what it is handed.
+Handed straight through, a second message inside the CDK `LiveAnnouncer`'s
+delay of about 100 ms would clear the first before it was written. Handing
+the second on the moment the first is written would be no better: the CDK
+writes a message and resolves its promise in the same task, and begins its
+next `announce()` by clearing the region, so the second would replace the
+first before a rendering update had exposed it to the accessibility tree.
+Each message therefore waits until the one before it has been written and has
+stood for `ANNOUNCEMENT_GAP_MS`, 150 ms — a timer, since an animation frame
+never fires in a hidden tab — and one with nothing ahead of it goes out at
+once. That holds for every announcement made through `AnnouncerService`;
+Material's own do not pass through it (see Known gaps).
+
+What a message reports decides how it joins the queue. One that reports
+current state — a count, a position — passes `'replace'`, since a later state
+makes it stale; one that reports an event — a removal, a notice,
+an alert — queues, since nothing said after it does. `'replace'` drops every
+waiting message that was itself passed with `'replace'`, whichever surface
+raised it, and never one passed with `'queue'`, so a keystroke cannot cost a
+waiting alert or error its turn. The
+state messages are the command palette's result count, a dashboard card's
+position after **Move up** or **Move down**, and the transaction list's count
+and totals. The palette's count changes on every keystroke: while typing
+continues a count goes out at most once a turn — the CDK's delay and then the
+gap — each the latest count at that moment, and when typing stops the last
+count is the last count placed. A failed move's correction leads with the
+failed save, an event, and queues
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
+
+### The import review step
+
+The review step says each change below once, naming the row where the
+sentence has room for it
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)). The card's and
+the wizard's own announcements are polite; a snackbar's follows its tone, so
+the set-aside notice, an error, is assertive.
+
+| Event | Sentence | By |
+|---|---|---|
+| A duplicate verdict overruled | *{description} is not a duplicate* | the card |
+| A tag filed | *Tag {tag} added to {description}* | the card |
+| A tag removed | *Tag {tag} removed from {description}* | the card |
+| A country withdrawn | *Country removed from {description}* | the card |
+| A location removed | *Location removed from {description}* | the card |
+| A row removed — after *Remove this row?* when it carries work made on the card | *{description} removed* | the card |
+| A re-check flipping verdicts, the edited row's or any other's | *{count} duplicate verdicts updated* | the wizard |
+| A currency change that rounds amounts to nothing, one row or the selection | *{count} amounts round to nothing in {currency} — add them again* | the snackbar |
+| Rows failing a second time and set aside | *{count} rows failed to save twice and were set aside — reselect them to try again*, as the second sentence of the round's *Imported {success} of {total} transactions — {failed} could not be saved* | the snackbar |
+| Rows saved without their photos | the image-quota sentence, the failed-upload sentence or both, after the rest of the round's one notice — the error when a row failed, an info notice otherwise | the snackbar |
+
+A round's one notice stays up for its tone's own duration and two seconds
+more for each sentence past the first, so a notice that joins three is still
+on screen while its last sentence is read. The sentences are counted in the
+joined text by their stops, since one part of a notice can hold two: the
+failed-upload part does in en and ja, the set-aside part in ja.
+
+A row with no description yet is named *an untitled row*: the slot sits inside
+a sentence, so it takes a noun phrase rather than the edit trigger's *Add a
+description*. Picking a country is not announced — the menu it was picked from
+is where the user is looking. A failed row's reason stands on its card as
+`role="note"` rather than an alert: it happened during the write, before that
+render, and interrupts nothing.
 
 ## Accessibility settings
 
@@ -171,9 +299,9 @@ is the way a component gets past them: `*` is specificity zero, so an
 specificity, and that component keeps moving for a reader who asked it not to. A
 duration of about zero is the kill-switch's own spelling and passes; a
 declaration inside the component's **own** `prefers-reduced-motion` block is
-cooperating and is skipped. One survivor is frozen in the script's `ALLOWED`
-table with its reason (`login.component.scss`'s Google button, whose eleven
-`!important`s were written to override Material).
+cooperating and is skipped. A declaration that has to outrun the kill-switch
+would be recorded in the script's `ALLOWED` table with its reason; the table
+is empty, and a repair edits it in the same commit.
 
 The check says nothing about `forced-colors`, and there is no rule to write
 there: two stylesheets declare it because two paint their own focus and
@@ -217,13 +345,45 @@ a divider, a combination nothing paints), and **frozen** (fails today, pinned
 at the ratio it measures, may only improve; when one reaches its threshold the
 script asks to have it promoted). `--self-test` asserts that every `--color-*`
 token the light palette declares appears in one of those tables or in a named
-`NOT_PAINTED` list, so a new token cannot be added unaudited.
+`NOT_PAINTED` list, so a new token cannot be added unaudited, and runs the
+frozen-row ratchet, `frozenRowFinding`, over a synthetic row — at its floor,
+worse than it, and clearing its threshold — since the real frozen table is
+empty.
 
 The first run fixed four pairs — `--text-muted` moved to gray-600 (it measured
 4.39 and 4.43 against `--surface-muted` and `--surface-background`), and the
 three dark chips' `-text` tokens each moved one step lighter, with
 `--color-expense-light` moving one step darker to meet its text — and froze
-four more, which are listed under Known gaps.
+four more. Those four are fixed: the type toggles paint the income and expense
+`-text` tokens that already existed, and two new ones name the foreground on
+the error and primary tints, `--color-error-text` and `--color-primary-text`
+([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+The frozen table, `KNOWN_FAILURES`, is empty and stays. A pair written into
+`PAIRS` that measures under its threshold fails the build, and reaches
+`KNOWN_FAILURES` only if someone moves it there by hand, as a row with its
+reason and its measured floors. A pair axe's `color-contrast` rule finds on a
+route the walkthrough renders fails the smoke walkthrough instead, and is
+frozen, if at all, in `axe.ts`'s `KNOWN_VIOLATIONS`, by rule id per route with
+its reason — never in `KNOWN_FAILURES`. `--color-income` and `--color-expense`
+are named as fills in `NOT_PAINTED`: nothing paints either as text.
+
+**A category's colour is not a token.** The category chip paints a
+category's icon, and as a pill its label, in the category's own colour on a
+tint of it, and that colour is data — picked from the category dialog's
+palette, or carried in a backup — so no row in `PAIRS` can score it. Painted
+on a translucent tint of itself, a light category measures 1.95:1 in light —
+the orange tile, `#ff9800` on `#fff2df` — and a dark one, even lightened 30%,
+measures 3.95:1 in dark — `#9C27B0` as `#ba68c8` on `#3e2043`; every default
+colour fails in one theme or the other. So the tint is composited over
+`--surface-card` and painted opaque, the foreground sits on one known colour
+whatever surface holds the chip, and `ensureContrast`
+(`core/utils/color-contrast.utils.ts`) mixes the colour towards black in
+light and towards white in dark, keeping its hue, until it reads 4.5:1
+there. The gate is `category-chip.component.spec.ts`: it measures the
+painted tile and pill for every default category's colour and four hostile
+ones, in both themes, and holds the composited surface to the stylesheet's
+`--surface-card`
+([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
 
 ## What is tested
 
@@ -276,43 +436,103 @@ four more, which are listed under Known gaps.
   announced.
 - **No landmark structure beyond `nav`.** The two navigation surfaces are
   indistinguishable to a user listing landmarks.
-- **The automated pass is a phone audit of seven routes.** `app.smoke.spec.ts`
-  now runs axe-core (WCAG 2.1 A and AA, `color-contrast` included) inside
-  `expectPage`, so every page the walkthrough opens is swept. What it cannot
-  see is stated in [emulator-blind-spots.md](emulator-blind-spots.md): i18n is
-  not served, Karma's window is 756px, eight page-level rules are disabled
-  because the run is scoped to the routed element, and four routes (`/ai`,
-  `/search-history`, `/import/file`, `/import/history`) are never opened.
-  Everything outside that is still a hand-written spec, and nothing sweeps for
-  the next instance of a class nobody has met.
-- **Four violation classes are frozen, not fixed.** The pass found them on its
-  first run and `core/services/testing/axe.ts` records each with its reason:
-  Material's `mat-spinner` / `mat-progress-bar` render `role="progressbar"`
-  with no accessible name; the dashboard stat card's `.stat-label-suffix` and
-  the transaction row's `.row-date` fail contrast **in light mode**; and a
-  transaction row is a `role="button"` containing its own buttons, which
-  screen readers flatten. The freeze is so the next one fails.
+- **The automated pass is a phone audit of seven routes, in one theme.**
+  `app.smoke.spec.ts` runs axe-core (WCAG 2.1 A and AA, `color-contrast`
+  included) inside `expectPage`, so every page the walkthrough opens is swept,
+  and nothing it has found is frozen any more. What it cannot see is stated in
+  [emulator-blind-spots.md](emulator-blind-spots.md): i18n is not served,
+  Karma's window is 756px, eight page-level rules are disabled because the run
+  is scoped to the routed element, four routes (`/ai`, `/search-history`,
+  `/import/file`, `/import/history`) are never opened, and `color-contrast`
+  reports nothing below the fold of Karma's frame (the next gap). Each run
+  renders the one theme the host's `prefers-color-scheme` resolves — light on
+  the CI runner, dark on a Mac in dark mode — so a failure that exists only in
+  the other theme is seen only where that theme renders, and nothing committed
+  pins it; the same page says how to run the other. The dashboard's subtitle
+  failed in light only, at 4.43:1, and was found by reading. The category chip
+  failed in both themes — thirteen of the sixteen default colours in light,
+  four in dark, `#E91E63` in both — and CI's light run was the first to report
+  it: the walkthrough's rows and budget use one category, orange, which failed
+  in light at 1.95:1 and passed in dark at 5.85:1, and the default colours,
+  the ones that failed in dark among them, render only in the Categories panel
+  on `/settings`, which the walkthrough leaves collapsed and axe does not
+  measure. Everything outside that is still a hand-written spec, and nothing
+  sweeps for the next instance of a class nobody has met.
+- **The axe pass measures only the top 413px of a page.** Karma's frame is
+  756px wide and 413px tall and scrolls inside its own body, and axe's
+  `color-contrast` rule cannot measure a node below that fold: it leaves the
+  node incomplete rather than failing it, the harness reads violations only,
+  and scrolled into the frame the node is measured like any other. On
+  `/transactions` the seeded rows' chips sit inside the frame. On `/budgets`
+  the budget card's chip starts 445px down, and on `/dashboard` the two
+  recent-transaction chips start at 591px and 675px, the spending chart's
+  legend at 1426px and the budget card's icon at 1602px, so none of those is
+  measured. Two of them fail on the walkthrough's own orange category — the
+  budget card's orange icon at 2.06:1 in light, and the legend's white glyph
+  at 2.16:1 in both themes, both among the sites listed below that paint a
+  category's colour without the chip — and the smoke walkthrough passes
+  regardless.
 - **Contrast is measured for the pairs somebody listed.** `npm run
   contrast:check` scores a hand-written table of the pairs the app actually
-  paints, in all four rendered modes, and it found five failures on its first
-  run (below). What it cannot see is a colour that is not a token — a hex
-  literal in a component stylesheet, a Material default, a Tailwind utility
-  class — or a pair nobody added a row for. The axe pass is the other half of
-  that: it measures what a rendered page paints, and it found two light-mode
-  failures this cannot.
-- **Four known-failing pairs are frozen, not fixed.** Each is recorded in
-  `scripts/check-contrast.mjs` with its ratio and what it would take: the
-  transaction form's and the recurring dialog's type toggles paint
-  `--color-income` / `--color-expense` — the *fill* tokens — on their own
-  tints, where `--color-income-text` / `--color-expense-text` exist and clear
-  AA; the login error banner paints `--color-error` on `--color-error-light`,
-  for which there is no `-text` token to reach for; and the neutral stat-card
-  chip, the import preview badge and the period selector paint
-  `--color-primary` on `--color-primary-light`, which measures 2.60:1 in dark.
-  The freeze is a floor: those numbers may only improve.
+  paints, in all four rendered modes, and every failure it has found is fixed.
+  What it cannot see is a colour that is not a token — a hex literal in a
+  component stylesheet, a Material default, a Tailwind utility class, a
+  category's own colour — or a pair nobody added a row for. The category
+  chip's spec measures that colour; the axe pass is the other half of the
+  rest: it measures what a rendered page paints, above the fold, in its one
+  theme.
+- **Ten components paint a category's colour without the chip**, so the
+  correction the chip applies never reaches them. Figures are for the sixteen
+  default colours. *On a tint of itself*, in both themes: the dashboard's
+  upcoming bills (`upcoming-bills.component.html`), the recurring rules page
+  (`recurring-transactions.component.html`) and the category dialog's preview
+  (`category-form-dialog.component.html`) paint the raw colour on the icon
+  over the colour with `20` appended, which takes on the surface beneath — the
+  Material card's `#f4f2fc` / `#1a1b22`, `--surface-card` and
+  `--surface-subtle` respectively, and a paused rule's card is drawn at 70%
+  opacity besides. Thirteen colours fail there in light, down to 1.75:1
+  (`#8BC34A`), and six to eight in dark, down to 2.08:1 (`#3F51B5`). *On the
+  surface beneath, with no tint of its own*: the dashboard's budget card icon
+  on `--surface-subtle` (`budget-progress.component.html`, `#FF9800` at 2.06:1
+  in light); the import review's category button and its menu
+  (`category-suggestion.component.html`); the category pickers of the
+  transaction form — its options, the field showing the choice, and its
+  suggestion chip — of the split parts, the budget form and the recurring
+  dialog, whose select panel is `#efedf6` / `#1f1f26`; and the category
+  dialog's icon grid, on its selected icon. Thirteen fail in light, down to
+  1.75:1, and five in dark — `#9C27B0`, `#E91E63`, `#607D8B`, `#3F51B5` and
+  `#795548` — down to 2.26:1. *White on the colour*, the same in both themes:
+  the dashboard spending chart's legend tile (`spending-chart.component.html`,
+  its glyph white in `spending-chart.component.scss`) and the category
+  dialog's selected swatch. On the legend, which draws the account's
+  categories, `#FF9800` measures 2.16:1, `#4CAF50` 2.78:1 and the `#9E9E9E`
+  fallback 2.68:1; all of the sixteen default colours but `#9C27B0`, `#3F51B5`
+  and `#795548` fail. The swatch grid draws only the dialog's own palette,
+  fifteen Tailwind 500s, and twelve of them fail under the white glyph; the
+  same palette fails the preview too, all fifteen in light and ten in dark.
+  Each site is left for a follow-up, which can put the chip there or pass the
+  colour through `ensureContrast` against the surface it sits on. The bars and
+  chart segments filled with a category's colour are graphics beside a printed
+  amount or percentage, not text, and are not counted
+  ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+- **Eighteen places paint `--color-error` as a foreground on the card**, where
+  it measures 3.76:1 in light and passes in dark. The table scores
+  `--color-error` on its own tint only, and the axe pass measures only what is
+  on screen, in its one theme. They are listed in
+  [ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md);
+  `--color-error-text` is the token to reach for.
 - **Nothing sweeps for the next animation CSS cannot reach.** Chart.js and the
   Material tab strips were found by reading the code; a new WAAPI duration or
   canvas animation will honour neither kill-switch and no gate will say so.
+- **Material's own announcements bypass the queue.** A closed single
+  `mat-select` whose value an arrow key or typeahead moves calls the CDK
+  `LiveAnnouncer` itself with the option's text. The CDK begins every
+  `announce()` by clearing its region and cancelling a write still inside its
+  delay, so a message the queue handed over less than 100 ms before is never
+  placed, and one standing out its gap is replaced early. The snack bar, too,
+  moves its text into a live region of its own, beside the announcement
+  `NotificationService` makes through the queue
+  ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 - **RTL layout is groundwork only** (#86). Direction follows the locale and the
   physical CSS that remains is frozen per file, but no right-to-left locale
   ships and 107 hits are still unconverted — see [rtl.md](rtl.md).

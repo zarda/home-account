@@ -45,11 +45,12 @@ export class RecurringBreakdownComponent {
     return this._currency();
   }
 
-  // Convert transaction amount to current base currency dynamically. Matches
-  // the Category Breakdown tab this card sits beside (which also uses
-  // `convert` rather than the stored `amountInBase` snapshot other tabs use).
+  // Base-currency value of a transaction for this card's totals. Reads the
+  // write-time snapshot (docs/money-snapshots.md) rather than converting at
+  // today's rate, so this card and the exported report of the same period
+  // total the same way.
   private toBaseCurrency(t: Transaction): number {
-    return this.currencyService.convert(t.amount, t.currency, this._currency());
+    return this.currencyService.amountInBase(t, this._currency());
   }
 
   /**

@@ -6,6 +6,7 @@ import {
   ExportData,
   ExportService,
   NOT_IN_BACKUP,
+  ReportData,
 } from './export.service';
 import { DELETION_STEPS } from './account-deletion.service';
 import { NOT_A_RECORD_KIND } from './stored-data.service';
@@ -15,7 +16,7 @@ import { TranslationService } from './translation.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
-import { MockAuthService } from './testing/mock-auth.service';
+import { MockAuthService, createMockUser } from './testing/mock-auth.service';
 import { createTransaction, createCategory, createCategoryHierarchy } from './testing/test-data';
 import { parseCsvRows } from '../utils/csv.utils';
 import { Timestamp } from '@angular/fire/firestore';
@@ -67,6 +68,13 @@ describe('ExportService', () => {
     service = TestBed.inject(ExportService);
     categoryService = TestBed.inject(CategoryService);
     currencyService = TestBed.inject(CurrencyService);
+
+    // CategoryService clears its own signal the moment it sees no signed-in
+    // user (its signed-out reset effect), which fires on the microtask queue
+    // rather than synchronously — so a category set below survives a
+    // synchronous read (export's) but is gone by the time an awaited one
+    // (import's) runs, unless a user is signed in first.
+    (TestBed.inject(AuthService) as unknown as MockAuthService).setMockUser(createMockUser());
 
     // Set up test categories
     categoryService.categories.set(createCategoryHierarchy());
@@ -599,6 +607,75 @@ describe('ExportService', () => {
         expect(transactions.map(t => t.id)).toEqual(order);
       });
     });
+
+    // #429 P1: the export dialog's report PDF used to convert every past
+    // transaction at whatever rate was loaded (a live `convert()`), while this
+    // summary already read the write-time snapshot through `amountInBase` —
+    // so the two PDFs of the same period could print different totals.
+    describe('parity with the report PDF', () => {
+      it('the report PDF and the summary PDF of one fixture print the same totals', async () => {
+        seedDivergentRates();
+
+        const transactions: Transaction[] = [
+          createTransaction({
+            type: 'expense', amount: 100, currency: 'EUR',
+            amountInBaseCurrency: 150, exchangeRate: 1.5, categoryId: 'food_restaurants',
+          }),
+          createTransaction({
+            type: 'income', amount: 200, currency: 'EUR',
+            amountInBaseCurrency: 300, exchangeRate: 1.5, categoryId: 'employment_salary',
+          }),
+        ];
+
+        // The dialog's own totals, computed exactly as export-dialog.component.ts
+        // computes them: through amountInBase, never a live convert(). Proven
+        // directly against the real CurrencyService rather than through the
+        // dialog component, which this suite does not depend on.
+        const dialogExpense = transactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + currencyService.amountInBase(t, 'USD'), 0);
+        const dialogIncome = transactions
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + currencyService.amountInBase(t, 'USD'), 0);
+
+        // Neither the seeded live rate (200/400) nor the compiled-in default's
+        // approximation: only the stamped snapshot produces these.
+        expect(dialogExpense).toBe(150);
+        expect(dialogIncome).toBe(300);
+
+        const rows = await summaryRows(transactions);
+        const typeCol = rows[0].indexOf('Type');
+        const amountCol = rows[0].indexOf('Amount');
+        const summaryExpense = Number(rows.slice(1).find(r => r[typeCol] === 'expense')?.[amountCol]);
+        const summaryIncome = Number(rows.slice(1).find(r => r[typeCol] === 'income')?.[amountCol]);
+
+        expect(summaryExpense).toBe(dialogExpense);
+        expect(summaryIncome).toBe(dialogIncome);
+
+        // Both builders render without error over the same fixture —
+        // exportCategorySummaryPDF's totals come from the identical
+        // categorySummaryTotals() the CSV above was read through.
+        const reportData: ReportData = {
+          title: 'Report',
+          period: 'July 2026',
+          transactions,
+          summary: {
+            income: dialogIncome,
+            expense: dialogExpense,
+            balance: dialogIncome - dialogExpense,
+            transactionCount: transactions.length,
+            byCategory: [{ categoryId: 'food_restaurants', total: dialogExpense }],
+          },
+          categories: createCategoryHierarchy(),
+          currency: 'USD',
+        };
+        const reportBlob = await service.exportToPDF(reportData);
+        const summaryBlob = await service.exportCategorySummaryPDF(transactions, 'USD', 'July 2026');
+
+        expect(reportBlob.size).toBeGreaterThan(0);
+        expect(summaryBlob.size).toBeGreaterThan(0);
+      });
+    });
   });
 
   describe('exportToJSON', () => {
@@ -969,6 +1046,26 @@ describe('ExportService', () => {
       expect(result[0].tags).toEqual(['a,b', 'c']);
     });
 
+    it("a tag containing '; ' survives export and import as one tag", async () => {
+      const result = await reimport([createTransaction({ tags: ['a; b', 'c'] })]);
+
+      expect(result[0].tags).toEqual(['a; b', 'c']);
+    });
+
+    it('a tag spelled as a JSON array survives export and import as one tag', async () => {
+      const result = await reimport([createTransaction({ tags: ['["x","y"]'] })]);
+
+      expect(result[0].tags).toEqual(['["x","y"]']);
+    });
+
+    it('a file in the previous format keeps its tags', async () => {
+      const text = 'Date,Description,Amount,Tags\n2026-06-01,Coffee,4.50,x; y\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].tags).toEqual(['x', 'y']);
+    });
+
     it('normalizes the tags a hand-edited file spells twice', async () => {
       // The card keys its chips by tag value and the filter only ever looks
       // for the normalized spelling, so two casings of one tag would show as
@@ -1032,6 +1129,42 @@ describe('ExportService', () => {
 
       expect(result.length).toBe(1);
       expect(result[0].period).toBeUndefined();
+    });
+
+    it("export then import restores every row's category", async () => {
+      const result = await reimport([
+        createTransaction({ type: 'expense' }),
+        createTransaction({ type: 'income' }),
+      ]);
+
+      const expenseRow = result.find(r => r.type === 'expense');
+      const incomeRow = result.find(r => r.type === 'income');
+      // createTransaction's own defaults: 'food_restaurants' for expense,
+      // 'employment_salary' for income — both real entries in the
+      // createCategoryHierarchy fixture this suite's CategoryService holds.
+      expect(expenseRow?.categoryId).toBe('food_restaurants');
+      expect(incomeRow?.categoryId).toBe('employment_salary');
+    });
+
+    it('a file without a Category column imports as before', async () => {
+      const text = 'Date,Description,Amount\n2026-06-01,Coffee,4.50\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].category).toBeUndefined();
+      expect(result[0].categoryId).toBeUndefined();
+    });
+
+    it("parseImportedData hands the DTO the file's category, and an unmatched row its type's catch-all", async () => {
+      const text = 'Date,Type,Category,Amount\n'
+        + '2026-06-01,expense,Restaurants,12\n'
+        + '2026-06-02,expense,Nonexistent,8\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+      const dtos = service.parseImportedData(result, 'USD');
+
+      expect(dtos[0].categoryId).toBe('food_restaurants');
+      expect(dtos[1].categoryId).toBe('other_expense');
     });
   });
 

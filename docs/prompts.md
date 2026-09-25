@@ -64,6 +64,10 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 
 A list the user owns is not a list in source. `suggestTags` asks the model to tag a row using only the tags this account already uses, and that vocabulary is rendered at request time — from the last six months of transactions and from tag memory, one `- tag` per line — so `categorization.prompts.ts` names no tag at all and no build ships an opinion about what people tag things with. The answer is filtered back down to the same list by `applyTagSuggestions`, so an invented, translated or respelled tag is dropped rather than created. An account with no tags gets no request: there is nothing to choose from, and a prompt that had to supply the candidates itself would be exactly the hand-written list this rule forbids.
 
+### Do not ask the model for a verdict the app makes
+
+A prompt asks for what the paper says, not for a conclusion the app draws for itself. `multiImageReceipts` asked, from the registry's first version, whether each item had been merged across photos; the model's `wasMerged` was copied onto the row and counted on the confirm card beside consolidation's own verdict, so a lone item the model called merged was counted as one. The field is gone from the prompt, the shared base writes `false` whatever an answer says, and only consolidation and the review card's merge set the mark ([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)). `prompt-registry.spec.ts` pins that the prompt no longer names it.
+
 ### Registered in TypeScript, not JSON
 
 `analytics-events.json` is JSON on purpose, and this went the other way on purpose. That check has to read the taxonomy's *values* — parameter names, allowed values — and diff them against a markdown table, which needs `JSON.parse` from Node. This check needs prompt *ids* and call sites, which a regex finds in `.ts` just as well. Meanwhile a prompt in JSON is a `\n`-escaped single line whose diff is unreadable, and prompt wording is exactly the thing a reviewer most needs to see change.
@@ -97,6 +101,8 @@ A list the user owns is not a list in source. `suggestTags` asks the model to ta
 Two prompts reach only some providers. Each is a capability gap rather than a design choice, and `SINGLE_PROVIDER` in `scripts/check-prompts.mjs` names the issue that closes it — the check fails if a prompt reaches a provider the exemption does not list, so closing a gap means deleting an entry rather than widening one. An empty table is the goal.
 
 An exemption names concrete provider files, so an exempted prompt has to be rendered from one. Rendering it from the shared base fails the check: the base is the one file all three providers inherit, which is the opposite of single-provider. That is why Gemini's own `extractTransactionsFromImage` — the only operation where it answers a different prompt from the other two — stays in `gemini.service.ts`.
+
+`receiptSummary` also grades the date and the total it read: `amountConfidence` and `dateConfidence`, the pair `receiptParse` and `statementTransactions` carry. The two item prompts, `multiImageReceipts` and `receiptItems`, grade the date alone ([ADR 0079](ADR/0079-the-multi-photo-lanes-grade-the-dates-they-read.md)). Gemini reads both grades back through `readConfidence`, so a malformed one is dropped, and a missing date is forced to 0 whatever grade the model claimed for it ([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)). No door reaches the prompt today — it answers only `importFromImage`'s fallback, and no screen hands `importFromImage` a file — so the grades are ready for a path nothing takes.
 
 | Prompt | Sent by | Gap |
 |---|---|---|

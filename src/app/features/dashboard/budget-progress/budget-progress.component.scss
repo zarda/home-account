@@ -36,7 +36,12 @@
       }
 
       .budget-period {
-        @apply text-xs text-gray-400 dark:text-gray-500 flex-shrink-0;
+        // gray-400/dark:gray-500 measures under AA on --surface-subtle (the
+        // budget-item background) in both themes — same finding as the
+        // transaction list count and the transaction row's date, both
+        // already on --text-muted.
+        @apply text-xs flex-shrink-0;
+        color: var(--text-muted);
       }
     }
 

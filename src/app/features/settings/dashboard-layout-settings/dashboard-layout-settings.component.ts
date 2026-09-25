@@ -117,9 +117,13 @@ export class DashboardLayoutSettingsComponent {
     this.pendingMove = { id };
     this.apply(next);
 
+    // A position is current state, and the next press makes it stale, so it
+    // replaces any position still waiting rather than queueing behind it.
     const card = this.translation.t(CARD_TITLE_KEYS[id]);
     this.announcer.announce(
-      this.translation.t('settings.dashboardCardMoved', { card, position, total })
+      this.translation.t('settings.dashboardCardMoved', { card, position, total }),
+      'polite',
+      'replace'
     );
 
     // The pressed button is disabled once its card reaches that end, and a
@@ -204,7 +208,9 @@ export class DashboardLayoutSettingsComponent {
   /**
    * The optimistic move announcement said a position that a failed write
    * never made true, so a screen-reader user is told where the card really
-   * landed once the rows fall back to the account's order.
+   * landed once the rows fall back to the account's order. It leads with the
+   * failed save, an event, so it queues: a later move's position must not
+   * drop it before it is heard.
    */
   private announceMoveReverted(): void {
     if (!this.pendingMove) return;

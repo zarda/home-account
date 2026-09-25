@@ -105,6 +105,15 @@ export interface ImportError {
   transactionId?: string;
   field?: string;
   message: string;
+  /**
+   * The thrown error's own `code`, when it carried a string one — a
+   * Firestore rejection's is a stable identifier (`permission-denied`,
+   * `unavailable`, …); `message` on the same error is prose meant for a
+   * console, not a reader, and never contains the code as a substring.
+   * Absent for an error that carried none, which `importFailureKey` then
+   * reads by `message` alone.
+   */
+  code?: string;
   originalValue?: string;
 }
 
@@ -216,6 +225,16 @@ export interface CategorizedImportTransaction {
    * transaction of its own the reviewer made on purpose, not a repeat.
    */
   splitFrom?: string;
+  /**
+   * A review-step mark, never written: the reviewer changed what this row
+   * says on the card — a field's value, a date answer, a split or a merge.
+   * Set by each of those handlers rather than by the card's shared row
+   * replacement, which also carries selection, a duplicate overrule, a
+   * dismissed currency offer and a recurring link: answers about the row
+   * that cost nothing to give again. Remove asks first on a row carrying it
+   * (`rowCarriesReviewerWork`).
+   */
+  editedOnCard?: true;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
@@ -243,8 +262,41 @@ export interface CategorizedImportTransaction {
   isRecurring?: boolean;
   /** The active rule this row looks like, offered unchecked. Never written. */
   recurringMatch?: RecurringMatchSuggestion;
-  /** Set only when the user accepted the offered link. */
+  /**
+   * Set when the user accepted the offered link, or carried from a backup row
+   * whose rule this account still holds.
+   */
   recurringId?: string;
+  /**
+   * A review-step mark, never written as such: the conversion a backup row
+   * was stored with — its rate, never its converted figure. The card can
+   * change the amount after the file was read (an edit, a split, a merge),
+   * and `addTransaction` writes a snapshot verbatim, so the confirm step
+   * converts the row's amount at the moment it is written. `currency` is the
+   * one the rate converts from; a row whose currency no longer matches it is
+   * converted at today's rate instead.
+   */
+  fileRate?: { exchangeRate: number; baseCurrency: string; currency: string };
+  /**
+   * A review-step mark, never written: the catalog key `importFailureKey`
+   * resolved the last time this row's own confirm attempt was refused.
+   * Absent on a row nobody has tried yet, and cleared by every edit the card
+   * marks with `editedOnCard`: it describes the row as it was submitted, not
+   * as the reviewer has since changed it. Read instead of `ImportError.message`
+   * itself, which is a raw code or a provider's English — not this codebase's
+   * to put on screen untranslated.
+   */
+  importFailure?: string;
+  /**
+   * A review-step mark, never written: how many confirm attempts this row's
+   * id has now failed. The wizard's partial branch increments it per failure
+   * and returns the row deselected once it reaches 2 — re-offering the same
+   * refusal forever would be a loop with no way out, and re-selecting a
+   * set-aside row is the reviewer's own choice, not something a third
+   * automatic attempt should assume. A split clears it on both halves, the
+   * one keeping the id included: neither is the row that was refused.
+   */
+  importAttempts?: number;
 }
 
 export interface DuplicateCheck {

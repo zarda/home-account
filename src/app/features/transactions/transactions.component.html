@@ -1,6 +1,6 @@
 <div class="flex flex-col gap-4">
   <app-page-header titleKey="transactions.title">
-    <span header-title-suffix class="text-base font-normal text-gray-400 dark:text-gray-500 leading-none">({{ transactionCount() }})</span>
+    <span header-title-suffix class="text-base font-normal leading-none transaction-count">({{ transactionCount() }})</span>
 
     <!-- Add Menu Button. Hidden below 600px: the bottom-nav center FAB opens
          the same three entries (manual add, camera capture, photo import), and

@@ -9,12 +9,17 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
+  // The snapshot tracks an overridden `amount` by default — a fixture that
+  // set only `amount` used to leave a stale `amountInBaseCurrency: 100`
+  // behind it, invisible while every mock read `amount` directly through
+  // `convert`, and wrong the moment a mock reads the snapshot field instead.
+  const amount = overrides.amount ?? 100;
   return {
     id: 't1',
     userId: 'user1',
     type: 'expense',
-    amount: 100,
-    amountInBaseCurrency: 100,
+    amount,
+    amountInBaseCurrency: amount,
     exchangeRate: 1,
     currency: 'USD',
     categoryId: 'cat1',
@@ -38,7 +43,13 @@ describe('CountryBreakdownComponent', () => {
     await TestBed.configureTestingModule({
       imports: [CountryBreakdownComponent, NoopAnimationsModule],
       providers: [
-        { provide: CurrencyService, useValue: { convert: (amount: number) => amount } },
+        {
+          provide: CurrencyService,
+          useValue: {
+            convert: (amount: number) => amount,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+          },
+        },
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })
@@ -108,6 +119,19 @@ describe('CountryBreakdownComponent', () => {
     expect(component.placed()).toBe(0);
     expect(component.expenses()).toBe(0);
   });
+
+  // #429 P1: this card used to convert every past transaction at whatever
+  // rate was loaded, so a country's total here could disagree with the same
+  // period's report totals.
+  it('reads the base-currency snapshot rather than a live conversion', () => {
+    component.transactions = [
+      txn({ amount: 100, amountInBaseCurrency: 999, currency: 'EUR', location: { country: 'JP' } }),
+    ];
+
+    // The mock's `convert` is a 1:1 passthrough, so a total of 999 can only
+    // have come from amountInBase reading the stamped snapshot.
+    expect(component.rows()[0].total).toBe(999);
+  });
 });
 
 describe('CountryBreakdownComponent, through its own template', () => {
@@ -127,7 +151,13 @@ describe('CountryBreakdownComponent, through its own template', () => {
     await TestBed.configureTestingModule({
       imports: [CountryBreakdownComponent, NoopAnimationsModule],
       providers: [
-        { provide: CurrencyService, useValue: { convert: (amount: number) => amount } },
+        {
+          provide: CurrencyService,
+          useValue: {
+            convert: (amount: number) => amount,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+          },
+        },
         { provide: TranslationService, useValue: translation },
       ],
     }).compileComponents();

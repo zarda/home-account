@@ -223,6 +223,13 @@ describe('GoalProgressCardComponent, through its own template', () => {
     expect(text('.percentage')).toBe('150%');
   });
 
+  it("names the progress bar with the goal's own name and percentage", () => {
+    card();
+
+    const bar = el().querySelector('mat-progress-bar') as HTMLElement;
+    expect(bar.getAttribute('aria-label')).toBe('goals.progressLabel:{"name":"Emergency fund","percent":25}');
+  });
+
   it('names the linked share and offers its transactions only once linked money exists', () => {
     card();
     expect(el().querySelector('.linked-breakdown')).toBeNull();

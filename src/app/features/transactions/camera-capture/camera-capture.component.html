@@ -221,9 +221,14 @@
       color="primary"
       (click)="processImage()"
       [disabled]="isProcessing()"
+      [attr.aria-busy]="isProcessing()"
+      [attr.aria-label]="isProcessing() ? (imageCount() > 1 ? ('import.processMultipleWithAI' | translate) : ('import.processWithAI' | translate)) : null"
     >
       @if (isProcessing()) {
-        <mat-spinner diameter="20"></mat-spinner>
+        <!-- The processing overlay's own spinner announces the page-level
+             state, but this button's own visible label is replaced too, so
+             it still needs its idle key back as the busy name. -->
+        <mat-spinner diameter="20" aria-hidden="true"></mat-spinner>
       } @else {
         @if (imageCount() > 1) {
           {{ 'import.processMultipleWithAI' | translate }}

@@ -191,10 +191,20 @@
             </div>
           }
         </div>
+
+        @if (unmatchedCategoryCount() > 0) {
+          <div class="unmatched-categories">
+            {{ 'settings.csvUnmatchedCategories' | translate:{ count: unmatchedCategoryCount() } }}
+          </div>
+        }
         }
 
         @if (importProgress() > 0 && importProgress() < 100) {
-          <mat-progress-bar mode="determinate" [value]="importProgress()"></mat-progress-bar>
+          <mat-progress-bar
+            mode="determinate"
+            [value]="importProgress()"
+            [attr.aria-label]="'settings.importProgressLabel' | translate: { progress: importProgress() }"
+          ></mat-progress-bar>
           <span class="progress-text">{{ 'settings.importingProgress' | translate:{ progress: importProgress() } }}</span>
         }
 
@@ -254,7 +264,9 @@
       </div>
 
       @if (isDeletingAccount()) {
-        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+        <!-- No control near it changes its own text while this runs, and the
+             state is too generic to earn a catalog entry of its own. -->
+        <mat-progress-bar mode="indeterminate" [attr.aria-label]="'common.loading' | translate"></mat-progress-bar>
       }
     </div>
   </div>

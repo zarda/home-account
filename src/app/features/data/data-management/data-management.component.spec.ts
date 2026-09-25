@@ -1008,6 +1008,33 @@ describe('DataManagementComponent, through its own template', () => {
     expect(button('settings.importTransactions')).toBeDefined();
   });
 
+  it('counts the rows that will land on the catch-all category', () => {
+    fixture.detectChanges();
+    component.importedTransactions.set([
+      // Its own Category cell resolved — not part of the count.
+      { date: new Date(), description: 'Lunch', amount: 12, type: 'expense', category: 'Restaurants', categoryId: 'food_restaurants' },
+      // A cell the catalog could not match.
+      { date: new Date(), description: 'Widget', amount: 8, type: 'expense', category: 'Nonexistent' },
+      // No cell at all, in a file that carries the column.
+      { date: new Date(), description: 'Gadget', amount: 5, type: 'expense', category: '' },
+    ] as never);
+    component.showImportPreview.set(true);
+    fixture.detectChanges();
+
+    expect(text('.unmatched-categories')).toBe('settings.csvUnmatchedCategories:{"count":2}');
+  });
+
+  it('says nothing about unmatched categories when the file carries no Category column at all', () => {
+    fixture.detectChanges();
+    component.importedTransactions.set([
+      { date: new Date(), description: 'Lunch', amount: 12, type: 'expense' },
+    ] as never);
+    component.showImportPreview.set(true);
+    fixture.detectChanges();
+
+    expect(el().querySelector('.unmatched-categories')).toBeNull();
+  });
+
   it('shows the progress bar only while an import is partway through', () => {
     fixture.detectChanges();
     component.showImportPreview.set(true);
@@ -1018,6 +1045,8 @@ describe('DataManagementComponent, through its own template', () => {
     fixture.detectChanges();
     expect(el().querySelector('mat-progress-bar')).not.toBeNull();
     expect(text('.progress-text')).toBe('settings.importingProgress:{"progress":40}');
+    expect(el().querySelector('mat-progress-bar')?.getAttribute('aria-label'))
+      .toBe('settings.importProgressLabel:{"progress":40}');
 
     component.importProgress.set(100);
     fixture.detectChanges();
@@ -1038,7 +1067,10 @@ describe('DataManagementComponent, through its own template', () => {
 
     const deleteAccount = (Array.from(el().querySelectorAll('.danger-item button')) as HTMLButtonElement[])[1];
     expect(deleteAccount.disabled).toBeTrue();
-    expect(el().querySelector('.danger-zone mat-progress-bar')).not.toBeNull();
+    const bar = el().querySelector('.danger-zone mat-progress-bar');
+    expect(bar).not.toBeNull();
+    // Too generic a state to earn its own catalog entry.
+    expect(bar?.getAttribute('aria-label')).toBe('common.loading');
   });
 
   it('reaches the receipt image manager from its own button', () => {

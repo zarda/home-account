@@ -18,6 +18,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
+import { MatDialog } from '@angular/material/dialog';
 import { FormsModule } from '@angular/forms';
 import {
   Category,
@@ -34,6 +35,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { countryOptions } from '../../../../core/utils/country-options.utils';
 import {
@@ -46,6 +48,8 @@ import {
   mergeableRow,
   needsDateAnswer,
   parseAmountInput,
+  rowCarriesReviewerWork,
+  rowIsUnfilled,
   splitImportRow,
   withoutFieldConfidence,
 } from '../../../../core/utils/import-review.utils';
@@ -58,6 +62,8 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../../shared/pipes/location-label.pipe';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { CurrencyCodeDialogComponent } from '../../../../shared/components/currency-code-dialog/currency-code-dialog.component';
 
 /**
  * The fields a row edits in place, each with the input its editor focuses
@@ -99,6 +105,15 @@ const EDITORS = {
 
 type EditField = keyof typeof EDITORS;
 
+/**
+ * What every handler that records the reviewer's own work writes beside its
+ * change. The mark is what Remove asks about (`rowCarriesReviewerWork`); the
+ * failure reason goes with it because it describes the row as it was
+ * submitted, and a row the reviewer has since changed would otherwise go on
+ * saying it could not be saved beside the fix.
+ */
+const EDITED_ON_CARD = { editedOnCard: true, importFailure: undefined } as const;
+
 /** One datalist per card instance: two on a page must not answer to one id. */
 let vocabularyListSeq = 0;
 
@@ -136,6 +151,10 @@ export class TransactionPreviewTableComponent {
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private cdr = inject(ChangeDetectorRef);
   private notifications = inject(NotificationService);
+  private announcer = inject(AnnouncerService);
+  // Root-provided, so no MatDialogModule: this template renders no dialog
+  // selector, and ADR 0128 keeps a module out of `imports` for that reason.
+  private dialog = inject(MatDialog);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
@@ -224,6 +243,13 @@ export class TransactionPreviewTableComponent {
    * would have gone stale. Rewriting the row makes the change visible by
    * identity, which matters now that a row carries state (`fieldConfidence`)
    * an edit is supposed to clear.
+   *
+   * It does not set `editedOnCard`. Selection, a duplicate overrule, a
+   * dismissed currency offer and a recurring link come through here too, and
+   * none of them is work Remove should ask before throwing away; each
+   * handler that records the reviewer's own content spreads
+   * `EDITED_ON_CARD` itself, and the bulk currency switch, the bulk Keep, a
+   * split and a merge never come through here at all.
    */
   private replaceRow(
     transaction: CategorizedImportTransaction,
@@ -253,13 +279,16 @@ export class TransactionPreviewTableComponent {
   toggleType(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, {
       type: transaction.type === 'income' ? 'expense' : 'income',
+      ...EDITED_ON_CARD,
     });
   }
 
   updateCategory(transaction: CategorizedImportTransaction, categoryId: string): void {
+    if (categoryId === transaction.suggestedCategoryId) return;
     this.replaceRow(transaction, {
       suggestedCategoryId: categoryId,
       categoryConfidence: 1.0, // User confirmed
+      ...EDITED_ON_CARD,
     });
   }
 
@@ -303,11 +332,15 @@ export class TransactionPreviewTableComponent {
   /**
    * The figure follows the currency it is stored in — ADR 0109's rule,
    * applied here to a change of currency rather than of figure. A figure
-   * that rounds to nothing leaves the row unfilled, which the placeholder
-   * and the Continue gate already say; unlike the typed amount, the chip
-   * has no editor to hold open, so there is nothing to refuse into.
+   * that rounds to nothing leaves the row unfilled — the placeholder and
+   * the Continue gate both say so, but neither is anywhere near the chip
+   * this edit is made from, so a row blanked here is exactly as unnoticed
+   * as one a bulk switch blanks; the count is 1 rather than a distinct
+   * wording, so applyCurrencyToSelected's own notice is the one voice for
+   * both (#430).
    */
   updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
+    if (code === transaction.currency) return;
     // Chosen by the user, so whatever the source failed to read no longer
     // applies — and a choice made for a fallen-back row is worth remembering
     // for the next one this session, including a later hand-correction to
@@ -315,12 +348,24 @@ export class TransactionPreviewTableComponent {
     if (this.recordFellBackEligibility(transaction)) {
       this.currencySession.remember(code);
     }
+    // Read ahead of replaceRow: after it, the row's amount is already
+    // rounded and a row that was blank to start looks the same as one this
+    // edit just blanked.
+    const blanked =
+      !amountIsUnfilled(transaction) &&
+      amountIsUnfilled({ ...transaction, amount: roundToMinorUnit(transaction.amount, code) });
     this.replaceRow(transaction, {
       currency: code,
       amount: roundToMinorUnit(transaction.amount, code),
       currencyFellBack: false,
       currencySuggestion: undefined,
+      ...EDITED_ON_CARD,
     });
+    if (blanked) {
+      this.notifications.info(
+        this.translationService.t('import.bulkCurrencyBlanked', { count: 1, currency: code })
+      );
+    }
   }
 
   /**
@@ -343,12 +388,15 @@ export class TransactionPreviewTableComponent {
    * names itself, and the Continue gate holds until every one is filled.
    */
   applyCurrencyToSelected(code: string): void {
-    const selected = this.transactions.filter(t => t.selected);
+    // A row already in the picked currency has nothing to switch — leaving
+    // it out of `changing` keeps it out of eligibility, the blanked count and
+    // the mark, the same as any other choice that changes nothing.
+    const changing = this.transactions.filter(t => t.selected && t.currency !== code);
     let eligible = false;
-    // Not `selected.some(t => this.recordFellBackEligibility(t))`: `.some`
+    // Not `changing.some(t => this.recordFellBackEligibility(t))`: `.some`
     // stops at the first `true`, and every selected row needs its own
     // membership in `fellBackEligible` recorded, not just the first one.
-    for (const t of selected) {
+    for (const t of changing) {
       if (this.recordFellBackEligibility(t)) eligible = true;
     }
     if (eligible) {
@@ -357,17 +405,18 @@ export class TransactionPreviewTableComponent {
     // Counted before the map below replaces `amount`: after it, every row
     // has already been rounded and a row that was blank to start looks the
     // same as one the switch just blanked.
-    const blanked = selected.filter(
+    const blanked = changing.filter(
       t => !amountIsUnfilled(t) && amountIsUnfilled({ ...t, amount: roundToMinorUnit(t.amount, code) })
     ).length;
     this.transactions = this.transactions.map(t =>
-      t.selected
+      t.selected && t.currency !== code
         ? {
             ...t,
             currency: code,
             amount: roundToMinorUnit(t.amount, code),
             currencyFellBack: false,
             currencySuggestion: undefined,
+            ...EDITED_ON_CARD,
           }
         : t
     );
@@ -377,6 +426,43 @@ export class TransactionPreviewTableComponent {
         this.translationService.t('import.bulkCurrencyBlanked', { count: blanked, currency: code })
       );
     }
+  }
+
+  /**
+   * The last entry in both currency menus: a code the curated list does not
+   * carry, typed into the code dialog. The answer takes the path a listed
+   * pick takes — `updateCurrency` for the row's own menu,
+   * `applyCurrencyToSelected` for the bulk one — so the rounding, the
+   * blanking notice, the session memory and the mark all follow it. It is
+   * applied to the batch as the batch holds it when the answer lands, found
+   * by id, the rule `removeRow` keeps for the same reason.
+   *
+   * Focus goes back to the menu's own trigger by element: the entry that
+   * opened the dialog leaves with its menu, so the dialog's default — the
+   * element focused when it opened — would be a detached node, and focus
+   * would drop to the document root.
+   */
+  chooseOtherCurrency(row?: CategorizedImportTransaction): void {
+    const trigger = this.host.nativeElement.querySelector<HTMLElement>(
+      row ? this.inRow(row, '.currency-chip') : '.bulk-currency'
+    );
+    this.dialog
+      .open<CurrencyCodeDialogComponent, void, string>(CurrencyCodeDialogComponent, {
+        width: '400px',
+        restoreFocus: trigger ?? true,
+      })
+      .afterClosed()
+      .subscribe(code => {
+        if (!code) return;
+        if (row) {
+          const current = this.transactions.find(t => t.id === row.id);
+          if (!current) return;
+          this.updateCurrency(current, code);
+        } else {
+          this.applyCurrencyToSelected(code);
+        }
+        this.cdr.markForCheck();
+      });
   }
 
   currencyFellBackTooltip(): string {
@@ -394,6 +480,24 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
+   * The name a row-change announcement uses: its description, or a stand-in
+   * when there is none. This slot sits inside a sentence — "Tag lunch added
+   * to {{description}}" — so the stand-in has to be a noun phrase a
+   * screen-reader user can parse there, not editDescriptionLabel's
+   * imperative placeholder ("Add a description"), which would read as
+   * "Tag lunch added to Add a description". A hand-added row can be tagged,
+   * placed or removed before anything is typed into it, and every announce
+   * call needs the same answer rather than each deciding on its own whether
+   * to say nothing instead. Remove's question names the row the same way,
+   * inside a sentence of its own.
+   */
+  private announceDescription(row: CategorizedImportTransaction): string {
+    return descriptionIsUnfilled(row)
+      ? this.translationService.t('import.untitledRow')
+      : row.description;
+  }
+
+  /**
    * The reviewer's overrule of a duplicate verdict. The verdict was decided
    * inside the import doors, on inputs the reviewer could not change, and it
    * was what deselected the row — so the overrule selects it again. The
@@ -402,6 +506,12 @@ export class TransactionPreviewTableComponent {
    */
   clearDuplicate(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { isDuplicate: false, duplicateOf: undefined, selected: true });
+    // The badge and its own visual state carry this for a sighted reviewer;
+    // a screen reader on a card of twenty rows has no equivalent unless the
+    // change is announced here (#430).
+    this.announcer.announce(
+      this.translationService.t('import.announceNotDuplicate', { description: this.announceDescription(transaction) })
+    );
     // The button goes with the badge, and a focused element that leaves the
     // DOM drops focus at the document root; the description trigger beneath
     // is the row's nearest control, the one the editors' exits hand back to.
@@ -424,7 +534,10 @@ export class TransactionPreviewTableComponent {
   // its place — the same landing setCountry names — or the bare editor when
   // the row's own place editor was open.
   removeLocation(transaction: CategorizedImportTransaction): void {
-    this.replaceRow(transaction, { location: undefined, receiptCountry: undefined });
+    this.replaceRow(transaction, { location: undefined, receiptCountry: undefined, ...EDITED_ON_CARD });
+    this.announcer.announce(
+      this.translationService.t('import.announceLocationRemoved', { description: this.announceDescription(transaction) })
+    );
     this.focusWhenRendered(this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input'));
   }
 
@@ -495,8 +608,18 @@ export class TransactionPreviewTableComponent {
    * That withdrawal takes the country button off the card with the chip, so
    * the add trigger that replaces it is where focus goes instead — a
    * selector that matches nothing would drop focus at the document root.
+   *
+   * Only the withdrawal is announced: picking a country is a choice made
+   * from the very menu open in front of the reviewer, but withdrawing one
+   * can take the chip — and the country with it — off a row they may have
+   * moved on from already (#430).
    */
   setCountry(row: CategorizedImportTransaction, code: string | null): void {
+    // Compared against the chip's own displayed value, not the stored field
+    // alone: a country the reader concluded shows here through `receiptCountry`
+    // with no location country set at all, and re-picking or withdrawing that
+    // same country is exactly as inert as doing so on one set by hand.
+    if (code === (this.effectiveCountry(row) ?? null)) return;
     const location = row.location;
     this.replaceRow(row, {
       location: code
@@ -505,14 +628,23 @@ export class TransactionPreviewTableComponent {
           ? { ...location, country: undefined }
           : undefined,
       receiptCountry: undefined,
+      ...EDITED_ON_CARD,
     });
+    if (!code) {
+      this.announcer.announce(
+        this.translationService.t('import.announceCountryRemoved', { description: this.announceDescription(row) })
+      );
+    }
     this.focusWhenRendered(this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
   }
 
   // The chip goes with the tag; the add trigger is the strip's unconditional
   // control, or the bare input when that row's own tag editor was open.
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
-    this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
+    this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag), ...EDITED_ON_CARD });
+    this.announcer.announce(
+      this.translationService.t('import.announceTagRemoved', { description: this.announceDescription(transaction), tag })
+    );
     this.focusWhenRendered(this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input'));
   }
 
@@ -572,6 +704,19 @@ export class TransactionPreviewTableComponent {
         ? { recurringId: match.id, isRecurring: true }
         : { recurringId: undefined, isRecurring: match.sourceIsRecurring }
     );
+  }
+
+  /**
+   * Why a re-offered row failed last time, in the reviewer's own language.
+   *
+   * Resolved through the row's own catalog key (`importFailure`, stamped by
+   * the wizard via `importFailureKey`) rather than `ImportError.message`
+   * itself, which is a raw code or a provider's English — never this
+   * codebase's to put on a card untranslated. Empty for a row nobody has
+   * tried yet, which is the template's own cue to render nothing.
+   */
+  importFailureText(row: CategorizedImportTransaction): string {
+    return row.importFailure ? this.translationService.t(row.importFailure) : '';
   }
 
   /**
@@ -704,10 +849,12 @@ export class TransactionPreviewTableComponent {
    * is the reading needsVerification already gives a row nobody doubts) and
    * the row is marked answered. With the marks left standing,
    * needsVerification and the assumed tooltip would keep a kept row amber
-   * after the reviewer had answered.
+   * after the reviewer had answered. An answer is the reviewer's own work,
+   * so it marks the row too.
    */
   private dateAnswered(row: CategorizedImportTransaction): Partial<CategorizedImportTransaction> {
     return {
+      ...EDITED_ON_CARD,
       dateReviewed: true,
       dateAssumed: undefined,
       dateImplausible: undefined,
@@ -777,6 +924,48 @@ export class TransactionPreviewTableComponent {
     );
   }
 
+  /**
+   * Where a held Continue press routes: `disabledInteractive` keeps the
+   * wizard's button clickable at `aria-disabled` rather than truly disabled,
+   * because a native `disabled` button eats the click and leaves nobody
+   * pointed at the row that is holding it (#430). An unfilled row outranks
+   * an unanswered date — its placeholder is the only sign anything is wrong,
+   * where a date question already carries its own chip.
+   */
+  revealFirstBlocking(): boolean {
+    const unfilled = this.transactions.find(rowIsUnfilled);
+    if (unfilled) {
+      this.scrollRowIntoView(unfilled);
+      this.startEdit(unfilled, amountIsUnfilled(unfilled) ? 'amount' : 'description');
+      return true;
+    }
+    const unanswered = this.transactions.find(t => needsDateAnswer(t, this.attention(t)));
+    if (unanswered) {
+      this.scrollRowIntoView(unanswered);
+      this.focusWhenRendered(this.inRow(unanswered, '.date-chip'));
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Centred rather than merely visible: the batch scrolls inside its own
+   * list, not the page, and a row left flush with the scroller's edge is as
+   * easy to miss again as one still off it.
+   */
+  private scrollRowIntoView(row: CategorizedImportTransaction): void {
+    this.host.nativeElement.querySelector<HTMLElement>(this.inRow(row))?.scrollIntoView({
+      block: 'center',
+      behavior: this.prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  }
+
+  /** Both of check-motion.mjs's own kill-switches: the OS query, and the in-app preference it mirrors onto the document root. */
+  private prefersReducedMotion(): boolean {
+    return matchMedia('(prefers-reduced-motion: reduce)').matches
+      || document.documentElement.classList.contains('reduced-motion');
+  }
+
   private formattedDate(row: CategorizedImportTransaction): string {
     return this.localeFormat.formatDate(row.date);
   }
@@ -835,9 +1024,14 @@ export class TransactionPreviewTableComponent {
     );
   }
 
-  /** Scoped to one card: there is one of every control per row inside the @for. */
-  private inRow(row: CategorizedImportTransaction, selector: string): string {
-    return `[data-row-id="${CSS.escape(row.id)}"] ${selector}`;
+  /**
+   * Scoped to one card: there is one of every control per row inside the
+   * @for. An omitted selector names the card itself — scrollRowIntoView's
+   * own target, the one thing here with nothing under EDITORS to reach it by.
+   */
+  private inRow(row: CategorizedImportTransaction, selector = ''): string {
+    const card = `[data-row-id="${CSS.escape(row.id)}"]`;
+    return selector ? `${card} ${selector}` : card;
   }
 
   /**
@@ -879,7 +1073,7 @@ export class TransactionPreviewTableComponent {
     // An emptied field is a reviewer starting over, not one asking for a row
     // that reads as nothing in the list.
     if (!description || description === row.description) return;
-    this.replaceRow(row, { description });
+    this.replaceRow(row, { description, ...EDITED_ON_CARD });
   }
 
   /**
@@ -912,10 +1106,10 @@ export class TransactionPreviewTableComponent {
     if (!name) {
       const location = { ...row.location };
       delete location.name;
-      this.replaceRow(row, { location: location.country ? location : undefined });
+      this.replaceRow(row, { location: location.country ? location : undefined, ...EDITED_ON_CARD });
       return;
     }
-    this.replaceRow(row, { location: { ...row.location, name } });
+    this.replaceRow(row, { location: { ...row.location, name }, ...EDITED_ON_CARD });
   }
 
   /**
@@ -938,7 +1132,10 @@ export class TransactionPreviewTableComponent {
     const tags = row.tags ?? [];
     this.closeEdit(row, event.type === 'keydown');
     if (!tag || normalizeTags(tags).includes(tag)) return;
-    this.replaceRow(row, { tags: [...tags, tag] });
+    this.replaceRow(row, { tags: [...tags, tag], ...EDITED_ON_CARD });
+    this.announcer.announce(
+      this.translationService.t('import.announceTagAdded', { description: this.announceDescription(row), tag })
+    );
   }
 
   /**
@@ -1000,6 +1197,7 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(row, {
       amount,
       fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'amount'),
+      ...EDITED_ON_CARD,
     });
   }
 
@@ -1055,7 +1253,17 @@ export class TransactionPreviewTableComponent {
     this.editing.set(part.id, 'description');
     const before = this.transactions.slice(0, index);
     const after = this.transactions.slice(index + 1);
-    this.transactions = [...before, kept, part, ...after];
+    // The part is known by its splitFrom; the half left behind has only
+    // this mark to say the split happened to it. Neither half is the row
+    // that was refused, so neither keeps its reason or its count of failed
+    // attempts — carried, the count would set a half aside on its own first
+    // failure.
+    this.transactions = [
+      ...before,
+      { ...kept, ...EDITED_ON_CARD, importAttempts: undefined },
+      { ...part, importFailure: undefined, importAttempts: undefined },
+      ...after,
+    ];
     this.emitChanges();
     this.cdr.markForCheck();
     this.focusWhenRendered(this.inRow(part, EDITORS.description.input));
@@ -1194,8 +1402,13 @@ export class TransactionPreviewTableComponent {
     const source = this.transactions.find(t => t.id === row.id);
     const dest = this.transactions.find(t => t.id === target.id);
     if (!source || !dest || source === dest) return;
-    const merged = mergeImportRows(dest, source);
-    if (!merged) return;
+    const folded = mergeImportRows(dest, source);
+    if (!folded) return;
+    // mergedReceiptIds records a merge only between two receipts' rows; the
+    // mark records every one. The survivor is not the row that was refused,
+    // so it keeps neither the reason nor the count of failed attempts —
+    // carried, the count would set it aside on its own first failure.
+    const merged: CategorizedImportTransaction = { ...folded, ...EDITED_ON_CARD, importAttempts: undefined };
     this.forgetRow(source.id);
     this.transactions = this.transactions.filter(t => t !== source).map(t => t === dest ? merged : t);
     this.emitChanges();
@@ -1216,14 +1429,47 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
+   * Remove asks first only when the row carries the reviewer's own work
+   * (`rowCarriesReviewerWork`): an edit, a split or a merge is not something
+   * a rescan gives back. A bare scanned row still leaves in one press — ADR
+   * 0108's rule, with Deselect the reversible answer.
+   *
+   * The answer is applied to the row as the batch holds it when the answer
+   * lands, found by id: while the question is open the wizard can hand back
+   * a new object under the same id (a re-check reconciling its verdict), and
+   * the object this press captured would no longer be found. A row gone by
+   * then is the stale-commit no-op mergeInto models.
+   */
+  removeRow(row: CategorizedImportTransaction): void {
+    if (!rowCarriesReviewerWork(row)) {
+      this.takeRowOff(row);
+      return;
+    }
+    const data: ConfirmDialogData = {
+      title: this.translationService.t('import.removeRowTitle'),
+      message: this.translationService.t('import.removeRowConfirm', { description: this.announceDescription(row) }),
+      confirmLabel: this.translationService.t('common.remove'),
+      cancelLabel: this.translationService.t('common.cancel'),
+      confirmColor: 'warn',
+      icon: 'delete',
+    };
+    this.dialog.open(ConfirmDialogComponent, { width: '400px', data }).afterClosed().subscribe(confirmed => {
+      const current = confirmed ? this.transactions.find(t => t.id === row.id) : undefined;
+      if (current) this.takeRowOff(current);
+    });
+  }
+
+  /**
    * The row's own trigger leaves with it, so focus goes where a keyboard
    * reviewer clearing a batch would want it — the same control on the next
    * row, the previous row's when this was the last, and the list's own
    * control when the list is empty. The wizard prunes `receiptRowIds` along
    * with everything else it keeps for the id on its own (0106's mechanics,
-   * `onTransactionsUpdated`).
+   * `onTransactionsUpdated`). After a confirmed answer the dialog has already
+   * handed focus back to the pressed trigger, and this, landing on the next
+   * render, is what moves it on.
    */
-  removeRow(row: CategorizedImportTransaction): void {
+  private takeRowOff(row: CategorizedImportTransaction): void {
     const index = this.transactions.indexOf(row);
     if (index === -1) return;
     const neighbour = this.transactions[index + 1] ?? this.transactions[index - 1];
@@ -1231,6 +1477,9 @@ export class TransactionPreviewTableComponent {
     this.transactions = this.transactions.filter(t => t !== row);
     this.emitChanges();
     this.cdr.markForCheck();
+    this.announcer.announce(
+      this.translationService.t('import.announceRowRemoved', { description: this.announceDescription(row) })
+    );
     this.focusWhenRendered(
       ...(neighbour ? [this.inRow(neighbour, '.remove-trigger')] : []),
       '.add-row'
@@ -1326,7 +1575,7 @@ export class TransactionPreviewTableComponent {
     if (this.isEditing(row, 'notes')) this.closeEdit(row, false);
     const notes = draft?.trim() || undefined;
     if (draft === undefined || notes === row.notes) return;
-    this.replaceRow(row, { notes });
+    this.replaceRow(row, { notes, ...EDITED_ON_CARD });
   }
 
   /**

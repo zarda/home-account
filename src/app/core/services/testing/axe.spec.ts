@@ -114,8 +114,9 @@ describe('the axe harness', () => {
       const results = {
         violations: [{ id: 'color-contrast', nodes: [{ target: ['.a'] }] }],
       } as Parameters<typeof unexpectedViolations>[0];
+      const fixtureTable = { '/transactions': ['color-contrast'] };
 
-      expect(unexpectedViolations(results, '/transactions')).toEqual([]);
+      expect(unexpectedViolations(results, '/transactions', fixtureTable)).toEqual([]);
     });
 
     // The load-bearing half: the freeze is per route and per rule, so the
@@ -125,8 +126,9 @@ describe('the axe harness', () => {
       const results = {
         violations: [{ id: 'nested-interactive', nodes: [{ target: ['.a'] }] }],
       } as Parameters<typeof unexpectedViolations>[0];
+      const fixtureTable = { '/transactions': ['nested-interactive'] };
 
-      expect(unexpectedViolations(results, '/data')).toEqual([
+      expect(unexpectedViolations(results, '/data', fixtureTable)).toEqual([
         'nested-interactive (1): .a',
       ]);
     });

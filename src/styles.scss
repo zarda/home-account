@@ -193,6 +193,11 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --color-primary: #3F51B5;
   --color-primary-light: #eef2ff;
   --color-primary-dark: #303F9F;
+  // The foreground for anything on the -light tint, same idea as the
+  // income/expense/warning -text tokens below. In light it equals the fill:
+  // #3F51B5 on #eef2ff is already 6.15:1. The dark block is where the two
+  // part ways.
+  --color-primary-text: #3F51B5;
   --color-accent: #4f46e5;
   --color-accent-light: #818cf8;
 
@@ -201,6 +206,9 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --color-success-light: #dcfce7;
   --color-error: #ef4444;
   --color-error-light: #fee2e2;
+  // -text is the AA-corrected foreground for --color-error on its own -light
+  // tint (the base token is only ~3.08:1 there in light).
+  --color-error-text: #b91c1c;
   --color-warning: #eab308;
   --color-warning-light: #fef9c3;
   --color-warning-text: #b45309;
@@ -260,6 +268,12 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --color-primary: #7986CB;
   --color-primary-light: #303F9F;
   --color-primary-dark: #5C6BC0;
+  // The fill on its tint, #7986CB on #303F9F, is 2.60:1 — under AA; this is
+  // 5.56:1. Lightened rather than darkening the tint, same reasoning as
+  // --color-warning-text below: the tint already sits close to the card, and
+  // darkening it further would make the fill it is meant to be visible on
+  // disappear.
+  --color-primary-text: #c5cae9;
   --color-accent: #818cf8;
   --color-accent-light: #a5b4fc;
 
@@ -267,6 +281,9 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --color-success-light: #166534;
   --color-error: #f87171;
   --color-error-light: #991b1b;
+  // #f87171 on #991b1b measures under AA; -text is lightened to clear it,
+  // same idea as --color-income-text/--color-expense-text above.
+  --color-error-text: #fecaca;
   --color-warning: #facc15;
   --color-warning-light: #854d0e;
   // One step lighter than the -400 the dark chips started on. A tinted chip

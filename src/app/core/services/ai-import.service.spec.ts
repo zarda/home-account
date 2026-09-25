@@ -20,7 +20,7 @@ import {
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
 import { parseDateInput } from '../utils/transaction-date.utils';
-import { datedToday } from '../utils/import-review.utils';
+import { datedToday, mergeImportRows, splitImportRow } from '../utils/import-review.utils';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -36,13 +36,15 @@ import { RagContextService } from './rag-context.service';
 import { TagMemoryService } from './tag-memory.service';
 import { TagSuggestionService } from './tag-suggestion.service';
 import { RecurringService } from './recurring.service';
+import { CategoryService } from './category.service';
 import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
-import { createRecurring, createTransaction } from './testing/test-data';
+import { createCategory, createRecurring, createTransaction } from './testing/test-data';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 import {
   CategorizedImportTransaction,
+  Category,
   DuplicateCheck,
   ImportHistory,
   User
@@ -67,6 +69,7 @@ describe('AIImportService', () => {
   let recurringService: jasmine.SpyObj<RecurringService>;
   let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let categories: WritableSignal<Category[]>;
   let rasterize: jasmine.Spy;
   let isOnlineSignal: WritableSignal<boolean>;
 
@@ -130,6 +133,19 @@ describe('AIImportService', () => {
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
       'trackAiAssistUsed',
     ]);
+    // What the account holds, as the loaded signal holds it. Every path here
+    // that files a typed row reads it for a category's side — the backup
+    // door's id, category memory's answer, the category a statement, PDF or
+    // receipt-photo extraction named, and the camera's cloud read — and the
+    // backup door also for whether the id is held and active.
+    categories = signal<Category[]>([
+      createCategory({ id: 'food', type: 'expense' }),
+      createCategory({ id: 'housing', type: 'expense' }),
+      createCategory({ id: 'other_expense', type: 'expense' }),
+      createCategory({ id: 'archived_hobby', type: 'expense', isActive: false }),
+      createCategory({ id: 'employment_salary', type: 'income' }),
+      createCategory({ id: 'other_income', type: 'income' }),
+    ]);
 
     // Sensible defaults
         cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
@@ -172,7 +188,8 @@ describe('AIImportService', () => {
         { provide: TagMemoryService, useValue: tagMemory },
         { provide: RecurringService, useValue: recurringService },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
-        { provide: AnalyticsService, useValue: analytics }
+        { provide: AnalyticsService, useValue: analytics },
+        { provide: CategoryService, useValue: { categories } }
       ]
     });
 
@@ -655,6 +672,25 @@ describe('AIImportService', () => {
       expect(row.amount).toBe(12.5);
       expect(row.type).toBe('income');
     });
+
+    it('files a typed row only under its own side of the ledger', () => {
+      // The camera's cloud read names a category per row. A refund it named
+      // an expense category, or left unnamed, still belongs on the income
+      // side; a name that fits the row keeps its own grade.
+      const rows = service.convertStrategyResultToCategories(processed([
+        { type: 'income', suggestedCategoryId: 'food', confidence: 0.9 },
+        { type: 'income', suggestedCategoryId: undefined, confidence: 0.9 },
+        { type: 'income', suggestedCategoryId: 'employment_salary', confidence: 0.85 },
+        { type: 'expense', suggestedCategoryId: 'employment_salary', confidence: 0.85 },
+      ]));
+
+      expect(rows.map(r => [r.suggestedCategoryId, r.categoryConfidence])).toEqual([
+        ['other_income', UNRESOLVED_CATEGORY_CONFIDENCE],
+        ['other_income', UNRESOLVED_CATEGORY_CONFIDENCE],
+        ['employment_salary', 0.85],
+        ['other_expense', UNRESOLVED_CATEGORY_CONFIDENCE],
+      ]);
+    });
   });
 
   describe('remembered categories', () => {
@@ -724,6 +760,9 @@ describe('AIImportService', () => {
       const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
       expect(asked.length).toBe(1);
       expect(asked[0].description).toBe('NEW PLACE');
+      // The row's own direction reaches the categoriser, which narrows its
+      // catalogue and checks its answer by it; the sign alone never does.
+      expect(asked[0].type).toBe('expense');
       // The model's answers must land back on the rows it was asked about.
       const starbucks = result.transactions.find(t => t.description === 'STARBUCKS');
       const newPlace = result.transactions.find(t => t.description === 'NEW PLACE');
@@ -1584,7 +1623,7 @@ describe('AIImportService', () => {
       expect(result.transactions[0].amount).toBe(301);
     });
 
-    it('keeps a lone item\'s own merged flag through consolidation', async () => {
+    it('a lone item is never merged, whatever the model says', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo', amount: 10, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 4, wasMerged: true }
@@ -1594,7 +1633,7 @@ describe('AIImportService', () => {
         makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
       ]);
 
-      expect(result.transactions[0].imageMetadata?.wasMerged).toBe(true);
+      expect(result.transactions[0].imageMetadata?.wasMerged).toBe(false);
     });
 
     it('should merge using AI-provided receipt details and a non-JPY currency', async () => {
@@ -1638,6 +1677,14 @@ describe('AIImportService', () => {
       // catalog id; that id wins over the ladder's answer (the documented
       // precedence), while an unresolved name arrives as undefined and the
       // ladder's answer stands.
+      //
+      // The ladder's own grade is pinned away from 0.8 here so a row that
+      // wrongly reached the ladder would show it: the extraction-carried id
+      // must come with its own grade, not whatever the ladder happened to
+      // answer for the batch it was sent.
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'food', confidence: 0.6 }))
+      );
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
@@ -1652,7 +1699,91 @@ describe('AIImportService', () => {
       const resolved = result.transactions.find(t => t.description === 'X');
       const unresolved = result.transactions.find(t => t.description === 'Y');
       expect(resolved?.suggestedCategoryId).toBe('transport');
+      expect(resolved?.categoryConfidence).toBe(0.8);
       expect(unresolved?.suggestedCategoryId).toBe('food');
+    });
+
+    it('sends only uncategorised rows to the ladder', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+        { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+      ]);
+
+      await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.length).toBe(1);
+    });
+
+    it('makes no ladder call when every row already carries a category', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+        { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9, category: 'dining' },
+      ]);
+
+      await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      expect(cloudLLMProvider.categorizeTransactions.calls.count()).toBe(0);
+    });
+
+    it("takes the ladder's pair for a row the extraction left uncategorised", async () => {
+      // Keyed by the ladder call's own position rather than by content, so a
+      // categorised neighbour smuggled into the same batch would shift which
+      // pair this row receives.
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map((r, i) => ({ ...r, suggestedCategoryId: `ladder_${i}`, confidence: 0.5 + i * 0.1 }))
+      );
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+        { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+        { date: '2024-06-01', description: 'Z', amount: 7, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'bottom', confidence: 0.9, receiptId: 10, category: 'entertainment' },
+      ]);
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      const unresolved = result.transactions.find(t => t.description === 'Y');
+      expect(unresolved?.suggestedCategoryId).toBe('ladder_0');
+      expect(unresolved?.categoryConfidence).toBe(0.5);
+    });
+
+    it("sends a row whose extraction named the other side's category to the ladder", async () => {
+      // A model can read a refund line as income and still name the
+      // receipt's expense category for it.
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_income', confidence: 0.6 }))
+      );
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'Refund', amount: 5, type: 'income', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'food' },
+        { date: '2024-06-01', description: 'Lunch', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9, category: 'food' },
+      ]);
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      const refund = result.transactions.find(t => t.description === 'Refund');
+      expect(refund?.suggestedCategoryId).toBe('other_income');
+      expect(refund?.categoryConfidence).toBe(0.6);
+      const lunch = result.transactions.find(t => t.description === 'Lunch');
+      expect(lunch?.suggestedCategoryId).toBe('food');
+      expect(lunch?.categoryConfidence).toBe(0.8);
+      expect(cloudLLMProvider.categorizeTransactions.calls.allArgs().map(([raws]) => raws.map(r => r.description)))
+        .toEqual([['Refund']]);
     });
 
     it('should add a duplicate warning when duplicates are detected', async () => {
@@ -2047,7 +2178,9 @@ describe('AIImportService', () => {
       const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
 
       expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
-      expect(result.transactions.every(t => t.suggestedCategoryId === 'other_expense')).toBeTrue();
+      // Coffee is an expense, Refund is income: each row's own floor, not one
+      // shared catch-all.
+      expect(result.transactions.map(t => t.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
       expect(result.transactions.every(t => t.categoryConfidence === 0.1)).toBeTrue();
       expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
       expect(result.confidence).toBeLessThan(0.5);
@@ -2075,6 +2208,65 @@ describe('AIImportService', () => {
       const coffee = result.transactions.find(t => t.description === 'Coffee');
       expect(coffee?.suggestedCategoryId).toBe('food_coffee');
       expect(coffee?.categoryConfidence).toBe(0.95);
+    });
+
+    it('does not file a refund under the expense category its merchant is remembered by', async () => {
+      // Memory is keyed by merchant alone, and one merchant sits on both
+      // sides of the ledger: the shop's purchases and its refunds.
+      categories.update(list => [...list, createCategory({ id: 'shopping', type: 'expense' })]);
+      categoryMemory.lookup.and.returnValue('shopping');
+      cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_income', confidence: 0.6 }))
+      );
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'AMAZON', amount: 30, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
+        { description: 'AMAZON', amount: 30, date: new Date(2024, 5, 3), type: 'income', currency: 'USD' },
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const [purchase, refund] = result.transactions;
+      expect(purchase.suggestedCategoryId).toBe('shopping');
+      expect(purchase.categoryConfidence).toBe(0.95);
+      expect(refund.suggestedCategoryId).not.toBe('shopping');
+      // The remembered answer is no answer for the refund, so it falls to the
+      // next rung: the model is asked about it, and only about it.
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.map(r => r.type)).toEqual(['income']);
+      expect(refund.suggestedCategoryId).toBe('other_income');
+      expect(refund.categoryConfidence).toBe(0.6);
+    });
+
+    it("keeps a category the file named, at full grade, and sends only the rest to the ladder", async () => {
+      categories.set([
+        createCategory({ id: 'dining', name: 'Dining Out', type: 'expense' }),
+        createCategory({ id: 'other_expense', name: 'Other', type: 'expense' }),
+      ]);
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        {
+          description: 'Ramen', amount: 12, date: new Date(2024, 5, 1),
+          type: 'expense', currency: 'USD', category: 'Dining Out', categoryId: 'dining',
+        },
+        {
+          description: 'Mystery', amount: 7, date: new Date(2024, 5, 2),
+          type: 'expense', currency: 'USD', category: 'Nonexistent',
+        },
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      // The file's own exact name never reaches the model at all.
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.map(r => r.description)).toEqual(['Mystery']);
+
+      const ramen = result.transactions.find(t => t.description === 'Ramen');
+      expect(ramen?.suggestedCategoryId).toBe('dining');
+      expect(ramen?.categoryConfidence).toBe(1);
+
+      // What the ladder answers for the row that did need it is untouched.
+      const mystery = result.transactions.find(t => t.description === 'Mystery');
+      expect(mystery?.suggestedCategoryId).toBe('food');
+      expect(mystery?.categoryConfidence).toBe(0.8);
     });
 
     it('names the categorization step for what it does', async () => {
@@ -2255,6 +2447,129 @@ describe('AIImportService', () => {
       expect(result.warnings.some(w => w.type === 'low_confidence')).toBeFalse();
     });
 
+    it('grades a category the account does not have as unresolved and files it under its type\'s catch-all', async () => {
+      // A backup outlives the categories it names — one deleted or archived
+      // since, or one from another account's file. Filed under the catch-all
+      // instead of the id as written, because nothing here can vouch for a
+      // category the account does not hold.
+      const backup = {
+        transactions: [
+          { description: 'Gadget', amount: -40, type: 'expense', categoryId: 'deleted_hobby' },
+          { description: 'Royalty', amount: 90, type: 'income', categoryId: 'deleted_side_gig' },
+          { description: 'Model kit', amount: -25, type: 'expense', categoryId: 'archived_hobby' },
+          { description: 'Groceries', amount: -5, type: 'expense', categoryId: 'food' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.map(t => t.suggestedCategoryId))
+        .toEqual(['other_expense', 'other_income', 'other_expense', 'food']);
+      expect(result.transactions.map(t => t.categoryConfidence))
+        .toEqual([UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE, 1]);
+      expect(result.warnings.find(w => w.type === 'low_confidence')?.message)
+        .withContext('the three the review has to look at, and not the one it can trust')
+        .toBe('3 transaction(s) have low categorization confidence');
+    });
+
+    it('refuses a category of the other type', async () => {
+      // The id exists, but on the income side: an expense filed there would
+      // count as earnings in every total that reads the category.
+      const backup = {
+        transactions: [
+          { description: 'Payroll fee', amount: -12, type: 'expense', categoryId: 'employment_salary' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('other_expense');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('files a row that names no category under its own type\'s catch-all', async () => {
+      const backup = { transactions: [{ description: 'Deposit', amount: 545, type: 'income' }] };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('other_income');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('keeps the id at the unresolved grade when the account\'s categories have not loaded', async () => {
+      // An empty list says nothing about the id: nothing can vouch for it, and
+      // nothing shows it is wrong, so it stays for the reviewer to look at.
+      categories.set([]);
+      const backup = {
+        transactions: [
+          { description: 'Groceries', amount: -5, type: 'expense', categoryId: 'food' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('food');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('carries a recurringId the account has', async () => {
+      recurringService.listAll.and.resolveTo([createRecurring({ id: 'rule-rent', name: 'Rent' })]);
+      const backup = {
+        transactions: [
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent', isRecurring: true }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].recurringId).toBe('rule-rent');
+      expect(result.transactions[0].isRecurring).toBeTrue();
+    });
+
+    it('drops one that names no rule', async () => {
+      // A dangling link is worse than none: the rule's own list and the
+      // subscription detector both read the field, and neither can resolve it.
+      recurringService.listAll.and.resolveTo([createRecurring({ id: 'rule-rent', name: 'Rent' })]);
+      const backup = {
+        transactions: [
+          { description: 'Gym', amount: -30, type: 'expense', recurringId: 'rule-deleted' },
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent' },
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect('recurringId' in result.transactions[0]).toBeFalse();
+      expect(result.transactions[1].recurringId).toBe('rule-rent');
+      expect(result.transactions[2].recurringId).toBe('rule-rent');
+      expect(recurringService.listAll)
+        .withContext('one read for the whole file')
+        .toHaveBeenCalledTimes(1);
+    });
+
+    it('carries no link it could not check', async () => {
+      recurringService.listAll.and.rejectWith(new Error('unavailable'));
+      spyOn(console, 'warn');
+      const backup = {
+        transactions: [
+          { description: 'Rent', amount: -1200, type: 'expense', recurringId: 'rule-rent' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.length).toBe(1);
+      expect('recurringId' in result.transactions[0]).toBeFalse();
+    });
+
     it('resolves a backup date the way every other import door does', async () => {
       const backup = {
         transactions: [
@@ -2409,6 +2724,144 @@ describe('AIImportService', () => {
     });
   });
 
+  describe('a backup row\'s historical rate', () => {
+    // 2000 yen, stamped at 0.0075 to the dollar when the file was written.
+    // The file's own converted figure is deliberately not 2000 × 0.0075: it
+    // is never read, so a case that copied it would fail here.
+    const stamped = {
+      description: 'Ramen', amount: -2000, currency: 'JPY', type: 'expense',
+      date: { seconds: 1700000000 },
+      exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 999
+    };
+
+    const read = async (rows: object[]): Promise<CategorizedImportTransaction[]> =>
+      (await service.importFromJSON(
+        makeFile('backup.json', 'application/json', JSON.stringify({ transactions: rows }))
+      )).transactions;
+
+    const confirm = (rows: CategorizedImportTransaction[]) =>
+      service.confirmImport(rows, 'backup.json', 10, 'json', 'backup_json');
+
+    const writeOptions = () =>
+      transactionService.addTransaction.calls.allArgs().map(([, options]) => options);
+
+    beforeEach(() => {
+      importHistoryService.createPendingImport.and.resolveTo('hist-1');
+      importHistoryService.completeImport.and.resolveTo();
+      importHistoryService.getImportById.and.returnValue(of({ id: 'hist-1' } as ImportHistory));
+      transactionService.addTransaction.and.resolveTo('txn-id');
+    });
+
+    it('writes the file\'s historical rate', async () => {
+      const [row] = await read([stamped]);
+
+      // The rate travels on the row, never a converted figure a card edit
+      // could leave stale.
+      expect(row.fileRate).toEqual({ exchangeRate: 0.0075, baseCurrency: 'USD', currency: 'JPY' });
+
+      await confirm([row]);
+
+      // The product addTransaction stamps a live row with, over the row's
+      // amount at the moment it is written.
+      expect(writeOptions()).toEqual([{
+        skipBudgetRecalc: true,
+        snapshot: { exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 2000 * 0.0075 },
+      }]);
+      const [dto] = transactionService.addTransaction.calls.mostRecent().args;
+      expect('fileRate' in dto).withContext('a review-step mark, never a field').toBeFalse();
+    });
+
+    it('an amount edited on the card keeps the file\'s rate over the new amount', async () => {
+      const [row] = await read([stamped]);
+
+      await confirm([{ ...row, amount: 2400 }]);
+
+      expect(writeOptions()[0]?.snapshot).toEqual({
+        exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 2400 * 0.0075,
+      });
+    });
+
+    it('a split part is stamped from its own amount', async () => {
+      // splitImportRow spreads the row into both halves, so a whole-row figure
+      // carried on it would land on each half in full.
+      const [row] = await read([stamped]);
+      const [kept, part] = splitImportRow(row, 500, 'part-1')!;
+
+      await confirm([kept, part]);
+
+      expect(writeOptions().map(options => options?.snapshot)).toEqual([
+        { exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 1500 * 0.0075 },
+        { exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 500 * 0.0075 },
+      ]);
+    });
+
+    it('a merged row is stamped from its combined amount at the rate of the row it keeps', async () => {
+      // mergeImportRows spreads the target: its date is the merged row's date,
+      // so its rate is the one that day's figure is converted at.
+      const [target, source] = await read([
+        stamped,
+        { ...stamped, description: 'Gyoza', amount: -600, exchangeRate: 0.0071 }
+      ]);
+      const merged = mergeImportRows(target, source)!;
+
+      await confirm([merged]);
+
+      expect(writeOptions()[0]?.snapshot).toEqual({
+        exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 2600 * 0.0075,
+      });
+    });
+
+    it('a currency changed on the card, or a file stamped in another base currency, drops the rate', async () => {
+      // A yen rate says nothing about won, and a rate into euros says nothing
+      // about this account's dollars: both rows convert at today's rate, the
+      // way any row without a snapshot does.
+      const [yen, euroBased] = await read([
+        stamped,
+        { ...stamped, description: 'Croissant', baseCurrency: 'EUR' }
+      ]);
+
+      await confirm([{ ...yen, currency: 'KRW' }, euroBased]);
+
+      expect(writeOptions()).toEqual([{ skipBudgetRecalc: true }, { skipBudgetRecalc: true }]);
+    });
+
+    it('carries no rate for a row that names no currency, or whose rate is unusable', async () => {
+      const unnamed: Record<string, unknown> = { ...stamped };
+      delete unnamed['currency'];
+      const rows = await read([
+        unnamed,
+        { ...stamped, exchangeRate: 0 },
+        { ...stamped, exchangeRate: -0.0075 }
+      ]);
+
+      expect(rows.map(r => 'fileRate' in r)).toEqual([false, false, false]);
+    });
+
+    it('carries no rate that overflowed to Infinity', async () => {
+      // JSON.stringify turns Infinity into null before it ever reaches a
+      // file, so the only way this shape exists is a number literal wide
+      // enough to overflow on parse — JSON.parse('{"x":1e999}').x is
+      // Infinity. Written by hand rather than through read(), which would
+      // stringify the row and lose the overflow before importFromJSON ever
+      // sees it.
+      const file = makeFile(
+        'backup.json',
+        'application/json',
+        '{"transactions":[{"description":"Ramen","amount":-2000,"currency":"JPY",' +
+          '"type":"expense","date":{"seconds":1700000000},"exchangeRate":1e999,' +
+          '"baseCurrency":"USD","amountInBaseCurrency":999}]}'
+      );
+
+      const [row] = (await service.importFromJSON(file)).transactions;
+
+      expect('fileRate' in row).toBeFalse();
+
+      await confirm([row]);
+
+      expect(writeOptions()).toEqual([{ skipBudgetRecalc: true }]);
+    });
+  });
+
   describe('categorizeTransactions', () => {
     it('should return an empty array for empty input', async () => {
       const result = await service.categorizeTransactions([]);
@@ -2435,6 +2888,22 @@ describe('AIImportService', () => {
       expect(result[0].categoryConfidence).toBe(0.8);
       expect(result[1].suggestedCategoryId).toBe('other_expense');
       expect(result[1].categoryConfidence).toBe(0.3);
+    });
+
+    it("files a named category on the other side of the row's ledger as unresolved", async () => {
+      // A statement's "Other" resolves to other_expense whichever side the
+      // row is on; an income row is filed under its own catch-all instead,
+      // at the grade of an answer nobody could place.
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Interest', amount: 3, type: 'income', currency: 'USD', category: 'other_expense' },
+        { date: '2024-06-02', description: 'Payroll', amount: 900, type: 'income', currency: 'USD', category: 'employment_salary' },
+      ]);
+
+      expect(result[0].suggestedCategoryId).toBe('other_income');
+      expect(result[0].categoryConfidence).toBe(0.3);
+      // One on the row's own side keeps the extraction's grade.
+      expect(result[1].suggestedCategoryId).toBe('employment_salary');
+      expect(result[1].categoryConfidence).toBe(0.8);
     });
 
     it('should default category, currency, type and date when missing', async () => {
@@ -2902,6 +3371,36 @@ describe('AIImportService', () => {
       expect(stats.successCount).toBe(1);
       expect(stats.errors?.length).toBe(1);
       expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({ row: 1, transactionId: 'a' }));
+    });
+
+    it("records the caught error's own code alongside its message", async () => {
+      // A FirestoreError keeps a stable code apart from its prose message —
+      // the shape a real rules denial or an offline write actually throws,
+      // as opposed to a plain Error, which has none.
+      const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+      });
+      transactionService.addTransaction.and.returnValue(Promise.reject(denied));
+
+      await service.confirmImport([selected({ id: 'a' })], 'r.png', 10, 'image', 'receipt_image');
+
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1];
+      expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({
+        transactionId: 'a',
+        message: 'Missing or insufficient permissions.',
+        code: 'permission-denied',
+      }));
+    });
+
+    it('omits code entirely when the caught error carried none', async () => {
+      // completeImport writes this straight to Firestore, which rejects an
+      // undefined field — the key must be absent, not present and empty.
+      transactionService.addTransaction.and.returnValue(Promise.reject(new Error('save failed')));
+
+      await service.confirmImport([selected({ id: 'a' })], 'r.png', 10, 'image', 'receipt_image');
+
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1];
+      expect('code' in (stats.errors?.[0] ?? {})).toBeFalse();
     });
 
     it('should coerce string and invalid dates to valid Date objects', async () => {

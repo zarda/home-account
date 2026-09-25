@@ -128,13 +128,11 @@ describe('App routes (emulator smoke test)', () => {
    * owns the `<html>` element, a banner and its own headings, and auditing
    * the test runner's chrome would report failures nobody can fix here.
    *
-   * The four violation classes that already stood when this was wired in are
-   * frozen per route in `KNOWN_VIOLATIONS`, each with its reason. Anything
-   * else fails. Freezing them rather than fixing them here is deliberate:
-   * two are a Material progress indicator with no accessible name, one is a
-   * light-mode contrast pair, and one is a transaction row that is a button
-   * containing buttons — each a production change to a surface this commit
-   * has no business touching, and each now visible and named instead of
+   * The violation classes that still stand are frozen per route in
+   * `KNOWN_VIOLATIONS`, each with its reason in `KNOWN_VIOLATION_REASONS`.
+   * Anything else fails. A class is frozen rather than fixed inside a gate
+   * because each fix is a production change to a surface the gate has no
+   * business touching; frozen, it stays visible and named instead of
    * nobody's problem.
    *
    * The routes this reaches are the walkthrough's: /dashboard,

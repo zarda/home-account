@@ -1,5 +1,5 @@
 import { BudgetPeriod, CreateTransactionDTO, ImagePositionMetadata, roundToMinorUnit, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
-import { FALLBACK_CATEGORY_ID } from './categorization.utils';
+import { fallbackCategoryFor } from './categorization.utils';
 import { parseDateInput } from './transaction-date.utils';
 
 /**
@@ -200,7 +200,10 @@ export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: strin
     type: row.type ?? (row.amount >= 0 ? 'income' : 'expense'),
     amount: importAmount(row.amount, currency),
     currency,
-    categoryId: row.categoryId || FALLBACK_CATEGORY_ID,
+    // The row's own declared direction, never the sign-derived guess above:
+    // a bare amount says nothing trustworthy about which catch-all it belongs
+    // under, so an untyped row keeps landing on the one this app has always used.
+    categoryId: row.categoryId || fallbackCategoryFor(row.type),
     description: row.description || 'Imported transaction',
     date: row.date,
     ...(row.note ? { note: row.note } : {}),
@@ -214,6 +217,46 @@ export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: strin
     ...(row.recurringId ? { recurringId: row.recurringId } : {}),
     ...(row.period ? { period: row.period } : {})
   };
+}
+
+/** The base-currency conversion a stored transaction was written with. */
+export interface TransactionSnapshot {
+  exchangeRate: number;
+  baseCurrency: string;
+  amountInBaseCurrency: number;
+}
+
+/**
+ * The conversion a backup record carries, or nothing when any part of it is
+ * missing or malformed.
+ *
+ * Read by both doors a backup comes through: the restore, which writes it
+ * verbatim so a second restore of one file is a no-op, and the import
+ * wizard's JSON door, which keeps only the rate. All three or none — a
+ * figure with no rate behind it, or a rate with no base currency, is not a
+ * conversion anybody made. Nor is a rate that is zero, negative or infinite,
+ * nor an infinite figure (JSON has no literal for infinity, but a hand-edited
+ * file can still overflow a number into one — `1e999` parses to it): a bad
+ * rate would store a base-currency figure of zero or below, and the restore
+ * writes the figure verbatim, so either would poison every total that adds
+ * it in. The record is untrusted input either way: a hand-edited file can
+ * hold anything in these slots.
+ */
+export function readTransactionSnapshot(record: {
+  exchangeRate?: unknown;
+  baseCurrency?: unknown;
+  amountInBaseCurrency?: unknown;
+}): TransactionSnapshot | undefined {
+  const { exchangeRate, baseCurrency, amountInBaseCurrency } = record;
+  return typeof exchangeRate === 'number'
+    && Number.isFinite(exchangeRate)
+    && exchangeRate > 0
+    && typeof amountInBaseCurrency === 'number'
+    && Number.isFinite(amountInBaseCurrency)
+    && typeof baseCurrency === 'string'
+    && baseCurrency
+    ? { exchangeRate, baseCurrency, amountInBaseCurrency }
+    : undefined;
 }
 
 /**

@@ -213,13 +213,17 @@ export class TransactionsComponent implements OnInit, OnDestroy {
         const countText = this.translationService.t('transactions.resultCountAnnouncement', {
           count: this.transactions().length
         });
+        // Current state, which the next filter or sort change makes stale,
+        // so it replaces any count still waiting to be spoken.
         this.announcer.announce(
           state === 'hidden'
             ? countText // totals not wired for this reset (e.g. signed out)
             : this.translationService.t('transactions.resultWithTotalsAnnouncement', {
                 countText,
                 totalsText: this.totalsAnnouncementText()
-              })
+              }),
+          'polite',
+          'replace'
         );
       });
     });
@@ -341,7 +345,8 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     // False means superseded or failed — either way another path owns the
     // next announcement, so this one stays silent.
     if (!(await this.periodTotals.calculate())) return;
-    this.announcer.announce(this.totalsAnnouncementText());
+    // Figures, like the reset's count: a state message, not an event.
+    this.announcer.announce(this.totalsAnnouncementText(), 'polite', 'replace');
   }
 
   // The totals as translated prose. Amounts are spoken without the WORD

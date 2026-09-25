@@ -30,6 +30,7 @@
     "close": "閉じる",
     "back": "戻る",
     "moreActions": "その他の操作",
+    "moreActionsFor": "{{description}}のその他の操作",
     "remove": "削除",
     "refresh": "更新",
     "moveUp": "上へ移動",
@@ -55,7 +56,8 @@
     "type": "種類",
     "category": "カテゴリ",
     "loading": "読み込み中...",
-    "retry": "再試行"
+    "retry": "再試行",
+    "atTodaysRate": "本日のレートで"
   },
   "nav": {
     "dashboard": "ダッシュボード",
@@ -91,6 +93,7 @@
     "selectMonth": "月を選択",
     "selectYear": "年を選択",
     "loadingData": "データを読み込み中...",
+    "refreshing": "ダッシュボードのデータを更新中",
     "spendingByCategory": "カテゴリ別支出",
     "noExpenses": "支出なし",
     "addFirstTransaction": "最初の取引を追加してください",
@@ -205,6 +208,7 @@
     "splitOffline": "分割には接続が必要です",
     "splitOfflineHint": "分割には接続が必要です。再接続するか、1つのカテゴリで保存してください。",
     "splitPart": "分割した支出の一部",
+    "rowLabel": "{{description}}、{{amount}}、{{date}}",
     "deleteSplitPartMessage": "「{{description}}」のこの部分を削除しますか？他の部分はそのまま残ります。"
   },
   "budget": {
@@ -251,6 +255,9 @@
     "alertSnackbarMore": "他 {{count}} 件の予算アラート",
     "viewBudgets": "予算を見る"
   },
+  "budgets": {
+    "progressLabel": "{{name}}：予算の{{percent}}%を使用"
+  },
   "goal": {
     "tabHint": "目標に向けて貯め、プロジェクトを計画しましょう",
     "addGoal": "目標を追加",
@@ -295,6 +302,9 @@
     "contributionFailed": "積み立てを記録できませんでした",
     "linkedBreakdown": "手動 {{manual}} · 取引から {{linked}}",
     "currencyLocked": "積み立てがあると変更できません"
+  },
+  "goals": {
+    "progressLabel": "{{name}}：目標の{{percent}}%達成"
   },
   "reports": {
     "title": "レポート",
@@ -411,8 +421,8 @@
     "language": "言語",
     "currency": "通貨",
     "ratesLabel": "為替レート",
-    "ratesLive": "為替レートを{{date}}に更新しました",
-    "ratesExpired": "為替レートを更新できませんでした。{{date}}に保存したレートを使用しています",
+    "ratesLive": "為替レートを{{date}} {{time}}に更新しました",
+    "ratesExpired": "為替レートを更新できませんでした。{{date}} {{time}}に保存したレートを使用しています",
     "ratesBuiltIn": "為替レートを取得できませんでした。内蔵の概算レートを使用しています",
     "displayName": "表示名",
     "theme": "テーマ",
@@ -462,7 +472,9 @@
     "uploadHint": "銀行エクスポートとバックアップファイルに対応",
     "previewTransactions": "プレビュー：{{count}}件の取引が見つかりました",
     "moreTransactions": "...他{{count}}件の取引",
+    "csvUnmatchedCategories": "カテゴリを特定できなかった{{count}}件の取引はデフォルトのカテゴリになります",
     "importingProgress": "インポート中... {{progress}}%",
+    "importProgressLabel": "インポートの進捗：{{progress}}%",
     "importTransactions": "{{count}}件の取引をインポート",
     "dangerZone": "危険ゾーン",
     "irreversibleActions": "取り消せない操作",
@@ -752,6 +764,12 @@
     "chf": "スイスフラン",
     "nzd": "ニュージーランドドル"
   },
+  "currency": {
+    "otherCurrency": "その他の通貨…",
+    "enterCode": "通貨コードを入力",
+    "invalidCode": "通貨コードではありません。ISK のような3文字で入力してください",
+    "noRateYet": "{{code}} の為替レートがまだないため、換算できません"
+  },
   "categoryNames": {
     "food": "飲食",
     "restaurants": "レストラン",
@@ -1011,8 +1029,10 @@
     "startImport": "インポートを開始",
     "uploadStep": "アップロード",
     "processingStep": "処理中",
+    "progressLabel": "インポートの進捗：{{percent}}%",
     "reviewStep": "確認",
     "confirmStep": "完了",
+    "stepSealed": "インポート中はこのステップをロックしています",
     "dropzoneTitle": "ファイルをドラッグ＆ドロップまたはクリックして選択",
     "dropzoneHint": "CSV、PDF、画像、JSON バックアップに対応",
     "browseFiles": "ファイルを選択",
@@ -1038,7 +1058,9 @@
     "duplicatesDescription": "これらの取引は既存の記録と類似しています",
     "duplicate": "重複",
     "notADuplicate": "重複ではない — インポートする",
+    "announceNotDuplicate": "{{description}}は重複ではありません",
     "recheckFailed": "重複の再確認ができませんでした — 以前の判定がそのまま残ります。判断に自信があれば「重複ではない」をお使いください。",
+    "announceVerdictsChanged": "{{count}}件の重複判定を更新しました",
     "excludeDuplicates": "重複を除外",
     "includeDuplicates": "重複を含める",
     "matchExact": "完全一致",
@@ -1051,6 +1073,10 @@
     "importComplete": "{{count}}件の取引をインポートしました",
     "importFailed": "インポート失敗",
     "importPartial": "{{total}}件中{{success}}件をインポートしました（{{failed}}件は保存できませんでした）",
+    "importPartialSetAside": "{{count}}件が2回保存に失敗したため除外されました。もう一度試すには選択し直してください",
+    "rowFailedAmount": "この取引の金額を保存できませんでした。金額を確認してもう一度お試しください。",
+    "rowFailedConnection": "保存前に接続が切断されました。接続を確認してもう一度お試しください。",
+    "rowFailedUnknown": "不明な理由でこの行を保存できませんでした。もう一度試すか、削除してください。",
     "importingRow": "{{total}}件中{{done}}件をインポート中...",
     "importPhotosSkipped": "取引は保存されましたが、画像の保存上限に達したため、レシート写真{{count}}枚は添付されませんでした",
     "importPhotosFailed": "取引は保存されましたが、レシート写真{{count}}枚をアップロードできませんでした。取引の画面から添付し直せます。",
@@ -1167,6 +1193,7 @@
     "setCurrency": "通貨を変更（現在 {{currency}}）",
     "setCurrencyForSelected": "選択した行の通貨",
     "removeLocation": "提案された場所を削除",
+    "announceLocationRemoved": "{{description}}から場所を削除しました",
     "currencyFromCountry": "{{country}}のレシートのようです。{{currency}} にしますか？",
     "currencySuggested": "{{currency}} にしますか？",
     "acceptCurrencySuggestion": "この行を {{currency}} にする",
@@ -1176,10 +1203,13 @@
     "currencyReasonLocale": "端末の地域設定から",
     "currencyReasonPosition": "現在地から",
     "removeTag": "タグ {{tag}} を削除",
+    "announceTagAdded": "{{description}}にタグ{{tag}}を追加しました",
+    "announceTagRemoved": "{{description}}からタグ{{tag}}を削除しました",
     "addTag": "タグを追加",
     "newTag": "新しいタグ",
     "addRow": "行を追加",
     "addDescription": "説明を追加",
+    "untitledRow": "名前のない行",
     "addAmount": "金額を追加",
     "bulkCurrencyBlanked": "{{currency}}では{{count}}件の金額が0になりました。もう一度入力してください",
     "splitRow": "分割",
@@ -1190,11 +1220,15 @@
     "mergeIntoLabel": "{{description}}を別の行に結合",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "{{description}}を削除",
+    "removeRowTitle": "この行を削除しますか？",
+    "removeRowConfirm": "{{description}}に加えた変更は失われます。変更を残したままインポートから外すには、代わりに選択を解除してください。",
+    "announceRowRemoved": "{{description}}を削除しました",
     "addLocation": "場所を追加",
     "addPlaceName": "場所の名前を追加",
     "editPlaceName": "場所の名前を編集（{{name}}）",
     "placeName": "場所の名前",
     "setCountry": "国を設定",
+    "announceCountryRemoved": "{{description}}から国を削除しました",
     "changeCountry": "国: {{country}} — 変更",
     "noCountry": "国なし",
     "matchWithinBatch": "このインポート内で重複",
@@ -1367,6 +1401,9 @@
     "removeAllConfirmTitle": "すべてのレシート画像を削除しますか？",
     "removeAllConfirmMessage": "{{count}} 枚の画像がすべて完全に削除されます。取引自体は残ります。",
     "removedAll": "レシート画像 {{count}} 枚を削除しました"
+  },
+  "receipts": {
+    "loading": "レシート画像を読み込み中"
   },
   "analytics": {
     "settingsTitle": "利用状況の統計",

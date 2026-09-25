@@ -34,9 +34,24 @@
 
   <!-- Stepper -->
   <mat-stepper [linear]="!fromCamera" #stepper class="modern-stepper">
+    <ng-template #sealIcon>
+      <mat-icon
+        class="seal-icon"
+        aria-hidden="false"
+        role="img"
+        [attr.aria-label]="'import.stepSealed' | translate"
+        [matTooltip]="'import.stepSealed' | translate"
+      >lock</mat-icon>
+    </ng-template>
+
     <!-- Step 1: Upload -->
     <mat-step [completed]="uploadComplete()" [editable]="!isImporting()">
-      <ng-template matStepLabel>{{ 'import.uploadStep' | translate }}</ng-template>
+      <ng-template matStepLabel>
+        {{ 'import.uploadStep' | translate }}
+        @if (isImporting()) {
+          <ng-container [ngTemplateOutlet]="sealIcon" />
+        }
+      </ng-template>
 
       <div class="step-content upload-step">
         <app-file-dropzone
@@ -103,7 +118,12 @@
 
     <!-- Step 2: Processing -->
     <mat-step [completed]="processingComplete()" [editable]="!isImporting()">
-      <ng-template matStepLabel>{{ 'import.processingStep' | translate }}</ng-template>
+      <ng-template matStepLabel>
+        {{ 'import.processingStep' | translate }}
+        @if (isImporting()) {
+          <ng-container [ngTemplateOutlet]="sealIcon" />
+        }
+      </ng-template>
 
       <div class="step-content processing-step">
         @if (isProcessing()) {
@@ -121,6 +141,7 @@
                 mode="determinate"
                 [value]="processingProgress()"
                 class="custom-progress"
+                [attr.aria-label]="'import.progressLabel' | translate: { percent: processingProgress() }"
               ></mat-progress-bar>
               <span class="progress-text">{{ processingProgress() }}%</span>
             </div>
@@ -276,7 +297,12 @@
 
     <!-- Step 3: Review -->
     <mat-step [completed]="reviewComplete()" [editable]="!isImporting()">
-      <ng-template matStepLabel>{{ 'import.reviewStep' | translate }}</ng-template>
+      <ng-template matStepLabel>
+        {{ 'import.reviewStep' | translate }}
+        @if (isImporting()) {
+          <ng-container [ngTemplateOutlet]="sealIcon" />
+        }
+      </ng-template>
 
       <div class="step-content review-step">
         <div class="review-header">
@@ -334,8 +360,9 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="selectedCount() === 0 || unansweredDates() > 0 || unfilledRows() > 0"
-            (click)="stepper.next()"
+            disabledInteractive
+            [disabled]="!reviewComplete()"
+            (click)="onReviewContinue()"
           >
             {{ 'common.continue' | translate }}
             <span class="count-badge">{{ selectedCount() }}</span>
@@ -346,7 +373,12 @@
 
     <!-- Step 4: Confirm -->
     <mat-step [editable]="!isImporting()">
-      <ng-template matStepLabel>{{ 'import.confirmStep' | translate }}</ng-template>
+      <ng-template matStepLabel>
+        {{ 'import.confirmStep' | translate }}
+        @if (isImporting()) {
+          <ng-container [ngTemplateOutlet]="sealIcon" />
+        }
+      </ng-template>
 
       <div class="step-content confirm-step">
         <div class="summary-header">
@@ -439,6 +471,7 @@
               mode="determinate"
               [value]="processingProgress()"
               class="custom-progress"
+              [attr.aria-label]="'import.progressLabel' | translate: { percent: processingProgress() }"
             ></mat-progress-bar>
             @if (processingRow(); as row) {
               <p class="importing-status">{{ 'import.importingRow' | translate:{ done: row.done, total: row.total } }}</p>
@@ -459,7 +492,8 @@
             (click)="confirmImport()"
           >
             @if (isImporting()) {
-              <mat-spinner diameter="20"></mat-spinner>
+              <!-- The button's label text below is set unconditionally. -->
+              <mat-spinner diameter="20" aria-hidden="true"></mat-spinner>
             } @else {
               <mat-icon>file_download</mat-icon>
             }

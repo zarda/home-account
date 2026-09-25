@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
@@ -16,6 +17,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { CurrencyService } from '../../../../core/services/currency.service';
 import {
   CategorizedImportTransaction,
+  ImportError,
   ImportResult,
   ImportSource,
   ImportFileType,
@@ -28,13 +30,39 @@ import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component'
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/duplicate-warning.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
-import { NotificationService } from '../../../../core/services/notification.service';
+import {
+  NOTIFICATION_DURATION_MS,
+  NotificationService,
+  NotificationTone,
+} from '../../../../core/services/notification.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
+import { importFailureKey, joinSentences, needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
+
+/**
+ * How much longer a confirm round's notice stays up for each sentence past
+ * its first. The round's outcome, the rows it set aside and the photos that
+ * did not attach share one snackbar, and a tone's own duration is sized for
+ * one sentence.
+ */
+const ROUND_NOTICE_MS_PER_EXTRA_SENTENCE = 2000;
+
+/**
+ * Where a sentence ends: at a full-width stop wherever it stands, since
+ * Japanese and Chinese put no space after one, and at a Latin stop only
+ * before whitespace or the end, so the dots inside a figure or a dotted
+ * name end nothing.
+ */
+const SENTENCE_END = /[。！？]|[.!?](?=\s|$)/;
+
+/** How many sentences a text holds, a last one without a stop included. */
+function countSentences(text: string): number {
+  return text.split(SENTENCE_END).filter(sentence => !!sentence.trim()).length;
+}
 
 @Component({
   selector: 'app-import-wizard',
@@ -47,6 +75,7 @@ import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/
     MatProgressSpinnerModule,
     MatProgressBarModule,
     MatChipsModule,
+    MatTooltipModule,
     FileDropzoneComponent,
     TransactionPreviewTableComponent,
     DuplicateWarningComponent,
@@ -58,6 +87,7 @@ import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/
 })
 export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private notifications = inject(NotificationService);
+  private announcer = inject(AnnouncerService);
   private importService = inject(AIImportService);
   private duplicateService = inject(DuplicateDetectionService);
   private receiptAttempts = inject(ReceiptAttemptService);
@@ -71,6 +101,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private injector = inject(Injector);
 
   @ViewChild('stepper') stepper!: MatStepper;
+  /**
+   * Reached from `onReviewContinue` rather than through an output: a held
+   * press has no change to emit, only a row on the card beneath this
+   * component's own template to find and scroll to (#430).
+   */
+  table = viewChild(TransactionPreviewTableComponent);
 
   // JSON here is the backup door (importFromJSON) — the share sheet stays
   // shorter (share-intake.service.ts) since a share is never where a backup
@@ -267,9 +303,29 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   // The linear stepper refuses next() on an incomplete step. The camera
   // hand-off's stepper is not linear and lets the header jump straight to
   // Confirm, which is why the Import button carries the same guard itself.
+  // Reads selectedCount() rather than selectedTransactionIds(): the latter is
+  // a mirror updated at each mutation's own call site, while selectedCount()
+  // is read live off extractedTransactions() the way unansweredDates(),
+  // unfilledRows() and the Import button's own guard already do — one row
+  // count behind every gate on this step, not two that merely agree so far.
   reviewComplete = computed(() =>
-    this.selectedTransactionIds().size > 0 && this.unansweredDates() === 0 && this.unfilledRows() === 0
+    this.selectedCount() > 0 && this.unansweredDates() === 0 && this.unfilledRows() === 0
   );
+
+  /**
+   * The Continue press, on a button `disabledInteractive` keeps clickable at
+   * `aria-disabled` rather than truly disabled: a native `disabled` button
+   * eats the click, and nothing else would carry a held press to the row
+   * that is holding it. Clear advances exactly as the plain `stepper.next()`
+   * this replaces did (#430).
+   */
+  onReviewContinue(): void {
+    if (this.reviewComplete()) {
+      this.stepper.next();
+      return;
+    }
+    this.table()?.revealFirstBlocking();
+  }
 
   /**
    * What the review card denominates a hand-added row in when there is no
@@ -768,6 +824,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * its verdict changed; an unchanged verdict leaves the row, and the
    * reviewer's own selection of it, alone. A twin gets no duplicateOf, as
    * processFiles gives it none: the check names a batch row, not a document.
+   *
+   * A flip can land on a row the reviewer edited earlier and moved on from
+   * — the within-batch pass re-derives every row's verdict, not only the
+   * one just edited — so however many flipped is announced once the rewrite
+   * is applied, the same way a failed read already says so (#430).
    */
   private async recheckDuplicates(ids: Set<string>): Promise<void> {
     const seq = ++this.recheckSeq;
@@ -811,9 +872,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         const duplicateOf = check?.matchType === 'within_batch' ? undefined : check?.existingTransactionId;
         return { ...row, isDuplicate: flagged, duplicateOf, selected: !flagged };
       });
+      const flipped = reconciled.filter((row, i) => row.isDuplicate !== rows[i].isDuplicate).length;
       this.duplicateChecks.set(merged);
       this.extractedTransactions.set(reconciled);
       this.updateSelectedIds();
+      if (flipped > 0) {
+        this.announcer.announce(this.t('import.announceVerdictsChanged', { count: flipped }));
+      }
     } finally {
       this.rechecksInFlight.update(n => n - 1);
     }
@@ -933,24 +998,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         provenance
       );
 
-      if (result.receiptsSkipped) {
-        // The rows saved; only their photos hit the image quota. Said
-        // distinctly, because "partial" here would invite re-importing rows
-        // that already landed.
-        this.notifications.info(this.t('import.importPhotosSkipped', {
-          count: result.receiptsSkipped
-        }));
-      }
-
-      if (result.receiptsFailed) {
-        // Also saved, also photo-less, but for a reason the user can act on:
-        // the photo could not be uploaded at all. Separate from the quota
-        // message because the next step differs — one is a plan limit, the
-        // other a file to re-attach from the transaction (#334).
-        this.notifications.info(this.t('import.importPhotosFailed', {
-          count: result.receiptsFailed
-        }));
-      }
+      // Rows that saved without their photos. Said as sentences of their own
+      // rather than folded into a failure count, because "partial" here would
+      // invite re-importing rows that already landed; and the two reasons stay
+      // apart because the next step differs — the image quota is a plan
+      // limit, a failed upload a file to re-attach from the transaction
+      // (#334). They ride the round's one notice below, whichever it is: a
+      // snackbar replaces the one before it, so a notice of their own would
+      // leave either them or the round's outcome unread.
+      const photoSentences = [
+        result.receiptsSkipped
+          ? this.t('import.importPhotosSkipped', { count: result.receiptsSkipped })
+          : '',
+        result.receiptsFailed
+          ? this.t('import.importPhotosFailed', { count: result.receiptsFailed })
+          : '',
+      ];
 
       if (result.errorCount > 0) {
         // Some rows were rejected (a zero-amount summary line, a rules
@@ -959,19 +1022,43 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // Only the saved rows leave, so a second confirm cannot double-import
         // them. A row the reviewer deselected was never submitted and is
         // named in no record, so it stays as it was, unticked, for the
-        // reviewer to change their mind. A failed row comes back ticked,
-        // with its duplicate mark and its duplicate check cleared, because
-        // it is being offered for a second try.
+        // reviewer to change their mind. A failed row comes back with its
+        // duplicate mark and its duplicate check cleared, because it is
+        // being offered for a second try — ticked on its first failure, but
+        // set aside, unticked, once a second failure shows the same
+        // resubmission is not going to work; re-selecting it from there is
+        // the reviewer's own choice, not something a third automatic attempt
+        // should assume (#430).
         //
         // The record names its failed rows by id, so matching `result.errors`
         // back onto rows is a lookup, not a re-run of the service's own
-        // "selected" filter.
-        const failedIds = new Set(
-          (result.errors ?? []).map(e => e.transactionId).filter((id): id is string => !!id)
+        // "selected" filter. Read the same way for the reason each names —
+        // the whole error, not just its message, since `importFailureKey`
+        // reads `code` first — since a batch can carry more than one error
+        // and matching by position would attribute the wrong one to the
+        // wrong row.
+        const failureErrors = new Map(
+          (result.errors ?? [])
+            .filter((e): e is ImportError & { transactionId: string } => !!e.transactionId)
+            .map(e => [e.transactionId, e])
         );
+        const failedIds = new Set(failureErrors.keys());
+        const setAside: CategorizedImportTransaction[] = [];
         const kept = this.extractedTransactions()
           .filter(t => failedIds.has(t.id) || !t.selected)
-          .map(t => (failedIds.has(t.id) ? { ...t, selected: true, isDuplicate: false } : t));
+          .map(t => {
+            if (!failedIds.has(t.id)) return t;
+            const importAttempts = (t.importAttempts ?? 0) + 1;
+            const row: CategorizedImportTransaction = {
+              ...t,
+              selected: importAttempts < 2,
+              isDuplicate: false,
+              importAttempts,
+              importFailure: importFailureKey(failureErrors.get(t.id) ?? { message: '' }),
+            };
+            if (!row.selected) setAside.push(row);
+            return row;
+          });
         const keptIds = new Set(kept.map(t => t.id));
 
         this.extractedTransactions.set(kept);
@@ -981,18 +1068,31 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         );
         this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
 
-        this.notifications.error(this.t('import.importPartial', {
+        // One notice for the round, since a snackbar replaces the one before
+        // it: the rows set aside this round — counted, not named, since each
+        // row's own reason renders on its card — and the photo sentences ride
+        // in the same notice as the round's count rather than a second one
+        // that would wipe it out.
+        const partial = this.t('import.importPartial', {
           success: result.successCount,
           failed: result.errorCount,
           total: result.successCount + result.errorCount,
-        }));
+        });
+        const setAsideSentence = setAside.length
+          ? this.t('import.importPartialSetAside', { count: setAside.length })
+          : '';
+        this.raiseRoundNotice('error', [partial, setAsideSentence, ...photoSentences]);
 
         this.returnToReview();
         return;
       }
 
+      // Every selected row saved. A photo that did not come with its row is
+      // something to act on — not a failure of the import, and not a plain
+      // success either — so a round carrying a photo sentence is info-toned.
       const message = this.t('import.importComplete', { count: result.successCount });
-      this.notifications.success(message);
+      const photoMissing = photoSentences.some(sentence => !!sentence);
+      this.raiseRoundNotice(photoMissing ? 'info' : 'success', [message, ...photoSentences]);
 
       // Navigate back to transactions with showAll to see imported data
       this.router.navigate(['/transactions'], {
@@ -1017,6 +1117,21 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     } finally {
       this.isImporting.set(false);
     }
+  }
+
+  /**
+   * A confirm round's one notice: its parts joined, up for the tone's own
+   * duration and `ROUND_NOTICE_MS_PER_EXTRA_SENTENCE` more for each sentence
+   * past the first, so the last is still on screen to be read. The sentences
+   * are counted in the joined text rather than taken one a part, since a
+   * part can carry two (`import.importPhotosFailed` does, in en and ja). An
+   * empty part is no sentence and adds no time.
+   */
+  private raiseRoundNotice(tone: NotificationTone, parts: readonly string[]): void {
+    const message = parts.reduce(joinSentences, '');
+    const durationMs =
+      NOTIFICATION_DURATION_MS[tone] + Math.max(0, countSentences(message) - 1) * ROUND_NOTICE_MS_PER_EXTRA_SENTENCE;
+    this.notifications[tone](message, { durationMs });
   }
 
   /**

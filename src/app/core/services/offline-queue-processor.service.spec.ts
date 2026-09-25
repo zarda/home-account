@@ -9,6 +9,8 @@ import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
+import { CategoryService } from './category.service';
+import { createCategory } from './testing/test-data';
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -119,6 +121,12 @@ describe('OfflineQueueProcessorService', () => {
     translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
     attempts = attemptStub();
+    // One entry on each side of the ledger, so a suggestion can be checked
+    // against the side of the row it was read for.
+    const categories = signal([
+      createCategory({ id: 'food', type: 'expense' }),
+      createCategory({ id: 'employment_salary', type: 'income' }),
+    ]);
 
     TestBed.configureTestingModule({
       providers: [
@@ -130,6 +138,7 @@ describe('OfflineQueueProcessorService', () => {
         { provide: TranslationService, useValue: translation },
         { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
+        { provide: CategoryService, useValue: { categories } },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -255,6 +264,24 @@ describe('OfflineQueueProcessorService', () => {
       await waitFor(() => queue.updateImageStatus.calls.any());
 
       expect(transactions.addTransaction.calls.mostRecent().args[0].categoryId).toBe('other_expense');
+    });
+
+    it('files a row named for the other side of the ledger under its own side\'s catch-all', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([
+          extracted({ suggestedCategoryId: 'employment_salary' }),
+          extracted({ description: 'Refund', type: 'income', suggestedCategoryId: 'food' }),
+        ]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction.calls.allArgs().map(([dto]) => [dto.type, dto.categoryId])).toEqual([
+        ['expense', 'other_expense'],
+        ['income', 'other_income'],
+      ]);
     });
 
     it('marks the image failed when the AI read nothing off it', async () => {

@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { CurrencyService } from './currency.service';
 import { FirestoreService } from './firestore.service';
+import { PwaService } from './pwa.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import {
   SUPPORTED_CURRENCIES,
@@ -398,6 +399,18 @@ describe('CurrencyService rate initialization', () => {
   // The provider reports failures in band: HTTP 200 carrying an error body.
   const ERROR_BODY = { result: 'error', 'error-type': 'rate-limited' };
 
+  // Not exported by the service; re-declared literal for the same reason as
+  // RATES_CACHE_KEY above. PwaService has no teardown of its own (by design —
+  // see pwa.service.spec.ts), so every instance built by an earlier test in
+  // this file keeps answering `online` for the rest of the run, probing this
+  // different URL; call-count assertions below filter to this one so that
+  // noise cannot masquerade as (or hide) a currency retry.
+  const CURRENCY_API_URL = 'https://open.er-api.com/v6/latest/USD';
+
+  function currencyApiCallCount(spy: jasmine.Spy): number {
+    return spy.calls.all().filter(call => call.args[0] === CURRENCY_API_URL).length;
+  }
+
   function stubFetch(body: unknown): jasmine.Spy {
     const spy = spyOn(window, 'fetch');
     if (body === 'reject') {
@@ -534,6 +547,40 @@ describe('CurrencyService rate initialization', () => {
     expect(service.lastUpdated()).toBeInstanceOf(Date);
   });
 
+  it('drops a string rate from a live body', async () => {
+    stubFetch({ result: 'success', rates: { ...FETCHED_RATES, BAD: '151.25' } });
+    const service = await buildService();
+
+    expect(service.exchangeRates().has('BAD')).toBeFalse();
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(151.25, 4);
+    const cached = JSON.parse(localStorage.getItem(RATES_CACHE_KEY) ?? '{}') as {
+      rates?: Record<string, unknown>;
+    };
+    expect(cached.rates?.['BAD']).toBeUndefined();
+  });
+
+  it('keeps the built-in rate when a live body drops a currency the constants know', async () => {
+    stubFetch({ result: 'success', rates: { ...FETCHED_RATES, JPY: 'bad' } });
+    const service = await buildService();
+
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(149.5, 4);
+    const cached = JSON.parse(localStorage.getItem(RATES_CACHE_KEY) ?? '{}') as {
+      rates?: Record<string, unknown>;
+    };
+    expect(cached.rates?.['JPY']).toBeUndefined();
+  });
+
+  it('falls back when a live body whose rates are all junk', async () => {
+    // USD survives sanitization on its own; one entry cannot express a
+    // cross-rate, so the whole table is refused the same way an empty one is.
+    stubFetch({ result: 'success', rates: { USD: 1, JPY: 'bad', EUR: -1 } });
+    const service = await buildService();
+
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(149.5, 4);
+    expect(service.rateSource()).toBe('fallback');
+    expect(localStorage.getItem(RATES_CACHE_KEY)).toBeNull();
+  });
+
   it('refuses a cached table with a single entry', async () => {
     // Indistinguishable from the constructor's USD-only placeholder — even
     // fresh, it must lose to the constants.
@@ -551,6 +598,21 @@ describe('CurrencyService rate initialization', () => {
 
     expect(service.exchangeRates().get('USD')).toBe(1);
     expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(157, 4);
+  });
+
+  it('the cache reader drops zero and negative rates', async () => {
+    // A fresh cache short-circuits the fetch, so this table restores as-is
+    // unless the reader itself filters it.
+    seedCache({ USD: 1, JPY: 0, MXN: -17.2, EUR: 0.92 }, HOUR_MS);
+    const service = await buildService();
+
+    // JPY is a currency the built-in table knows, so the dropped cached
+    // value keeps its compiled-in rate instead of vanishing into a 1:1
+    // conversion; MXN is not one of the constants, so it drops out entirely.
+    expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(149.5, 4);
+    expect(service.exchangeRates().has('MXN')).toBeFalse();
+    expect(service.getExchangeRate('USD', 'EUR')).toBeCloseTo(0.92, 4);
+    expect(service.rateSource()).toBe('cached');
   });
 
   // Which rung the table came from, as the Settings marker reads it. Each
@@ -591,5 +653,245 @@ describe('CurrencyService rate initialization', () => {
 
     expect(service.rateSource()).toBe('fallback');
     expect(service.lastUpdated()).toBeNull();
+  });
+
+  // A boot that lands on `expired` or `fallback` missed the live table; the
+  // ladder itself never retries, so the only way back to `live` within the
+  // session is a reconnect. `PwaService.isOnline()` is stubbed directly
+  // (the offline-queue idiom confirms through it rather than trusting the OS
+  // event alone) so these specs stay independent of navigator.onLine and of
+  // PwaService's own reachability probe.
+  describe('online retry after a missed live table', () => {
+    /** Lets a fire-and-forget `online` handler's fetch/json chain settle. */
+    async function flush(): Promise<void> {
+      // Two macrotask round trips: the fire-and-forget retry chain crosses
+      // fetch's own promise, then Response#json's, each a task boundary in
+      // some engines, not just a microtask — one setTimeout(0) is not always
+      // enough to land after both.
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    }
+
+    function stubOnline(reachable: boolean): jasmine.Spy {
+      return spyOn(TestBed.inject(PwaService), 'isOnline').and.returnValue(reachable);
+    }
+
+    /**
+     * Redrives an already-spied `fetch` toward a new body. A single spy per
+     * test throughout: re-spying `window.fetch` mid-test throws ("already
+     * spied upon"), and a fresh Response per call is what lets json() — which
+     * is single-use — survive the constructor's fetch plus any retry.
+     */
+    function respond(spy: jasmine.Spy, body: unknown): void {
+      if (body === 'reject') {
+        spy.and.rejectWith(new Error('network down in specs'));
+      } else {
+        spy.and.callFake(async () =>
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }));
+      }
+    }
+
+    it('a boot whose fetch failed refetches on the next online event', async () => {
+      const fetchSpy = stubFetch('reject');
+      const service = await buildService();
+      expect(service.rateSource()).toBe('fallback');
+
+      stubOnline(true);
+      respond(fetchSpy, { result: 'success', rates: FETCHED_RATES });
+      window.dispatchEvent(new Event('online'));
+      await flush();
+
+      expect(service.rateSource()).toBe('live');
+      expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(151.25, 4);
+    });
+
+    it('a live boot does not listen', async () => {
+      const fetchSpy = stubFetch({ result: 'success', rates: FETCHED_RATES });
+      const service = await buildService();
+      expect(service.rateSource()).toBe('live');
+
+      const isOnlineSpy = stubOnline(true);
+      fetchSpy.calls.reset();
+      window.dispatchEvent(new Event('online'));
+      await flush();
+
+      // isOnline() is the first thing the retry handler reads; it staying
+      // unread proves no handler ran at all, not merely that it declined.
+      expect(isOnlineSpy).not.toHaveBeenCalled();
+      expect(currencyApiCallCount(fetchSpy)).toBe(0);
+    });
+
+    it('stops after three attempts', async () => {
+      stubFetch('reject');
+      const service = await buildService();
+      expect(service.rateSource()).toBe('fallback');
+
+      stubOnline(true);
+      // The instance's own attempts, not the page-wide fetch count: `online`
+      // is a window event, so a URL-filtered fetch count would credit this
+      // instance with the attempts of any other instance still listening. A
+      // spy on this instance keeps the count about this one alone, whatever
+      // else the page holds.
+      const refreshSpy = spyOn(service, 'refreshRates').and.callThrough();
+      for (let attempt = 0; attempt < 4; attempt++) {
+        window.dispatchEvent(new Event('online'));
+        await flush();
+      }
+
+      expect(refreshSpy.calls.count()).toBe(3);
+      expect(service.rateSource()).toBe('fallback');
+    });
+
+    it('the listener is removed once live', async () => {
+      const fetchSpy = stubFetch('reject');
+      const service = await buildService();
+
+      stubOnline(true);
+      respond(fetchSpy, { result: 'success', rates: FETCHED_RATES });
+      window.dispatchEvent(new Event('online'));
+      await flush();
+      expect(service.rateSource()).toBe('live');
+
+      fetchSpy.calls.reset();
+      window.dispatchEvent(new Event('online'));
+      await flush();
+
+      expect(currencyApiCallCount(fetchSpy)).toBe(0);
+    });
+
+    it('the listener is removed when the service is destroyed', async () => {
+      stubFetch('reject');
+      const service = await buildService();
+      expect(service.rateSource()).toBe('fallback');
+
+      const isOnlineSpy = stubOnline(true);
+      // The instance's own attempts, not the page-wide fetch count: `online`
+      // is a window event, so a URL-filtered fetch count would credit this
+      // instance with the attempts of any other instance still listening. A
+      // spy on this instance keeps the count about this one alone, whatever
+      // else the page holds.
+      const refreshSpy = spyOn(service, 'refreshRates').and.callThrough();
+
+      // Tears down the environment injector, running every DestroyRef.onDestroy
+      // hook — the teardown Angular runs between tests. No navigation destroys
+      // a root service; an injector torn down is the only way this instance
+      // ends, whether its boot fetch has settled, as here, or is still
+      // pending, as in the case below.
+      TestBed.resetTestingModule();
+
+      window.dispatchEvent(new Event('online'));
+      await flush();
+
+      expect(isOnlineSpy).not.toHaveBeenCalled();
+      expect(refreshSpy).not.toHaveBeenCalled();
+      expect(service.rateSource()).toBe('fallback');
+    });
+
+    it('a service destroyed before its boot fetch settles never arms', async () => {
+      // The boot fetch can outlive the injector: DestroyRef.onDestroy fires
+      // with nothing yet armed to remove, and only afterward does
+      // initializeRates's `finally` land on `fallback` and try to arm a
+      // listener on an already-torn-down instance.
+      let rejectBootFetch!: (reason: unknown) => void;
+      const fetchSpy = spyOn(window, 'fetch').and.callFake(
+        () => new Promise<Response>((_resolve, reject) => { rejectBootFetch = reject; })
+      );
+
+      TestBed.configureTestingModule({
+        providers: [
+          CurrencyService,
+          { provide: FirestoreService, useClass: MockFirestoreService }
+        ]
+      });
+      const service = TestBed.inject(CurrencyService);
+      const isOnlineSpy = spyOn(TestBed.inject(PwaService), 'isOnline').and.returnValue(true);
+      const refreshSpy = spyOn(service, 'refreshRates').and.callThrough();
+
+      // Destroyed while the boot fetch is still pending.
+      TestBed.resetTestingModule();
+
+      rejectBootFetch(new Error('network down in specs'));
+      await flush();
+      expect(service.rateSource()).toBe('fallback');
+
+      refreshSpy.calls.reset();
+      fetchSpy.calls.reset();
+      window.dispatchEvent(new Event('online'));
+      await flush();
+
+      expect(isOnlineSpy).not.toHaveBeenCalled();
+      expect(refreshSpy).not.toHaveBeenCalled();
+      expect(currencyApiCallCount(fetchSpy)).toBe(0);
+    });
+
+    /**
+     * Holds the currency fetch open so two `online` events can race a single
+     * in-flight attempt. Any other URL (PwaService's own reachability probe)
+     * resolves immediately so it cannot itself block the flush.
+     */
+    function stubPendingCurrencyFetch(spy: jasmine.Spy): { resolve: (body: unknown) => void } {
+      let settle!: (value: Response) => void;
+      spy.and.callFake((input: RequestInfo | URL) => {
+        const href = typeof input === 'string' ? input : input.toString();
+        if (href !== CURRENCY_API_URL) {
+          return Promise.resolve(new Response(null, { status: 200 }));
+        }
+        return new Promise<Response>(resolve => { settle = resolve; });
+      });
+      return {
+        resolve: (body: unknown) => settle(new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }))
+      };
+    }
+
+    it('a second online event during an in-flight retry starts no second fetch', async () => {
+      const fetchSpy = stubFetch('reject');
+      const service = await buildService();
+      expect(service.rateSource()).toBe('fallback');
+
+      stubOnline(true);
+      const pending = stubPendingCurrencyFetch(fetchSpy);
+      fetchSpy.calls.reset();
+
+      window.dispatchEvent(new Event('online'));
+      window.dispatchEvent(new Event('online'));
+
+      // Both dispatches ran synchronously above; the second must have found
+      // the first attempt already in flight rather than starting its own.
+      expect(currencyApiCallCount(fetchSpy)).toBe(1);
+
+      pending.resolve({ result: 'success', rates: FETCHED_RATES });
+      await flush();
+
+      expect(service.rateSource()).toBe('live');
+      expect(service.getExchangeRate('USD', 'JPY')).toBeCloseTo(151.25, 4);
+    });
+
+    it('an online event while the app still reads offline spends no attempt', async () => {
+      const fetchSpy = stubFetch('reject');
+      const service = await buildService();
+      expect(service.rateSource()).toBe('fallback');
+
+      const isOnlineSpy = stubOnline(false);
+      fetchSpy.calls.reset();
+      window.dispatchEvent(new Event('online'));
+      await flush();
+
+      expect(currencyApiCallCount(fetchSpy)).toBe(0);
+
+      isOnlineSpy.and.returnValue(true);
+      respond(fetchSpy, { result: 'success', rates: FETCHED_RATES });
+      window.dispatchEvent(new Event('online'));
+      await flush();
+
+      // The attempt spends here proves the offline dispatch above spent none.
+      expect(service.rateSource()).toBe('live');
+      expect(currencyApiCallCount(fetchSpy)).toBe(1);
+    });
   });
 });

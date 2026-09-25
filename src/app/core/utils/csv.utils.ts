@@ -96,6 +96,48 @@ export function unguardCsvCell(value: string): string {
 }
 
 /**
+ * Join tags for the Tags column.
+ *
+ * `; ` stays the format for the common case so an untouched export still
+ * reads as plain text in a spreadsheet. It gives way to a JSON array in
+ * either of two cases: when some tag contains the separator itself, since a
+ * tag split back out of `; ` in that case would come back as two; or when
+ * the classic join would itself start with `[` (once trimmed, the same trim
+ * an unquoted cell gets on the way back in) — `decodeTagsCell` takes a
+ * leading `[` as its cue to try JSON first, so a plain join that merely
+ * looks like one, such as the single tag `["x","y"]`, would otherwise be
+ * read back as two tags.
+ */
+export function encodeTagsCell(tags: readonly string[]): string {
+  const classic = tags.join('; ');
+  const ambiguous = tags.some(tag => tag.includes('; ')) || classic.trim().startsWith('[');
+  return ambiguous ? JSON.stringify(tags) : classic;
+}
+
+/**
+ * Reverse `encodeTagsCell`.
+ *
+ * A cell is read as the JSON form only when it both starts with `[` and
+ * parses to an array of strings — a legacy cell that merely starts with `[`
+ * (a tag literally spelled `[draft]`) is neither, so it falls through to the
+ * split every file written before this format existed already uses.
+ */
+export function decodeTagsCell(cell: string): string[] {
+  if (cell.startsWith('[')) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cell);
+    } catch {
+      parsed = undefined;
+    }
+    if (Array.isArray(parsed) && parsed.every(tag => typeof tag === 'string')) {
+      return parsed;
+    }
+  }
+  return cell.split('; ');
+}
+
+/**
  * Split a whole document into rows of raw cells.
  *
  * One pass over the entire text rather than a split on `\n` followed by a

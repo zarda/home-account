@@ -53,6 +53,7 @@ export class LocaleFormatService {
 
   private dateFormatters = new Map<string, Intl.DateTimeFormat>();
   private numberFormatters = new Map<string, Intl.NumberFormat>();
+  private timeFormatters = new Map<string, Intl.DateTimeFormat>();
 
   /**
    * The BCP 47 tag the active language maps to.
@@ -117,6 +118,17 @@ export class LocaleFormatService {
     return this.numberFormatter(digitsInfo).format(value);
   }
 
+  /**
+   * A time of day in the active locale's conventions (hour and minute; the
+   * locale's own 12/24-hour convention and separator). Same absent/unparseable
+   * contract as `formatDate`.
+   */
+  formatTime(value: Date | Timestamp | string | number | null | undefined): string {
+    const date = this.toDate(value);
+    if (!date) return '';
+    return this.timeFormatter().format(date);
+  }
+
   private dateFormatter(style: LocaleDateStyle): Intl.DateTimeFormat {
     const locale = this.locale;
     const key = `${locale}|${style}`;
@@ -124,6 +136,16 @@ export class LocaleFormatService {
     if (!formatter) {
       formatter = new Intl.DateTimeFormat(locale, DATE_STYLES[style] ?? DATE_STYLES.medium);
       this.dateFormatters.set(key, formatter);
+    }
+    return formatter;
+  }
+
+  private timeFormatter(): Intl.DateTimeFormat {
+    const locale = this.locale;
+    let formatter = this.timeFormatters.get(locale);
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' });
+      this.timeFormatters.set(locale, formatter);
     }
     return formatter;
   }

@@ -202,7 +202,11 @@ jobs:
       # count — the icon reads correctly in the source, in the template type
       # check and in a screenshot, and is announced to nobody at runtime. The
       # two components that had this both blanked their templates in every
-      # spec, which is how all three sites survived.
+      # spec, which is how all three sites survived. The same script also
+      # checks that every mat-spinner, mat-progress-bar and
+      # mat-progress-spinner carries an accessible name or a literal
+      # aria-hidden="true" — role="progressbar" has no content of its own to
+      # take a name from.
       - name: Check icon labels
         run: npm run icon-labels:check
 

@@ -141,6 +141,14 @@ app-amount-display {
   @apply text-gray-600 dark:text-gray-300;
 }
 
+// The window's schedule has no write-time snapshot, so its net still
+// converts live — this says so beside the figure it qualifies.
+.rate-caption {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  @apply text-gray-500 dark:text-gray-400;
+}
+
 @media (max-width: 480px) {
   .card-header {
     padding: 14px 14px 10px;

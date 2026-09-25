@@ -180,10 +180,11 @@
 
           <mat-form-field appearance="outline" class="currency-field">
             <mat-label>{{ 'settings.currency' | translate }}</mat-label>
-            <mat-select formControlName="currency">
+            <mat-select #currencySelect formControlName="currency" (selectionChange)="onCurrencySelected($event)">
               @for (curr of currencies(); track curr.code) {
                 <mat-option [value]="curr.code">{{ curr.code }}</mat-option>
               }
+              <mat-option [value]="otherCurrency">{{ 'currency.otherCurrency' | translate }}</mat-option>
             </mat-select>
           </mat-form-field>
         </div>
@@ -279,7 +280,8 @@
             <!-- Progress, not a control: a disabled button would be a focus
                  stop that does nothing, while role=status announces it. -->
             <div class="suggestion-chip loading" role="status">
-              <mat-spinner diameter="16"></mat-spinner>
+              <!-- The role=status text beside it already announces the state. -->
+              <mat-spinner diameter="16" aria-hidden="true"></mat-spinner>
               <span>{{ 'ai.suggesting' | translate }}</span>
             </div>
           } @else if (suggestedCategory(); as category) {
@@ -409,7 +411,8 @@
             [attr.aria-label]="'transactions.useMyLocation' | translate"
           >
             @if (isLocating()) {
-              <mat-spinner diameter="18"></mat-spinner>
+              <!-- The button's own aria-label above already names it. -->
+              <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>
             } @else {
               <mat-icon>my_location</mat-icon>
             }
@@ -452,10 +455,15 @@
         color="primary"
         type="submit"
         [disabled]="form.invalid || isSubmitting() || !canSubmit()"
+        [attr.aria-busy]="isSubmitting()"
+        [attr.aria-label]="isSubmitting() ? (data.mode === 'add' ? ('transactions.addTransaction' | translate) : ('transactions.saveChanges' | translate)) : null"
         class="submit-button"
       >
         @if (isSubmitting()) {
-          <mat-spinner diameter="20"></mat-spinner>
+          <!-- The visible label is replaced while submitting, so the busy
+               state reuses whichever idle key this mode already shows as
+               the button's name instead of leaving it nameless. -->
+          <mat-spinner diameter="20" aria-hidden="true"></mat-spinner>
         } @else {
           <ng-container>
             <mat-icon>{{ data.mode === 'add' ? 'add' : 'save' }}</mat-icon>

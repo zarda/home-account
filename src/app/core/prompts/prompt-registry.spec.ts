@@ -561,9 +561,14 @@ describe('prompt registry', () => {
 
     it('asks for the fields the consolidation pass reads back', () => {
       const prompt = render('multiImageReceipts');
-      for (const field of ['receiptId', 'imageIndex', 'positionInImage', 'confidence', 'dateConfidence', 'wasMerged', 'mergedFromImages']) {
+      for (const field of ['receiptId', 'imageIndex', 'positionInImage', 'confidence', 'dateConfidence', 'mergedFromImages']) {
         expect(prompt).withContext(`missing ${field}`).toContain(`- ${field}`);
       }
+    });
+
+    it('never asks the model whether an item was merged: only the app decides that', () => {
+      const prompt = render('multiImageReceipts');
+      expect(prompt).not.toContain('wasMerged');
     });
 
     it('asks for the printed grand total once per receipt group', () => {
@@ -684,6 +689,10 @@ describe('prompt registry', () => {
     it('never asks the model to default the date to today', () => {
       const prompt = render('receiptSummary');
       expect(prompt).toContain('use "" if not visible');
+      expect(prompt).toContain('"dateConfidence"');
+      expect(prompt).toContain('"amountConfidence"');
+      expect(prompt).toContain('never invent today');
+      expect(prompt).toContain('Use 0.0 for "dateConfidence"');
     });
   });
 

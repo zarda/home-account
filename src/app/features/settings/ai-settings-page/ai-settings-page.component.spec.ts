@@ -377,6 +377,44 @@ describe('AiSettingsPageComponent', () => {
   });
 
   describe('provider API keys', () => {
+    // The button carries no name of its own in either state, so the
+    // spinner is hidden rather than named — see check-icon-labels.mjs.
+    it('hides the test-button spinner from the accessibility tree', () => {
+      component.isTestingGemini.set(true);
+      fixture.detectChanges();
+
+      const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+      const button = buttons.find((b) => b.querySelector('mat-spinner')) as HTMLButtonElement;
+
+      expect(button.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('names the busy test button with its idle key, and carries neither while idle', () => {
+      const providers: {
+        flag: 'isTestingGemini' | 'isTestingOpenai' | 'isTestingClaude';
+        cardIndex: number;
+      }[] = [
+        { flag: 'isTestingGemini', cardIndex: 0 },
+        { flag: 'isTestingOpenai', cardIndex: 1 },
+        { flag: 'isTestingClaude', cardIndex: 2 },
+      ];
+
+      for (const { flag, cardIndex } of providers) {
+        const card = fixture.nativeElement.querySelectorAll('.provider-card')[cardIndex] as HTMLElement;
+        const button = card.querySelector('mat-card-actions button') as HTMLButtonElement;
+
+        component[flag].set(true);
+        fixture.detectChanges();
+        expect(button.getAttribute('aria-busy')).withContext(flag).toBe('true');
+        expect(button.getAttribute('aria-label')).withContext(flag).toBe('settings.testApiKey');
+
+        component[flag].set(false);
+        fixture.detectChanges();
+        expect(button.getAttribute('aria-busy')).withContext(flag).not.toBe('true');
+        expect(button.hasAttribute('aria-label')).withContext(flag).toBeFalse();
+      }
+    });
+
     it('loads the stored keys into the form', async () => {
       providerKeysMock.resolve.and.resolveTo({ gemini: 'g-key', claude: 'c-key' });
 

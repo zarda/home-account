@@ -34,9 +34,10 @@ import {
   groupByCategoryAndType,
   roundMoney,
 } from '../utils/transaction-aggregation.utils';
-import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
+import { decodeTagsCell, encodeTagsCell, parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
 import { normalizeTags } from '../utils/tag.utils';
 import { locationSlot, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { resolveExactCategoryName } from '../utils/categorization.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -311,7 +312,7 @@ export class ExportService {
         t.currency,
         t.amountInBaseCurrency.toString(),
         t.note ?? '',
-        (t.tags ?? []).join('; '),
+        encodeTagsCell(t.tags ?? []),
         // Name only: coordinates belong in the JSON backup, which carries
         // the whole transaction.
         t.location?.name ?? '',
@@ -345,10 +346,10 @@ export class ExportService {
    * Per-category totals for the period, both sides of the ledger.
    *
    * Conversion goes through `amountInBase` — the write-time snapshot every
-   * other surface in the app reads — rather than a live `convert()`. The
-   * export dialog's own `toBaseCurrency` converts live and is a standing
-   * divergence; matching it here would make a legacy row total one way in
-   * this file and another way on every screen that shows the same period.
+   * figure over past transactions reads (docs/money-snapshots.md) — rather
+   * than a live `convert()`, so this file's totals agree with the export
+   * dialog's own report and with every other screen that shows the same
+   * period.
    */
   private categorySummaryTotals(
     transactions: Transaction[],
@@ -759,15 +760,24 @@ export class ExportService {
     const periodCol = this.findColumn(headers, ['period']);
     const recurringCol = this.findColumn(headers, ['recurring']);
     // The last three columns the export writes. Same optional contract again:
-    // out of the row-length guard, validated rather than trusted. Tags split
-    // on the export's own '; ' join — a tag containing that separator cannot
-    // survive, which is the join's fault, not the escaper's. A location cell
-    // becomes a name only; the file never carried coordinates, so none may
-    // be invented, and an empty cell must yield no key at all rather than
-    // `{ name: '' }`, which the rules would accept while meaning nothing.
+    // out of the row-length guard, validated rather than trusted. Tags are
+    // read by decodeTagsCell, which recognizes the JSON array encodeTagsCell
+    // falls back to for a tag containing '; ' and otherwise reads the plain
+    // split, so a file written before that fallback existed still imports.
+    // A location cell becomes a name only; the file never carried
+    // coordinates, so none may be invented, and an empty cell must yield no
+    // key at all rather than `{ name: '' }`, which the rules would accept
+    // while meaning nothing.
     const noteCol = this.findColumn(headers, ['note']);
     const tagsCol = this.findColumn(headers, ['tags']);
     const locationCol = this.findColumn(headers, ['location']);
+    // exportToCSV writes the category's translated name, never its id, so
+    // this is the one column that cannot be validated the way the others
+    // above are: resolveExactCategoryName below is the check. Read once per
+    // file, not once per row — the catalog does not change mid-parse.
+    const categoryCol = this.findColumn(headers, ['category']);
+    const catalog = categoryCol >= 0 ? this.categoryService.categories() : [];
+    const translate = (name: string) => this.translationService.t(name);
 
     for (let i = 1; i < rows.length; i++) {
       const values = rows[i];
@@ -819,12 +829,26 @@ export class ExportService {
       // A hand-edited file can repeat a tag in a second casing; the card keys
       // its chips by value and the filter only finds the normalized form.
       const tags = tagsCol >= 0 && tagsCol < values.length
-        ? normalizeTags(values[tagsCol].split('; '))
+        ? normalizeTags(decodeTagsCell(values[tagsCol]))
         : [];
 
       const locationName = locationCol >= 0 && locationCol < values.length
         ? values[locationCol].trim()
         : '';
+
+      // Exact match only, over the row's own type, never the fuzzy ladder a
+      // model's free-text answer runs through: an importer reading its own
+      // app's export back is checking a name it already wrote, so a
+      // near-name or a name two catalog entries share is refused rather than
+      // guessed at. `category` records whether this file carried the column
+      // at all, independent of whether the cell resolved — the preview's
+      // catch-all count reads it for exactly that.
+      const categoryCell = categoryCol >= 0 && categoryCol < values.length
+        ? values[categoryCol].trim()
+        : '';
+      const categoryId = categoryCol >= 0
+        ? resolveExactCategoryName(categoryCell, type, catalog, translate)
+        : undefined;
 
       transactions.push({
         date: this.parseDate(values[dateCol] || ''),
@@ -832,6 +856,7 @@ export class ExportService {
         amount: Math.abs(amount),
         type,
         ...(currency ? { currency } : {}),
+        ...(categoryCol >= 0 ? { category: categoryCell, ...(categoryId ? { categoryId } : {}) } : {}),
         ...(period ? { period } : {}),
         ...(isRecurring ? { isRecurring } : {}),
         ...(note ? { note } : {}),

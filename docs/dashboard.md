@@ -156,7 +156,9 @@ drag handle does not offer," in the component's own words. Each move:
 - disables at either end of the list (first row's **Move up**, last row's
   **Move down**);
 - announces through `AnnouncerService`: *{card} moved to position {position}
-  of {total}*;
+  of {total}* — in `'replace'` mode, since a position is current state and the
+  next press makes it stale, so a run of presses is not heard as a backlog of
+  positions already passed;
 - moves focus to the row's *other* button once the pressed one becomes
   disabled by the move — a disabled button drops focus, and the row's
   surviving control is what takes it, via `afterNextRender` with a
@@ -167,7 +169,8 @@ That first announcement is optimistic — it names the position the move
 asked for, before the write behind it has settled. **A write that fails
 announces a second time**, once the rows fall back to the account's
 last-known order: *"Couldn't save. {card} is back at position {position} of
-{total}"*, read right after the existing error notification. Without it, a
+{total}"*, read right after the existing error notification. It leads with
+the failed save, an event, so it queues rather than replacing. Without it, a
 screen-reader user had already been told where the card landed and had no
 way to learn that it had not.
 

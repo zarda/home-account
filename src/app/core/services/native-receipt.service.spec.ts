@@ -8,6 +8,7 @@ import { CategoryService } from './category.service';
 import { TranslationService } from './translation.service';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 import { Category, VERIFY_FIELD_THRESHOLD } from '../../models';
+import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 
 describe('NativeReceiptService', () => {
   let service: NativeReceiptService;
@@ -20,10 +21,14 @@ describe('NativeReceiptService', () => {
   // A display-name fixture here is a catalog the app never produces, and it
   // is how the raw-key payload stayed green.
   const categories = [
-    { id: 'food', name: 'categoryNames.food', isActive: true },
-    { id: 'food_groceries', name: 'categoryNames.groceries', parentId: 'food', isActive: true },
-    { id: 'food_coffeeAndDrinks', name: 'categoryNames.coffeeAndDrinks', parentId: 'food', isActive: true },
-    { id: 'food_restaurants', name: 'categoryNames.restaurants', parentId: 'food', isActive: false },
+    { id: 'food', name: 'categoryNames.food', type: 'expense', isActive: true },
+    { id: 'food_groceries', name: 'categoryNames.groceries', type: 'expense', parentId: 'food', isActive: true },
+    { id: 'food_coffeeAndDrinks', name: 'categoryNames.coffeeAndDrinks', type: 'expense', parentId: 'food', isActive: true },
+    { id: 'food_restaurants', name: 'categoryNames.restaurants', type: 'expense', parentId: 'food', isActive: false },
+    // Every scan this service reads is a purchase, never a deposit — this
+    // entry exists only to prove the model is never offered it, and that an
+    // answer naming it does not resolve.
+    { id: 'employment_salary', name: 'categoryNames.salary', type: 'income', isActive: true },
   ] as Category[];
 
   // The active locale's bundle, as TranslationService would serve it. The
@@ -34,6 +39,7 @@ describe('NativeReceiptService', () => {
     'categoryNames.groceries': 'Groceries',
     'categoryNames.coffeeAndDrinks': 'Coffee & Drinks',
     'categoryNames.restaurants': 'Restaurants',
+    'categoryNames.salary': 'Salary',
   };
 
   const ocrResult: VisionOCRResult = {
@@ -127,6 +133,14 @@ describe('NativeReceiptService', () => {
       expect(transaction.categoryAttempted).toBeFalse();
     });
 
+    it('grades an unreadable amount and an unreadable date, through the parser\'s own grades', async () => {
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'ありがとうございました' });
+
+      const result = await service.processImage(imageFile());
+
+      expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0, date: 0 });
+    });
+
     it('should pass the recognized image to Vision OCR as base64', async () => {
       await service.processImage(imageFile());
 
@@ -214,6 +228,57 @@ describe('NativeReceiptService', () => {
       expect(transaction.date.getTime()).toBe(new Date(2026, 0, 15).getTime());
     });
 
+    /**
+     * The plugin itself reports no confidence at all — the model answers with
+     * a bare guess and nothing else. The only corroboration available is
+     * running the same OCR text through the regex reader and comparing its
+     * total against the model's, so this lane's grade comes from that
+     * cross-check rather than from the plugin.
+     */
+    describe('field confidence', () => {
+      it('grades an unreadable amount 0', async () => {
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 0, currency: 'USD', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(0);
+      });
+
+      it("takes the text parser's grade when it read the same total", async () => {
+        // The default OCR text ('Starbucks... Total: $12.50') parses to the
+        // same 12.50 the model answers below.
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 12.5, currency: 'USD', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(0.8);
+      });
+
+      it('flags a total the text parser read differently', async () => {
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 999, currency: 'USD', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
+        expect(result.transactions[0].fieldConfidence?.amount).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+      });
+
+      it('grades a read date 0.8', async () => {
+        const result = await service.processImage(imageFile());
+
+        // Never below VERIFY_FIELD_THRESHOLD: a lower grade makes
+        // resolveImportDate replace a read date with today.
+        expect(result.transactions[0].fieldConfidence?.date).toBe(0.8);
+        expect(result.transactions[0].fieldConfidence?.date).toBeGreaterThanOrEqual(VERIFY_FIELD_THRESHOLD);
+      });
+    });
+
     it('carries a printed location as the row slot, and nothing without one', async () => {
       const extraction = {
         merchant: 'Cafe Tokyo', date: '2026-01-15', amount: 1200, currency: 'JPY',
@@ -258,6 +323,28 @@ describe('NativeReceiptService', () => {
       expect(sent.filter(line => line.includes('categoryNames.'))).toEqual([]);
       // The user deleted Restaurants; offering it would resurrect the category.
       expect(sent.filter(line => line.includes('Restaurants'))).toEqual([]);
+    });
+
+    it('sends the on-device model no income category', async () => {
+      // Every scan this pipeline reads is a purchase, never a deposit.
+      await service.processImage(imageFile());
+
+      const sent = appleMock.parseReceiptText.calls.mostRecent().args[0].categories!;
+      expect(sent.filter(line => line.startsWith('employment_salary:'))).toEqual([]);
+    });
+
+    it("does not resolve the model's answer to an income category", async () => {
+      appleMock.parseReceiptText.and.resolveTo({
+        merchant: 'Shop', date: '2026-01-15', amount: 10, currency: 'USD',
+        category: 'Salary', details: '',
+      });
+
+      const transaction = (await service.processImage(imageFile())).transactions[0];
+
+      // The catalog handed to the resolver excluded this answer entirely, so
+      // it comes back unresolved rather than filed under a category the model
+      // was never offered.
+      expect(transaction.suggestedCategoryId).toBeUndefined();
     });
 
     /**
@@ -404,7 +491,9 @@ describe('NativeReceiptService', () => {
 
         const result = await service.processImage(imageFile());
 
-        expect(result.transactions[0].fieldConfidence).toEqual({ date: 0 });
+        // The date extraction fails on this fixture, but the amount is still
+        // graded through the usual cross-check against the OCR text.
+        expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0 });
       });
     });
 

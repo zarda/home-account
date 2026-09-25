@@ -8,6 +8,7 @@ import type {
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
+  readConfidence,
   readCurrencyCode,
   readPrintedLocation,
   readReceiptTotal,
@@ -279,6 +280,8 @@ export class GeminiService extends CloudLLMProviderBase {
       // object rather than a list, so text with no JSON in it at all has to
       // fail here instead of reaching JSON.parse as a bare sentence.
       const receiptData = JSON.parse(this.extractJsonStrict(response.text));
+      const dateConfidence = readConfidence(receiptData.dateConfidence);
+      const amountConfidence = readConfidence(receiptData.amountConfidence);
 
       return [{
         date: receiptData.date || dayKey(new Date()),
@@ -291,9 +294,14 @@ export class GeminiService extends CloudLLMProviderBase {
         details: receiptData.receiptDetails || receiptData.itemsSummary ||
           receiptData.items || receiptData.description || '',
         ...this.countrySlots(receiptData.country, readPrintedLocation(receiptData.location, receiptData.merchant)),
-        // A missing date is patched with today's day-key above; nothing was
-        // claimed about that date, so nothing here claims a confidence for it.
-        ...(receiptData.date ? {} : { dateConfidence: 0 }),
+        ...(amountConfidence !== undefined ? { amountConfidence } : {}),
+        // A missing date is patched with today's day-key above, and that
+        // string parses just fine — so a grade claimed about a date the model
+        // never gave is not a grade of anything: a present date forwards the
+        // model's own grade, an absent one is always 0, whatever it said.
+        ...(receiptData.date
+          ? (dateConfidence !== undefined ? { dateConfidence } : {})
+          : { dateConfidence: 0 }),
       }];
     });
   }

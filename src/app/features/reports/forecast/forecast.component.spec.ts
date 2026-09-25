@@ -274,8 +274,17 @@ describe('ForecastComponent, through its own template', () => {
     expect(el().querySelector('app-empty-state')).toBeNull();
     expect(el().querySelector('canvas')).not.toBeNull();
     expect(text('.forecast-note')).toBe('reports.forecastZeroNote');
-    expect(text('.forecast-summary'))
+    expect(text('.forecast-summary-text'))
       .toBe(`reports.forecastProjectedNet:${JSON.stringify({ amount: component.projectedNetLabel() })}`);
+  });
+
+  // #429 P1: the projected net comes from scheduled occurrences, which carry
+  // no write-time snapshot, so it still converts live — the one figure on
+  // this tab that must say so.
+  it('marks the projected net as converted at today\'s rate', () => {
+    render();
+
+    expect(text('.forecast-summary')).toContain('common.atTodaysRate');
   });
 
   it('offers one labelled toggle per horizon, with 30 days chosen', () => {

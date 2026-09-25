@@ -1,4 +1,4 @@
-import { imageMetadataOf, importAmount, locationSlot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
+import { imageMetadataOf, importAmount, locationSlot, readTransactionSnapshot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
 import { parseDateInput } from './transaction-date.utils';
 import { ProcessedTransaction } from '../services/ai-types';
 
@@ -6,7 +6,9 @@ describe('toCreateTransactionDTO', () => {
   const date = new Date(2026, 5, 1);
 
   it('builds a bare row into exactly the six required keys', () => {
-    const dto = toCreateTransactionDTO({ amount: 5, date }, 'USD');
+    // Declared, not sign-derived: the fallback below reads this field alone,
+    // so an income row's own type is what has to be present to prove it.
+    const dto = toCreateTransactionDTO({ type: 'income', amount: 5, date }, 'USD');
 
     // The exact key set is the contract: an undefined-valued optional key
     // here would ride through addTransaction's spreads and into Firestore,
@@ -17,7 +19,7 @@ describe('toCreateTransactionDTO', () => {
     expect(dto.type).toBe('income');
     expect(dto.amount).toBe(5);
     expect(dto.currency).toBe('USD');
-    expect(dto.categoryId).toBe('other_expense');
+    expect(dto.categoryId).toBe('other_income');
     expect(dto.description).toBe('Imported transaction');
     expect(dto.date).toBe(date);
   });
@@ -343,6 +345,81 @@ describe('toCreateTransactionDTO and the review flags', () => {
       'USD'
     );
     expect('dateReviewed' in dto).toBeFalse();
+  });
+
+  it('never forwards fileRate — the confirm step converts with it, the DTO never carries it', () => {
+    const dto = toCreateTransactionDTO(
+      {
+        amount: 2000,
+        date: new Date(2026, 0, 1),
+        currency: 'JPY',
+        fileRate: { exchangeRate: 0.0075, baseCurrency: 'USD', currency: 'JPY' }
+      } as never,
+      'USD'
+    );
+    expect('fileRate' in dto).toBeFalse();
+    expect('exchangeRate' in dto).toBeFalse();
+    expect('amountInBaseCurrency' in dto).toBeFalse();
+  });
+
+  it('never forwards importFailure or importAttempts — review-only marks the wizard sets on a re-offered row', () => {
+    const dto = toCreateTransactionDTO(
+      {
+        amount: 5,
+        date: new Date(2026, 0, 1),
+        importFailure: 'import.rowFailedAmount',
+        importAttempts: 2
+      } as never,
+      'USD'
+    );
+    expect('importFailure' in dto).toBeFalse();
+    expect('importAttempts' in dto).toBeFalse();
+  });
+
+  it('never forwards editedOnCard — the mark Remove reads before it asks, not a field', () => {
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), editedOnCard: true } as never,
+      'USD'
+    );
+    expect('editedOnCard' in dto).toBeFalse();
+  });
+});
+
+describe('readTransactionSnapshot', () => {
+  it('reads the conversion a stored row was written with', () => {
+    const record = {
+      amount: 1200, currency: 'THB',
+      exchangeRate: 0.029, baseCurrency: 'USD', amountInBaseCurrency: 34.78
+    };
+    expect(readTransactionSnapshot(record))
+      .toEqual({ exchangeRate: 0.029, baseCurrency: 'USD', amountInBaseCurrency: 34.78 });
+  });
+
+  it('reads nothing unless all three are there and well-typed', () => {
+    // A half-written snapshot is not a snapshot: the write falls back to
+    // today's rate rather than store a figure with no rate behind it.
+    const records: Record<string, unknown>[] = [
+      { baseCurrency: 'USD', amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: 'USD' },
+      { exchangeRate: '0.029', baseCurrency: 'USD', amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: '', amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: 840, amountInBaseCurrency: 34.78 },
+      { exchangeRate: 0.029, baseCurrency: 'USD', amountInBaseCurrency: null },
+    ];
+    for (const record of records) {
+      expect(readTransactionSnapshot(record)).withContext(JSON.stringify(record)).toBeUndefined();
+    }
+  });
+
+  it('reads nothing when the base figure overflowed to infinity', () => {
+    // Written as text, the way a hand-edited file arrives: JSON.stringify
+    // writes Infinity as null, which the case above already refuses for
+    // being no number at all.
+    const record = JSON.parse('{"exchangeRate": 0.029, "baseCurrency": "USD", "amountInBaseCurrency": 1e999}');
+    expect(record.amountInBaseCurrency).withContext('precondition: the literal overflowed').toBe(Infinity);
+
+    expect(readTransactionSnapshot(record)).toBeUndefined();
   });
 });
 

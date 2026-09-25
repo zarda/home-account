@@ -178,11 +178,11 @@ describe('CommandPaletteComponent', () => {
     expect(component.filtered().map(command => command.labelKey)).toEqual(['nav.reports']);
   });
 
-  it('announces the result count as the query changes', () => {
+  it('announces the result count as the query changes, each count replacing any still waiting', () => {
     type('budget');
 
     expect(translation.t).toHaveBeenCalledWith('palette.resultCount', { count: 1 });
-    expect(announcer.announce).toHaveBeenCalledWith('palette.resultCount {"count":1}');
+    expect(announcer.announce).toHaveBeenCalledWith('palette.resultCount {"count":1}', 'polite', 'replace');
   });
 
   describe('selection', () => {

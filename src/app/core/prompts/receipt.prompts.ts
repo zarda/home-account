@@ -126,7 +126,9 @@ Return ONLY a JSON object (not an array):
   "location": "<branch or address as printed, or empty>",
   "country": "<ISO 3166-1 alpha-2 of the issuing country, or empty>",
   "receiptDetails": "Full receipt content reproduced line by line",
-  "suggestedCategory": "category name"
+  "suggestedCategory": "category name",
+  "amountConfidence": how clearly the total was legible, 0.0 to 1.0,
+  "dateConfidence": how clearly the date was legible, 0.0 to 1.0
 }
 
 Rules:
@@ -138,6 +140,7 @@ Rules:
 - country: ${COUNTRY_FIELD}
 - receiptDetails: Reproduce the FULL receipt content line by line, preserving all information visible on the receipt: every item with its price, quantity if shown, discounts, subtotals, tax lines, service charges, payment method, change, etc. Use newline to separate each line. Keep the receipt's own language and script exactly as printed — do not translate or transliterate. Shape: "<item> ×1 — 480\\n<item> ×2 — 760\\n<discount line> -100\\n<subtotal line> 1,140\\n<tax line> 104\\n<total line> 1,140\\nVISA ****1234"
 - suggestedCategory: One of: ${EXTRACTION_CATEGORY_NAMES}
+- Lower "amountConfidence" and "dateConfidence" when a figure is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
 
 Capture EVERYTHING on the receipt.`,
     expects: 'json',
@@ -272,7 +275,6 @@ For each UNIQUE transaction/line item found, extract:
 - merchant: store name (optional)
 - category: transaction category like Restaurants, Groceries, Shopping (optional)
 - details: full context for this item — quantity, size, flavor, discount, tax info (optional)
-- wasMerged: true if this item appeared in multiple images and was deduplicated
 - mergedFromImages: [0,1] if from multiple images (optional)
 
 Lower "dateConfidence" when the date is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
@@ -297,7 +299,6 @@ Return ONLY a valid JSON array (no markdown):
     "dateConfidence": 0.95,
     "merchant": "Store name",
     "details": "×1",
-    "wasMerged": false,
     "receiptDetails": "Item name ×1 — 10.99\\nSubtotal 10.99\\nTax 0.88\\nTotal 11.87",
     "receiptTotal": 11.87,
     "location": "<branch or address as printed, or empty>",

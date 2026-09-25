@@ -19,6 +19,15 @@ describe('ChartThemeService', () => {
     themeService = TestBed.inject(ThemeService);
   });
 
+  afterEach(() => {
+    // ThemeService keeps the real DOCUMENT here — readTokens() needs live
+    // computed styles — so setTheme() below stamps dark-theme/light-theme
+    // straight onto document.documentElement, which outlives this file's
+    // own TestBed teardown and would otherwise leak into whichever spec
+    // runs next.
+    document.documentElement.classList.remove('dark-theme', 'light-theme');
+  });
+
   it('should be created', () => {
     expect(service).toBeTruthy();
   });

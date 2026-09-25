@@ -1,6 +1,6 @@
 <div class="dashboard-container">
   <app-page-header titleKey="dashboard.title" class="header-section">
-    <p header-subtitle class="text-gray-500 dark:text-gray-400 text-sm mt-1 mb-0">
+    <p header-subtitle class="text-sm mt-1 mb-0 dashboard-subtitle">
       {{ 'common.welcome' | translate }}, {{ userName() }}
     </p>
 
@@ -24,7 +24,11 @@
   } @else {
     <!-- Refetch (period change) keeps content mounted; a thin bar signals work -->
     @if (isRefetching()) {
-      <mat-progress-bar mode="indeterminate" class="refetch-bar" />
+      <mat-progress-bar
+        mode="indeterminate"
+        class="refetch-bar"
+        [attr.aria-label]="'dashboard.refreshing' | translate"
+      />
     }
 
     <!-- Financial Summary Cards (shared) -->

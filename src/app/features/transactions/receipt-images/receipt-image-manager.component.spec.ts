@@ -381,7 +381,9 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
     component.busyKeys.set(new Set([`t1:${busySlot}`]));
     fixture.detectChanges();
 
-    expect(tiles(groups()[0])[0].querySelector('mat-spinner')).not.toBeNull();
+    const spinner = tiles(groups()[0])[0].querySelector('mat-spinner');
+    expect(spinner).not.toBeNull();
+    expect(spinner?.getAttribute('aria-label')).toBe('receipts.loading');
     expect(tiles(groups()[0])[0].querySelector('.tile-actions button')).toBeNull();
     // A slot-scoped key locks that slot only: the second tile is still usable.
     expect(tiles(groups()[0])[1].querySelector('mat-spinner')).toBeNull();

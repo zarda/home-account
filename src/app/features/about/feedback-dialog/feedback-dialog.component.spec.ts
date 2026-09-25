@@ -76,6 +76,21 @@ describe('FeedbackDialogComponent', () => {
     expect(component.isSubmitting()).toBeFalse();
   });
 
+  it('hides the sending spinner behind the visible label beside it', async () => {
+    let release!: (id: string) => void;
+    mockFeedback.add.and.returnValue(new Promise<string>(resolve => (release = resolve)));
+    component.message = 'once only';
+
+    const pending = component.submit();
+    fixture.detectChanges();
+
+    const spinner = fixture.nativeElement.querySelector('mat-spinner');
+    expect(spinner.getAttribute('aria-hidden')).toBe('true');
+
+    release('entry-1');
+    await pending;
+  });
+
   it('ignores a second submit while the first is in flight', async () => {
     let release!: (id: string) => void;
     mockFeedback.add.and.returnValue(new Promise<string>(resolve => (release = resolve)));

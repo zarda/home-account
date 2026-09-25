@@ -216,7 +216,7 @@ here.
 | `npm run dates:check` | Run the date audit greps over production code — a hand-built end-of-day or month end, a UTC day key, a day step in milliseconds, a re-parsed date field ([docs/dates.md](docs/dates.md)) |
 | `npm run motion:check` | Verify both reduced-motion kill-switches are intact and no component stylesheet declares an `!important` duration that outruns them ([docs/accessibility.md](docs/accessibility.md)) |
 | `npm run contrast:check` | Score every colour pair the app paints against WCAG AA, in all four rendered modes ([docs/accessibility.md](docs/accessibility.md)) |
-| `npm run icon-labels:check` | Verify every `mat-icon` carrying `role="img"` or an aria-label also carries a literal `aria-hidden` — a bound one does not reach Material's constructor ([docs/accessibility.md](docs/accessibility.md)) |
+| `npm run icon-labels:check` | Verify every `mat-icon` carrying `role="img"` or an aria-label also carries a literal `aria-hidden` — a bound one does not reach Material's constructor — and that every `mat-spinner`, `mat-progress-bar` and `mat-progress-spinner` carries an aria-label, aria-labelledby or a literal `aria-hidden="true"` ([docs/accessibility.md](docs/accessibility.md)) |
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run test:dates` | Run the zone-sensitive specs — CI runs them twice, under `TZ=America/New_York` and `TZ=Asia/Tokyo` |
 | `npm run smoke` | Run integration tests against Firebase emulators, including the axe-core accessibility pass over every route the walkthrough opens (requires JDK 21+) |

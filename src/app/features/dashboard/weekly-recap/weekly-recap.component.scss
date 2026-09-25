@@ -135,6 +135,13 @@
   overflow-wrap: anywhere;
 }
 
+// The week ahead's bills have no write-time snapshot, so their net still
+// converts live — this says so beside the figure it qualifies.
+.rate-caption {
+  font-size: var(--text-xs);
+  @apply text-gray-500 dark:text-gray-400;
+}
+
 .narrative {
   margin: 0;
   font-size: var(--text-sm);

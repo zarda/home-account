@@ -63,50 +63,33 @@ export const DISABLED_RULES = [
 ] as const;
 
 /**
- * Why each rule below is allowed to fire, as of the pass's first run. These
- * are the four classes the walkthrough found on its first green build; they
- * are debts with names, not exemptions — the point of freezing them is that
- * the NEXT violation fails, on any route, without anybody remembering to
- * look.
+ * Why each rule frozen in KNOWN_VIOLATIONS is allowed to fire, keyed by rule
+ * id. They are debts with names, not exemptions — the point of freezing them
+ * is that the NEXT violation fails, on any route, without anybody
+ * remembering to look.
+ *
+ * Empty is the goal state, not a special case: nothing here means nothing is
+ * tolerated, and two tests in axe.spec.ts hold that shape rather than
+ * assuming it — a route added to KNOWN_VIOLATIONS with no matching
+ * reason, or a reason left behind for a rule nobody freezes any more, fails
+ * either way.
  */
-export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {
-  'aria-progressbar-name':
-    "Material's mat-spinner and mat-progress-bar render role=\"progressbar\" with no " +
-    'accessible name. Ours are the shared LoadingSpinnerComponent and the budget progress ' +
-    'bars; the fix is a translated [attr.aria-label] on each, plus a catalog key.',
-  'color-contrast':
-    'Real, and in LIGHT mode, which the token-pair audit in check-contrast.mjs does not ' +
-    'reach: it scores declared token pairs, and these are rendered elements whose colour ' +
-    'comes from a utility class or an inherited value. The sites are the dashboard stat ' +
-    "cards' .stat-label-suffix and the transaction row's .row-date.",
-  'nested-interactive':
-    'A transaction row is role="button" and contains its own focusable controls (the note ' +
-    'button, the row menu). Screen readers flatten the descendants away. Fixing it means ' +
-    'reworking how a row is activated, which is a change to the most-used surface in the ' +
-    'app and not something to slip into a gate commit.',
-};
+export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {};
 
 /**
- * Violations that already stood when this pass was first wired in, per
- * route. Anything not listed here fails, which is the whole point: the debt
- * is frozen and visible, and the next regression is loud.
+ * The violations the pass tolerates, per route: where one found later is
+ * frozen, with its reason in KNOWN_VIOLATION_REASONS, until its fix lands.
+ * Anything not listed here fails, which is the whole point: a debt is frozen
+ * and visible, and the next regression is loud.
  *
- * Rule ids, not node counts. Counts would be a tighter ratchet, but two of
- * the sites are loading spinners that are on screen only while a page is
- * still fetching — a count, or a requirement that a listed rule still fire,
- * would make this spec race the emulator. So a fixed violation does not fail
- * here; it is simply removed from the table when its fix lands, and the
- * table is short enough to read.
+ * Rule ids, not node counts. Counts would be a tighter ratchet, but a
+ * loading spinner is on screen only while a page is still fetching — a
+ * count, or a requirement that a listed rule still fire, would make this
+ * spec race the emulator. So a fixed violation does not fail here; it is
+ * simply removed from the table when its fix lands, and the table is short
+ * enough to read.
  */
-export const KNOWN_VIOLATIONS: Readonly<Record<string, readonly string[]>> = {
-  '/dashboard': ['aria-progressbar-name', 'color-contrast'],
-  '/transactions': ['color-contrast', 'nested-interactive'],
-  '/budgets': ['aria-progressbar-name'],
-  '/reports': ['aria-progressbar-name'],
-  '/settings': ['aria-progressbar-name'],
-  '/about': ['aria-progressbar-name'],
-  // /data was clean on the first run and stays that way by this omission.
-};
+export const KNOWN_VIOLATIONS: Readonly<Record<string, readonly string[]>> = {};
 
 /** The options every pass shares, so the smoke run and the fixture agree. */
 export function axeOptions(): RunOptions {
@@ -141,7 +124,11 @@ export function summarizeViolations(results: AxeResults): string[] {
 }
 
 /** The same lines, with every violation this route already carried dropped. */
-export function unexpectedViolations(results: AxeResults, route: string): string[] {
-  const known = KNOWN_VIOLATIONS[route] ?? [];
-  return summarizeViolations(results).filter(line => !known.includes(line.split(' ')[0]));
+export function unexpectedViolations(
+  results: AxeResults,
+  route: string,
+  known: Readonly<Record<string, readonly string[]>> = KNOWN_VIOLATIONS
+): string[] {
+  const frozen = known[route] ?? [];
+  return summarizeViolations(results).filter(line => !frozen.includes(line.split(' ')[0]));
 }

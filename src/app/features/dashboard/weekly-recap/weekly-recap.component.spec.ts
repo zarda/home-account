@@ -265,6 +265,14 @@ describe('WeeklyRecapComponent', () => {
     expect(text('.recap-bills')).toContain('+');
   });
 
+  // #429 P1: a scheduled occurrence has no write-time snapshot, so this line
+  // still converts live — the one figure on the card that must say so.
+  it('marks the bills-due net as converted at today\'s rate', () => {
+    render({ upcoming: [occurrence({ recurringId: 'r1', amount: 100 })] });
+
+    expect(text('.recap-bills')).toContain('common.atTodaysRate');
+  });
+
   it('leaves occurrences outside the coming week to the upcoming-bills card', () => {
     render({
       upcoming: [

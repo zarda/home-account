@@ -83,9 +83,13 @@ describe('provider error parity', () => {
     const currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'formatAmount',
       'convert',
+      'amountInBase',
     ]);
     currencyService.formatAmount.and.callFake((value: number) => value.toFixed(2));
     currencyService.convert.and.callFake((amount: number) => amount);
+    currencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
 
     const translationService = jasmine.createSpyObj<TranslationService>('TranslationService', [
       't',

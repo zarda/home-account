@@ -164,6 +164,20 @@ describe('TransactionListComponent', () => {
       component.onRetry();
       expect(windowSource.retry).toHaveBeenCalled();
     });
+
+    it('hides both edge spinners: the row around each already carries the aria-hidden', () => {
+      windowSource.fetchingEdge.set('prev');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('.edge-row mat-spinner').getAttribute('aria-hidden')
+      ).toBe('true');
+
+      windowSource.fetchingEdge.set('next');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('.edge-row mat-spinner').getAttribute('aria-hidden')
+      ).toBe('true');
+    });
   });
 
   describe('empty state CTA', () => {
@@ -391,6 +405,7 @@ describe('TransactionListComponent mobile row wiring', () => {
   let component: TransactionListComponent;
   let fixture: ComponentFixture<TransactionListComponent>;
   let dialog: jasmine.SpyObj<MatDialog>;
+  let translation: jasmine.SpyObj<TranslationService>;
 
   const txns: Transaction[] = [
     createTransaction({
@@ -437,7 +452,7 @@ describe('TransactionListComponent mobile row wiring', () => {
     categoryHelper.getCategoryName.and.returnValue('Cat');
     categoryHelper.getCategoryIcon.and.returnValue('icon');
     categoryHelper.getCategoryColor.and.returnValue('#000');
-    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
@@ -480,6 +495,34 @@ describe('TransactionListComponent mobile row wiring', () => {
 
     expect(dialog.open).withContext('swipe delete still asks first').toHaveBeenCalled();
     expect(deleteSpy).toHaveBeenCalledWith(txns[0]);
+  });
+
+  // No positive tabindex anywhere in a row, so Tab follows document order;
+  // a synthetic Tab key moves nothing, so the order is read off the DOM.
+  // .row-actions is the surface's first child because the reserve rules
+  // select forward from it with ~, which puts the menu ahead of the row.
+  it("puts a row's menu and then the row itself in the tab order, and nothing else", () => {
+    const row = fixture.nativeElement.querySelector('app-transaction-row') as HTMLElement;
+    const stops = Array.from(
+      row.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]')
+    ).filter(element => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled);
+
+    expect(stops.map(element => element.className))
+      .withContext('menu, then row')
+      .toEqual([
+        jasmine.stringContaining('row-menu-btn'),
+        jasmine.stringContaining('row-activate'),
+      ]);
+  });
+
+  it('names each row menu after the row it belongs to', () => {
+    // The menu sits beside the row button, not inside a named row, so "More
+    // actions" alone would leave a list of identical buttons.
+    const menus: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.row-menu-btn'));
+    expect(menus.map(menu => menu.getAttribute('aria-label')))
+      .toEqual(['common.moreActionsFor', 'common.moreActionsFor']);
+    expect(translation.t).toHaveBeenCalledWith('common.moreActionsFor', { description: 'Banana' });
+    expect(translation.t).toHaveBeenCalledWith('common.moreActionsFor', { description: 'Apple' });
   });
 
   it('re-emits a row edit', () => {

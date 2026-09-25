@@ -1,71 +1,60 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component, QueryList, ViewChildren, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, QueryList, ViewChildren, input, output, signal, viewChild } from '@angular/core';
 
 import { SwipeRevealDirective } from './swipe-reveal.directive';
 
 /**
- * The gesture is geometric, so these drive it with synthetic PointerEvents
- * and assert on the transforms it writes and the state it settles into. Same
- * shape as the other layout specs: the probe is attached to the document,
- * because only an attached element has a layout box, and the sticky-chip test
- * needs real geometry.
- *
- * Synthetic PointerEvents have no active pointer, so `setPointerCapture`
- * throws `NotFoundError` in here — the directive try/catches it, which is
- * what makes this spec possible at all. Capture only matters on a real
- * device, where the listeners sit on the surface anyway.
- *
- * Velocity is sampled only across gaps of at least 15ms — a real frame — so
- * the back-to-back dispatches below always measure as velocity 0 and settle
- * purely by the half-width rule. The one fling test waits real time between
- * moves instead.
+ * One row, shaped like the transaction row: its host is no control of its
+ * own and answers a click from anywhere inside it, the keyboard reaches the
+ * row through one native button inside the surface — Enter and Space arrive
+ * as that button's click, which bubbles to the host — and Escape anywhere in
+ * the row puts the drawer back. The listeners sit on the host, as the row's
+ * do, rather than on an element of the template.
  */
 @Component({
+  selector: 'app-swipe-probe-row',
   standalone: true,
   imports: [SwipeRevealDirective],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    class: 'probe-row',
+    '(click)': 'activate.emit()',
+    '(keydown.escape)': 'swipe().close()',
+  },
   template: `
-    @for (row of rows; track row) {
-      <div
-        class="probe-row"
-        role="button"
-        tabindex="0"
-        (click)="clicks[row] = (clicks[row] ?? 0) + 1"
-        (keydown.enter)="clicks[row] = (clicks[row] ?? 0) + 1"
-      >
-        <div class="drawer" #drawer>
-          <button type="button">Edit</button>
-        </div>
-        <div
-          class="surface"
-          appSwipeReveal
-          [swipeRevealEnabled]="enabled()"
-          swipeRevealIgnore=".strip-like"
-          [swipeRevealDrawer]="drawer"
-          (swipeRevealOpened)="openedFlags[row] = true"
-          (swipeRevealClosed)="openedFlags[row] = false"
-        >
-          <span class="content">Row {{ row }}</span>
-          <div class="strip-like">
-            <span class="chip">alpha</span>
-            <span class="chip">beta</span>
-            <span class="chip">gamma</span>
-            <span class="chip">delta</span>
-            <span class="chip">epsilon</span>
-            <span class="chip sticky-chip">+2</span>
-          </div>
-        </div>
+    <div class="drawer" #drawer>
+      <button type="button">Edit</button>
+    </div>
+    <div
+      class="surface"
+      appSwipeReveal
+      [swipeRevealEnabled]="enabled()"
+      swipeRevealIgnore=".strip-like"
+      [swipeRevealDrawer]="drawer"
+      (swipeRevealOpened)="opened.emit(true)"
+      (swipeRevealClosed)="opened.emit(false)"
+    >
+      <button type="button" class="content row-activate">Row {{ row() }}</button>
+      <div class="strip-like">
+        <span class="chip">alpha</span>
+        <span class="chip">beta</span>
+        <span class="chip">gamma</span>
+        <span class="chip">delta</span>
+        <span class="chip">epsilon</span>
+        <span class="chip sticky-chip">+2</span>
       </div>
-    }
+    </div>
   `,
   styles: [
     `
-      .probe-row {
+      :host {
+        display: block;
         position: relative;
         width: 343px;
         overflow: hidden;
       }
       /* Off-canvas at rest from the stylesheet, exactly as the row component
-         will do it; the directive only writes inline transforms on top. */
+         does it; the directive only writes inline transforms on top. */
       .drawer {
         position: absolute;
         top: 0;
@@ -80,6 +69,7 @@ import { SwipeRevealDirective } from './swipe-reveal.directive';
       }
       .content {
         display: block;
+        width: 100%;
       }
       .strip-like {
         display: flex;
@@ -100,14 +90,53 @@ import { SwipeRevealDirective } from './swipe-reveal.directive';
     `,
   ],
 })
+class SwipeProbeRowComponent {
+  readonly row = input.required<number>();
+  readonly enabled = input(true);
+  readonly activate = output<void>();
+  readonly opened = output<boolean>();
+  readonly swipe = viewChild.required(SwipeRevealDirective);
+}
+
+@Component({
+  standalone: true,
+  imports: [SwipeProbeRowComponent],
+  template: `
+    @for (row of rows; track row) {
+      <app-swipe-probe-row
+        [row]="row"
+        [enabled]="enabled()"
+        (activate)="clicks[row] = (clicks[row] ?? 0) + 1"
+        (opened)="openedFlags[row] = $event"
+      />
+    }
+  `,
+})
 class SwipeProbeComponent {
-  @ViewChildren(SwipeRevealDirective) swipes!: QueryList<SwipeRevealDirective>;
+  @ViewChildren(SwipeProbeRowComponent) probeRows!: QueryList<SwipeProbeRowComponent>;
   readonly rows = [0, 1];
   enabled = signal(true);
   clicks: Record<number, number> = {};
   openedFlags: Record<number, boolean> = {};
 }
 
+/**
+ * The gesture is geometric, so these drive it with synthetic PointerEvents
+ * and assert on the transforms it writes and the state it settles into. Same
+ * shape as the other layout specs: the probe is attached to the document,
+ * because only an attached element has a layout box, and the sticky-chip test
+ * needs real geometry.
+ *
+ * Synthetic PointerEvents have no active pointer, so `setPointerCapture`
+ * throws `NotFoundError` in here — the directive try/catches it, which is
+ * what makes this spec possible at all. Capture only matters on a real
+ * device, where the listeners sit on the surface anyway.
+ *
+ * Velocity is sampled only across gaps of at least 15ms — a real frame — so
+ * the back-to-back dispatches below always measure as velocity 0 and settle
+ * purely by the half-width rule. The one fling test waits real time between
+ * moves instead.
+ */
 describe('SwipeRevealDirective', () => {
   let fixture: ComponentFixture<SwipeProbeComponent>;
   let component: SwipeProbeComponent;
@@ -154,12 +183,25 @@ describe('SwipeRevealDirective', () => {
     );
   }
 
-  /** A committed left swipe: locks horizontal, travels well past half of 144. */
+  /**
+   * A committed left swipe: locks horizontal, travels well past half of 144.
+   * A touch that travelled is no tap, so no click follows it; the mouse
+   * drag's click, which does, is dispatched by the case that needs it.
+   */
   function dragOpen(index: number): void {
     pointer(content(index), 'pointerdown', 300, 20);
     pointer(surface(index), 'pointermove', 288, 21);
     pointer(surface(index), 'pointermove', 140, 22);
     pointer(surface(index), 'pointerup', 140, 22);
+  }
+
+  /**
+   * Enter on the row's button. A synthetic key event has no default action,
+   * so the click a native button fires for Enter is dispatched by hand.
+   */
+  function enter(index: number): void {
+    content(index).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    content(index).click();
   }
 
   it('snaps open past half the drawer width', () => {
@@ -243,6 +285,31 @@ describe('SwipeRevealDirective', () => {
     expect(component.clicks[0]).withContext('and did not activate the row').toBeUndefined();
   });
 
+  it('closes on Enter on the row button while open, and activates on the next Enter', () => {
+    dragOpen(0);
+    expect(row(0).classList).toContain('swipe-open');
+
+    enter(0);
+    expect(row(0).classList).withContext('the first Enter put the drawer back').not.toContain('swipe-open');
+    expect(component.clicks[0]).withContext('and did not activate the row').toBeUndefined();
+
+    enter(0);
+    expect(component.clicks[0]).withContext('the second Enter activates').toBe(1);
+  });
+
+  it('still swallows the click after a drag through a key held down during it', () => {
+    pointer(content(0), 'pointerdown', 300, 20);
+    pointer(surface(0), 'pointermove', 288, 21);
+    content(0).dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    pointer(surface(0), 'pointermove', 140, 22);
+    pointer(surface(0), 'pointerup', 140, 22);
+    // The click a mouse drag is followed by, in the same task as its pointerup.
+    content(0).click();
+
+    expect(row(0).classList).withContext('the drag left the drawer open').toContain('swipe-open');
+    expect(component.clicks[0]).withContext('and the click after it did nothing').toBeUndefined();
+  });
+
   it('closes the previously open row when another row is touched', () => {
     dragOpen(0);
     expect(row(0).classList).toContain('swipe-open');
@@ -255,11 +322,12 @@ describe('SwipeRevealDirective', () => {
     expect(component.openedFlags[0]).withContext('closed event reached the first row').toBeFalse();
   });
 
-  it('closes on close(), which is the Escape route, and on a pointerdown outside', () => {
+  it('closes on Escape from the row button, and on a pointerdown outside', () => {
     dragOpen(0);
-    component.swipes.first.close();
-    expect(row(0).classList).withContext('close() closed it').not.toContain('swipe-open');
+    content(0).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(row(0).classList).withContext('Escape closed it').not.toContain('swipe-open');
     expect(surface(0).style.transform).toBe('translateX(0px)');
+    expect(component.clicks[0]).withContext('without activating the row').toBeUndefined();
 
     dragOpen(0);
     expect(row(0).classList).toContain('swipe-open');
@@ -282,7 +350,7 @@ describe('SwipeRevealDirective', () => {
   it('does nothing at all while disabled', () => {
     component.enabled.set(false);
     fixture.detectChanges();
-    expect(component.swipes.first.swipeRevealEnabled())
+    expect(component.probeRows.first.swipe().swipeRevealEnabled())
       .withContext('precondition: the binding reached the input signal')
       .toBeFalse();
 

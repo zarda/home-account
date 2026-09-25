@@ -19,6 +19,7 @@ import {
 } from '../../../core/services/llm-provider.interface';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { goalProgressAmount } from '../../../core/utils/goal-progress.utils';
+import { transactionFingerprint } from '../../../core/utils/insight-facts.utils';
 import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -109,7 +110,10 @@ export class AiSummaryComponent {
   // re-read after an await: it tracks live signals, so re-reading it at write
   // time filed a finished summary under whatever the selector had moved to.
   private cacheKey = computed(() => {
-    const txIds = this.transactions().map(t => t.id).sort().join(',');
+    // A fingerprint of every id and revision, not just the first few: the
+    // period selector groups far more than five transactions, and a set that
+    // matched only in its early ids used to be served a stale summary.
+    const txFingerprint = transactionFingerprint(this.transactions());
     const locale = this.translationService.currentLocale();
     const grounding = this.ragLevel();
     const provider = this.authService.currentUser()?.preferences?.llmProviderPreferences?.insights ?? 'gemini';
@@ -120,7 +124,7 @@ export class AiSummaryComponent {
       .map(g => `${g.id}:${goalProgressAmount(g)}/${g.targetAmount}`)
       .sort()
       .join(',');
-    return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${goalsFingerprint}-${txIds.slice(0, 100)}`;
+    return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${goalsFingerprint}-${txFingerprint}`;
   });
 
   // Check if any cloud AI provider is available
@@ -306,7 +310,10 @@ export class AiSummaryComponent {
 
   private calculatePeriodTotal(transactions: Transaction[]): MonthlyTotal {
     const baseCurrency = this.baseCurrency();
-    const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+    // Reads the write-time snapshot (docs/money-snapshots.md) rather than
+    // converting at today's rate, so the total fed to the provider agrees
+    // with every other figure over the same period.
+    const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
 
     const income = transactions
       .filter(t => t.type === 'income')

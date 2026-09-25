@@ -27,6 +27,7 @@
           <mat-progress-bar
             [value]="getBarValue(budget)"
             [color]="getProgressColor(budget)"
+            [attr.aria-label]="'budgets.progressLabel' | translate: { name: budget.name, percent: getPercentage(budget).toFixed(0) }"
           />
 
           <div class="budget-footer">

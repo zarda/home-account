@@ -1,6 +1,7 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { DestroyRef, Injectable, inject, signal, computed } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { Observable, of } from 'rxjs';
+import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import {
   CurrencyInfo,
@@ -10,7 +11,8 @@ import {
   SUPPORTED_CURRENCIES,
   currencyDecimalPlaces,
   currencyInfoFor,
-  isCurrencyCode
+  isCurrencyCode,
+  sanitizeRates
 } from '../../models';
 
 const CACHE_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -23,9 +25,34 @@ const CURRENCY_API_URL = 'https://open.er-api.com/v6/latest/USD';
 // from storing them per account.
 const RATES_CACHE_KEY = 'home-account.exchangeRates';
 
+// A boot that lands on `expired`/`fallback` gets this many refetch attempts
+// across the session, spent one per `online` event — not per minute or per
+// retry backoff — so a connection that flaps cannot burn them all before the
+// user even notices the stale line.
+const RATE_RETRY_LIMIT = 3;
+
 @Injectable({ providedIn: 'root' })
 export class CurrencyService {
   private translationService = inject(TranslationService);
+  private pwaService = inject(PwaService);
+  private destroyRef = inject(DestroyRef);
+
+  // Present only while a stale table (expired/fallback) is waiting on a
+  // reconnect to retry; armed once by initializeRates and torn down by
+  // whichever of retryOnReconnect and the constructor's DestroyRef.onDestroy
+  // callback ends the waiting first.
+  private onlineRetryHandler: (() => void) | null = null;
+  private retryAttempts = 0;
+  // The offline-queue.service.ts syncInProgress idiom: a flaky reconnect can
+  // fire `online` twice before the first attempt's fetch settles, and without
+  // this a second event would start a concurrent refreshRates() against the
+  // same rate-limited API and double-spend the budget above.
+  private retryInFlight = false;
+  // The boot fetch can outlive the injector: initializeRates's `finally` only
+  // arms the listener once that fetch settles, which can land after
+  // DestroyRef.onDestroy already ran. Without this flag, arming would attach
+  // a `window` listener nothing is left registered to remove.
+  private destroyed = false;
 
   // Signals
   currencies = signal<CurrencyInfo[]>(SUPPORTED_CURRENCIES);
@@ -47,6 +74,10 @@ export class CurrencyService {
 
   constructor() {
     this.initPromise = this.initializeRates();
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+      this.removeOnlineRetryListener();
+    });
   }
 
   // Initialize the rate table: a fresh cache is used as-is, otherwise a live
@@ -73,7 +104,52 @@ export class CurrencyService {
       }
     } finally {
       this.ratesInitialized.set(true);
+      this.armOnlineRetryIfNeeded();
     }
+  }
+
+  // A boot that missed the live table gets no retry of its own — only a
+  // reconnect can still bring it current this session. `online` fires on the
+  // OS's say-so alone, so PwaService.isOnline() (the offline-queue.service.ts
+  // idiom) confirms the connection actually carries traffic before spending
+  // one of the limited attempts on a portal or a still-dead radio. A destroyed
+  // instance never arms: see `destroyed`.
+  private armOnlineRetryIfNeeded(): void {
+    if (this.destroyed) return;
+
+    const source = this.rateSource();
+    if (source !== 'expired' && source !== 'fallback') return;
+
+    this.onlineRetryHandler = () => this.retryOnReconnect();
+    window.addEventListener('online', this.onlineRetryHandler);
+  }
+
+  private retryOnReconnect(): void {
+    if (this.retryInFlight) return;
+    if (!this.pwaService.isOnline()) return;
+    if (this.retryAttempts >= RATE_RETRY_LIMIT) {
+      this.removeOnlineRetryListener();
+      return;
+    }
+
+    this.retryAttempts += 1;
+    this.retryInFlight = true;
+    void this.refreshRates()
+      .then(() => this.removeOnlineRetryListener())
+      .catch(() => {
+        if (this.retryAttempts >= RATE_RETRY_LIMIT) {
+          this.removeOnlineRetryListener();
+        }
+      })
+      .finally(() => {
+        this.retryInFlight = false;
+      });
+  }
+
+  private removeOnlineRetryListener(): void {
+    if (!this.onlineRetryHandler) return;
+    window.removeEventListener('online', this.onlineRetryHandler);
+    this.onlineRetryHandler = null;
   }
 
   // Wait for exchange rates to be initialized
@@ -168,26 +244,23 @@ export class CurrencyService {
 
       // ExchangeRate-API returns { result: "success", rates: { USD: 1, ... } }
       // and reports failures in band: a rate-limited request comes back
-      // HTTP 200 carrying { result: "error", "error-type": "..." }. A body
-      // without a usable multi-entry table is a failure, not a no-op —
-      // resolving here is what left every currency converting 1:1.
-      if (
-        data?.result !== 'success' ||
-        typeof data.rates !== 'object' ||
-        !data.rates ||
-        Object.keys(data.rates).length < 2
-      ) {
+      // HTTP 200 carrying { result: "error", "error-type": "..." }. sanitizeRates
+      // also throws out a body that parses but carries no usable currency data —
+      // a wrong-typed, zero, negative or infinite entry per currency, or fewer
+      // than two survivors overall — so a malformed provider response cannot
+      // convert every currency 1:1 or divide by zero.
+      const rates = data?.result === 'success' ? sanitizeRates(data.rates) : null;
+      if (!rates) {
         throw new Error(
           `API returned an unusable body: ${data?.['error-type'] ?? data?.result ?? 'malformed'}`
         );
       }
 
-      const rates = new Map<string, number>(Object.entries(data.rates));
-      this.exchangeRates.set(rates);
+      this.exchangeRates.set(this.withBuiltInFallback(rates));
       this.lastUpdated.set(new Date());
       this.rateSource.set('live');
 
-      this.cacheRates(data.rates);
+      this.cacheRates(rates);
     } finally {
       this.isLoading.set(false);
     }
@@ -273,18 +346,12 @@ export class CurrencyService {
         return null;
       }
 
-      const rates: ExchangeRates = {};
-      for (const [code, value] of Object.entries(parsed.rates as Record<string, unknown>)) {
-        // Only include numeric values (exchange rates), skip anything else
-        if (typeof value === 'number') {
-          rates[code] = value;
-        }
-      }
-
-      // A table with fewer than two entries cannot express any cross-rate —
-      // it is indistinguishable from the constructor's USD-only placeholder.
-      // Refuse it so initialization falls through to a real source instead.
-      if (Object.keys(rates).length < 2) {
+      // Drops a wrong-typed, zero, negative or infinite entry the same way the
+      // fetch path does, and refuses a table with fewer than two survivors —
+      // indistinguishable from the constructor's USD-only placeholder — so
+      // initialization falls through to a real source instead.
+      const rates = sanitizeRates(parsed.rates);
+      if (!rates) {
         return null;
       }
 
@@ -307,11 +374,28 @@ export class CurrencyService {
   // in for a failed fetch, and a second isExpired() call would answer against
   // a later clock than the decision it is meant to report.
   private setRatesFromCache(cached: CachedRates, source: RateSource): void {
-    const rates = new Map<string, number>(Object.entries(cached.rates));
+    const rates = this.withBuiltInFallback(cached.rates);
     rates.set('USD', 1);
     this.exchangeRates.set(rates);
     this.lastUpdated.set(cached.lastUpdated.toDate());
     this.rateSource.set(source);
+  }
+
+  // A currency the compiled-in table knows (getDefaultRatesObject) that an
+  // accepted live or cached table is missing — sanitizeRates dropped its
+  // entry as malformed — keeps its compiled-in approximation here instead of
+  // falling through to getExchangeRate's `?? 1`: a dropped rate must not
+  // silently become a 1:1 conversion, the class of an earlier defect where
+  // every currency converted at par. A code the compiled-in table itself
+  // does not carry is untouched by this and still resolves via `?? 1` at
+  // read time. The accepted table's own values always win over the
+  // approximation, live or cached.
+  private withBuiltInFallback(rates: ExchangeRates): Map<string, number> {
+    const merged = new Map<string, number>(Object.entries(this.getDefaultRatesObject()));
+    for (const [code, value] of Object.entries(rates)) {
+      merged.set(code, value);
+    }
+    return merged;
   }
 
   // Get default rates as object (fallback when API is unavailable)

@@ -41,9 +41,10 @@
  *   - KNOWN_FAILURES are pairs that fail today, frozen at the ratio they
  *     measure, with what it would take to fix them. They may only improve,
  *     and when one reaches its threshold the script says so and asks to be
- *     promoted. Freezing rather than fixing is deliberate: each of the four
- *     is a component reaching for the wrong token, or a brand colour whose
- *     replacement needs eyes on a screen, not a number in a script.
+ *     promoted. Freezing rather than fixing is deliberate: a row here is a
+ *     component reaching for the wrong token, or a brand colour whose
+ *     replacement needs eyes on a screen, not a number in a script. The
+ *     table is empty today — that is the mechanism working, not retired.
  *
  * Decisions worth stating, because each has a cheaper alternative that is
  * worse:
@@ -112,12 +113,23 @@ const PAIRS = [
   { fg: '--text-inverse', bg: '--color-primary', why: 'bottom-nav and period-selector labels on the primary fill' },
   { fg: '--color-primary', bg: '--surface-card', why: 'links and active labels on a card' },
   { fg: '--color-accent', bg: '--surface-card', why: 'accent labels on a card' },
+  {
+    fg: '--color-primary-text',
+    bg: '--color-primary-light',
+    why: "the stat-card neutral icon, the import preview badge, the period selector's toggle " +
+      "and chip, the bottom-nav active pill, the profile-settings checked toggle",
+  },
   { fg: '--color-income-text', bg: '--color-income-light', why: 'the income chip: stat cards, weekly recap' },
   { fg: '--color-income-text', bg: '--surface-card', why: 'an income amount as running text' },
   { fg: '--color-expense-text', bg: '--color-expense-light', why: 'the expense chip: stat cards, weekly recap, budget alert banner' },
   { fg: '--color-expense-text', bg: '--surface-card', why: 'an expense amount as running text' },
   { fg: '--color-warning-text', bg: '--color-warning-light', why: 'the warning banner: budget alerts, the recurring-rule chip' },
   { fg: '--color-warning-text', bg: '--surface-card', why: 'a warning as running text' },
+  {
+    fg: '--color-error-text',
+    bg: '--color-error-light',
+    why: "the login page's error banner and the transaction filters' clear-button hover",
+  },
 ];
 
 /** Pairs recorded and not scored, each with the reason it is not a rule. */
@@ -151,45 +163,19 @@ const EXEMPT = [
 
 /**
  * Pairs that fail today, frozen at what they measure. `floors` is per mode
- * and may only be lowered by a fix; a row that reaches its threshold is
+ * and may only rise, with a fix; a row that reaches its threshold is
  * reported so it moves up into PAIRS rather than sitting here passing.
+ * Empty is the goal state, and the bucket stays for the next pair that
+ * fails. This script finds no pair on its own — it scores the pairs these
+ * tables name — so a component that paints a fill token as text instead of
+ * its `-text` sibling is met in one of two places. Written into PAIRS, its
+ * pair fails the build, and lands here only when someone moves it by hand,
+ * as a row with its reason and its measured floors, until it is fixed. Found
+ * by the axe pass on a route that pass renders, it fails the smoke
+ * walkthrough instead, and is frozen, if at all, in axe.ts's
+ * KNOWN_VIOLATIONS, by rule id per route with its reason — never here.
  */
-const KNOWN_FAILURES = [
-  {
-    fg: '--color-primary',
-    bg: '--color-primary-light',
-    floors: { dark: 2.6, 'dark-hc': 2.6 },
-    why:
-      'the neutral stat-card chip, the import preview badge and the period selector all paint ' +
-      'the brand colour on its own tint. In dark that is #7986CB on #303F9F. Fixing it means ' +
-      'moving the brand colour or its tint far enough to read, in the theme where every ' +
-      'surface is already close together — a judgement about how the app looks, not a number.',
-  },
-  {
-    fg: '--color-income',
-    bg: '--color-income-light',
-    floors: { light: 2.07, dark: 4.09, 'light-hc': 2.07, 'dark-hc': 4.09 },
-    why:
-      "the transaction form's and the recurring dialog's type toggles paint the FILL token on " +
-      'the tint instead of --color-income-text, which exists for exactly this and clears AA on ' +
-      'the same background. The fix is in those two stylesheets, not in the palette.',
-  },
-  {
-    fg: '--color-expense',
-    bg: '--color-expense-light',
-    floors: { light: 3.08, dark: 3.62, 'light-hc': 3.08, 'dark-hc': 3.62 },
-    why: 'the same two type toggles, the same one-token fix — --color-expense-text',
-  },
-  {
-    fg: '--color-error',
-    bg: '--color-error-light',
-    floors: { light: 3.08, dark: 3.0, 'light-hc': 3.08, 'dark-hc': 3.0 },
-    why:
-      "the login page's error banner paints --color-error on --color-error-light. There is no " +
-      '--color-error-text token to reach for; adding one is a palette change with its own ' +
-      'sweep, and the banner also carries a border and an icon.',
-  },
-];
+const KNOWN_FAILURES = [];
 
 /**
  * `--color-*` tokens no pair above names, and why none does. Every one is a
@@ -202,6 +188,8 @@ const KNOWN_FAILURES = [
 const NOT_PAINTED = {
   '--color-primary-dark': 'a hover/active fill under an icon button; nothing sits on it as text',
   '--color-accent-light': 'a border colour and one decorative header glyph',
+  '--color-income': "a fill — bars, dots, toggles' tints; never text",
+  '--color-expense': "a fill — bars, dots, toggles' tints; never text",
   '--color-success': 'an icon colour beside its own label (the import wizard\'s success states)',
   '--color-success-light': 'declared and unused',
   '--color-warning': 'an icon and a border colour beside their own labels; the readable warning token is --color-warning-text',
@@ -302,13 +290,48 @@ function score(pair, layers) {
   return { ratio, foreground, background };
 }
 
-function run() {
-  const source = readFileSync(STYLESHEET, 'utf8');
-  const resolved = palettes(source);
+/**
+ * What one frozen row measures in one mode against its floor: a finding when
+ * it got worse than the ratio it was frozen at, a finding asking to be
+ * promoted once it clears its threshold, and null while it still fails no
+ * worse than it did. A function of its own so --self-test can hand it a
+ * synthetic row — the production table is empty, and a self-test that read
+ * it would check nothing.
+ */
+export function frozenRowFinding(pair, mode, layers) {
+  const threshold = pair.threshold ?? AA_NORMAL;
+  const floor = pair.floors[mode];
+  const result = score(pair, layers);
+  if (result.error) return result.error;
+  if (result.ratio < floor) {
+    return (
+      `${result.ratio}:1 is worse than the ${floor}:1 this pair was frozen at — a known ` +
+      'failure may only improve'
+    );
+  }
+  if (result.ratio >= threshold) {
+    return (
+      `${result.ratio}:1 now clears ${threshold}:1 — move this row out of KNOWN_FAILURES ` +
+      'and into PAIRS so it cannot slip back'
+    );
+  }
+  return null;
+}
+
+/**
+ * Every finding the tables produce over a set of resolved palettes, and how
+ * many pairings were scored. A required pair is scored in every mode handed
+ * in and fails only under its threshold, so one measuring exactly on it
+ * passes; a frozen row is scored only in the modes it names a floor for.
+ * Separate from run() so --self-test can hand it tables of its own — the
+ * production KNOWN_FAILURES is empty, and a loop only ever given that would
+ * never be seen to report a frozen row.
+ */
+export function findingsFor(pairs, knownFailures, resolved) {
   const findings = [];
   let scored = 0;
 
-  for (const pair of PAIRS) {
+  for (const pair of pairs) {
     const threshold = pair.threshold ?? AA_NORMAL;
     for (const [mode, layers] of Object.entries(resolved)) {
       scored += 1;
@@ -329,34 +352,20 @@ function run() {
     }
   }
 
-  for (const pair of KNOWN_FAILURES) {
-    const threshold = pair.threshold ?? AA_NORMAL;
-    for (const [mode, floor] of Object.entries(pair.floors)) {
+  for (const pair of knownFailures) {
+    for (const mode of Object.keys(pair.floors)) {
       scored += 1;
-      const result = score(pair, resolved[mode]);
-      if (result.error) {
-        findings.push({ pair, mode, text: result.error });
-        continue;
-      }
-      if (result.ratio < floor) {
-        findings.push({
-          pair,
-          mode,
-          text:
-            `${result.ratio}:1 is worse than the ${floor}:1 this pair was frozen at — a known ` +
-            'failure may only improve',
-        });
-      } else if (result.ratio >= threshold) {
-        findings.push({
-          pair,
-          mode,
-          text:
-            `${result.ratio}:1 now clears ${threshold}:1 — move this row out of KNOWN_FAILURES ` +
-            'and into PAIRS so it cannot slip back',
-        });
-      }
+      const text = frozenRowFinding(pair, mode, resolved[mode]);
+      if (text) findings.push({ pair, mode, text });
     }
   }
+
+  return { findings, scored };
+}
+
+function run() {
+  const source = readFileSync(STYLESHEET, 'utf8');
+  const { findings, scored } = findingsFor(PAIRS, KNOWN_FAILURES, palettes(source));
 
   console.log(
     `Scored ${scored} colour pairings across ${Object.keys(MODES).length} rendered modes ` +
@@ -474,6 +483,57 @@ function selfTest() {
     'every frozen row names the modes it fails in',
     KNOWN_FAILURES.filter(pair => Object.keys(pair.floors ?? {}).length === 0),
     []
+  );
+
+  // --- the ratchet, on a synthetic frozen row ------------------------------
+  // #777777 on white is 4.48:1, just under AA; the row is frozen there.
+  const frozen = { fg: '--fg', bg: '--bg', floors: { light: 4.48 }, why: 'a fixture row for the ratchet' };
+  const on = foreground => [{ '--fg': foreground, '--bg': '#ffffff' }];
+  check('a frozen row at its floor passes', frozenRowFinding(frozen, 'light', on('#777777')), null);
+  check(
+    'a frozen row worse than its floor fails',
+    frozenRowFinding(frozen, 'light', on('#888888'))?.startsWith('3.54:1 is worse than the 4.48:1'),
+    true
+  );
+  check(
+    'a frozen row that now clears asks to be promoted',
+    frozenRowFinding(frozen, 'light', on('#595959'))?.includes('move this row out of KNOWN_FAILURES'),
+    true
+  );
+  check(
+    'a frozen row whose token went missing says so',
+    frozenRowFinding(frozen, 'light', [{ '--bg': '#ffffff' }]),
+    '--fg is not declared'
+  );
+
+  // --- the run loop, on synthetic tables ------------------------------------
+  // run() hands findingsFor the production tables; these hand it their own,
+  // so the loop's comparisons are checked as run() makes them — including a
+  // frozen row's finding, which the empty KNOWN_FAILURES never reaches.
+  // #148484 on white measures 4.5:1 to two decimal places —
+  // AA's own line, which a required pair need only reach.
+  const required = { fg: '--fg', bg: '--bg', why: 'a fixture row for the loop' };
+  const texts = ({ findings }) => findings.map(finding => `${finding.mode}: ${finding.text}`);
+  check('the boundary fixture measures exactly AA', contrastRatio('#148484', '#ffffff'), AA_NORMAL);
+  check(
+    'a required pair exactly on its threshold passes',
+    texts(findingsFor([required], [], { light: on('#148484') })),
+    []
+  );
+  check(
+    'a required pair a hundredth under its threshold fails',
+    texts(findingsFor([{ ...required, threshold: 4.49 }], [], { light: on('#777777') })),
+    ['light: #777777 on #ffffff is 4.48:1, under 4.49:1 — a fixture row for the loop']
+  );
+  check(
+    'the loop reports a frozen row worse than its floor',
+    texts(findingsFor([], [frozen], { light: on('#888888') })),
+    ['light: 3.54:1 is worse than the 4.48:1 this pair was frozen at — a known failure may only improve']
+  );
+  check(
+    'the loop scores a frozen row only in the modes it names a floor for',
+    findingsFor([], [frozen], { light: on('#777777'), dark: on('#888888') }).scored,
+    1
   );
 
   let failed = 0;

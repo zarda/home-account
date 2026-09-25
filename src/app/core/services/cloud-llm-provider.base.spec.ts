@@ -9,7 +9,7 @@ import { PromptId, RenderedPrompt } from '../prompts';
 import { Category } from '../../models';
 import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
-import { createCategory } from './testing';
+import { createCategory, createTransaction } from './testing';
 import { dayKey } from '../utils/transaction-date.utils';
 
 /**
@@ -108,6 +108,7 @@ describe('CloudLLMProviderBase', () => {
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense' }),
     createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
     createCategory({ id: 'other_expense', name: 'Other', type: 'expense' }),
+    createCategory({ id: 'employment_salary', name: 'Salary', type: 'income' }),
   ];
 
   beforeEach(() => {
@@ -119,9 +120,16 @@ describe('CloudLLMProviderBase', () => {
     const currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',
       'formatAmount',
+      'amountInBase',
     ]);
     currencyService.convert.and.callFake((amount: number) => amount);
     currencyService.formatAmount.and.callFake((amount: number) => amount.toFixed(2));
+    // Deliberately distinct from `convert`'s passthrough: reads the stamped
+    // snapshot so a site that still calls `convert` is caught rather than
+    // passing by coincidence.
+    currencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
 
     const translationService = jasmine.createSpyObj<TranslationService>('TranslationService', [
       't',
@@ -215,7 +223,12 @@ describe('CloudLLMProviderBase', () => {
   });
 
   describe('categorizeTransactions chunking', () => {
-    const row = (i: number) => ({ description: `Row ${i}`, amount: -5, date: new Date() });
+    const row = (i: number, type?: 'income' | 'expense') => ({
+      description: `Row ${i}`,
+      amount: -5,
+      date: new Date(),
+      ...(type ? { type } : {}),
+    });
     const answer = (
       entries: { index: number; categoryId: string; confidence: number }[]
     ): ProviderResponse => ({ text: JSON.stringify(entries), truncated: false });
@@ -280,6 +293,58 @@ describe('CloudLLMProviderBase', () => {
       expect(firstChunk.every(r => r.confidence === 0.1)).toBeTrue();
       expect(result[CATEGORIZE_CHUNK_SIZE].suggestedCategoryId).toBe('transport');
       expect(result[CATEGORIZE_CHUNK_SIZE].confidence).toBe(0.7);
+    });
+
+    /**
+     * The catalog rendered into the prompt is one shared thing per request,
+     * built before the chunk loop — so it can only be narrowed when every row
+     * in the batch agrees on a direction. One row of the other type, or one
+     * that never learned its type at all, has to see everything.
+     */
+    describe('the catalog offered', () => {
+      it('offers only expense categories for an all-expense batch', async () => {
+        const rows = [row(0, 'expense'), row(1, 'expense')];
+        provider.response = answer(
+          rows.map((_, i) => ({ index: i, categoryId: 'food_groceries', confidence: 0.9 }))
+        );
+
+        await provider.categorizeTransactions(rows);
+
+        expect(provider.renderedSent[0].user).toContain('food_groceries');
+        expect(provider.renderedSent[0].user).not.toContain('employment_salary');
+      });
+
+      it('offers every category for a mixed batch', async () => {
+        const rows = [row(0, 'expense'), row(1, 'income')];
+        provider.response = answer(
+          rows.map((_, i) => ({ index: i, categoryId: 'food_groceries', confidence: 0.9 }))
+        );
+
+        await provider.categorizeTransactions(rows);
+
+        expect(provider.renderedSent[0].user).toContain('employment_salary');
+      });
+
+      it('offers every category for an untyped batch', async () => {
+        const rows = [row(0), row(1)];
+        provider.response = answer(
+          rows.map((_, i) => ({ index: i, categoryId: 'food_groceries', confidence: 0.9 }))
+        );
+
+        await provider.categorizeTransactions(rows);
+
+        expect(provider.renderedSent[0].user).toContain('employment_salary');
+      });
+    });
+
+    it("a failed chunk's income row falls back to other_income", async () => {
+      spyOn(console, 'error');
+      provider.failWith = new Error('categorization exploded');
+
+      const result = await provider.categorizeTransactions([row(0, 'income')]);
+
+      expect(result[0].suggestedCategoryId).toBe('other_income');
+      expect(result[0].confidence).toBe(0.1);
     });
   });
 
@@ -349,6 +414,44 @@ describe('CloudLLMProviderBase', () => {
     });
   });
 
+  describe('generateSpendingSummary', () => {
+    it('reads each transaction\'s base-currency snapshot rather than converting live', async () => {
+      const income = createTransaction({
+        type: 'income',
+        amount: 50,
+        currency: 'EUR',
+        amountInBaseCurrency: 500,
+        exchangeRate: 5,
+        baseCurrency: 'USD',
+        categoryId: 'employment_salary',
+        description: 'Salary Payment',
+      });
+      const expense = createTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'EUR',
+        amountInBaseCurrency: 999,
+        exchangeRate: 9.99,
+        baseCurrency: 'USD',
+        categoryId: 'food_groceries',
+        description: 'Groceries run',
+      });
+
+      await provider.generateSpendingSummary([income, expense], 'This month', 'USD');
+
+      const prompt = provider.renderedSent[0].user;
+      // The snapshots (500/999), not what `convert`'s passthrough fake would
+      // report for the raw amounts (50/100).
+      expect(prompt).toContain('Total Income: 500.00 USD');
+      expect(prompt).toContain('Total Expenses: 999.00 USD');
+      expect(prompt).toContain('Net: -499.00 USD');
+      expect(prompt).toContain('Groceries: 999.00 USD (1 transactions)');
+      expect(prompt).toContain('- Groceries run: 999.00 USD (Groceries)');
+      expect(prompt).not.toContain('50.00');
+      expect(prompt).not.toContain('100.00');
+    });
+  });
+
   describe('extraction category resolution', () => {
     const statementJson = (category: string) =>
       JSON.stringify([
@@ -397,6 +500,26 @@ describe('CloudLLMProviderBase', () => {
 
       expect(rows[0].category).toBeUndefined();
       expect(rows[1].category).toBe('transport');
+    });
+  });
+
+  describe('extractTransactionsFromMultipleImages merged flag', () => {
+    it("does not copy the model's own wasMerged claim", async () => {
+      // Whether an item was deduplicated across photos is decided later, by
+      // consolidation and reviewer merges — never taken on the model's word.
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
+            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1,
+            wasMerged: true, mergedFromImages: [0, 1] },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['a', 'b']);
+
+      expect(rows[0].wasMerged).toBeFalse();
+      expect(rows[0].mergedFromImages).toEqual([0, 1]);
     });
   });
 

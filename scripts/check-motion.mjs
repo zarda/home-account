@@ -44,10 +44,11 @@
  *   - A declaration inside the component's own `prefers-reduced-motion` block
  *     is cooperating with the switch, not racing it, so the scan tracks brace
  *     depth and skips those blocks whole. Four component stylesheets have one.
- *   - The survivor is frozen in ALLOWED with its reason, the way
- *     check-direction.mjs freezes physical CSS, rather than failing the build
- *     on day one or being quietly excluded. The entry is a debt with a name;
- *     staleness fails in both directions, so removing it means editing this
+ *   - A competing declaration that cannot be fixed at once is frozen in
+ *     ALLOWED with its reason, the way check-direction.mjs freezes physical
+ *     CSS, rather than failing the build with no way past or being quietly
+ *     excluded. ALLOWED is empty, and empty is the goal: a row is a debt with
+ *     a name, and staleness fails in both directions, so a repair edits this
  *     file in the same commit.
  *
  * What it deliberately cannot see:
@@ -103,19 +104,22 @@ const DURATION = /([\d.]+)\s*(ms|s)\b/g;
 const COLLAPSED_MS = 1;
 
 /**
- * Component declarations that outrun the kill-switch today, each with its
- * reason. Counts may only go down; a file listed here that is now clean
- * fails, so a repair edits this table in the same commit.
+ * Component declarations that outrun the kill-switch, each with its reason.
+ * Counts may only go down: a new hit in any file fails, and a file listed
+ * here whose count dropped or reached zero fails until this table is edited
+ * to match, so a repair edits it in the same commit.
  */
-const ALLOWED = {
-  'src/app/features/auth/login/login.component.scss': {
-    hits: 1,
-    reason:
-      '.google-btn:183 carpet-bombs eleven properties with !important to override the Material ' +
-      'button; the transition rode along. Pre-existing, cosmetic (a 200ms hover ease on one ' +
-      'button), and left where it stands rather than repaired under cover of a gate.',
-  },
-};
+const ALLOWED = {};
+
+/** A row in ALLOWED: a positive integer hit count and a non-empty reason. */
+export function allowedRowValid(row) {
+  return (
+    Number.isInteger(row.hits) &&
+    row.hits > 0 &&
+    typeof row.reason === 'string' &&
+    row.reason.length > 0
+  );
+}
 
 /**
  * Blanks comments while preserving every byte offset, so a line number taken
@@ -486,11 +490,11 @@ function selfTest() {
   check('the shortest duration wins', shortestDuration('all 0.01ms, opacity 2s'), 0.01);
   check('seconds convert to milliseconds', shortestDuration('all 0.2s ease'), 200);
   check('a value with no duration reads null', shortestDuration('none'), null);
-  check(
-    'every allowed row carries a reason',
-    Object.values(ALLOWED).every((row) => row.hits > 0 && row.reason.length > 20),
-    true
-  );
+  check('a valid allowed row', allowedRowValid({ hits: 2, reason: 'a rule the reader cannot fix' }), true);
+  check('an allowed row with zero hits', allowedRowValid({ hits: 0, reason: 'a rule the reader cannot fix' }), false);
+  check('an allowed row missing a reason', allowedRowValid({ hits: 1 }), false);
+  check('an allowed row with an empty reason', allowedRowValid({ hits: 1, reason: '' }), false);
+  check('every allowed row carries a reason', Object.values(ALLOWED).every(allowedRowValid), true);
 
   let failed = 0;
   for (const result of results) {

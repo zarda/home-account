@@ -97,6 +97,48 @@ export function blankImportRow(
 }
 
 /**
+ * The Firestore codes a dropped connection actually surfaces as: a rules
+ * refusal, the client caught offline, a deadline the server missed, and the
+ * quota ceiling — every one of them a retry is worth offering for, unlike a
+ * guard the row itself will never pass.
+ */
+const CONNECTION_CODES = new Set([
+  'permission-denied', 'unavailable', 'deadline-exceeded', 'resource-exhausted',
+]);
+
+/**
+ * The catalog key a failed row's own reason resolves to.
+ *
+ * The wizard re-offers a row a confirm attempt refused. A Firestore rejection
+ * keeps its identifier and its prose apart — `code` is the stable one
+ * (`permission-denied`, `unavailable`, …), `message` is text meant for a
+ * console ("Missing or insufficient permissions.") that never contains the
+ * code as a substring — so `code` is read first and decides the connection
+ * reason on its own. `message` is read only for the amount guard's own
+ * sentinel, which is a code masquerading as a message because
+ * `transaction.service` throws no Firestore error, and as a fallback ladder
+ * for an error with no code at all (a `TypeError` off a dropped `fetch`,
+ * still worth reading the way `parseAIError` reads a provider's own
+ * failure). Anything neither reading places is unknown rather than a guess
+ * at what actually stopped the row.
+ */
+export function importFailureKey(error: { message: string; code?: string }): string {
+  if (error.message === 'INVALID_TRANSACTION_AMOUNT') return 'import.rowFailedAmount';
+  if (error.code) {
+    return CONNECTION_CODES.has(error.code) ? 'import.rowFailedConnection' : 'import.rowFailedUnknown';
+  }
+  const lower = error.message.toLowerCase();
+  if (
+    lower.includes('permission-denied') ||
+    lower.includes('unavailable') ||
+    lower.includes('network')
+  ) {
+    return 'import.rowFailedConnection';
+  }
+  return 'import.rowFailedUnknown';
+}
+
+/**
  * Whether the row has no amount an import could ship.
  *
  * Read as "not more than zero" rather than "is zero", so every unusable
@@ -172,20 +214,29 @@ export function sumByCurrency(
 }
 
 /**
- * Two sentences of an accessible name, in the order they are spoken.
+ * Two sentences as one line of text, in the order they are read.
  *
- * The reasons a row is flagged are whole sentences with a stop of their own
- * — "." in en, "。" in ja and tc — so the leading one gives its terminator up
- * before the join adds one, or a flagged row is read out "here.. Change".
- * The join itself is a Latin ". " in every locale: it separates two
- * announcements rather than punctuating one sentence, and it is what makes a
- * reader pause between them whatever language it is speaking. Either half
- * may be empty — a row nobody doubts has no reason to lead with — and an
- * empty half is not announced at all.
+ * A lead that ends in a stop — "." in en, "。" in ja and tc — gives it up
+ * before the join adds one, or a flagged row would be read out "here..
+ * Change"; a lead written with none, as the wizard's round sentences are,
+ * takes the join's all the same. The second half keeps whatever ending it was
+ * written with. The join itself is a Latin ". " in every locale: it separates
+ * two statements rather than punctuating one sentence, and it is what makes a
+ * reader pause between them whatever language it is speaking. Either half may
+ * be empty — a row nobody doubts has no reason to lead with, a round that
+ * lost no photo has no photo sentence — and an empty half adds nothing.
  *
- * Shared rather than repeated: the review card names four controls this way
- * and the transaction form one, and the first two spellings of the join had
- * already drifted apart.
+ * Shared rather than repeated, since the first two spellings of the join had
+ * already drifted apart. The callers:
+ * - the review card's accessible names for four controls: the currency chip,
+ *   the offered currency's accept button, the date chip and the keep-date
+ *   button;
+ * - the transaction form's verify-field text, one string that is both the
+ *   flag's tooltip and its accessible name;
+ * - the import wizard's notice for a confirm round, visible text as well as
+ *   an announcement: the round's outcome, the rows set aside and the photos
+ *   that did not attach travel in one snackbar, joined one after another,
+ *   because a second snackbar replaces the first before it can be read.
  */
 export function joinSentences(lead: string, next: string): string {
   if (!lead) return next;
@@ -239,6 +290,26 @@ export function parseAmountInput(raw: string): number | null {
   if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
   const value = Math.abs(Number.parseFloat(normalized));
   return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * Whether taking this row off the card would throw away something the
+ * reviewer made there — the one case Remove asks before it acts. Three
+ * readings, because a row carries that work three ways: the mark every
+ * editing handler on the card sets (`editedOnCard`); a part a split took off
+ * another row (`splitFrom`), which the split creates rather than edits; and
+ * a row a merge folded another receipt into (`mergedReceiptIds`, written by
+ * nothing but a reviewer's merge), whose removal would take that receipt's
+ * photo with it.
+ *
+ * Nothing else counts. A scanned row as it arrived is the reader's work, and
+ * one press takes it off (ADR 0108). Selection, a duplicate overruled, a
+ * currency offer dismissed and a recurring link taken or let go are answers
+ * about the row rather than content in it, each one press to give again, so
+ * none of them sets the mark.
+ */
+export function rowCarriesReviewerWork(row: CategorizedImportTransaction): boolean {
+  return !!row.editedOnCard || row.splitFrom !== undefined || !!row.imageMetadata?.mergedReceiptIds?.length;
 }
 
 /**
@@ -352,7 +423,11 @@ export function splitImportRow(
     selected: true,
     date: new Date(row.date),
   };
-  if (row.imageMetadata) part.imageMetadata = { ...row.imageMetadata };
+  // mergedFromImages travels with the part — consolidation hardcodes a
+  // merged row's imageIndex to 0, so it is the only honest source list —
+  // but wasMerged itself does not: a fraction of a merged receipt is not a
+  // second deduplicated item, and only the remainder still reads as one.
+  if (row.imageMetadata) part.imageMetadata = { ...row.imageMetadata, wasMerged: false };
   delete part.notes;
   delete part.duplicateOf;
   delete part.recurringId;

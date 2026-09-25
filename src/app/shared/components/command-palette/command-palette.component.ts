@@ -128,10 +128,14 @@ export class CommandPaletteComponent {
 
   onQueryInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
-    // No debounce: LiveAnnouncer is polite, so each message replaces the one
-    // before it in the live region rather than queueing behind it.
+    // No debounce: a count is current state, so each one replaces any count
+    // still waiting to be spoken. While typing continues a count goes out at
+    // most once a turn — the CDK's delay and then the announcer's gap — each
+    // the latest at that moment, and the last count typed is the last placed.
     this.announcer.announce(
-      this.translationService.t('palette.resultCount', { count: this.filtered().length })
+      this.translationService.t('palette.resultCount', { count: this.filtered().length }),
+      'polite',
+      'replace'
     );
   }
 

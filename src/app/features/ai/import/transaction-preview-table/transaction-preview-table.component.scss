@@ -176,7 +176,7 @@
   padding: 2px 7px;
   border-radius: var(--radius-xs);
   background: var(--color-primary-light);
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 
   mat-icon {
     font-size: var(--text-xs);
@@ -350,6 +350,27 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+// Why a re-offered row failed last time. The error tone (--color-error-text),
+// not the amber the amount and date flags wear (--color-warning, see
+// .verify-flag): those ask for a glance at a value that may well be right,
+// and this row was refused. On its own line rather than a tooltip: the row is
+// here specifically to be read, not glanced past.
+.import-failure-reason {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-error-text);
+  margin-block-start: 4px;
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
 }
 
 .meta-info {

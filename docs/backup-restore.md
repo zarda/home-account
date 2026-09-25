@@ -50,17 +50,35 @@ narrower. Only the `transactions` array is read; categories, budgets, rules,
 goals and snapshots are ignored. Every row lands on the review card as a new
 transaction with a new id — not at the id the backup names, so this cannot
 restore *over* anything — and it is duplicate-checked against the account
-before you confirm. A row whose category the backup did not record is filed
-under the catch-all and flagged low-confidence rather than presented as
-settled, and every amount is rounded to its currency's minor unit on the way
-in. What does not come with it, against the table below: the row's id, its
-`createdAt`, its stored rate and base-currency figure — the amount is
-re-converted at **today's** rate instead — its goal link and that link's
-figure, and its recurring-rule link, so a row the file flagged recurring
-arrives with the flag and no rule behind it. Receipt images are sourced by
-neither door. Use it to bring some
-transactions back, or to bring them into a different account, and look at
-them first
+before you confirm. Every amount is rounded to its currency's minor unit on the
+way in.
+
+Three things are checked against the account rather than trusted from the
+file ([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)):
+
+- **The category.** An id this account holds, active and on the row's own side
+  of the ledger, keeps the full grade. One it does not hold — deleted since,
+  from another account, or on the other side — and a row that names none are
+  filed under the row's own catch-all (*Other* for an expense, *Other Income*
+  for income) and flagged low-confidence rather than presented as settled.
+- **The recurring-rule link.** It travels only when it names a rule this
+  account holds, paused rules included; otherwise, or if the rules cannot be
+  read, the row arrives with the file's `isRecurring` flag and no link. A link
+  to a rule that does not exist is worse than none, because the recurring
+  detector never clusters a linked row again. The review card cannot show a
+  carried link yet.
+- **The rate.** The row's stored exchange rate travels — never its converted
+  figure, because the card can still change the amount — and at confirm the
+  written snapshot is the amount actually being written at the file's rate. It
+  applies only while the row keeps the currency the rate converts from and the
+  file's base currency is the account's; a currency changed on the card, or a
+  file stamped in another base currency, converts at today's rate instead.
+
+What does not come with it, against the table below: the row's id, its
+`createdAt` — the row is stamped with the moment it is imported — and its goal
+link and that link's figure. Receipt images are sourced by neither door. Use
+it to bring some transactions back, or to bring them into a different account,
+and look at them first
 ([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).
 
 The row the `/data` path never asks about is the duplicate: restoring a file
@@ -84,6 +102,15 @@ the only thing standing between you and a second copy.
 | Category memory | the merchant key (which is the id), the category it settled on, the sample description, how many times it was confirmed | — | — |
 | Tag memory | the merchant key (which is the id), the tags kept and the tags suppressed, the sample description, the count | — | — |
 | Import history | id, the file and its source, the door and engine, the outcome and its counts, when it ran | the list of transaction ids, pruned to the rows this restore actually wrote | — |
+
+One qualification to *verbatim*: a transaction's historical rate and
+base-currency figure are restored only as a set. All three snapshot fields have
+to be present, the base currency a non-empty string, the rate a finite
+number above zero and the base-currency figure a finite number
+(`readTransactionSnapshot`, shared with the wizard's picker —
+[ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)); a row
+whose snapshot fails that is written without one, and the write converts it at
+today's rate.
 
 The split is deliberate. Anything the app can derive from the restored data is
 derived, so a restore cannot install a counter that disagrees with the ledger;

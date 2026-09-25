@@ -1,0 +1,6 @@
+// Codes are written in capitals. The value is upper-cased on the way out
+// (readCurrencyCode), so this only keeps the field agreeing with what the
+// dialog will close with.
+.code-input {
+  text-transform: uppercase;
+}

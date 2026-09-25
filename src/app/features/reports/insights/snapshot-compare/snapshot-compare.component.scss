@@ -86,11 +86,11 @@
 /* Rising spending is not automatically bad, so these are directional tints
    rather than success/failure colours. */
 .up {
-  color: var(--color-expense);
+  color: var(--color-expense-text);
 }
 
 .down {
-  color: var(--color-income);
+  color: var(--color-income-text);
 }
 
 .unchanged-line {

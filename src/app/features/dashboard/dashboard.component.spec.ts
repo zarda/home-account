@@ -1273,6 +1273,14 @@ describe('DashboardComponent', () => {
       expect(grid.style.getPropertyValue('--dashboard-areas')).toBe(fixture.componentInstance.gridAreas());
     });
 
+    it('gives the subtitle the muted-text token class', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      const subtitle = fixture.nativeElement.querySelector('[header-subtitle]');
+      expect(subtitle.classList.contains('dashboard-subtitle')).toBe(true);
+    });
+
     it('links the customize anchor to the dashboard panel in settings', () => {
       const fixture = build();
       fixture.detectChanges();
@@ -1301,6 +1309,17 @@ describe('DashboardComponent', () => {
       expect(empty.textContent).toContain('dashboard.noCardsShown');
       const link = empty.querySelector('.customize-link');
       expect(link.getAttribute('href')).toBe('/settings?panel=dashboard');
+    });
+
+    it('names the refetch bar for a period change once the first load has painted', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      fixture.componentInstance.isLoading.set(true);
+      fixture.detectChanges();
+
+      const bar = fixture.nativeElement.querySelector('.refetch-bar');
+      expect(bar.getAttribute('aria-label')).toBe('dashboard.refreshing');
     });
   });
 });

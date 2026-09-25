@@ -109,11 +109,11 @@
   height: 1em;
 
   &.positive {
-    color: var(--color-income);
+    color: var(--color-income-text);
   }
 
   &.negative {
-    color: var(--color-expense);
+    color: var(--color-expense-text);
   }
 }
 

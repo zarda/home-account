@@ -106,10 +106,25 @@ order or a two-digit year, 0 when nothing matched at all. That puts every
 ambiguous reading and every two-digit year under the 0.7 bar — `03/04` is
 genuinely two dates and the receipt does not say which — so such a row is
 re-dated and marked rather than filed on a guess, and only an unambiguous
-four-digit-year reading is kept. Where Apple's foundation model is available it
-structures the OCR text instead of the parser and reports no per-field
-confidence of its own, except for a date it could not read at all, which it
-grades at zero for the same reason.
+four-digit-year reading is kept.
+
+**Apple's foundation model**, where it is available, structures the OCR text
+instead of the parser and reports no grade of any kind. So the on-device path
+grades it against the parser: the same OCR text goes through the regex reader
+as well, and the two totals are compared at the minor unit of whichever
+currency was read — the model's first, then the parser's.
+
+| What the two readers say | Amount grade |
+|---|---|
+| The model read nothing, or nothing above zero | 0 |
+| Both read the same total | the parser's grade or 0.8, whichever is higher |
+| They differ, and the parser read its figure beside a currency mark | 0.5 — flagged |
+| They differ, and the parser's own reading is weaker than that | 0.8 |
+
+A date the model could not read is graded 0; one it read is graded 0.8 and
+never lower, because anything under the 0.7 bar would have the read date
+replaced with today
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
 
 Whichever of those produced it, the figure is **rounded to the currency's
 minor unit twice**: once where the review row is built, so the card, the
@@ -263,6 +278,20 @@ converted under its own code, showing that code where there is no translated
 name. Sub-unit digits come from `Intl` rather than a maintained list, so JPY and
 KRW render as whole numbers without anyone remembering to add them.
 
+**A code the list does not carry can be typed.** The review card's currency
+menu and its **Currency for selected** menu both end with *Other currency…*,
+and so does the transaction form's currency select. It opens a dialog that
+takes a three-letter code and refuses two things: a code the runtime's own ISO
+table does not know (*Not a currency code — use its three letters, such as
+ISK*), and a real code no loaded rate table can convert (*No exchange rate for
+ISK yet, so it cannot be converted*) — such a code would otherwise convert
+one-to-one against the base currency. On the card the answer is applied the
+way a listed pick is, rounding and the blanking notice included; in the form it
+joins the select's options, and on a closed select an arrow key that lands on
+the last option opens nothing. A receipt the model read as the wrong real code
+can now be put right on the card or afterwards
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
+
 ## Categories
 
 Extraction resolves to a catalog id rather than a display name wherever it can,
@@ -275,7 +304,7 @@ for review instead of trusting it
 ([ADR 0046](ADR/0046-an-unrecognized-category-name-is-not-a-category.md)).
 
 **Recognized means recognized here, now.** Every pass of the resolver — the
-id, the display names, the English keyword fallback — answers with an entry
+id, the display names, the keyword fallback — answers with an entry
 that is in this account's catalog and still active, or does not answer. That
 is not the same as the prompt only offering active entries, and the difference
 is where a bug lived: the model can name a category from its own knowledge
@@ -284,6 +313,30 @@ in the merged catalog as an inactive entry so the management screen can offer
 to restore it. An answer naming one used to resolve onto it and file the
 receipt there, rendering under its real name as though nothing were wrong
 ([ADR 0053](ADR/0053-a-resolver-answers-with-a-category-that-still-exists.md)).
+
+The keyword fallback is the last pass, for a free-text answer that names no
+category at all — *gas station*, *スターバックス コーヒー*, *全聯 超市*. Its table,
+`CATEGORY_KEYWORDS`, is keyed by category id and holds English, Japanese and
+Traditional Chinese words; a word identical to the category's own shipped name
+is left out, because the name passes already catch any answer containing it.
+
+**A row is offered its own side of the catalogue.** A row that knows whether
+it is income or an expense carries that as an explicit `type` — never read
+from the amount's sign, which a zero-amount expense gets wrong. A receipt read
+on the device is always an expense, so the on-device model is shown the
+expense side only. The batch categorizer sends one catalogue per request, so
+it narrows the list only when every row it was handed points the same way, as
+a multi-image batch of purchases does; a CSV batch mixes both sides and keeps
+the full list, and so does a receipt batch that sends it a refund beside a
+purchase. Either way the answer is checked: a typed row whose answer lands on
+the other side is refused and graded for review. A category an extraction
+named on the other side is no answer either — receipt photos send such a row
+to the categorizer, and a statement, a PDF or the camera's cloud read grades
+it for review. And a row nobody could place is filed under its own side's
+catch-all — `other_income` for income, `other_expense` for an expense
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md),
+closing [ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)'s income
+gap).
 
 Where that grading happens is the point. The catch-all the row is filed under
 and the number the chip is coloured by are one decision, taken at the import
@@ -299,9 +352,10 @@ there ([ADR 0051](ADR/0051-an-uncategorized-row-is-graded-where-it-is-coerced.md
 
 The on-device path is no exception. The vocabulary Apple's foundation model
 receives is the same catalog rendering the cloud providers use — active
-entries only, translated `id: Name` lines, never the stored i18n keys — and
-its answer resolves through the same matcher, ids first, in every shipped
-locale ([ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)) — and an
+expense entries only, translated `id: Name` lines, never the stored i18n
+keys — and its answer resolves through the same matcher, over the same
+expense entries, ids first, in every shipped locale
+([ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)) — and an
 answer that matcher could not place earns the same review grade a cloud
 extraction earns for it, rather than the score Vision gave the characters.
 
@@ -437,9 +491,18 @@ question the reviewer was never shown. A row in another currency is never
 listed, because nothing here converts.
 
 **Remove** takes the row off the batch, and it stands on every row — filled,
-blank and flagged alike, unlike the other two. It asks nothing: **Deselect**
-is the reversible answer, on the same card and one tap away, so a
-confirmation would guard a mistake that already has a cheap remedy. What
+blank and flagged alike, unlike the other two. A row exactly as it arrived
+leaves in one press: **Deselect** is the reversible answer, on the same card
+and one tap away, and a rescan gives the row back. A row carrying work made on
+the card asks first — one edited there (any field, the income/expense flip, a
+tag, a date answer, a note), a part a split made, or the survivor of a merge —
+*Remove this row?*, naming Deselect as the way to leave it out and keep the
+changes. A choice that changed nothing — a category or currency picked again,
+say — marks nothing, and selecting, overruling a duplicate, dismissing a
+currency offer or taking and releasing a rule link are not work either. The
+answer applies to the row as the batch holds it when it lands, found by id,
+since a re-check can replace the row while the question is open
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)). What
 leaves with the row is everything keyed on its id — the card's editing state
 and drafts, the wizard's overrule, re-check stamp and duplicate verdict, and
 its entry in the receipt-row set (ADR 0108, amended for #400) — and
@@ -466,6 +529,20 @@ seams they had to meet and what they rejected are in
 [ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md) and
 [ADR 0108](ADR/0108-the-review-step-removes-a-row.md).
 
+**What counts as merged is the app's to say.** The processing step's banner
+and the confirm step's *Items merged* card count the rows whose
+`imageMetadata.wasMerged` is set, and two things set it: consolidation, when it
+folds two or more items of one receipt group into a row, and **Merge into…**,
+on the survivor. The model is not asked — the multi-image prompt carries no
+such field, and the shared cloud base writes `false` on every row it reads
+whatever the answer says — and a receipt group of one is written `false`
+too. A split part is written `false`, because a fraction of a merged receipt
+is not a second merged item, but it keeps `mergedFromImages`: consolidation
+stamps a merged row's `imageIndex` as 0, so that list is the only one that
+says which photos the purchase came off, and a part without it would attach
+photo 0 whatever it was read from
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+
 ## Failure surfacing
 
 A provider failure is thrown, never flattened into an empty result: all three
@@ -474,17 +551,34 @@ billing cap renders as the wizard's typed error card (with its retry or
 go-to-settings action) instead of "no transactions found", and the strategy
 layer can fall back between engines on the throw. A row whose date could not be
 read cannot fail the batch either — it is re-dated and marked instead, as
-below. A partial save keeps the failed rows on the review step — ticked,
-editable and re-confirmable, with their duplicate mark and duplicate check
-cleared — **and** every row the reviewer had left unticked, exactly as it
-was: only the saved rows leave, so a second confirm cannot double-import
-them and a deselected row is still there to change one's mind about
+below. A partial save keeps the failed rows on the review step — editable and
+re-confirmable, with their duplicate mark and duplicate check cleared —
+**and** every row the user had left unticked, exactly as it was: only the saved
+rows leave, so a second confirm cannot double-import them and a deselected row
+is still there to change one's mind about
 ([ADR 0120](ADR/0120-a-partial-import-keeps-every-row-it-did-not-write.md)).
+**A failed row says why.** Its reason stands under the card — the amount could
+not be saved, the connection dropped, or an unknown reason — chosen from the
+failed write's own error code, which the import record now keeps beside the
+message: a Firestore refusal's message is prose that never contains its code.
+**A second failure sets it aside.** A row comes back ticked after its first
+failure and unticked after its second, so the same refusal is not resubmitted
+on its own; ticking it again is the user's choice. One notice per round counts
+the rows set aside, rather than one per row, since a snackbar replaces the one
+before it
+([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 The completion toast carries both counts, and both are counts of the rows
 that were submitted — so the step can hold more rows than the sentence
-mentions. The failed rows it offers back are the ones the record **names by
-id**, not by position: the record's `row` number counts the submitted subset,
-which is not what the reviewer is looking at once anything has been deselected
+mentions. In a round that sets a row aside, the set-aside count is the second
+sentence of that same toast rather than a toast of its own: a second toast
+would replace the first on screen before it could be read, though the two
+announcements would be placed in the live region in turn — whether a screen
+reader finishes the first before it speaks the second is the reader's own
+policy ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)'s known
+gaps). The failed rows it offers back are the
+ones the record **names by id**, not by position: the record's `row` number
+counts the submitted subset, which is not what the reviewer is looking at once
+anything has been deselected
 ([ADR 0115](ADR/0115-a-failed-row-is-named-by-its-id.md)). While the write
 runs, the confirm step's bar and the line under it are the import service's
 own progress — the row being written out of the total — rather than figures

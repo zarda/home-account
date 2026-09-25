@@ -29,6 +29,9 @@
                 <span class="option-label">{{ option.code }} · {{ option.nameKey | translate }}</span>
               </button>
             }
+            <button mat-menu-item type="button" (click)="chooseOtherCurrency()">
+              <span class="option-label">{{ 'currency.otherCurrency' | translate }}</span>
+            </button>
           </ng-template>
         </mat-menu>
       }
@@ -231,6 +234,9 @@
                       <span class="option-label">{{ option.code }} · {{ option.nameKey | translate }}</span>
                     </button>
                   }
+                  <button mat-menu-item type="button" (click)="chooseOtherCurrency(row)">
+                    <span class="option-label">{{ 'currency.otherCurrency' | translate }}</span>
+                  </button>
                 </ng-template>
               </mat-menu>
               <button
@@ -270,6 +276,17 @@
               ></app-category-suggestion>
             </div>
           </div>
+
+          <!-- A row a confirm attempt refused, re-offered with its own
+               reason — role="note" rather than an alert, since nothing here
+               just happened: the refusal is what the review step reopened
+               on, not a change the reviewer needs interrupted for. -->
+          @if (row.importFailure) {
+            <div class="import-failure-reason" role="note">
+              <mat-icon aria-hidden="true">error_outline</mat-icon>
+              <span>{{ importFailureText(row) }}</span>
+            </div>
+          }
 
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap — and the add triggers. Add tag is the
@@ -362,9 +379,10 @@
             }
             <!-- Unconditional, blank and flagged alike: a blank
                  hand-added row has no other way off the card. It
-                 asks nothing on any row, flagged included, because
-                 Deselect — not a dialog — is the reversible
-                 answer. -->
+                 asks first only on a row carrying the reviewer's
+                 own work — an edit, a split or a merge; on any
+                 other row, flagged included, it asks nothing,
+                 because Deselect is the reversible answer. -->
             <button type="button" class="extra-add remove-trigger" [attr.aria-label]="removeLabel(row)" (click)="removeRow(row)">
               <mat-icon aria-hidden="true">delete_outline</mat-icon>
               <span>{{ 'common.remove' | translate }}</span>

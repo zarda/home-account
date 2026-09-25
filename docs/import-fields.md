@@ -12,9 +12,11 @@ mapper and the widened rows),
 [ADR 0060](ADR/0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md)
 (photos and the recorded source),
 [ADR 0062](ADR/0062-the-review-step-can-correct-every-field-the-import-writes.md)
-(what the review step may correct) and
+(what the review step may correct),
 [ADR 0063](ADR/0063-an-import-suggests-only-what-the-account-already-knows.md)
-(where a suggestion comes from). This document is the part you need when
+(where a suggestion comes from) and
+[ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md) (what
+each door's grades may claim). This document is the part you need when
 adding a field, a door, or a suggestion.
 
 ## The row shapes
@@ -36,7 +38,7 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries nine more that are **review-step
+`CategorizedImportTransaction` carries thirteen more that are **review-step
 marks, not fields**: `currencyFellBack` (nobody read a currency, so the base
 currency is standing in), `dateAssumed` (the row's `date` is *now* rather than
 something read off the source, because `resolveImportDate` could not vouch
@@ -67,10 +69,28 @@ instead, see [ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phon
 `currencySuggestion` (the currency ladder's offer for a fallen-back row —
 `AIImportService.currencySuggestionSlot()` fills it and the review card reads
 it, while `currencyFellBack` keeps standing; see
-[ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)).
-None of them reaches the
-mapper — it names its fields — and none of them is ever written to a
-transaction.
+[ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)),
+`fileRate` (the conversion a backup row was stored with: its rate, the base
+currency it converts into and the currency it converts from — never the
+converted figure, because the card can still change the amount; see
+[ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)),
+`importFailure` (the catalog key for why this row's last confirm attempt was
+refused, read off the failed write's error, its code first, and cleared by the
+edits that set `editedOnCard` below, and on both halves of a split; the
+presses that do not mark the row — a selection, a duplicate overruled, a
+currency offer dismissed, a recurring link taken or let go — leave it standing;
+see [ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)),
+`importAttempts` (how many confirm attempts the row has failed — at two the
+wizard hands it back deselected; a split starts both halves again at none, and
+a merge its survivor, since none of them is the row that was refused) and
+`editedOnCard` (the user changed something on this row on the card, which is
+what makes **Remove** ask before it throws the row away; see
+[ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)). None of them
+reaches the mapper — it names its fields, and its spec pins that `fileRate`,
+`importFailure`, `importAttempts` and `editedOnCard` never come out of it —
+and none of them is ever written to a transaction as itself: `fileRate`
+reaches the write only as the snapshot the confirm step computes from it,
+over the amount actually being written.
 
 The renames, applied only at the confirm step's call into the mapper:
 `suggestedCategoryId` → `categoryId`, `notes` → `note`. Nothing else is named
@@ -87,7 +107,7 @@ travels with zero edits.
 | `type` | the row's own, else derived from the amount's sign |
 | `amount` | `importAmount` — absolute, and whole in the row's currency. The four review-row builders call it too, so the figure is already whole by the time it reaches here; the second call is for the offline drain, which has no builder in front of it, and rounding an already-rounded figure returns it ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)) |
 | `currency` | the row's, else the account's base currency (empty string falls back) |
-| `categoryId` | the row's, else the catch-all (empty string falls back) |
+| `categoryId` | the row's, else the catch-all of the row's own declared type — `other_income` for an income row, `other_expense` for an expense row and for a row that declared no type at all, whatever its amount's sign (empty string falls back) |
 | `description` | the row's, else `Imported transaction` |
 | `date` | passed through — the review-row builders and the queue drain resolve via `resolveImportDate` before the row reaches here, and the wizard's JSON backup door now does too; the data hub's CSV path still parses and defaults its own |
 | `note`, `tags`, `location`, `period` | spread only when truthy / non-empty |
@@ -111,21 +131,34 @@ it is the fourth door now, not an exception to the rule.
 |---|---|---|---|---|---|---|---|
 | type, amount, currency, date, description | yes | yes | yes | yes | yes | yes | yes |
 | note | yes | yes | items list → note | — | — | yes | items list → note |
-| tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file | `location` when the receipt prints one |
+| tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file; a rule link only when this account still holds the rule | `location` when the receipt prints one |
 | suggestions (tags, rule link) | — | yes | yes | yes | yes | — | — (no review step) |
 | currency marked as fallen back | — | yes | yes | yes | yes | yes | — (the base currency is written, unmarked) |
-| category | catch-all (ADR 0011) | ladder (#258) | ladder / extraction | ladder | ladder | the backup's own; a row without one is defaulted and graded 0.3 (ADR 0113) | extraction, else catch-all |
+| category | the file's Category cell, matched exactly; else the type's catch-all (ADR 0150) | the file's Category cell, matched exactly; the ladder for the rest (#258) | extraction, else the ladder | extraction, else the type's catch-all | extraction, else the type's catch-all | the backup's own when this account holds it, on the row's side; else the type's catch-all (ADR 0147) | extraction, else catch-all |
+| base-currency rate written | today's | today's | today's | today's | today's | the file's, while the row's currency is still the one it converts from | today's |
 | photo attached | — | — | **yes** | no (known gap, ADR 0060) | no | no | **yes** |
 | recorded as | n/a | `csv` / `generic_csv` | `image` / `receipt_image` | `image` / `screenshot` | `pdf` / `bank_pdf` | `json` / `backup_json` | a failed attempt only: `image` / `receipt_image`, door `queue` |
 
 The data hub's CSV path has no review step, so it takes no suggestions and
 carries no marks. The JSON backup is the one wizard door that takes none
-either: its rows already carry what the backup recorded — with one exception.
-A category the backup did **not** record is not carried; it is defaulted to
-the catch-all and graded 0.3, the grade 0045 gives a default nobody answered
-for — the shared mapper's, not the categorization ladder's own unanswered
-floor of 0.1 — so the chip's dot and the low-confidence tally see it
-([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).
+either: its rows already carry what the backup recorded — checked against this
+account rather than trusted. A category is kept at 1.0 only when this account
+holds it, active, on the row's own side. One it does not hold — deleted since
+the backup, from another account, or on the other side — and one the backup
+did **not** record are filed under the row's own catch-all and graded 0.3,
+the grade 0045 gives a default nobody answered for — the shared mapper's, not
+the categorization ladder's own unanswered floor of 0.1 — so the chip's dot
+and the low-confidence tally see it
+([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md),
+[ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+While the account's categories have not loaded, the file's id is kept at 0.3:
+an empty list can neither vouch for it nor show it wrong. A rule link is kept
+only when it names a rule the account holds, paused ones included, and a
+failed read of the rules keeps none. The row's rate travels as `fileRate` and
+is applied to the row's own amount when it is written, so a split, a merge or
+an edited amount is converted at the file's rate rather than written beside a
+figure it no longer matches; a row whose currency was changed on the card, or
+a file stamped in another base currency, converts at today's rate instead.
 
 A mixed wizard batch is recorded as its dominant kind by row count (ties keep
 the first processed), sized by every file still selected when the write runs.
@@ -163,6 +196,50 @@ history card guards the legacy read at the call site and renders a zero in
 the account's own currency, never the word `NaN`
 ([ADR 0127](ADR/0127-a-figure-the-app-cannot-vouch-for-says-so.md)).
 See [receipt-import.md](receipt-import.md#failure-surfacing).
+
+## What a row's grades claim, door by door
+
+A grade says what the door that produced the row can vouch for, and no more
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+The review card colours the category chip from `categoryConfidence`, and the
+`low_confidence` tally counts rows under 0.5:
+
+| Door | A category the source named | A category nobody named, or nobody could place |
+|---|---|---|
+| CSV (data hub) | the file's Category cell, matched exactly over the row's own type ([ADR 0150](ADR/0150-the-csv-reads-back-what-it-writes.md)) — ungraded, since there is no review step | the row's own catch-all; the preview says how many rows land there |
+| CSV (wizard) | the same exact match, at 1.0, and the row skips the ladder | the ladder: category memory at 0.95, when the remembered category is on the row's own side — one on the other side is no answer, and the row climbs on; the provider's own grade for an answer it placed; 0.3 for a row it left out, an answer it could not place, or one on the other side of the ledger; 0.1 when no model answered at all |
+| Receipt photos | 0.8 when the extraction named one on the row's own side, and the row skips the ladder | the ladder, as above — one named on the other side included |
+| Statement photos, bank PDF | 0.8 when the extraction named one on the row's own side | the row's own catch-all at 0.3 — one named on the other side included |
+| JSON backup | 1.0 when this account holds the id, active, on the row's own side | the row's own catch-all at 0.3 — or the file's id at 0.3, while the account's categories have not loaded |
+| Camera, through the strategy service | the reader's own confidence when its answer resolved on the row's own side | the row's own catch-all at 0.3 when it did not — one named on the other side included; 0.1 when no categorizer looked ([ADR 0051](ADR/0051-an-uncategorized-row-is-graded-where-it-is-coerced.md)) |
+
+Every door files a typed row's suggestion under its own side: the categorizer
+refuses an answer on the other side at 0.3, category memory's answer for the
+row's merchant is passed over when it sits on the other side, a statement, PDF
+or camera extraction's category on the other side is filed as unresolved, the
+offline queue's drain, which has no review step, writes the row's own catch-all
+in place of one, a receipt photo's extraction-named category on the other side
+sends the row to the ladder, the CSV and backup doors take a category only on
+the row's own side, and every catch-all on these paths is `other_income` for
+income and `other_expense` for an expense
+([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+
+The check can only read the side of a category the catalogue holds. So a
+category an extraction or category memory named is kept when the catalogue does
+not hold it, or has not loaded — neither can show it is on the wrong side. The
+categorizer's answer and a backup's id are looked up first: one the catalogue
+does not hold goes to the row's catch-all at 0.3 — except that the backup door
+keeps its file's id, at 0.3, while the catalogue has not loaded.
+
+And the check holds what the import suggests, not what the reviewer picks: the
+card's category menu lists both sides, and flipping a row between income and
+expense on the card leaves its category where it was.
+
+The amount and date grades belong to the readers rather than the doors, and
+[receipt-import.md](receipt-import.md#where-the-amount-comes-from) has them —
+the on-device path's cross-check included. A CSV or JSON row carries neither:
+nobody read it, so nothing is graded, and `resolveImportDate` skips its
+plausibility window for an ungraded date.
 
 ## Photos
 
@@ -233,7 +310,7 @@ runs again, and whether anything is remembered past the wizard.
 | Amount | inline editor — Enter or blur commits, Escape cancels. The figure is rounded to the currency's minor unit before it is compared or written (¥179 for 179.33 on a JPY row), and one that rounds to nothing is refused: the editor is held open, marked invalid, and says the minimum the row's currency can hold. The doors already round what they read to the same unit, so this is the same rule applied to a figure the reviewer typed rather than a different one ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)) | `fieldConfidence.amount` | yes | no |
 | Type | the income/expense toggle | nothing | yes | no |
 | Description | inline editor, same commit rules; an emptied field is a cancel | nothing | yes | it becomes the key the category is remembered under |
-| Currency | the chip's menu, and the header's **Currency for selected** for the whole selection | `currencyFellBack` and the standing `currencySuggestion`; the amount is re-rounded to the new currency's minor unit, and one that rounds to nothing leaves the row unfilled — there is no editor to hold open | only when the re-rounding moved the amount, on the rule every amount edit follows | no |
+| Currency | the chip's menu, and the header's **Currency for selected** for the whole selection; each ends with **Other currency…**, a dialog that takes a three-letter code the curated list does not carry, refuses one that is not a currency or that no loaded rate can convert, and applies the answer the way a listed pick is applied | `currencyFellBack` and the standing `currencySuggestion`; the amount is re-rounded to the new currency's minor unit, and one that rounds to nothing leaves the row unfilled — there is no editor to hold open — and raises *1 amount rounds to nothing in …*, the notice the bulk switch raises with its own count | only when the re-rounding moved the amount, on the rule every amount edit follows | no |
 | Category | the suggestion chip's menu | nothing — the confidence dot follows the pick and reads as the reviewer's own | no | yes, per merchant, at confirm |
 | Notes | a **Notes** button on a row with no note opens a textarea through the card's one editing machine — a row edits one field at a time, notes included — and it files on the way out, on blur; a filed note's box is already on the card, so only a row with none shows the button | nothing | no | no |
 | Tags | a remove control on each chip, and **Add tag** over the account's own vocabulary — a native datalist, so what is typed is filed whether or not it is on the list | the tag | no | yes, kept and removed both, per merchant |
@@ -241,15 +318,16 @@ runs again, and whether anything is remembered past the wizard.
 | Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival while blank (a blank row has nothing to compare; a filled row that appears is checked, as the split row below is), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
 | Row (split) | **Split** in the extras opens an inline amount field; Enter takes that amount into a new row directly under the original, which keeps the purchase's identity — description, date and its marks, currency, type, category, location, tags, photo — and drops notes, the rule link and the verdict, and opens with its description editor focused. The figure taken and the remainder are each rounded to the row's own currency, and the refusal is judged on the rounded remainder; the trigger is hidden altogether on a row worth less than two minor units, since no figure would clear the floor on both halves | `fieldConfidence.amount` on both halves | yes — the original by its amount, the part on arrival; the two are never each other's within-batch twins | no |
 | Row (merged) | **Merge into…** lists the other rows in the same currency that have an amount, a description and no standing verdict; the target keeps its id, the amounts net with the type following the sign, tags and photos union, notes join, and the source leaves the batch with everything keyed on its id | `fieldConfidence.amount` on the survivor, whose verdict is written clear | yes, the target — the row that merged away owes none | no |
-| Row (removed) | **Remove** in the extras takes the row off the batch, on any row; focus lands on the neighbour's Remove or Add a row | everything keyed on its id — the card's editing state, the wizard's overrule, stamp and verdict, and its entry in the receipt-row set | not for the removed row — nothing left to check — but yes for a survivor whose within-batch verdict named it, since that verdict is now about a row that has gone | no |
+| Row (removed) | **Remove** in the extras takes the row off the batch, on any row — in one press for a row as it arrived, and after *Remove this row?* for one carrying work made on the card (`editedOnCard`, a split part, or a merge survivor); focus lands on the neighbour's Remove or Add a row | everything keyed on its id — the card's editing state, the wizard's overrule, stamp and verdict, and its entry in the receipt-row set | not for the removed row — nothing left to check — but yes for a survivor whose within-batch verdict named it, since that verdict is now about a row that has gone | no |
 | Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
 | Duplicate verdict | the badge's **Not a duplicate — import it** | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
 
-Three mechanics are worth knowing before you add a control here. Every edit
-goes through `replaceRow`, which writes a **new row identity** rather than
-mutating the `@Input()` object — a component reading the old object would
-otherwise go on displaying it, which is exactly how the category chip once
-cached the model's first guess for the life of the card. Anything that settles
+Three mechanics are worth knowing before you add a control here. Every
+single-row edit goes through `replaceRow`, which writes a **new row identity**
+rather than mutating the `@Input()` object, and the bulk switches, a split and
+a merge rebuild the list the same way — a component reading the old object
+would otherwise go on displaying it, which is exactly how the category chip
+once cached the model's first guess for the life of the card. Anything that settles
 the country clears the mark as well as the slot — the chip's remove, and a
 country picked from its menu alike: leaving `receiptCountry` behind would let
 the mapper's own fallback rebuild the country the reviewer just dismissed or
@@ -330,7 +408,11 @@ are forgotten as soon as the wizard closes.
    whether a removal is remembered: tags are, and nothing else is.
    Either way the change goes through `replaceRow`, never onto the `@Input()`
    object, and you add a row to *What the review step corrects* above saying
-   whether detection re-runs on it. Decide too what a split part keeps of the
+   whether detection re-runs on it. The handler spreads `EDITED_ON_CARD`
+   itself, the mark and a cleared `importFailure` — `replaceRow` does not,
+   because selection and a duplicate overrule come through it too — and
+   returns before it writes when the pick is the value the row already has, so Remove asks before throwing the edit away and
+   a choice that changed nothing asks nothing. Decide too what a split part keeps of the
    field and what a merge does with two of it: `splitImportRow` and
    `mergeImportRows` in `import-review.utils.ts` name every field they drop,
    union or take from one side, and a field they do not name rides the

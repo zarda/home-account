@@ -27,7 +27,8 @@ import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import {
   applyCategorizations,
   buildCategoryPromptCatalog,
-  FALLBACK_CATEGORY_ID,
+  CategoryRowType,
+  fallbackCategoryFor,
   mapCategoryNameToId,
   matchCategoryName,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
@@ -73,6 +74,18 @@ import {
  * exactly what a whole-batch request did to a long CSV import.
  */
 export const CATEGORIZE_CHUNK_SIZE = 25;
+
+/**
+ * The one direction a whole categorization batch can be offered a narrowed
+ * catalog for. A single request builds one shared catalog for every row in
+ * it (chunking only splits how many rows are asked about at once), so
+ * narrowing it is only sound when every row agrees on a direction — one
+ * untyped row, or a genuine mix, has to see everything.
+ */
+function batchRowType(transactions: RawTransaction[]): CategoryRowType | undefined {
+  const [first, ...rest] = transactions;
+  return first?.type && rest.every(t => t.type === first.type) ? first.type : undefined;
+}
 
 /** One model answer, as much of it as the shared operations need. */
 export interface ProviderResponse {
@@ -419,7 +432,10 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,
         receiptTotal: readReceiptTotal(t.receiptTotal),
-        wasMerged: t.wasMerged || false,
+        // Never the model's own claim: whether an item was deduplicated
+        // across photos is decided later, by consolidation and reviewer
+        // merges, which both write this mark themselves.
+        wasMerged: false,
         mergedFromImages: t.mergedFromImages,
         // A missing date is patched with today's day-key above, and that
         // string parses just fine — so a claimed dateConfidence must not
@@ -465,8 +481,16 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     this.assertTextTransport();
 
     const categories = this.categoryService.categories();
-    const categoryCatalog = buildCategoryPromptCatalog(categories, name =>
-      this.translateCategoryName(name)
+    // Every row typed and pointing the same way is the one case a single
+    // shared catalog can safely narrow; anything else — one row untyped, or
+    // rows pointing different ways — is offered every active category, and
+    // applyCategorizations then files each typed row's answer under its own
+    // side.
+    const batchType = batchRowType(transactions);
+    const categoryCatalog = buildCategoryPromptCatalog(
+      categories,
+      name => this.translateCategoryName(name),
+      batchType
     );
 
     // One request per chunk, sequentially: applyCategorizations matches
@@ -493,13 +517,14 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
 
           return applyCategorizations(chunk, categorizations, categories);
         },
-        // Every row of the failed chunk lands on the fallback category at a
+        // Every row of the failed chunk lands on its own fallback category —
+        // an income row on other_income, same as a resolved one would — at a
         // confidence low enough that the review step flags all of them; the
         // other chunks keep their real answers.
         () =>
           chunk.map(t => ({
             ...t,
-            suggestedCategoryId: FALLBACK_CATEGORY_ID,
+            suggestedCategoryId: fallbackCategoryFor(t.type),
             confidence: UNCATEGORIZED_CATEGORY_CONFIDENCE,
           }))
       );
@@ -631,9 +656,11 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     return this.run('summary generation', async () => {
       const categories = this.categoryService.categories();
 
-      // Helper to convert amount to base currency (real-time conversion)
-      const toBaseCurrency = (amount: number, currency: string) =>
-        this.currencyService.convert(amount, currency, baseCurrency);
+      // Reads the base-currency snapshot each transaction was written with
+      // (docs/money-snapshots.md), so a summary generated after the live
+      // rate moves still totals the same as the report PDF and every other
+      // screen over the same period.
+      const toBaseCurrency = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
       // Prompt amounts: plain digits, no sub-digits for zero-decimal currencies
       const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
 
@@ -646,18 +673,18 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         const categoryName = this.translateCategoryName(category?.name);
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
-        existing.total += toBaseCurrency(t.amount, t.currency);
+        existing.total += toBaseCurrency(t);
         existing.count += 1;
         byCategory.set(t.categoryId, existing);
       }
 
       const totalIncome = transactions
         .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
+        .reduce((sum, t) => sum + toBaseCurrency(t), 0);
 
       const totalExpense = transactions
         .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
+        .reduce((sum, t) => sum + toBaseCurrency(t), 0);
 
       const categoryBreakdown = renderCategoryBreakdown(
         Array.from(byCategory.values())
@@ -671,11 +698,11 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       const expenseTransactions = transactions.filter(t => t.type === 'expense');
       const largestExpenses = renderLargestExpenses(
         [...expenseTransactions]
-          .sort((a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency))
+          .sort((a, b) => toBaseCurrency(b) - toBaseCurrency(a))
           .slice(0, 5)
           .map(t => ({
             description: t.description,
-            amount: fmt(toBaseCurrency(t.amount, t.currency)),
+            amount: fmt(toBaseCurrency(t)),
             categoryName: this.translateCategoryName(
               categories.find(c => c.id === t.categoryId)?.name
             ),

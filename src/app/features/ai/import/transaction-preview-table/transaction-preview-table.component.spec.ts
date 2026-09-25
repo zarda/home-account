@@ -3,7 +3,9 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
+import { MatDialog } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
+import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorizedImportTransaction } from '../../../../models';
@@ -12,8 +14,11 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
 import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { CurrencyCodeDialogComponent } from '../../../../shared/components/currency-code-dialog/currency-code-dialog.component';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -535,6 +540,19 @@ describe('TransactionPreviewTableComponent', () => {
       expect(byId.get('outside')).toBe(before[5]);
       expect(component.unansweredCount()).toBe(0);
     });
+
+    it("clears a failed row's reason on every row it answers, and on no other", () => {
+      component.transactions = rows().map(t => ({ ...t, importFailure: 'import.rowFailedAmount', importAttempts: 1 }));
+
+      component.keepAllDates();
+
+      const byId = new Map(component.transactions.map(t => [t.id, t]));
+      expect(byId.get('asked')!.importFailure).toBeUndefined();
+      expect(byId.get('assumed')!.importFailure).toBeUndefined();
+      expect(byId.get('outside')!.importFailure)
+        .withContext('a row nobody asked about is not a row the answer changed')
+        .toBe('import.rowFailedAmount');
+    });
   });
 
   describe('row edits', () => {
@@ -581,6 +599,21 @@ describe('TransactionPreviewTableComponent', () => {
       expect(emitted.length).toBe(2);
       expect(emitted[0]).not.toBe(emitted[1]);
     });
+
+    it("clears a failed row's reason with the reviewer's edit, and only then", () => {
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      component.transactions = rows().map(r => ({ ...r, ...failed }));
+
+      // Ticking a row back in is not a change to what failed.
+      component.toggleSelection(component.transactions[0], true);
+      expect(component.transactions[0].importFailure).toBe('import.rowFailedAmount');
+
+      component.updateCategory(component.transactions[0], 'transport');
+      component.toggleType(component.transactions[1]);
+
+      expect(component.transactions.map(t => t.importFailure)).toEqual([undefined, undefined]);
+      expect(component.transactions.every(t => t.editedOnCard)).toBeTrue();
+    });
   });
 
   describe('currency edits', () => {
@@ -615,6 +648,23 @@ describe('TransactionPreviewTableComponent', () => {
       component.applyCurrencyToSelected('JPY');
 
       expect(emitted[0].map(t => t.currency)).toEqual(['JPY', 'USD', 'JPY']);
+    });
+
+    it("clears a failed row's reason on every row the bulk switch changes, and on no other", () => {
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      component.transactions = [
+        makeRow({ id: 'switched', currency: 'USD', selected: true, ...failed }),
+        makeRow({ id: 'unselected', currency: 'USD', selected: false, ...failed }),
+        makeRow({ id: 'already', currency: 'JPY', selected: true, ...failed }),
+      ];
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(component.transactions.map(t => [t.id, t.importFailure])).toEqual([
+        ['switched', undefined],
+        ['unselected', 'import.rowFailedAmount'],
+        ['already', 'import.rowFailedAmount'],
+      ]);
     });
 
     it('lists the row\'s own code when the picker does not curate it', () => {
@@ -804,6 +854,26 @@ describe('TransactionPreviewTableComponent', () => {
       expect(notifications.info).toHaveBeenCalledOnceWith(
         'import.bulkCurrencyBlanked:{"count":1,"currency":"JPY"}'
       );
+    });
+
+    it('a per-row currency change that blanks the amount raises the bulk switch\'s message', () => {
+      const row = makeRow({ currency: 'USD', amount: 0.4 });
+      component.transactions = [row];
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        'import.bulkCurrencyBlanked:{"count":1,"currency":"JPY"}'
+      );
+    });
+
+    it('a per-row change that does not blank says nothing', () => {
+      const row = makeRow({ currency: 'USD', amount: 12.34 });
+      component.transactions = [row];
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(notifications.info).not.toHaveBeenCalled();
     });
   });
 
@@ -1019,6 +1089,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
   let fixture: ComponentFixture<TransactionPreviewTableComponent>;
   let component: TransactionPreviewTableComponent;
   let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
   const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
     id: 'txn1',
@@ -1036,6 +1107,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
   beforeEach(async () => {
     currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
@@ -1055,9 +1127,16 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
             getSupportedCurrencies: () => [{ code: 'USD', nameKey: 'currencies.usd', symbol: '$' }],
             getCurrencyInfo: () => undefined,
             formatCurrency: (amount: number, code: string) => `${code} ${amount}`,
+            // What the code dialog asks before it lets a typed code through;
+            // every rate is loaded here, so only the ISO check can refuse.
+            canRepresentCurrency: () => true,
           },
         },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
+        // No NotificationService mock here: the "one voice" case below needs
+        // the real service's own announce call to land on this spy, so a
+        // second one from this component's own code would be caught.
+        { provide: AnnouncerService, useValue: mockAnnouncer },
       ],
     }).compileComponents();
 
@@ -1180,6 +1259,57 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(flag).withContext('the flag should render for a doubted amount').not.toBeNull();
     expect(flag.getAttribute('aria-hidden')).toBe('false');
     expect(flag.getAttribute('aria-label')).toBeTruthy();
+  });
+
+  /**
+   * ADR 0144: this describe carries the one rendering pass proving a new
+   * template branch — a re-offered row's own reason, resolved through the
+   * catalog key the wizard stamped onto it (importFailureKey) rather than
+   * the raw code or provider text ImportError.message actually carries.
+   */
+  it('renders a re-offered row\'s own reason under the card', () => {
+    component.transactions = [makeRow({ importFailure: 'import.rowFailedAmount' })];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const reason = fixture.nativeElement.querySelector('.import-failure-reason') as HTMLElement;
+    expect(reason).withContext('a failed row explains itself on the card').not.toBeNull();
+    expect(reason.getAttribute('role')).toBe('note');
+    // Scoped past the icon: mat-icon's own content is the ligature name
+    // ("error_outline") with no font loaded here to turn it into a glyph.
+    const text = reason.querySelector('span') as HTMLElement;
+    expect(text.textContent?.trim()).toBe('import.rowFailedAmount');
+  });
+
+  it('renders no reason at all for a row that has not failed', () => {
+    component.transactions = [makeRow()];
+    component.categories = [];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.import-failure-reason')).toBeNull();
+  });
+
+  it('drops the reason once the reviewer edits the row', () => {
+    // The reason describes the row as it was submitted; a row the reviewer
+    // has since fixed is not that row, and saying it could not be saved
+    // would argue against the fix.
+    component.transactions = [makeRow({ importFailure: 'import.rowFailedAmount', importAttempts: 1 })];
+    component.categories = [];
+    fixture.detectChanges();
+    const emitted = emissions();
+
+    (fixture.nativeElement.querySelector('.description-section .inline-edit') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const box = fixture.nativeElement.querySelector('.description-input') as HTMLInputElement;
+    box.value = 'Kissaten Ueshima';
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    fixture.detectChanges();
+
+    expect(emitted.length).toBe(1);
+    expect(emitted[0][0].importFailure).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.import-failure-reason'))
+      .withContext('a fixed row stops saying it could not be saved')
+      .toBeNull();
   });
 
   /**
@@ -2004,6 +2134,85 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
         .toBe('import.amountNotANumber:{"minimum":"JPY 1"}');
       expect(emptyEmitted.length).withContext('nothing is filed').toBe(0);
+    });
+  });
+
+  /**
+   * #430: a native `disabled` Continue eats the click, so the wizard keeps
+   * the button clickable (disabledInteractive) and routes a held press here.
+   * revealFirstBlocking is the one thing that has to find the row and put
+   * the reviewer in it — scrolling and focus are both proven through the
+   * card's own template, the reason this lives in the rendering describe
+   * (ADR 0144) rather than beside the template-blanked cases above.
+   */
+  describe('revealFirstBlocking', () => {
+    function render(rows: CategorizedImportTransaction[], attention: string[] = []): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.dateAttentionIds = new Set(attention);
+      fixture.detectChanges();
+    }
+
+    const card = (id: string) => fixture.nativeElement.querySelector(`[data-row-id="${id}"]`) as HTMLElement;
+
+    it('scrolls the first unfilled row into view and focuses its empty amount', async () => {
+      const blank = makeRow({ id: 'blank', amount: 0 });
+      render([makeRow({ id: 'ok' }), blank]);
+      const scroll = spyOn(card('blank'), 'scrollIntoView');
+
+      const held = component.revealFirstBlocking();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(held).toBeTrue();
+      expect(scroll).toHaveBeenCalledWith(jasmine.objectContaining({ block: 'center', behavior: 'smooth' }));
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('[data-row-id="blank"] .amount-input'));
+    });
+
+    it('focuses the description when only that is missing', async () => {
+      const blank = makeRow({ id: 'blank', description: '' });
+      render([blank]);
+      spyOn(card('blank'), 'scrollIntoView');
+
+      component.revealFirstBlocking();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('[data-row-id="blank"] .description-input'));
+    });
+
+    it('reveals the first row with an unanswered date question once every row is filled', async () => {
+      const asked = makeRow({ id: 'asked' });
+      render([makeRow({ id: 'ok' }), asked], ['asked']);
+      const scroll = spyOn(card('asked'), 'scrollIntoView');
+
+      const held = component.revealFirstBlocking();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(held).toBeTrue();
+      expect(scroll).toHaveBeenCalled();
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-asked'));
+    });
+
+    it('returns false and reveals nothing once the step is clear', () => {
+      const row = makeRow({ id: 'ok' });
+      render([row]);
+      const scroll = spyOn(card('ok'), 'scrollIntoView');
+
+      expect(component.revealFirstBlocking()).toBeFalse();
+      expect(scroll).not.toHaveBeenCalled();
+    });
+
+    it('scrolls without animation under prefers-reduced-motion', () => {
+      spyOn(window, 'matchMedia').and.returnValue({ matches: true } as MediaQueryList);
+      const blank = makeRow({ id: 'blank', amount: 0 });
+      render([blank]);
+      const scroll = spyOn(card('blank'), 'scrollIntoView');
+
+      component.revealFirstBlocking();
+
+      expect(scroll).toHaveBeenCalledWith(jasmine.objectContaining({ behavior: 'auto' }));
     });
   });
 
@@ -3129,6 +3338,35 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       box.dispatchEvent(new KeyboardEvent('keydown', { key }));
     }
 
+    it("clears a failed row's reason on both halves", () => {
+      render([makeRow({ id: 'txn1', amount: 10, importFailure: 'import.rowFailedAmount', importAttempts: 1 })]);
+      expect(fixture.nativeElement.querySelector('.import-failure-reason')).withContext('precondition').not.toBeNull();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '4');
+      fixture.detectChanges();
+
+      expect(component.transactions.length).toBe(2);
+      expect(component.transactions.map(t => t.importFailure)).toEqual([undefined, undefined]);
+      expect(fixture.nativeElement.querySelector('.import-failure-reason')).toBeNull();
+    });
+
+    it("starts both halves' failed-attempt count afresh", () => {
+      // Neither half is the row that was refused. Carrying its count would
+      // set a half aside on its own first failure, as though it had already
+      // failed once.
+      render([makeRow({ id: 'txn1', amount: 10, importFailure: 'import.rowFailedAmount', importAttempts: 1 })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '4');
+      fixture.detectChanges();
+
+      expect(component.transactions.length).toBe(2);
+      expect(component.transactions.map(t => t.importAttempts)).toEqual([undefined, undefined]);
+    });
+
     it('renders on a filled row and not on a row with no amount', () => {
       render([makeRow({ id: 'filled' }), makeRow({ id: 'empty', amount: 0 })]);
 
@@ -3577,6 +3815,35 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted[0][0].amount).withContext('b\'s id, summed').toBe(17.5);
     });
 
+    it("clears the survivor's failure reason, since the row it describes is not the one that merged", () => {
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5, ...failed });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12, ...failed });
+      render([a, b]);
+      const emitted = emissions();
+
+      component.mergeInto(a, b);
+      fixture.detectChanges();
+
+      expect(emitted[0].map(t => [t.id, t.importFailure])).toEqual([['b', undefined]]);
+      expect(fixture.nativeElement.querySelector('.import-failure-reason')).toBeNull();
+    });
+
+    it("starts the survivor's failed-attempt count afresh", () => {
+      // The merged row is not the row that was refused. Carrying the
+      // target's count would set it aside on its own first failure.
+      const failed = { importFailure: 'import.rowFailedAmount', importAttempts: 1 };
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5, ...failed });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12, ...failed });
+      render([a, b]);
+      const emitted = emissions();
+
+      component.mergeInto(a, b);
+      fixture.detectChanges();
+
+      expect(emitted[0].map(t => [t.id, t.importAttempts])).toEqual([['b', undefined]]);
+    });
+
     it('does nothing when the source or the target has left the batch by the time the click lands', () => {
       const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
       const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
@@ -3764,6 +4031,580 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(fixture.nativeElement.querySelector(`[data-row-id="${added.id}"]`)).withContext('gone').toBeNull();
       expect(document.activeElement).withContext('the previous row\'s own control').toBe(removeTrigger('existing'));
+    });
+  });
+
+  // #430: Remove asks first on a row carrying the reviewer's own work, and a
+  // bare scanned row still leaves in one press (ADR 0108). The root MatDialog's
+  // open is spied rather than a dialog rendered: what is asserted is the
+  // question asked and what each answer does, and the answer is a Subject so
+  // the moment between asking and answering can be looked at too. The
+  // dialog's own template is its own suite's.
+  describe('removing a row the reviewer worked on', () => {
+    let open: jasmine.Spy;
+    let answer: Subject<boolean>;
+
+    const removeTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .remove-trigger`) as HTMLButtonElement | null;
+    const rowIds = () => component.transactions.map(t => t.id);
+    const current = (id: string) => component.transactions.find(t => t.id === id)!;
+    const blur = (value: string) => ({ type: 'blur', target: { value } }) as unknown as Event;
+
+    beforeEach(() => {
+      answer = new Subject<boolean>();
+      open = spyOn(TestBed.inject(MatDialog), 'open').and.returnValue({ afterClosed: () => answer } as never);
+    });
+
+    // Every emission is handed back as the input, the loop the wizard runs:
+    // it is what re-renders a row after an edit made by a direct call, so a
+    // trigger pressed afterwards carries the row as it now stands rather than
+    // the object the card first rendered.
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.transactionsUpdated.subscribe(next => fixture.componentRef.setInput('transactions', next));
+      fixture.detectChanges();
+    }
+
+    function pressRemove(id: string): void {
+      removeTrigger(id)!.click();
+      fixture.detectChanges();
+    }
+
+    function reply(confirmed: boolean): void {
+      answer.next(confirmed);
+      answer.complete();
+      fixture.detectChanges();
+    }
+
+    it('a bare scanned row removes in one press', () => {
+      render([
+        makeRow({ id: 'a' }),
+        makeRow({
+          id: 'scanned',
+          fieldConfidence: { amount: 0.4 },
+          currencyFellBack: true,
+          dateAssumed: true,
+          imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1 },
+        }),
+      ]);
+      const emitted = emissions();
+
+      pressRemove('scanned');
+
+      expect(open).not.toHaveBeenCalled();
+      expect(emitted.length).toBe(1);
+      expect(rowIds()).toEqual(['a']);
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith('import.announceRowRemoved:{"description":"Coffee Shop"}');
+    });
+
+    it('a row edited on the card asks first, and Cancel keeps it', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+
+      pressRemove('edited');
+
+      expect(open).toHaveBeenCalledOnceWith(ConfirmDialogComponent, jasmine.objectContaining({
+        data: {
+          title: 'import.removeRowTitle',
+          message: 'import.removeRowConfirm:{"description":"Coffee Shop"}',
+          confirmLabel: 'common.remove',
+          cancelLabel: 'common.cancel',
+          confirmColor: 'warn',
+          icon: 'delete',
+        },
+      }));
+
+      reply(false);
+
+      expect(emitted.length).withContext('nothing emitted').toBe(0);
+      expect(rowIds()).toEqual(['a', 'edited']);
+      expect(removeTrigger('edited')).withContext('still on the card').not.toBeNull();
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    it('Confirm removes it and announces it', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+
+      pressRemove('edited');
+      expect(emitted.length).withContext('nothing leaves while the question is open').toBe(0);
+      expect(mockAnnouncer.announce).withContext('nothing is said while the question is open').not.toHaveBeenCalled();
+
+      reply(true);
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).toEqual(['a']);
+      expect(removeTrigger('edited')).toBeNull();
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith('import.announceRowRemoved:{"description":"Coffee Shop"}');
+    });
+
+    it('hands focus to the next row\'s Remove once the removal is confirmed', async () => {
+      render([makeRow({ id: 'edited', editedOnCard: true }), makeRow({ id: 'b' })]);
+
+      pressRemove('edited');
+      reply(true);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(removeTrigger('b'));
+    });
+
+    it('names a row with no description by its placeholder in the question', () => {
+      render([makeRow({ id: 'blank', description: '', editedOnCard: true })]);
+
+      pressRemove('blank');
+
+      expect(open.calls.mostRecent().args[1].data.message)
+        .toBe('import.removeRowConfirm:{"description":"import.untitledRow"}');
+    });
+
+    it('removes the row it asked about even when the row was replaced under its id while the question was open', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+      pressRemove('edited');
+
+      // What the wizard does whenever a re-check reconciles a verdict: the
+      // same ids, new objects. The listener still holds the one it rendered.
+      component.transactions = component.transactions.map(t => ({ ...t }));
+      reply(true);
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).toEqual(['a']);
+    });
+
+    it('does nothing on Confirm for a row that already left the batch', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'edited', editedOnCard: true })]);
+      const emitted = emissions();
+      pressRemove('edited');
+
+      component.transactions = [current('a')];
+      reply(true);
+
+      expect(emitted.length).toBe(0);
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    // One case per handler that records the reviewer's own content. Each
+    // edit runs on the card as rendered, and the row it leaves is pressed
+    // through its own rendered trigger, so what is asked about is the row
+    // the template now holds rather than the one the case started with.
+    describe('each edit that asks before its row is removed', () => {
+      interface EditCase {
+        name: string;
+        row?: Partial<CategorizedImportTransaction>;
+        attention?: boolean;
+        act: (row: CategorizedImportTransaction) => void;
+        target?: () => string;
+      }
+      const cases: EditCase[] = [
+        { name: 'the description', act: row => { component.startEdit(row, 'description'); component.commitDescription(row, blur('Tea')); } },
+        { name: 'the amount', act: row => { component.startEdit(row, 'amount'); component.commitAmount(row, blur('7')); } },
+        { name: 'the type flipped', act: row => component.toggleType(row) },
+        { name: 'the currency, on the row', act: row => component.updateCurrency(row, 'JPY') },
+        { name: 'the currency, in bulk', act: () => component.applyCurrencyToSelected('JPY') },
+        { name: 'the category', act: row => component.updateCategory(row, 'transport') },
+        { name: 'a tag added', act: row => { component.startEdit(row, 'tag'); component.commitTag(row, blur('lunch')); } },
+        { name: 'a tag removed', row: { tags: ['lunch'] }, act: row => component.removeTag(row, 'lunch') },
+        { name: 'the place name', act: row => { component.startEdit(row, 'place'); component.commitPlaceName(row, blur('Shibuya')); } },
+        { name: 'the location removed', row: { location: { name: 'Shibuya', country: 'JP' } }, act: row => component.removeLocation(row) },
+        { name: 'the country', act: row => component.setCountry(row, 'JP') },
+        { name: 'a day picked', act: row => component.updateDate(row, new Date(2024, 0, 20)) },
+        { name: 'the date kept', act: row => component.keepDate(row) },
+        { name: 'every date kept at once', attention: true, act: () => component.keepAllDates() },
+        { name: 'the note', act: row => { component.updateNotesDraft(row, 'split with Ken'); component.commitNotes(row); } },
+        { name: 'the half a split keeps', act: row => { component.startEdit(row, 'split'); component.commitSplit(row, blur('2')); } },
+        {
+          name: 'the part a split takes off',
+          act: row => { component.startEdit(row, 'split'); component.commitSplit(row, blur('2')); },
+          target: () => component.transactions.find(t => t.splitFrom === 'edited')!.id,
+        },
+        { name: 'the survivor of a merge', act: row => component.mergeInto(current('other'), row) },
+      ];
+
+      for (const edit of cases) {
+        it(`asks after ${edit.name}`, () => {
+          component.dateAttentionIds = new Set(edit.attention ? ['edited'] : []);
+          render([makeRow({ id: 'other' }), makeRow({ id: 'edited', ...edit.row })]);
+
+          edit.act(current('edited'));
+          fixture.detectChanges();
+          pressRemove(edit.target?.() ?? 'edited');
+
+          expect(open).toHaveBeenCalledTimes(1);
+        });
+      }
+    });
+
+    // The passes through the shared row replacement that are answers about
+    // the row, not content in it: each is one press to give again.
+    describe('each answer that still removes in one press', () => {
+      interface AnswerCase {
+        name: string;
+        row?: Partial<CategorizedImportTransaction>;
+        act: (row: CategorizedImportTransaction) => void;
+      }
+      const cases: AnswerCase[] = [
+        { name: 'deselected', act: row => component.toggleSelection(row, false) },
+        {
+          name: 'deselected and selected again',
+          act: row => { component.toggleSelection(row, false); component.toggleSelection(current('edited'), true); },
+        },
+        {
+          name: 'cleared as not a duplicate',
+          row: { isDuplicate: true, duplicateOf: 'stored-1', selected: false },
+          act: row => component.clearDuplicate(row),
+        },
+        {
+          name: 'its currency offer dismissed',
+          row: { currencyFellBack: true, currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } },
+          act: row => component.dismissCurrencySuggestion(row),
+        },
+        {
+          name: 'its recurring link taken and let go',
+          row: { recurringMatch: { id: 'rule-1', name: 'Rent', sourceIsRecurring: false } },
+          act: row => { component.toggleRecurringLink(row, true); component.toggleRecurringLink(current('edited'), false); },
+        },
+        // A pick that lands on the value the row already has changes
+        // nothing, so it is exactly as inert as an answer about the row.
+        { name: 'given the currency it already has', act: row => component.updateCurrency(row, 'USD') },
+        { name: 'given the category it already has', act: row => component.updateCategory(row, 'food') },
+        {
+          name: 'given the country it already has',
+          row: { location: { country: 'JP' } },
+          act: row => component.setCountry(row, 'JP'),
+        },
+      ];
+
+      for (const answered of cases) {
+        it(`removes a row ${answered.name} without asking`, () => {
+          render([makeRow({ id: 'other' }), makeRow({ id: 'edited', ...answered.row })]);
+
+          answered.act(current('edited'));
+          fixture.detectChanges();
+          pressRemove('edited');
+
+          expect(open).not.toHaveBeenCalled();
+          expect(rowIds()).toEqual(['other']);
+        });
+      }
+    });
+
+    it('a bulk currency pick leaves a row already in that currency unmarked, even though the batch changes', () => {
+      render([
+        makeRow({ id: 'already', currency: 'JPY', selected: true }),
+        makeRow({ id: 'changed', currency: 'USD', selected: true }),
+      ]);
+
+      component.applyCurrencyToSelected('JPY');
+      fixture.detectChanges();
+
+      pressRemove('already');
+      expect(open).withContext('untouched by the switch, so it asks nothing').not.toHaveBeenCalled();
+      expect(rowIds()).toEqual(['changed']);
+
+      pressRemove('changed');
+      expect(open).withContext('the row the switch actually changed still asks').toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // #430: several row actions changed a row somewhere the reviewer was not
+  // looking with nothing announced to a screen reader. One case per event,
+  // each firing its handler directly — the DOM path to it is already covered
+  // by the describe above; what is new here is the announcement.
+  describe('every row mutation announces itself', () => {
+    it('announces a row no longer a duplicate', () => {
+      const row = makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.clearDuplicate(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceNotDuplicate:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('announces a filed tag', () => {
+      const row = makeRow({ tags: [] });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+      component.startEdit(row, 'tag');
+
+      component.commitTag(row, { type: 'blur', target: { value: 'lunch' } } as unknown as Event);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceTagAdded:{"description":"Coffee Shop","tag":"lunch"}'
+      );
+    });
+
+    it('announces a removed tag', () => {
+      const row = makeRow({ tags: ['lunch'] });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeTag(row, 'lunch');
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceTagRemoved:{"description":"Coffee Shop","tag":"lunch"}'
+      );
+    });
+
+    it('announces a withdrawn country', () => {
+      const row = makeRow({ location: { name: 'Shibuya', country: 'JP' } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.setCountry(row, null);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCountryRemoved:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('says nothing when a country is picked — only its withdrawal is announced', () => {
+      const row = makeRow({ location: { name: 'Shibuya' } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.setCountry(row, 'KR');
+
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    it('announces a removed location', () => {
+      const row = makeRow({ location: { name: 'Shibuya', country: 'JP' } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeLocation(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceLocationRemoved:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('announces a removed row', () => {
+      const row = makeRow();
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeRow(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceRowRemoved:{"description":"Coffee Shop"}'
+      );
+    });
+
+    it('announces a hand-added blank row by its placeholder, not an empty description', () => {
+      const row = makeRow({ description: '' });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeRow(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceRowRemoved:{"description":"import.untitledRow"}'
+      );
+    });
+
+    it('announces a tag removed from a blank row by its placeholder, not an empty description', () => {
+      const row = makeRow({ description: '', tags: ['lunch'] });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.removeTag(row, 'lunch');
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceTagRemoved:{"description":"import.untitledRow","tag":"lunch"}'
+      );
+    });
+
+    it('leaves the bulk currency switch\'s own notice as the one voice for a row it blanks', () => {
+      // NotificationService is not mocked in this describe, so its real
+      // announce call lands on this same spy — proving the component does
+      // not also call the announcer directly for the row applyCurrencyToSelected
+      // already raises notifications.info for.
+      const row = makeRow({ amount: 0.4, selected: true });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // #430 (P7): both currency menus end with an entry for a code the curated
+  // list does not carry. The root MatDialog's open is spied, as removing a
+  // row spies it: what is asserted here is which dialog is asked, where focus
+  // goes back to, and that its answer takes the path a listed pick takes —
+  // the dialog's own refusals are its own suite's. One case lets the real
+  // dialog open, to prove the two ends meet.
+  describe('a currency outside the curated list', () => {
+    let open: jasmine.Spy;
+    let answer: Subject<string | undefined>;
+
+    const chip = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .currency-chip`) as HTMLButtonElement;
+    const bulkTrigger = () => fixture.nativeElement.querySelector('.bulk-currency') as HTMLButtonElement;
+    const current = (id: string) => component.transactions.find(t => t.id === id);
+    const restoreFocus = () => (open.calls.mostRecent().args[1] as { restoreFocus?: unknown }).restoreFocus;
+
+    beforeEach(() => {
+      answer = new Subject<string | undefined>();
+      open = spyOn(TestBed.inject(MatDialog), 'open').and.returnValue({ afterClosed: () => answer } as never);
+    });
+
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    // Every emission is handed back as the input, the loop the wizard runs.
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.transactionsUpdated.subscribe(next => fixture.componentRef.setInput('transactions', next));
+      fixture.detectChanges();
+    }
+
+    /** The lazy menu's items, which do not exist until it is opened. */
+    function openMenu(trigger: HTMLElement): HTMLElement[] {
+      trigger.click();
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item'));
+    }
+
+    function chooseOther(trigger: HTMLElement): void {
+      const items = openMenu(trigger);
+      items[items.length - 1].click();
+      fixture.detectChanges();
+    }
+
+    function reply(code: string | undefined): void {
+      answer.next(code);
+      answer.complete();
+      fixture.detectChanges();
+    }
+
+    it('ends the row\'s own menu with it, after every curated code', () => {
+      render([makeRow({ id: 'a' })]);
+
+      const labels = openMenu(chip('a')).map(item => item.textContent?.trim());
+
+      expect(labels).toEqual(['USD · currencies.usd', 'currency.otherCurrency']);
+    });
+
+    it('sets the row to ISK through updateCurrency, blanking notice and all', () => {
+      render([makeRow({ id: 'a', amount: 0.4 }), makeRow({ id: 'b' })]);
+      const update = spyOn(component, 'updateCurrency').and.callThrough();
+
+      chooseOther(chip('a'));
+
+      expect(open).toHaveBeenCalledOnceWith(CurrencyCodeDialogComponent, jasmine.any(Object));
+      expect(restoreFocus())
+        .withContext('the entry leaves with its menu, so focus goes back to the chip itself')
+        .toBe(chip('a'));
+
+      reply('ISK');
+
+      expect(update).toHaveBeenCalledOnceWith(jasmine.objectContaining({ id: 'a' }), 'ISK');
+      expect(current('a')?.currency).toBe('ISK');
+      expect(current('a')?.editedOnCard).toBeTrue();
+      expect(current('b')?.currency).withContext('another row is not this menu\'s').toBe('USD');
+      expect(chip('a').textContent).toContain('ISK');
+      // 0.4 in a currency with no minor unit is nothing. NotificationService
+      // is real in this describe, so its own announce lands on this spy.
+      expect(mockAnnouncer.announce)
+        .toHaveBeenCalledOnceWith('import.bulkCurrencyBlanked:{"count":1,"currency":"ISK"}', 'polite');
+    });
+
+    it('ends the bulk menu with it too, and sets every selected row through applyCurrencyToSelected', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'b', amount: 0.4 }), makeRow({ id: 'c', selected: false })]);
+      const apply = spyOn(component, 'applyCurrencyToSelected').and.callThrough();
+
+      const items = openMenu(bulkTrigger());
+      expect(items.map(item => item.textContent?.trim())).toEqual(['USD · currencies.usd', 'currency.otherCurrency']);
+      items[items.length - 1].click();
+      fixture.detectChanges();
+
+      expect(open).toHaveBeenCalledOnceWith(CurrencyCodeDialogComponent, jasmine.any(Object));
+      expect(restoreFocus()).toBe(bulkTrigger());
+
+      reply('ISK');
+
+      expect(apply).toHaveBeenCalledOnceWith('ISK');
+      expect(['a', 'b', 'c'].map(id => current(id)?.currency)).toEqual(['ISK', 'ISK', 'USD']);
+      expect(mockAnnouncer.announce)
+        .toHaveBeenCalledOnceWith('import.bulkCurrencyBlanked:{"count":1,"currency":"ISK"}', 'polite');
+    });
+
+    it('changes nothing when the dialog closes with no code', () => {
+      render([makeRow({ id: 'a' })]);
+      const emitted = emissions();
+
+      chooseOther(chip('a'));
+      reply(undefined);
+
+      expect(emitted.length).toBe(0);
+      expect(current('a')?.currency).toBe('USD');
+    });
+
+    it('applies the answer to the row as the batch holds it when the answer lands', () => {
+      render([makeRow({ id: 'a' })]);
+      chooseOther(chip('a'));
+      // While the question is open the wizard can hand back a new object
+      // under the same id — a re-check reconciling its verdict.
+      fixture.componentRef.setInput('transactions', [makeRow({ id: 'a', duplicateOf: 'stored-1' })]);
+      fixture.detectChanges();
+
+      reply('ISK');
+
+      expect(current('a')?.currency).toBe('ISK');
+      expect(current('a')?.duplicateOf).withContext('the newer row, not the one the press captured').toBe('stored-1');
+    });
+
+    it('drops the answer for a row that left the batch while the question was open', () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'b' })]);
+      chooseOther(chip('a'));
+      fixture.componentRef.setInput('transactions', [current('b')!]);
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      reply('ISK');
+
+      expect(emitted.length).toBe(0);
+      expect(current('b')?.currency).toBe('USD');
+    });
+
+    it('opens the real dialog, and ISK typed there reaches the row', async () => {
+      open.and.callThrough();
+      render([makeRow({ id: 'a' })]);
+
+      chooseOther(chip('a'));
+      await fixture.whenStable();
+      const dialog = document.querySelector('app-currency-code-dialog') as HTMLElement;
+      expect(dialog).withContext('the dialog the entry opens').not.toBeNull();
+      const input = dialog.querySelector('input') as HTMLInputElement;
+      input.value = 'ISK';
+      input.dispatchEvent(new Event('input'));
+      (dialog.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(current('a')?.currency).toBe('ISK');
+      expect(chip('a').textContent).toContain('ISK');
+      expect(document.activeElement).withContext('focus back on the chip the menu hung from').toBe(chip('a'));
     });
   });
 });

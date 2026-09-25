@@ -64,7 +64,11 @@ describe('OpenAIService', () => {
 
   beforeEach(() => {
     mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
-    mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
+    mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
+      'convert',
+      'formatAmount',
+      'amountInBase',
+    ]);
     mockCurrencyService.formatAmount.and.callFake(
       (amount: number, code: string) => amount.toFixed(currencyDecimalPlaces(code)));
     mockTranslationService = jasmine.createSpyObj<TranslationService>('TranslationService', [
@@ -75,6 +79,11 @@ describe('OpenAIService', () => {
     mockCategoryService.categories.and.returnValue(categories);
     // Identity conversion keeps arithmetic in summaries easy to assert.
     mockCurrencyService.convert.and.callFake((amount: number) => amount);
+    // Snapshot-or-identity, matching the fixtures below, which never diverge
+    // amountInBaseCurrency from amount.
+    mockCurrencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
     // Translation echoes the key so prompt assertions stay readable.
     mockTranslationService.t.and.callFake((key: string) => key);
     mockTranslationService.currentLocale.and.returnValue('en');
@@ -841,7 +850,9 @@ describe('OpenAIService', () => {
 
       expect(result[0].amount).toBe(10);
       expect(result[0].imageIndex).toBe(1);
-      expect(result[0].wasMerged).toBeTrue();
+      // Merged is the app's own verdict, reached later in consolidation —
+      // never a claim the model gets to make about its own extraction.
+      expect(result[0].wasMerged).toBeFalse();
       // The receipt-detail fields must survive normalisation so line items
       // can be consolidated and recorded in the transaction note
       expect(result[0].receiptId).toBe(2);

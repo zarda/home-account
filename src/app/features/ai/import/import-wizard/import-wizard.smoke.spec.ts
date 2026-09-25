@@ -61,6 +61,7 @@ import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-pro
 import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CategoryService } from '../../../../core/services/category.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
@@ -70,6 +71,7 @@ import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/
 import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
 import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
+import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
@@ -386,7 +388,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
 
       expect(component.stepper.selectedIndex).toBe(2);
-      expect(continueButton().disabled).toBeTrue();
+      expect(continueButton().getAttribute('aria-disabled')).toBe('true');
       expect(host.querySelector('.dates-hint')).not.toBeNull();
 
       // The stepper header reaches Confirm from here with the question open.
@@ -403,7 +405,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       fixture.detectChanges();
 
       expect(host.querySelector('.dates-hint')).toBeNull();
-      expect(continueButton().disabled).toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled')).toBeNull();
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();
@@ -1781,7 +1783,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
 
       expect(component.stepper.selectedIndex).toBe(2);
-      expect(continueButton().disabled).withContext('the scanned row is complete').toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled'))
+        .withContext('the scanned row is complete')
+        .toBeNull();
 
       host.querySelector<HTMLButtonElement>('.add-row')!.click();
       fixture.detectChanges();
@@ -1792,7 +1796,26 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .toBe(cards()[1].querySelector('.inline-input'));
       expect(component.unfilledRows()).toBe(1);
       expect(host.querySelector('.rows-hint')).not.toBeNull();
-      expect(continueButton().disabled).toBeTrue();
+      expect(continueButton().getAttribute('aria-disabled')).toBe('true');
+
+      // disabledInteractive keeps the button clickable at aria-disabled, so
+      // the press below reaches onReviewContinue rather than being eaten —
+      // and lands on the row that is still holding it (#430).
+      (document.activeElement as HTMLElement).blur();
+      continueButton().click();
+      fixture.detectChanges();
+
+      expect(component.stepper.selectedIndex).withContext('a held press does not advance').toBe(2);
+      const revealedAmount = cards()[1].querySelector<HTMLInputElement>('.amount-input')!;
+      expect(document.activeElement)
+        .withContext('the amount is the field the row is missing')
+        .toBe(revealedAmount);
+
+      // Escape rather than leaving 0 in the field: a blur on an unreadable
+      // amount holds the editor open (commitAmount's own refusal), which
+      // would otherwise survive the trip to Confirm and back below.
+      revealedAmount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
 
       // The stepper header reaches Confirm from here with the row still empty.
       component.stepper.selectedIndex = 3;
@@ -1833,7 +1856,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       expect(component.unfilledRows()).toBe(0);
       expect(host.querySelector('.rows-hint')).toBeNull();
-      expect(continueButton().disabled).toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled')).toBeNull();
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();
@@ -1912,8 +1935,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const host = fixture.nativeElement as HTMLElement;
       const component = fixture.componentInstance;
+      const translation = TestBed.inject(TranslationService);
       const steps = () => component.stepper.steps.toArray();
       const headers = () => Array.from(host.querySelectorAll<HTMLElement>('.mat-step-header'));
+      const lockIcons = () =>
+        headers().map(header => header.querySelector<HTMLElement>('mat-icon.seal-icon'));
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();
@@ -1931,6 +1957,15 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(component.isImporting()).toBeTrue();
       expect(steps().every(step => !step.editable))
         .withContext('every step is sealed, not just the one behind')
+        .toBeTrue();
+
+      // The seal is visible, not just enforced: every step header carries a
+      // named lock icon while the write is in flight.
+      expect(lockIcons().every(icon => icon !== null))
+        .withContext('every header shows the lock while the import writes')
+        .toBeTrue();
+      expect(lockIcons().every(icon => icon?.getAttribute('aria-label') === translation.t('import.stepSealed')))
+        .withContext('the lock names itself for the reader, not just the eye')
         .toBeTrue();
 
       headers()[2].click();
@@ -1983,12 +2018,126 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       expect(component.isImporting()).toBeFalse();
       expect(steps().every(step => step.editable)).toBeTrue();
+      expect(lockIcons().every(icon => icon === null))
+        .withContext('the lock is gone once every step reopens')
+        .toBeTrue();
       expect(component.extractedTransactions().length).toBe(1);
       expect(component.extractedTransactions()[0].amount).toBe(545);
       expect(host.querySelectorAll('.transaction-card').length)
         .withContext('the refused row is back on the card to correct')
         .toBe(1);
       expect(host.textContent ?? '').toContain('セブン-イレブン');
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a row the rules refuse twice comes back deselected with its reason rendered',
+    async () => {
+      // The same handoff shape as the sealed-step case above, and the same
+      // stubbed confirmImport: what is under test is what the wizard and the
+      // real card do with the record they get back on a second refusal, not
+      // the write itself.
+      stubReceiptSeams();
+
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'twice-refused.jpg',
+        fileSize: 1234,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 545,
+            currency: 'JPY',
+            date: new Date(),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const translation = TestBed.inject(TranslationService);
+      const rowId = component.extractedTransactions()[0].id;
+
+      const confirmSpy = spyOn(TestBed.inject(AIImportService), 'confirmImport');
+      const refusal = (): ImportHistory => ({
+        id: 'twice-refused',
+        userId: uid,
+        importedAt: Timestamp.now(),
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'twice-refused.jpg',
+        fileSize: 1234,
+        transactionCount: 1,
+        successCount: 0,
+        skippedCount: 0,
+        errorCount: 1,
+        totalIncome: 0,
+        totalExpenses: 0,
+        status: 'partial',
+        // A rules denial, the way a security-rules refusal actually reaches
+        // this app: a stable code, kept apart from the message, which is
+        // prose the card could not put on screen as-is.
+        errors: [{
+          row: 1, transactionId: rowId,
+          code: 'permission-denied', message: 'Missing or insufficient permissions.',
+        }],
+        duplicatesSkipped: 0
+      });
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      confirmSpy.and.resolveTo(refusal());
+      await component.confirmImport();
+      await until(fixture, () => component.stepper.selectedIndex === 2);
+
+      // Re-offered once, still ticked, and now says why — Karma loads no
+      // catalog, so the reason's own reading is the bare key on both sides.
+      expect(component.extractedTransactions()[0].selected).toBeTrue();
+      expect(component.extractedTransactions()[0].importAttempts).toBe(1);
+      let reason = host.querySelector('.import-failure-reason span');
+      expect(reason).withContext('a failed row explains itself on the card').not.toBeNull();
+      expect(reason?.textContent?.trim()).toBe(translation.t('import.rowFailedConnection'));
+
+      // Ticked again by the wizard's own re-offer, refused a second time.
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      confirmSpy.and.resolveTo(refusal());
+      await component.confirmImport();
+      await until(fixture, () => component.stepper.selectedIndex === 2);
+
+      expect(component.extractedTransactions()[0].selected)
+        .withContext('a second refusal sets the row aside rather than re-offering it forever')
+        .toBeFalse();
+      expect(component.extractedTransactions()[0].importAttempts).toBe(2);
+      reason = host.querySelector('.import-failure-reason span');
+      expect(reason).withContext('still explains itself once deselected').not.toBeNull();
+      expect(reason?.textContent?.trim()).toBe(translation.t('import.rowFailedConnection'));
+      // Deselected, so the checkbox on the card reads unchecked too — the
+      // reason line is not the only surface that must agree with the model.
+      const checkbox = host.querySelector('.transaction-card input[type="checkbox"]') as HTMLInputElement;
+      expect(checkbox.checked).toBeFalse();
 
       history.replaceState({}, '');
       fixture.destroy();
@@ -2109,6 +2258,93 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'a backup row naming a category the account lacks reaches review on its catch-all, and a stamped rate is the one written',
+    async () => {
+      // The JSON door against the catalog the wizard itself loads and the
+      // write the rules accept. The service's suite stubs the catalog and
+      // mocks addTransaction, so only this case can say the category check
+      // reads the real signal and the snapshot built from the file's rate
+      // reaches the document. The stubbed CurrencyService answers 1 for every
+      // pair: a row converted at today's rate would store 1 and 2000, so the
+      // file's rate is the only way 0.0075 lands.
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const categoryService = TestBed.inject(CategoryService);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      // The wizard subscribes to the catalog when it is created; a file read
+      // before the first snapshot lands is graded against an empty list,
+      // which is the unit suite's own case.
+      await until(fixture, () => categoryService.categories().length > 0);
+
+      component.onFilesSelected([
+        new File(
+          [JSON.stringify({
+            transactions: [
+              { description: 'Model railway club', amount: -42, currency: 'USD', type: 'expense',
+                categoryId: 'deleted_hobby', date: { seconds: 1723593600 } },
+              { description: 'Shinjuku ramen', amount: -2000, currency: 'JPY', type: 'expense',
+                categoryId: 'food', date: { seconds: 1723593600 },
+                exchangeRate: 0.0075, baseCurrency: 'USD', amountInBaseCurrency: 999 }
+            ]
+          })],
+          'rate-backup.json',
+          { type: 'application/json' }
+        )
+      ]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 2);
+
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      const rows = component.extractedTransactions();
+      const cards = Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      expect(cards.length).toBe(2);
+      expect(rows[0].suggestedCategoryId).toBe('other_expense');
+      expect(rows[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      expect(cards[0].querySelector('.confidence-dot.low-confidence'))
+        .withContext('the file named a category this account does not have')
+        .not.toBeNull();
+      expect(rows[1].suggestedCategoryId).toBe('food');
+      expect(cards[1].querySelector('.confidence-dot.low-confidence'))
+        .withContext('the account has the category the file named')
+        .toBeNull();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.length).toBe(2);
+      const club = landed.find(d => d['description'] === 'Model railway club');
+      const ramen = landed.find(d => d['description'] === 'Shinjuku ramen');
+      expect(club?.['categoryId']).toBe('other_expense');
+      expect(ramen?.['exchangeRate']).toBe(0.0075);
+      expect(ramen?.['baseCurrency']).toBe('USD');
+      expect(ramen?.['amountInBaseCurrency']).toBe(2000 * 0.0075);
+      expect('fileRate' in (ramen ?? {})).withContext('a review-step mark, never a field').toBeFalse();
+
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
     'a split part is written as its own transaction with its own copy of the photo',
     async () => {
       // The card's suite proves the split emits two rows, and the planner's
@@ -2221,9 +2457,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(component.extractedTransactions().map(t => [t.imageMetadata?.receiptId, card.receiptPhotos(t)]))
         .withContext('both halves name the one receipt and its one photo')
         .toEqual([[1, '1'], [1, '1']]);
-      expect(continueButton().disabled)
+      expect(continueButton().getAttribute('aria-disabled'))
         .withContext('the part is born filled, so nothing holds Continue')
-        .toBeFalse();
+        .toBeNull();
 
       // Enter with the original's description left standing: the editor
       // closes and the row keeps what it was born with.
@@ -2446,16 +2682,18 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
-    'a removed row is never written, and leaves no verdict behind',
+    'an edited row asks before it leaves, is never written once it has, and leaves no verdict behind',
     async () => {
       // The card's own suite proves removeRow takes the row off the card
-      // and moves focus to its neighbour, and the wizard's spec, over a
-      // mocked detector, that a gone row's verdict is pruned. Only here
-      // does a real re-check run for the edited row first, so there is a
-      // genuine verdict to prune rather than one asserted into place, and
-      // only here does confirmImport follow the removal all the way to
-      // storage: the row's photo, still sitting in sourceFiles under the
-      // batch's own imageIndex, must never reach the emulator.
+      // and moves focus to its neighbour, and asks first over a spied
+      // dialog; the wizard's spec, over a mocked detector, that a gone row's
+      // verdict is pruned. Only here does the real confirm dialog stand
+      // between the edited row and its removal, and a real re-check run for
+      // the edit first, so there is a genuine verdict to prune rather than
+      // one asserted into place; and only here does confirmImport follow the
+      // removal all the way to storage: the row's photo, still sitting in
+      // sourceFiles under the batch's own imageIndex, must never reach the
+      // emulator.
       stubReceiptSeams();
       TestBed.configureTestingModule({
         providers: [
@@ -2564,9 +2802,26 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .withContext('the edit earned the row a genuine verdict to prune')
         .toBeTrue();
 
+      // The edit is the reviewer's own work, so Remove asks first. The real
+      // dialog renders in the CDK overlay, outside the fixture, and nothing
+      // here loads a catalog, so its buttons read as the keys they were given.
+      const dialogButton = (label: string) =>
+        Array.from(document.querySelectorAll<HTMLButtonElement>('app-confirm-dialog button'))
+          .find(b => b.textContent?.trim() === label);
+
       cards()[1].querySelector<HTMLButtonElement>('.remove-trigger')!.click();
-      fixture.detectChanges();
-      expect(cards().length).toBe(1);
+      await until(fixture, () => !!dialogButton('common.cancel'));
+      expect(cards().length).withContext('nothing leaves while the question is open').toBe(2);
+      dialogButton('common.cancel')!.click();
+      await until(fixture, () => !document.querySelector('app-confirm-dialog'));
+      expect(component.extractedTransactions().map(t => t.amount))
+        .withContext('Cancel keeps the row and the edit on it')
+        .toEqual([551, 553]);
+
+      cards()[1].querySelector<HTMLButtonElement>('.remove-trigger')!.click();
+      await until(fixture, () => !!dialogButton('common.remove'));
+      dialogButton('common.remove')!.click();
+      await until(fixture, () => cards().length === 1 && !document.querySelector('app-confirm-dialog'));
 
       // Focus after a removal is set by the same afterNextRender hook, and
       // in this zone-run suite it runs in the zone's own tick, not inside
@@ -2579,7 +2834,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(component.duplicateChecks().some(c => c.transactionId === secondId))
         .withContext('no verdict is kept for a row that left the batch')
         .toBeFalse();
-      expect(continueButton().disabled).toBeFalse();
+      expect(continueButton().getAttribute('aria-disabled')).toBeNull();
 
       component.stepper.selectedIndex = 3;
       fixture.detectChanges();

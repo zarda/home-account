@@ -11,9 +11,11 @@ import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { AuthService } from './auth.service';
 import { ReceiptAttemptService } from './receipt-attempt.service';
+import { CategoryService } from './category.service';
 import { ProcessedTransaction } from './ai-types';
 import { imageMetadataOf, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
+import { gradeCategorySuggestion } from '../utils/categorization.utils';
 import { baseCurrencyOf, ImagePositionMetadata } from '../../models';
 
 /**
@@ -47,6 +49,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
   private translation = inject(TranslationService);
   private authService = inject(AuthService);
   private receiptAttempts = inject(ReceiptAttemptService);
+  private categoryService = inject(CategoryService);
 
   private imageHandler = (event: Event): void => {
     const { id } = (event as CustomEvent<{ id: string }>).detail;
@@ -261,11 +264,15 @@ export class OfflineQueueProcessorService implements OnDestroy {
 
         // The same mapper every other import door writes through (ADR 0059):
         // the row's renames only, and every optional the reader filled
-        // travels without this door naming it.
+        // travels without this door naming it. The category is held to the
+        // row's side by the check the camera's review rows pass through, so a
+        // row named for the other side lands on its own side's catch-all.
         const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
+        const { suggestedCategoryId } =
+          gradeCategorySuggestion(tx, tx.type, this.categoryService.categories());
         const bareDto = toCreateTransactionDTO({
           ...tx,
-          categoryId: tx.suggestedCategoryId,
+          categoryId: suggestedCategoryId,
           note: tx.notes,
           date: resolved.date,
         }, baseCurrencyOf(this.authService.currentUser()));

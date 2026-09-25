@@ -30,6 +30,7 @@
     "close": "Close",
     "back": "Back",
     "moreActions": "More actions",
+    "moreActionsFor": "More actions for {{description}}",
     "remove": "Remove",
     "refresh": "Refresh",
     "moveUp": "Move up",
@@ -55,7 +56,8 @@
     "type": "Type",
     "category": "Category",
     "loading": "Loading...",
-    "retry": "Retry"
+    "retry": "Retry",
+    "atTodaysRate": "At today's rate"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -91,6 +93,7 @@
     "selectMonth": "Select Month",
     "selectYear": "Select Year",
     "loadingData": "Loading dashboard data...",
+    "refreshing": "Refreshing dashboard data",
     "spendingByCategory": "Spending by Category",
     "noExpenses": "No expenses yet",
     "addFirstTransaction": "Add your first transaction to get started",
@@ -214,6 +217,7 @@
     "splitOffline": "Splitting needs a connection",
     "splitOfflineHint": "Splitting needs a connection — reconnect, or save this purchase to one category.",
     "splitPart": "Part of a split purchase",
+    "rowLabel": "{{description}}, {{amount}}, {{date}}",
     "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay."
   },
   "budget": {
@@ -263,6 +267,9 @@
     },
     "viewBudgets": "View budgets"
   },
+  "budgets": {
+    "progressLabel": "{{name}}: {{percent}}% of budget used"
+  },
   "goal": {
     "tabHint": "Save toward targets and plan projects",
     "addGoal": "Add Goal",
@@ -307,6 +314,9 @@
     "contributionFailed": "Could not record the contribution",
     "linkedBreakdown": "{{manual}} manual · {{linked}} from transactions",
     "currencyLocked": "Fixed once money is against this goal"
+  },
+  "goals": {
+    "progressLabel": "{{name}}: {{percent}}% of goal reached"
   },
   "reports": {
     "title": "Reports",
@@ -432,8 +442,8 @@
     "language": "Language",
     "currency": "Currency",
     "ratesLabel": "Exchange rates",
-    "ratesLive": "Exchange rates updated {{date}}",
-    "ratesExpired": "Could not update exchange rates — using saved rates from {{date}}",
+    "ratesLive": "Exchange rates updated {{date}} at {{time}}",
+    "ratesExpired": "Could not update exchange rates — using saved rates from {{date}} at {{time}}",
     "ratesBuiltIn": "Could not fetch exchange rates — using built-in approximate rates",
     "displayName": "Display Name",
     "theme": "Theme",
@@ -489,7 +499,12 @@
       "one": "...and {{count}} more transaction",
       "other": "...and {{count}} more transactions"
     },
+    "csvUnmatchedCategories": {
+      "one": "{{count}} row's category could not be matched and will use the default category",
+      "other": "{{count}} rows' categories could not be matched and will use the default category"
+    },
     "importingProgress": "Importing... {{progress}}%",
+    "importProgressLabel": "Import progress: {{progress}}%",
     "importTransactions": {
       "one": "Import {{count}} Transaction",
       "other": "Import {{count}} Transactions"
@@ -800,6 +815,12 @@
     "chf": "Swiss Franc",
     "nzd": "New Zealand Dollar"
   },
+  "currency": {
+    "otherCurrency": "Other currency…",
+    "enterCode": "Enter a currency code",
+    "invalidCode": "Not a currency code — use its three letters, such as ISK",
+    "noRateYet": "No exchange rate for {{code}} yet, so it cannot be converted"
+  },
   "categoryNames": {
     "food": "Food & Drinks",
     "restaurants": "Restaurants",
@@ -1057,8 +1078,10 @@
     "viewHistory": "View History",
     "uploadStep": "Upload",
     "processingStep": "Processing",
+    "progressLabel": "Import progress: {{percent}}%",
     "reviewStep": "Review",
     "confirmStep": "Import",
+    "stepSealed": "Step locked while the import is in progress",
     "dropzoneTitle": "Drop files here or click to upload",
     "dropzoneHint": "Supports CSV, PDF, images, and JSON backups",
     "browseFiles": "Browse Files",
@@ -1091,7 +1114,12 @@
     "duplicatesDescription": "These transactions may already exist in your account. They are deselected by default.",
     "duplicate": "Duplicate",
     "notADuplicate": "Not a duplicate — import it",
+    "announceNotDuplicate": "{{description}} is not a duplicate",
     "recheckFailed": "Couldn't re-check for duplicates — the earlier verdict stands. Use 'Not a duplicate' if you know better.",
+    "announceVerdictsChanged": {
+      "one": "1 duplicate verdict updated",
+      "other": "{{count}} duplicate verdicts updated"
+    },
     "excludeDuplicates": "Exclude all duplicates",
     "includeDuplicates": "Include anyway",
     "matchExact": "Exact match",
@@ -1109,6 +1137,13 @@
     },
     "importFailed": "Import failed: {{error}}",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
+    "importPartialSetAside": {
+      "one": "{{count}} row failed to save twice and was set aside — reselect it to try again",
+      "other": "{{count}} rows failed to save twice and were set aside — reselect them to try again"
+    },
+    "rowFailedAmount": "This transaction's amount could not be saved. Check the amount and try again.",
+    "rowFailedConnection": "The connection dropped before this row could be saved. Check your connection and try again.",
+    "rowFailedUnknown": "This row could not be saved for an unknown reason. Try again, or remove it.",
     "importingRow": "Importing {{done}} of {{total}}...",
     "importPhotosSkipped": {
       "one": "The transactions were saved, but {{count}} receipt photo was not attached — image storage limit reached",
@@ -1254,6 +1289,7 @@
     "setCurrency": "Change currency (currently {{currency}})",
     "setCurrencyForSelected": "Currency for selected",
     "removeLocation": "Remove suggested location",
+    "announceLocationRemoved": "Location removed from {{description}}",
     "currencyFromCountry": "Looks like {{country}} — use {{currency}}?",
     "currencySuggested": "Use {{currency}}?",
     "acceptCurrencySuggestion": "Use {{currency}} for this row",
@@ -1263,10 +1299,13 @@
     "currencyReasonLocale": "Your device's region",
     "currencyReasonPosition": "Where you are right now",
     "removeTag": "Remove tag {{tag}}",
+    "announceTagAdded": "Tag {{tag}} added to {{description}}",
+    "announceTagRemoved": "Tag {{tag}} removed from {{description}}",
     "addTag": "Add tag",
     "newTag": "New tag",
     "addRow": "Add a row",
     "addDescription": "Add a description",
+    "untitledRow": "an untitled row",
     "addAmount": "Add an amount",
     "bulkCurrencyBlanked": {
       "one": "{{count}} amount rounds to nothing in {{currency}} — add it again",
@@ -1280,11 +1319,15 @@
     "mergeIntoLabel": "Merge {{description}} into another row",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "Remove {{description}}",
+    "removeRowTitle": "Remove this row?",
+    "removeRowConfirm": "Your changes to {{description}} will be lost. To leave it out of this import and keep them, deselect it instead.",
+    "announceRowRemoved": "{{description}} removed",
     "addLocation": "Add location",
     "addPlaceName": "Add a place name",
     "editPlaceName": "Edit place name ({{name}})",
     "placeName": "Place name",
     "setCountry": "Set country",
+    "announceCountryRemoved": "Country removed from {{description}}",
     "changeCountry": "Country: {{country}} — change",
     "noCountry": "No country",
     "matchWithinBatch": "Repeated in this import",
@@ -1457,6 +1500,9 @@
     "removeAllConfirmTitle": "Remove all receipt images?",
     "removeAllConfirmMessage": "All {{count}} images are deleted permanently. The transaction itself is kept.",
     "removedAll": "{{count}} receipt images removed"
+  },
+  "receipts": {
+    "loading": "Loading receipt image"
   },
   "analytics": {
     "settingsTitle": "Usage statistics",

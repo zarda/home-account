@@ -11,7 +11,9 @@ import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
-import { createCategory, createTransaction, createUser, createTranslationStub } from '../../../core/services/testing';
+import {
+  createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
+} from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
   let cloudLLM: jasmine.SpyObj<CloudLLMProviderService>;
@@ -53,8 +55,9 @@ describe('AiSummaryComponent', () => {
     cloudLLM.generateSpendingSummary.and.resolveTo('Summary text');
     cloudLLM.getFinancialAdvice.and.resolveTo('Advice text');
 
-    currency = jasmine.createSpyObj('CurrencyService', ['convert', 'ensureRatesLoaded']);
+    currency = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase', 'ensureRatesLoaded']);
     currency.convert.and.callFake((a: number) => a);
+    currency.amountInBase.and.callFake((t: Transaction) => t.amountInBaseCurrency);
     currency.ensureRatesLoaded.and.resolveTo(undefined);
     const translation = jasmine.createSpyObj('TranslationService', ['t', 'currentLocale']);
     translation.t.and.callFake((k: string) => k);
@@ -131,20 +134,26 @@ describe('AiSummaryComponent', () => {
       expect(c.formatPeriod('Jan 2024')).toBe('Jan 2024');
     });
 
-    it('calculatePeriodTotal aggregates income, expense and categories', () => {
+    // #429 P1: this used to convert every past transaction at whatever rate
+    // was loaded when the summary generated, so the period total it fed the
+    // provider could disagree with every other figure over the same period.
+    it('calculatePeriodTotal reads the base-currency snapshot rather than a live conversion', () => {
       const fixture = build();
       fixture.componentRef.setInput('baseCurrency', 'USD');
       const c = fixture.componentInstance as unknown as {
         calculatePeriodTotal: (t: Transaction[]) => { income: number; expense: number; balance: number };
       };
       const total = c.calculatePeriodTotal([
-        createTransaction({ type: 'income', amount: 100 }),
-        createTransaction({ type: 'expense', amount: 40, categoryId: 'a' }),
-        createTransaction({ type: 'expense', amount: 10, categoryId: 'a' }),
+        createTransaction({ type: 'income', amount: 100, amountInBaseCurrency: 200 }),
+        createTransaction({ type: 'expense', amount: 40, amountInBaseCurrency: 90, categoryId: 'a' }),
+        createTransaction({ type: 'expense', amount: 10, amountInBaseCurrency: 10, categoryId: 'a' }),
       ]);
-      expect(total.income).toBe(100);
-      expect(total.expense).toBe(50);
-      expect(total.balance).toBe(50);
+      // The mock's `convert` is a 1:1 passthrough of `amount`; these totals
+      // can only come from amountInBase reading the stamped snapshot.
+      expect(total.income).toBe(200);
+      expect(total.expense).toBe(100);
+      expect(total.balance).toBe(100);
+      expect(currency.convert).not.toHaveBeenCalled();
     });
 
     it('describeFailure maps known error causes to localized keys', () => {
@@ -154,6 +163,61 @@ describe('AiSummaryComponent', () => {
       expect(c.describeFailure(new Error('API key not valid'))).toBe('ai.invalidApiKey');
       expect(c.describeFailure(new Error('429 rate limit exceeded'))).toBe('ai.rateLimited');
       expect(c.describeFailure(new Error('other'), 'ai.adviceFallback')).toBe('ai.adviceFallback');
+    });
+  });
+
+  describe('cacheKey', () => {
+    // #429 P2: the key used to fold in only `txIds.slice(0, 100)` — about five
+    // ids — so a period whose first five transactions matched but whose later
+    // ones differed was served a stale cached summary.
+    it('keys two sets differently when they share only their first five ids', () => {
+      const fixture = build();
+      const it = internals(fixture.componentInstance);
+      // Long enough that five of them alone exceed the old 100-char slice,
+      // so the sixth (differing) transaction was never even reached.
+      const shared = Array.from(
+        { length: 5 }, (_, i) => createTransaction({ id: `shared-transaction-id-${i}` }));
+
+      fixture.componentRef.setInput('transactions', [...shared, createTransaction({ id: 'tail-a' })]);
+      const keyA = it.cacheKey();
+
+      fixture.componentRef.setInput('transactions', [...shared, createTransaction({ id: 'tail-b' })]);
+      const keyB = it.cacheKey();
+
+      expect(keyA).not.toBe(keyB);
+    });
+
+    it('changes the key when a transaction is edited, even though its id set is unchanged', () => {
+      const fixture = build();
+      const it = internals(fixture.componentInstance);
+      const base = [
+        createTransaction({ id: 'a', updatedAt: createTimestamp(new Date('2026-01-01T00:00:00Z')) }),
+        createTransaction({ id: 'b', updatedAt: createTimestamp(new Date('2026-01-02T00:00:00Z')) }),
+      ];
+      fixture.componentRef.setInput('transactions', base);
+      const before = it.cacheKey();
+
+      fixture.componentRef.setInput('transactions', [
+        base[0],
+        { ...base[1], updatedAt: createTimestamp(new Date('2026-01-03T00:00:00Z')) },
+      ]);
+      const after = it.cacheKey();
+
+      expect(before).not.toBe(after);
+    });
+
+    it('keys the same set the same regardless of transaction order', () => {
+      const fixture = build();
+      const it = internals(fixture.componentInstance);
+      const set = [createTransaction({ id: 'a' }), createTransaction({ id: 'b' }), createTransaction({ id: 'c' })];
+
+      fixture.componentRef.setInput('transactions', set);
+      const forward = it.cacheKey();
+
+      fixture.componentRef.setInput('transactions', [...set].reverse());
+      const reversed = it.cacheKey();
+
+      expect(forward).toBe(reversed);
     });
   });
 
@@ -453,8 +517,9 @@ describe('AiSummaryComponent, through its own template', () => {
     llm.generateSpendingSummary.and.resolveTo('Summary text');
     llm.getFinancialAdvice.and.resolveTo('Advice text');
 
-    const currencySpy = jasmine.createSpyObj('CurrencyService', ['convert', 'ensureRatesLoaded']);
+    const currencySpy = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase', 'ensureRatesLoaded']);
     currencySpy.convert.and.callFake((a: number) => a);
+    currencySpy.amountInBase.and.callFake((t: Transaction) => t.amountInBaseCurrency);
     currencySpy.ensureRatesLoaded.and.resolveTo(undefined);
     const rag = jasmine.createSpyObj('RagContextService', ['buildSummaryGrounding']);
     rag.buildSummaryGrounding.and.returnValue('GROUNDING');
