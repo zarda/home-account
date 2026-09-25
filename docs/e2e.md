@@ -1,37 +1,53 @@
 # The browser journey protocol
 
 A small set of journeys driven by hand through the running app, in a browser
-tab at `http://localhost:4200`. Each names its steps, the result that counts
-as a pass, and the screenshot to take. This is the runbook: read it before
-driving them for a branch, and extend it when a branch adds a surface no spec
-can reach.
+tab — at `http://localhost:4200` against production, or at
+`http://localhost:4300` against the local emulators for the journeys that need
+two accounts. Each names its steps, the result that counts as a pass, and the
+screenshot to take. This is the runbook: read it before driving them for a
+branch, and extend it when a branch adds a surface no spec can reach.
 
 It is not a test suite and it does not run in CI. Why these checks are written
 down and driven rather than automated, and what was rejected on the way, is in
-[ADR 0098](ADR/0098-the-browser-journeys-are-a-driven-protocol-not-a-suite.md).
+[ADR 0098](ADR/0098-the-browser-journeys-are-a-driven-protocol-not-a-suite.md);
+why the two-account journeys run against the emulators is in
+[ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md).
 
 ## Where it runs, and what that means
 
-`npm start` (`ng serve`, port 4200) serves **whatever checkout it was started
-from**, built with that checkout's `.vscode/environment.ts`. On a developer
-machine that file names the real `home-accounter` project, and the browser
-carries the developer's own signed-in session.
+The protocol has two venues, and a journey's number says which it runs in.
 
-So the protocol runs against **production data**. The rows on screen are real
+**Production, on port 4200: journeys 1 to 57, and 67.** `npm start`
+(`ng serve`, port 4200) serves **whatever checkout it was started from**,
+built with that checkout's `.vscode/environment.ts`. On a developer machine
+that file names the real `home-accounter` project, and the browser carries the
+developer's own signed-in session.
+
+So these journeys run against **production data**. The rows on screen are real
 transactions, a preference change lands on the real user document behind the
 deployed rules, and a translation is a real request to a real provider under
 the account's own key.
 
-That is the point of it — nothing else in the repo exercises the wire — and it
-is the reason for every constraint below. Read the whole thing as one rule:
-**the run is a reader with eight permitted writes, each named in *What a run
-may touch*, and it puts every one of them back.**
+That is the point of them — nothing else in the repo exercises the wire or the
+deployed rules — and it is the reason for every constraint below. Read the
+whole thing as one rule: **the run is a reader with ten permitted writes, each
+named in *What a run may touch*, and it puts back every one it can.**
 
-The seeded alternative is [`docs/ui-audit/tools/`](ui-audit/tools/), which
-renders a demo account against the emulators and is the right instrument for
-pixel evidence across pages, widths and themes. It has no real session, no
-provider key and no deployed rules, so it cannot answer anything the journeys
-below ask. What the emulator suite itself cannot see is in
+**The emulators, on port 4300: journeys 58 to 66.** A journey that needs two
+accounts signed in — one inviting, the other joining and reading the first
+one's rows through the rules — cannot run on production without a second real
+person's records and a real mail for every invite. `npm run start:emulators`
+serves the committed `emulators` build configuration against the local
+Firebase emulators, with two seeded demo accounts and the real invite callable
+in the functions emulator, and nothing real is read or written there
+([Emulator journeys](#emulator-journeys)). What that venue cannot show — the
+deployed rules, the callable's public invoker, a mail that arrives — is what
+journey 67 is for, once, on production after the merge.
+
+The screenshot harness under [`docs/ui-audit/tools/`](ui-audit/tools/)
+renders the same demo project against the emulators and is the right
+instrument for pixel evidence across pages, widths and themes. What the
+emulator suite itself cannot see is in
 [emulator-blind-spots.md](emulator-blind-spots.md).
 
 ## Before every run
@@ -94,7 +110,11 @@ is defined on this branch and `undefined` on `ba5950e`, and on
 `/transactions` below 768px, where the list renders rows rather than its
 table, `document.querySelector('app-transaction-row button.row-activate') !== null`
 is `true`, where `ba5950e`'s row is a `role="button"` wrapper with no button
-of its own. For another branch it is whatever that branch added. A
+of its own. For the household surfaces it is the served catalog and the
+navigation: `(await fetch('/assets/i18n/en.json').then(r => r.json())).household`
+is defined wherever they are served and `undefined` on `60deca49`, and the
+sidebar lists **Household** between Reports and AI. For another branch it is
+whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
 
@@ -115,7 +135,9 @@ for (const entry of performance.getEntriesByType('resource')) {
 Expect exactly `["home-accounter"]`. A demo project id, or none at all, means
 the tab is not showing what you think it is — in either direction, and a demo
 screen read as production is the more expensive mistake. Restart the server
-rather than reading on.
+rather than reading on. In the emulator venue the expectation turns over:
+exactly `["demo-home-account"]`, and no loaded script carrying
+`home-accounter` at all ([Emulator journeys](#emulator-journeys)).
 
 **3. Judge the console by the difference, not by its contents.** The
 share-target service worker re-registers on every web boot
@@ -270,10 +292,12 @@ only the difference counts.
 
 ## What a run may touch
 
-Eight writes are authorised — seven on the account, one on the device only.
-Each is put back before the run ends, and the restore is *confirmed* — on
-screen, or by a server read where nothing on screen shows it — not assumed.
-The other nine rows write
+Ten writes are authorised — nine in the live project, one on the device only.
+Each is put back before the run ends — where part of one cannot be, its row
+says what stays — and the restore is *confirmed* — on screen, or by a server
+read where nothing on screen shows it — not assumed. Two of the ten are
+journey 67's, and one of those, the invite, is made **only on the user's
+explicit word**, like journey 19's cache writes. The other nine rows write
 nothing at all and are listed with them anyway: four still cost the account a
 real provider call, two not even that, one leaves a notification standing in
 the operating system rather than anything on the account, and two leave a
@@ -299,6 +323,8 @@ leaves behind is worth stating rather than leaving to be inferred.
 | Importing a scanned receipt (journeys 46 and 50) | Everything *Scanning a receipt* writes, then at **Import**: one transaction document, one storage object under its id, one import-history record naming it, the `spent` of any budget on its category, and the category memory's entry for the receipt's merchant — with the tag memory's beside it where the row was offered a tag | Three restores, each confirmed by a read: the row deleted through the list, which removes its receipt object with it and recomputes the budget, and a search for its description read back empty; the import-history record the Import wrote deleted on `/import/history` by its own **Delete**, and the list read back without it; and every memory entry the Import added or changed — the category memory's for the merchant, and the tag memory's where one was written — through the two memory services, reached from the wizard before the Import. An entry the Import added is removed with `forget(merchantKey)`, and a server read (`exportAll()`) finds the key gone. An entry the merchant already had is put back with `restore(entry)` from a server read taken before the Import — the category memory's `categoryId`, `sampleDescription` and `count`, the tag memory's `tags`, `suppressed`, `sampleDescription` and `count` — and a second server read finds each of those fields as it was first read. Its `updatedAt` is not put back: the write stamps it with the time of the restore. Nor are a budget's fields: the delete's recompute writes `spent` and `spentPeriod` afresh on every active budget on the row's category and stamps its `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run. Those stamps, and such a refreshed figure, are what a run leaves changed. Journey 46 has both scripts |
 | Importing the two-row CSV on `/data` (journey 53) | Two transaction documents, and the `spent` of any budget on the expense row's category: the door writes the rows without a recompute each, then recomputes `spent` and `spentPeriod` once on every active budget on that category and stamps its `updatedAt`; the income row moves no budget. No provider call, no import record and no memory | Both deleted through the list, and a search for `e2e-53` read back empty. Deleting the expense row recomputes the same budgets, writing `spent` and `spentPeriod` afresh and stamping `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
 | Exporting the transactions CSV (journey 53) | Nothing on the account. One server-only read of every transaction, and one CSV file in this browser profile's download folder holding them all in clear text | The file is deleted at the end of the run |
+| Forming and dissolving a household (journey 67) | One commit forming it: a `households/{id}` document, the account's member document under it, and `householdId` on the user document. When analytics consent is on, one `household_action` event for `create` and one for `dissolve` | Dissolved on `/household` with its typed confirmation, which deletes the household, the member document and any pending invite and removes `householdId` in its last commit; the page reloaded to the setup, and the user document read back without `householdId` (journey 67 has the script). The dissolve is the restore, so a run stopped before it leaves a live household: finish it from `/household` before anything else |
+| Inviting by email (journey 67, **only when the user names a recipient address at that moment**) | Through the invite callable: one lookup charged to the account's `inviteQuotas` document. For an address that resolves, one `householdInvites/{household}_{invitee}` document, written with `mail: 'failed'` and corrected to `sent` or `held` once the send settles; one count on the recipient's `inviteQuotas` document and one on `mailBudget/daily`, both charged before the send — so a send that fails or runs past its deadline spends them too, while a held mail, or an inviter with no verified email, charges neither; and one real mail from the operator's sender to that address. When analytics consent is on, one `household_action` event for `invite`. An address with no account spends the lookup and writes nothing else | The invite is withdrawn by the dissolve, which deletes the owner's sent invites first; the pending list is read empty after it. The recipient is asked not to accept. One who accepts anyway reads this account's transactions, categories, budgets and goals until the dissolve, which deletes their member document; the `householdId` pointer on their own profile stays until they open `/household`, which clears it, and the run cannot put it back. The counters are not put back — no client may write them, and each lapses on its own, 24 hours after it opened for the two quotas, at the end of the UTC day for the budget. The mail cannot be recalled, which is why it goes only to an address the user names |
 
 The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
@@ -324,6 +350,8 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
+Journeys 58 to 66 are not in this table: they write freely, but only into the
+local emulators, and the [teardown](#teardown) takes all of it with them.
 
 **Clear the recap's device state at the end**, from the page console:
 
@@ -547,6 +575,182 @@ const input = document.querySelector('app-data-management input[type=file]');
 input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
 ```
 
+## Emulator journeys
+
+Journeys 58 to 66 need two accounts: Alex forms a household and invites Sam,
+Sam joins and reads Alex's rows through the rules, and the membership is left,
+removed, declined and dissolved. They run against the local emulators, served
+at **`http://localhost:4300`**, with the real invite callable in the functions
+emulator and a mail server that is not there
+([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
+Nothing they write leaves this machine, so none of it is in *What a run may
+touch*: the writes are the journeys' to make, and they go with the emulators
+at the end. [household.md](household.md) describes what they drive.
+
+### Pre-flight
+
+1. **The ports are free.** `npm run smoke` takes the same ports, and a
+   standing `emulators:start` is invisible to `pgrep -f emulators:exec`, so
+   both checks run, and both print nothing:
+
+   ```bash
+   pgrep -f emulators:exec
+   lsof -nP -iTCP:8080 -iTCP:9099 -iTCP:9199 -iTCP:5001 -iTCP:4400 -iTCP:4500 -iTCP:4300 -sTCP:LISTEN
+   ```
+
+2. **The emulator secrets exist.** `functions/.secret.local` (gitignored)
+   gives the five feedback secrets emulator-only values: the feedback trigger
+   declares all five and the invite callable four of them, and the functions
+   emulator loads neither while a secret either declares has no value. Its
+   SMTP host is `127.0.0.1` and its port `1`, where nothing listens, so every
+   send fails fast and no mail leaves. Read the key names, never the values:
+
+   ```bash
+   grep -o '^[A-Z_]*=' functions/.secret.local
+   ```
+
+   `FEEDBACK_SMTP_HOST=`, `FEEDBACK_SMTP_PORT=`, `FEEDBACK_SMTP_USER=`,
+   `FEEDBACK_SMTP_PASS=` and `FEEDBACK_EMAIL_TO=`. The host and the port are
+   not secrets, and the promise that no mail leaves rests on them, so read
+   those two lines whole:
+
+   ```bash
+   grep -E '^FEEDBACK_SMTP_(HOST|PORT)=' functions/.secret.local
+   ```
+
+   It prints exactly `FEEDBACK_SMTP_HOST=127.0.0.1` and
+   `FEEDBACK_SMTP_PORT=1`, with no quotes. Anything else — the Ethereal recipe
+   in [feedback.md](feedback.md) leaves a real server there — stops the run
+   before journey 58.
+
+3. **The functions are built.** The emulator loads `functions/lib`:
+   `npm --prefix functions run build`.
+
+4. **The emulators run, functions included**, in the background, with their
+   log kept outside the repository:
+
+   ```bash
+   npx firebase emulators:start --only auth,firestore,storage,functions \
+     --project demo-home-account > <scratch>/emulators.log 2>&1 &
+   ```
+
+   Wait for the log to say every emulator is ready.
+
+5. **The app is served from the checkout under test.** `npm run
+   start:emulators`, which serves on port 4300 — in a second terminal, or as a
+   background job like the emulators — then check 1 above:
+   `lsof -a -p <pid> -d cwd` names this checkout.
+
+6. **The served bundle is the demo one.** Check 2's script, run at
+   `http://localhost:4300`, returns exactly `["demo-home-account"]`, and no
+   script the page loaded names the live project:
+
+   ```js
+   const live = [];
+   for (const entry of performance.getEntriesByType('resource')) {
+     if (!entry.name.endsWith('.js')) continue;
+     if ((await fetch(entry.name).then(r => r.text())).includes('home-accounter')) live.push(entry.name);
+   }
+   live;  // []
+   ```
+
+7. **The accounts are seeded.**
+
+   ```bash
+   node docs/ui-audit/tools/seed-household.mjs <scratch>/sessions.json
+   ```
+
+   It prints each account's uid and writes the two session records, `alex` and
+   `sam`, to a file only its owner can read. The path must be outside the
+   repository, and the script refuses one inside it: the records carry live
+   emulator tokens.
+
+8. **The origin starts clean.** At `http://localhost:4300`, unregister the
+   service worker and delete the caches and every IndexedDB database, then
+   reload:
+
+   ```js
+   for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+   for (const k of await caches.keys()) await caches.delete(k);
+   const names = (await indexedDB.databases()).map(d => d.name);
+   names.forEach(name => indexedDB.deleteDatabase(name));
+   names;
+   ```
+
+   Read the list before it goes. The first run found a Firestore cache named
+   for `home-accounter` on this origin, left by an earlier serve on the port —
+   a production cache under a demo session, the mix check 2 exists to prevent.
+
+### Signing in a seeded account
+
+The run does not sign in. It writes the account's session record where the
+Auth SDK keeps it, at the page's **exact** origin: `http://localhost:4300`,
+never `http://127.0.0.1:4300`, which is another origin with its own storage.
+Paste the record inline from the seed's file, start the write, and read its
+flag in a **second** call — a pane script that awaits the IndexedDB
+transaction can hang:
+
+```js
+const record = /* sessions.json's "alex" or "sam" object, pasted whole */;
+window.__session = 'writing';
+const open = indexedDB.open('firebaseLocalStorageDb', 1);
+open.onupgradeneeded = () =>
+  open.result.createObjectStore('firebaseLocalStorage', { keyPath: 'fbase_key' });
+open.onsuccess = () => {
+  const tx = open.result.transaction('firebaseLocalStorage', 'readwrite');
+  tx.objectStore('firebaseLocalStorage').put(record);
+  tx.oncomplete = () => { window.__session = 'written'; };
+  tx.onerror = () => { window.__session = 'failed'; };
+};
+'started';
+```
+
+Then `window.__session` reads `'written'`. Navigate to `/household`
+**twice**: the Auth SDK's first read can race the write, and the second full
+load picks the record up. Swapping accounts is the same write with the other
+record. The two accounts share this origin's Firestore cache, which journey 64
+notes where it matters. A seeded account has not finished the welcome, so its
+first boot opens it: **Skip** it, a write to the emulators only.
+
+### In a hidden pane
+
+Everything in [Panes and viewports](#panes-and-viewports) applies, and these
+journeys are the likeliest to be driven with the pane out of view. Angular
+does not paint there, so after each action drain the microtasks and render
+what the model holds before reading the page:
+
+```js
+for (let i = 0; i < 20; i++) await Promise.resolve();
+ng.applyChanges(ng.getComponent(document.querySelector('app-household')));
+```
+
+State only, diagnostic-grade, and never a timer in a pane script. Inline every
+probe in the call that uses it: a helper left on `window` does not survive a
+navigation.
+
+### Reading past the rules
+
+The journeys read back — and in two places write — documents past the rules,
+through the Firestore emulator's REST API with the owner token. The household
+id is Alex's profile's `householdId` while the household stands.
+
+```bash
+FS='http://127.0.0.1:8080/v1/projects/demo-home-account/databases/(default)/documents'
+curl -s -H 'Authorization: Bearer owner' "$FS/users/<uid>"
+curl -s -H 'Authorization: Bearer owner' "$FS/households/<hid>"
+curl -s -H 'Authorization: Bearer owner' "$FS/households/<hid>/members"
+curl -s -H 'Authorization: Bearer owner' "$FS/householdInvites"
+```
+
+A document that is gone answers 404; a collection with nothing in it answers
+`{}`.
+
+### Teardown
+
+Stop the 4300 server and the emulators — nothing is imported or exported, so
+they keep nothing — delete the sessions file, and run the ports check again:
+it prints nothing.
+
 ## The journeys
 
 | # | Journey | What only a real browser can show | Screenshots |
@@ -608,6 +812,16 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 55 | The rate line tells the time | The time a table was fetched, in the account's own clock format | `55-rate-line.png` |
 | 56 | Progress indicators and the row button | Accessible names in the rendered tree, and a row's keyboard and pointer paths at phone width | `56-row-focus.png` |
 | 57 | The colour pairs where they are painted | Computed colours against the backgrounds actually behind them, in both themes | `57-pairs-dark.png`, `57-pairs-light.png` |
+| 58 | Boot as Alex (emulators) | A seeded session on the committed emulator serve, landing on the household setup with its navigation in place | `58-setup.png` |
+| 59 | Create and rename (emulators) | A household formed through the rules in one commit, its figures against the account's own Transactions page, and the longest name the rules take | `59-member-view.png`, `59-renamed.png` |
+| 60 | Invite (emulators) | The real callable in its region answering with its reasons, the mail that cannot go, and the inviter's cap | `60-pending.png`, `60-refused.png`, `60-cap.png` |
+| 61 | Join as Sam (emulators) | A second account joining through the disclosure and reading the first one's rows through the rules, in its own currency, with nothing to press | `61-disclosure.png`, `61-joined.png` |
+| 62 | Plans (emulators) | Every member's budgets and goals as cards with no control left in them | `62-plans.png` |
+| 63 | Widths and themes (emulators) | The household page at phone and desktop width in both themes with the longest names the rules take, and the period selector's segments and strip at 375px | `63-phone-light.png`, `63-phone-dark.png`, `63-desktop-dark.png`, `63-period-375.png` |
+| 64 | Leave, rejoin, remove, decline (emulators) | Each way a membership ends, seen from both accounts and read back past the rules | `64-left.png`, `64-removed.png`, `64-held.png` |
+| 65 | Dissolve (emulators) | The typed confirmation, and nothing of the household left in the database | `65-typed-confirm.png`, `65-setup.png` |
+| 66 | Offline and regression (emulators) | The offline note and refusal, and the personal pages unchanged beside the household | `66-offline.png` |
+| 67 | A household formed and dissolved live (production, after the merge) | The deployed rules admitting a real household, the deployed callable answering in its region, and the account left as it was | `67-member-view.png`, `67-setup.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1399,11 +1613,12 @@ Neither mechanism the issue offered reaches them:
   every request and demotes the app's own online signal with it, which is not
   the isolated failure this rung needs.
 - **The seeded harness under [`docs/ui-audit/tools/`](ui-audit/tools/).** It
-  can stub `fetch` before the service is constructed, but it renders a demo
-  account against the emulators, and only after `.vscode/environment.ts` is
-  swapped and an uncommitted `app.config.ts` edit points the app at them.
-  There is no real session and no deployed rules behind it — which is the
-  whole reason this protocol exists beside it.
+  can stub `fetch` before the service is constructed, and since
+  [ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)
+  the committed `emulators` build configuration points the app at the
+  emulators with no hand edit. But it renders a demo account: there is no real
+  session and no deployed rules behind it — which is the whole reason this
+  protocol's production venue exists beside it.
 
 The app offers no seam of its own either: the endpoint is a module constant,
 `fetch` is the global, there is no environment field naming it and no service
@@ -2923,6 +3138,304 @@ non-text graphic ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixe
 
 Two shots: the pairs in dark, and in light.
 
+### 58. Boot as Alex
+
+**Emulators.** [Pre-flight](#pre-flight) done, and Alex's session injected
+([Signing in a seeded account](#signing-in-a-seeded-account)). `/household`, at
+a desktop width, where the sidebar renders.
+
+**Pass — the setup.** The page shows *Start a household* and *Invites for
+you*, with no invites. The sidebar's **Household** link carries
+`aria-current="page"`, and Settings shows the **Household** link card — an
+anchor, so Tab reaches it. No new `error`-level console entries across the
+second navigation.
+
+One shot: the setup.
+
+### 59. Create and rename
+
+**Emulators**, as Alex. *Start a household* named `Chen home`.
+
+**Pass — the member view.** Alex is listed as **Owner**, and *Income and
+spending* for this month equals what `/transactions` totals for the same
+month — Alex is the only member, so the household is his figures exactly.
+
+Rename it, through *Rename the household*, to a name of exactly **60
+characters**, the most the rules take. Journey 63 reads it at phone width.
+
+**Pass — the name.** The page header shows all 60 characters, wrapping rather
+than cut, and the field takes no 61st.
+
+Two shots: the member view, and the renamed header.
+
+### 60. Invite
+
+**Emulators**, as Alex. Keep the emulator log open beside the pane.
+
+1. **Invite Sam**, `sam.lee@example.com`. **Pass:** the snackbar says the
+   invite could not be emailed but is waiting in the app, and the pending list
+   shows Sam's address, its expiry and *Couldn't be emailed* (within its first
+   40 seconds it may read *Sending the email…*). The network log shows a POST
+   to `/demo-home-account/asia-east1/inviteToHousehold` on port 5001 — the
+   region in the path is the point. The emulator log shows the send refused at
+   `127.0.0.1:1`, and neither `Unable to access secret` nor `No value found
+   for secret parameter`.
+2. **Revoke it.** **Pass:** gone from the pending list, and
+   `$FS/householdInvites` answers `{}`. Invite Sam again.
+3. **The refusals.** An address no account uses answers *No account uses that
+   email address…*; Alex's own, `alex.chen@example.com`, answers *You can't
+   invite yourself.* The first spends one of Alex's ten lookups; the second is
+   refused before the count.
+4. **The cap, last.** Give Alex a spent quota past the rules, with a window
+   that opens now — a count with no `windowStart` opens a fresh window, by
+   design:
+
+   ```bash
+   curl -s -X PATCH -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+     "$FS/inviteQuotas/<alex-uid>" \
+     -d "{\"fields\":{\"count\":{\"integerValue\":\"10\"},\"windowStart\":{\"timestampValue\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}"
+   ```
+
+   Invite any address but Alex's own. **Pass:** *You've sent as many invites
+   as allowed for now. Try again later.* Then delete the document, so the
+   journeys after this one can invite:
+   `curl -s -X DELETE -H 'Authorization: Bearer owner' "$FS/inviteQuotas/<alex-uid>"`.
+
+Three shots: the pending invite, a refusal, and the cap message.
+
+### 61. Join as Sam
+
+**Emulators.** Swap to Sam's session, and `/household`.
+
+**Pass — the invite.** *Invites for you* lists Alex's, *Invited by Alex
+Chen* and *Sent from alex.chen@example.com* — the address Alex's provider
+verified — with its expiry. **Accept** opens the confirmation, which names
+that address and the household, and says that everyone, and anyone who joins
+later, will see all Sam's transactions, past and future, and that the
+members' devices receive his receipt photos' links, *which keep opening the
+photos after you leave, until you delete the receipt*. **Join** leads to the
+member view, with focus on its first heading, *Income and spending*, and the
+message names the household as it is called now.
+
+**Pass — two members' rows, in Sam's currency.** Sam's base is JPY. Every row
+carries its member's chip on its third line. Alex's USD rows read in yen, and
+Alex's line counts his unstamped ¥3,200 *Board game café* row as ¥3,200 — as
+stored it holds a USD snapshot, which read as yen would be about ¥22. Alex's
+custom category, *Board games*, shows by name.
+
+**Pass — nothing to press.** No row is a control:
+
+```js
+const list = document.querySelector('app-household-overview');
+[list.querySelectorAll('app-transaction-row button.row-activate').length,
+ list.querySelectorAll('app-transaction-row button, app-transaction-row a[href]').length];  // [0, 0]
+```
+
+No row shows a receipt icon. The seed's rows carry no receipt, so the ledger
+spec, not this journey, is what pins the stripping.
+
+Two shots: the confirmation, and the joined view.
+
+### 62. Plans
+
+**Emulators**, as Sam. *Budgets and goals*.
+
+**Pass — read-only cards.** Both members' budgets and goals are shown, under
+each member's name, and none of them holds a control that does anything:
+
+```js
+const plans = document.querySelector('app-household-plans');
+[...plans.querySelectorAll('button, a[href], input')].filter(el => !el.disabled).length;  // 0
+```
+
+No budget menu, no *View transactions*, no *contribute*, and every checklist
+box disabled. The headings nest: the section's `h2`, a member's `h3`, a card's
+`h4`. A budget whose `spent` belongs to another period reads 0 with
+*…hasn't been updated yet, so it shows 0 here* — every budget `seed.mjs`
+writes, which carries no `spentPeriod`; the seed's household budget is current
+and shows its figure.
+
+One shot: the section.
+
+### 63. Widths and themes
+
+**Emulators**, as Sam, on the member view. Give Sam a display name of 96
+characters with no space in it, past the rules, so the longest name the page
+meets is an unbreakable one:
+
+```bash
+curl -s -X PATCH -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+  "$FS/households/<hid>/members/<sam-uid>?updateMask.fieldPaths=displayName" \
+  -d "{\"fields\":{\"displayName\":{\"stringValue\":\"$(printf 'Samuel%.0s' {1..16})\"}}}"
+```
+
+At **375px** and at **1024px or wider**, each in light and in dark — switch
+the theme on the root element as journey 19 does, and finish the page's
+transitions before reading a colour in a hidden pane.
+
+**Pass — nothing overflows.** Nothing scrolls sideways
+(`const m = document.querySelector('.main-container'); m.scrollWidth <= m.clientWidth`),
+nothing on the page ends in an ellipsis, and journey 59's 60-character name
+and Sam's 96 characters wrap inside the header, the member lines, the chips
+and the member list.
+
+**Pass — the period selector's checked segment carries no empty strip.** At
+375px, on `/household` and again on `/dashboard`, every segment of the period
+selector is padded alike, checked or not:
+
+```js
+[...document.querySelectorAll('app-period-selector mat-button-toggle')].map(segment => {
+  const button = segment.querySelector('.mat-button-toggle-button');
+  const label = segment.querySelector('.mat-button-toggle-label-content');
+  const inset = Math.round(label.getBoundingClientRect().left - button.getBoundingClientRect().left);
+  return `${getComputedStyle(button).paddingInlineStart} ${inset}`
+    + (segment.classList.contains('mat-button-toggle-checked') ? ' checked' : '');
+});
+```
+
+Every entry reads the same, bar the `checked` mark. The first run found a
+**30px** empty strip on the checked segment on both pages — Material's space
+for a checkmark the selector had hidden with CSS, journey 43's class. The
+selector asks Material not to reserve it (`hideSingleSelectionIndicator`).
+
+**Pass — no scrollbar under the household's period selector.** At 375px:
+
+```js
+const strip = document.querySelector('app-household-overview .period-toggle-scroller');
+[strip.scrollWidth <= strip.clientWidth, strip.offsetHeight === strip.clientHeight];  // [true, true]
+```
+
+The first run measured a strip narrower than its segments by less than a
+pixel, which scrolled and drew a horizontal scrollbar under them: an
+`offsetHeight` of 64 over a `clientHeight` of 56.
+
+Four shots: phone in light, phone in dark, desktop in dark, and the period
+selector at 375px.
+
+### 64. Leave, rejoin, remove, decline
+
+**Emulators.**
+
+1. **Sam leaves**: *Leave household*, confirmed. **Pass:** Sam's page returns
+   to the setup; Sam's member document answers 404 and his profile carries no
+   `householdId`; swapped to Alex, the member list no longer names him.
+2. **Alex invites Sam again, and Sam accepts again.** **Pass:** both are
+   members, as in journey 61.
+3. **Alex removes Sam.** The confirmation names him. **Pass:** Alex's list
+   drops him. Swapped to Sam, the page shows the setup, and his profile reads
+   back with no `householdId`. There is no notice here, and that is right: the
+   removal landed while Alex's session was the one loaded, so Sam's page never
+   saw the membership live and takes the path for one that ended while no page
+   listened — the setup, and the pointer cleared quietly. The notice for a
+   removal seen live is pinned by `household.service.smoke.spec.ts`.
+   With the keyboard, confirm the removal from Sam's *Remove*: once his row
+   goes, focus is on the *Members* heading (no other member is left to
+   remove), not on the page itself — `document.activeElement` is
+   `#household-members-title`.
+4. **Alex invites Sam again, and Sam declines.** If Sam has had three invite
+   mails charged in the last 24 hours — journey 60's two and step 2's — this
+   invite's entry in Alex's pending list reads *Not emailed: the daily email
+   limit was reached*: `held`, the recipient cap. Every send in this venue
+   fails, but each is charged before it is sent. Before declining, tell the
+   app it is offline (`window.dispatchEvent(new Event('offline'))`, as in
+   journey 66): *Accept* is refused with *You're offline. Household changes
+   need a connection.* before any dialog opens; then
+   `window.dispatchEvent(new Event('online'))`. **Pass:** after the decline
+   the invite is gone for both, and `$FS/householdInvites` answers `{}`. With
+   Decline pressed from the keyboard, focus is on the *Invites for you*
+   heading once the invite's row goes.
+
+Three shots: the list after the leave, Sam's setup after the removal, and the
+held invite.
+
+### 65. Dissolve
+
+**Emulators**, as Alex. Invite Sam once more, so there is a pending invite for
+the dissolve to withdraw.
+
+*Dissolve household* → the warning → **Continue** → the final confirmation.
+**Dissolve** stays disabled until `DELETE` is typed.
+
+**Pass — nothing left.** The page returns to the setup. Past the rules, the
+household answers 404, its members collection `{}`, `householdInvites` `{}`,
+and neither profile carries `householdId`.
+
+Two shots: the typed confirmation, and the setup after it.
+
+### 66. Offline and regression
+
+**Emulators**, as Alex, on the setup. The pane cannot take the network away,
+so tell the app it has gone: `window.dispatchEvent(new Event('offline'))` —
+the event the app's online signal is built from. Diagnostic-grade, and
+recorded as such.
+
+**Pass — offline.** The page shows *You're offline. What's shown may be out
+of date, and household changes need a connection.* *Create household* is
+refused with *You're offline. Household changes need a connection.*, and
+nothing is written. `window.dispatchEvent(new Event('online'))` clears the
+note, and the refusal with it: *Create household* named `E2E online` shows
+no offline message, *Your household is ready.* follows and the member view
+renders. Dissolve it through the typed confirmation, back to the setup —
+both writes to the emulators only.
+
+**Pass — the rest of the app.** Count the `error`-level console entries, then
+visit Dashboard, Transactions, Budgets, Reports and Household through the
+app's own links. Each renders Alex's own figures, and no new `error`-level
+entry appears.
+
+One shot: the offline note over the setup.
+
+### 67. A household formed and dissolved live
+
+**Production, once, after the merge** — when both deploy jobs have finished
+and the callable's invoker binding reads back public
+([household.md](household.md#operator-runbook)). The main checkout on
+`main`, `npm start`, and checks 1 to 3 before anything: check 2 expects
+`["home-accounter"]`. Two writes of *What a run may touch* are this
+journey's, and the invite is made only if the user names a recipient address
+at that moment.
+
+Before anything else, note this month's row count on `/transactions` and the
+dashboard's totals.
+
+1. **`/household` shows the setup.**
+2. **Create `E2E household`.** **Pass:** the member view, with *Income and
+   spending* for this month equal to what `/transactions` totals for it.
+3. **Invite — only to an address the user names now**, and ask that person
+   not to accept: a member reads this account's transactions, categories,
+   budgets and goals until the dissolve. **Pass:** the invite stands pending
+   as *Emailed*, and the mail arrives in that inbox. Any answer the callable
+   gives with a reason — *No account uses that email address* included —
+   proves it is deployed, public and in `asia-east1`: the client calls that
+   region and no other, and a function that is missing there, private, or
+   deployed elsewhere answers with no reason at all, which the page shows as
+   the generic *Something went wrong* — with a CORS error in the console for
+   a private one ([household.md](household.md#operator-runbook)). If the
+   network log captures the call, its URL is
+   `https://asia-east1-home-accounter.cloudfunctions.net/inviteToHousehold`;
+   if it does not, that proves nothing, because a request to a third-party
+   host can be missing from the log ([Panes and viewports](#panes-and-viewports)).
+4. **Dissolve**, with its typed confirmation. **Pass:** the setup, and the
+   pending invite gone.
+5. **Reload.** **Pass:** the setup again, and the user document carries no
+   `householdId`:
+
+   ```js
+   const household = ng.getComponent(document.querySelector('app-household')).householdService;
+   const profile = await household.firestore.getDocument(`users/${household.auth.userId()}`);
+   'householdId' in (profile ?? {});  // false
+   ```
+
+   `householdService`, `firestore` and `auth` are private — TypeScript's word,
+   which the running page does not enforce, as journey 14 says.
+6. **Nothing else moved.** This month's row count on `/transactions` and the
+   dashboard's totals read what they read before step 1.
+
+Anything the run left behind is removed through the page, and its absence
+read back.
+
+Two shots: the member view, and the setup after the reload.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -2949,6 +3462,10 @@ data:
 - a real preference write landing on the real user document, read back through
   the deployed rules.
 
+On the emulators it keeps what needs two accounts at once: one inviting,
+removing and dissolving, the other joining and reading the first one's rows
+through the rules, with the real invite callable between them.
+
 A journey that could be a spec should be deleted from here and written as one.
 
 ## When it runs
@@ -2963,3 +3480,9 @@ surface, which is much cheaper than a fix layered on afterwards.
 second run is also the one that must end with every restore confirmed and the
 recap's `localStorage` keys cleared — that is the state the user's browser is
 left in.
+
+The emulator journeys, 58 to 66, follow the same rule on a branch that touches
+a two-account surface, each run from freshly seeded emulators and ending with
+the [teardown](#teardown). **Journey 67 runs once**, on production, after the
+merge — when the deploys it checks have finished — because what it proves is
+the deployed rules and the deployed callable, which exist only then.

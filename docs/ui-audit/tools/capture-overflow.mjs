@@ -21,8 +21,8 @@
 //     in headless Chromium. env() cannot be faked, which is why the tokens
 //     exist in that form at all.
 //
-// Needs `npm start` on :4200 and the Firebase emulators running, same as the
-// other scripts here. Usage: node capture-overflow.mjs <label>
+// Needs the Firebase emulators running and `npx ng serve --configuration
+// emulators` on :4200 (see README.md). Usage: node capture-overflow.mjs <label>
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

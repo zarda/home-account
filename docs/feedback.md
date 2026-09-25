@@ -105,6 +105,27 @@ account; the proportionate guards, if ever needed, are a per-user rate limit
 and then digest batching — a model-based content filter was rejected in
 ADR 0047.
 
+## The sender is shared
+
+The SMTP secrets serve two functions. The household invite callable,
+`inviteToHousehold`, binds the four `FEEDBACK_SMTP_*` secrets — not
+`FEEDBACK_EMAIL_TO`, since it mails the invitee — and sends from
+`FEEDBACK_SMTP_USER`, the same Gmail account this trigger sends from
+([household.md](household.md),
+[ADR 0153](ADR/0153-an-invite-is-an-owners-callable-lookup-by-email-capped-and-its-answers-are-plain.md)).
+
+That makes invite volume this pipeline's risk too. If invite abuse got the
+sender suspended, feedback mail would stop with it, and the stored records
+would be the only place feedback still arrived. The callable bounds it —
+three invite mails per recipient in 24 hours, 100 per UTC day in all, and
+nothing an owner typed ever reaches a mail — but the operator's watch item is
+the account's **Gmail daily sending limit**. The Sent folder shows every
+invite beside every feedback copy, and a run of invites the app marks as not
+emailed (`mail: 'held'` or `'failed'`) is the first sign of trouble.
+
+Rotating any of the four SMTP secrets affects both functions. The re-pin
+below is one full `--only functions` deploy either way.
+
 ## Operator runbook
 
 One-time setup, in order:
@@ -213,4 +234,12 @@ Everything below was hit in sequence on the first production deploy
   recipe: put the five values in `functions/.secret.local` (gitignored),
   point them at an [Ethereal](https://ethereal.email) test account, build
   the workspace, then `firebase emulators:start --only auth,firestore,functions`
-  and write a feedback doc; the mail lands in the Ethereal mailbox.
+  and write a feedback doc; the mail lands in the Ethereal mailbox. Point the
+  file back at `127.0.0.1` port `1` before running the household journeys,
+  whose pre-flight stops on anything else.
+- The same file serves the invite callable, and the functions emulator
+  refuses to load either function while any secret it declares has no value.
+  The household journeys keep it pointed at `127.0.0.1` port `1`, where
+  nothing listens, so every send fails fast and no mail leaves
+  ([e2e.md](e2e.md), emulator journeys). `functions.ignore` lists `*.local`,
+  so the file never rides a deploy's upload.

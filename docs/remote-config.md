@@ -38,9 +38,14 @@ follow:
 
 ## How it works
 
-- `provideRemoteConfig` is registered in `app.config.ts`; all fetch
-  policy, in-app defaults, and typed accessors live in
-  `RemoteConfigService`.
+- `provideRemoteConfig` is registered in `app.config.ts`, through
+  `provideAppRemoteConfig()`; all fetch policy, in-app defaults, and typed
+  accessors live in `RemoteConfigService`.
+- The `emulators` build registers nothing. Remote Config has no emulator,
+  and that build's demo API key would be refused by the live Installations
+  and Remote Config endpoints on every start, so the service's optional
+  inject comes back null and the in-app defaults stay in effect
+  ([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
 - On first injection the service sets the in-app defaults, then runs
   `fetchAndActivate()` once. Values are exposed as **computed signals**
   (`freeTierReceiptImageLimit()`, `premiumReceiptImageLimit()`), so

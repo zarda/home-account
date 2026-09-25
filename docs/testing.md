@@ -16,12 +16,40 @@ replaced by a placeholder and rendered by nothing else.
 |---|---|---|---|
 | Unit | `npm run test:ci` | Class behaviour, signals, computeds, guards | Anything a template decides, and anything Firestore rules decide |
 | Smoke | `npm run smoke` | The same services against the real emulators, including rules | Anything CI measures — `test:ci` **excludes** `*.smoke.spec.ts`, so smoke coverage never counts |
-| Driven browser | `docs/e2e.md` | The app as shipped, signed in, at a real viewport | Nothing automatic; it is a written protocol, not a suite |
+| Driven browser | `docs/e2e.md` | The app as shipped, signed in, at a real viewport — against production, or against the emulators where a journey needs two accounts | Nothing automatic; it is a written protocol, not a suite |
 
 A file is in exactly one tier. A `*.smoke.spec.ts` needs the emulators and is
 excluded from `test:ci`, so **a line covered only by a smoke spec reads as
 uncovered in the coverage report**. That is a reporting fact, not a gap — but
 it means a coverage target can never be met by writing smoke specs.
+
+## More than one account at once
+
+Anything shared between accounts — the household is the first — needs two or
+three signed in at the same time, and each tier has its own shape for that.
+
+- **Rules: three named apps.** A rules smoke case that needs an owner, a
+  member and an outsider signs each into its own `initializeApp(…, name)`
+  against the Auth emulator, the shape `feedback.service.smoke.spec.ts` uses.
+  The single app the older rules cases share signs its anonymous stranger out,
+  and an anonymous user cannot sign back in, so it cannot hold three at once.
+  The three clients in `firestore-rules.smoke.spec.ts`'s household matrix use
+  **Firestore Lite** (`@angular/fire/firestore/lite`): a full client keeps a
+  listen and a write stream open, Chrome allows six connections per host, and
+  three full clients leave the admin REST calls waiting tens of seconds for a
+  free one. The rules judge a Lite request exactly as they judge a full
+  client's. Every case starts from pointer-free profiles and fresh household
+  ids, because specs run in random order.
+- **Services: two full stacks.** A service smoke spec builds the second
+  account's services in a child `EnvironmentInjector`, as
+  `transaction-receipts.smoke.spec.ts` does. Two full clients is the most one
+  file holds, for the same connection reason.
+- **The browser: the emulator serve.** `npm run start:emulators` serves the
+  app's committed `emulators` configuration on port 4300 against the local
+  emulators, and `node docs/ui-audit/tools/seed-household.mjs <file outside the
+  repo>` seeds two accounts and writes their session records. The driven
+  journeys that need both are [e2e.md](e2e.md)'s 58 to 66
+  ([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
 
 ## The stub-template rule
 

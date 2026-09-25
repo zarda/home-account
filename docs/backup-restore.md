@@ -224,3 +224,15 @@ safe; the service stamps each event with *now* and with the device doing the
 restoring, so a restored log would say every historical sign-in happened during
 the restore; and a file restored into a second account would furnish that
 account with sign-ins it never had.
+
+**The household membership** is not in the file either, and it is not one of
+those kinds: the Data hub names it as a membership rather than a record kind
+([data.md](data.md)), so the three above stay the whole list the dialog must
+name. The file could not carry it usefully in any case. A household belongs to
+every account in it, not to the one being backed up; the rules admit a member
+only through a live invite of the household's current generation, so a
+membership restored from a file — into this account after a dissolve, or into
+another account altogether — would be refused; and the pointer that names it
+lives on the profile, which the file has never held. Rejoining is an invite
+away ([household.md](household.md),
+[ADR 0152](ADR/0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md)).

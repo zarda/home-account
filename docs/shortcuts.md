@@ -76,7 +76,7 @@ it ever fires when it should not.
 
 `Ctrl/Cmd+K`, type a few letters, Enter.
 
-**Go to** lists every destination in the shared nav list — the sidebar's eight
+**Go to** lists every destination in the shared nav list — the sidebar's nine
 plus three that no navigation *slot* carries (`/search-history`,
 `/import/file`, `/import/history`). Those three are still reachable today from
 inside a feature — the Smart Search dialog and the Data hub for
@@ -128,7 +128,7 @@ the sidebar, the bottom nav and the palette:
 
 | Export | What it holds |
 |---|---|
-| `NAV_ITEMS` | the sidebar's eight, in display order |
+| `NAV_ITEMS` | the sidebar's nine, in display order |
 | `PALETTE_ONLY_ITEMS` | three destinations that no navigation slot carries |
 | `navItemFor(route)` | a lookup across both, which **throws** on an unknown route |
 

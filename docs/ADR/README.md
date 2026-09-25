@@ -22,7 +22,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0015](0015-reclaimed-receipts-replay-idempotently.md) | A reclaimed receipt replays onto the ids it already used | Accepted | 2026-08-05 |
 | [0016](0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md) | Aggregate answers persist as snapshots that refresh locally | Accepted | 2026-08-06 |
 | [0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md) | The row stacks its lines, and actions ride behind a swipe | Accepted | 2026-08-07 |
-| [0018](0018-account-deletion-is-a-client-side-cascade.md) | Account deletion is a client-side cascade | Accepted | 2026-08-07 |
+| [0018](0018-account-deletion-is-a-client-side-cascade.md) | Account deletion is a client-side cascade | Accepted; its no-Cloud-Functions premise recorded as history by 0152 | 2026-08-07 |
 | [0019](0019-share-intake-lands-through-a-stash.md) | Share intake lands through a stash | Accepted | 2026-08-07 |
 | [0020](0020-detected-groups-convert-through-the-prefilled-form.md) | Detected groups convert through the prefilled form | Accepted | 2026-08-07 |
 | [0021](0021-one-goal-model-carries-savings-and-projects.md) | One goal model carries savings and projects | Accepted | 2026-08-07 |
@@ -102,7 +102,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0095](0095-a-translation-is-a-lens-never-a-write.md) | A translation is a lens, never a write | Accepted | 2026-09-02 |
 | [0096](0096-the-weekly-recap-is-composed-on-open-and-nudged-ahead.md) | The weekly recap is composed on open, and nudged ahead | Accepted | 2026-09-02 |
 | [0097](0097-the-model-update-signal-is-removed-not-wired.md) | The model-update signal is removed, not wired | Accepted; applies 0048 to a signal of 0019 | 2026-09-02 |
-| [0098](0098-the-browser-journeys-are-a-driven-protocol-not-a-suite.md) | The browser journeys are a driven protocol, not a suite | Accepted | 2026-09-02 |
+| [0098](0098-the-browser-journeys-are-a-driven-protocol-not-a-suite.md) | The browser journeys are a driven protocol, not a suite | Accepted; extended to a second venue by 0155, which takes up its rejected emulator configuration | 2026-09-02 |
 | [0099](0099-the-review-step-edits-what-it-shows.md) | The review step edits what it shows | Accepted; amends 0062, 0074 | 2026-09-04 |
 | [0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md) | A receipt dated before today is a question the reviewer answers | Accepted; closes a gap of 0074 | 2026-09-04 |
 | [0101](0101-a-corrected-row-is-checked-for-duplicates-again.md) | A corrected row is checked for duplicates again | Accepted; extends 0063; corrected for #387 | 2026-09-04 |
@@ -156,6 +156,10 @@ reverse — why a thing is the way it is, not how to use it.
 | [0149](0149-the-review-step-says-what-it-changed.md) | The review step says what it changed | Accepted; amends 0073; narrows 0108's decision; closes gaps of 0062, 0101, 0102, 0103, 0107, 0108, 0120 and 0121; narrows a gap of 0062 | 2026-09-24 |
 | [0150](0150-the-csv-reads-back-what-it-writes.md) | The CSV reads back what it writes | Accepted; closes the non-round-trip of 0011; closes gaps of 0045 and 0059 | 2026-09-24 |
 | [0151](0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md) | The frozen accessibility findings are fixed, and the freezes stay empty | Accepted; closes a gap of 0145; closes two gaps of accessibility.md | 2026-09-24 |
+| [0152](0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md) | A household is a membership, and a member reads the others' records without owning them | Accepted; extends 0018, 0029 and 0143; records 0018's "no Cloud Functions" as history | 2026-09-26 |
+| [0153](0153-an-invite-is-an-owners-callable-lookup-by-email-capped-and-its-answers-are-plain.md) | An invite is an owner's callable lookup by email, capped, and its answers are plain | Accepted; extends 0047 | 2026-09-26 |
+| [0154](0154-the-household-view-is-a-read-only-aggregate-on-its-own-page-and-the-road-to-shared-writes-is-written-down.md) | The household view is a read-only aggregate on its own page, and the road to shared writes is written down | Accepted; applies 0009 | 2026-09-26 |
+| [0155](0155-journeys-that-need-two-accounts-run-against-the-emulators.md) | Journeys that need two accounts run against the emulators | Accepted; extends 0098; revisits its rejected emulator configuration; answers ui-audit/tools/README.md | 2026-09-26 |
 
 ## What belongs here
 
