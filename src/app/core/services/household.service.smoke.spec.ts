@@ -331,6 +331,52 @@ describe('HouseholdService (emulator smoke test)', () => {
     // slow run fails naming the wait it was stuck on.
   }, 60000);
 
+  // A commit that lands and loses its answer is sent again, and the second
+  // delivery meets a household the first already removed. Here every commit
+  // the dissolve makes lands once and is then sent again.
+  it('finishes a dissolve whose every commit is delivered twice', async () => {
+    const householdId = await formWithPeer();
+    const pending = await seedInvite(householdId, owner.uid, `ghost-${Date.now()}`);
+    ownerService.connect();
+    await waitFor(() => ownerService.status() === 'member' && ownerService.sentInvites().length === 1,
+      'the owner\'s live membership and its pending invite');
+    const firestore = TestBed.inject(FirestoreService);
+    const commit = firestore.runTransaction.bind(firestore);
+    spyOn(firestore, 'runTransaction').and.callFake((async (update: Parameters<typeof commit>[0]) => {
+      await commit(update);
+      return commit(update);
+    }) as never);
+
+    await ownerService.dissolve();
+
+    expect(await getDocumentAsOwner(`households/${householdId}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`householdInvites/${pending}`)).toBeNull();
+    expect(await pointerOf(owner)).toBeNull();
+    await waitFor(() => ownerService.status() === 'none', 'the owner to see no membership');
+    expect(ownerService.lostAccess()).toBeFalse();
+    expectQuiet();
+  }, 60000);
+
+  // Two tabs of one owner, or a second press: whichever dissolve comes
+  // second finds the household gone, at whatever step it has reached.
+  it('finishes both of two dissolves sent at once', async () => {
+    const householdId = await formWithPeer();
+    ownerService.connect();
+    await waitFor(() => ownerService.status() === 'member', 'the owner\'s live membership');
+
+    await Promise.all([ownerService.dissolve(), ownerService.dissolve()]);
+
+    expect(await getDocumentAsOwner(`households/${householdId}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
+    expect(await pointerOf(owner)).toBeNull();
+    await waitFor(() => ownerService.status() === 'none', 'the owner to see no membership');
+    expect(ownerService.lostAccess()).toBeFalse();
+    expectQuiet();
+  }, 60000);
+
   it("brings a member's name and picture into line with its renamed profile, as the rules allow", async () => {
     const householdId = await formWithPeer();
     peer.current.set({
