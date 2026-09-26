@@ -18,7 +18,8 @@
     "ignore": [
       "node_modules",
       ".git",
-      "*.log"
+      "*.log",
+      "*.local"
     ]
   },
   "hosting": {

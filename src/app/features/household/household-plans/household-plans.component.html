@@ -1,0 +1,77 @@
+<section class="plans" aria-labelledby="household-plans-title">
+  <h2 id="household-plans-title" class="plans-title">
+    <mat-icon>savings</mat-icon>
+    <span>{{ 'household.plans.title' | translate }}</span>
+  </h2>
+
+  @for (notice of notices(); track notice.kind + '/' + notice.member.uid) {
+    <p class="plans-note" role="status">
+      <mat-icon>warning</mat-icon>
+      @switch (notice.kind) {
+        @case ('budgetsIncomplete') {
+          <span>{{ 'household.plans.budgetsIncomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
+        }
+        @case ('goalsIncomplete') {
+          <span>{{ 'household.plans.goalsIncomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
+        }
+      }
+    </p>
+  }
+
+  @if (loading()) {
+    <app-loading-spinner [message]="'household.plans.loading' | translate" />
+  } @else {
+    @for (group of groups(); track group.member.uid; let g = $index) {
+      <div class="plans-member">
+        <h3 class="plans-member-head">
+          <app-member-chip [member]="group.member" />
+        </h3>
+
+        @if (group.notLoaded) {
+          <p class="plans-not-loaded">{{ 'household.plans.notLoaded' | translate }}</p>
+        } @else if (group.readFailed) {
+          <p class="plans-read-failed">{{ 'household.plans.readFailed' | translate }}</p>
+        } @else if (group.budgets.length === 0 && group.goals.length === 0) {
+          <p class="plans-empty">{{ 'household.plans.empty' | translate }}</p>
+        } @else {
+          <!-- Each card names itself with a heading one level below the
+               member's, so the lists are labelled rather than headed: a
+               "Budgets" heading at that level would put the goals under the
+               last budget. -->
+          @if (group.budgets.length > 0) {
+            <p class="plans-subtitle" [id]="'household-plans-' + g + '-budgets'">{{ 'budget.budgets' | translate }}</p>
+            <ul class="plans-cards" [attr.aria-labelledby]="'household-plans-' + g + '-budgets'">
+              @for (view of group.budgets; track view.budget.id) {
+                <li class="plans-card">
+                  <app-budget-progress-card
+                    [budget]="view.budget"
+                    [category]="view.category"
+                    [readOnly]="true"
+                    [headingLevel]="4"
+                  />
+                  @if (view.budget.stale) {
+                    <p class="plans-stale">
+                      <mat-icon>info</mat-icon>
+                      <span>{{ 'household.plans.stale' | translate: { name: group.name || ('household.unnamedMember' | translate) } }}</span>
+                    </p>
+                  }
+                </li>
+              }
+            </ul>
+          }
+
+          @if (group.goals.length > 0) {
+            <p class="plans-subtitle" [id]="'household-plans-' + g + '-goals'">{{ 'budget.goals' | translate }}</p>
+            <ul class="plans-cards" [attr.aria-labelledby]="'household-plans-' + g + '-goals'">
+              @for (goal of group.goals; track goal.id) {
+                <li class="plans-card">
+                  <app-goal-progress-card [goal]="goal" [readOnly]="true" [headingLevel]="4" />
+                </li>
+              }
+            </ul>
+          }
+        }
+      </div>
+    }
+  }
+</section>

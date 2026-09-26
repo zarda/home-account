@@ -22,6 +22,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { labelKey: 'nav.transactions', icon: 'receipt_long', route: '/transactions' },
   { labelKey: 'nav.budgets', icon: 'savings', route: '/budgets' },
   { labelKey: 'nav.reports', icon: 'bar_chart', route: '/reports' },
+  { labelKey: 'nav.household', icon: 'groups', route: '/household' },
   { labelKey: 'nav.ai', icon: 'psychology', route: '/ai' },
   { labelKey: 'nav.data', icon: 'storage', route: '/data' },
   { labelKey: 'nav.settings', icon: 'settings', route: '/settings' },

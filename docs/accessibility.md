@@ -396,7 +396,8 @@ ones, in both themes, and holds the composited surface to the stylesheet's
 - `app.smoke.spec.ts` asserts the same invariant inside `expectPage`, so every
   route it visits checks it against the **real route configuration**. It is
   gated on a link for the route being on screen: the surfaces rendered there do
-  not carry all eight destinations. The gate tests for the anchor, not the
+  not carry all nine destinations — `/settings`, `/data`, `/household` and
+  `/about` have no link there. The gate tests for the anchor, not the
   attribute, so a regression that drops `aria-current` still fails every route
   that has a link.
 - `user.model.spec.ts` pins the three resolvers against absent, null,
@@ -436,7 +437,7 @@ ones, in both themes, and holds the composited surface to the stylesheet's
   announced.
 - **No landmark structure beyond `nav`.** The two navigation surfaces are
   indistinguishable to a user listing landmarks.
-- **The automated pass is a phone audit of seven routes, in one theme.**
+- **The automated pass is a phone audit of eight routes, in one theme.**
   `app.smoke.spec.ts` runs axe-core (WCAG 2.1 A and AA, `color-contrast`
   included) inside `expectPage`, so every page the walkthrough opens is swept,
   and nothing it has found is frozen any more. What it cannot see is stated in

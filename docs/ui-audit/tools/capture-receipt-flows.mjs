@@ -4,8 +4,8 @@
 // alone would render the desktop experience), and a ja-locale spot shot.
 // Never clicks "Process": no AI provider exists in this environment.
 //
-// Prereqs (see README.md): emulators + ng serve running, .vscode/environment
-// pointed at the demo project with useEmulators, deps installed here.
+// Prereqs (see README.md): emulators running, `npx ng serve --configuration
+// emulators` on :4200, deps installed here.
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

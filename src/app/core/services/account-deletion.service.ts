@@ -18,6 +18,7 @@ import { FeedbackService } from './feedback.service';
 import { SecurityLogService } from './security-log.service';
 import { ShareIntakeService } from './share-intake.service';
 import { FirestoreService } from './firestore.service';
+import { HouseholdService } from './household.service';
 import { clearReminderDeviceState } from './reminder.service';
 import { clearWeeklyRecapDeviceState } from '../utils/weekly-recap.utils';
 
@@ -35,6 +36,7 @@ export const DELETION_STEPS = [
   'shareStash',
   'reminders',
   'weeklyRecap',
+  'household',
   'transactions',
   'categories',
   'budgets',
@@ -61,7 +63,8 @@ export interface DeletionReport {
 }
 
 /**
- * Permanent account erasure as a client-side cascade: every users/{uid}
+ * Permanent account erasure as a client-side cascade: the household
+ * membership and the invites to and from the account, every users/{uid}
  * subcollection, the receipts in Storage (swept per transaction), the
  * device-local state keyed by the uid, the user document, and finally the
  * Firebase Auth user. There is no backend to fall back on — the Firestore
@@ -95,6 +98,7 @@ export class AccountDeletionService {
   private feedbackService = inject(FeedbackService);
   private securityLog = inject(SecurityLogService);
   private firestoreService = inject(FirestoreService);
+  private householdService = inject(HouseholdService);
 
   async deleteAccount(): Promise<DeletionReport> {
     const userId = this.authService.userId();
@@ -125,10 +129,18 @@ export class AccountDeletionService {
     await this.attempt('weeklyRecap', () => clearWeeklyRecapDeviceState(userId), failed);
 
     // The cloud cascade runs every step even after one fails, so a retry has
-    // less left to do. securityEvents goes last of the subcollections — while
-    // earlier steps can still fail, the sign-in log is the record worth
-    // keeping — and the user document falls after all of them.
+    // less left to do. The household goes first: while a membership is live
+    // the other members still read this account's rows. The rules refuse the
+    // user document's delete while its pointer names a live membership, so a
+    // household step that fails before its leave or dissolve commits keeps
+    // the profile, pointer and all, for the retry; one that fails after it,
+    // while sweeping invites, does not. The auth user stays either way, as it
+    // does for any failed cloud step. securityEvents goes last of the
+    // subcollections — while earlier steps can still fail, the sign-in log is
+    // the record worth keeping — and the user document falls after all of
+    // them.
     const cloudSteps: [DeletionStep, () => Promise<unknown>][] = [
+      ['household', () => this.householdService.deleteAll()],
       ['transactions', () => this.transactionService.deleteAllTransactions()],
       ['categories', () => this.categoryService.deleteAll()],
       ['budgets', () => this.budgetService.deleteAll()],
@@ -154,7 +166,14 @@ export class AccountDeletionService {
 
     // Only a fully erased account loses its auth user; otherwise stay signed
     // in and report, so the remaining rows are still reachable on retry.
-    if (!cloudFailed) {
+    // The invite callable finds an invitee through its auth user, which
+    // outlives every step above, so an invite can arrive after the household
+    // step swept them. They are swept again, under the same step, just before
+    // the auth user goes: with the profile gone there is no membership left
+    // to end, only invites. One written between this sweep and deleteUser is
+    // beyond this cascade: only its inviter or a server-side clean-up can
+    // remove it.
+    if (!cloudFailed && (await this.attempt('household', () => this.householdService.deleteAll(), failed))) {
       await this.attempt('authUser', () => this.authService.deleteFirebaseUser(), failed);
     }
 

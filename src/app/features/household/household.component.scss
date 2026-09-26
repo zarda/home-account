@@ -1,0 +1,57 @@
+.page-container {
+  padding: 16px;
+  max-width: 1024px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.household-name {
+  margin: 0;
+  margin-block-start: 4px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  // A name is typed by its owner and may be one long word.
+  overflow-wrap: anywhere;
+}
+
+.household-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+
+  mat-icon {
+    font-size: var(--text-xl);
+    width: 1em;
+    height: 1em;
+  }
+
+  > span {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+}
+
+.household-offline,
+.household-lost {
+  background: var(--color-warning-light);
+  color: var(--color-warning-text);
+}
+
+.household-unavailable {
+  background: var(--color-error-light);
+  color: var(--color-error-text);
+}
+
+.member-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

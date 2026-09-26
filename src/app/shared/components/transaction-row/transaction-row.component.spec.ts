@@ -6,7 +6,12 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction, Category, User } from '../../../models';
-import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
+import {
+  createTransaction,
+  createCategory,
+  createUser,
+  createTranslationStub,
+} from '../../../core/services/testing';
 
 describe('TransactionRowComponent', () => {
   let fixture: ComponentFixture<TransactionRowComponent>;
@@ -370,6 +375,213 @@ describe('TransactionRowComponent', () => {
     expect(getComputedStyle(head).paddingRight)
       .withContext('no menu projected, no corner reserved')
       .toBe('0px');
+  });
+
+  it('is interactive and names no member by default', () => {
+    setTransaction({ location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 } } as Partial<Transaction>);
+    const emitted: Transaction[] = [];
+    component.activate.subscribe((t: Transaction) => emitted.push(t));
+
+    const root: HTMLElement = fixture.nativeElement;
+    expect(component.interactive()).toBeTrue();
+    expect(component.member()).toBeNull();
+    expect(root.querySelector('button.row-head.row-activate')).withContext('line 1 is the row button').not.toBeNull();
+    expect(root.querySelector('a.location-link')).withContext('the location links to a map').not.toBeNull();
+    expect(root.querySelector('app-member-chip')).withContext('no member chip').toBeNull();
+
+    (root.querySelector('.row-date') as HTMLElement).click();
+    expect(emitted.length).withContext('a click opens the row').toBe(1);
+  });
+});
+
+/**
+ * A row that only shows: the household list mixes every member's rows, the
+ * viewer's own among them, and none of them opens, is edited or is deleted
+ * from there. Rendered in full
+ * (ADR 0144): everything under test here is what the template leaves out.
+ */
+describe('TransactionRowComponent, read-only', () => {
+  let fixture: ComponentFixture<TransactionRowComponent>;
+  let component: TransactionRowComponent;
+  let emitted: Transaction[];
+
+  const categories = new Map<string, Category>([
+    ['food', createCategory({ id: 'food', name: 'Groceries', icon: 'shopping_cart', color: '#ff5722' })],
+  ]);
+  const kai = { uid: 'kai', displayName: 'Kai Lin' };
+  const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+  /** Everything a row can carry that could have been a control. */
+  const busiest: Partial<Transaction> = {
+    type: 'expense',
+    amount: 42,
+    currency: 'JPY',
+    amountInBaseCurrency: 0.28,
+    splitGroupId: 'group-1',
+    receiptUrl: 'https://example.com/r.png',
+    tags: ['a', 'b', 'c', 'd'],
+    location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+  } as Partial<Transaction>;
+
+  function render(overrides: Partial<Transaction> = {}, member: typeof kai | null = null): void {
+    fixture.componentRef.setInput(
+      'transaction',
+      createTransaction({ id: 'tx-1', categoryId: 'food', description: 'Weekly shop', ...overrides })
+    );
+    fixture.componentRef.setInput('categories', categories);
+    fixture.componentRef.setInput('interactive', false);
+    fixture.componentRef.setInput('member', member);
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.formatCurrency.and.callFake(
+      (amount: number, code: string) => `${code} ${amount.toFixed(2)}`
+    );
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionRowComponent],
+      providers: [
+        { provide: CurrencyService, useValue: currency },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal(createUser({ preferences: { baseCurrency: 'USD' } as User['preferences'] })),
+          },
+        },
+        { provide: TranslationService, useValue: createTranslationStub() },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionRowComponent);
+    component = fixture.componentInstance;
+    emitted = [];
+    component.activate.subscribe((t: Transaction) => emitted.push(t));
+  });
+
+  it('renders line 1 as plain text, laid out as the row head, with no name of its own', () => {
+    render(busiest);
+
+    const head = root().querySelector('.row-body > .row-head') as HTMLElement;
+    expect(head).withContext('line 1 is still the head').not.toBeNull();
+    expect(head.tagName).toBe('DIV');
+    expect(root().querySelector('button.row-activate, .row-activate'))
+      .withContext('no row button')
+      .toBeNull();
+    expect(head.getAttribute('aria-label')).withContext('its content is its reading').toBeNull();
+    expect(head.getAttribute('aria-describedby')).toBeNull();
+    expect(head.querySelector('.row-description')?.textContent).toContain('Weekly shop');
+    expect(head.querySelector('.row-amount .amount')?.textContent).toContain('-JPY 42.00');
+    expect(getComputedStyle(head).display).withContext('the head flex line kept').toBe('flex');
+    expect(head.querySelector('.split-indicator')?.getAttribute('aria-label'))
+      .withContext('the split badge still reads, as content now')
+      .toBe('transactions.splitPart');
+  });
+
+  it('answers no click, and offers no key anything to press', () => {
+    render(busiest);
+
+    for (const selector of ['.row-head', '.row-description', 'app-category-chip', '.row-category', '.row-date', '.transaction-row']) {
+      (root().querySelector(selector) as HTMLElement).click();
+    }
+    (root() as HTMLElement).click();
+    expect(emitted).withContext('clicks').toEqual([]);
+
+    // Enter and Space press what has focus, and nothing here can take it:
+    // line 1 is no control and holds no tab stop, and neither does the host.
+    const head = root().querySelector('.row-head') as HTMLElement;
+    expect(head.matches('button, a, [tabindex], [role="button"]')).withContext('line 1 is no control').toBeFalse();
+    expect(head.tabIndex).withContext('line 1 takes no focus').toBe(-1);
+    expect(root().tabIndex).withContext('the host takes no focus').toBe(-1);
+
+    // A synthetic key has no default action, so these only pin that no key
+    // handler of the row's own answers them.
+    head.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    head.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    head.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+    expect(emitted).withContext('keys').toEqual([]);
+  });
+
+  it('never links the location: the plain-text chip renders instead', () => {
+    render(busiest);
+
+    expect(component.mapsUrl()).toBeNull();
+    expect(root().querySelector('a.location-link')).toBeNull();
+    const chip = root().querySelector('.location-chip') as HTMLElement;
+    expect(chip.tagName).toBe('SPAN');
+    expect(chip.textContent).toContain('Aoyama Market');
+  });
+
+  it('holds nothing that is a button or a link, with swipeActions false and nothing projected', () => {
+    fixture.componentRef.setInput('swipeActions', false);
+    render(busiest, kai);
+
+    expect(
+      Array.from(
+        root().querySelectorAll(
+          'button, a, input, select, textarea, [tabindex], [href], [role="button"], [role="link"], [role="menuitem"]'
+        )
+      ).map(element => element.outerHTML.slice(0, 80))
+    ).toEqual([]);
+    expect(root().querySelector('.row-swipe-actions')).toBeNull();
+  });
+
+  it('wears no pointer affordance', () => {
+    render(busiest);
+
+    expect(getComputedStyle(root().querySelector('.transaction-row') as HTMLElement).cursor).toBe('auto');
+  });
+
+  it("names whose row it is on the meta line", () => {
+    render(busiest, kai);
+
+    const chip = root().querySelector('.row-body > .row-meta > app-member-chip');
+    expect(chip).withContext('the chip on line 3').not.toBeNull();
+    expect(chip?.textContent).toContain('Kai Lin');
+    expect(root().querySelector('.row-meta .row-date')).withContext('the date stays').not.toBeNull();
+    expect(root().querySelector('.row-meta .amount-converted')?.textContent).toContain('≈ USD 0.28');
+  });
+
+  it('keeps a long member name on line 3 inside the row at the narrowest phone width', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    // The width a household row gets on a 320px phone: less the app shell's
+    // 16px gutters, the page's 16px gutters and its card's 16px padding.
+    host.style.width = '224px';
+    document.body.appendChild(host);
+    try {
+      render(busiest, { uid: 'long', displayName: 'W'.repeat(100) });
+
+      const meta = root().querySelector('.row-meta') as HTMLElement;
+      const row = (root().querySelector('.transaction-row') as HTMLElement).getBoundingClientRect();
+      expect(meta.scrollWidth).withContext('nothing overflows line 3').toBeLessThanOrEqual(meta.clientWidth);
+      for (const selector of ['app-member-chip', '.row-date', '.amount-converted']) {
+        const part = (meta.querySelector(selector) as HTMLElement).getBoundingClientRect();
+        expect(part.left).withContext(`${selector} starts inside the row`).toBeGreaterThanOrEqual(row.left - 0.5);
+        expect(part.right).withContext(`${selector} ends inside the row`).toBeLessThanOrEqual(row.right + 0.5);
+      }
+      expect(meta.querySelector('.member-name')?.textContent?.trim()).withContext('the name kept whole').toBe('W'.repeat(100));
+    } finally {
+      host.remove();
+    }
+  });
+
+  it('names nobody without a member', () => {
+    render(busiest, null);
+
+    expect(root().querySelector('app-member-chip')).toBeNull();
+  });
+
+  it('names the member on an interactive row as well', () => {
+    render({}, kai);
+    fixture.componentRef.setInput('interactive', true);
+    fixture.detectChanges();
+
+    expect(root().querySelector('button.row-activate')).not.toBeNull();
+    expect(root().querySelector('.row-meta app-member-chip')?.textContent).toContain('Kai Lin');
   });
 });
 

@@ -1,14 +1,24 @@
 # Account deletion
 
 Settings → Data Management → Danger Zone → **Delete Account** permanently
-erases the signed-in account: every Firestore subcollection without exception,
-the receipt objects in Storage, the device-local state keyed by the
-account, the user document, and finally the Firebase Auth user. There is no backend — the
-whole erasure is a client-side cascade run by `AccountDeletionService`
+erases the signed-in account: its household membership and the invites to
+and from it, every Firestore subcollection a client may delete, the receipt
+objects in Storage, the device-local state keyed by the account, the user
+document, and finally the Firebase Auth user. There is no backend — the
+erasure is a client-side cascade run by `AccountDeletionService`
 (`src/app/core/services/account-deletion.service.ts`), because the security
-rules grant only the owner, and the project's one Cloud Function — the
-feedback mail sender — plays no part in it
+rules grant only the owner, and neither the feedback mail sender nor the
+household invite callable runs a step of it
 (see [ADR 0018](ADR/0018-account-deletion-is-a-client-side-cascade.md)).
+The household step is
+[ADR 0152](ADR/0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md)'s.
+
+One Firestore document is outside the cascade's reach:
+`users/{uid}/quota/receiptImages`, which the rules let no client write. The
+storage-triggered receipt-quota recount erases it instead, when a receipt
+object's delete reaches it after the user document is gone
+([receipt-quota.md](receipt-quota.md)). Nothing guarantees that one does
+(see *Known gaps*).
 
 ## The flow, from the user's side
 
@@ -38,6 +48,7 @@ feedback mail sender — plays no part in it
 | shareStash | Files shared into the app, still awaiting import (IndexedDB on web, the App Group container on iOS) | `ShareIntakeService.clearAll()` |
 | reminders | The log of which reminders this device has already raised (`localStorage`) | `clearReminderDeviceState(uid)` |
 | weeklyRecap | The recap week this device dismissed, and the narrative cached for it (`localStorage`) | `clearWeeklyRecapDeviceState(uid)` |
+| household | The household membership — an owner's household is dissolved, a member leaves, a pointer left by an ended one is cleared — and every invite addressed to or sent by the account, swept again just before the auth user | `HouseholdService.deleteAll()` |
 | transactions | `users/{uid}/transactions` **and every receipt object in Storage** (swept per row) | `TransactionService.deleteAllTransactions()` |
 | categories | `users/{uid}/categories` | `CategoryService.deleteAll()` |
 | budgets | `users/{uid}/budgets` | `BudgetService.deleteAll()` |
@@ -71,6 +82,19 @@ transaction sweep owns the Storage cleanup.
   `WeeklyRecapService` would drag their sweep effects, the notifications
   plugin and the budget and recurring graphs into an erasure whose whole job
   there is removing one key.
+- **The household first of the cloud steps.** While a membership is live,
+  the other members still read this account's transactions, categories,
+  budgets and goals, so it ends before anything else is erased. The rules
+  refuse the user document's delete while its `householdId` names a live
+  membership, so a household step that fails before its leave or dissolve
+  commits keeps the profile, the pointer and the auth user for the retry. One
+  that fails after that commit, while sweeping invites, leaves the membership
+  already ended and does not hold the profile back.
+- **The invites swept twice.** The invite callable finds an invitee through
+  the auth user, which outlives every other step, so an invite can arrive
+  after the household step. `deleteAll` runs again, reported under
+  `household`, just before the auth user is deleted — only when no cloud step
+  failed, and with the profile gone it has only invites left to find.
 - **`securityEvents` last of the subcollections.** While earlier steps can
   still fail, the sign-in log is the record worth keeping.
 - **The user document after every subcollection**, since deleting it does
@@ -95,8 +119,13 @@ broken run left behind.
 - `secrets`: the combined `write` grant validated `request.resource`, which
   a delete never carries, so deletes were silently denied. Split into
   `create, update` (validated) and `delete` (owner).
+- The user document: beside the owner check, its delete requires the
+  membership its `householdId` names to be gone — the same condition a change
+  of the pointer takes — so deleting the profile and creating it again cannot
+  shed a live membership. A profile that is already gone may still be
+  deleted, so a retried run succeeds.
 
-Both are enforcement-tested in `firestore-rules.smoke.spec.ts`, and the
+All three are enforcement-tested in `firestore-rules.smoke.spec.ts`, and the
 whole cascade end-to-end in `account-deletion.smoke.spec.ts` (`npm run
 smoke`).
 
@@ -113,6 +142,21 @@ smoke`).
 - The web reauthentication popup can be blocked by aggressive popup
   settings; the failure mode is safe (nothing deleted) and retrying from
   the same click usually passes.
+- An invite written to the account after the second invite sweep and before
+  the auth user is deleted stays behind: the cascade has nothing left to
+  catch it with, and only its inviter, a dissolve of that household, or a
+  server-side clean-up removes it.
+- The receipt quota document, `users/{uid}/quota/receiptImages`, is erased
+  only by a recount that runs after the user document is gone, so it stays
+  behind, under a user document that no longer exists, in two cases: the
+  account deleted its last receipt before it was erased, so the erasure
+  deletes no object and triggers no recount; or every recount lands before
+  the user document step — they run in the function's own time — and the
+  last writes a count of zero.
+- The invite callable's counter document for the account,
+  `inviteQuotas/{uid}` — two counts and the times their windows opened — is
+  not erased: no client may read or delete it, and it holds nothing but those
+  four fields ([household.md](household.md)).
 - The Firestore persistent cache clear is best-effort; if it fails, the
   deleted account's rows linger in this device's IndexedDB until the
   browser evicts them, unreachable without the deleted credentials.

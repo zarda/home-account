@@ -369,10 +369,10 @@ export function matchCategoryName(
   }
 
   // Deleted entries stay in the merged catalog as stored overrides with
-  // isActive false (CategoryService.mergeCategories), and the prompt does not
-  // offer them — so a name that reaches here matching one came from the
-  // model's own knowledge, not from anything we asked. Resolving it would
-  // refile a receipt under a category the user removed.
+  // isActive false (mergeCategories in core/utils/category-merge.utils), and
+  // the prompt does not offer them — so a name that reaches here matching one
+  // came from the model's own knowledge, not from anything we asked. Resolving
+  // it would refile a receipt under a category the user removed.
   const activeCategories = categories.filter(c => c.isActive);
 
   const exactMatch = activeCategories.find(c => categoryNameCandidates(c, translate).includes(normalizedName));

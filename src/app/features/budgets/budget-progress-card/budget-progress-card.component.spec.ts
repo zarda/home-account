@@ -6,6 +6,7 @@ import { BudgetProgressCardComponent } from './budget-progress-card.component';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Budget, Category } from '../../../models';
+import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
 
 describe('BudgetProgressCardComponent', () => {
   let component: BudgetProgressCardComponent;
@@ -403,6 +404,59 @@ describe('BudgetProgressCardComponent', () => {
     });
   });
 
+  // The household page shows other members' budgets, which only their owner
+  // can change: the card there offers nothing to act on.
+  describe('read-only', () => {
+    beforeEach(() => {
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.componentRef.setInput('category', mockCategory);
+    });
+
+    it('keeps its menu by default, as the Budgets page shows it', () => {
+      fixture.detectChanges();
+
+      expect(component.readOnly()).toBeFalse();
+      expect(fixture.nativeElement.querySelector('.menu-btn')).not.toBeNull();
+    });
+
+    it('drops the whole menu, its trigger included, and keeps the figures', () => {
+      fixture.componentRef.setInput('readOnly', true);
+      fixture.detectChanges();
+
+      const compiled = fixture.nativeElement as HTMLElement;
+      expect(compiled.querySelector('.menu-btn')).toBeNull();
+      expect(compiled.querySelector('mat-menu')).toBeNull();
+      // The progress bar carries Material's own tabindex="-1": no tab stop.
+      expect(compiled.querySelectorAll('button, a, [tabindex]:not([tabindex="-1"])').length).toBe(0);
+      expect(compiled.textContent).toContain('Food Budget');
+      expect(compiled.querySelector('.spent')?.textContent?.trim()).toBe('$500.00');
+      expect(compiled.querySelector('mat-progress-bar')).not.toBeNull();
+    });
+  });
+
+  // The Budgets page lists the cards under the page's own heading; the
+  // household page lists them under a member's h3.
+  describe('its heading', () => {
+    beforeEach(() => fixture.componentRef.setInput('budget', createMockBudget()));
+
+    it('names the budget in an h3 by default', () => {
+      fixture.detectChanges();
+
+      const name = fixture.nativeElement.querySelector('.budget-name') as HTMLElement;
+      expect(name.tagName).toBe('H3');
+      expect(name.textContent?.trim()).toBe('Food Budget');
+    });
+
+    it('names it one level down when listed under a lower heading', () => {
+      fixture.componentRef.setInput('headingLevel', 4);
+      fixture.detectChanges();
+
+      const name = fixture.nativeElement.querySelector('.budget-name') as HTMLElement;
+      expect(name.tagName).toBe('H4');
+      expect(fixture.nativeElement.querySelector('h3')).toBeNull();
+    });
+  });
+
   describe('hit boxes', () => {
     let host: HTMLElement;
 
@@ -424,6 +478,76 @@ describe('BudgetProgressCardComponent', () => {
       const rect = menuButton.getBoundingClientRect();
       expect(rect.width).withContext('menu button width vs the 40px floor').toBeGreaterThanOrEqual(40);
       expect(rect.height).withContext('menu button height vs the 40px floor').toBeGreaterThanOrEqual(40);
+    });
+  });
+
+  // G3 (docs/ui-overflow.md): nothing is cut. A name is its owner's own
+  // words and may be one unbreakable run; a figure keeps every digit.
+  describe('at a phone width', () => {
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      host = fixture.nativeElement as HTMLElement;
+      // 375px less the app shell's 16px gutters and the page's 16px gutters.
+      host.style.display = 'block';
+      host.style.width = '311px';
+      document.body.appendChild(host);
+    });
+
+    afterEach(() => host.remove());
+
+    const within = (part: HTMLElement, box: DOMRect, label: string) => {
+      expect(part.scrollWidth).withContext(`nothing overflows ${label}`).toBeLessThanOrEqual(part.clientWidth);
+      const rect = part.getBoundingClientRect();
+      expect(rect.left).withContext(`${label} starts inside`).toBeGreaterThanOrEqual(box.left - 0.5);
+      expect(rect.right).withContext(`${label} ends inside`).toBeLessThanOrEqual(box.right + 0.5);
+    };
+
+    it('wraps a long name onto more lines rather than cutting it, the menu keeping its 40px', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ name: `Groceries ${'B'.repeat(80)}` }));
+      fixture.componentRef.setInput('category', mockCategory);
+      fixture.detectChanges();
+
+      const card = (host.querySelector('.budget-card') as HTMLElement).getBoundingClientRect();
+      const name = host.querySelector('.budget-name') as HTMLElement;
+      const style = getComputedStyle(name);
+      expect(style.textOverflow).not.toBe('ellipsis');
+      expect(style.whiteSpace).toBe('normal');
+      within(name, card, 'the name');
+      expect(name.getBoundingClientRect().height)
+        .withContext('the name runs onto more lines')
+        .toBeGreaterThan(parseFloat(style.lineHeight) * 1.5);
+
+      // Its box only: Material's own 48px touch target inside it widens its
+      // scrollWidth by design.
+      const menu = (host.querySelector('.menu-btn') as HTMLElement).getBoundingClientRect();
+      expect(menu.width).toBeGreaterThanOrEqual(40);
+      expect(menu.height).toBeGreaterThanOrEqual(40);
+      expect(menu.right).withContext('the menu ends inside').toBeLessThanOrEqual(card.right + 0.5);
+    });
+
+    it('keeps every digit of a figure too wide for its line, scaled to fit rather than cut', () => {
+      fixture.componentRef.setInput(
+        'budget',
+        createMockBudget({ currency: 'JPY', amount: 2345678901234567, spent: 1234567890123456 })
+      );
+      fixture.componentRef.setInput('category', mockCategory);
+      fixture.detectChanges();
+      TestBed.inject(FitTextRegistry).flush();
+
+      const card = (host.querySelector('.budget-card') as HTMLElement).getBoundingClientRect();
+      const spent = host.querySelector('.spent') as HTMLElement;
+      expect(spent.textContent).toContain('1,234,567,890,123,456');
+      expect(host.querySelector('.limit')?.textContent).toContain('2,345,678,901,234,567');
+      expect(host.querySelector('.remaining')?.textContent).toContain('1,111,111,011,111,111');
+      for (const selector of ['.spent', '.limit', '.amount-text', '.remaining', '.status-row']) {
+        const part = host.querySelector(selector) as HTMLElement;
+        expect(getComputedStyle(part).textOverflow).withContext(selector).not.toBe('ellipsis');
+        within(part, card, selector);
+      }
+      expect(parseFloat(getComputedStyle(spent).fontSize))
+        .withContext('scaled, and no smaller than the 12px floor')
+        .toBeGreaterThanOrEqual(12);
     });
   });
 });

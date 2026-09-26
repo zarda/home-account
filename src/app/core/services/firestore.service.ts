@@ -52,6 +52,19 @@ export interface PageQueryOptions {
   startAtValues?: unknown[];
 }
 
+/**
+ * One emission of subscribeToDocumentWithMetadata. The server confirmed it
+ * only when both flags are false.
+ */
+export interface DocumentWithMetadata<T> {
+  /** The document with its id merged in, or null when it does not exist. */
+  data: T | null;
+  /** True while the listener is not in sync with the server. */
+  fromCache: boolean;
+  /** True when `data` includes a local write the server has not committed yet. */
+  hasPendingWrites: boolean;
+}
+
 export interface PageResult<T> {
   items: T[];
   // Raw snapshots parallel to items, for use as cursors in subsequent pages.
@@ -206,6 +219,41 @@ export class FirestoreService {
             } else {
               subscriber.next(null);
             }
+          },
+          (error) => {
+            subscriber.error(error);
+          }
+        );
+
+        return () => unsubscribe();
+      });
+    });
+  }
+
+  // Like subscribeToDocument, but each emission carries the snapshot's
+  // metadata, so a caller can tell a server-confirmed answer from a guess.
+  // A null from the cache means only "nothing cached": an uncached document
+  // reads null while offline. And fromCache false alone is not confirmation:
+  // it says the listener is in sync, while a latency-compensated local write
+  // (a pending delete included) emits with fromCache false and
+  // hasPendingWrites true. Metadata-only changes are delivered too, so the
+  // move from cache or pending to confirmed is heard even when the data is
+  // unchanged.
+  subscribeToDocumentWithMetadata<T>(path: string): Observable<DocumentWithMetadata<T>> {
+    return new Observable<DocumentWithMetadata<T>>((subscriber) => {
+      // Run within injection context to prevent AngularFire warnings
+      return runInInjectionContext(this.injector, () => {
+        const docRef = doc(this.firestore, path);
+
+        const unsubscribe = onSnapshot(
+          docRef,
+          { includeMetadataChanges: true },
+          (snapshot) => {
+            subscriber.next({
+              data: snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as T) : null,
+              fromCache: snapshot.metadata.fromCache,
+              hasPendingWrites: snapshot.metadata.hasPendingWrites
+            });
           },
           (error) => {
             subscriber.error(error);

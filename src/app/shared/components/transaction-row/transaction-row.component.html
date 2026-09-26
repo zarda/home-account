@@ -2,7 +2,7 @@
      maps link, and a button's descendants are flattened away for assistive
      technology. The pointer is answered on the component host (see
      onActivate); the keyboard by .row-activate below. -->
-<div class="transaction-row">
+<div class="transaction-row" [class.row-static]="!interactive()">
   <!-- Edit and Delete parked behind the surface, revealed by a left swipe.
        While closed the buttons are clipped off-canvas, so they leave the
        keyboard and accessibility tree — the pinned menu is that route. -->
@@ -61,13 +61,27 @@
       <!-- Line 1: what it was, and what it cost — and the row's one native
            control, so Enter and Space arrive as its own click. It holds
            nothing interactive. Its name carries the date because the date
-           sits outside it, on line 3. -->
-      <button
-        type="button"
-        class="row-head row-activate"
-        [attr.aria-label]="'transactions.rowLabel' | translate: { description: transaction().description, amount: signedAmount(), date: relativeDate() }"
-        [attr.aria-describedby]="transaction().splitGroupId ? splitIndicatorId() : null"
-      >
+           sits outside it, on line 3.
+
+           A row that only shows has no control at all: the same content in
+           a plain box, read as the text it is, in order with lines 2 and 3,
+           so it needs no name of its own. -->
+      @if (interactive()) {
+        <button
+          type="button"
+          class="row-head row-activate"
+          [attr.aria-label]="'transactions.rowLabel' | translate: { description: transaction().description, amount: signedAmount(), date: relativeDate() }"
+          [attr.aria-describedby]="transaction().splitGroupId ? splitIndicatorId() : null"
+        >
+          <ng-container [ngTemplateOutlet]="headContent" />
+        </button>
+      } @else {
+        <div class="row-head">
+          <ng-container [ngTemplateOutlet]="headContent" />
+        </div>
+      }
+
+      <ng-template #headContent>
         <span class="row-description">
           {{ transaction().description }}
           @if (transaction().receiptUrl) {
@@ -105,7 +119,7 @@
             {{ signedAmount() }}
           </span>
         </span>
-      </button>
+      </ng-template>
 
       <!-- Line 2: where it belongs — category, place, tags. -->
       <span class="row-category">
@@ -144,8 +158,12 @@
         }
       </span>
 
-      <!-- Line 3: when, and what it counts as in the base currency. -->
-      <div class="row-meta">
+      <!-- Line 3: whose it is where a list mixes several people's rows,
+           when, and what it counts as in the base currency. -->
+      <div class="row-meta" [class.has-member]="member() !== null">
+        @if (member(); as who) {
+          <app-member-chip class="row-member" [member]="who" />
+        }
         <span class="row-date">{{ relativeDate() }}</span>
         @if (convertedAmount(); as converted) {
           <span class="amount-converted" appFitText>{{ converted }}</span>

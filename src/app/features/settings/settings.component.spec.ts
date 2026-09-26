@@ -185,8 +185,10 @@ describe('SettingsComponent', () => {
         (el as HTMLElement).textContent?.trim() ?? ''
       );
 
-    // The link cards are divs, not anchors, so routerLink leaves no href.
-    // The template writes it as a static attribute, which DebugElement keeps.
+    // The AI and data cards are divs, not anchors, so routerLink leaves no
+    // href; the template writes it as a static attribute, which DebugElement
+    // keeps. The household card is an anchor and is found through
+    // RouterLink.href below.
     const linkCard = (route: string): HTMLElement | undefined =>
       fixture.debugElement
         .queryAll(By.css('.settings-link-card'))
@@ -202,6 +204,23 @@ describe('SettingsComponent', () => {
 
       expect(dataCard).withContext('a link card routing to /data').toBeTruthy();
       expect(dataCard?.textContent).toContain('data.title');
+    });
+
+    // Unlike the two cards above, a real link: it takes focus, Enter follows
+    // it, and it is announced as one.
+    it('links to the household page with an anchor', () => {
+      const card = fixture.debugElement
+        .queryAll(By.directive(RouterLink))
+        .find(el => el.injector.get(RouterLink).href === '/household')?.nativeElement as
+        | HTMLElement
+        | undefined;
+
+      expect(card).withContext('a link card routing to /household').toBeTruthy();
+      expect(card?.tagName).toBe('A');
+      expect(card?.getAttribute('href')).toBe('/household');
+      expect(card?.classList).toContain('settings-link-card');
+      expect(card?.textContent).toContain('household.title');
+      expect(card?.textContent).toContain('household.cardDescription');
     });
 
     it('keeps preferences, the dashboard and categories in the accordion', () => {

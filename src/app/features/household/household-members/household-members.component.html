@@ -1,0 +1,194 @@
+<section class="members" aria-labelledby="household-members-title">
+  <!-- Script focuses it when a removal leaves no other Remove to take focus;
+       Tab passes it by. -->
+  <h2 id="household-members-title" class="members-title" tabindex="-1">
+    <mat-icon>groups</mat-icon>
+    <span>{{ 'household.members.title' | translate }}</span>
+  </h2>
+
+  <ul class="member-list">
+    @for (view of memberViews(); track view.member.uid) {
+      <li class="member" [class.is-owner]="view.owner">
+        <div class="member-details">
+          <app-member-chip [attr.id]="view.nameId" [member]="view.member" />
+          <span class="member-tags">
+            <span class="member-role">
+              @if (view.owner) {
+                {{ 'household.members.roleOwner' | translate }}
+              } @else {
+                {{ 'household.members.roleMember' | translate }}
+              }
+            </span>
+            @if (view.self) {
+              <span class="member-self">{{ 'household.members.you' | translate }}</span>
+            }
+          </span>
+        </div>
+        @if (view.removable) {
+          <button
+            mat-stroked-button
+            type="button"
+            class="member-remove"
+            [id]="view.removeId"
+            [attr.aria-describedby]="view.nameId"
+            [disabled]="pending()"
+            disabledInteractive
+            (click)="remove(view)"
+          >
+            {{ 'household.members.remove' | translate }}
+          </button>
+        }
+      </li>
+    }
+  </ul>
+
+  @if (isOwner()) {
+    <div class="members-block">
+      <h3 class="members-subtitle">{{ 'household.members.inviteTitle' | translate }}</h3>
+      <p class="members-text">{{ 'household.members.inviteDescription' | translate }}</p>
+
+      <form class="invite-form" #inviteDirective="ngForm" [formGroup]="inviteForm" (ngSubmit)="invite()">
+        <mat-form-field appearance="outline" class="members-field">
+          <mat-label>{{ 'household.members.emailLabel' | translate }}</mat-label>
+          <input matInput type="email" name="inviteEmail" formControlName="email" autocomplete="email" />
+          @if (inviteForm.controls.email.hasError('required')) {
+            <mat-error>{{ 'household.members.emailRequired' | translate }}</mat-error>
+          } @else if (inviteForm.controls.email.invalid) {
+            <mat-error>{{ 'household.errors.email' | translate }}</mat-error>
+          }
+        </mat-form-field>
+
+        <button
+          mat-flat-button
+          color="primary"
+          type="submit"
+          class="invite-send members-field-button"
+          [disabled]="pending()"
+          disabledInteractive
+        >
+          <mat-icon>person_add</mat-icon>
+          {{ 'household.members.invite' | translate }}
+        </button>
+      </form>
+    </div>
+
+    <div class="members-block">
+      <!-- Script focuses it when a revoked invite's row goes; Tab passes it by. -->
+      <h3 id="household-pending-title" class="members-subtitle" tabindex="-1">
+        {{ 'household.members.pendingTitle' | translate }}
+      </h3>
+      @if (invites().length === 0) {
+        <p class="members-text">{{ 'household.members.noPending' | translate }}</p>
+      } @else {
+        <ul class="invite-list">
+          @for (view of invites(); track view.invite.id) {
+            <li class="invite">
+              <div class="invite-details">
+                <span class="invite-email" [id]="view.emailId">{{ view.invite.inviteeEmail }}</span>
+                <span class="invite-meta" [class.is-expired]="view.expired">
+                  @if (view.expired) {
+                    {{ 'household.members.expired' | translate: { date: view.expiry } }}
+                  } @else {
+                    {{ 'household.members.expires' | translate: { date: view.expiry } }}
+                  }
+                </span>
+                <span class="invite-meta invite-mail">
+                  @switch (view.mail) {
+                    @case ('sent') {
+                      {{ 'household.members.mailSent' | translate }}
+                    }
+                    @case ('sending') {
+                      {{ 'household.members.mailSending' | translate }}
+                    }
+                    @case ('held') {
+                      {{ 'household.members.mailHeld' | translate }}
+                    }
+                    @default {
+                      {{ 'household.members.mailFailed' | translate }}
+                    }
+                  }
+                </span>
+              </div>
+              <button
+                mat-stroked-button
+                type="button"
+                class="invite-revoke"
+                [attr.aria-describedby]="view.emailId"
+                [disabled]="pending()"
+                disabledInteractive
+                (click)="revoke(view.invite)"
+              >
+                {{ 'household.members.revoke' | translate }}
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+
+    <div class="members-block">
+      <h3 class="members-subtitle">{{ 'household.members.renameTitle' | translate }}</h3>
+      <form class="rename-form" #renameDirective="ngForm" [formGroup]="renameForm" (ngSubmit)="rename()">
+        <mat-form-field appearance="outline" class="members-field">
+          <mat-label>{{ 'household.members.nameLabel' | translate }}</mat-label>
+          <input
+            matInput
+            name="householdRename"
+            formControlName="name"
+            autocomplete="off"
+            [attr.maxlength]="maxLength"
+          />
+          <mat-hint align="end">{{ renameForm.controls.name.value.length }}/{{ maxLength }}</mat-hint>
+          @if (renameForm.controls.name.invalid) {
+            <mat-error>{{ 'household.errors.name' | translate: { max: maxLength } }}</mat-error>
+          }
+        </mat-form-field>
+
+        <button
+          mat-stroked-button
+          type="submit"
+          class="rename-save members-field-button"
+          [disabled]="pending()"
+          disabledInteractive
+        >
+          {{ 'household.members.rename' | translate }}
+        </button>
+      </form>
+    </div>
+  }
+
+  <div class="members-block members-end">
+    @if (isOwner()) {
+      <!-- Its own heading, or the outline would file dissolving under
+           renaming, the heading before it. -->
+      <h3 class="members-subtitle">{{ 'household.members.dissolveHeading' | translate }}</h3>
+      <p class="members-text">{{ 'household.members.dissolveDescription' | translate }}</p>
+      <button
+        mat-stroked-button
+        color="warn"
+        type="button"
+        class="household-dissolve"
+        [disabled]="pending()"
+        disabledInteractive
+        (click)="dissolve()"
+      >
+        <mat-icon>group_remove</mat-icon>
+        {{ 'household.members.dissolve' | translate }}
+      </button>
+    } @else {
+      <p class="members-text">{{ 'household.members.leaveDescription' | translate }}</p>
+      <button
+        mat-stroked-button
+        color="warn"
+        type="button"
+        class="household-leave"
+        [disabled]="pending()"
+        disabledInteractive
+        (click)="leave()"
+      >
+        <mat-icon>logout</mat-icon>
+        {{ 'household.members.leave' | translate }}
+      </button>
+    }
+  </div>
+</section>

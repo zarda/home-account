@@ -1,0 +1,49 @@
+<div class="page-container">
+  <app-page-header
+    titleKey="household.title"
+    [subtitleKey]="status() === 'member' ? 'household.memberSubtitle' : 'household.subtitle'"
+  >
+    @if (status() === 'member') {
+      <p header-subtitle class="household-name">{{ householdName() }}</p>
+    }
+  </app-page-header>
+
+  @if (!isOnline()) {
+    <p class="household-note household-offline" role="status">
+      <mat-icon>cloud_off</mat-icon>
+      <span>{{ 'household.offline' | translate }}</span>
+    </p>
+  }
+
+  @if (lostAccess()) {
+    <p class="household-note household-lost" role="alert">
+      <mat-icon>group_remove</mat-icon>
+      <span>{{ 'household.lostAccess' | translate }}</span>
+    </p>
+  }
+
+  @switch (status()) {
+    @case ('member') {
+      <div class="member-view">
+        <app-household-overview />
+        <app-household-plans />
+        <app-household-members />
+      </div>
+    }
+    @case ('none') {
+      <app-household-setup />
+    }
+    @case ('unavailable') {
+      <div class="household-note household-unavailable">
+        <mat-icon>error_outline</mat-icon>
+        <span class="unavailable-text" role="alert">{{ 'household.unavailable' | translate }}</span>
+        <button mat-stroked-button type="button" class="household-retry" (click)="retry()">
+          {{ 'common.retry' | translate }}
+        </button>
+      </div>
+    }
+    @default {
+      <app-loading-spinner [message]="'household.loading' | translate" />
+    }
+  }
+</div>

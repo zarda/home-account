@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { PeriodSelectorComponent } from './period-selector.component';
@@ -97,6 +98,45 @@ describe('overflow guard: the period selector', () => {
     expect(toggleGroup().getBoundingClientRect().width)
       .withContext('pill width vs scroller.scrollWidth — the pill never spills past its scroller')
       .toBeLessThanOrEqual(scroller().scrollWidth + 1);
+  });
+
+  it('starts the selected segment\'s label as far in as every other segment\'s', async () => {
+    await setUp();
+    fixture.detectChanges();
+    const selector = fixture.debugElement.query(By.directive(PeriodSelectorComponent))
+      .componentInstance as PeriodSelectorComponent;
+
+    // Measured with the first segment selected and again with an inner one,
+    // so a rule that only reaches the first (or only the others) still fails.
+    for (const option of ['thisMonth', 'last3Months'] as const) {
+      selector.onToggleChange(option);
+      fixture.detectChanges();
+
+      const segments = Array.from(toggleGroup().querySelectorAll<HTMLElement>('mat-button-toggle'));
+      const checked = segments.filter(segment => segment.classList.contains('mat-button-toggle-checked'));
+      expect(checked.length).withContext(`one segment selected for ${option}`).toBe(1);
+      expect(checked[0]?.getAttribute('value')).withContext(`checked segment for ${option}`).toBe(option);
+
+      // The label's offset inside its own button: the button sits inside the
+      // segment's divider border, so the dividers do not skew the comparison.
+      const inset = (segment: HTMLElement) => {
+        const button = segment.querySelector('.mat-button-toggle-button') as HTMLElement;
+        const label = segment.querySelector('.mat-button-toggle-label-content') as HTMLElement;
+        return {
+          padding: getComputedStyle(button).paddingInlineStart,
+          offset: label.getBoundingClientRect().left - button.getBoundingClientRect().left,
+        };
+      };
+      const unchecked = inset(segments.find(segment => !checked.includes(segment)) as HTMLElement);
+      for (const segment of segments) {
+        const name = `${option}: segment "${segment.textContent?.trim()}"`;
+        const measured = inset(segment);
+        expect(measured.padding).withContext(`${name} padding-inline-start`).toBe(unchecked.padding);
+        expect(Math.abs(measured.offset - unchecked.offset))
+          .withContext(`${name} label offset vs an unselected segment's`)
+          .toBeLessThanOrEqual(0.5);
+      }
+    }
   });
 
   it('stops the toggle group at its content width on a desktop row, at the default scale', async () => {

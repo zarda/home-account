@@ -36,18 +36,21 @@ const ANALYTICS_IMPORT_PATTERNS = [
 // listener's first emission, which under the persistent cache is whatever
 // window the session happened to browse before — a plausible-looking
 // subset, not the collection. The names are TransactionService's Observable
-// methods plus subscribeToCollection, subscribeToDocument, and watch — this
-// selector flags them wherever they are called, not just on TransactionService.
+// methods, FirestoreService's (subscribeToCollection, subscribeToDocument,
+// subscribeToDocumentWithMetadata — every household listener goes through
+// one of them), and watch — this selector flags them wherever they are
+// called, not just on those services. The names are anchored, so a longer
+// name sharing a prefix needs its own entry.
 // Every production call site now goes through a `…Once`/`…FromServer` sibling
 // that resolves once against the server; this bans the shape that read directly
 // from the listener so it cannot come back. scripts/check-lint-guards.mjs
-// re-derives the method list from TransactionService itself and fails the build
-// if the alternation falls behind it.
+// re-derives the method list from TransactionService and FirestoreService
+// themselves and fails the build if the alternation falls behind either.
 const LISTENER_METHOD_ALTERNATION =
   "getTransactions|getTransactionById|getTransactionsInRange|getTransactionsWithReceipts|" +
   "getRecentTransactions|getExpensesInRange|getPeriodTotals|getPeriodCategoryTotals|" +
   "getTransactionDatesForMonth|getByDateRange|getByCategory|getMonthlyTotals|" +
-  "subscribeToCollection|subscribeToDocument|watch";
+  "subscribeToCollection|subscribeToDocument|subscribeToDocumentWithMetadata|watch";
 const FIRST_VALUE_FROM_LISTENER_MESSAGE =
   "firstValueFrom takes a listener's first emission, which the persistent " +
   "cache can answer from a stale subset (docs/one-shot-reads.md). Use the " +

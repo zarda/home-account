@@ -11,7 +11,7 @@ export class CategoryHelperService {
    */
   getCategoryName(categoryId: string, categories: Map<string, Category>): string {
     const name = categories.get(categoryId)?.name;
-    return name ? this.translationService.t(name) : 'Unknown';
+    return name ? this.translationService.t(name) : this.unknown();
   }
 
   /**
@@ -33,7 +33,7 @@ export class CategoryHelperService {
    */
   getCategoryNameFromArray(categoryId: string, categories: Category[]): string {
     const category = categories.find(c => c.id === categoryId);
-    return category?.name ? this.translationService.t(category.name) : 'Unknown';
+    return category?.name ? this.translationService.t(category.name) : this.unknown();
   }
 
   /**
@@ -50,5 +50,14 @@ export class CategoryHelperService {
   getCategoryColorFromArray(categoryId: string, categories: Category[]): string {
     const category = categories.find(c => c.id === categoryId);
     return category?.color || '#9E9E9E';
+  }
+
+  /**
+   * A category id this map does not hold: a deleted category, or another
+   * household member's whose categories could not be read. Shown, never
+   * stored, so it is in the reader's language.
+   */
+  private unknown(): string {
+    return this.translationService.t('common.unknownCategory');
   }
 }

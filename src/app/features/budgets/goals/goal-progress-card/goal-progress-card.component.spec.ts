@@ -303,4 +303,117 @@ describe('GoalProgressCardComponent, through its own template', () => {
     card({ note: 'Three months of expenses' });
     expect(text('.goal-note')).toBe('Three months of expenses');
   });
+
+  // The household page lists goals under a member's heading, beside budget
+  // cards that name themselves with one; the Budgets page does not.
+  describe('its name as a heading', () => {
+    it('is plain text by default', () => {
+      card();
+
+      const name = el().querySelector('.goal-name') as HTMLElement;
+      expect(name.getAttribute('role')).toBeNull();
+      expect(name.getAttribute('aria-level')).toBeNull();
+    });
+
+    it('is a heading at the level it is given', () => {
+      fixture.componentRef.setInput('headingLevel', 4);
+      card();
+
+      const name = el().querySelector('.goal-name') as HTMLElement;
+      expect(name.getAttribute('role')).toBe('heading');
+      expect(name.getAttribute('aria-level')).toBe('4');
+      expect(name.textContent?.trim()).toBe('Emergency fund');
+    });
+  });
+
+  // The household page shows other members' goals, which only their owner
+  // can change: the card there offers nothing to act on.
+  describe('read-only', () => {
+    const ITEMS = [
+      { name: 'Deposit', amount: 100, done: true },
+      { name: 'Transfer', amount: 200, done: false }
+    ];
+
+    it('is off by default, every control in place as the Budgets page shows it', () => {
+      card({ linkedAmount: 750, items: ITEMS });
+
+      expect(component.readOnly()).toBeFalse();
+      expect(el().querySelector('.goal-actions')).not.toBeNull();
+      expect(button('goal.contribute')).toBeDefined();
+      expect(button('goal.viewTransactions')).toBeDefined();
+      const boxes = Array.from(el().querySelectorAll<HTMLInputElement>('mat-checkbox input'));
+      expect(boxes.some(box => box.disabled)).toBeFalse();
+    });
+
+    it('drops edit and delete, contribute and the transactions link', () => {
+      fixture.componentRef.setInput('readOnly', true);
+      card({ linkedAmount: 750 });
+
+      expect(el().querySelector('.goal-actions')).toBeNull();
+      expect(el().querySelector('[aria-label="common.edit"]')).toBeNull();
+      expect(el().querySelector('[aria-label="common.delete"]')).toBeNull();
+      expect(button('goal.contribute')).toBeUndefined();
+      expect(button('goal.viewTransactions')).toBeUndefined();
+      expect(el().querySelector('mat-card-actions')).withContext('no empty action row').toBeNull();
+      expect(el().querySelectorAll('button, a').length).toBe(0);
+      // What the goal says stays.
+      expect(text('.contributed')).toBe('USD 1500');
+      expect(text('.linked-breakdown')).toBe('goal.linkedBreakdown:{"manual":"USD 750","linked":"USD 750"}');
+    });
+
+    it('shows the checklist with every box disabled, so a click emits nothing and ticks nothing', () => {
+      const emitted: { index: number; done: boolean }[] = [];
+      component.toggleItem.subscribe(e => emitted.push(e));
+      fixture.componentRef.setInput('readOnly', true);
+      card({ items: ITEMS });
+
+      const boxes = Array.from(el().querySelectorAll<HTMLInputElement>('mat-checkbox input'));
+      expect(boxes.length).toBe(2);
+      expect(boxes.every(box => box.disabled)).toBeTrue();
+      expect(boxes.map(box => box.checked)).toEqual([true, false]);
+      expect(text('.items-count')).toBe('goal.itemsDone:{"done":1,"total":2}');
+
+      boxes[1].click();
+      fixture.detectChanges();
+      // Nor does a change that reaches the handler some other way.
+      component.onItemToggled(0, false);
+
+      expect(emitted).toEqual([]);
+      expect(boxes[1].checked).toBeFalse();
+    });
+
+    /**
+     * Material fades a disabled box's label to 38% of the text colour. Read
+     * against a probe given the theme's own text colour, so the check holds
+     * in whichever scheme the run renders.
+     */
+    it("draws the checklist in the text's own colour, not the faded disabled one", () => {
+      fixture.componentRef.setInput('readOnly', true);
+      card({ items: ITEMS });
+
+      const labels = Array.from(el().querySelectorAll<HTMLElement>('mat-checkbox .mat-internal-form-field-label'));
+      expect(labels.length).toBe(2);
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--text-primary)';
+      el().querySelector('.goal-items')!.appendChild(probe);
+      const primary = getComputedStyle(probe).color;
+      probe.remove();
+
+      for (const label of labels) {
+        const color = getComputedStyle(label).color;
+        expect(color).withContext(label.textContent ?? '').toBe(primary);
+        expect(color).withContext('opaque, not a faded mix').not.toMatch(/rgba\([^)]*,\s*0?\.\d+\)|color\(srgb [^)]*\/ 0?\.\d+\)/);
+      }
+      // A done item is struck through, and never faded by an opacity.
+      const done = el().querySelector<HTMLElement>('.item-label.done')!;
+      expect(getComputedStyle(done).textDecorationLine).toBe('line-through');
+      expect(getComputedStyle(done).opacity).toBe('1');
+    });
+
+    it('leaves the Budgets page\'s editable checklist as Material draws it', () => {
+      card({ items: ITEMS });
+
+      expect(el().querySelector('mat-card')?.classList).not.toContain('read-only');
+    });
+  });
 });

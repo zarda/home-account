@@ -255,6 +255,50 @@ describe('AnalyticsService', () => {
     }));
   });
 
+  describe('household_action', () => {
+    const ACTIONS = ['create', 'invite', 'revoke', 'accept', 'decline', 'leave', 'remove', 'dissolve', 'rename'] as const;
+
+    it('sends each action through the typed wrapper', fakeAsync(() => {
+      currentUser.set(premiumUser(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+
+      for (const action of ACTIONS) service.trackHouseholdAction({ action });
+      tick();
+
+      expect(transport.events).toEqual(ACTIONS.map(action => ({ name: 'household_action', params: { action } })));
+    }));
+
+    // Which action, and nothing about the household it was taken in: not its
+    // name, not an address, not who it concerned.
+    it('carries the action alone', fakeAsync(() => {
+      currentUser.set(premiumUser(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+
+      service.trackHouseholdAction({ action: 'invite' });
+      tick();
+
+      expect(Object.keys(transport.events[0].params ?? {})).toEqual(['action']);
+    }));
+
+    it('drops an action outside the taxonomy', fakeAsync(() => {
+      currentUser.set(premiumUser(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+      const warn = spyOn(console, 'warn');
+
+      service.track('household_action', { action: 'transfer' });
+      tick();
+
+      expect(transport.events).toEqual([]);
+      expect(warn).toHaveBeenCalled();
+    }));
+  });
+
   describe('event dispatch', () => {
     it('should drop events while consent is off', fakeAsync(() => {
       const service = build();

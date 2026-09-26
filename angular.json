@@ -138,6 +138,23 @@
                   "with": "src/environments/environment.prod-local.ts"
                 }
               ]
+            },
+            "emulators": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "namedChunks": true,
+              "outputPath": "dist/home-account-emulators",
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.emulators.ts"
+                },
+                {
+                  "replace": "src/environments/emulators.ts",
+                  "with": "src/environments/emulators.on.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"
@@ -150,6 +167,9 @@
             },
             "development": {
               "buildTarget": "home-account:build:development"
+            },
+            "emulators": {
+              "buildTarget": "home-account:build:emulators"
             }
           },
           "defaultConfiguration": "development"

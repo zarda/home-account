@@ -24,11 +24,11 @@
  * and they share one options array precisely because a second block setting
  * the same key would replace it:
  *
- *   - firstValueFrom over a TransactionService listener
+ *   - firstValueFrom over a TransactionService or FirestoreService listener
  *     (docs/one-shot-reads.md, #427) — a warm cache's first emission is a
  *     plausible-looking subset, not the collection. What that ban can lose
  *     silently is a listener the alternation forgets, which is why this check
- *     also re-derives the census straight from TransactionService and asserts
+ *     also re-derives the census straight from both services and asserts
  *     every name it finds is named in the selector.
  *   - A dynamic import of an analytics SDK. no-restricted-imports reads
  *     static import DECLARATIONS only, so `await import('firebase/analytics')`
@@ -63,8 +63,9 @@
  *   - A double-chained pipe — `x.getTransactions(...).pipe(a).pipe(b)` — the
  *     outer `.pipe`'s object is the inner `.pipe` call, whose property name is
  *     `pipe`, so selector 2 does not match.
- *   - Another service's listeners. The census walks TransactionService only;
- *     a warm-cache read through a different service is outside it.
+ *   - Another service's listeners. The census walks TransactionService and
+ *     FirestoreService only; a warm-cache read through a different service's
+ *     own Observable method is outside it.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -112,15 +113,21 @@ const POPULATIONS = [
   },
 ];
 
-// The alternation of TransactionService listener methods the syntax ban
-// names — kept here as a plain string, not imported, so a drift between this
-// file and eslint.config.js shows up as a resolved-selector mismatch below
-// rather than disappearing behind a shared constant.
+// The alternation of listener methods the syntax ban names — kept here as a
+// plain string, not imported, so a drift between this file and
+// eslint.config.js shows up as a resolved-selector mismatch below rather than
+// disappearing behind a shared constant.
 const LISTENER_METHOD_ALTERNATION =
   'getTransactions|getTransactionById|getTransactionsInRange|getTransactionsWithReceipts|' +
   'getRecentTransactions|getExpensesInRange|getPeriodTotals|getPeriodCategoryTotals|' +
   'getTransactionDatesForMonth|getByDateRange|getByCategory|getMonthlyTotals|' +
-  'subscribeToCollection|subscribeToDocument|watch';
+  'subscribeToCollection|subscribeToDocument|subscribeToDocumentWithMetadata|watch';
+
+// The services whose Observable methods are listeners the ban must name.
+const LISTENER_SOURCES = [
+  'src/app/core/services/transaction.service.ts',
+  'src/app/core/services/firestore.service.ts',
+];
 
 const DIRECT_LISTENER_SELECTOR =
   `CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child` +
@@ -235,16 +242,18 @@ export function extractSyntaxSelectors(entry) {
 }
 
 /**
- * The names of every TransactionService method whose declaration line ends
- * in `): Observable<` — the census the firstValueFrom selector must cover.
+ * The names of every method in a service source whose declaration ends in
+ * `): Observable<` — the census the firstValueFrom selector must cover.
  * A signature can wrap across lines (params one per line), so this tracks
  * paren depth from each method-start line rather than matching a single
  * line; it stops accumulating the moment the parameter list's parens
- * rebalance to zero, which is exactly where `): Observable<` would sit.
+ * rebalance to zero, which is exactly where `): Observable<` would sit. A
+ * type parameter list between the name and its parens (FirestoreService's
+ * `subscribeToDocument<T>(`) is allowed for, as long as it holds no parens.
  */
 export function observableMethods(source) {
   const startPattern =
-    /^\s{2}(?:public\s+|private\s+|protected\s+|static\s+|async\s+)*([a-zA-Z_$][\w$]*)\s*\(/;
+    /^\s{2}(?:public\s+|private\s+|protected\s+|static\s+|async\s+)*([a-zA-Z_$][\w$]*)\s*(?:<[^()]*>)?\s*\(/;
   const names = [];
 
   let pendingName = null;
@@ -369,15 +378,20 @@ async function run() {
     }
   }
 
-  const census = observableMethods(
-    readFileSync('src/app/core/services/transaction.service.ts', 'utf8')
-  );
   const named = new Set(selectorNames(DIRECT_LISTENER_SELECTOR));
-  for (const method of census) {
-    if (!named.has(method)) {
-      fail(
-        `transaction.service.ts's ${method}(...) returns an Observable but is not named in the firstValueFrom selector's alternation`
-      );
+  const census = [];
+  for (const source of LISTENER_SOURCES) {
+    const methods = observableMethods(readFileSync(source, 'utf8'));
+    if (methods.length === 0) {
+      fail(`${source} — no Observable method found; the census no longer reads this file's signatures`);
+    }
+    for (const method of methods) {
+      census.push(method);
+      if (!named.has(method)) {
+        fail(
+          `${source.split('/').pop()}'s ${method}(...) returns an Observable but is not named in the firstValueFrom selector's alternation`
+        );
+      }
     }
   }
 
@@ -485,6 +499,27 @@ async function selfTest() {
     ['getTransactions', 'getMonthlyTotals']
   );
 
+  const genericMethodsFixture = [
+    '  subscribeToDocument<T>(path: string): Observable<T | null> {',
+    '    return x;',
+    '  }',
+    '',
+    '  subscribeToCollection<T extends Record<string, unknown>>(',
+    '    path: string',
+    '  ): Observable<T[]> {',
+    '    return y;',
+    '  }',
+    '',
+    '  async getDocument<T>(path: string): Promise<T | null> {',
+    '    return z;',
+    '  }',
+  ].join('\n');
+  check(
+    'observableMethods reads past a type parameter list, single-line and wrapped',
+    observableMethods(genericMethodsFixture),
+    ['subscribeToDocument', 'subscribeToCollection']
+  );
+
   check(
     'selectorNames recovers every name in the alternation',
     selectorNames(DIRECT_LISTENER_SELECTOR),
@@ -521,6 +556,24 @@ async function selfTest() {
     { filePath: fixturePath }
   );
   check('a piped firstValueFrom over a listener fails the rule once', countSyntaxMessages(pipedBad), 1);
+
+  // The anchored alternation: a name that only extends a listed one is not
+  // covered by it, so the metadata listener must be named in its own right.
+  const metadataBad = await fixtureEslint.lintText(
+    'declare const firstValueFrom: any;\n' +
+      'class X {\n' +
+      '  firestore: any;\n' +
+      '  async f() {\n' +
+      "    return firstValueFrom(this.firestore.subscribeToDocumentWithMetadata('x'));\n" +
+      '  }\n' +
+      '}\n',
+    { filePath: fixturePath }
+  );
+  check(
+    'a firstValueFrom over the metadata listener fails the rule once',
+    countSyntaxMessages(metadataBad),
+    1
+  );
 
   const good = await fixtureEslint.lintText(
     'declare const firstValueFrom: any;\n' +

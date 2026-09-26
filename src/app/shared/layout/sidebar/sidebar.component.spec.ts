@@ -43,7 +43,7 @@ describe('SidebarComponent', () => {
 
   it('builds translated nav items for every route', () => {
     const items = component.navItems();
-    expect(items.length).toBe(8);
+    expect(items.length).toBe(9);
     expect(items.map((i) => i.route)).toContain('/dashboard');
     expect(items[0].label).toBe('t:nav.dashboard');
     expect(mockTranslationService.t).toHaveBeenCalledWith('nav.dashboard');

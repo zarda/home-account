@@ -5,15 +5,19 @@
   .card-header {
     @apply flex items-center gap-2 sm:gap-3 mb-3;
 
+    // Nothing here is cut (G3, docs/ui-overflow.md): where the card is
+    // read-only there is no dialog in which to read the rest.
     .header-content {
-      @apply flex-1 min-w-0 overflow-hidden;
+      @apply flex-1 min-w-0;
 
+      // The name is its owner's own words and may be one unbreakable run.
       .budget-name {
-        @apply text-sm sm:text-base font-medium text-gray-800 dark:text-gray-100 truncate m-0 leading-tight;
+        @apply text-sm sm:text-base font-medium text-gray-800 dark:text-gray-100 m-0 leading-tight;
+        overflow-wrap: anywhere;
       }
 
       .budget-meta {
-        @apply text-xs text-gray-400 dark:text-gray-500 block truncate;
+        @apply text-xs text-gray-400 dark:text-gray-500 block;
       }
     }
 
@@ -27,16 +31,20 @@
   }
 
   .progress-section {
-    @apply overflow-hidden;
-
     .amount-row {
       @apply flex items-baseline justify-between gap-2 mb-1.5;
 
+      // A figure is never cut, nor broken between its digits: each scales
+      // to fit (appFitText, which needs the nowrap), and the limit takes a
+      // line of its own when the two do not share one.
       .amount-text {
-        @apply flex items-baseline gap-1 min-w-0 overflow-hidden;
+        @apply flex items-baseline min-w-0;
+        flex-wrap: wrap;
+        column-gap: 0.25rem;
 
         .spent {
-          @apply text-base sm:text-xl font-semibold text-gray-800 dark:text-gray-100 truncate;
+          @apply text-base sm:text-xl font-semibold text-gray-800 dark:text-gray-100;
+          white-space: nowrap;
 
           &.over-budget {
             @apply text-red-600 dark:text-red-400;
@@ -44,7 +52,8 @@
         }
 
         .limit {
-          @apply text-xs sm:text-sm text-gray-400 dark:text-gray-500 truncate;
+          @apply text-xs sm:text-sm text-gray-400 dark:text-gray-500;
+          white-space: nowrap;
         }
       }
 
@@ -66,8 +75,11 @@
     .status-row {
       @apply flex items-center justify-between gap-2 mt-1.5 text-xs sm:text-sm;
 
+      // A sentence around a figure: it breaks between words, and inside one
+      // only when that word alone is wider than the line (G3's prose case).
       .remaining {
-        @apply text-gray-500 dark:text-gray-400 truncate min-w-0;
+        @apply text-gray-500 dark:text-gray-400 min-w-0;
+        overflow-wrap: break-word;
 
         &.over-budget {
           @apply text-red-500 dark:text-red-400 font-medium;

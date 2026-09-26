@@ -16,12 +16,40 @@ replaced by a placeholder and rendered by nothing else.
 |---|---|---|---|
 | Unit | `npm run test:ci` | Class behaviour, signals, computeds, guards | Anything a template decides, and anything Firestore rules decide |
 | Smoke | `npm run smoke` | The same services against the real emulators, including rules | Anything CI measures — `test:ci` **excludes** `*.smoke.spec.ts`, so smoke coverage never counts |
-| Driven browser | `docs/e2e.md` | The app as shipped, signed in, at a real viewport | Nothing automatic; it is a written protocol, not a suite |
+| Driven browser | `docs/e2e.md` | The app as shipped, signed in, at a real viewport — against production, or against the emulators where a journey needs two accounts | Nothing automatic; it is a written protocol, not a suite |
 
 A file is in exactly one tier. A `*.smoke.spec.ts` needs the emulators and is
 excluded from `test:ci`, so **a line covered only by a smoke spec reads as
 uncovered in the coverage report**. That is a reporting fact, not a gap — but
 it means a coverage target can never be met by writing smoke specs.
+
+## More than one account at once
+
+Anything shared between accounts — the household is the first — needs two or
+three signed in at the same time, and each tier has its own shape for that.
+
+- **Rules: three named apps.** A rules smoke case that needs an owner, a
+  member and an outsider signs each into its own `initializeApp(…, name)`
+  against the Auth emulator, the shape `feedback.service.smoke.spec.ts` uses.
+  The single app the older rules cases share signs its anonymous stranger out,
+  and an anonymous user cannot sign back in, so it cannot hold three at once.
+  The three clients in `firestore-rules.smoke.spec.ts`'s household matrix use
+  **Firestore Lite** (`@angular/fire/firestore/lite`): a full client keeps a
+  listen and a write stream open, Chrome allows six connections per host, and
+  three full clients leave the admin REST calls waiting tens of seconds for a
+  free one. The rules judge a Lite request exactly as they judge a full
+  client's. Every case starts from pointer-free profiles and fresh household
+  ids, because specs run in random order.
+- **Services: two full stacks.** A service smoke spec builds the second
+  account's services in a child `EnvironmentInjector`, as
+  `transaction-receipts.smoke.spec.ts` does. Two full clients is the most one
+  file holds, for the same connection reason.
+- **The browser: the emulator serve.** `npm run start:emulators` serves the
+  app's committed `emulators` configuration on port 4300 against the local
+  emulators, and `node docs/ui-audit/tools/seed-household.mjs <file outside the
+  repo>` seeds two accounts and writes their session records. The driven
+  journeys that need both are [e2e.md](e2e.md)'s 58 to 66
+  ([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
 
 ## The stub-template rule
 
@@ -207,6 +235,26 @@ which `npm run material:check` fails (ADR 0128). Run it too.
 that starts at 768 px or above — a desktop-only layout assertion will either
 fail or pass vacuously. Breakpoint behaviour is driven by stubbing
 `BreakpointObserver`, not by resizing.
+
+## Karma serves no fonts
+
+Karma's test target publishes only `public/`, and the app's faces live in
+`src/assets/fonts` (`src/theme/_fonts.scss`), so no spec renders PT Sans or
+the icon fonts. Each machine measures in its own fallback: the Mac's system
+face, and DejaVu Sans on the Linux runner, which is wider. The translation
+stub renders every string as its raw key, one long unbroken word, so a spec
+that compares widths can pass on the Mac and fail in CI by a few pixels.
+
+A width spec pins a face with the runner's metrics instead:
+`Verdana, 'DejaVu Sans', sans-serif` on the host (Verdana measures within a
+few pixels of DejaVu Sans), and the same value on `--mat-sys-body-large-font`,
+`--mat-sys-body-small-font` and `--mat-sys-label-large-font`, because
+Material's fields and buttons take their face from those tokens and never
+inherit the host's. A floated outline label is laid out at up to 133% of its
+field and drawn at 75%, so a long label makes the field's `scrollWidth`
+exceed its `clientWidth` while nothing visible overflows; measure the label's
+drawn box instead. The phone-width describe in
+`household-members.component.spec.ts` does all three (#71).
 
 ## The noise floor
 

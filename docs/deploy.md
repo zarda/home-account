@@ -92,9 +92,11 @@ that compare: finish the ritual and re-run the job. An unset or empty secret
 still fails the deploy loudly, as it always did.
 
 **GCP Secret Manager** holds the five `FEEDBACK_SMTP_*` / `FEEDBACK_EMAIL_TO`
-values the Cloud Function reads. They are not GitHub secrets, they never
-pass through CI, and their lifecycle (set, verify, re-pin) is
-[feedback.md](feedback.md)'s runbook, not this one.
+values the Cloud Functions read: the feedback trigger binds all five, and the
+household invite callable the four `FEEDBACK_SMTP_*` ones. They are not
+GitHub secrets, they never pass through CI, and their lifecycle (set, verify,
+re-pin) is [feedback.md](feedback.md)'s runbook, not this one. A rotation
+affects both functions, and one full `--only functions` deploy re-pins both.
 
 ## The service account
 
@@ -187,6 +189,30 @@ If key creation is ever refused (`iam.disableServiceAccountKeyCreation`),
 the path forward is Workload Identity Federation — the revisit condition
 ADR 0077 records.
 
+### A callable's public invoker
+
+`deploy-functions` also ships a **callable**, `inviteToHousehold`
+([household.md](household.md),
+[ADR 0153](ADR/0153-an-invite-is-an-owners-callable-lookup-by-email-capped-and-its-answers-are-plain.md)).
+The app calls it through Cloud Run, which answers only when `allUsers` holds
+`roles/run.invoker` on the service, and firebase-tools binds that when it
+first **creates** the function (read at 15.28.2, in
+`lib/deploy/functions/release/fabricator.js` and `checkIam.js`; re-read both
+before the pinned major is raised). The binding needs
+**`run.services.setIamPolicy`**. No `run.*` role is in the list above, and
+whether `roles/cloudfunctions.admin` carries the permission is read, not
+assumed. The CLI's preflight never checks it: it tests
+`cloudfunctions.functions.setIamPolicy`, and only for a new HTTPS function,
+which a callable is not.
+
+**A failed first binding is not repaired by redeploying.** The function
+exists but is **private**, and a re-run only updates it: on an update the
+CLI sets no invoker for a callable. A green job is no proof either way.
+
+The read-only checks before the merge that first creates a callable, the
+grant, the log lines, the repair and the read-back after the deploy are
+[household.md](household.md#operator-runbook)'s runbook, not this one.
+
 ## Index deletions never happen from CI
 
 The CI deploy runs `--non-interactive` without `--force`. In that mode index
@@ -233,6 +259,12 @@ npx firebase deploy --only functions --project home-accounter
 Always `--only`. A bare `firebase deploy` drags every target into one
 release, which is exactly what the classification exists to prevent.
 
+The functions upload is the `functions/` folder minus `firebase.json`'s
+`functions.ignore`. A configured list replaces the CLI's defaults rather than
+adding to them, which is why it names `node_modules`, `.git` and `*.log`
+itself; its `*.local` entry keeps `functions/.secret.local` — the emulator-only
+secret values — out of a manual deploy's upload.
+
 No CI wait runs on this path: after a local deploy that adds indexes, watch
 Firestore → Indexes in the console yourself until every entry reads
 **Enabled**.
@@ -266,3 +298,8 @@ Kept here because it is also the anything-looks-wrong checklist:
    version; one signed-in read and write works.
 4. The next pull request shows both deploy jobs as skipped (`changes` runs
    and reports nothing to deploy), and a docs-only merge deploys nothing.
+5. After a functions deploy that created a callable, its Cloud Run service
+   shows `allUsers` on `roles/run.invoker`
+   ([A callable's public invoker](#a-callables-public-invoker); the read-back
+   is in [household.md](household.md#operator-runbook)). A green job is not
+   that proof.

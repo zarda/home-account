@@ -29,11 +29,12 @@ The reasoning and the rejected alternatives are in
 
 `buildTransactionWhere` (`src/app/core/utils/transaction-query.utils.ts`) is
 the only place server-side transaction filters are composed. Its equality
-fields — currently `type`, `categoryId`, `currency`, `goalId` — can be combined
-freely by the filter panel, and both consumers order by `date` in either
-direction. Firestore therefore needs a composite index for **every non-empty
-subset of the equality fields, twice** (date ascending and descending):
-fifteen subsets, thirty entries.
+fields — currently `type`, `categoryId`, `currency`, `goalId` and
+`location.country` — can be combined freely by the filter panel, and both
+consumers order by `date` in either direction. Firestore therefore needs a
+composite index for **every non-empty subset of the equality fields, twice**
+(date ascending and descending): thirty-one subsets, sixty-two
+`transactions` entries.
 
 `npm run indexes:check` (`scripts/check-firestore-indexes.mjs`) computes that
 requirement from the source itself — it greps the equality pushes out of
@@ -42,11 +43,12 @@ missing JSON entries. Because the field list is extracted rather than copied,
 a new server-side filter cannot ship without its indexes; a shape guard fails
 the check loudly if the extraction regex ever stops matching the source.
 
-The file is mechanical, so regenerate rather than splice. Adding a fifth
-equality field doubles the set to 62 entries — Firestore caps a project at 200
-composite indexes and each one amplifies every document write, so weigh that
-before adding one (`applyClientTransactionFilters` exists precisely to keep
-amount, tags and text search off this contract).
+The file is mechanical, so regenerate rather than splice. The fifth equality
+field, `location.country` (`e73f9c68`, 2026-08-26), already doubled the set
+from 30 entries to 62, and a sixth would double it again, to 126 — Firestore
+caps a project at 200 composite indexes and each one amplifies every document
+write, so weigh that before adding one (`applyClientTransactionFilters` exists
+precisely to keep amount, tags and text search off this contract).
 
 A missing index is a deploy defect, not a transient fault, so
 `TransactionWindowService.fetchPage` does not retry `failed-precondition` —
@@ -165,6 +167,48 @@ attached to the pull request; nothing runs in CI and nothing goes red.
 records why it is not automated and the conditions under which it should be.
 A step that could be a spec belongs in a spec — cheaper, repeatable, and it
 actually runs.
+
+It has two venues. **Production** stays the instrument for the wire and the
+deployed rules: a real session, real rows, a real provider. **The emulator
+serve** is the second, for journeys that need two accounts signed in, which
+production cannot give without a second real person's data. The app is
+pointed at the emulators by a committed build configuration, `emulators`,
+served with `npm run start:emulators` on port 4300, and
+`docs/ui-audit/tools/seed-household.mjs` seeds the two accounts
+([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
+That venue shares the suite's own limits: the rules it loads are the
+repository's, not the deployed ones, and nothing in it is real mail.
+
+## The callable the smoke run never starts (#71)
+
+`npm run smoke` starts the emulators `--only auth,storage,firestore`. The
+functions emulator is not among them, so **the household invite callable,
+`inviteToHousehold`, never runs in the suite.** What covers it instead, in
+three pieces:
+
+- **Its decisions** — the ten-step refusal order, the counters, the seat
+  count, the mail and its deadline — are pure modules and a handler that
+  takes its I/O as injected dependencies, pinned over fakes by
+  `npm --prefix functions test`, which CI runs.
+- **What it writes** is written by the services' smoke specs the way it
+  writes it: `household.service.smoke.spec.ts` and
+  `account-deletion.smoke.spec.ts` put invites straight into Firestore past
+  the rules, with the generation copied from the stored household, and
+  provide a stand-in for the callable that refuses if it is ever called.
+- **The real callable against real Auth and Firestore** — the Admin SDK's
+  address lookup, its transactions, its region in the URL, its secrets
+  loading — is exercised only in the emulator journeys, 58 to 66 in
+  [e2e.md](e2e.md), driven by hand with the functions emulator started
+  beside the others.
+
+Two things about it no local run can see at all. **The public invoker**: a
+callable answers the app only while `allUsers` holds `roles/run.invoker` on
+its Cloud Run service, the functions emulator has no IAM, and a deploy that
+failed to bind it leaves the function private without anything local
+noticing — [household.md](household.md#operator-runbook) has the read-only
+checks and the repair. **Real mail**: the journeys' SMTP host is a port
+nothing listens on, so a mail that arrives is proved only by journey 67 on
+production, and only when a recipient is named for it.
 
 ## The state that cannot be arranged (#432, #431)
 
@@ -301,7 +345,14 @@ harness bound what that can honestly mean, and none of them is about axe:
   measure both in a browser — journeys 45 and 57 in [e2e.md](e2e.md) do.
 
 And it sweeps only the routes the walkthrough visits: `/dashboard`,
-`/transactions`, `/budgets`, `/reports`, `/settings`, `/data` and `/about`.
+`/transactions`, `/budgets`, `/reports`, `/settings`, `/data`, `/household`
+(its setup state, then its member view: the walkthrough's account forms a
+household through the service and is shown one pending invite, so the rows,
+the read-only cards, the members and the mail-status copy are swept too) and
+`/about`. axe leaves a disabled control's text out of `color-contrast`, so
+the read-only goal checklist, whose boxes are disabled, is not measured
+there; `goal-progress-card.component.spec.ts` holds its label to the theme's
+text colour instead.
 **`/ai`, `/search-history`, `/import/file` and `/import/history` are
 unswept** — no spec opens them, so nothing here says anything about their
 accessibility. `wcag22aa` is left out on purpose: its headline rule,
@@ -371,6 +422,9 @@ bearing rather than belt-and-braces.
 | Storage `update` unreachable by upload | a metadata-update case, plus a named post-deploy check on the live project | `storage.service.smoke.spec.ts`, [receipt-quota.md](receipt-quota.md) |
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
 | Nothing renders, and no journey crosses a page | the driven browser journeys — a protocol, not a gate | [e2e.md](e2e.md), by hand, twice per branch |
+| A journey that needs two accounts | the same protocol on the emulator serve, with two seeded accounts | [e2e.md](e2e.md) journeys 58–66, [ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md) |
+| The invite callable is outside the smoke run | its decisions over fakes in the functions tests; its writes reproduced by the smoke specs; the real callable in the emulator journeys | `npm --prefix functions test`, `household.service.smoke.spec.ts`, [e2e.md](e2e.md) journey 60, above |
+| A callable's public invoker binding | a read-only IAM check before the first deploy and after it | [household.md](household.md#operator-runbook), [deploy.md](deploy.md) |
 | The iOS App Group container and the widget extension | a signed simulator build, its file cross-checked against the app's own screens by hand | [widget.md](widget.md) |
 | A stored shape no client write can produce | a unit fixture standing in for the value; the emulator seeds the nearest shape it can hold | `recurring.service.spec.ts`, `recurring.service.smoke.spec.ts` |
 | A document missing the field every read orders by | nothing, and nothing can — it is invisible until the form rewrites it | [ADR 0141](ADR/0141-a-recurring-rule-in-a-bad-state-is-repaired-where-its-data-allows-and-refused-where-it-does-not.md) |

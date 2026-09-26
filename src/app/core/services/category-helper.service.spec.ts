@@ -63,12 +63,14 @@ describe('CategoryHelperService', () => {
         expect(service.getCategoryName('cat3', categoriesMap)).toBe('Salary');
       });
 
-      it('should return "Unknown" for invalid id', () => {
-        expect(service.getCategoryName('invalid', categoriesMap)).toBe('Unknown');
+      // No catalog is loaded here, so the translation answers with its key:
+      // the fallback is the reader's word for unknown, not English.
+      it('names an unknown id in the reader\'s language', () => {
+        expect(service.getCategoryName('invalid', categoriesMap)).toBe('common.unknownCategory');
       });
 
-      it('should return "Unknown" for empty map', () => {
-        expect(service.getCategoryName('cat1', new Map())).toBe('Unknown');
+      it('names every id unknown in an empty map', () => {
+        expect(service.getCategoryName('cat1', new Map())).toBe('common.unknownCategory');
       });
     });
 
@@ -112,12 +114,12 @@ describe('CategoryHelperService', () => {
         expect(service.getCategoryNameFromArray('cat2', mockCategories)).toBe('Transportation');
       });
 
-      it('should return "Unknown" for invalid id', () => {
-        expect(service.getCategoryNameFromArray('invalid', mockCategories)).toBe('Unknown');
+      it('names an unknown id in the reader\'s language', () => {
+        expect(service.getCategoryNameFromArray('invalid', mockCategories)).toBe('common.unknownCategory');
       });
 
-      it('should return "Unknown" for empty array', () => {
-        expect(service.getCategoryNameFromArray('cat1', [])).toBe('Unknown');
+      it('names every id unknown in an empty array', () => {
+        expect(service.getCategoryNameFromArray('cat1', [])).toBe('common.unknownCategory');
       });
     });
 

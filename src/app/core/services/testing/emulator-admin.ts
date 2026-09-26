@@ -1,5 +1,6 @@
-// Writes to Firestore that no client is allowed to make, for smoke tests that
-// need to set up the far side of a rule they are about to exercise.
+// Reads and writes to Firestore that no client is allowed to make, for smoke
+// tests that need to set up (or look behind) the far side of a rule they are
+// about to exercise.
 //
 // `users/{uid}/quota/receiptImages` is the case this exists for: the storage
 // triggers own it through the Admin SDK and firestore.rules denies every
@@ -22,8 +23,8 @@ const FIRESTORE_EMULATOR_ORIGIN = 'http://127.0.0.1:8080';
 /** The demo project every smoke suite runs against. */
 const PROJECT_ID = 'demo-home-account';
 
-/** One Firestore REST typed value, e.g. `{ integerValue: '5' }`. */
-export type EmulatorField = Record<string, string>;
+/** One Firestore REST typed value, e.g. `{ integerValue: '5' }` or `{ booleanValue: true }`. */
+export type EmulatorField = Record<string, string | boolean>;
 
 /** REST carries integers as strings; a bare number would arrive as a double. */
 export function integerField(value: number): EmulatorField {
@@ -32,6 +33,15 @@ export function integerField(value: number): EmulatorField {
 
 export function timestampField(value: Date = new Date()): EmulatorField {
   return { timestampValue: value.toISOString() };
+}
+
+export function stringField(value: string): EmulatorField {
+  return { stringValue: value };
+}
+
+/** REST carries a boolean as a JSON boolean, not as a string. */
+export function booleanField(value: boolean): EmulatorField {
+  return { booleanValue: value };
 }
 
 function documentUrl(path: string): string {
@@ -97,6 +107,39 @@ export async function patchFieldsAsOwner(
       `emulator patch of ${path} failed: ${response.status} ${await response.text()}`
     );
   }
+}
+
+/**
+ * One REST typed value as the emulator returns it. Wider than `EmulatorField`
+ * because a read can carry booleans, doubles and nested maps.
+ */
+export type EmulatorValue = Record<string, unknown>;
+
+/**
+ * Read a document's REST fields, bypassing rules; null when it does not exist.
+ *
+ * The values come back exactly as stored. A timestamp keeps its microseconds
+ * here, which `timestampField` cannot reproduce (a `Date` holds milliseconds),
+ * so a fixture that must equal a stored timestamp copies the value read back
+ * rather than rebuilding it.
+ */
+export async function getDocumentAsOwner(
+  path: string
+): Promise<Record<string, EmulatorValue> | null> {
+  const response = await fetch(documentUrl(path), {
+    method: 'GET',
+    headers: { Authorization: 'Bearer owner' }
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(
+      `emulator read of ${path} failed: ${response.status} ${await response.text()}`
+    );
+  }
+  const body = (await response.json()) as { fields?: Record<string, EmulatorValue> };
+  return body.fields ?? {};
 }
 
 /** Delete a document, bypassing rules. A document that is already gone is fine. */

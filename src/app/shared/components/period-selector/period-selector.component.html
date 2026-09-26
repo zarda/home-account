@@ -4,6 +4,7 @@
       [value]="isCustomPeriod() ? null : selectedPeriod()"
       (change)="onToggleChange($event.value)"
       class="period-toggle"
+      hideSingleSelectionIndicator
     >
       <mat-button-toggle value="thisMonth">
         <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>

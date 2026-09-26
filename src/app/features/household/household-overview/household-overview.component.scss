@@ -1,0 +1,195 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+// The title and the period selector share a line while both fit; the
+// selector drops below the title rather than squeezing it.
+.overview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+// Its toggle scrolls its own overflow, so it may take less than its labels
+// need rather than widening the page.
+app-period-selector {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.overview-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+
+  mat-icon {
+    font-size: var(--text-xl);
+    width: 1em;
+    height: 1em;
+    color: var(--color-primary);
+  }
+}
+
+.overview-note {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  background: var(--color-warning-light);
+  color: var(--color-warning-text);
+
+  &.is-info {
+    background: var(--color-primary-light);
+    color: var(--color-primary-text);
+  }
+
+  mat-icon {
+    flex-shrink: 0;
+    font-size: var(--text-xl);
+    width: 1em;
+    height: 1em;
+  }
+
+  > span {
+    flex: 1 1 0;
+    min-width: 0;
+    // A member's name may be one long word.
+    overflow-wrap: anywhere;
+  }
+}
+
+.overview-card {
+  padding: 16px;
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+
+.overview-subtitle {
+  margin: 0;
+  margin-block-end: 8px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.member-lines,
+.overview-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One member per line: who, then the three figures. The figures take their
+   own line under the name whenever the two cannot share one, so a long name
+   never squeezes an amount. */
+.member-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-block: 12px;
+
+  & + & {
+    border-block-start: 1px solid var(--surface-muted);
+  }
+}
+
+.member-line-who {
+  flex: 1 1 10rem;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.member-figures {
+  flex: 3 1 18rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+// Takes the figures' place, so it wraps under the name the same way.
+.member-not-loaded {
+  flex: 3 1 18rem;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.member-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  dt {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  dd {
+    margin: 0;
+  }
+}
+
+// nowrap is what appFitText needs: an amount scales to fit its column rather
+// than breaking across lines or being cut.
+.figure-value {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-primary);
+
+  &.income {
+    color: var(--color-income-text);
+  }
+
+  &.expense,
+  &.negative {
+    color: var(--color-expense-text);
+  }
+}
+
+.overview-row + .overview-row {
+  border-block-start: 1px solid var(--surface-muted);
+}
+
+// Its label counts what is left, which outgrows a phone's width: the button
+// takes a second line rather than spilling out of Material's fixed height.
+.overview-more {
+  display: flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  block-size: auto;
+  min-block-size: 40px;
+  margin-block-start: 12px;
+  margin-inline: auto;
+  padding-block: 8px;
+  overflow-wrap: anywhere;
+}

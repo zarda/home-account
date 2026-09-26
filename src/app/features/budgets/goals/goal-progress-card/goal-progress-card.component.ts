@@ -36,6 +36,18 @@ export class GoalProgressCardComponent {
   private currencyService = inject(CurrencyService);
 
   goal = input.required<Goal>();
+  /**
+   * Nothing on the card acts on the goal: another household member's goal
+   * can be read but only its owner can change it. The checklist still shows
+   * what is done, in boxes that cannot be ticked.
+   */
+  readOnly = input(false);
+  /**
+   * Makes the goal's name a heading at this level, for a page that lists
+   * goals under headings beside budget cards, whose names are headings.
+   * Unset, the name is plain text.
+   */
+  headingLevel = input<3 | 4 | null>(null);
 
   edit = output<void>();
   delete = output<void>();
@@ -70,6 +82,7 @@ export class GoalProgressCardComponent {
   }
 
   onItemToggled(index: number, done: boolean): void {
+    if (this.readOnly()) return;
     this.toggleItem.emit({ index, done });
   }
 }

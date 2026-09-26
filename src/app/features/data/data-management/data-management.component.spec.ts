@@ -550,7 +550,9 @@ describe('DataManagementComponent', () => {
       it('warns about the kinds the cascade removes that the old wording left out', () => {
         const warning = en.settings.deleteAccountWarning.toLowerCase();
 
-        const missing = ['goals', 'stored answers', 'merchant', 'import history', 'feedback']
+        // The household step dissolves an owner's household for every other
+        // member too, which nothing of the account's own records says.
+        const missing = ['goals', 'stored answers', 'merchant', 'import history', 'feedback', 'household', 'every member']
           .filter(word => !warning.includes(word));
 
         expect(missing).toEqual([]);

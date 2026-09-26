@@ -24,52 +24,37 @@ into [`docs/ui-audit/`](../).
    `material-icons` / `@fontsource/pt-sans` are served to the page via Playwright route
    interception, so screenshots render correct icons/fonts even with no network access.
 
-2. **Point the app at the emulators.** Create `.vscode/environment.ts` with the demo project:
-
-   ```ts
-   export const environment = {
-     production: false,
-     useEmulators: true,
-     firebase: {
-       apiKey: 'demo-api-key',
-       authDomain: 'demo-home-account.firebaseapp.com',
-       projectId: 'demo-home-account',
-       storageBucket: 'demo-home-account.appspot.com',
-       messagingSenderId: '000000000000',
-       appId: '1:000000000000:web:demo',
-       measurementId: 'G-DEMO'
-     },
-     donationUrlPaypal: ''
-   };
-   ```
-
-   and (until a permanent `useEmulators` flag lands in `app.config.ts`) wire the emulator
-   connectors in `src/app/app.config.ts`:
-
-   ```ts
-   // in provideAuth:      connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-   // in provideFirestore: connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
-   // in provideStorage:   connectStorageEmulator(storage, '127.0.0.1', 9199);
-   ```
-
-   (Gate each on `environment.useEmulators` and don't commit the wiring unless it's made a
-   proper feature — see plan §11.)
+2. **Serve the app against the emulators.** Nothing is edited: the committed `emulators`
+   build configuration (`angular.json`) swaps `src/environments/environment.ts` for
+   `environment.emulators.ts` — this harness's demo project, `demo-home-account`, with the
+   `demo-api-key` the scripts key their session records by — and `src/environments/emulators.ts`
+   for `emulators.on.ts`, which names the four emulator hosts from `firebase.json`. Auth,
+   Firestore, Storage and the invite callable connect to them before their first use.
+   `src/app/build-configurations.spec.ts` fails if any other configuration, the production
+   build above all, ever picks up either file
+   ([ADR 0155](../../ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
 
 3. **Run everything:**
 
    ```bash
    npx firebase emulators:start --only auth,firestore,storage --project demo-home-account &
-   npm start &                        # ng serve on :4200
+   npx ng serve --configuration emulators &   # :4200, where the capture scripts look
    cd docs/ui-audit/tools
    node capture.mjs                   # full sweep -> ./shots/
    node capture-scroll.mjs            # below-the-fold shots for long pages
    ```
+
+   `npm run start:emulators` serves the same configuration on :4300 instead. That is the port
+   the two-account browser journeys use ([e2e.md](../../e2e.md)), so its origin never shares a
+   session or a Firestore cache with a production serve on :4200. Never run the emulators here
+   while `npm run smoke` is running: they take the same ports.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `seed.mjs` | Seeds Firestore emulator: user profile, 40 transactions (3 months, multi-currency), 5 budgets (healthy/warning/exceeded), 4 recurring. Invoked by `capture.mjs`; can run standalone: `node seed.mjs <uid>`. |
+| `seed-household.mjs` | Seeds two household-ready accounts for the two-account browser journeys: Alex Chen (USD) and Sam Lee (JPY), each a Google-linked, verified user in the Auth emulator, each given `seed.mjs`'s data, then their own name, address and base currency, one custom category, one budget current for this month, one goal and two rows this month — one of Alex's a converted yen row with no base stamp. Writes both IndexedDB session records to the path given, as `{ alex, sam }`, in a file only its owner can read, and refuses a path inside the repository: the records carry live emulator tokens. `node seed-household.mjs <sessions.json outside the repo>`. |
 | `capture.mjs` | Creates the demo auth user, seeds data, then screenshots all pages: desktop/mobile × light/dark, ja spot-checks, dialogs, user menu, and the default sidebar-open state. |
 | `capture-scroll.mjs` | The app scrolls inside a fixed `.main-container`, so full-page screenshots clip; this scrolls the container and captures stepped viewport shots for long pages. |
 | `capture-edit-dialog.mjs` | Opens the Edit Transaction dialog on a phone viewport and reports whether the Save Changes button is inside the visible viewport, at 390×844 and at a deliberately short 390×500 (the toolbar-collapsed iOS case). Prints a VERDICT line; run before/after a dialog-height change. `node capture-edit-dialog.mjs <label>`. |

@@ -14,6 +14,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
+import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 
 @Component({
   selector: 'app-budget-progress-card',
@@ -21,6 +22,7 @@ import { CategoryChipComponent } from '../../../shared/components/category-chip/
   imports: [
     CategoryChipComponent,
     CommonModule,
+    FitTextDirective,
     MatCardModule,
     MatProgressBarModule,
     MatIconModule,
@@ -39,6 +41,17 @@ export class BudgetProgressCardComponent {
   // Modern Angular 21: signal-based inputs/outputs
   budget = input.required<Budget>();
   category = input<Category | undefined>();
+  /**
+   * Nothing on the card acts on the budget: another household member's
+   * budget can be read but only its owner can change it.
+   */
+  readOnly = input(false);
+  /**
+   * The level of the heading that names the budget, one below whatever the
+   * card is listed under: the Budgets page's own title, or a member's name
+   * on the household page.
+   */
+  headingLevel = input<3 | 4>(3);
 
   edit = output<void>();
   delete = output<void>();
