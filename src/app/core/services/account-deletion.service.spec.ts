@@ -280,21 +280,6 @@ describe('AccountDeletionService', () => {
   });
 
   describe('the household', () => {
-    /**
-     * What firestore.rules does to the profile delete while the membership
-     * its pointer names is live: refuses it. The household step is what ends
-     * that membership, so when it fails before its leave or dissolve commits,
-     * the profile, and the pointer on it, stay for the retry.
-     */
-    function refuseProfileDeleteWhileAMember(): void {
-      mockFirestore.deleteDocument.and.callFake(() => {
-        order.push('userDoc');
-        return Promise.reject(Object.assign(new Error('Missing or insufficient permissions.'), {
-          code: 'permission-denied'
-        }));
-      });
-    }
-
     it('is a step of its own, right after the device-local steps', () => {
       expect(DELETION_STEPS.indexOf('household')).toBe(DELETION_STEPS.indexOf('weeklyRecap') + 1);
     });
@@ -339,16 +324,16 @@ describe('AccountDeletionService', () => {
       expect(mockHousehold.deleteAll).toHaveBeenCalledTimes(1);
     });
 
-    it('reports a failed household step and still runs every other cloud step', async () => {
-      // Failed before its leave committed, so the membership is still live
-      // and the rules refuse the profile delete as well.
+    it('reports a failed household step and still runs every other cloud step, the profile delete included', async () => {
+      // A profile names no membership, so the rules let its delete through
+      // whatever the household step left; the index it would retry from is
+      // a subcollection and outlives the profile.
       mockHousehold.deleteAll.and.rejectWith(new Error('offline'));
-      refuseProfileDeleteWhileAMember();
 
       const report = await service.deleteAccount();
 
       expect(report.ok).toBeFalse();
-      expect(report.failed.map(f => f.step)).toEqual(['household', 'userDoc']);
+      expect(report.failed.map(f => f.step)).toEqual(['household']);
       for (const spy of [
         mockTransactions.deleteAllTransactions, mockCategories.deleteAll, mockBudgets.deleteAll,
         mockRecurring.deleteAll, mockGoals.deleteAll, mockSearches.deleteAll, mockAnswers.deleteAll,
@@ -360,9 +345,8 @@ describe('AccountDeletionService', () => {
       }
     });
 
-    it('keeps the auth user and the profile with its pointer for a retry when the household step fails before leaving', async () => {
+    it('keeps the auth user for a retry when the household step fails', async () => {
       mockHousehold.deleteAll.and.rejectWith(new Error('offline'));
-      refuseProfileDeleteWhileAMember();
 
       const first = await service.deleteAccount();
 
@@ -370,7 +354,6 @@ describe('AccountDeletionService', () => {
       expect(mockAuth.deleteFirebaseUser).not.toHaveBeenCalled();
 
       track(mockHousehold.deleteAll, 'household');
-      track(mockFirestore.deleteDocument, 'userDoc');
       const second = await service.deleteAccount();
 
       expect(second.ok).toBeTrue();
@@ -379,17 +362,6 @@ describe('AccountDeletionService', () => {
       expect(mockAuth.deleteFirebaseUser).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps the auth user but not the profile when the household step fails after leaving', async () => {
-      // Failed while sweeping invites: the membership is already gone, so
-      // the rules let the profile delete through.
-      mockHousehold.deleteAll.and.rejectWith(new Error('offline'));
-
-      const report = await service.deleteAccount();
-
-      expect(report.failed.map(f => f.step)).toEqual(['household']);
-      expect(mockFirestore.deleteDocument).toHaveBeenCalledWith('users/user123');
-      expect(mockAuth.deleteFirebaseUser).not.toHaveBeenCalled();
-    });
   });
 
   it('throws when nobody is signed in', async () => {

@@ -646,8 +646,11 @@ service cloud.firestore {
 
     // ---- households ----
 
-    function userPath(uid) {
-      return /databases/$(database)/documents/users/$(uid);
+    // The account's index document for one membership. Only the account
+    // reads or writes its own index, so it proves nothing to anyone else:
+    // what grants is the member document it is tied to.
+    function indexPath(uid, householdId) {
+      return /databases/$(database)/documents/users/$(uid)/households/$(householdId);
     }
 
     function householdPath(householdId) {
@@ -660,13 +663,6 @@ service cloud.firestore {
 
     function invitePath(inviteId) {
       return /databases/$(database)/documents/householdInvites/$(inviteId);
-    }
-
-    // The profile pointer is written by the profile's own account, so it is
-    // only ever a hint of where to look: nothing is granted on it alone. What
-    // grants is the member documents it leads to.
-    function householdOf(uid) {
-      return get(userPath(uid)).data.get('householdId', null);
     }
 
     // The generation stamp. A household id can be formed again after a
@@ -692,26 +688,20 @@ service cloud.firestore {
       return memberAt(householdId, request.auth.uid, createdAt) && since == createdAt;
     }
 
-    // Lookup budget: a read may make ten document lookups. The owner of the
-    // data short-circuits before this runs; a peer costs the owner's profile,
-    // both member documents and the household the two share — four.
-    function householdPeer(ownerUid) {
-      let householdId = householdOf(ownerUid);
-      return isAuthenticated()
-        && householdId is string
-        && memberOf(householdId, ownerUid)
-        && memberOf(householdId, request.auth.uid);
-    }
-
     function householdNameValid(name) {
       return name is string && name.size() >= 1 && name.size() <= 60;
     }
 
     // createdAt is the request time, never a client value: it is the
     // generation every member document is stamped against, and a chosen value
-    // could be made to match an orphan's. The owner's member document and the
-    // pointer land in the same commit, so a household never exists without
-    // the membership that owns it, and one account cannot hold two.
+    // could be made to match an orphan's. The owner's member document and its
+    // index document land in the same commit, both stamped with the same
+    // request time, so a household never exists without the membership that
+    // owns it, nor that membership without the entry that lists it. How many
+    // households an account holds is the client's limit, not this file's.
+    //
+    // Lookups: the owner's member document and index document as the commit
+    // leaves them, two.
     function householdCreateValid(householdId) {
       let d = request.resource.data;
       return d.keys().hasOnly(['name', 'ownerId', 'createdAt', 'updatedAt'])
@@ -721,7 +711,9 @@ service cloud.firestore {
         && d.createdAt == request.time
         && (!('updatedAt' in d) || d.updatedAt is timestamp)
         && existsAfter(memberPath(householdId, request.auth.uid))
-        && getAfter(userPath(request.auth.uid)).data.get('householdId', null) == householdId;
+        && existsAfter(indexPath(request.auth.uid, householdId))
+        && getAfter(indexPath(request.auth.uid, householdId)).data.since == request.time
+        && getAfter(indexPath(request.auth.uid, householdId)).data.role == 'owner';
     }
 
     function householdUpdateValid() {
@@ -782,41 +774,78 @@ service cloud.firestore {
         && !existsAfter(invitePath(inviteId));
     }
 
-    // Every membership is created together with the pointer that names it:
-    // with the profile's guarded pointer change below, that is what keeps an
-    // account to one household. The owner joined through no invite, so its
-    // document names none.
+    // Every membership is created together with the index document that
+    // lists it, carrying the same generation and role: the account's index
+    // is how its own client finds every membership it holds, for the
+    // switcher, a leave and erasure alike, and a member document it did not
+    // list would be one erasure could miss. The owner joined through no
+    // invite, so its document names none.
+    //
+    // Lookups: the household (before and after), the index document, and for
+    // a joiner the invite (before and after), five at most.
     function memberCreateValid(householdId, uid) {
       let d = request.resource.data;
       return uid == request.auth.uid
         && memberShapeValid(uid)
         && d.since == getAfter(householdPath(householdId)).data.createdAt
-        && getAfter(userPath(uid)).data.get('householdId', null) == householdId
+        && existsAfter(indexPath(uid, householdId))
+        && getAfter(indexPath(uid, householdId)).data.since == d.since
+        && getAfter(indexPath(uid, householdId)).data.role == d.role
         && (d.role == 'owner'
             ? (!('inviteId' in d) && foundingOwner(householdId))
             : invitedMember(householdId, uid));
     }
 
-    // The membership a profile's pointer named is gone once the write lands:
-    // no pointer, or its member document or its household no longer exists.
-    // Guarding the delete with the same condition as the pointer change is
-    // what stops a delete-and-re-create of the profile from shedding a live
-    // membership. It reads the existing profile, so a caller guards the case
-    // where there is none.
-    function formerMembershipGone(userId) {
-      let former = resource.data.get('householdId', null);
-      return former == null
-        || !existsAfter(memberPath(former, userId))
-        || !existsAfter(householdPath(former));
+    // An index document as a join or a create writes it, or as a rejoin
+    // writes it again: tied to a member document of the same generation and
+    // role that exists once the commit lands. The name is a copy for the
+    // account's own listing, refreshed by the account; nothing reads it as
+    // the household's. endedAt is never written at creation: it marks a
+    // membership whose ending is under way.
+    //
+    // Lookups: the member document as the commit leaves it, one.
+    function indexShapeValid(uid, householdId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['since', 'role', 'name', 'joinedAt', 'endedAt'])
+        && d.keys().hasAll(['since', 'role', 'name', 'joinedAt'])
+        && !('endedAt' in d)
+        && householdNameValid(d.name)
+        && d.joinedAt is timestamp
+        && existsAfter(memberPath(householdId, uid))
+        && getAfter(memberPath(householdId, uid)).data.since == d.since
+        && getAfter(memberPath(householdId, uid)).data.role == d.role;
     }
 
-    function householdPointerValid(userId) {
+    // Whether the membership an entry of generation `since` lists is over
+    // once the write lands: no member document, or one of another
+    // generation. Lookups: the member document as the commit leaves it, one.
+    function membershipOver(uid, householdId, since) {
+      return !existsAfter(memberPath(householdId, uid))
+        || getAfter(memberPath(householdId, uid)).data.since != since;
+    }
+
+    // The account's own touch-ups of an entry it holds: the cached name, and
+    // the mark that its membership is ending. The mark goes on only beside a
+    // membership that is over as the commit leaves it, so an ending decided
+    // before a rejoin cannot mark the live membership that rejoin made. It
+    // stays once set: only a full rewrite tied to a live member document (a
+    // rejoin) is written without it. Lookups: none, or one when the mark
+    // goes on (membershipOver).
+    function indexTouchUpValid(uid, householdId) {
       let d = request.resource.data;
-      return formerMembershipGone(userId)
-        && (!('householdId' in d)
-            || (d.householdId is string
-                && d.householdId.size() > 0
-                && existsAfter(memberPath(d.householdId, userId))));
+      return d.diff(resource.data).affectedKeys().hasOnly(['name', 'endedAt'])
+        && householdNameValid(d.name)
+        && (!('endedAt' in d) || d.endedAt is timestamp)
+        && (!('endedAt' in resource.data) || 'endedAt' in d)
+        && ('endedAt' in resource.data || !('endedAt' in d)
+          || membershipOver(uid, householdId, resource.data.since));
+    }
+
+    // An entry goes only once the membership it lists is over. A missing
+    // entry has nothing to shed, so a retried delete passes. Lookups: one
+    // (membershipOver).
+    function indexDeleteValid(uid, householdId) {
+      return resource == null || membershipOver(uid, householdId, resource.data.since);
     }
 
     // ---- user profile ----
@@ -828,8 +857,8 @@ service cloud.firestore {
     }
 
     // photoURL is omitted, not null, when the provider has no picture. A
-    // profile is born with no household: a pointer only ever arrives in the
-    // commit that creates the membership it names.
+    // profile names no household: memberships are listed in the account's
+    // index (users/{uid}/households), and householdId is a retired field.
     function userCreateValid() {
       let d = request.resource.data;
       return d.keys().hasAll([
@@ -844,7 +873,9 @@ service cloud.firestore {
         && userOptionalsValid(d);
     }
 
-    function userUpdateValid(userId) {
+    // A householdId left on a profile from before the index may only be
+    // removed, never set.
+    function userUpdateValid() {
       let d = request.resource.data;
       return (!touched('email') || ('email' in d && d.email is string))
         && (!touched('displayName') || ('displayName' in d && d.displayName is string))
@@ -852,7 +883,7 @@ service cloud.firestore {
         && (!touched('lastLoginAt')
             || ('lastLoginAt' in d && d.lastLoginAt is timestamp))
         && (!touched('preferences') || ('preferences' in d && d.preferences is map))
-        && (!touched('householdId') || householdPointerValid(userId))
+        && (!touched('householdId') || !('householdId' in d))
         && userOptionalsValid(d);
     }
 
@@ -895,18 +926,15 @@ service cloud.firestore {
       // Users can only read/write their own document
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && userCreateValid();
-      allow update: if isOwner(userId) && userUpdateValid(userId);
-      // A profile that is already gone has nothing to shed, so a retried
-      // erasure still succeeds.
-      allow delete: if isOwner(userId)
-        && (resource == null || formerMembershipGone(userId));
-
-      // The four kinds a household shares, readable by the other members.
-      // Writes stay the owner's alone.
+      allow update: if isOwner(userId) && userUpdateValid();
+      // A profile names no membership, so nothing about one holds its delete
+      // back: erasure finds every membership through the index, which is a
+      // subcollection and outlives the profile for a retry.
+      allow delete: if isOwner(userId);
 
       // Transactions subcollection
       match /transactions/{transactionId} {
-        allow read: if isOwner(userId) || householdPeer(userId);
+        allow read: if isOwner(userId);
         allow create: if isOwner(userId) && txCreateValid(userId);
         allow update: if isOwner(userId) && txUpdateValid(userId);
         allow delete: if isOwner(userId);
@@ -914,7 +942,7 @@ service cloud.firestore {
 
       // Budgets subcollection
       match /budgets/{budgetId} {
-        allow read: if isOwner(userId) || householdPeer(userId);
+        allow read: if isOwner(userId);
         allow create: if isOwner(userId) && budgetCreateValid(userId);
         allow update: if isOwner(userId) && budgetUpdateValid(userId);
         allow delete: if isOwner(userId);
@@ -922,7 +950,7 @@ service cloud.firestore {
 
       // Goals subcollection
       match /goals/{goalId} {
-        allow read: if isOwner(userId) || householdPeer(userId);
+        allow read: if isOwner(userId);
         allow create: if isOwner(userId) && goalCreateValid(userId);
         allow update: if isOwner(userId) && goalUpdateValid(userId);
         allow delete: if isOwner(userId);
@@ -930,10 +958,26 @@ service cloud.firestore {
 
       // Categories subcollection
       match /categories/{categoryId} {
-        allow read: if isOwner(userId) || householdPeer(userId);
+        allow read: if isOwner(userId);
         allow create: if isOwner(userId) && categoryCreateValid(userId);
         allow update: if isOwner(userId) && categoryUpdateValid(userId);
         allow delete: if isOwner(userId);
+      }
+
+      // The account's index of its memberships, one document per household
+      // (#71). Its own client lists it to find every membership it holds;
+      // no one else reads it, and it grants nothing. Each document is tied to
+      // a member document of the same generation and role, is written with
+      // it in one commit, and goes only once that membership is gone.
+      // 'households' is carved out of the catch-all below, so this block is
+      // the whole of what may be written here.
+      match /households/{householdId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && indexShapeValid(userId, householdId);
+        // A touch-up, or a rejoin writing the entry again whole.
+        allow update: if isOwner(userId)
+          && (indexTouchUpValid(userId, householdId) || indexShapeValid(userId, householdId));
+        allow delete: if isOwner(userId) && indexDeleteValid(userId, householdId);
       }
 
       // Recurring transactions subcollection
@@ -1089,7 +1133,7 @@ service cloud.firestore {
           'transactions', 'budgets', 'categories', 'goals',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
           'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback',
-          'quota'
+          'quota', 'households'
         ]);
       }
     }
@@ -1097,7 +1141,8 @@ service cloud.firestore {
     // A household (#71). Read only by its live members; formed, renamed and
     // dissolved only by its owner. A dissolve deletes every other member
     // document first, in commits small enough for the lookup budget, then
-    // the household with the owner's own document and pointer.
+    // the household with the owner's own document, marking the owner's
+    // index document ended; the index document goes after.
     match /households/{householdId} {
       // memberOf, with the generation taken from the household being read
       // rather than from a second lookup of it.

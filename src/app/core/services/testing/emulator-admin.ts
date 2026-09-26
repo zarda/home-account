@@ -142,6 +142,32 @@ export async function getDocumentAsOwner(
   return body.fields ?? {};
 }
 
+/**
+ * The ids of every document in a collection, bypassing rules. Over REST, so
+ * it opens no stream on a client: a spec already holding two full clients
+ * can list without waiting on a connection the browser has none left for.
+ */
+export async function listDocumentIdsAsOwner(collectionPath: string): Promise<string[]> {
+  const ids: string[] = [];
+  let pageToken = '';
+  do {
+    const query = pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : '';
+    const response = await fetch(`${documentUrl(collectionPath)}${query}`, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer owner' }
+    });
+    if (!response.ok) {
+      throw new Error(
+        `emulator list of ${collectionPath} failed: ${response.status} ${await response.text()}`
+      );
+    }
+    const body = (await response.json()) as { documents?: { name: string }[]; nextPageToken?: string };
+    for (const document of body.documents ?? []) ids.push(document.name.split('/').pop() as string);
+    pageToken = body.nextPageToken ?? '';
+  } while (pageToken);
+  return ids;
+}
+
 /** Delete a document, bypassing rules. A document that is already gone is fine. */
 export async function deleteDocumentAsOwner(path: string): Promise<void> {
   const response = await fetch(documentUrl(path), {

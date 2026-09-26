@@ -15,12 +15,10 @@ import { getAuth, connectAuthEmulator, signInAnonymously } from '@angular/fire/a
 import {
   getFirestore,
   connectFirestoreEmulator,
-  doc,
-  setDoc,
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
-import { HouseholdError, HouseholdService } from './household.service';
+import { HouseholdError, HouseholdService, householdSelectionKey } from './household.service';
 import { HOUSEHOLD_INVITE_CALLABLE } from './household-invite-callable';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -29,13 +27,14 @@ import { TranslationService } from './translation.service';
 import { createTranslationStub } from './testing/translation-stub';
 import {
   EmulatorField,
+  deleteDocumentAsOwner,
   getDocumentAsOwner,
-  patchFieldsAsOwner,
+  listDocumentIdsAsOwner,
   setDocumentAsOwner,
   stringField,
   timestampField
 } from './testing/emulator-admin';
-import { User } from '../../models';
+import { MAX_HOUSEHOLDS_PER_ACCOUNT, User } from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { unexpectedConsoleErrors } from './testing/firestore-transport-noise';
 silenceFirebaseWarnings();
@@ -51,6 +50,10 @@ silenceFirebaseWarnings();
  * transaction-receipts.smoke.spec.ts pattern). Two full clients is the most
  * one file holds: each keeps a listen stream open, Chrome allows six
  * connections per host, and the admin REST reads and writes need the rest.
+ * So neither client writes outside a transaction, which would open a write
+ * stream beside its listen stream: every household write is a transaction,
+ * and the set-up goes past the rules over REST. No household rule reads the
+ * profile, so none is written.
  *
  * The invite callable is faked: the functions emulator is not part of the
  * smoke run. Invites are written the way the callable writes them, past the
@@ -173,8 +176,42 @@ describe('HouseholdService (emulator smoke test)', () => {
     return householdId;
   }
 
-  const pointerOf = async (account: Account) =>
-    (await getDocumentAsOwner(`users/${account.uid}`))?.['householdId'] ?? null;
+  /** The account's index entry for a household, as stored; null when there is none. */
+  const indexOf = (account: Account, householdId: string) =>
+    getDocumentAsOwner(`users/${account.uid}/households/${householdId}`);
+
+  /**
+   * Every commit the service makes through runTransaction lands, and is then
+   * sent again with the same work, as the SDK resends a commit whose answer
+   * was lost (ADR 0156). A read-only transaction abandons itself on its
+   * first run, so a server read goes through once.
+   */
+  function deliverTwice(firestore: FirestoreService): void {
+    const commit = firestore.runTransaction.bind(firestore);
+    spyOn(firestore, 'runTransaction').and.callFake((async (
+      update: Parameters<typeof commit>[0],
+      options?: Parameters<typeof commit>[1]
+    ) => {
+      await commit(update, options);
+      return commit(update, options);
+    }) as never);
+  }
+
+  /** The ids the account's index lists, read past the rules over REST. */
+  const indexIds = (account: Account) => listDocumentIdsAsOwner(`users/${account.uid}/households`);
+
+  /**
+   * Accounts are signed in once for the file, so the memberships an earlier
+   * case formed are still live. Their index entries are deleted past the
+   * rules, which refuse that while a membership lives, so each case starts
+   * with none listed, well inside the limit.
+   */
+  async function forgetMemberships(account: Account): Promise<void> {
+    for (const householdId of await indexIds(account)) {
+      await deleteDocumentAsOwner(`users/${account.uid}/households/${householdId}`);
+    }
+    localStorage.removeItem(householdSelectionKey(account.uid));
+  }
 
   /**
    * Neither service logged, and nothing reached the error handler: an
@@ -205,14 +242,11 @@ describe('HouseholdService (emulator smoke test)', () => {
     }
   });
 
-  // A pointer is only clearable through the rules once its membership is
-  // gone, so the reset goes around them; the profile is then rewritten
-  // through the client. Households are keyed by fresh ids, so nothing an
-  // earlier case left behind is in the way.
+  // Households are keyed by fresh ids, so nothing an earlier case left
+  // behind is in the way once no index lists it.
   beforeEach(async () => {
     for (const account of [owner, peer]) {
-      await patchFieldsAsOwner(`users/${account.uid}`, { householdId: null });
-      await setDoc(doc(account.firestore, `users/${account.uid}`), profile(account));
+      await forgetMemberships(account);
     }
 
     errorHandler = jasmine.createSpyObj<ErrorHandler>('ErrorHandler', ['handleError']);
@@ -243,8 +277,13 @@ describe('HouseholdService (emulator smoke test)', () => {
     expect(founder?.['since']).toEqual(household?.['createdAt']);
     expect(founder?.['inviteId']).toBeUndefined();
     expect(await getDocumentAsOwner(`householdInvites/${householdId}_${peer.uid}`)).toBeNull();
-    expect(await pointerOf(owner)).toEqual(stringField(householdId));
-    expect(await pointerOf(peer)).toEqual(stringField(householdId));
+    const ownerEntry = await indexOf(owner, householdId);
+    const peerEntry = await indexOf(peer, householdId);
+    expect(ownerEntry?.['since']).toEqual(household?.['createdAt']);
+    expect(ownerEntry?.['role']).toEqual(stringField('owner'));
+    expect(peerEntry?.['since']).toEqual(household?.['createdAt']);
+    expect(peerEntry?.['role']).toEqual(stringField('member'));
+    expect(peerEntry?.['name']).toEqual(stringField('Home'));
 
     ownerService.connect();
     peerService.connect();
@@ -253,6 +292,8 @@ describe('HouseholdService (emulator smoke test)', () => {
     expect(peerService.household()?.name).toBe('Home');
     expect(peerService.isOwner()).toBeFalse();
     expect(ownerService.isOwner()).toBeTrue();
+    expect(peerService.memberships().map(m => [m.householdId, m.role, m.ended]))
+      .toEqual([[householdId, 'member', false]]);
     expectQuiet();
   }, 30000);
 
@@ -270,7 +311,7 @@ describe('HouseholdService (emulator smoke test)', () => {
     expectQuiet();
   }, 30000);
 
-  it('tells a removed peer it lost access, quietly, and clears its pointer after', async () => {
+  it('tells a removed peer it lost access, quietly, and tidies its index entry after', async () => {
     const householdId = await formWithPeer();
     ownerService.connect();
     peerService.connect();
@@ -285,8 +326,10 @@ describe('HouseholdService (emulator smoke test)', () => {
     await waitFor(() => ownerService.members().length === 1, 'the owner to list itself alone');
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
 
-    expect(await peerService.clearStalePointer()).toBeTrue();
-    expect(await pointerOf(peer)).toBeNull();
+    expect(await indexOf(peer, householdId)).not.toBeNull();
+    expect(await peerService.tidyEndedMemberships()).toBeTrue();
+    expect(await indexOf(peer, householdId)).toBeNull();
+    await waitFor(() => peerService.memberships().length === 0, 'the peer to list no membership');
     expectQuiet();
   }, 30000);
 
@@ -302,7 +345,8 @@ describe('HouseholdService (emulator smoke test)', () => {
     expect(peerService.lostAccess()).toBeFalse();
     await waitFor(() => ownerService.members().length === 1, 'the owner to list itself alone');
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
-    expect(await pointerOf(peer)).toBeNull();
+    expect(await indexOf(peer, householdId)).toBeNull();
+    await waitFor(() => peerService.memberships().length === 0, 'the peer to list no membership');
     expectQuiet();
   }, 30000);
 
@@ -321,7 +365,7 @@ describe('HouseholdService (emulator smoke test)', () => {
     expect(await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`)).toBeNull();
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
     expect(await getDocumentAsOwner(`householdInvites/${pending}`)).toBeNull();
-    expect(await pointerOf(owner)).toBeNull();
+    expect(await indexOf(owner, householdId)).toBeNull();
 
     await waitFor(() => ownerService.status() === 'none', 'the owner to see no membership');
     await waitFor(() => peerService.lostAccess(), 'the peer to hear it lost access');
@@ -340,12 +384,7 @@ describe('HouseholdService (emulator smoke test)', () => {
     ownerService.connect();
     await waitFor(() => ownerService.status() === 'member' && ownerService.sentInvites().length === 1,
       'the owner\'s live membership and its pending invite');
-    const firestore = TestBed.inject(FirestoreService);
-    const commit = firestore.runTransaction.bind(firestore);
-    spyOn(firestore, 'runTransaction').and.callFake((async (update: Parameters<typeof commit>[0]) => {
-      await commit(update);
-      return commit(update);
-    }) as never);
+    deliverTwice(TestBed.inject(FirestoreService));
 
     await ownerService.dissolve();
 
@@ -353,7 +392,7 @@ describe('HouseholdService (emulator smoke test)', () => {
     expect(await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`)).toBeNull();
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
     expect(await getDocumentAsOwner(`householdInvites/${pending}`)).toBeNull();
-    expect(await pointerOf(owner)).toBeNull();
+    expect(await indexOf(owner, householdId)).toBeNull();
     await waitFor(() => ownerService.status() === 'none', 'the owner to see no membership');
     expect(ownerService.lostAccess()).toBeFalse();
     expectQuiet();
@@ -371,7 +410,7 @@ describe('HouseholdService (emulator smoke test)', () => {
     expect(await getDocumentAsOwner(`households/${householdId}`)).toBeNull();
     expect(await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`)).toBeNull();
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
-    expect(await pointerOf(owner)).toBeNull();
+    expect(await indexOf(owner, householdId)).toBeNull();
     await waitFor(() => ownerService.status() === 'none', 'the owner to see no membership');
     expect(ownerService.lostAccess()).toBeFalse();
     expectQuiet();
@@ -409,7 +448,7 @@ describe('HouseholdService (emulator smoke test)', () => {
     }
   }, 30000);
 
-  it('refuses a join through an expired invite as expired, and one while a member elsewhere as already a member', async () => {
+  it('refuses a join through an expired invite as expired, leaving nothing behind', async () => {
     const householdId = await ownerService.create('Home');
     await seedInvite(householdId, owner.uid, peer.uid, {
       expiresAt: timestampField(new Date(Date.now() - 60 * 1000))
@@ -418,20 +457,128 @@ describe('HouseholdService (emulator smoke test)', () => {
     await expectAsync(peerService.accept(householdId))
       .toBeRejectedWithError(HouseholdError, 'household.errors.expired');
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
-    expect(await pointerOf(peer)).toBeNull();
-
-    const own = await peerService.create('Elsewhere');
-    await seedInvite(householdId, owner.uid, peer.uid);
-
-    await expectAsync(peerService.accept(householdId))
-      .toBeRejectedWithError(HouseholdError, 'household.errors.alreadyMember');
-    expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
-    expect(await pointerOf(peer)).toEqual(stringField(own));
+    expect(await indexOf(peer, householdId)).toBeNull();
     expectQuiet();
   }, 30000);
 
-  it('erases a member\'s and then an owner\'s household state for account deletion', async () => {
+  it('lets one account belong to two households, and shows whichever is selected', async () => {
+    const own = await peerService.create('Elsewhere');
+    const joined = await formWithPeer();
+
+    expect(await indexOf(peer, own)).not.toBeNull();
+    expect(await indexOf(peer, joined)).not.toBeNull();
+
+    peerService.connect();
+    await waitFor(() => peerService.memberships().length === 2, 'the peer to list both memberships');
+    // The one joined last was selected as it was joined.
+    await waitFor(() => peerService.status() === 'member' && peerService.household()?.id === joined,
+      'the joined household');
+    expect(peerService.isOwner()).toBeFalse();
+    // A first answer from the cache can hold only what this client has seen.
+    await waitFor(() => peerService.members().length === 2, 'both members of the joined household');
+
+    peerService.select(own);
+    await waitFor(() => peerService.status() === 'member' && peerService.household()?.id === own,
+      'the peer\'s own household');
+    expect(peerService.household()?.name).toBe('Elsewhere');
+    expect(peerService.isOwner()).toBeTrue();
+    expect(peerService.members().map(m => m.uid)).toEqual([peer.uid]);
+    expect(peerService.lostAccess()).toBeFalse();
+    expectQuiet();
+  }, 30000);
+
+  it('keeps the other membership when the account leaves one of two', async () => {
+    const own = await peerService.create('Elsewhere');
+    const joined = await formWithPeer();
+    peerService.connect();
+    peerService.select(joined);
+    await waitFor(() => peerService.status() === 'member' && peerService.household()?.id === joined,
+      'the joined household');
+
+    await peerService.leave();
+
+    expect(await getDocumentAsOwner(`households/${joined}/members/${peer.uid}`)).toBeNull();
+    expect(await indexOf(peer, joined)).toBeNull();
+    expect(await indexOf(peer, own)).not.toBeNull();
+    expect(await getDocumentAsOwner(`households/${own}/members/${peer.uid}`)).not.toBeNull();
+    await waitFor(() => peerService.status() === 'member' && peerService.household()?.id === own,
+      'the peer\'s own household to be the one shown');
+    expect(peerService.memberships().map(m => m.householdId)).toEqual([own]);
+    expect(peerService.lostAccess()).toBeFalse();
+    expectQuiet();
+  }, 30000);
+
+  // A commit that lands and loses its answer is sent again, and the second
+  // delivery is judged against what the first left (ADR 0156).
+  it('resolves a create and an accept each delivered twice', async () => {
+    deliverTwice(TestBed.inject(FirestoreService));
+    deliverTwice(peerInjector.get(FirestoreService));
+
+    const householdId = await ownerService.create('Home');
+    const household = await getDocumentAsOwner(`households/${householdId}`);
+    expect(household?.['ownerId']).toEqual(stringField(owner.uid));
+    expect((await indexOf(owner, householdId))?.['since']).toEqual(household?.['createdAt']);
+
+    await seedInvite(householdId, owner.uid, peer.uid);
+    expect(await peerService.accept(householdId)).toBe('Home');
+    const joined = await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`);
+    expect(joined?.['since']).toEqual(household?.['createdAt']);
+    expect((await indexOf(peer, householdId))?.['since']).toEqual(household?.['createdAt']);
+    expect(await getDocumentAsOwner(`householdInvites/${householdId}_${peer.uid}`)).toBeNull();
+    expectQuiet();
+  }, 30000);
+
+  it(`refuses a household past the limit of ${MAX_HOUSEHOLDS_PER_ACCOUNT} before writing anything`, async () => {
+    for (let i = 0; i < MAX_HOUSEHOLDS_PER_ACCOUNT; i++) {
+      await ownerService.create(`Home ${i + 1}`);
+    }
+    expect((await indexIds(owner)).length).toBe(MAX_HOUSEHOLDS_PER_ACCOUNT);
+
+    await expectAsync(ownerService.create('One too many')).toBeRejectedWithError(
+      HouseholdError,
+      `household.errors.tooMany:${JSON.stringify({ max: MAX_HOUSEHOLDS_PER_ACCOUNT })}`
+    );
+    expect((await indexIds(owner)).length).toBe(MAX_HOUSEHOLDS_PER_ACCOUNT);
+    expectQuiet();
+  }, 60000);
+
+  it(`counts toward the limit of ${MAX_HOUSEHOLDS_PER_ACCOUNT} neither an ended entry nor one whose membership is gone, ending the latter on the way`, async () => {
+    // Written past the rules, as an ending cut off after its mark leaves
+    // one, and as a removal made while no page listened leaves the other.
+    const stamp = timestampField(new Date(Date.now() - 60 * 1000));
+    const seedEntry = (householdId: string, extra: Record<string, EmulatorField> = {}) =>
+      setDocumentAsOwner(`users/${owner.uid}/households/${householdId}`, {
+        since: stamp,
+        role: stringField('member'),
+        name: stringField('Gone'),
+        joinedAt: stamp,
+        ...extra
+      });
+    const ended = `ended${Date.now()}`;
+    const stale = `stale${Date.now()}`;
+    await seedEntry(ended, { endedAt: stamp });
+    await seedEntry(stale);
+    for (let i = 0; i < MAX_HOUSEHOLDS_PER_ACCOUNT - 1; i++) {
+      await ownerService.create(`Home ${i + 1}`);
+    }
+
+    const last = await ownerService.create('One more');
+
+    expect(await indexOf(owner, last)).not.toBeNull();
+    expect(await indexOf(owner, stale)).toBeNull();
+    expect(await indexOf(owner, ended)).not.toBeNull();
+    await expectAsync(ownerService.create('One too many')).toBeRejectedWithError(
+      HouseholdError,
+      `household.errors.tooMany:${JSON.stringify({ max: MAX_HOUSEHOLDS_PER_ACCOUNT })}`
+    );
+    expect((await indexIds(owner)).length).toBe(MAX_HOUSEHOLDS_PER_ACCOUNT + 1);
+    expectQuiet();
+  }, 60000);
+
+  it('erases a member\'s and then an owner\'s household state for account deletion, across every membership', async () => {
     const householdId = await formWithPeer();
+    // The peer also owns a household of its own.
+    const peerOwn = await peerService.create('Elsewhere');
     const sent = await seedInvite(householdId, owner.uid, `ghost-${Date.now()}`);
     // An invite to the peer from a household it never joined.
     const elsewhere = `elsewhere${Date.now()}`;
@@ -453,7 +600,10 @@ describe('HouseholdService (emulator smoke test)', () => {
 
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
     expect(await getDocumentAsOwner(`householdInvites/${elsewhere}_${peer.uid}`)).toBeNull();
-    expect(await pointerOf(peer)).toBeNull();
+    expect(await indexOf(peer, householdId)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${peerOwn}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${peerOwn}/members/${peer.uid}`)).toBeNull();
+    expect(await indexOf(peer, peerOwn)).toBeNull();
     expect(await getDocumentAsOwner(`households/${householdId}`)).not.toBeNull();
 
     await ownerService.deleteAll();
@@ -461,6 +611,6 @@ describe('HouseholdService (emulator smoke test)', () => {
     expect(await getDocumentAsOwner(`households/${householdId}`)).toBeNull();
     expect(await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`)).toBeNull();
     expect(await getDocumentAsOwner(`householdInvites/${sent}`)).toBeNull();
-    expect(await pointerOf(owner)).toBeNull();
+    expect(await indexOf(owner, householdId)).toBeNull();
   }, 30000);
 });

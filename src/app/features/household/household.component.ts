@@ -84,10 +84,10 @@ export class HouseholdComponent implements OnInit {
   readonly isOnline = inject(PwaService).isOnline;
   readonly householdName = computed(() => this.householdService.household()?.name ?? '');
 
-  /** A live membership was seen, or the pointer was already looked at. */
-  private pointerLookedAt = false;
-  /** The loss on screen has had its pointer cleared. */
-  private lossTidied = false;
+  /** A live membership was seen, or the index was already looked at. */
+  private indexLookedAt = false;
+  /** The lost households whose index entries a tidy was already asked to end. */
+  private readonly lossesTidied = new Set<string>();
 
   constructor() {
     // The members list is empty outside the member view, so leaving it
@@ -96,9 +96,9 @@ export class HouseholdComponent implements OnInit {
 
     effect(() => {
       const status = this.status();
-      const lost = this.lostAccess();
+      const lost = this.householdService.lostHouseholds();
       const online = this.isOnline();
-      untracked(() => this.tidyPointer(status, lost, online));
+      untracked(() => this.tidyMemberships(status, lost, online));
     });
 
     // The section an action was taken in is gone once its status changes,
@@ -145,34 +145,40 @@ export class HouseholdComponent implements OnInit {
   }
 
   /**
-   * The profile's pointer outlives a membership that ended without this
-   * account's own hand: the rules let only the account itself clear it. A
-   * loss seen live says so. A loss that happened while no page listened
-   * says nothing: from a cold cache it reads as no membership at all. So the
-   * pointer is looked at once, the first time the page finds none, unless a
-   * live membership was seen first; after that, a loss is always seen live.
+   * An index entry outlives a membership that ended without this account's
+   * own hand: the rules let only the account itself delete it. A loss seen
+   * live says so. A loss that happened while no page listened says nothing:
+   * from a cold cache it reads as no membership at all. So the index is
+   * looked at once, the first time the page finds none, unless a live
+   * membership was seen first; after that, a loss is always seen live.
    *
-   * Offline, the clear would only be refused, so it waits for the
-   * connection.
+   * Each lost household is tidied once while it stays lost, so a second
+   * loss is tidied even while the first one's notice still shows; one that
+   * leaves the set and is lost again is tidied again.
+   *
+   * Offline, the tidy would only be refused, so it waits for the connection.
    */
-  private tidyPointer(status: HouseholdStatus, lost: boolean, online: boolean): void {
-    if (!lost) this.lossTidied = false;
-    if (status === 'member') this.pointerLookedAt = true;
+  private tidyMemberships(status: HouseholdStatus, lost: ReadonlySet<string>, online: boolean): void {
+    for (const householdId of [...this.lossesTidied]) {
+      if (!lost.has(householdId)) this.lossesTidied.delete(householdId);
+    }
+    if (status === 'member') this.indexLookedAt = true;
     if (!online) return;
 
-    if (lost && !this.lossTidied) {
-      this.lossTidied = true;
-      this.pointerLookedAt = true;
-      this.clearStalePointer();
-    } else if (status === 'none' && !this.pointerLookedAt) {
-      this.pointerLookedAt = true;
-      this.clearStalePointer();
+    const untidied = [...lost].filter(householdId => !this.lossesTidied.has(householdId));
+    if (untidied.length > 0) {
+      for (const householdId of untidied) this.lossesTidied.add(householdId);
+      this.indexLookedAt = true;
+      this.tidyEndedMemberships();
+    } else if (status === 'none' && !this.indexLookedAt) {
+      this.indexLookedAt = true;
+      this.tidyEndedMemberships();
     }
   }
 
-  private clearStalePointer(): void {
+  private tidyEndedMemberships(): void {
     // Nobody asked for this, and the page already shows the right state
-    // either way. A pointer it could not clear is left for the next visit.
-    this.householdService.clearStalePointer().catch(() => undefined);
+    // either way. An entry it could not tidy is left for the next visit.
+    this.householdService.tidyEndedMemberships().catch(() => undefined);
   }
 }

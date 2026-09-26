@@ -472,9 +472,7 @@ describe('App routes (emulator smoke test)', () => {
       // the rules check, and one invite written the way the callable writes
       // it puts the mail-status copy on the page. A goal with a checklist,
       // one item ticked, puts the read-only card's disabled boxes in the
-      // sweep; it is added only now, so no page swept above changes. The
-      // service updates the profile's pointer, so the profile has to exist
-      // first.
+      // sweep; it is added only now, so no page swept above changes.
       await addDoc(collection(firestore, `users/${uid}/goals`), {
         userId: uid,
         kind: 'project',

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Signal, computed, inject, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
@@ -78,7 +78,7 @@ describe('HouseholdComponent', () => {
   let fixture: ComponentFixture<HouseholdComponent>;
   let status: ReturnType<typeof signal<HouseholdStatus>>;
   let household: ReturnType<typeof signal<Household | null>>;
-  let lostAccess: ReturnType<typeof signal<boolean>>;
+  let lostHouseholds: ReturnType<typeof signal<ReadonlySet<string>>>;
   let online: ReturnType<typeof signal<boolean>>;
   let members: ReturnType<typeof signal<HouseholdMember[]>>;
   let ledger: { setMembers: jasmine.Spy };
@@ -87,10 +87,11 @@ describe('HouseholdComponent', () => {
     status: typeof status;
     household: typeof household;
     members: typeof members;
-    lostAccess: typeof lostAccess;
+    lostHouseholds: typeof lostHouseholds;
+    lostAccess: Signal<boolean>;
     connect: jasmine.Spy;
     disconnect: jasmine.Spy;
-    clearStalePointer: jasmine.Spy;
+    tidyEndedMemberships: jasmine.Spy;
   };
 
   const element = (): HTMLElement => fixture.nativeElement as HTMLElement;
@@ -114,7 +115,7 @@ describe('HouseholdComponent', () => {
   beforeEach(async () => {
     status = signal<HouseholdStatus>('idle');
     household = signal<Household | null>(null);
-    lostAccess = signal(false);
+    lostHouseholds = signal<ReadonlySet<string>>(new Set());
     online = signal(true);
     members = signal<HouseholdMember[]>([]);
     ledger = { setMembers: jasmine.createSpy('setMembers') };
@@ -123,12 +124,13 @@ describe('HouseholdComponent', () => {
       status,
       household,
       members,
-      lostAccess,
+      lostHouseholds,
+      lostAccess: computed(() => lostHouseholds().size > 0),
       connect: jasmine.createSpy('connect').and.callFake(() => {
         if (status() === 'idle') status.set('loading');
       }),
       disconnect: jasmine.createSpy('disconnect'),
-      clearStalePointer: jasmine.createSpy('clearStalePointer').and.resolveTo(false)
+      tidyEndedMemberships: jasmine.createSpy('tidyEndedMemberships').and.resolveTo(false)
     };
 
     await TestBed.configureTestingModule({
@@ -238,7 +240,7 @@ describe('HouseholdComponent', () => {
 
       household.set(null);
       status.set('none');
-      lostAccess.set(true);
+      lostHouseholds.set(new Set([HOUSEHOLD.id]));
       await settleFocus();
 
       expect(document.activeElement).toBe(element().querySelector('#household-invites-title'));
@@ -426,7 +428,7 @@ describe('HouseholdComponent', () => {
     function loseAccess(): void {
       household.set(null);
       status.set('none');
-      lostAccess.set(true);
+      lostHouseholds.set(new Set([HOUSEHOLD.id]));
       render();
     }
 
@@ -445,36 +447,65 @@ describe('HouseholdComponent', () => {
       expect(element().querySelector('app-household-setup')).not.toBeNull();
     });
 
-    it('clears the stale pointer once', () => {
+    it('tidies the ended membership once', () => {
       loseAccess();
       render();
       render();
 
-      expect(service.clearStalePointer).toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
     });
 
-    it('clears again after a later loss', () => {
+    it('tidies again after a later loss', () => {
       loseAccess();
 
-      lostAccess.set(false);
+      lostHouseholds.set(new Set());
       household.set(HOUSEHOLD);
       status.set('member');
       render();
       loseAccess();
 
-      expect(service.clearStalePointer).toHaveBeenCalledTimes(2);
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(2);
     });
 
-    it('waits for the connection before clearing', () => {
+    it('tidies again when a second household is lost while the first loss still shows', () => {
+      loseAccess();
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+
+      household.set(HOUSEHOLD);
+      status.set('member');
+      render();
+      household.set(null);
+      status.set('none');
+      lostHouseholds.set(new Set([HOUSEHOLD.id, 'h2']));
+      render();
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(2);
+    });
+
+    it('tidies a household lost again after its first loss was lifted', () => {
+      lostHouseholds.set(new Set([HOUSEHOLD.id, 'h2']));
+      status.set('none');
+      render();
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+
+      lostHouseholds.set(new Set(['h2']));
+      render();
+      lostHouseholds.set(new Set([HOUSEHOLD.id, 'h2']));
+      render();
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits for the connection before tidying', () => {
       online.set(false);
       loseAccess();
 
-      expect(service.clearStalePointer).not.toHaveBeenCalled();
+      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
 
       online.set(true);
       render();
 
-      expect(service.clearStalePointer).toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
     });
 
     it('does not report the membership the page leaves itself', () => {
@@ -483,27 +514,27 @@ describe('HouseholdComponent', () => {
       render();
 
       expect(text()).not.toContain('household.lostAccess');
-      expect(service.clearStalePointer).not.toHaveBeenCalled();
+      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
     });
   });
 
   /**
-   * A pointer whose membership ended while no page was listening reads as
-   * `none` from a cold cache, with no loss seen, so nothing else would ever
-   * clear it.
+   * An index entry whose membership ended while no page was listening reads
+   * as `none` from a cold cache, with no loss seen, so nothing else would
+   * ever tidy it.
    */
-  describe('a pointer left from before', () => {
-    it('is cleared quietly the first time the page finds no membership', () => {
+  describe('an index entry left from before', () => {
+    it('is tidied quietly the first time the page finds no membership', () => {
       status.set('none');
       render();
       render();
 
-      expect(service.clearStalePointer).toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
       expect(text()).not.toContain('household.lostAccess');
     });
 
     it('is not looked for while the household is still loading', () => {
-      expect(service.clearStalePointer).not.toHaveBeenCalled();
+      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
     });
 
     it('is looked for once the connection returns, not while offline', () => {
@@ -511,20 +542,20 @@ describe('HouseholdComponent', () => {
       status.set('none');
       render();
 
-      expect(service.clearStalePointer).not.toHaveBeenCalled();
+      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
 
       online.set(true);
       render();
 
-      expect(service.clearStalePointer).toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
     });
 
-    it('lets a failed clear pass without a word', async () => {
+    it('lets a failed tidy pass without a word', async () => {
       const unhandled: PromiseRejectionEvent[] = [];
       const onUnhandled = (event: PromiseRejectionEvent) => unhandled.push(event);
       window.addEventListener('unhandledrejection', onUnhandled);
       const consoleError = spyOn(console, 'error');
-      service.clearStalePointer.and.rejectWith(new Error('permission-denied'));
+      service.tidyEndedMemberships.and.rejectWith(new Error('permission-denied'));
 
       try {
         status.set('none');
@@ -534,7 +565,7 @@ describe('HouseholdComponent', () => {
         window.removeEventListener('unhandledrejection', onUnhandled);
       }
 
-      expect(service.clearStalePointer).toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
       expect(unhandled).toEqual([]);
       expect(consoleError).not.toHaveBeenCalled();
       expect(text()).not.toContain('errors.generic');

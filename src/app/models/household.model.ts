@@ -41,6 +41,48 @@ export interface HouseholdMember {
 /** Who a member is, as the household page shows them beside a figure or a row. */
 export type HouseholdMemberIdentity = Pick<HouseholdMember, 'uid' | 'displayName' | 'photoURL'>;
 
+/**
+ * The most live memberships one account holds. The rules do not count them:
+ * the client refuses a create or a join past it, and the invite callable
+ * refuses to invite an account already at it.
+ */
+export const MAX_HOUSEHOLDS_PER_ACCOUNT = 10;
+
+/**
+ * users/{uid}/households/{householdId}: the account's own entry for one
+ * membership, written in the same commit as its member document and read by
+ * the account alone. It is how the account's client finds every household it
+ * belongs to.
+ */
+export interface HouseholdIndexEntry {
+  /** The household id. */
+  id: string;
+  /** The member document's `since`: the generation joined. */
+  since: Timestamp;
+  role: HouseholdRole;
+  /** The household's name when last seen, for listing; the household document is the truth. */
+  name: string;
+  joinedAt: Timestamp;
+  /** Set once the membership's ending is under way; the entry goes after. */
+  endedAt?: Timestamp;
+}
+
+/** One membership as the account's index lists it. */
+export interface HouseholdMembership {
+  householdId: string;
+  name: string;
+  role: HouseholdRole;
+  /**
+   * The generation joined. Null only while the commit that stamps it with
+   * the server's time is still on its way.
+   */
+  since: Timestamp | null;
+  /** Null only while the commit that stamps it is still on its way. */
+  joinedAt: Timestamp | null;
+  /** The ending is under way: the entry no longer counts as a live membership. */
+  ended: boolean;
+}
+
 /** The longest picture address a member document may hold. */
 export const MEMBER_PHOTO_MAX_LENGTH = 2048;
 

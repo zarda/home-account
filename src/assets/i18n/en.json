@@ -1851,7 +1851,7 @@
       "name": "Enter a household name of up to {{max}} characters.",
       "expired": "This invite has expired. Ask the owner to send a new one.",
       "inviteGone": "This invite is no longer available. It may have been withdrawn.",
-      "alreadyMember": "You already belong to a household. Leave or dissolve it before joining another one.",
+      "tooMany": "You already belong to {{max}} households, the most one account can. Leave or dissolve one before starting or joining another.",
       "ownerLeaves": "As the owner, you can't leave. Dissolve the household instead."
     }
   }

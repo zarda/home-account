@@ -2345,7 +2345,7 @@ describe('firestore.rules (emulator smoke test)', () => {
       'transactions', 'budgets', 'categories', 'goals',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
       'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback',
-      'quota'
+      'quota', 'households'
     ];
 
     for (const collection of validated) {
@@ -2377,8 +2377,8 @@ describe('firestore.rules (emulator smoke test)', () => {
 });
 
 /**
- * Households (#71): a member reads the other members' transactions,
- * categories, budgets and goals, and nothing else of theirs.
+ * Households (#71): a membership, named in an index its account owns, and
+ * nothing of the other members' own records.
  *
  * Three accounts, each signed in through its own app, rather than the suite
  * above's single app, which signs its anonymous stranger out and cannot sign
@@ -2386,7 +2386,7 @@ describe('firestore.rules (emulator smoke test)', () => {
  * the household, one joins it, one stays outside. Specs run in random order,
  * so every case starts from pointer-free profiles and builds the state it
  * needs. Households are keyed by fresh ids, so whatever an earlier case left
- * behind is never in the way.
+ * behind, index documents included, is never in the way.
  *
  * Every membership write goes through the client SDK as one commit of the
  * shape the rules require, so an allowed case proves that exact commit is
@@ -2413,8 +2413,9 @@ describe('firestore.rules households (emulator smoke test)', () => {
   let peer: Account;
   let stranger: Account;
 
-  const SHARED_KINDS = ['transactions', 'categories', 'budgets', 'goals'] as const;
-  type SharedKind = (typeof SHARED_KINDS)[number];
+  /** Four kinds of an account's own records, each readable by its owner alone, household or not. */
+  const OWN_KINDS = ['transactions', 'categories', 'budgets', 'goals'] as const;
+  type OwnKind = (typeof OWN_KINDS)[number];
 
   const profile = (account: Pick<Account, 'name'>) => ({
     email: `${account.name}@example.test`,
@@ -2439,8 +2440,8 @@ describe('firestore.rules households (emulator smoke test)', () => {
     return account;
   }
 
-  /** One row of each kind a household shares, written by its own account. */
-  async function seedSharedKinds(account: Account): Promise<void> {
+  /** One row of each of the four kinds, written by its own account. */
+  async function seedOwnKinds(account: Account): Promise<void> {
     const base = `users/${account.uid}`;
     const now = () => lite.Timestamp.now();
     await lite.setDoc(
@@ -2465,6 +2466,9 @@ describe('firestore.rules households (emulator smoke test)', () => {
   const membersSince = (account: Account, householdId: string, since: lite.Timestamp) =>
     lite.query(membersOf(account, householdId), lite.where('since', '==', since));
   const profileRef = (account: Account) => lite.doc(account.db, `users/${account.uid}`);
+  /** The account's index document for a membership, as `account` reaches it. */
+  const indexRef = (account: Account, householdId: string, indexUid = account.uid) =>
+    lite.doc(account.db, `users/${indexUid}/households/${householdId}`);
   const inviteRef = (account: Account, inviteId: string) =>
     lite.doc(account.db, `householdInvites/${inviteId}`);
   const newHouseholdId = () => lite.doc(lite.collection(owner.db, 'households')).id;
@@ -2486,24 +2490,33 @@ describe('firestore.rules households (emulator smoke test)', () => {
     ...overrides
   });
 
+  /** The owner's index document as the create commit writes it: stamped with the same request time. */
+  const ownerIndexBody = (overrides: Record<string, unknown> = {}) => ({
+    since: lite.serverTimestamp(),
+    role: 'owner',
+    name: 'Home',
+    joinedAt: lite.serverTimestamp(),
+    ...overrides
+  });
+
   interface CreateParts {
     household?: Record<string, unknown>;
     /** null leaves the owner's member document out of the commit. */
     member?: Record<string, unknown> | null;
-    /** false leaves the profile pointer out of the commit. */
-    pointer?: boolean;
+    /** null leaves the owner's index document out of the commit. */
+    index?: Record<string, unknown> | null;
     extra?: (batch: lite.WriteBatch) => void;
   }
 
-  /** The create commit: household, the owner's member document, the pointer. */
+  /** The create commit: household, the owner's member document, the owner's index document. */
   function createCommit(account: Account, householdId: string, parts: CreateParts = {}): Promise<void> {
     const batch = lite.writeBatch(account.db);
     batch.set(householdRef(account, householdId), householdBody(account, parts.household));
     if (parts.member !== null) {
       batch.set(memberRef(account, householdId), ownerMemberBody(account, parts.member));
     }
-    if (parts.pointer !== false) {
-      batch.update(profileRef(account), { householdId });
+    if (parts.index !== null) {
+      batch.set(indexRef(account, householdId), ownerIndexBody(parts.index));
     }
     parts.extra?.(batch);
     return batch.commit();
@@ -2513,17 +2526,6 @@ describe('firestore.rules households (emulator smoke test)', () => {
     const householdId = newHouseholdId();
     await createCommit(account, householdId);
     return householdId;
-  }
-
-  /** An owner member document written past the rules, for a household not yet formed. */
-  function seedOwnerDocument(account: Account, householdId: string): Promise<void> {
-    return setDocumentAsOwner(`households/${householdId}/members/${account.uid}`, {
-      uid: stringField(account.uid),
-      displayName: stringField(account.name),
-      role: stringField('owner'),
-      since: timestampField(),
-      joinedAt: timestampField()
-    });
   }
 
   /** The stored value, passed through untouched: it keeps its microseconds. */
@@ -2579,14 +2581,15 @@ describe('firestore.rules households (emulator smoke test)', () => {
     member?: Record<string, unknown>;
     /** false leaves the invite in place. */
     consume?: boolean;
-    /** false leaves the profile pointer out of the commit. */
-    pointer?: boolean;
+    /** null leaves the joiner's index document out of the commit. */
+    index?: Record<string, unknown> | null;
   }
 
   /**
    * The accept commit. It reads only the invite and copies its
-   * householdCreatedAt into `since`, so a joiner never reads the household
-   * before it is a member of it.
+   * householdCreatedAt into `since`, on the member document and the index
+   * document alike, so a joiner never reads the household before it is a
+   * member of it.
    */
   async function joinCommit(account: Account, householdId: string, parts: JoinParts = {}): Promise<void> {
     const inviteId = `${householdId}_${account.uid}`;
@@ -2604,17 +2607,29 @@ describe('firestore.rules households (emulator smoke test)', () => {
     if (parts.consume !== false) {
       batch.delete(inviteRef(account, inviteId));
     }
-    if (parts.pointer !== false) {
-      batch.update(profileRef(account), { householdId });
+    if (parts.index !== null) {
+      batch.set(indexRef(account, householdId), {
+        since: invite.get('householdCreatedAt'),
+        role: 'member',
+        name: invite.get('householdName'),
+        joinedAt: lite.serverTimestamp(),
+        ...parts.index
+      });
     }
     return batch.commit();
   }
 
+  /** A leave's first commit: the member document goes and the index records the end. */
   function leaveCommit(account: Account, householdId: string): Promise<void> {
     const batch = lite.writeBatch(account.db);
     batch.delete(memberRef(account, householdId));
-    batch.update(profileRef(account), { householdId: lite.deleteField() });
+    batch.update(indexRef(account, householdId), { endedAt: lite.serverTimestamp() });
     return batch.commit();
+  }
+
+  /** The last step of every ending: the index document goes. */
+  function dropIndex(account: Account, householdId: string): Promise<void> {
+    return lite.deleteDoc(indexRef(account, householdId));
   }
 
   /** One removal chunk of at most four deletes, the most the per-commit lookup budget allows. */
@@ -2631,7 +2646,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
     const batch = lite.writeBatch(account.db);
     batch.delete(householdRef(account, householdId));
     batch.delete(memberRef(account, householdId));
-    batch.update(profileRef(account), { householdId: lite.deleteField() });
+    batch.update(indexRef(account, householdId), { endedAt: lite.serverTimestamp() });
     return batch.commit();
   }
 
@@ -2643,8 +2658,8 @@ describe('firestore.rules households (emulator smoke test)', () => {
     return householdId;
   }
 
-  /** A peer's list queries: transactions over a date range, the other kinds whole. */
-  function readKind(reader: Account, ownerUid: string, kind: SharedKind) {
+  /** The list queries another member would make: transactions over a date range, the other kinds whole. */
+  function readKind(reader: Account, ownerUid: string, kind: OwnKind) {
     const rows = lite.collection(reader.db, `users/${ownerUid}/${kind}`);
     if (kind !== 'transactions') {
       return lite.getDocs(rows);
@@ -2666,7 +2681,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
     peer = await signIn('peer');
     stranger = await signIn('stranger');
     for (const account of [owner, peer, stranger]) {
-      await seedSharedKinds(account);
+      await seedOwnKinds(account);
     }
   }, 30000);
 
@@ -2676,19 +2691,23 @@ describe('firestore.rules households (emulator smoke test)', () => {
     }
   });
 
-  // A pointer is only clearable through the rules once its membership is
-  // gone, so the reset goes around them. The profile is then rewritten
-  // through the client, which also restores one a case deleted.
+  // The profile is rewritten whole through the client, which drops a pointer
+  // a case seeded past the rules and restores a profile a case deleted.
   beforeEach(async () => {
     for (const account of [owner, peer, stranger]) {
-      await patchFieldsAsOwner(`users/${account.uid}`, { householdId: null });
       await lite.setDoc(profileRef(account), profile(account));
     }
   });
 
   describe('forming and joining', () => {
-    it('lets an account form a household: the household, its owner document and the pointer in one commit', async () => {
-      await expectAllowed(createCommit(owner, newHouseholdId()), 'the create commit');
+    it('lets an account form a household: the household, its owner document and its index document in one commit', async () => {
+      const householdId = newHouseholdId();
+      await expectAllowed(createCommit(owner, householdId), 'the create commit');
+
+      const createdAt = timestampOf(await storedHousehold(householdId), 'createdAt');
+      const index = await getDocumentAsOwner(`users/${owner.uid}/households/${householdId}`);
+      expect(timestampOf(index ?? {}, 'since')).toEqual(createdAt);
+      expect(index?.['role']).toEqual(stringField('owner'));
     });
 
     it('accepts a name of 60 characters, a display name of 100 and a photo URL of 2048', async () => {
@@ -2702,25 +2721,51 @@ describe('firestore.rules households (emulator smoke test)', () => {
       );
     });
 
-    it('lets an invited account join with since copied from the invite, consuming it', async () => {
+    it('lets an invited account join with since copied from the invite, consuming it and writing its index', async () => {
       const householdId = await formHousehold(owner);
       const inviteId = await seedInvite(householdId, peer);
 
       await expectAllowed(joinCommit(peer, householdId), 'the join commit');
 
       expect(await getDocumentAsOwner(`householdInvites/${inviteId}`)).toBeNull();
+      const createdAt = timestampOf(await storedHousehold(householdId), 'createdAt');
       const member = await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`);
-      expect(timestampOf(member ?? {}, 'since'))
-        .toEqual(timestampOf(await storedHousehold(householdId), 'createdAt'));
+      expect(timestampOf(member ?? {}, 'since')).toEqual(createdAt);
+      const index = await getDocumentAsOwner(`users/${peer.uid}/households/${householdId}`);
+      expect(timestampOf(index ?? {}, 'since')).toEqual(createdAt);
+      expect(index?.['role']).toEqual(stringField('member'));
     });
 
-    it('lets a removed member whose pointer is stale accept an invite elsewhere', async () => {
+    it('lets a removed member whose index is left over accept an invite elsewhere', async () => {
       const first = await formWithPeer();
       await removeCommit(owner, first, [peer.uid]);
       const second = await formHousehold(stranger);
       await seedInvite(second, peer);
 
-      await expectAllowed(joinCommit(peer, second), 'a join that moves a stale pointer');
+      await expectAllowed(joinCommit(peer, second), 'a join beside a left-over index document');
+    });
+
+    it('lets one account belong to two households: its own and one it joins', async () => {
+      await formHousehold(peer);
+      const theirs = await formHousehold(owner);
+      await seedInvite(theirs, peer);
+
+      await expectAllowed(joinCommit(peer, theirs), 'a join while a live member elsewhere');
+    });
+
+    it('lets a live member start a second household of its own', async () => {
+      await formWithPeer();
+      await expectAllowed(createCommit(peer, newHouseholdId()), 'a second household');
+    });
+
+    it('lets a member rejoin a household it left, re-stamping its index document', async () => {
+      const householdId = await formWithPeer();
+      await leaveCommit(peer, householdId);
+      await seedInvite(householdId, peer);
+
+      // The ended index document is still there: the join's set replaces it whole.
+      await expectAllowed(joinCommit(peer, householdId), 'a rejoin over an ended index document');
+      expect((await getDocumentAsOwner(`users/${peer.uid}/households/${householdId}`))?.['endedAt']).toBeUndefined();
     });
   });
 
@@ -2731,15 +2776,13 @@ describe('firestore.rules households (emulator smoke test)', () => {
       householdId = await formWithPeer();
     });
 
-    for (const kind of SHARED_KINDS) {
-      it(`lets the peer list the owner's ${kind}`, async () => {
-        const rows = await readKind(peer, owner.uid, kind);
-        expect(rows.size).toBeGreaterThan(0);
+    for (const kind of OWN_KINDS) {
+      it(`refuses the peer listing the owner's ${kind}`, async () => {
+        await expectDenied(readKind(peer, owner.uid, kind), `the peer reading the owner's ${kind}`);
       });
 
-      it(`lets the owner list the peer's ${kind}`, async () => {
-        const rows = await readKind(owner, peer.uid, kind);
-        expect(rows.size).toBeGreaterThan(0);
+      it(`refuses the owner listing the peer's ${kind}`, async () => {
+        await expectDenied(readKind(owner, peer.uid, kind), `the owner reading the peer's ${kind}`);
       });
     }
 
@@ -2804,29 +2847,32 @@ describe('firestore.rules households (emulator smoke test)', () => {
       );
     });
 
-    it('lets a member leave: its member document and its pointer in one commit', async () => {
+    it('lets a member leave: its member document and the end on its index in one commit, then the index', async () => {
       const householdId = await formWithPeer();
       await expectAllowed(leaveCommit(peer, householdId), 'the leave commit');
+      await expectAllowed(dropIndex(peer, householdId), 'the index delete after leaving');
+      // A retry finds nothing left and is let through.
+      await expectAllowed(dropIndex(peer, householdId), 'the index delete retried');
+      expect(await getDocumentAsOwner(`users/${peer.uid}/households/${householdId}`)).toBeNull();
     });
 
-    it('lets a removed member clear its stale pointer on its own', async () => {
+    it('lets a removed member delete its index document on its own', async () => {
       const householdId = await formWithPeer();
       await removeCommit(owner, householdId, [peer.uid]);
 
-      await expectAllowed(
-        lite.updateDoc(profileRef(peer), { householdId: lite.deleteField() }),
-        'a lone stale-pointer clear'
-      );
+      await expectAllowed(dropIndex(peer, householdId), 'a lone left-over index delete');
     });
 
-    it('lets the owner dissolve: the others removed, then the household, its own document and its pointer', async () => {
+    it('lets the owner dissolve: the others removed, then the household, its own document and the end on its index', async () => {
       const householdId = await formWithPeer();
 
       await expectAllowed(removeCommit(owner, householdId, [peer.uid]), 'the removal chunk');
       await expectAllowed(dissolveCommit(owner, householdId), 'the final dissolve commit');
+      await expectAllowed(dropIndex(owner, householdId), "the owner's index delete");
 
       expect(await getDocumentAsOwner(`households/${householdId}`)).toBeNull();
       expect(await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`)).toBeNull();
+      expect(await getDocumentAsOwner(`users/${owner.uid}/households/${householdId}`)).toBeNull();
     });
 
     it('lets anyone tidy a member document once its household is gone', async () => {
@@ -2839,11 +2885,12 @@ describe('firestore.rules households (emulator smoke test)', () => {
       );
     });
 
-    it('lets a member that has left delete its profile, stale pointer and all', async () => {
-      const householdId = await formWithPeer();
-      await lite.deleteDoc(memberRef(peer, householdId));
+    it('lets a live member and a live owner delete their profiles', async () => {
+      // A profile names no membership, so nothing about one holds it back.
+      await formWithPeer();
 
-      await expectAllowed(lite.deleteDoc(profileRef(peer)), 'a profile delete after leaving');
+      await expectAllowed(lite.deleteDoc(profileRef(peer)), "a live member's profile delete");
+      await expectAllowed(lite.deleteDoc(profileRef(owner)), "a live owner's profile delete");
     });
   });
 
@@ -2962,45 +3009,56 @@ describe('firestore.rules households (emulator smoke test)', () => {
   });
 
   describe('creating, refused', () => {
-    // The next three commit the household alone, with what the rest of the
-    // create commit would write already in place past the rules, so the one
-    // missing or wrong part is all that is left to refuse it.
-
     it('refuses a household with no owner member document', async () => {
-      const householdId = newHouseholdId();
-      await patchFieldsAsOwner(`users/${owner.uid}`, { householdId: stringField(householdId) });
       await expectDenied(
-        createCommit(owner, householdId, { member: null, pointer: false }),
+        createCommit(owner, newHouseholdId(), { member: null }),
         'a create without a member document'
       );
     });
 
     it("refuses a household naming someone else's ownerId", async () => {
-      const householdId = newHouseholdId();
-      await seedOwnerDocument(owner, householdId);
-      await patchFieldsAsOwner(`users/${owner.uid}`, { householdId: stringField(householdId) });
       await expectDenied(
-        createCommit(owner, householdId, { household: { ownerId: peer.uid }, member: null, pointer: false }),
+        createCommit(owner, newHouseholdId(), { household: { ownerId: peer.uid } }),
         'a create for another owner'
       );
     });
 
-    it('refuses a createdAt that is not the request time', async () => {
-      // The member document carries the same client stamp, so its own
-      // since-check passes and only the household's generation rule is left.
-      const stamp = lite.Timestamp.now();
+    it('refuses a household without its index document', async () => {
       await expectDenied(
-        createCommit(owner, newHouseholdId(), { household: { createdAt: stamp }, member: { since: stamp } }),
-        'a client-chosen createdAt'
+        createCommit(owner, newHouseholdId(), { index: null }),
+        'a create without the index document'
       );
     });
 
-    it('refuses a household without the pointer write', async () => {
-      const householdId = newHouseholdId();
-      await seedOwnerDocument(owner, householdId);
+    it("refuses an owner's index document stamped with anything but the request time", async () => {
+      // A minute back: on one machine a client stamp taken now can fall in
+      // the same millisecond as the request time.
       await expectDenied(
-        createCommit(owner, householdId, { member: null, pointer: false }),
-        'a create without the pointer'
+        createCommit(owner, newHouseholdId(), { index: { since: lite.Timestamp.fromMillis(Date.now() - 60_000) } }),
+        'an index document with a client-chosen since'
+      );
+    });
+
+    it("refuses an owner's index document naming the member role", async () => {
+      await expectDenied(
+        createCommit(owner, newHouseholdId(), { index: { role: 'member' } }),
+        'an owner index document with the wrong role'
+      );
+    });
+
+    it('refuses a createdAt that is not the request time', async () => {
+      // The member and index documents carry the same client stamp, so their
+      // own since-checks pass and only the generation rules are left. A
+      // minute back: on one machine a client stamp taken now can fall in the
+      // same millisecond as the request time.
+      const stamp = lite.Timestamp.fromMillis(Date.now() - 60_000);
+      await expectDenied(
+        createCommit(owner, newHouseholdId(), {
+          household: { createdAt: stamp },
+          member: { since: stamp },
+          index: { since: stamp }
+        }),
+        'a client-chosen createdAt'
       );
     });
 
@@ -3024,8 +3082,9 @@ describe('firestore.rules households (emulator smoke test)', () => {
     it('refuses an owner member document in a household that already exists', async () => {
       const householdId = await formHousehold(owner);
       const createdAt = await liveCreatedAt(owner, householdId);
-      // Everything else about the write holds (pointer, since, ownerId), so
-      // the only clause left to refuse it is "the household is new".
+      // Everything else about the write holds (the index document, since,
+      // ownerId), so the only clause left to refuse it is "the household is
+      // new".
       await deleteDocumentAsOwner(`households/${householdId}/members/${owner.uid}`);
 
       await expectDenied(
@@ -3039,14 +3098,9 @@ describe('firestore.rules households (emulator smoke test)', () => {
       const createdAt = await liveCreatedAt(owner, householdId);
       const batch = lite.writeBatch(stranger.db);
       batch.set(memberRef(stranger, householdId), ownerMemberBody(stranger, { since: createdAt }));
-      batch.update(profileRef(stranger), { householdId });
+      batch.set(indexRef(stranger, householdId), ownerIndexBody({ since: createdAt }));
 
       await expectDenied(batch.commit(), 'a stranger claiming ownership');
-    });
-
-    it('refuses a live member starting a second household', async () => {
-      await formWithPeer();
-      await expectDenied(createCommit(peer, newHouseholdId()), 'a second household');
     });
   });
 
@@ -3091,18 +3145,18 @@ describe('firestore.rules households (emulator smoke test)', () => {
       await expectDenied(joinCommit(peer, householdId, { consume: false }), 'a join that keeps its invite');
     });
 
-    it('refuses a join without the pointer write', async () => {
+    it('refuses a join without its index document', async () => {
       await seedInvite(householdId, peer);
-      await expectDenied(joinCommit(peer, householdId, { pointer: false }), 'a join without the pointer');
+      await expectDenied(joinCommit(peer, householdId, { index: null }), 'a join without the index document');
     });
 
-    it('refuses a join while a live member elsewhere', async () => {
-      const elsewhere = await formHousehold(stranger);
-      await seedInvite(elsewhere, peer);
-      await joinCommit(peer, elsewhere);
+    it('refuses a join whose index document names another role or generation', async () => {
       await seedInvite(householdId, peer);
-
-      await expectDenied(joinCommit(peer, householdId), 'a join that abandons a live membership');
+      await expectDenied(joinCommit(peer, householdId, { index: { role: 'owner' } }), 'an index naming the owner role');
+      await expectDenied(
+        joinCommit(peer, householdId, { index: { since: lite.Timestamp.fromMillis(0) } }),
+        'an index naming another generation'
+      );
     });
 
     it('refuses a join into a household that is gone', async () => {
@@ -3123,7 +3177,12 @@ describe('firestore.rules households (emulator smoke test)', () => {
         joinedAt: lite.serverTimestamp(),
         inviteId: `${householdId}_${stranger.uid}`
       });
-      batch.update(profileRef(stranger), { householdId });
+      batch.set(indexRef(stranger, householdId), {
+        since: createdAt,
+        role: 'member',
+        name: 'Home',
+        joinedAt: lite.serverTimestamp()
+      });
 
       await expectDenied(batch.commit(), 'an uninvited join');
     });
@@ -3151,22 +3210,22 @@ describe('firestore.rules households (emulator smoke test)', () => {
     });
   });
 
-  describe('pointer, refused', () => {
-    it('refuses a pointer at a household the account has no member document in', async () => {
-      const householdId = await formHousehold(owner);
-      await expectDenied(lite.updateDoc(profileRef(peer), { householdId }), 'a pointer with no membership');
-    });
-
-    it('refuses an empty pointer', async () => {
+  describe('the profile pointer', () => {
+    it('refuses setting it, even to a household the account is a live member of', async () => {
+      const householdId = await formWithPeer();
+      await expectDenied(lite.updateDoc(profileRef(peer), { householdId }), 'a pointer at a live membership');
       await expectDenied(lite.updateDoc(profileRef(peer), { householdId: '' }), 'an empty pointer');
     });
 
-    it('refuses clearing the pointer while still a member', async () => {
+    it('lets a pointer left from before be removed, while a member or not', async () => {
       await formWithPeer();
-      await expectDenied(
-        lite.updateDoc(profileRef(peer), { householdId: lite.deleteField() }),
-        'a pointer clear that keeps the membership'
-      );
+      for (const account of [peer, stranger]) {
+        await patchFieldsAsOwner(`users/${account.uid}`, { householdId: stringField('left-over') });
+        await expectAllowed(
+          lite.updateDoc(profileRef(account), { householdId: lite.deleteField() }),
+          `${account.name} removing a left-over pointer`
+        );
+      }
     });
 
     it('refuses householdId on a profile create', async () => {
@@ -3176,32 +3235,148 @@ describe('firestore.rules households (emulator smoke test)', () => {
         'a profile born with a pointer'
       );
     });
+  });
 
-    it('refuses deleting the profile while a live member', async () => {
-      await formWithPeer();
-      await expectDenied(lite.deleteDoc(profileRef(peer)), "a live member's profile delete");
-      await expectDenied(lite.deleteDoc(profileRef(owner)), "a live owner's profile delete");
+  describe('the membership index', () => {
+    const memberIndexBody = (since: unknown, overrides: Record<string, unknown> = {}) => ({
+      since,
+      role: 'member',
+      name: 'Home',
+      joinedAt: lite.serverTimestamp(),
+      ...overrides
+    });
+
+    it('lets the account read and list its own index, and nobody else', async () => {
+      const householdId = await formWithPeer();
+
+      await expectAllowed(lite.getDoc(indexRef(peer, householdId)), 'the account reading its index document');
+      const own = await lite.getDocs(lite.collection(peer.db, `users/${peer.uid}/households`));
+      expect(own.docs.map(entry => entry.id)).toContain(householdId);
+
+      await expectDenied(lite.getDoc(indexRef(owner, householdId, peer.uid)), "the owner reading the peer's index");
+      await expectDenied(
+        lite.getDocs(lite.collection(stranger.db, `users/${peer.uid}/households`)),
+        "a stranger listing the peer's index"
+      );
+    });
+
+    it('refuses an index document with no member document behind it', async () => {
+      const householdId = await formHousehold(owner);
+      const createdAt = await liveCreatedAt(owner, householdId);
+
+      await expectDenied(
+        lite.setDoc(indexRef(peer, householdId), memberIndexBody(createdAt)),
+        'an index document for a household the account never joined'
+      );
+    });
+
+    it("refuses an index document in another account's index", async () => {
+      const householdId = await formWithPeer();
+      const createdAt = await liveCreatedAt(owner, householdId);
+
+      await expectDenied(
+        lite.setDoc(indexRef(stranger, householdId, peer.uid), memberIndexBody(createdAt)),
+        "a stranger writing the peer's index document"
+      );
+      await expectDenied(
+        lite.deleteDoc(indexRef(stranger, householdId, peer.uid)),
+        "a stranger deleting the peer's index document"
+      );
+    });
+
+    it('lets the account rename its index entry, and mark it ended only once its membership is over', async () => {
+      const householdId = await formWithPeer();
+
+      await expectAllowed(lite.updateDoc(indexRef(peer, householdId), { name: 'Renamed' }), 'a cached-name refresh');
+      await expectDenied(
+        lite.updateDoc(indexRef(peer, householdId), { endedAt: lite.serverTimestamp() }),
+        'marking a live membership ended'
+      );
+
+      await removeCommit(owner, householdId, [peer.uid]);
+      await expectAllowed(
+        lite.updateDoc(indexRef(peer, householdId), { endedAt: lite.serverTimestamp() }),
+        'marking ended once the member document is gone'
+      );
+    });
+
+    it('keeps the end mark on an entry whose membership is gone', async () => {
+      const householdId = await formWithPeer();
+      await leaveCommit(peer, householdId);
+
+      await expectDenied(
+        lite.updateDoc(indexRef(peer, householdId), { endedAt: lite.deleteField() }),
+        'taking the end mark off a membership that is gone'
+      );
+      await expectAllowed(
+        lite.updateDoc(indexRef(peer, householdId), { name: 'Renamed' }),
+        'a cached-name refresh on an ended entry'
+      );
+    });
+
+    it('refuses an index update that moves since or role without a member document to match', async () => {
+      const householdId = await formWithPeer();
+
+      await expectDenied(
+        lite.updateDoc(indexRef(peer, householdId), { since: lite.Timestamp.now() }),
+        'an index update to another generation'
+      );
+      await expectDenied(lite.updateDoc(indexRef(peer, householdId), { role: 'owner' }), 'an index update to owner');
+    });
+
+    it('refuses a malformed index document at the join, and a malformed update after it', async () => {
+      const householdId = await formHousehold(owner);
+      await seedInvite(householdId, peer);
+      // Each refused join lands nothing, so the invite is there for the next.
+      const cases: [string, Record<string, unknown>][] = [
+        ['an extra key', { plan: 'premium' }],
+        ['an empty name', { name: '' }],
+        ['a name over 60 characters', { name: 'n'.repeat(61) }],
+        ['an endedAt at creation', { endedAt: lite.serverTimestamp() }],
+        ['a joinedAt that is not a timestamp', { joinedAt: 'yesterday' }]
+      ];
+      for (const [what, overrides] of cases) {
+        await expectDenied(joinCommit(peer, householdId, { index: overrides }), what);
+      }
+      await expectDenied(lite.setDoc(indexRef(peer, householdId), { junk: true }), 'a bare write under the index');
+
+      await expectAllowed(joinCommit(peer, householdId), 'the join itself');
+      await expectDenied(lite.updateDoc(indexRef(peer, householdId), { name: '' }), 'renaming the entry to nothing');
+      await expectDenied(
+        lite.updateDoc(indexRef(peer, householdId), { endedAt: 'now' }),
+        'an endedAt that is not a timestamp'
+      );
+      await expectDenied(lite.updateDoc(indexRef(peer, householdId), { plan: 'premium' }), 'an extra key on update');
+    });
+
+    it('refuses deleting an index document while its membership is live', async () => {
+      const householdId = await formWithPeer();
+
+      await expectDenied(dropIndex(peer, householdId), "a live member's index delete");
+      await expectDenied(dropIndex(owner, householdId), "a live owner's index delete");
+    });
+
+    it('lets an index document be marked ended and go once its member document is of another generation', async () => {
+      const householdId = await formWithPeer();
+      await patchFieldsAsOwner(`households/${householdId}/members/${peer.uid}`, {
+        since: timestampField(new Date(0))
+      });
+
+      await expectAllowed(
+        lite.updateDoc(indexRef(peer, householdId), { endedAt: lite.serverTimestamp() }),
+        'marking ended beside an orphan'
+      );
+      await expectAllowed(dropIndex(peer, householdId), 'an index delete beside an orphan');
     });
   });
 
   describe('reading, refused', () => {
-    for (const kind of SHARED_KINDS) {
+    for (const kind of OWN_KINDS) {
       it(`refuses the stranger listing a member's ${kind}`, async () => {
         await formWithPeer();
         await expectDenied(readKind(stranger, owner.uid, kind), `a stranger reading ${kind}`);
       });
     }
-
-    it('refuses a stranger whose own pointer names the household', async () => {
-      // The pointer is the one field an account writes about itself, so it
-      // proves nothing: the stranger's missing member document decides.
-      const householdId = await formWithPeer();
-      await patchFieldsAsOwner(`users/${stranger.uid}`, { householdId: stringField(householdId) });
-
-      for (const kind of SHARED_KINDS) {
-        await expectDenied(readKind(stranger, owner.uid, kind), `a self-pointed stranger reading ${kind}`);
-      }
-    });
 
     it('refuses the stranger getting the household, listing its members or reading one', async () => {
       const householdId = await formWithPeer();
@@ -3234,10 +3409,6 @@ describe('firestore.rules households (emulator smoke test)', () => {
 
     async function expectCutOff(householdId: string): Promise<void> {
       const live = await liveCreatedAt(owner, householdId);
-      for (const kind of SHARED_KINDS) {
-        await expectDenied(readKind(peer, owner.uid, kind), `the former peer reading ${kind}`);
-        await expectDenied(readKind(owner, peer.uid, kind), `the owner reading the former peer's ${kind}`);
-      }
       await expectDenied(lite.getDoc(householdRef(peer, householdId)), 'the former peer getting the household');
       await expectDenied(lite.getDocs(membersSince(peer, householdId, live)), 'the former peer listing members');
     }
@@ -3261,7 +3432,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
       await dissolveCommit(owner, householdId);
 
       // What an interrupted sweep leaves: both member documents of the dead
-      // generation, and both pointers still naming its id.
+      // generation, and both index documents still naming it.
       for (const account of [owner, peer]) {
         await setDocumentAsOwner(`households/${householdId}/members/${account.uid}`, {
           uid: stringField(account.uid),
@@ -3270,7 +3441,6 @@ describe('firestore.rules households (emulator smoke test)', () => {
           since: earlier,
           joinedAt: earlier
         });
-        await patchFieldsAsOwner(`users/${account.uid}`, { householdId: stringField(householdId) });
       }
 
       // A new generation under the same id.
@@ -3278,12 +3448,6 @@ describe('firestore.rules households (emulator smoke test)', () => {
       expect(timestampOf(await storedHousehold(householdId), 'createdAt')).not.toEqual(earlier);
       const live = await liveCreatedAt(stranger, householdId);
 
-      for (const kind of SHARED_KINDS) {
-        await expectDenied(readKind(peer, owner.uid, kind), `orphan reading orphan's ${kind}`);
-        await expectDenied(readKind(owner, peer.uid, kind), `orphan owner reading orphan's ${kind}`);
-        await expectDenied(readKind(peer, stranger.uid, kind), `orphan reading the new owner's ${kind}`);
-        await expectDenied(readKind(stranger, peer.uid, kind), `the new owner reading an orphan's ${kind}`);
-      }
       for (const account of [owner, peer]) {
         await expectDenied(lite.getDoc(householdRef(account, householdId)), `${account.name} getting the new generation`);
         await expectDenied(
@@ -3306,6 +3470,13 @@ describe('firestore.rules households (emulator smoke test)', () => {
       // The new generation itself still reads, so the refusals above are
       // about the orphans, not about the id.
       await expectAllowed(lite.getDoc(householdRef(stranger, householdId)), 'the new owner getting its household');
+
+      // An orphan's index document names a generation its household no
+      // longer has, and goes with the orphan member document it stands for.
+      const batch = lite.writeBatch(peer.db);
+      batch.delete(memberRef(peer, householdId));
+      batch.delete(indexRef(peer, householdId));
+      await expectAllowed(batch.commit(), "an orphan tidying its member and index documents");
     }, 30000);
   });
 

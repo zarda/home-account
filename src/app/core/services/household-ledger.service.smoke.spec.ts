@@ -2,7 +2,7 @@
 // packages). @angular/fire bundles its own pinned Firebase major, and mixing
 // the two produces instances that do not interoperate.
 import { TestBed } from '@angular/core/testing';
-import { createEnvironmentInjector, EnvironmentInjector, ErrorHandler, Provider } from '@angular/core';
+import { ErrorHandler, Provider } from '@angular/core';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously } from '@angular/fire/auth';
 import {
@@ -27,7 +27,6 @@ import {
   booleanField,
   getDocumentAsOwner,
   integerField,
-  patchFieldsAsOwner,
   setDocumentAsOwner,
   stringField,
   timestampField
@@ -37,30 +36,25 @@ import {
   budgetPeriodWindow,
   dayKey,
   monthWindow,
-  startOfMonth,
-  yearWindow
+  startOfMonth
 } from '../utils/transaction-date.utils';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { unexpectedConsoleErrors } from './testing/firestore-transport-noise';
 silenceFirebaseWarnings();
 
 /**
- * HouseholdLedgerService against the emulators, with firestore.rules live:
- * the owner's ledger reads a household peer's transactions, categories,
- * active budgets and active goals only because the rules admit a live member
- * of the same household, and each query is one the rules can prove.
+ * HouseholdLedgerService against the emulators, with firestore.rules live,
+ * for a household of one: the member's own transactions, categories, active
+ * budgets and active goals, each through a query the rules admit for the
+ * account's own records. Every other member's records are readable by
+ * their own account alone, so a household of one is the whole of what these
+ * reads can show.
  *
- * Two full service stacks, one per account: the owner's through the TestBed,
- * the peer's through a child EnvironmentInjector (the
- * transaction-receipts.smoke.spec.ts pattern), used only to join. Two full
- * clients is the most one file holds: each keeps a listen stream open, Chrome
- * allows six connections per host, and the admin REST reads and writes need
- * the rest.
- *
- * Every record is seeded past the rules, as its account would have written
- * it; the household is formed and joined through the real HouseholdService.
- * The period is a whole local month, and rows sit on either side of each of
- * its bounds, so this file runs in the zoned smoke:dates pass too.
+ * One full service stack, through the TestBed. The household is formed
+ * through the real HouseholdService; every record is seeded past the rules,
+ * as the account would have written it. The period is a whole local month,
+ * and rows sit on either side of each of its bounds, so this file runs in
+ * the zoned smoke:dates pass too.
  *
  * Runs only under the emulators:
  *   npm run test:smoke
@@ -71,10 +65,8 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
   const FIRESTORE_PORT = 8080;
   const AUTH_URL = 'http://127.0.0.1:9099';
   const RATES_CACHE_KEY = 'home-account.exchangeRates';
-  const DAY_MS = 24 * 60 * 60 * 1000;
 
   const AUGUST = monthWindow({ year: 2026, month: 7 });
-  const YEAR = yearWindow(2026);
   const at = (day: number, hour = 12) => new Date(2026, 7, day, hour);
 
   interface Account {
@@ -86,11 +78,8 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
   }
 
   let owner: Account;
-  let peer: Account;
-  let ownerHousehold: HouseholdService;
-  let peerHousehold: HouseholdService;
+  let household: HouseholdService;
   let ledger: HouseholdLedgerService;
-  let peerInjector: EnvironmentInjector;
   let errorHandler: jasmine.SpyObj<ErrorHandler>;
   let consoleError: jasmine.Spy;
   let consoleWarn: jasmine.Spy;
@@ -140,18 +129,16 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
     }
   }
 
-  /**
-   * One expense as its account writes it: 1 dollar whose snapshot is 150 in a
-   * yen base, with no stamp saying so. `extra` replaces or adds fields.
-   */
-  function seedTransaction(account: Account, id: string, date: Date, extra: Record<string, EmulatorField> = {}) {
-    return setDocumentAsOwner(`users/${account.uid}/transactions/${id}`, {
-      userId: stringField(account.uid),
+  /** One dollar expense as its account writes it, in its dollar base; `extra` replaces or adds fields. */
+  function seedTransaction(id: string, date: Date, extra: Record<string, EmulatorField> = {}) {
+    return setDocumentAsOwner(`users/${owner.uid}/transactions/${id}`, {
+      userId: stringField(owner.uid),
       type: stringField('expense'),
       amount: integerField(1),
       currency: stringField('USD'),
-      amountInBaseCurrency: integerField(150),
-      exchangeRate: integerField(150),
+      amountInBaseCurrency: integerField(1),
+      exchangeRate: integerField(1),
+      baseCurrency: stringField('USD'),
       categoryId: stringField('food_groceries'),
       description: stringField(id),
       date: timestampField(date),
@@ -162,10 +149,10 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
     });
   }
 
-  function seedBudget(account: Account, id: string, name: string, extra: Record<string, EmulatorField>) {
+  function seedBudget(id: string, name: string, extra: Record<string, EmulatorField>) {
     const now = new Date();
-    return setDocumentAsOwner(`users/${account.uid}/budgets/${id}`, {
-      userId: stringField(account.uid),
+    return setDocumentAsOwner(`users/${owner.uid}/budgets/${id}`, {
+      userId: stringField(owner.uid),
       categoryId: stringField('food'),
       name: stringField(name),
       amount: integerField(40000),
@@ -181,10 +168,10 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
     });
   }
 
-  function seedGoal(account: Account, id: string, name: string, isActive: boolean) {
+  function seedGoal(id: string, name: string, isActive: boolean) {
     const now = new Date();
-    return setDocumentAsOwner(`users/${account.uid}/goals/${id}`, {
-      userId: stringField(account.uid),
+    return setDocumentAsOwner(`users/${owner.uid}/goals/${id}`, {
+      userId: stringField(owner.uid),
       kind: stringField('saving'),
       name: stringField(name),
       targetAmount: integerField(300000),
@@ -194,43 +181,6 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
       createdAt: timestampField(now),
       updatedAt: timestampField(now)
     });
-  }
-
-  /** The invite the callable writes, with the generation read back from the stored household. */
-  async function seedInvite(householdId: string, inviterUid: string, inviteeUid: string): Promise<void> {
-    const household = await getDocumentAsOwner(`households/${householdId}`);
-    const createdAt = household?.['createdAt']?.['timestampValue'];
-    if (typeof createdAt !== 'string') throw new Error(`households/${householdId} has no stored createdAt`);
-    await setDocumentAsOwner(`householdInvites/${householdId}_${inviteeUid}`, {
-      householdId: stringField(householdId),
-      householdCreatedAt: { timestampValue: createdAt },
-      householdName: stringField('Home'),
-      inviterUid: stringField(inviterUid),
-      inviterName: stringField('Owner'),
-      inviterEmail: stringField('owner@example.test'),
-      inviteeUid: stringField(inviteeUid),
-      inviteeEmail: stringField(`${inviteeUid}@example.test`),
-      locale: stringField('en'),
-      createdAt: timestampField(),
-      expiresAt: timestampField(new Date(Date.now() + 7 * DAY_MS)),
-      mail: stringField('sent')
-    });
-  }
-
-  /** The owner forms a household, the peer joins it, and the owner's page is connected. */
-  async function formWithPeer(): Promise<void> {
-    const householdId = await ownerHousehold.create('Home');
-    await seedInvite(householdId, owner.uid, peer.uid);
-    await peerHousehold.accept(householdId);
-    ownerHousehold.connect();
-    await waitFor(() => ownerHousehold.members().length === 2, 'the owner to list both members');
-  }
-
-  /** The owner's ledger over August, fed the members the household page would feed it. */
-  async function followAugust(): Promise<void> {
-    ledger.setPeriod(AUGUST);
-    ledger.setMembers(ownerHousehold.members());
-    await waitFor(() => !ledger.loading() && ledger.rows().length === 5, 'the merged August rows');
   }
 
   /**
@@ -259,36 +209,24 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
     );
 
     owner = await signIn('owner');
-    peer = await signIn('peer');
+    await setDoc(doc(owner.firestore, `users/${owner.uid}`), profile(owner));
 
-    // The owner's own row, in its own base.
-    await seedTransaction(owner, 'own', at(15), {
-      amount: integerField(50),
-      amountInBaseCurrency: integerField(50),
-      exchangeRate: integerField(1),
-      baseCurrency: stringField('USD')
-    });
-
-    // The peer's rows around August's bounds, each 1 dollar stamped JPY.
-    const yen = { baseCurrency: stringField('JPY') };
-    await seedTransaction(peer, 'first-ms', AUGUST.start, yen);
-    await seedTransaction(peer, 'last-ms', AUGUST.end, yen);
-    await seedTransaction(peer, 'before', new Date(AUGUST.start.getTime() - 1), yen);
-    await seedTransaction(peer, 'after', new Date(AUGUST.end.getTime() + 1), yen);
-    // 1500 yen in the peer's yen base, stamped: converted live into the
-    // owner's dollars at the cached rate.
-    await seedTransaction(peer, 'in-yen', at(20), {
+    await seedTransaction('own', at(15), { amount: integerField(50), amountInBaseCurrency: integerField(50) });
+    // Around August's bounds.
+    await seedTransaction('first-ms', AUGUST.start);
+    await seedTransaction('last-ms', AUGUST.end);
+    await seedTransaction('before', new Date(AUGUST.start.getTime() - 1));
+    await seedTransaction('after', new Date(AUGUST.end.getTime() + 1));
+    // 1500 yen, converted live into the dollar base at the cached rate.
+    await seedTransaction('in-yen', at(20), {
       amount: integerField(1500),
       currency: stringField('JPY'),
-      amountInBaseCurrency: integerField(1500),
-      exchangeRate: integerField(1),
-      baseCurrency: stringField('JPY')
+      amountInBaseCurrency: integerField(10),
+      exchangeRate: integerField(150)
     });
-    // Written before stamping in the peer's yen base: 20 dollars stored as
-    // 3000, which amountInBase alone would count as 3000 dollars. It carries
-    // a receipt and the peer's own category.
-    await setDocumentAsOwner(`users/${peer.uid}/categories/peer-pets`, {
-      userId: stringField(peer.uid),
+    // In the account's own category, with its receipt: its own row keeps both.
+    await setDocumentAsOwner(`users/${owner.uid}/categories/own-pets`, {
+      userId: stringField(owner.uid),
       name: stringField('Pets'),
       icon: stringField('pets'),
       color: stringField('#336699'),
@@ -297,45 +235,34 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
       isActive: booleanField(true),
       isDefault: booleanField(false)
     });
-    await seedTransaction(peer, 'receipted', at(10), {
+    await seedTransaction('receipted', at(10), {
       amount: integerField(20),
-      amountInBaseCurrency: integerField(3000),
-      categoryId: stringField('peer-pets'),
+      amountInBaseCurrency: integerField(20),
+      categoryId: stringField('own-pets'),
       receiptUrl: stringField('https://example.test/receipt.jpg'),
       receiptCount: integerField(1)
     });
 
     const now = new Date();
-    await seedBudget(peer, 'current', 'Groceries', {
+    await seedBudget('current', 'Groceries', {
       spent: integerField(12000),
       spentPeriod: stringField(dayKey(budgetPeriodWindow('monthly', startOfMonth(now), now).start))
     });
-    await seedBudget(peer, 'stale', 'Dining', {
+    await seedBudget('stale', 'Dining', {
       spent: integerField(30000),
       spentPeriod: stringField('1999-01-01')
     });
-    await seedBudget(peer, 'inactive', 'Old', { isActive: booleanField(false) });
-    await seedGoal(peer, 'trip', 'Trip', true);
-    await seedGoal(peer, 'car', 'Car', false);
+    await seedBudget('inactive', 'Old', { isActive: booleanField(false) });
+    await seedGoal('trip', 'Trip', true);
+    await seedGoal('car', 'Car', false);
   }, 30000);
 
   afterAll(async () => {
     localStorage.removeItem(RATES_CACHE_KEY);
-    for (const account of [owner, peer]) {
-      await deleteApp(account.app).catch(() => undefined);
-    }
+    await deleteApp(owner.app).catch(() => undefined);
   });
 
-  // A pointer is only clearable through the rules once its membership is
-  // gone, so the reset goes around them; the profile is then rewritten
-  // through the client. Households are keyed by fresh ids, so nothing an
-  // earlier case left behind is in the way.
-  beforeEach(async () => {
-    for (const account of [owner, peer]) {
-      await patchFieldsAsOwner(`users/${account.uid}`, { householdId: null });
-      await setDoc(doc(account.firestore, `users/${account.uid}`), profile(account));
-    }
-
+  beforeEach(() => {
     errorHandler = jasmine.createSpyObj<ErrorHandler>('ErrorHandler', ['handleError']);
     TestBed.configureTestingModule({
       providers: [
@@ -344,86 +271,55 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
         { provide: ErrorHandler, useValue: errorHandler }
       ]
     });
-    ownerHousehold = TestBed.inject(HouseholdService);
+    household = TestBed.inject(HouseholdService);
     ledger = TestBed.inject(HouseholdLedgerService);
-    peerInjector = createEnvironmentInjector(stack(peer), TestBed.inject(EnvironmentInjector));
-    peerHousehold = peerInjector.get(HouseholdService);
 
     consoleError = spyOn(console, 'error').and.callThrough();
     consoleWarn = spyOn(console, 'warn').and.callThrough();
   });
 
-  afterEach(() => {
-    peerInjector.destroy();
-  });
-
-  it('reads the peer\'s rows, categories, active budgets and active goals through the rules, merged with the owner\'s', async () => {
-    await formWithPeer();
-    await followAugust();
+  it('reads the member\'s own rows, categories, active budgets and active goals through the rules', async () => {
+    await household.create('Home');
+    household.connect();
+    await waitFor(() => household.members().length === 1, 'the household of one');
+    ledger.setPeriod(AUGUST);
+    ledger.setMembers(household.members());
+    await waitFor(() => !ledger.loading() && ledger.rows().length === 5, 'the August rows');
 
     // Both of the period's bounds are inside it, and a millisecond past
     // either is not.
     expect(ledger.rows().map(r => [r.id, r.memberUid])).toEqual([
-      ['last-ms', peer.uid],
-      ['in-yen', peer.uid],
+      ['last-ms', owner.uid],
+      ['in-yen', owner.uid],
       ['own', owner.uid],
-      ['receipted', peer.uid],
-      ['first-ms', peer.uid]
+      ['receipted', owner.uid],
+      ['first-ms', owner.uid]
     ]);
 
     const receipted = ledger.rows().find(r => r.id === 'receipted')!;
-    expect('receiptUrl' in receipted).toBeFalse();
-    expect('receiptCount' in receipted).toBeFalse();
-    expect(ledger.categoriesByMember().get(peer.uid)!.get(receipted.categoryId)!.name).toBe('Pets');
-    expect(ledger.categoriesByMember().get(owner.uid)!.has('peer-pets')).toBeFalse();
+    expect(receipted.receiptCount).toBe(1);
+    expect(ledger.categoriesByMember().get(owner.uid)!.get('own-pets')!.name).toBe('Pets');
 
-    // In the owner's dollars: 20 for the unstamped row (its snapshot says
-    // 3000), 10 for the 1500 yen at the cached 150 (10.03 at the compiled-in
-    // 149.5, 1500 at its snapshot), and 1 for each stamped dollar.
+    // In dollars: 50 + 20 + 1 + 1, and 10 for the 1500 yen at the cached 150
+    // (10.03 at the compiled-in 149.5).
     expect(ledger.totalsByMember().map(entry => [entry.member.uid, entry.totals.expense]))
-      .toEqual([[owner.uid, 50], [peer.uid, 32]]);
+      .toEqual([[owner.uid, 82]]);
     expect(ledger.combined().expense).toBe(82);
     expect(TestBed.inject(CurrencyService).rateSource()).toBe('cached');
 
-    const peerBudgets = ledger.budgetsByMember().find(entry => entry.member.uid === peer.uid)!.budgets;
-    expect(peerBudgets.map(b => [b.id, b.spent, b.stale])).toEqual([
+    const budgets = ledger.budgetsByMember().find(entry => entry.member.uid === owner.uid)!.budgets;
+    expect(budgets.map(b => [b.id, b.spent, b.stale])).toEqual([
       ['stale', 0, true],
       ['current', 12000, false]
     ]);
     expect(ledger.goalsByMember().map(entry => [entry.member.uid, entry.goals.map(g => g.id)]))
-      .toEqual([[owner.uid, []], [peer.uid, ['trip']]]);
+      .toEqual([[owner.uid, ['trip']]]);
     expect(ledger.unavailable()).toEqual([]);
     expect(ledger.truncated()).toEqual([]);
 
     // The stale figure was shown as 0, not recalculated.
-    const stored = await getDocumentAsOwner(`users/${peer.uid}/budgets/stale`);
+    const stored = await getDocumentAsOwner(`users/${owner.uid}/budgets/stale`);
     expect(stored?.['spent']).toEqual(integerField(30000));
-    expectQuiet();
-  }, 30000);
-
-  it('drops a removed peer: the rules refuse its rows quietly, and it leaves with the members list', async () => {
-    await formWithPeer();
-    await followAugust();
-
-    await ownerHousehold.remove(peer.uid);
-
-    // Before the list catches up, a new period re-reads the peer's rows,
-    // which the rules now refuse.
-    ledger.setPeriod(YEAR);
-    await waitFor(() => ledger.unavailable().some(member => member.uid === peer.uid),
-      'the peer\'s refused rows');
-    await waitFor(() => !ledger.loading(), 'the owner\'s rows for the year');
-    expect(ledger.rows().map(r => [r.id, r.memberUid])).toEqual([['own', owner.uid]]);
-    expect(ledger.budgetsByMember().map(entry => entry.member.uid)).toEqual([owner.uid]);
-    expect(ledger.goalsByMember().map(entry => entry.member.uid)).toEqual([owner.uid]);
-
-    await waitFor(() => ownerHousehold.members().length === 1, 'the owner to list itself alone');
-    ledger.setMembers(ownerHousehold.members());
-
-    expect(ledger.unavailable()).toEqual([]);
-    expect(ledger.totalsByMember().map(entry => entry.member.uid)).toEqual([owner.uid]);
-    expect(ledger.categoriesByMember().has(peer.uid)).toBeFalse();
-    expect(ledger.rows().map(r => r.id)).toEqual(['own']);
     expectQuiet();
   }, 30000);
 });

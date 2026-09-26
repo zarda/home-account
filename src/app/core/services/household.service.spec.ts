@@ -9,6 +9,7 @@ import {
   HouseholdService,
   householdNameValid,
   householdNameValidator,
+  householdSelectionKey,
   inviteEmailValid
 } from './household.service';
 import { HOUSEHOLD_INVITE_CALLABLE } from './household-invite-callable';
@@ -20,15 +21,23 @@ import { MockFirestoreService } from './testing/mock-firestore.service';
 import { createTranslationStub } from './testing/translation-stub';
 import {
   Household,
+  HouseholdIndexEntry,
   HouseholdInvite,
   HouseholdMember,
   HouseholdRole,
+  MAX_HOUSEHOLDS_PER_ACCOUNT,
   User
 } from '../../models';
 
 type OwnMember = DocumentWithMetadata<HouseholdMember>;
 interface Write { op: 'set' | 'update' | 'delete'; path: string; data?: unknown }
 type Where = { field: string; op: string; value: unknown }[] | undefined;
+/** An index entry as a listener or a read hands it over: a pending stamp reads as null. */
+type EntryData = Omit<HouseholdIndexEntry, 'since' | 'joinedAt' | 'endedAt'> & {
+  since: Timestamp | null;
+  joinedAt: Timestamp | null;
+  endedAt?: Timestamp | null;
+};
 
 /** The own member document as the server confirmed it. */
 const confirmed = (data: HouseholdMember | null): OwnMember => ({ data, fromCache: false, hasPendingWrites: false });
@@ -104,8 +113,10 @@ describe('HouseholdService', () => {
   const ME = 'me';
   const OTHER = 'kai';
   const HID = 'h1';
+  const HID2 = 'h2';
   // Microseconds on purpose: a generation compared by the rules keeps them.
   const CREATED = new Timestamp(1_788_000_000, 123_456_000);
+  const CREATED2 = new Timestamp(1_788_050_000, 654_321_000);
   const LATER = new Timestamp(1_788_100_000, 0);
   const FUTURE = Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
   // Minutes left by this device's clock: a clock running slow still sees
@@ -114,6 +125,9 @@ describe('HouseholdService', () => {
   const PAST = Timestamp.fromMillis(Date.now() - 60 * 1000);
   // The translation stub echoes the key with its params.
   const NAME_ERROR = `household.errors.name:${JSON.stringify({ max: HOUSEHOLD_NAME_MAX_LENGTH })}`;
+  const TOO_MANY = `household.errors.tooMany:${JSON.stringify({ max: MAX_HOUSEHOLDS_PER_ACCOUNT })}`;
+  const INDEX = `users/${ME}/households`;
+  const INDEX_PATH = `${INDEX}/${HID}`;
 
   let service: HouseholdService;
   let firestore: MockFirestoreService;
@@ -123,13 +137,16 @@ describe('HouseholdService', () => {
   let consoleError: jasmine.Spy;
   let consoleWarn: jasmine.Spy;
 
-  let profile$: Subject<Partial<User> | null>;
+  let index$: Subject<EntryData[]>;
   let household$: Subject<Household | null>;
   let own$: Subject<OwnMember>;
   let members$: Subject<HouseholdMember[]>;
+  let household2$: Subject<Household | null>;
+  let own2$: Subject<OwnMember>;
+  let members2$: Subject<HouseholdMember[]>;
   let received$: Subject<HouseholdInvite[]>;
   let sent$: Subject<HouseholdInvite[]>;
-  let otherProfile$: Subject<Partial<User> | null>;
+  let otherIndex$: Subject<EntryData[]>;
   let otherReceived$: Subject<HouseholdInvite[]>;
   let membersWhere: Where[];
 
@@ -161,6 +178,16 @@ describe('HouseholdService', () => {
     name: 'Home',
     ownerId: 'alex',
     createdAt: CREATED,
+    ...overrides
+  });
+
+  /** The account's index entry, named as the household is, so nothing asks to refresh it. */
+  const entry = (overrides: Partial<EntryData> = {}): EntryData => ({
+    id: HID,
+    since: CREATED,
+    role: 'member',
+    name: 'Home',
+    joinedAt: CREATED,
     ...overrides
   });
 
@@ -204,30 +231,35 @@ describe('HouseholdService', () => {
     firestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
     service = TestBed.inject(HouseholdService);
 
-    profile$ = new Subject();
+    index$ = new Subject();
     household$ = new Subject();
     own$ = new Subject();
     members$ = new Subject();
+    household2$ = new Subject();
+    own2$ = new Subject();
+    members2$ = new Subject();
     received$ = new Subject();
     sent$ = new Subject();
-    otherProfile$ = new Subject();
+    otherIndex$ = new Subject();
     otherReceived$ = new Subject();
     membersWhere = [];
 
     spyOn(firestore, 'subscribeToDocument').and.callFake(((path: string) => {
-      if (path === `users/${ME}`) return profile$;
-      if (path === `users/${OTHER}`) return otherProfile$;
       if (path === `households/${HID}`) return household$;
+      if (path === `households/${HID2}`) return household2$;
       throw new Error(`unexpected document listener: ${path}`);
     }) as never);
     const ownListener = (path: string): Observable<OwnMember> => {
       if (path === `households/${HID}/members/${ME}`) return own$;
+      if (path === `households/${HID2}/members/${ME}`) return own2$;
       throw new Error(`unexpected metadata listener: ${path}`);
     };
     spyOn(firestore, 'subscribeToDocumentWithMetadata')
       .and.callFake(ownListener as MockFirestoreService['subscribeToDocumentWithMetadata']);
     spyOn(firestore, 'subscribeToCollection').and.callFake(((path: string, options?: { where?: Where }) => {
       const where = options?.where;
+      if (path === INDEX && !where) return index$;
+      if (path === `users/${OTHER}/households` && !where) return otherIndex$;
       if (path === 'householdInvites' && where?.[0]?.field === 'inviteeUid' && where[0].value === ME) {
         return received$;
       }
@@ -241,6 +273,7 @@ describe('HouseholdService', () => {
         membersWhere.push(where);
         return members$;
       }
+      if (path === `households/${HID2}/members`) return members2$;
       throw new Error(`unexpected collection listener: ${path}`);
     }) as never);
 
@@ -248,16 +281,26 @@ describe('HouseholdService', () => {
     consoleWarn = spyOn(console, 'warn').and.callThrough();
   });
 
+  afterEach(() => {
+    for (const uid of [ME, OTHER]) localStorage.removeItem(householdSelectionKey(uid));
+  });
+
   /** Connects and drives the listeners to a live membership. */
   function goLive(role: HouseholdRole = 'member'): void {
     service.connect();
-    profile$.next({ id: ME, householdId: HID });
+    index$.next([entry({ role })]);
     own$.next(confirmed(member({ role })));
     household$.next(householdDoc({ ownerId: role === 'owner' ? ME : 'alex' }));
     members$.next(role === 'owner'
       ? [member({ role: 'owner' }), member({ uid: 'sam', displayName: 'Sam', joinedAt: LATER })]
       : [member({ joinedAt: LATER }), member({ uid: 'alex', displayName: 'Alex', role: 'owner' })]);
   }
+
+  /** Two live memberships, the first joined first: HID as a member, HID2 as its owner. */
+  const twoEntries = (): EntryData[] => [
+    entry(),
+    entry({ id: HID2, role: 'owner', name: 'Flat', since: CREATED2, joinedAt: LATER })
+  ];
 
   /**
    * Replaces runTransaction with a recorder: each call is one commit, its
@@ -324,6 +367,14 @@ describe('HouseholdService', () => {
     }) as never);
   }
 
+  /** readsFor for the reads the server must answer, never a listener. */
+  function serverReadsFor(docs: Record<string, unknown>, refused: string[] = []): jasmine.Spy {
+    return spyOn(firestore, 'getDocumentFromServer').and.callFake((async (path: string) => {
+      if (refused.includes(path)) throw firebaseError('permission-denied');
+      return docs[path] ?? null;
+    }) as never);
+  }
+
   const serviceWarnings = () =>
     consoleWarn.calls.allArgs().filter(args => String(args[0]).startsWith('[HouseholdService]'));
 
@@ -348,28 +399,29 @@ describe('HouseholdService', () => {
       goLive('owner');
       service.connect();
 
-      expect(firestore.subscribeToDocument).toHaveBeenCalledWith(`users/${ME}`);
-      expect((firestore.subscribeToDocument as jasmine.Spy).calls.allArgs()
-        .filter(([path]) => path === `users/${ME}`).length).toBe(1);
+      expect(firestore.subscribeToCollection).toHaveBeenCalledWith(INDEX);
+      expect((firestore.subscribeToCollection as jasmine.Spy).calls.allArgs()
+        .filter(([path]) => path === INDEX).length).toBe(1);
       expect(service.status()).toBe('member');
 
       service.disconnect();
-      expect(profile$.observed).toBeTrue();
+      expect(index$.observed).toBeTrue();
       expect(service.status()).toBe('member');
 
       service.disconnect();
-      for (const subject of [profile$, household$, own$, members$, received$, sent$]) {
+      for (const subject of [index$, household$, own$, members$, received$, sent$]) {
         expect(subject.observed).toBeFalse();
       }
       expect(service.status()).toBe('idle');
       expect(service.household()).toBeNull();
+      expect(service.memberships()).toEqual([]);
     });
 
     it('attaches the household and members listeners only once its own member document is live', () => {
       service.connect();
       expect(service.status()).toBe('loading');
 
-      profile$.next({ id: ME, householdId: HID });
+      index$.next([entry()]);
       expect(firestore.subscribeToDocumentWithMetadata).toHaveBeenCalledOnceWith(`households/${HID}/members/${ME}`);
       expect(firestore.subscribeToDocument).not.toHaveBeenCalledWith(`households/${HID}`);
       expect(service.status()).toBe('loading');
@@ -395,15 +447,18 @@ describe('HouseholdService', () => {
       expect(service.isOwner()).toBeFalse();
       expect(service.members().map(m => m.uid)).toEqual(['alex', ME]);
 
-      // A metadata-only emission of the same membership re-attaches nothing.
+      // A metadata-only emission of the same membership re-attaches nothing,
+      // and neither does the index answering again.
       own$.next(cached(member()));
+      index$.next([entry()]);
       expect(membersWhere.length).toBe(1);
+      expect(firestore.subscribeToDocumentWithMetadata).toHaveBeenCalledTimes(1);
       expectNoConsoleNoise();
     });
 
     it('reads as member once the household and its members have answered, in either order', () => {
       service.connect();
-      profile$.next({ id: ME, householdId: HID });
+      index$.next([entry()]);
       own$.next(confirmed(member()));
 
       members$.next([member(), member({ uid: 'alex', role: 'owner' })]);
@@ -421,7 +476,7 @@ describe('HouseholdService', () => {
         inviteDoc({ id: 'old_me', createdAt: CREATED }),
         inviteDoc({ id: 'new_me', createdAt: LATER })
       ]);
-      profile$.next({ id: ME });
+      index$.next([]);
 
       expect(service.status()).toBe('none');
       expect(service.receivedInvites().map(i => i.id)).toEqual(['new_me', 'old_me']);
@@ -473,7 +528,7 @@ describe('HouseholdService', () => {
 
     it('reads as none, not loading, when the members listener is refused before it answered', () => {
       service.connect();
-      profile$.next({ id: ME, householdId: HID });
+      index$.next([entry()]);
       own$.next(confirmed(member()));
       household$.next(householdDoc());
 
@@ -520,7 +575,7 @@ describe('HouseholdService', () => {
 
     it('reads as unavailable, not none, when a listener fails before the member view was ever heard', () => {
       service.connect();
-      profile$.next({ id: ME, householdId: HID });
+      index$.next([entry()]);
       own$.next(confirmed(member()));
       household$.next(householdDoc());
 
@@ -542,9 +597,22 @@ describe('HouseholdService', () => {
       expect(service.status()).toBe('member');
     });
 
-    it('boots silently with a stale pointer and reports no lost access', () => {
+    it('reads as none, quietly, when the index listener fails', () => {
+      goLive();
+      const failure = firebaseError('internal');
+      index$.error(failure);
+
+      expect(service.status()).toBe('none');
+      expect(service.memberships()).toEqual([]);
+      expect(own$.observed).toBeFalse();
+      expect(household$.observed).toBeFalse();
+      expect(service.lostAccess()).toBeFalse();
+      expect(serviceWarnings()).toEqual([[jasmine.stringMatching(/^\[HouseholdService\]/), failure]]);
+    });
+
+    it('boots silently with an index entry whose membership is gone, and reports no lost access', () => {
       service.connect();
-      profile$.next({ id: ME, householdId: HID });
+      index$.next([entry()]);
       own$.next(confirmed(null));
 
       expect(service.status()).toBe('none');
@@ -562,6 +630,7 @@ describe('HouseholdService', () => {
 
       own$.next(confirmed(null));
       expect(service.lostAccess()).toBeTrue();
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
       expect(service.status()).toBe('none');
       expect(household$.observed).toBeFalse();
       expect(members$.observed).toBeFalse();
@@ -586,20 +655,21 @@ describe('HouseholdService', () => {
 
     it('treats an offline boot with nothing cached as no membership, without deciding it was lost', () => {
       service.connect();
-      profile$.next({ id: ME, householdId: HID });
+      index$.next([entry()]);
       own$.next(cached(null));
 
       expect(service.status()).toBe('none');
       expect(service.lostAccess()).toBeFalse();
     });
 
-    it('closes the old membership when the pointer goes away, without calling it lost', () => {
+    it('closes the old membership when its index entry goes away, without calling it lost', () => {
       goLive();
-      profile$.next({ id: ME });
+      index$.next([]);
 
       expect(own$.observed).toBeFalse();
       expect(household$.observed).toBeFalse();
       expect(service.status()).toBe('none');
+      expect(service.selectedHouseholdId()).toBeNull();
       expect(service.lostAccess()).toBeFalse();
     });
 
@@ -608,13 +678,13 @@ describe('HouseholdService', () => {
       serveServerReads({
         [`households/${HID}/members?since`]: [[member({ role: 'owner' }), member({ uid: 'sam' })]]
       });
-      recordCommits();
+      recordCommits(undefined, { [INDEX_PATH]: entry({ role: 'owner' }) });
 
       await service.dissolve();
       household$.error(firebaseError('permission-denied'));
       members$.error(firebaseError('permission-denied'));
       own$.next(confirmed(null));
-      profile$.next({ id: ME });
+      index$.next([]);
 
       expect(service.lostAccess()).toBeFalse();
       expect(service.status()).toBe('none');
@@ -623,11 +693,11 @@ describe('HouseholdService', () => {
 
     it('does not report its own leaving as lost access, whichever listener hears first', async () => {
       goLive('member');
-      recordCommits();
+      recordCommits(undefined, { [INDEX_PATH]: entry() });
 
       await service.leave();
       own$.next(confirmed(null));
-      profile$.next({ id: ME });
+      index$.next([]);
 
       expect(service.lostAccess()).toBeFalse();
       expectNoConsoleNoise();
@@ -640,31 +710,32 @@ describe('HouseholdService', () => {
       user.set(null);
       TestBed.tick();
 
-      for (const subject of [profile$, household$, own$, members$, received$]) {
+      for (const subject of [index$, household$, own$, members$, received$]) {
         expect(subject.observed).withContext('the signed-out account\'s listeners').toBeFalse();
       }
       expect(service.status()).toBe('none');
       expect(service.household()).toBeNull();
       expect(service.receivedInvites()).toEqual([]);
+      expect(service.memberships()).toEqual([]);
       expect(service.lostAccess()).toBeFalse();
 
       user.set(userFixture({ id: OTHER }));
       TestBed.tick();
 
-      expect(firestore.subscribeToDocument).toHaveBeenCalledWith(`users/${OTHER}`);
+      expect(firestore.subscribeToCollection).toHaveBeenCalledWith(`users/${OTHER}/households`);
       expect(firestore.subscribeToCollection).toHaveBeenCalledWith('householdInvites', {
         where: [{ field: 'inviteeUid', op: '==', value: OTHER }]
       });
       expect(service.status()).toBe('loading');
-      otherProfile$.next({ id: OTHER });
+      otherIndex$.next([]);
       expect(service.status()).toBe('none');
-      expect(profile$.observed).toBeFalse();
+      expect(index$.observed).toBeFalse();
 
       // Both connections survived the switch: only the second disconnect closes.
       service.disconnect();
-      expect(otherProfile$.observed).toBeTrue();
+      expect(otherIndex$.observed).toBeTrue();
       service.disconnect();
-      expect(otherProfile$.observed).toBeFalse();
+      expect(otherIndex$.observed).toBeFalse();
       expect(otherReceived$.observed).toBeFalse();
       expect(service.status()).toBe('idle');
     });
@@ -681,6 +752,145 @@ describe('HouseholdService', () => {
     });
   });
 
+  // Up to MAX_HOUSEHOLDS_PER_ACCOUNT memberships, listed from the account's
+  // own index; the page shows one of them at a time.
+  describe('memberships and the selected household', () => {
+    it('lists the index earliest joined first, one still being stamped last, and marks an ended one', () => {
+      service.connect();
+      index$.next([
+        entry({ id: 'pending', name: 'New', since: null, joinedAt: null }),
+        entry({ id: HID2, name: 'Flat', joinedAt: LATER, endedAt: LATER }),
+        entry({ id: HID, name: 'Home', role: 'owner' })
+      ]);
+
+      expect(service.memberships()).toEqual([
+        { householdId: HID, name: 'Home', role: 'owner', since: CREATED, joinedAt: CREATED, ended: false },
+        { householdId: HID2, name: 'Flat', role: 'member', since: CREATED, joinedAt: LATER, ended: true },
+        { householdId: 'pending', name: 'New', role: 'member', since: null, joinedAt: null, ended: false }
+      ]);
+    });
+
+    it('marks an entry ended while the stamp of its end is still on its way', () => {
+      service.connect();
+      index$.next([entry({ endedAt: null })]);
+
+      expect(service.memberships()[0].ended).toBeTrue();
+      expect(service.selectedHouseholdId()).toBeNull();
+    });
+
+    it('selects the earliest live membership by default, passing over an ended one', () => {
+      service.connect();
+      index$.next([entry({ endedAt: LATER }), entry({ id: HID2, since: CREATED2, joinedAt: LATER })]);
+
+      expect(service.selectedHouseholdId()).toBe(HID2);
+      expect(firestore.subscribeToDocumentWithMetadata).toHaveBeenCalledOnceWith(`households/${HID2}/members/${ME}`);
+    });
+
+    it('selects the household last used on this device while it is live, and falls back when it is not', () => {
+      localStorage.setItem(householdSelectionKey(ME), HID2);
+      service.connect();
+      index$.next(twoEntries());
+      expect(service.selectedHouseholdId()).toBe(HID2);
+
+      index$.next([entry()]);
+      expect(service.selectedHouseholdId()).toBe(HID);
+      expect(own2$.observed).toBeFalse();
+      expect(own$.observed).toBeTrue();
+    });
+
+    it('switches the listeners to the household selected and remembers the choice on this device', () => {
+      goLive();
+      index$.next(twoEntries());
+      expect(service.selectedHouseholdId()).toBe(HID);
+
+      service.select(HID2);
+
+      expect(service.selectedHouseholdId()).toBe(HID2);
+      expect(localStorage.getItem(householdSelectionKey(ME))).toBe(HID2);
+      for (const subject of [own$, household$, members$]) expect(subject.observed).toBeFalse();
+      expect(own2$.observed).toBeTrue();
+      expect(service.status()).toBe('loading');
+      expect(service.household()).toBeNull();
+
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
+      household2$.next(householdDoc({ id: HID2, name: 'Flat', ownerId: ME, createdAt: CREATED2 }));
+      members2$.next([member({ role: 'owner', since: CREATED2 })]);
+      expect(service.status()).toBe('member');
+      expect(service.household()?.name).toBe('Flat');
+      expect(service.isOwner()).toBeTrue();
+    });
+
+    it('keeps the default selection when device storage is out of reach', () => {
+      spyOn(Storage.prototype, 'getItem').and.throwError('blocked');
+      spyOn(Storage.prototype, 'setItem').and.throwError('blocked');
+      service.connect();
+      index$.next(twoEntries());
+
+      expect(service.selectedHouseholdId()).toBe(HID);
+      expect(() => service.select(HID2)).not.toThrow();
+      expect(service.selectedHouseholdId()).toBe(HID2);
+    });
+
+    it('keeps each loss to its own household: another seen live does not lift it, the same one seen live again does', () => {
+      goLive();
+      index$.next(twoEntries());
+      own$.next(confirmed(null));
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+
+      service.select(HID2);
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+      expect(service.lostAccess()).toBeTrue();
+
+      service.select(HID);
+      own$.next(confirmed(member()));
+      expect(service.lostHouseholds()).toEqual(new Set());
+      expect(service.lostAccess()).toBeFalse();
+    });
+
+    it('lifts a loss once its entry is tidied away and another membership is seen live', () => {
+      goLive();
+      index$.next(twoEntries());
+      own$.next(confirmed(null));
+      expect(service.lostAccess()).toBeTrue();
+
+      // The tidy's delete of the lost entry reaches the index listener.
+      index$.next([twoEntries()[1]]);
+      expect(service.selectedHouseholdId()).toBe(HID2);
+      expect(service.lostAccess()).toBeTrue();
+
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
+      expect(service.lostHouseholds()).toEqual(new Set());
+      expect(service.lostAccess()).toBeFalse();
+    });
+
+    it('keeps a loss whose entry is gone while no other membership is seen live', () => {
+      goLive();
+      own$.next(confirmed(null));
+
+      index$.next([]);
+
+      expect(service.status()).toBe('none');
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+    });
+
+    it('does not let leaving one household hide the loss of another', async () => {
+      goLive();
+      index$.next(twoEntries());
+      recordCommits(undefined, { [INDEX_PATH]: entry() });
+
+      await service.leave();
+      own$.next(confirmed(null));
+      index$.next([twoEntries()[1]]);
+      expect(service.selectedHouseholdId()).toBe(HID2);
+      expect(service.lostAccess()).toBeFalse();
+
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
+      own2$.next(confirmed(null));
+      expect(service.lostHouseholds()).toEqual(new Set([HID2]));
+    });
+  });
+
   // The member document holds how the others see the account, copied from
   // its profile at joining; the profile can be renamed at any time after.
   describe('how the account is shown to the others', () => {
@@ -688,7 +898,7 @@ describe('HouseholdService', () => {
 
     function attach(stored: OwnMember): void {
       service.connect();
-      profile$.next({ id: ME, householdId: HID });
+      index$.next([entry()]);
       own$.next(stored);
     }
 
@@ -803,10 +1013,71 @@ describe('HouseholdService', () => {
 
       expect(commits).toEqual([]);
     });
+
+    it("brings every other live membership's member document into line too, read once from the server", async () => {
+      const commits = recordCommits();
+      const reads = serverReadsFor({
+        [`households/${HID2}/members/${ME}`]: member({ role: 'owner', since: CREATED2, displayName: 'Old name' })
+      });
+      service.connect();
+      index$.next([...twoEntries(), entry({ id: 'ended', endedAt: LATER })]);
+      own$.next(confirmed(member()));
+      TestBed.tick();
+      await fixtureSettled();
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(reads.calls.allArgs()).toEqual([[`households/${HID2}/members/${ME}`]]);
+      expect(commits).toEqual([[{
+        op: 'update',
+        path: `households/${HID2}/members/${ME}`,
+        data: { displayName: 'Me', photoURL: 'https://lh3.googleusercontent.com/a/me' }
+      }]]);
+    });
+
+    it('leaves a member document of another generation alone', async () => {
+      const commits = recordCommits();
+      serverReadsFor({
+        [`households/${HID2}/members/${ME}`]: member({ role: 'owner', since: LATER, displayName: 'Old name' })
+      });
+      service.connect();
+      index$.next(twoEntries());
+      own$.next(confirmed(member()));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([]);
+    });
+  });
+
+  describe("the index entry's cached name", () => {
+    it('is brought into line with the household it lists, once per name', async () => {
+      const commits = recordCommits();
+      service.connect();
+      index$.next([entry({ name: 'Old name' })]);
+      own$.next(confirmed(member()));
+      household$.next(householdDoc({ name: 'Home' }));
+      household$.next(householdDoc({ name: 'Home' }));
+      await fixtureSettled();
+
+      expect(commits).toEqual([[{ op: 'update', path: INDEX_PATH, data: { name: 'Home' } }]]);
+    });
+
+    it('is left alone offline, and when it already matches', async () => {
+      const commits = recordCommits();
+      goLive();
+      await fixtureSettled();
+      expect(commits).toEqual([]);
+
+      online.set(false);
+      household$.next(householdDoc({ name: 'Renamed' }));
+      await fixtureSettled();
+      expect(commits).toEqual([]);
+    });
   });
 
   describe('forming and joining', () => {
-    it('forms a household, its owner document and the pointer in one commit, stamped with the server time', async () => {
+    it('forms a household, its owner document and its index document in one commit, stamped with the server time', async () => {
       const householdId = await service.create('  Home  ');
 
       expect(householdId).toBeTruthy();
@@ -821,10 +1092,22 @@ describe('HouseholdService', () => {
           role: 'owner',
           since: serverTimestamp(),
           joinedAt: serverTimestamp()
+        }],
+        [`${INDEX}/${householdId}`, {
+          since: serverTimestamp(),
+          role: 'owner',
+          name: 'Home',
+          joinedAt: serverTimestamp()
         }]
       ]);
-      expect(firestore.txUpdateSpy.calls.map(c => c.args)).toEqual([[`users/${ME}`, { householdId }]]);
+      expect(firestore.txUpdateSpy.calls.length).toBe(0);
       expect(firestore.txDeleteSpy.calls.length).toBe(0);
+    });
+
+    it('selects the household it forms', async () => {
+      const householdId = await service.create('Home');
+
+      expect(localStorage.getItem(householdSelectionKey(ME))).toBe(householdId);
     });
 
     it('clips a long display name and leaves out a picture that is not https', async () => {
@@ -857,36 +1140,186 @@ describe('HouseholdService', () => {
       await expectAsync(service.create('n'.repeat(HOUSEHOLD_NAME_MAX_LENGTH))).toBeResolved();
     });
 
-    it('accepts by reading only the invite and the profile, copying the invite generation into since', async () => {
-      const stored = inviteDoc();
+    // Counted by two aggregations: every entry, and those marked ended. At
+    // the limit, each unended entry is judged on the server.
+    describe(`the limit of ${MAX_HOUSEHOLDS_PER_ACCOUNT}`, () => {
+      const ENDED_FILTER = [{ field: 'endedAt', op: '>', value: new Timestamp(0, 0) }];
+
+      /**
+       * Answers the two counts: every index entry, and those marked ended.
+       * Only the ended filter itself is answered: any other filter fails the
+       * case rather than be counted as ended.
+       */
+      function countIndex(total: number, ended = 0): jasmine.Spy {
+        return spyOn(firestore, 'aggregateFromServer').and.callFake((async (
+          path: string,
+          options?: { where?: Where }
+        ) => {
+          if (path !== INDEX) throw new Error(`unexpected aggregation over ${path}`);
+          if (!options?.where) return { count: total };
+          if (JSON.stringify(options.where) !== JSON.stringify(ENDED_FILTER)) {
+            throw new Error(`unexpected filter ${JSON.stringify(options.where)}`);
+          }
+          return { count: ended };
+        }) as never);
+      }
+
+      /**
+       * `count` unended index entries, each a live membership as the server
+       * holds it (its member document and its household), keyed by path for
+       * serverReadsFor.
+       */
+      function liveEntries(count: number): { entries: EntryData[]; docs: Record<string, unknown> } {
+        const entries: EntryData[] = [];
+        const docs: Record<string, unknown> = {};
+        for (let i = 0; i < count; i++) {
+          const householdId = `live${i}`;
+          entries.push(entry({ id: householdId, name: `Home ${i}` }));
+          docs[`households/${householdId}/members/${ME}`] = member();
+          docs[`households/${householdId}`] = householdDoc({ id: householdId });
+        }
+        return { entries, docs };
+      }
+
+      it(`refuses a create at ${MAX_HOUSEHOLDS_PER_ACCOUNT} live memberships, counted and judged on the server, before any commit`, async () => {
+        const counts = countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        const { entries, docs } = liveEntries(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        const listings = serveServerReads({ [`${INDEX}?`]: [entries] });
+        const reads = serverReadsFor(docs);
+
+        await expectAsync(service.create('Home')).toBeRejectedWithError(HouseholdError, TOO_MANY);
+        expect(counts.calls.allArgs()).toEqual([
+          [INDEX, undefined, { count: true }],
+          [INDEX, { where: ENDED_FILTER }, { count: true }]
+        ]);
+        expect(listings.calls.allArgs()).toEqual([[INDEX]]);
+        expect(reads).toHaveBeenCalledWith(`households/live0/members/${ME}`);
+        expect(firestore.runTransactionSpy.calls.length).toBe(0);
+      });
+
+      it('does not count an ended membership', async () => {
+        countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT, 1);
+
+        await expectAsync(service.create('Home')).toBeResolved();
+        expect(firestore.runTransactionSpy.calls.length).toBe(1);
+        expect(firestore.getCollectionFromServerSpy.calls.length).toBe(0);
+      });
+
+      it('does not count an entry whose member document the server says is gone, and ends it on the way', async () => {
+        countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        const { entries, docs } = liveEntries(MAX_HOUSEHOLDS_PER_ACCOUNT - 1);
+        const stale = entry({ id: 'removed', name: 'Removed' });
+        serveServerReads({ [`${INDEX}?`]: [[...entries, stale]] });
+        serverReadsFor(docs);
+        const commits = recordCommits(undefined, { [`${INDEX}/removed`]: stale });
+
+        const householdId = await service.create('Home');
+
+        expect(shape(commits)).toEqual([
+          [`update ${INDEX}/removed`],
+          [`delete ${INDEX}/removed`],
+          [`set households/${householdId}`, `set households/${householdId}/members/${ME}`, `set ${INDEX}/${householdId}`]
+        ]);
+      });
+
+      it('does not count an entry whose household the server says is gone, and a join goes ahead', async () => {
+        countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        const { entries, docs } = liveEntries(MAX_HOUSEHOLDS_PER_ACCOUNT - 1);
+        const orphan = entry({ id: 'dissolved', name: 'Dissolved' });
+        serveServerReads({ [`${INDEX}?`]: [[...entries, orphan]] });
+        serverReadsFor({ ...docs, [`households/dissolved/members/${ME}`]: member() }, ['households/dissolved']);
+        const commits = recordCommits(undefined, {
+          [`${INDEX}/dissolved`]: orphan,
+          [`householdInvites/${HID}_${ME}`]: inviteDoc()
+        });
+        readsFor({});
+
+        await expectAsync(service.accept(HID)).toBeResolved();
+
+        expect(shape(commits)).toEqual([
+          [`delete households/dissolved/members/${ME}`, `update ${INDEX}/dissolved`],
+          [`delete ${INDEX}/dissolved`],
+          [`set households/${HID}/members/${ME}`, `delete householdInvites/${HID}_${ME}`, `set ${INDEX_PATH}`]
+        ]);
+      });
+
+      it('still goes ahead when ending a stale entry on the way fails', async () => {
+        countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        const { entries, docs } = liveEntries(MAX_HOUSEHOLDS_PER_ACCOUNT - 1);
+        const stale = entry({ id: 'removed', name: 'Removed' });
+        serveServerReads({ [`${INDEX}?`]: [[...entries, stale]] });
+        serverReadsFor(docs);
+        const commits = recordCommits(
+          writes => writes.some(w => w.path === `${INDEX}/removed`) ? firebaseError('permission-denied') : null,
+          { [`${INDEX}/removed`]: stale }
+        );
+
+        await expectAsync(service.create('Home')).toBeResolved();
+        expect(commits.length).toBe(1);
+      });
+
+      it(`refuses a join at ${MAX_HOUSEHOLDS_PER_ACCOUNT} live memberships before any commit`, async () => {
+        countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        const { entries, docs } = liveEntries(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        serveServerReads({ [`${INDEX}?`]: [entries] });
+        serverReadsFor(docs);
+        firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc());
+
+        await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, TOO_MANY);
+        expect(firestore.runTransactionSpy.calls.length).toBe(0);
+      });
+
+      it('does not count the household being joined as one more when its entry is already listed unended', async () => {
+        countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT);
+        const { entries, docs } = liveEntries(MAX_HOUSEHOLDS_PER_ACCOUNT - 1);
+        serveServerReads({ [`${INDEX}?`]: [[...entries, entry()]] });
+        const reads = serverReadsFor(docs);
+        firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc());
+
+        await expectAsync(service.accept(HID)).toBeResolved();
+        // Written again whole by the join, the entry is not judged.
+        expect(reads).not.toHaveBeenCalledWith(`households/${HID}/members/${ME}`);
+      });
+
+      it('lists and judges the entries only at the limit', async () => {
+        countIndex(MAX_HOUSEHOLDS_PER_ACCOUNT - 1);
+        firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc());
+
+        await service.accept(HID);
+
+        expect(firestore.getCollectionFromServerSpy.calls.length).toBe(0);
+        expect(firestore.getDocumentFromServerSpy.calls.length).toBe(0);
+      });
+    });
+
+    it('accepts by reading only the invite, copying its generation into since on the member and index documents', async () => {
+      const stored = inviteDoc({ householdName: 'Our home' });
       firestore.setMockDocument(`householdInvites/${HID}_${ME}`, stored);
-      firestore.setMockDocument(`users/${ME}`, userFixture());
 
       await service.accept(HID);
 
-      expect(firestore.txGetSpy.calls.map(c => c.args[0])).toEqual([
-        `householdInvites/${HID}_${ME}`,
-        `users/${ME}`
+      expect(firestore.txGetSpy.calls.map(c => c.args[0])).toEqual([`householdInvites/${HID}_${ME}`]);
+      expect(firestore.txSetSpy.calls.map(c => c.args)).toEqual([
+        [`households/${HID}/members/${ME}`, {
+          uid: ME,
+          displayName: 'Me',
+          photoURL: 'https://lh3.googleusercontent.com/a/me',
+          role: 'member',
+          since: CREATED,
+          joinedAt: serverTimestamp(),
+          inviteId: `${HID}_${ME}`
+        }],
+        [INDEX_PATH, { since: CREATED, role: 'member', name: 'Our home', joinedAt: serverTimestamp() }]
       ]);
-      const [path, data] = firestore.txSetSpy.calls[0].args as [string, Record<string, unknown>];
-      expect(path).toBe(`households/${HID}/members/${ME}`);
-      expect(data).toEqual({
-        uid: ME,
-        displayName: 'Me',
-        photoURL: 'https://lh3.googleusercontent.com/a/me',
-        role: 'member',
-        since: CREATED,
-        joinedAt: serverTimestamp(),
-        inviteId: `${HID}_${ME}`
-      });
-      expect(data['since']).toBe(stored.householdCreatedAt);
+      const sets = firestore.txSetSpy.calls.map(c => c.args[1] as Record<string, unknown>);
+      expect(sets.every(data => data['since'] === stored.householdCreatedAt)).toBeTrue();
       expect(firestore.txDeleteSpy.calls.map(c => c.args[0])).toEqual([`householdInvites/${HID}_${ME}`]);
-      expect(firestore.txUpdateSpy.calls.map(c => c.args)).toEqual([[`users/${ME}`, { householdId: HID }]]);
+      expect(firestore.txUpdateSpy.calls.length).toBe(0);
+      expect(localStorage.getItem(householdSelectionKey(ME))).toBe(HID);
     });
 
     it("answers the household's name as the new member now reads it, not the invite's copy", async () => {
       firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc({ householdName: 'Home' }));
-      firestore.setMockDocument(`users/${ME}`, userFixture());
       const reads = readsFor({ [`households/${HID}`]: householdDoc({ name: 'Renamed home' }) });
 
       expect(await service.accept(HID)).toBe('Renamed home');
@@ -895,7 +1328,6 @@ describe('HouseholdService', () => {
 
     it("answers the invite's copy of the name when the household cannot be read after joining", async () => {
       firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc({ householdName: 'Home' }));
-      firestore.setMockDocument(`users/${ME}`, userFixture());
       spyOn(firestore, 'getDocument').and.rejectWith(firebaseError('unavailable'));
 
       expect(await service.accept(HID)).toBe('Home');
@@ -903,11 +1335,10 @@ describe('HouseholdService', () => {
 
     it('leaves expiry to the rules: an invite this device\'s clock calls expired still joins when the server admits it', async () => {
       firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc({ expiresAt: PAST }));
-      firestore.setMockDocument(`users/${ME}`, userFixture());
 
       await service.accept(HID);
 
-      expect(firestore.txSetSpy.calls.map(c => c.args[0])).toEqual([`households/${HID}/members/${ME}`]);
+      expect(firestore.txSetSpy.calls.map(c => c.args[0])).toEqual([`households/${HID}/members/${ME}`, INDEX_PATH]);
     });
 
     describe('a refused join', () => {
@@ -915,81 +1346,48 @@ describe('HouseholdService', () => {
       const refused = () => firebaseError('permission-denied');
 
       it('says expired when the invite is past its expiry by this device\'s clock', async () => {
-        readsFor({});
-        recordCommits(refused, { [INVITE_PATH]: inviteDoc({ expiresAt: PAST }), [`users/${ME}`]: userFixture() });
+        recordCommits(refused, { [INVITE_PATH]: inviteDoc({ expiresAt: PAST }) });
 
         await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.expired');
       });
 
       it('says expired when the invite is minutes from expiry, as a clock running slow would see it', async () => {
-        readsFor({});
-        recordCommits(refused, { [INVITE_PATH]: inviteDoc({ expiresAt: SOON }), [`users/${ME}`]: userFixture() });
+        recordCommits(refused, { [INVITE_PATH]: inviteDoc({ expiresAt: SOON }) });
 
         await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.expired');
       });
 
       it('says the invite is gone when its expiry is well ahead', async () => {
-        readsFor({});
-        recordCommits(refused, { [INVITE_PATH]: inviteDoc(), [`users/${ME}`]: userFixture() });
+        recordCommits(refused, { [INVITE_PATH]: inviteDoc() });
 
         await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.inviteGone');
       });
 
-      it('says the account already belongs to a household when its pointer names a live one', async () => {
-        const reads = readsFor({
-          [`households/other/members/${ME}`]: member({ role: 'owner' }),
-          ['households/other']: householdDoc({ id: 'other', ownerId: ME })
-        });
-        recordCommits(refused, {
-          [INVITE_PATH]: inviteDoc({ expiresAt: PAST }),
-          [`users/${ME}`]: userFixture({ householdId: 'other' })
-        });
+      it('asks the server whether the join landed before blaming the invite', async () => {
+        const reads = serverReadsFor({});
+        recordCommits(refused, { [INVITE_PATH]: inviteDoc({ expiresAt: PAST }) });
 
-        await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.alreadyMember');
-        expect(reads.calls.allArgs()).toEqual([[`households/other/members/${ME}`], ['households/other']]);
+        await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.expired');
+        expect(reads).toHaveBeenCalledOnceWith(`households/${HID}/members/${ME}`);
       });
 
-      it('does not blame a stale pointer: a membership whose household is gone falls back to the invite', async () => {
-        readsFor({ [`households/other/members/${ME}`]: member() }, ['households/other']);
-        recordCommits(refused, {
-          [INVITE_PATH]: inviteDoc(),
-          [`users/${ME}`]: userFixture({ householdId: 'other' })
-        });
-
-        await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.inviteGone');
-      });
-
-      it('falls back to the invite when the follow-up reads fail', async () => {
-        spyOn(firestore, 'getDocument').and.rejectWith(firebaseError('unavailable'));
-        recordCommits(refused, {
-          [INVITE_PATH]: inviteDoc({ expiresAt: PAST }),
-          [`users/${ME}`]: userFixture({ householdId: 'other' })
-        });
+      it('keeps the refusal when the server cannot say whether the join landed', async () => {
+        spyOn(firestore, 'getDocumentFromServer').and.rejectWith(firebaseError('unavailable'));
+        recordCommits(refused, { [INVITE_PATH]: inviteDoc({ expiresAt: PAST }) });
 
         await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.expired');
       });
 
-      it('passes a failure that is not a refusal through the usual mapping', async () => {
-        const reads = readsFor({});
-        recordCommits(() => firebaseError('unavailable'), {
-          [INVITE_PATH]: inviteDoc({ expiresAt: PAST }),
-          [`users/${ME}`]: userFixture()
-        });
+      it('passes a failure that is not a refusal through the usual mapping, asking nothing', async () => {
+        const reads = serverReadsFor({});
+        recordCommits(() => firebaseError('unavailable'), { [INVITE_PATH]: inviteDoc({ expiresAt: PAST }) });
 
         await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
         expect(reads).not.toHaveBeenCalled();
       });
     });
 
-    it('refuses to join while connected to a live membership, before any transaction', async () => {
-      goLive('member');
-
-      await expectAsync(service.accept('other')).toBeRejectedWithError(HouseholdError, 'household.errors.alreadyMember');
-      expect(firestore.runTransactionSpy.calls.length).toBe(0);
-    });
-
     it('calls an invite that is no longer there withdrawn, refused read or missing', async () => {
-      firestore.setMockDocument(`users/${ME}`, userFixture());
       await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.inviteGone');
 
       // A get of a missing invite is refused by the rules rather than empty.
@@ -1005,6 +1403,89 @@ describe('HouseholdService', () => {
       await service.decline(HID);
 
       expect(shape(commits)).toEqual([[`delete householdInvites/${HID}_${ME}`]]);
+    });
+
+    // A commit that lands and loses its answer is sent again, and the second
+    // delivery is judged against what the first left (ADR 0156).
+    describe('sent twice', () => {
+      const FRESH = 'fresh';
+      const MEMBER_PATH = `households/${HID}/members/${ME}`;
+
+      it('resolves a create whose second delivery is refused, once the server shows the first landed', async () => {
+        spyOn(firestore, 'generateId').and.returnValue(FRESH);
+        const commits = recordCommits(() => firebaseError('permission-denied'));
+        const reads = serverReadsFor({
+          [`households/${FRESH}`]: householdDoc({ id: FRESH, ownerId: ME, createdAt: CREATED }),
+          [`households/${FRESH}/members/${ME}`]: member({ role: 'owner', since: CREATED })
+        });
+        const getDocument = spyOn(firestore, 'getDocument').and.callThrough();
+
+        expect(await service.create('Home')).toBe(FRESH);
+        expect(commits).toEqual([]);
+        expect(reads.calls.allArgs()).toEqual([[`households/${FRESH}`], [`households/${FRESH}/members/${ME}`]]);
+        expect(getDocument).not.toHaveBeenCalled();
+        expect(localStorage.getItem(householdSelectionKey(ME))).toBe(FRESH);
+      });
+
+      it('still fails a refused create the server shows never landed', async () => {
+        spyOn(firestore, 'generateId').and.returnValue(FRESH);
+        recordCommits(() => firebaseError('permission-denied'));
+        serverReadsFor({}, [`households/${FRESH}`]);
+
+        await expectAsync(service.create('Home')).toBeRejectedWithError(HouseholdError, 'errors.generic');
+      });
+
+      it('still fails a refused create whose owner document is of another generation', async () => {
+        spyOn(firestore, 'generateId').and.returnValue(FRESH);
+        recordCommits(() => firebaseError('permission-denied'));
+        serverReadsFor({
+          [`households/${FRESH}`]: householdDoc({ id: FRESH, ownerId: ME, createdAt: LATER }),
+          [`households/${FRESH}/members/${ME}`]: member({ role: 'owner', since: CREATED })
+        });
+
+        await expectAsync(service.create('Home')).toBeRejectedWithError(HouseholdError, 'errors.generic');
+      });
+
+      it('does not read back a create cut off by the connection', async () => {
+        recordCommits(() => firebaseError('unavailable'));
+        const reads = serverReadsFor({});
+
+        await expectAsync(service.create('Home')).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
+        expect(reads).not.toHaveBeenCalled();
+      });
+
+      it('resolves an accept whose second delivery finds its invite consumed', async () => {
+        const invited = inviteDoc();
+        spyOn(firestore, 'runTransaction').and.callFake((async (update: (tx: unknown) => Promise<unknown>) => {
+          // The first delivery lands; its answer is lost, and the same work runs again.
+          await update({
+            get: () => Promise.resolve({ exists: () => true, data: () => invited }),
+            set: () => undefined,
+            delete: () => undefined
+          });
+          firestore.setMockDocument(MEMBER_PATH, member({ since: CREATED }));
+          return update({ get: () => Promise.reject(firebaseError('permission-denied')) });
+        }) as never);
+        readsFor({ [`households/${HID}`]: householdDoc() });
+
+        expect(await service.accept(HID)).toBe('Home');
+        expect(firestore.getDocumentFromServerSpy.calls.map(c => c.args[0])).toEqual([MEMBER_PATH]);
+      });
+
+      it('resolves an accept another press completed first, judged by the live generation', async () => {
+        firestore.setMockDocument(MEMBER_PATH, member({ since: CREATED }));
+        firestore.setMockDocument(`households/${HID}`, householdDoc());
+
+        await expectAsync(service.accept(HID)).toBeResolved();
+        expect(firestore.getDocumentFromServerSpy.calls.map(c => c.args[0])).toEqual([MEMBER_PATH, `households/${HID}`]);
+      });
+
+      it('still says the invite is gone when the member document found is of another generation', async () => {
+        firestore.setMockDocument(MEMBER_PATH, member({ since: CREATED }));
+        firestore.setMockDocument(`households/${HID}`, householdDoc({ createdAt: LATER }));
+
+        await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.inviteGone');
+      });
     });
   });
 
@@ -1049,16 +1530,47 @@ describe('HouseholdService', () => {
       expect(shape(commits)).toEqual([[`delete households/${HID}/members/sam`]]);
     });
 
-    it('leaves by deleting its own member document and clearing the pointer in one commit', async () => {
+    it('leaves: its member document goes and its index entry is marked ended in one commit, then the entry goes', async () => {
       goLive('member');
-      const commits = recordCommits();
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
 
       await service.leave();
 
-      expect(commits).toEqual([[
-        { op: 'delete', path: `households/${HID}/members/${ME}` },
-        { op: 'update', path: `users/${ME}`, data: { householdId: deleteField() } }
-      ]]);
+      expect(commits).toEqual([
+        [
+          { op: 'delete', path: `households/${HID}/members/${ME}` },
+          { op: 'update', path: INDEX_PATH, data: { endedAt: serverTimestamp() } }
+        ],
+        [{ op: 'delete', path: INDEX_PATH }]
+      ]);
+    });
+
+    it('does not mark an entry that is already marked', async () => {
+      goLive('member');
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ endedAt: LATER }) });
+
+      await service.leave();
+
+      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`], [`delete ${INDEX_PATH}`]]);
+    });
+
+    it('does not mark an entry that is already gone', async () => {
+      goLive('member');
+      const commits = recordCommits(undefined, { [INDEX_PATH]: null });
+
+      await service.leave();
+
+      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`], [`delete ${INDEX_PATH}`]]);
+    });
+
+    it('leaves the one household selected, and no other', async () => {
+      goLive('member');
+      index$.next(twoEntries());
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
+
+      await service.leave();
+
+      expect(commits.flat().map(w => w.path).filter(path => path.includes(HID2))).toEqual([]);
     });
 
     it('keeps the owner from leaving or removing itself, and a member from managing', async () => {
@@ -1080,14 +1592,14 @@ describe('HouseholdService', () => {
 
     it('refuses a household action with no live membership', async () => {
       service.connect();
-      profile$.next({ id: ME });
+      index$.next([]);
 
       await expectAsync(service.leave()).toBeRejectedWithError(HouseholdError, 'errors.generic');
       await expectAsync(service.invite('sam@example.test')).toBeRejectedWithError(HouseholdError, 'errors.generic');
       expect(firestore.runTransactionSpy.calls.length).toBe(0);
     });
 
-    it('dissolves: the sent invites first, the other members in chunks of four, then the household, its owner document and the pointer', async () => {
+    it('dissolves: the sent invites first, the other members in chunks of four, then the household, its owner document and the end on its entry, then the entry', async () => {
       goLive('owner');
       const others = ['a', 'b', 'c', 'd', 'e', 'f'];
       const reads = serveServerReads({
@@ -1097,7 +1609,7 @@ describe('HouseholdService', () => {
           ...others.map(uid => member({ uid }))
         ]]
       });
-      const commits = recordCommits();
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ role: 'owner' }) });
 
       await service.dissolve();
 
@@ -1109,9 +1621,28 @@ describe('HouseholdService', () => {
         [`delete householdInvites/${HID}_kai`, `delete householdInvites/${HID}_lee`],
         ['a', 'b', 'c', 'd'].map(uid => `delete households/${HID}/members/${uid}`),
         ['e', 'f'].map(uid => `delete households/${HID}/members/${uid}`),
-        [`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update users/${ME}`]
+        [`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update ${INDEX_PATH}`],
+        [`delete ${INDEX_PATH}`]
       ]);
-      expect(commits[3][2].data).toEqual({ householdId: deleteField() });
+      expect(commits[3][2].data).toEqual({ endedAt: serverTimestamp() });
+    });
+
+    it('withdraws only the invites into the household it dissolves, not those into another it owns', async () => {
+      goLive('owner');
+      index$.next([entry({ role: 'owner' }), entry({ id: HID2, role: 'owner', since: CREATED2, joinedAt: LATER })]);
+      serveServerReads({
+        'householdInvites?inviterUid': [[
+          inviteDoc({ id: `${HID}_kai` }),
+          inviteDoc({ id: `${HID2}_sam`, householdId: HID2, householdCreatedAt: CREATED2 })
+        ]],
+        [`households/${HID}/members?since`]: [[member({ role: 'owner' })]]
+      });
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ role: 'owner' }) });
+
+      await service.dissolve();
+
+      const deleted = commits.flat().filter(w => w.path.startsWith('householdInvites/')).map(w => w.path);
+      expect(deleted).toEqual([`householdInvites/${HID}_kai`]);
     });
 
     it('deletes a chunk of invites one by one when one of them is already gone', async () => {
@@ -1121,17 +1652,22 @@ describe('HouseholdService', () => {
       });
       // The kai invite was consumed meanwhile: any commit deleting it is refused.
       const commits = recordCommits(writes =>
-        writes.some(w => w.path === `householdInvites/${HID}_kai`) ? firebaseError('permission-denied') : null);
+        writes.some(w => w.path === `householdInvites/${HID}_kai`) ? firebaseError('permission-denied') : null,
+      { [INDEX_PATH]: entry({ role: 'owner' }) });
 
       await service.dissolve();
 
       expect(shape(commits)).toEqual([
         [`delete householdInvites/${HID}_lee`],
-        [`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update users/${ME}`]
+        [`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update ${INDEX_PATH}`],
+        [`delete ${INDEX_PATH}`]
       ]);
     });
 
-    const GONE = { [`households/${HID}`]: firebaseError('permission-denied') };
+    const GONE = {
+      [`households/${HID}`]: firebaseError('permission-denied'),
+      [INDEX_PATH]: entry({ role: 'owner' })
+    };
     const refusesTheHousehold = (writes: Write[]) =>
       writes.some(w => w.path === `households/${HID}`) ? firebaseError('permission-denied') : null;
 
@@ -1151,8 +1687,10 @@ describe('HouseholdService', () => {
       await service.dissolve();
 
       expect(getDocument).not.toHaveBeenCalled();
-      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`, `update users/${ME}`]]);
-      expect(commits[0][1].data).toEqual({ householdId: deleteField() });
+      expect(shape(commits)).toEqual([
+        [`delete households/${HID}/members/${ME}`, `update ${INDEX_PATH}`],
+        [`delete ${INDEX_PATH}`]
+      ]);
       expect(service.lostAccess()).toBeFalse();
       expectNoConsoleNoise();
     });
@@ -1163,12 +1701,13 @@ describe('HouseholdService', () => {
         if (path === 'householdInvites') return [];
         throw firebaseError('permission-denied');
       }) as never);
-      const commits = recordCommits(undefined, GONE);
+      // The other tab's index delete landed too: nothing is left to mark.
+      const commits = recordCommits(undefined, { ...GONE, [INDEX_PATH]: null });
 
       await service.dissolve();
       own$.next(confirmed(null));
 
-      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`, `update users/${ME}`]]);
+      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`], [`delete ${INDEX_PATH}`]]);
       expect(service.lostAccess()).toBeFalse();
       expectNoConsoleNoise();
     });
@@ -1176,7 +1715,10 @@ describe('HouseholdService', () => {
     it('still fails a dissolve refused while its household is live, and leaves a later loss to be reported', async () => {
       goLive('owner');
       serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
-      const commits = recordCommits(refusesTheHousehold, { [`households/${HID}`]: householdDoc() });
+      const commits = recordCommits(refusesTheHousehold, {
+        [`households/${HID}`]: householdDoc(),
+        [INDEX_PATH]: entry({ role: 'owner' })
+      });
 
       await expectAsync(service.dissolve()).toBeRejectedWithError(HouseholdError, 'errors.generic');
       own$.next(confirmed(null));
@@ -1188,7 +1730,10 @@ describe('HouseholdService', () => {
     it('keeps the refusal when whether the household is gone goes unanswered', async () => {
       goLive('owner');
       serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
-      const commits = recordCommits(refusesTheHousehold, { [`households/${HID}`]: firebaseError('unavailable') });
+      const commits = recordCommits(refusesTheHousehold, {
+        [`households/${HID}`]: firebaseError('unavailable'),
+        [INDEX_PATH]: entry({ role: 'owner' })
+      });
 
       await expectAsync(service.dissolve()).toBeRejectedWithError(HouseholdError, 'errors.generic');
       expect(commits).toEqual([]);
@@ -1270,6 +1815,8 @@ describe('HouseholdService', () => {
       online.set(false);
       const getDocument = spyOn(firestore, 'getDocument').and.callThrough();
       const serverReads = spyOn(firestore, 'getCollectionFromServer').and.callThrough();
+      const serverDocuments = spyOn(firestore, 'getDocumentFromServer').and.callThrough();
+      const aggregations = spyOn(firestore, 'aggregateFromServer').and.callThrough();
 
       const attempts: [string, () => Promise<unknown>][] = [
         ['create', () => service.create('Home')],
@@ -1281,7 +1828,7 @@ describe('HouseholdService', () => {
         ['remove', () => service.remove('sam')],
         ['leave', () => service.leave()],
         ['dissolve', () => service.dissolve()],
-        ['clearStalePointer', () => service.clearStalePointer()],
+        ['tidyEndedMemberships', () => service.tidyEndedMemberships()],
         ['deleteAll', () => service.deleteAll()]
       ];
       for (const [name, attempt] of attempts) {
@@ -1293,6 +1840,8 @@ describe('HouseholdService', () => {
       expect(invite).not.toHaveBeenCalled();
       expect(getDocument).not.toHaveBeenCalled();
       expect(serverReads).not.toHaveBeenCalled();
+      expect(serverDocuments).not.toHaveBeenCalled();
+      expect(aggregations).not.toHaveBeenCalled();
     });
 
     it('says offline for a Firestore unavailable or deadline-exceeded, and generic for a refusal', async () => {
@@ -1310,117 +1859,275 @@ describe('HouseholdService', () => {
     });
   });
 
-  describe('stale pointer', () => {
-    it('clears a pointer whose member document is gone', async () => {
-      readsFor({ [`users/${ME}`]: userFixture({ householdId: HID }) });
-      const commits = recordCommits();
+  // A membership that ended without this account's own hand (a removal, a
+  // dissolve, an ending cut off part-way) leaves its index entry behind, and
+  // only the account may delete it.
+  describe('tidyEndedMemberships', () => {
+    const OWN_PATH = `households/${HID}/members/${ME}`;
 
-      expect(await service.clearStalePointer()).toBeTrue();
-      expect(commits).toEqual([[{ op: 'update', path: `users/${ME}`, data: { householdId: deleteField() } }]]);
+    it('ends an entry whose member document the server says is gone: marked ended, then deleted', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      const reads = serverReadsFor({});
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
+
+      expect(await service.tidyEndedMemberships()).toBeTrue();
+      expect(commits).toEqual([
+        [{ op: 'update', path: INDEX_PATH, data: { endedAt: serverTimestamp() } }],
+        [{ op: 'delete', path: INDEX_PATH }]
+      ]);
+      expect(reads).toHaveBeenCalledWith(OWN_PATH);
     });
 
-    it('deletes an orphaned member document along with the pointer', async () => {
-      readsFor({
-        [`users/${ME}`]: userFixture({ householdId: HID }),
-        [`households/${HID}/members/${ME}`]: member()
-      }, [`households/${HID}`]);
-      const commits = recordCommits();
+    it('deletes an orphaned member document with its entry once the household is gone', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({ [OWN_PATH]: member() }, [`households/${HID}`]);
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
 
-      expect(await service.clearStalePointer()).toBeTrue();
-      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`, `update users/${ME}`]]);
+      expect(await service.tidyEndedMemberships()).toBeTrue();
+      expect(shape(commits)).toEqual([[`delete ${OWN_PATH}`, `update ${INDEX_PATH}`], [`delete ${INDEX_PATH}`]]);
     });
 
-    it('leaves a live membership alone', async () => {
-      readsFor({
-        [`users/${ME}`]: userFixture({ householdId: HID }),
-        [`households/${HID}/members/${ME}`]: member(),
-        [`households/${HID}`]: householdDoc()
-      });
-      const commits = recordCommits();
+    it('leaves a member document of another generation where it is, and ends the entry', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({ [OWN_PATH]: member({ since: LATER }) });
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
 
-      expect(await service.clearStalePointer()).toBeFalse();
+      await service.tidyEndedMemberships();
+
+      expect(shape(commits)).toEqual([[`update ${INDEX_PATH}`], [`delete ${INDEX_PATH}`]]);
+    });
+
+    // A join of the same household between the judgement and the commit
+    // writes the entry again, joinedAt re-stamped, beside a live member
+    // document of the same generation.
+    it('writes nothing to an entry a rejoin wrote again after it was judged gone', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({});
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ joinedAt: LATER }) });
+
+      expect(await service.tidyEndedMemberships()).toBeFalse();
       expect(commits).toEqual([]);
     });
 
-    it('does nothing without a pointer', async () => {
-      readsFor({ [`users/${ME}`]: userFixture() });
+    it('keeps the member document of a rejoin made after its orphan was judged', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({ [OWN_PATH]: member() }, [`households/${HID}`]);
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ joinedAt: LATER }) });
+
+      await service.tidyEndedMemberships();
+
+      expect(commits).toEqual([]);
+    });
+
+    it('writes nothing for an entry another tab ended after it was judged', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({ [OWN_PATH]: member() }, [`households/${HID}`]);
+      const commits = recordCommits(undefined, { [INDEX_PATH]: null });
+
+      await service.tidyEndedMemberships();
+
+      expect(commits).toEqual([]);
+    });
+
+    it('reports a later loss of a membership whose ending it gave up for a rejoin', async () => {
+      goLive();
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({});
+      recordCommits(undefined, { [INDEX_PATH]: entry({ joinedAt: LATER }) });
+
+      await service.tidyEndedMemberships();
+      own$.next(confirmed(null));
+
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+    });
+
+    it('only deletes an entry already marked ended', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry({ endedAt: LATER })]] });
+      serverReadsFor({});
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ endedAt: LATER }) });
+
+      await service.tidyEndedMemberships();
+
+      expect(shape(commits)).toEqual([[`delete ${INDEX_PATH}`]]);
+    });
+
+    it('leaves a live membership alone', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({ [OWN_PATH]: member(), [`households/${HID}`]: householdDoc() });
       const commits = recordCommits();
 
-      expect(await service.clearStalePointer()).toBeFalse();
+      expect(await service.tidyEndedMemberships()).toBeFalse();
+      expect(commits).toEqual([]);
+    });
+
+    it("does not report its own tidying as lost access on the page's listener", async () => {
+      goLive();
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({});
+      recordCommits(undefined, { [INDEX_PATH]: entry() });
+
+      await service.tidyEndedMemberships();
+      own$.next(confirmed(null));
+
+      expect(service.lostAccess()).toBeFalse();
+    });
+
+    it('removes a profile pointer left from before the index, once', async () => {
+      serveServerReads({});
+      const reads = serverReadsFor({ [`users/${ME}`]: { ...userFixture(), householdId: 'old' } });
+      const commits = recordCommits();
+
+      expect(await service.tidyEndedMemberships()).toBeTrue();
+      expect(commits).toEqual([[{ op: 'update', path: `users/${ME}`, data: { householdId: deleteField() } }]]);
+
+      expect(await service.tidyEndedMemberships()).toBeFalse();
+      expect(reads.calls.allArgs()).toEqual([[`users/${ME}`]]);
+      expect(commits.length).toBe(1);
+    });
+
+    it('writes nothing with no entry and no pointer', async () => {
+      serveServerReads({});
+      serverReadsFor({ [`users/${ME}`]: userFixture() });
+      const commits = recordCommits();
+
+      expect(await service.tidyEndedMemberships()).toBeFalse();
+      expect(commits).toEqual([]);
+    });
+
+    it('decides nothing on a read the server did not answer', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      spyOn(firestore, 'getDocumentFromServer').and.rejectWith(firebaseError('unavailable'));
+      const commits = recordCommits();
+
+      await expectAsync(service.tidyEndedMemberships()).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
       expect(commits).toEqual([]);
     });
   });
 
   describe('deleteAll', () => {
-    it('dissolves an owner\'s household, then deletes the invites to and from the account', async () => {
-      readsFor({
-        [`users/${ME}`]: userFixture({ householdId: HID }),
-        [`households/${HID}/members/${ME}`]: member({ role: 'owner' }),
-        [`households/${HID}`]: householdDoc({ ownerId: ME })
-      });
+    const OWNED = HID;
+    const JOINED = HID2;
+    const ENDED = 'h3';
+
+    it('dissolves an owned household, leaves a joined one and clears an ended one, then deletes the invites to and from the account', async () => {
       const reads = serveServerReads({
-        'householdInvites?inviterUid': [[inviteDoc({ id: `${HID}_kai` })]],
-        [`households/${HID}/members?since`]: [[member({ role: 'owner' }), member({ uid: 'sam' })]],
+        [`${INDEX}?`]: [[
+          entry({ id: OWNED, role: 'owner' }),
+          entry({ id: JOINED, since: CREATED2 }),
+          entry({ id: ENDED, endedAt: LATER })
+        ]],
+        'householdInvites?inviterUid': [[inviteDoc({ id: `${OWNED}_kai` })]],
+        [`households/${OWNED}/members?since`]: [[member({ role: 'owner' }), member({ uid: 'sam' })]],
         'householdInvites?inviteeUid': [[inviteDoc({ id: `other_${ME}`, householdId: 'other' })]]
       });
-      const commits = recordCommits();
+      serverReadsFor({
+        [`households/${OWNED}/members/${ME}`]: member({ role: 'owner' }),
+        [`households/${OWNED}`]: householdDoc({ ownerId: ME }),
+        [`households/${JOINED}/members/${ME}`]: member({ since: CREATED2 }),
+        [`households/${JOINED}`]: householdDoc({ id: JOINED, createdAt: CREATED2 })
+      });
+      const commits = recordCommits(undefined, {
+        [`${INDEX}/${OWNED}`]: entry({ id: OWNED, role: 'owner' }),
+        [`${INDEX}/${JOINED}`]: entry({ id: JOINED, since: CREATED2 })
+      });
 
       await service.deleteAll();
 
       expect(shape(commits)).toEqual([
-        [`delete householdInvites/${HID}_kai`],
-        [`delete households/${HID}/members/sam`],
-        [`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update users/${ME}`],
+        [`delete householdInvites/${OWNED}_kai`],
+        [`delete households/${OWNED}/members/sam`],
+        [`delete households/${OWNED}`, `delete households/${OWNED}/members/${ME}`, `update ${INDEX}/${OWNED}`],
+        [`delete ${INDEX}/${OWNED}`],
+        [`delete households/${JOINED}/members/${ME}`, `update ${INDEX}/${JOINED}`],
+        [`delete ${INDEX}/${JOINED}`],
+        [`delete ${INDEX}/${ENDED}`],
         [`delete householdInvites/other_${ME}`]
       ]);
       expect(reads.calls.allArgs()).toContain(
         ['householdInvites', { where: [{ field: 'inviteeUid', op: '==', value: ME }] }]);
     });
 
-    it('leaves a member\'s household, then deletes the invites addressed to it', async () => {
-      const reads = readsFor({
-        [`users/${ME}`]: userFixture({ householdId: HID }),
-        [`households/${HID}/members/${ME}`]: member()
-      });
+    it('withdraws each owned household\'s invites with it, and every other sent invite at the end', async () => {
+      const kai = inviteDoc({ id: `${OWNED}_kai` });
+      const sam = inviteDoc({ id: `${HID2}_sam`, householdId: HID2, householdCreatedAt: CREATED2 });
+      // Into a household the index no longer lists: only the sweep at the end finds it.
+      const lee = inviteDoc({ id: 'gone_lee', householdId: 'gone' });
       serveServerReads({
-        'householdInvites?inviteeUid': [[inviteDoc({ id: `other_${ME}`, householdId: 'other' })]]
+        [`${INDEX}?`]: [[
+          entry({ id: OWNED, role: 'owner' }),
+          entry({ id: HID2, role: 'owner', since: CREATED2, joinedAt: LATER })
+        ]],
+        'householdInvites?inviterUid': [[kai, sam, lee], [sam, lee], [lee]],
+        [`households/${OWNED}/members?since`]: [[member({ role: 'owner' })]],
+        [`households/${HID2}/members?since`]: [[member({ role: 'owner', since: CREATED2 })]]
       });
-      const commits = recordCommits();
+      serverReadsFor({
+        [`households/${OWNED}/members/${ME}`]: member({ role: 'owner' }),
+        [`households/${OWNED}`]: householdDoc({ ownerId: ME }),
+        [`households/${HID2}/members/${ME}`]: member({ role: 'owner', since: CREATED2 }),
+        [`households/${HID2}`]: householdDoc({ id: HID2, ownerId: ME, createdAt: CREATED2 })
+      });
+      const commits = recordCommits(undefined, {
+        [`${INDEX}/${OWNED}`]: entry({ id: OWNED, role: 'owner' }),
+        [`${INDEX}/${HID2}`]: entry({ id: HID2, role: 'owner', since: CREATED2, joinedAt: LATER })
+      });
+
+      await service.deleteAll();
+
+      const invitesDeleted = shape(commits).map(paths => paths.filter(path => path.includes('householdInvites/')))
+        .filter(paths => paths.length > 0);
+      expect(invitesDeleted).toEqual([
+        [`delete householdInvites/${OWNED}_kai`],
+        [`delete householdInvites/${HID2}_sam`],
+        ['delete householdInvites/gone_lee']
+      ]);
+    });
+
+    it('forgets the household this device last selected for the account, and only for it', async () => {
+      localStorage.setItem(householdSelectionKey(ME), HID);
+      localStorage.setItem(householdSelectionKey(OTHER), HID2);
+      serveServerReads({});
+      recordCommits();
+
+      await service.deleteAll();
+
+      expect(localStorage.getItem(householdSelectionKey(ME))).toBeNull();
+      expect(localStorage.getItem(householdSelectionKey(OTHER))).toBe(HID2);
+    });
+
+    it('keeps the selection when the erasure fails, for the retry', async () => {
+      localStorage.setItem(householdSelectionKey(ME), HID);
+      spyOn(firestore, 'getCollectionFromServer').and.rejectWith(firebaseError('unavailable'));
+
+      await expectAsync(service.deleteAll()).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
+      expect(localStorage.getItem(householdSelectionKey(ME))).toBe(HID);
+    });
+
+    it('erases with device storage out of reach', async () => {
+      serveServerReads({});
+      recordCommits();
+      const removeItem = spyOn(Storage.prototype, 'removeItem').and.throwError('blocked');
+
+      await expectAsync(service.deleteAll()).toBeResolved();
+      expect(removeItem).toHaveBeenCalled();
+      // The clean-up after each case removes keys through the same call.
+      removeItem.and.callThrough();
+    });
+
+    it('deletes an owner document whose household is already gone, with its entry', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry({ role: 'owner' })]] });
+      serverReadsFor({ [`households/${HID}/members/${ME}`]: member({ role: 'owner' }) }, [`households/${HID}`]);
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ role: 'owner' }) });
 
       await service.deleteAll();
 
       expect(shape(commits)).toEqual([
-        [`delete households/${HID}/members/${ME}`, `update users/${ME}`],
-        [`delete householdInvites/other_${ME}`]
+        [`delete households/${HID}/members/${ME}`, `update ${INDEX_PATH}`],
+        [`delete ${INDEX_PATH}`]
       ]);
-      expect(reads).not.toHaveBeenCalledWith(`households/${HID}`);
     });
 
-    it('clears a stale pointer', async () => {
-      readsFor({ [`users/${ME}`]: userFixture({ householdId: HID }) });
-      serveServerReads({});
-      const commits = recordCommits();
-
-      await service.deleteAll();
-
-      expect(shape(commits)).toEqual([[`update users/${ME}`]]);
-    });
-
-    it('deletes an owner document whose household is already gone, with the pointer', async () => {
-      readsFor({
-        [`users/${ME}`]: userFixture({ householdId: HID }),
-        [`households/${HID}/members/${ME}`]: member({ role: 'owner' })
-      }, [`households/${HID}`]);
-      serveServerReads({});
-      const commits = recordCommits();
-
-      await service.deleteAll();
-
-      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`, `update users/${ME}`]]);
-    });
-
-    it('writes nothing with no household and no invites', async () => {
-      readsFor({ [`users/${ME}`]: userFixture() });
+    it('writes nothing with no membership and no invites', async () => {
       const reads = serveServerReads({});
       const commits = recordCommits();
 
@@ -1428,6 +2135,7 @@ describe('HouseholdService', () => {
 
       expect(commits).toEqual([]);
       expect(reads.calls.allArgs()).toEqual([
+        [INDEX],
         ['householdInvites', { where: [{ field: 'inviteeUid', op: '==', value: ME }] }],
         ['householdInvites', { where: [{ field: 'inviterUid', op: '==', value: ME }] }]
       ]);
@@ -1447,7 +2155,7 @@ describe('HouseholdService', () => {
         ['remove', () => service.remove('sam')],
         ['leave', () => service.leave()],
         ['dissolve', () => service.dissolve()],
-        ['clearStalePointer', () => service.clearStalePointer()],
+        ['tidyEndedMemberships', () => service.tidyEndedMemberships()],
         ['deleteAll', () => service.deleteAll()]
       ];
       for (const [name, attempt] of attempts) {

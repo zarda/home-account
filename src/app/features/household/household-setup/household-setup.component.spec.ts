@@ -204,11 +204,11 @@ describe('HouseholdSetupComponent', () => {
     });
 
     it('shows a refusal in the words the service gave it', async () => {
-      household.create.and.rejectWith(new HouseholdError('household.errors.alreadyMember'));
+      household.create.and.rejectWith(new HouseholdError('household.errors.tooMany'));
       typeName('The Lins');
       await submit();
 
-      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.alreadyMember');
+      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.tooMany');
       expect(analytics.trackHouseholdAction).withContext('only a success is counted').not.toHaveBeenCalled();
       expect(nameInput().value).withContext('the name survives a refusal').toBe('The Lins');
     });
@@ -428,7 +428,7 @@ describe('HouseholdSetupComponent', () => {
       for (const key of [
         'household.errors.expired',
         'household.errors.inviteGone',
-        'household.errors.alreadyMember',
+        'household.errors.tooMany',
         'household.errors.offline'
       ]) {
         it(`shows ${key} when the service refuses with it`, async () => {
