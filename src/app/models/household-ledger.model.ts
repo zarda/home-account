@@ -132,6 +132,47 @@ export const MAX_BULK_SHARE = 500;
  */
 export const FULL_SWEEP_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** A field's direction in a composite index, as firestore.indexes.json spells it. */
+export type LedgerIndexOrder = 'ASCENDING' | 'DESCENDING';
+
+/**
+ * One list a household's services make, as the composite index that serves
+ * it: the collection under households/{householdId} and its fields in index
+ * order.
+ */
+export interface LedgerQueryShape {
+  collectionGroup: 'ledger' | 'budgets' | 'goals' | 'contributions';
+  fields: readonly (readonly [field: string, order: LedgerIndexOrder])[];
+}
+
+/**
+ * The household's lists, each served by its composite in
+ * firestore.indexes.json. A service builds its query from its shape, and the
+ * ledger contract check fails when a shape has no composite that matches it
+ * exactly: the emulator never enforces a composite, so a missing one shows
+ * only in production, as failed-precondition.
+ *
+ * Every shape leads with `gen` by equality. A member may list only the live
+ * generation's documents, and the rules prove that of a list from this
+ * filter alone. Contributions live under each goal
+ * (goals/{goalId}/contributions); a composite on a collection id serves
+ * every collection of that id.
+ */
+export const LEDGER_QUERY_SHAPES = {
+  /** The household view: the live generation's copies in a window, newest first. */
+  ledgerByDate: { collectionGroup: 'ledger', fields: [['gen', 'ASCENDING'], ['date', 'DESCENDING']] },
+  /** The copies that count toward the household's goals. */
+  ledgerByGoal: { collectionGroup: 'ledger', fields: [['gen', 'ASCENDING'], ['goalId', 'ASCENDING']] },
+  /** One member's copies, as an owner's purge after a removal finds them. */
+  ledgerByMember: { collectionGroup: 'ledger', fields: [['gen', 'ASCENDING'], ['memberUid', 'ASCENDING']] },
+  /** The household's active budgets. */
+  activeBudgets: { collectionGroup: 'budgets', fields: [['gen', 'ASCENDING'], ['isActive', 'ASCENDING']] },
+  /** The household's active goals. */
+  activeGoals: { collectionGroup: 'goals', fields: [['gen', 'ASCENDING'], ['isActive', 'ASCENDING']] },
+  /** One household goal's contributions, newest first. */
+  contributionsByDate: { collectionGroup: 'contributions', fields: [['gen', 'ASCENDING'], ['date', 'DESCENDING']] },
+} as const satisfies Record<string, LedgerQueryShape>;
+
 const SHARE_KEY_PREFIX = 'households/';
 
 /**

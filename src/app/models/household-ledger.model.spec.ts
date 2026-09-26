@@ -6,6 +6,7 @@ import {
   LEDGER_OWN_WRITE_CHUNK,
   LEDGER_PROJECTION_VERSION,
   LEDGER_PURGE_CHUNK,
+  LEDGER_QUERY_SHAPES,
   LEDGER_REQUIRED_FIELDS,
   LEDGER_VIEW_CAP,
   LedgerCopy,
@@ -101,6 +102,47 @@ describe('household-ledger.model', () => {
 
     it('lets a row name at most the ten households one account can belong to', () => {
       expect(MAX_HOUSEHOLDS_PER_ACCOUNT).toBe(10);
+    });
+  });
+
+  describe('the query shapes', () => {
+    const table = Object.entries(LEDGER_QUERY_SHAPES).map(([name, shape]) => ({
+      name,
+      collectionGroup: shape.collectionGroup,
+      fields: shape.fields.map(([field, order]) => `${field} ${order}`),
+    }));
+
+    it('declares one shape for each list the household view and its sweeps make', () => {
+      expect(table).toEqual([
+        { name: 'ledgerByDate', collectionGroup: 'ledger', fields: ['gen ASCENDING', 'date DESCENDING'] },
+        { name: 'ledgerByGoal', collectionGroup: 'ledger', fields: ['gen ASCENDING', 'goalId ASCENDING'] },
+        { name: 'ledgerByMember', collectionGroup: 'ledger', fields: ['gen ASCENDING', 'memberUid ASCENDING'] },
+        { name: 'activeBudgets', collectionGroup: 'budgets', fields: ['gen ASCENDING', 'isActive ASCENDING'] },
+        { name: 'activeGoals', collectionGroup: 'goals', fields: ['gen ASCENDING', 'isActive ASCENDING'] },
+        { name: 'contributionsByDate', collectionGroup: 'contributions', fields: ['gen ASCENDING', 'date DESCENDING'] },
+      ]);
+    });
+
+    // A member may list only the live generation's documents, and the rules
+    // prove that of a list only from an equality filter on gen.
+    for (const { name, fields } of table) {
+      it(`leads ${name} with the generation`, () => {
+        expect(fields[0]).toBe('gen ASCENDING');
+      });
+    }
+
+    it('declares no shape twice', () => {
+      const keys = table.map(({ collectionGroup, fields }) => [collectionGroup, ...fields].join(','));
+      expect(new Set(keys).size).toBe(keys.length);
+    });
+
+    it('filters the ledger only on fields a copy holds', () => {
+      for (const { collectionGroup, fields } of table) {
+        if (collectionGroup !== 'ledger') continue;
+        for (const field of fields.map(entry => entry.split(' ')[0])) {
+          expect(LEDGER_COPY_FIELDS as readonly string[]).toContain(field);
+        }
+      }
     });
   });
 
