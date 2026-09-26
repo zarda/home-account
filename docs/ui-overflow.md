@@ -187,7 +187,8 @@ word boundaries while still breaking the one word too long to fit a line.
 break, and the ink paints straight through the shrunk box and out of the card.
 That overflow is invisible wherever the word happens to fit, so it surfaces on
 whichever machine has the wider font fallback rather than on the one that
-shipped it.
+shipped it. A spec can pin the wider face itself: see *Karma serves no fonts*
+in `docs/testing.md`.
 
 **Four corollaries worth knowing, because between them they made five rules in
 this app dead code for a long time:**

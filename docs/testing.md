@@ -236,6 +236,26 @@ that starts at 768 px or above — a desktop-only layout assertion will either
 fail or pass vacuously. Breakpoint behaviour is driven by stubbing
 `BreakpointObserver`, not by resizing.
 
+## Karma serves no fonts
+
+Karma's test target publishes only `public/`, and the app's faces live in
+`src/assets/fonts` (`src/theme/_fonts.scss`), so no spec renders PT Sans or
+the icon fonts. Each machine measures in its own fallback: the Mac's system
+face, and DejaVu Sans on the Linux runner, which is wider. The translation
+stub renders every string as its raw key, one long unbroken word, so a spec
+that compares widths can pass on the Mac and fail in CI by a few pixels.
+
+A width spec pins a face with the runner's metrics instead:
+`Verdana, 'DejaVu Sans', sans-serif` on the host (Verdana measures within a
+few pixels of DejaVu Sans), and the same value on `--mat-sys-body-large-font`,
+`--mat-sys-body-small-font` and `--mat-sys-label-large-font`, because
+Material's fields and buttons take their face from those tokens and never
+inherit the host's. A floated outline label is laid out at up to 133% of its
+field and drawn at 75%, so a long label makes the field's `scrollWidth`
+exceed its `clientWidth` while nothing visible overflows; measure the label's
+drawn box instead. The phone-width describe in
+`household-members.component.spec.ts` does all three (#71).
+
 ## The noise floor
 
 `test:ci` prints console output from paths that deliberately report a failure.
