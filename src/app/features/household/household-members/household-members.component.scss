@@ -22,7 +22,7 @@
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
-  // A word longer than the line breaks rather than pushing the card wider.
+  // A word longer than the line breaks rather than running past the card's edge.
   overflow-wrap: anywhere;
 
   mat-icon {

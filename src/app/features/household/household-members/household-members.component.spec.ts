@@ -1039,9 +1039,15 @@ describe('HouseholdMembersComponent', () => {
       host = fixture.nativeElement as HTMLElement;
       // 375px less the app shell's 16px gutters and the page's 16px gutters.
       host.style.width = '311px';
-      // Wider than any runner's fallback face, so a word that only just fits
-      // on one platform cannot pass here and overflow on another.
-      host.style.letterSpacing = '0.1em';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels. Material's fields and buttons take their face
+      // from the --mat-sys tokens rather than from the host.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
       document.body.appendChild(host);
     });
 
@@ -1084,10 +1090,24 @@ describe('HouseholdMembersComponent', () => {
       for (const part of parts) {
         const label = `${part.tagName.toLowerCase()}.${part.className}`;
         expect(getComputedStyle(part).textOverflow).withContext(`${label} is not cut`).not.toBe('ellipsis');
-        expect(part.scrollWidth).withContext(`nothing overflows ${label}`).toBeLessThanOrEqual(part.clientWidth + 1);
         const rect = part.getBoundingClientRect();
         expect(rect.left).withContext(`${label} starts inside`).toBeGreaterThanOrEqual(section.left - 0.5);
         expect(rect.right).withContext(`${label} ends inside`).toBeLessThanOrEqual(section.right + 0.5);
+      }
+      // Material lays a floated label out at up to 133% of its field and draws
+      // it at 75%, so a field's layout overflows by design; what must stay
+      // inside is the label as drawn.
+      const fields = parts.filter(part => part.tagName === 'MAT-FORM-FIELD');
+      for (const part of parts.filter(part => !fields.includes(part))) {
+        const label = `${part.tagName.toLowerCase()}.${part.className}`;
+        expect(part.scrollWidth).withContext(`nothing overflows ${label}`).toBeLessThanOrEqual(part.clientWidth + 1);
+      }
+      for (const field of fields) {
+        const floating = field.querySelector<HTMLElement>('.mdc-floating-label')!;
+        expect(floating.classList).withContext(`${floating.textContent} is floated`).toContain('mdc-floating-label--float-above');
+        expect(floating.getBoundingClientRect().right)
+          .withContext(`${floating.textContent} is drawn inside its field`)
+          .toBeLessThanOrEqual(field.getBoundingClientRect().right + 0.5);
       }
     });
   });
