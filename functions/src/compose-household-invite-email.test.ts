@@ -35,6 +35,23 @@ void test('each language is its own text', () => {
   assert.match(texts[2].text, /家庭記帳/);
 });
 
+// A member sees another's transaction only once its owner shares it, and then
+// only its basics (a shared row shows its category's name, icon and colour),
+// so the mail promises no more than that: nothing about each other's budgets
+// or goals, which stay private.
+void test('the mail says members see only the transactions each chooses to share', () => {
+  const disclosures: Record<string, string> = {
+    en: 'Household members see only the transactions each member chooses to share.',
+    ja: '世帯のメンバーが閲覧できるのは、各メンバーが共有を選んだ取引だけです。',
+    tc: '家庭成員只能看到每位成員選擇共享的交易。',
+  };
+  for (const [locale, line] of Object.entries(disclosures)) {
+    const mail = composeHouseholdInviteEmail({ ...input, locale });
+    assert.ok(mail.text.split('\n').includes(line), `${locale}: ${mail.text}`);
+    assert.doesNotMatch(mail.text, /each other|お互い|互相/, locale);
+  }
+});
+
 // Owner-typed text never reaches a mailbox: the household name and every
 // display name stay in-app, even when a caller hands them over.
 void test('no household name and no display name, even when they are passed in', () => {

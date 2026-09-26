@@ -1763,7 +1763,11 @@ describe('HouseholdService', () => {
       ['not-found', 'no-account', 'household.errors.noAccount'],
       ['already-exists', 'member', 'household.errors.member'],
       ['failed-precondition', 'full', 'household.errors.full'],
-      ['failed-precondition', 'elsewhere', 'household.errors.elsewhere']
+      [
+        'failed-precondition',
+        'too-many',
+        `household.errors.inviteeTooMany:${JSON.stringify({ max: MAX_HOUSEHOLDS_PER_ACCOUNT })}`
+      ]
     ];
 
     it('sends the live household, the trimmed address and the app language to the callable', async () => {
@@ -1792,9 +1796,14 @@ describe('HouseholdService', () => {
           .withContext(code)
           .toBeRejectedWithError(HouseholdError, 'errors.generic');
       }
-      invite.and.rejectWith(firebaseError('functions/failed-precondition', { reason: 'something-new' }));
-      await expectAsync(service.invite('sam@example.test'))
-        .toBeRejectedWithError(HouseholdError, 'errors.generic');
+      // Only the callable's own reasons map to business copy; any other ('elsewhere', an unknown one)
+      // gets the generic line.
+      for (const reason of ['something-new', 'elsewhere']) {
+        invite.and.rejectWith(firebaseError('functions/failed-precondition', { reason }));
+        await expectAsync(service.invite('sam@example.test'))
+          .withContext(reason)
+          .toBeRejectedWithError(HouseholdError, 'errors.generic');
+      }
     });
 
     it('says offline when the connection dropped during the call', async () => {

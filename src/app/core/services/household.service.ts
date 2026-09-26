@@ -1410,7 +1410,7 @@ export class HouseholdService {
       case 'no-account': return this.t('household.errors.noAccount');
       case 'member': return this.t('household.errors.member');
       case 'full': return this.t('household.errors.full');
-      case 'elsewhere': return this.t('household.errors.elsewhere');
+      case 'too-many': return this.t('household.errors.inviteeTooMany', { max: MAX_HOUSEHOLDS_PER_ACCOUNT });
       default: return null;
     }
   }

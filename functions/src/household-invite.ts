@@ -39,6 +39,23 @@ export const DAILY_MAIL_BUDGET = 100;
 /** Members plus pending invites; the callable refuses the ninth seat. */
 export const MAX_HOUSEHOLD_MEMBERS = 8;
 
+/**
+ * The most live memberships one account holds. The rules do not count them:
+ * the app refuses a create or a join past it, and the callable refuses to
+ * invite an account already at it.
+ */
+export const MAX_HOUSEHOLDS_PER_ACCOUNT = 10;
+
+/**
+ * The most entries of an invitee's membership index one invite reads. The
+ * account writes its own index, so without a bound one call could be made to
+ * read any number of documents. The app keeps an index near
+ * MAX_HOUSEHOLDS_PER_ACCOUNT entries: it refuses a create or a join at that
+ * many live memberships and deletes an entry once its membership has ended.
+ * An index longer than this is refused as too-many (step 10) unread.
+ */
+export const MEMBERSHIP_READ_BOUND = 3 * MAX_HOUSEHOLDS_PER_ACCOUNT;
+
 /** The longest address SMTP can carry (RFC 5321 path limit less the brackets). */
 export const MAX_EMAIL_LENGTH = 254;
 
@@ -294,17 +311,28 @@ export interface InviteeAccount {
 }
 
 /**
- * Where the invitee's profile pointer leads, read raw. The pointer alone is
- * never trusted — a client writes its own profile — so a membership is live
- * only when the member doc exists and carries the household's current
- * generation.
+ * One entry of the invitee's membership index (`users/{uid}/households/{id}`),
+ * with the member doc and the household it names, all read raw. The entry
+ * alone is never trusted — the account writes its own index — so it counts
+ * only while the server agrees: see isLive.
  */
-export interface MembershipRecord {
+export interface IndexedMembership {
   householdId: string;
-  /** The member doc's `since`; null when the doc is gone. */
+  /** The entry's `since`; null when it is not a Timestamp. */
   since: Stamp | null;
+  /** The entry carries `endedAt`: its ending is under way. */
+  ended: boolean;
+  /** The member doc's `since`; null when the doc is gone. */
+  memberSince: Stamp | null;
   /** The household's `createdAt`; null when the household is gone. */
   householdCreatedAt: Stamp | null;
+}
+
+/** The invitee's membership index as far as MEMBERSHIP_READ_BOUND. */
+export interface MembershipIndex {
+  entries: readonly IndexedMembership[];
+  /** More entries exist than were read. */
+  overflow: boolean;
 }
 
 export interface PendingInvite {
@@ -348,7 +376,10 @@ export function hasSeat(count: SeatCount, request: SeatRequest): boolean {
 }
 
 export interface InviteeStanding extends SeatCount {
-  membership: MembershipRecord | null;
+  /** The `since` of the invitee's member doc in this household; null when there is none. */
+  memberSince: Stamp | null;
+  /** The invitee's membership index. */
+  memberships: MembershipIndex;
 }
 
 /**
@@ -389,7 +420,7 @@ export type RefusalReason =
   | 'no-account'
   | 'member'
   | 'full'
-  | 'elsewhere';
+  | 'too-many';
 
 export interface Refusal {
   code: RefusalCode;
@@ -424,8 +455,17 @@ function need(fact: InviteNeed): InvitePlan {
   return { kind: 'need', need: fact };
 }
 
-function isLive(membership: MembershipRecord): boolean {
-  return sameStamp(membership.since, membership.householdCreatedAt);
+/**
+ * An index entry names a live membership when it is not ending, the member
+ * doc it names exists with the entry's generation, and the household still
+ * has that generation: the judgement the app's own client makes of it.
+ */
+function isLive(membership: IndexedMembership): boolean {
+  return (
+    !membership.ended &&
+    sameStamp(membership.since, membership.memberSince) &&
+    sameStamp(membership.memberSince, membership.householdCreatedAt)
+  );
 }
 
 /**
@@ -440,9 +480,10 @@ function isLive(membership: MembershipRecord): boolean {
  *  5. the inviter's quota (charged before the lookup, so misses count);
  *  6. no account, or a disabled one, uses the address;
  *  7. the account is the caller's own (covers a token with no email);
- *  8. already a live member of this household;
+ *  8. already a live member of this household, by its own member doc;
  *  9. members plus other pending invites fill every seat (asked again at the write);
- * 10. a live member of another household.
+ * 10. already a live member of MAX_HOUSEHOLDS_PER_ACCOUNT other households, or
+ *     an index longer than MEMBERSHIP_READ_BOUND.
  */
 export function planInvite(facts: InviteFacts): InvitePlan {
   const { caller } = facts;
@@ -479,14 +520,20 @@ export function planInvite(facts: InviteFacts): InvitePlan {
     return need({ fact: 'standing', householdId, inviteeUid: invitee.uid, household });
   }
 
-  const membership =
-    standing.membership !== null && isLive(standing.membership) ? standing.membership : null;
-  if (membership?.householdId === householdId) return refuse('already-exists', 'member');
+  if (sameStamp(standing.memberSince, household.createdAt)) {
+    return refuse('already-exists', 'member');
+  }
 
   const seat = { inviteeUid: invitee.uid, generation: household.createdAt, now: facts.now };
   if (!hasSeat(standing, seat)) return refuse('failed-precondition', 'full');
 
-  if (membership !== null) return refuse('failed-precondition', 'elsewhere');
+  // An index not read to its end cannot be shown to hold fewer than the most.
+  if (standing.memberships.overflow) return refuse('failed-precondition', 'too-many');
+  // This household's own entry is never one more: a join writes it again.
+  const others = standing.memberships.entries.filter(
+    membership => membership.householdId !== householdId && isLive(membership)
+  );
+  if (others.length >= MAX_HOUSEHOLDS_PER_ACCOUNT) return refuse('failed-precondition', 'too-many');
 
   return {
     kind: 'invite',

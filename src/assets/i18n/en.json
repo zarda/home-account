@@ -1846,7 +1846,7 @@
       "noAccount": "No account uses that email address. Ask them to sign in to the app once, then invite them again.",
       "member": "That person is already in this household.",
       "full": "This household is full. Pending invites count toward the limit.",
-      "elsewhere": "That person already belongs to another household.",
+      "inviteeTooMany": "That person already belongs to {{max}} households, the most one account can.",
       "offline": "You're offline. Household changes need a connection.",
       "name": "Enter a household name of up to {{max}} characters.",
       "expired": "This invite has expired. Ask the owner to send a new one.",

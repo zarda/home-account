@@ -5,9 +5,12 @@ import {
   Caller,
   DAY_MS,
   HouseholdRecord,
+  IndexedMembership,
   InviteFacts,
   InvitePlan,
-  MembershipRecord,
+  MAX_HOUSEHOLDS_PER_ACCOUNT,
+  MEMBERSHIP_READ_BOUND,
+  MembershipIndex,
   PendingInvite,
   Stamp,
   callerOf,
@@ -45,7 +48,7 @@ function passing(): Facts {
     household: { ...household },
     quotaAllowed: true,
     invitee: { uid: INVITEE, disabled: false },
-    standing: { membership: null, liveMembers: 1, invites: [] },
+    standing: { memberSince: null, memberships: listed([]), liveMembers: 1, invites: [] },
   };
 }
 
@@ -53,8 +56,26 @@ function refuse(code: string, reason: string): InvitePlan {
   return { kind: 'refuse', refusal: { code, reason } } as InvitePlan;
 }
 
-function live(householdId: string): MembershipRecord {
-  return { householdId, since: CREATED, householdCreatedAt: CREATED };
+/** An index entry whose membership is live: unended, and one generation throughout. */
+function entry(householdId: string, overrides: Partial<IndexedMembership> = {}): IndexedMembership {
+  return {
+    householdId,
+    since: CREATED,
+    ended: false,
+    memberSince: CREATED,
+    householdCreatedAt: CREATED,
+    ...overrides,
+  };
+}
+
+/** Live memberships of `count` other households. */
+function liveElsewhere(count: number): IndexedMembership[] {
+  return Array.from({ length: count }, (_, i) => entry(`other-${i}`));
+}
+
+/** An index read whole unless `overflow` says more entries were left unread. */
+function listed(entries: IndexedMembership[], overflow = false): MembershipIndex {
+  return { entries, overflow };
 }
 
 function pendingFor(uid: string, overrides: Partial<PendingInvite> = {}): PendingInvite {
@@ -364,7 +385,7 @@ const steps: Step[] = [
     label: '8 already a member',
     code: 'already-exists',
     reason: 'member',
-    breakIt: f => { f.standing = { ...f.standing, membership: live(HID) }; },
+    breakIt: f => { f.standing = { ...f.standing, memberSince: CREATED }; },
   },
   {
     label: '9 household full',
@@ -373,10 +394,12 @@ const steps: Step[] = [
     breakIt: f => { f.standing = { ...f.standing, liveMembers: 8 }; },
   },
   {
-    label: '10 member elsewhere',
+    label: '10 at the most households one account can hold',
     code: 'failed-precondition',
-    reason: 'elsewhere',
-    breakIt: f => { f.standing = { ...f.standing, membership: live('other-household') }; },
+    reason: 'too-many',
+    breakIt: f => {
+      f.standing = { ...f.standing, memberships: listed(liveElsewhere(MAX_HOUSEHOLDS_PER_ACCOUNT)) };
+    },
   },
 ];
 
@@ -501,12 +524,12 @@ void test('a disabled account is no account', () => {
 void test("full counts live members and pending invites, but not the invitee's own", () => {
   const others = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(uid => pendingFor(uid));
   const facts = passing();
-  facts.standing = { membership: null, liveMembers: 1, invites: others };
+  facts.standing = { ...facts.standing, liveMembers: 1, invites: others };
   assert.deepEqual(planInvite(facts), refuse('failed-precondition', 'full'));
 
   // A refresh of a pending invitee at eight takes no new seat.
   facts.standing = {
-    membership: null,
+    ...facts.standing,
     liveMembers: 1,
     invites: [...others.slice(0, 6), pendingFor(INVITEE)],
   };
@@ -516,7 +539,7 @@ void test("full counts live members and pending invites, but not the invitee's o
 void test('full ignores expired invites and invites from an older generation', () => {
   const facts = passing();
   facts.standing = {
-    membership: null,
+    ...facts.standing,
     liveMembers: 1,
     invites: [
       ...['a', 'b', 'c', 'd', 'e', 'f'].map(uid => pendingFor(uid)),
@@ -556,32 +579,93 @@ void test("hasSeat counts live members and live pending invites, but not the inv
   );
 });
 
-void test('elsewhere requires a live membership, not just a pointer', () => {
-  for (const membership of [
-    // Removed: the pointer outlived the member doc.
-    { householdId: 'other', since: null, householdCreatedAt: CREATED },
-    // An orphan left under a re-created id.
-    { householdId: 'other', since: OLDER, householdCreatedAt: CREATED },
-    // Dissolved: the household is gone.
-    { householdId: 'other', since: CREATED, householdCreatedAt: null },
+// Step 8 asks the member document of this household itself; the invitee's
+// index is not what says whether they are in it.
+void test('member is the invitee\'s member document here, of this generation', () => {
+  const facts = passing();
+  facts.standing = { ...facts.standing, memberSince: CREATED };
+  assert.deepEqual(planInvite(facts), refuse('already-exists', 'member'));
+
+  for (const memberSince of [
+    // No member document: never joined, left, or removed.
+    null,
+    // A leftover from an earlier household under the same id.
+    OLDER,
+    { seconds: CREATED.seconds, nanoseconds: CREATED.nanoseconds + 1000 },
   ]) {
+    const again = passing();
+    again.standing = { ...again.standing, memberSince };
+    assert.equal(planInvite(again).kind, 'invite', JSON.stringify(memberSince));
+  }
+
+  // An index entry naming this household is not a membership of it.
+  const indexed = passing();
+  indexed.standing = { ...indexed.standing, memberships: listed([entry(HID)]) };
+  assert.equal(planInvite(indexed).kind, 'invite');
+});
+
+void test('too-many refuses at ten live memberships and admits nine', () => {
+  assert.equal(MAX_HOUSEHOLDS_PER_ACCOUNT, 10);
+
+  const nine = passing();
+  nine.standing = { ...nine.standing, memberships: listed(liveElsewhere(9)) };
+  assert.equal(planInvite(nine).kind, 'invite');
+
+  for (const count of [10, 11]) {
     const facts = passing();
-    facts.standing = { ...facts.standing, membership };
-    assert.equal(planInvite(facts).kind, 'invite', JSON.stringify(membership));
+    facts.standing = { ...facts.standing, memberships: listed(liveElsewhere(count)) };
+    assert.deepEqual(planInvite(facts), refuse('failed-precondition', 'too-many'), String(count));
+  }
+});
+
+// Only the invitee's own client writes its index, so an entry is counted only
+// once the server's member document and household agree it is live.
+void test('an index entry counts only while its membership is live', () => {
+  const dead: Array<[string, IndexedMembership]> = [
+    ['ended', entry('x', { ended: true })],
+    ['member document gone', entry('x', { memberSince: null })],
+    ['household gone', entry('x', { householdCreatedAt: null })],
+    // Dissolved and formed again under the same id: an older generation.
+    ['dead generation', entry('x', { since: OLDER, memberSince: OLDER })],
+    // The entry outlived one membership and names a later one's document.
+    ['entry and member document disagree', entry('x', { since: OLDER })],
+    ['entry stamp unreadable', entry('x', { since: null })],
+  ];
+  for (const [label, stale] of dead) {
+    const facts = passing();
+    facts.standing = { ...facts.standing, memberships: listed([...liveElsewhere(9), stale]) };
+    assert.equal(planInvite(facts).kind, 'invite', label);
   }
 
   const facts = passing();
-  facts.standing = { ...facts.standing, membership: live('other') };
-  assert.deepEqual(planInvite(facts), refuse('failed-precondition', 'elsewhere'));
+  facts.standing = { ...facts.standing, memberships: listed([...liveElsewhere(9), entry('x')]) };
+  assert.deepEqual(planInvite(facts), refuse('failed-precondition', 'too-many'));
 });
 
-void test('member requires a live membership of this generation', () => {
-  for (const membership of [
-    { householdId: HID, since: null, householdCreatedAt: CREATED },
-    { householdId: HID, since: OLDER, householdCreatedAt: CREATED },
-  ]) {
-    const facts = passing();
-    facts.standing = { ...facts.standing, membership };
-    assert.equal(planInvite(facts).kind, 'invite', JSON.stringify(membership));
-  }
+// Joining writes this household's entry again, so it is never one more; a
+// live membership of it is step 8's to refuse.
+void test('this household\'s own index entry is not counted toward too-many', () => {
+  const facts = passing();
+  facts.standing = { ...facts.standing, memberships: listed([...liveElsewhere(9), entry(HID)]) };
+  assert.equal(planInvite(facts).kind, 'invite');
+});
+
+// The callable stops reading an index at the bound, so one longer than that
+// cannot be shown to hold fewer than the most; the steps before it still
+// answer first.
+void test('an index longer than the read bound is too-many, after member and full', () => {
+  assert.ok(MEMBERSHIP_READ_BOUND > MAX_HOUSEHOLDS_PER_ACCOUNT);
+  const unread = listed([], true);
+
+  const facts = passing();
+  facts.standing = { ...facts.standing, memberships: unread };
+  assert.deepEqual(planInvite(facts), refuse('failed-precondition', 'too-many'));
+
+  const member = passing();
+  member.standing = { ...member.standing, memberships: unread, memberSince: CREATED };
+  assert.deepEqual(planInvite(member), refuse('already-exists', 'member'));
+
+  const full = passing();
+  full.standing = { ...full.standing, memberships: unread, liveMembers: 8 };
+  assert.deepEqual(planInvite(full), refuse('failed-precondition', 'full'));
 });

@@ -44,7 +44,10 @@ export type HouseholdMemberIdentity = Pick<HouseholdMember, 'uid' | 'displayName
 /**
  * The most live memberships one account holds. The rules do not count them:
  * the client refuses a create or a join past it, and the invite callable
- * refuses to invite an account already at it.
+ * refuses to invite an account already at it. The invite callable keeps its
+ * own copy (MAX_HOUSEHOLDS_PER_ACCOUNT in functions/src/household-invite.ts,
+ * a separate build); the functions test household-client-mirrors.test.ts
+ * fails when the two differ.
  */
 export const MAX_HOUSEHOLDS_PER_ACCOUNT = 10;
 
