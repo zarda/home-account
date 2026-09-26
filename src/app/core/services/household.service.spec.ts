@@ -263,7 +263,8 @@ describe('HouseholdService', () => {
    * Replaces runTransaction with a recorder: each call is one commit, its
    * writes in order. `refuse` may reject a commit by its writes, which then
    * applies nothing, as a refused commit does. A transaction read answers
-   * from `docs` by path; any other read fails the case.
+   * from `docs` by path, and an Error there rejects the read with it; any
+   * other read fails the case.
    */
   function recordCommits(refuse?: (writes: Write[]) => unknown, docs: Record<string, unknown> = {}): Write[][] {
     const commits: Write[][] = [];
@@ -272,9 +273,13 @@ describe('HouseholdService', () => {
     ) => {
       const writes: Write[] = [];
       const result = await update({
-        get: (ref: { path: string }) => ref.path in docs
-          ? Promise.resolve({ exists: () => docs[ref.path] !== null, data: () => docs[ref.path] })
-          : Promise.reject(new Error(`unexpected read of ${ref.path}`)),
+        get: (ref: { path: string }) => {
+          if (!(ref.path in docs)) return Promise.reject(new Error(`unexpected read of ${ref.path}`));
+          const doc = docs[ref.path];
+          return doc instanceof Error
+            ? Promise.reject(doc)
+            : Promise.resolve({ exists: () => doc !== null, data: () => doc });
+        },
         set: (ref: { path: string }, data: unknown) => writes.push({ op: 'set', path: ref.path, data }),
         update: (ref: { path: string }, data: unknown) => writes.push({ op: 'update', path: ref.path, data }),
         delete: (ref: { path: string }) => writes.push({ op: 'delete', path: ref.path })
@@ -1124,6 +1129,80 @@ describe('HouseholdService', () => {
         [`delete householdInvites/${HID}_lee`],
         [`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update users/${ME}`]
       ]);
+    });
+
+    const GONE = { [`households/${HID}`]: firebaseError('permission-denied') };
+    const refusesTheHousehold = (writes: Write[]) =>
+      writes.some(w => w.path === `households/${HID}`) ? firebaseError('permission-denied') : null;
+
+    it('finishes a dissolve whose final commit finds the household gone, as a commit sent again after its answer was lost does', async () => {
+      goLive('owner');
+      serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
+      const commits = recordCommits(writes => {
+        const refusal = refusesTheHousehold(writes);
+        // The first delivery's deletions reach the listener as the resend
+        // is refused.
+        if (refusal) own$.next(confirmed(null));
+        return refusal;
+      }, GONE);
+      // What a listener still attached to the household last heard.
+      const getDocument = spyOn(firestore, 'getDocument').and.resolveTo(householdDoc() as never);
+
+      await service.dissolve();
+
+      expect(getDocument).not.toHaveBeenCalled();
+      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`, `update users/${ME}`]]);
+      expect(commits[0][1].data).toEqual({ householdId: deleteField() });
+      expect(service.lostAccess()).toBeFalse();
+      expectNoConsoleNoise();
+    });
+
+    it('finishes a dissolve another tab completed first, when the members read is the step refused', async () => {
+      goLive('owner');
+      spyOn(firestore, 'getCollectionFromServer').and.callFake((async (path: string) => {
+        if (path === 'householdInvites') return [];
+        throw firebaseError('permission-denied');
+      }) as never);
+      const commits = recordCommits(undefined, GONE);
+
+      await service.dissolve();
+      own$.next(confirmed(null));
+
+      expect(shape(commits)).toEqual([[`delete households/${HID}/members/${ME}`, `update users/${ME}`]]);
+      expect(service.lostAccess()).toBeFalse();
+      expectNoConsoleNoise();
+    });
+
+    it('still fails a dissolve refused while its household is live, and leaves a later loss to be reported', async () => {
+      goLive('owner');
+      serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
+      const commits = recordCommits(refusesTheHousehold, { [`households/${HID}`]: householdDoc() });
+
+      await expectAsync(service.dissolve()).toBeRejectedWithError(HouseholdError, 'errors.generic');
+      own$.next(confirmed(null));
+
+      expect(commits).toEqual([]);
+      expect(service.lostAccess()).toBeTrue();
+    });
+
+    it('keeps the refusal when whether the household is gone goes unanswered', async () => {
+      goLive('owner');
+      serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
+      const commits = recordCommits(refusesTheHousehold, { [`households/${HID}`]: firebaseError('unavailable') });
+
+      await expectAsync(service.dissolve()).toBeRejectedWithError(HouseholdError, 'errors.generic');
+      expect(commits).toEqual([]);
+    });
+
+    it('does not take a dissolve cut off mid-way for one already done', async () => {
+      goLive('owner');
+      serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
+      recordCommits(writes =>
+        writes.some(w => w.path === `households/${HID}`) ? firebaseError('unavailable') : null, GONE);
+
+      await expectAsync(service.dissolve()).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
+      // The final commit alone: nothing asked whether the household is gone.
+      expect(firestore.runTransaction).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -426,7 +426,8 @@ export class HouseholdService {
     await this.attempt(async () => {
       const { householdId, member } = this.liveMembership(uid);
       if (member.role === 'owner') throw new HouseholdError(this.t('household.errors.ownerLeaves'));
-      await this.endOwnMembership(uid, householdId, { member: true, household: false });
+      await this.endingMembership(householdId, () =>
+        this.endOwnMembership(uid, householdId, { member: true, household: false }));
     });
   }
 
@@ -451,7 +452,8 @@ export class HouseholdService {
       if (!householdId) return false;
       const own = await this.firestore.getDocument<HouseholdMember>(memberPath(householdId, uid));
       if (own && (await this.isLive(householdId))) return false;
-      await this.endOwnMembership(uid, householdId, { member: own !== null, household: false });
+      await this.endingMembership(householdId, () =>
+        this.endOwnMembership(uid, householdId, { member: own !== null, household: false }));
       return true;
     });
   }
@@ -471,7 +473,8 @@ export class HouseholdService {
         if (own?.role === 'owner' && isStamp(own.since) && (await this.isLive(householdId))) {
           await this.dissolveHousehold(uid, householdId, own.since);
         } else {
-          await this.endOwnMembership(uid, householdId, { member: own !== null, household: false });
+          await this.endingMembership(householdId, () =>
+            this.endOwnMembership(uid, householdId, { member: own !== null, household: false }));
         }
       }
       const received = await this.inviteIdsWhere('inviteeUid', uid);
@@ -683,40 +686,86 @@ export class HouseholdService {
    * The owner's sent invites go first: with none left, nobody can join
    * between the member sweep and the final commit. The members are read
    * from the server, not from a listener that may hold a partial view.
+   *
+   * A step refused because the household is already gone means a dissolve
+   * got there first: this one's own final commit, sent again after its
+   * answer was lost, or another tab's. What is left of the membership is
+   * cleared, which the rules allow once the household is gone, and the
+   * dissolve stands.
    */
-  private async dissolveHousehold(uid: string, householdId: string, since: Timestamp): Promise<void> {
-    await this.deleteInvites(await this.inviteIdsWhere('inviterUid', uid));
-    const members = await this.firestore.getCollectionFromServer<HouseholdMember>(membersPath(householdId), {
-      where: [{ field: 'since', op: '==', value: since }]
+  private dissolveHousehold(uid: string, householdId: string, since: Timestamp): Promise<void> {
+    return this.endingMembership(householdId, async () => {
+      try {
+        await this.deleteInvites(await this.inviteIdsWhere('inviterUid', uid));
+        const members = await this.firestore.getCollectionFromServer<HouseholdMember>(membersPath(householdId), {
+          where: [{ field: 'since', op: '==', value: since }]
+        });
+        const others = members.map(member => member.uid).filter(memberUid => memberUid !== uid);
+        for (const chunk of chunked(others)) {
+          await this.commitDeletes(chunk.map(memberUid => memberPath(householdId, memberUid)));
+        }
+        await this.endOwnMembership(uid, householdId, { member: true, household: true });
+      } catch (error) {
+        if (!isRefused(error) || !(await this.householdGone(householdId))) throw error;
+        await this.endOwnMembership(uid, householdId, { member: true, household: false });
+      }
     });
-    const others = members.map(member => member.uid).filter(memberUid => memberUid !== uid);
-    for (const chunk of chunked(others)) {
-      await this.commitDeletes(chunk.map(memberUid => memberPath(householdId, memberUid)));
+  }
+
+  /**
+   * Whether the household is gone, asked of the server as the rules stand
+   * now. A plain get is answered by a listener still attached to the
+   * household from what it last heard, which after a refused commit can be
+   * the household that commit found gone; a transaction's read always goes
+   * to the server, and this one is abandoned before it commits. A get of a
+   * household that is gone is refused rather than answered empty, and an
+   * unanswered read proves nothing gone.
+   */
+  private async householdGone(householdId: string): Promise<boolean> {
+    const readOnly = new Error('read only');
+    let gone = false;
+    try {
+      await this.firestore.runTransaction(async tx => {
+        gone = !(await tx.get(this.ref(householdPath(householdId)))).exists();
+        throw readOnly;
+      });
+    } catch (error) {
+      return error === readOnly ? gone : isRefused(error);
     }
-    await this.endOwnMembership(uid, householdId, { member: true, household: true });
+    return gone;
+  }
+
+  /**
+   * Runs work that ends this account's own membership, so its listeners
+   * hearing the member document go do not report that as lost access. Work
+   * that fails leaves a later loss to be reported.
+   */
+  private async endingMembership(householdId: string, work: () => Promise<void>): Promise<void> {
+    this.endingOwnMembership = householdId;
+    try {
+      await work();
+    } catch (error) {
+      this.endingOwnMembership = null;
+      throw error;
+    }
   }
 
   /**
    * The caller's own member document (when there is one), the household
    * (for a dissolve) and the pointer, in one commit: the rules clear a
-   * pointer only once the membership it names is gone.
+   * pointer only once the membership it names is gone. It runs inside
+   * endingMembership.
    */
-  private async endOwnMembership(
+  private endOwnMembership(
     uid: string,
     householdId: string,
     parts: { member: boolean; household: boolean }
   ): Promise<void> {
-    this.endingOwnMembership = householdId;
-    try {
-      await this.firestore.runTransaction(async tx => {
-        if (parts.household) tx.delete(this.ref(householdPath(householdId)));
-        if (parts.member) tx.delete(this.ref(memberPath(householdId, uid)));
-        tx.update(this.ref(profilePath(uid)), { householdId: deleteField() });
-      });
-    } catch (error) {
-      this.endingOwnMembership = null;
-      throw error;
-    }
+    return this.firestore.runTransaction(async tx => {
+      if (parts.household) tx.delete(this.ref(householdPath(householdId)));
+      if (parts.member) tx.delete(this.ref(memberPath(householdId, uid)));
+      tx.update(this.ref(profilePath(uid)), { householdId: deleteField() });
+    });
   }
 
   /**

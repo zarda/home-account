@@ -160,6 +160,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0153](0153-an-invite-is-an-owners-callable-lookup-by-email-capped-and-its-answers-are-plain.md) | An invite is an owner's callable lookup by email, capped, and its answers are plain | Accepted; extends 0047 | 2026-09-26 |
 | [0154](0154-the-household-view-is-a-read-only-aggregate-on-its-own-page-and-the-road-to-shared-writes-is-written-down.md) | The household view is a read-only aggregate on its own page, and the road to shared writes is written down | Accepted; applies 0009 | 2026-09-26 |
 | [0155](0155-journeys-that-need-two-accounts-run-against-the-emulators.md) | Journeys that need two accounts run against the emulators | Accepted; extends 0098; revisits its rejected emulator configuration; answers ui-audit/tools/README.md | 2026-09-26 |
+| [0156](0156-a-dissolve-that-finds-its-household-already-gone-finishes-instead-of-failing.md) | A dissolve that finds its household already gone finishes instead of failing | Accepted; extends 0152 | 2026-09-26 |
 
 ## What belongs here
 
