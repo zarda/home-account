@@ -1,10 +1,38 @@
 <div class="page-container">
   <app-page-header
     titleKey="household.title"
-    [subtitleKey]="status() === 'member' ? 'household.memberSubtitle' : 'household.subtitle'"
+    [subtitleKey]="view() === 'setup' || choices().length === 0 ? 'household.subtitle' : 'household.memberSubtitle'"
   >
-    @if (status() === 'member') {
-      <p header-subtitle class="household-name">{{ householdName() }}</p>
+    <!-- Shown with a single membership too: starting or joining another is
+         one of its choices, in the same place whatever the count. -->
+    @if (choices().length > 0) {
+      <mat-form-field header-subtitle appearance="outline" subscriptSizing="dynamic" class="household-switcher">
+        <mat-label>{{ 'household.switcher.label' | translate }}</mat-label>
+        <mat-select
+          appSwitchOnChoice
+          class="household-switcher-select"
+          [value]="switcherValue()"
+          (selectionChange)="choose($event.value)"
+        >
+          <mat-select-trigger>
+            @if (switcherValue() === setupChoice) {
+              {{ 'household.switcher.setup' | translate }}
+            } @else {
+              {{ switcherName() }}
+            }
+          </mat-select-trigger>
+          @for (choice of choices(); track choice.householdId) {
+            <mat-option [value]="choice.householdId" class="switcher-choice">
+              <span>{{ choice.name }}</span>&ngsp;@if (choice.owned) {
+                <span class="switcher-role">{{ 'household.members.roleOwner' | translate }}</span>
+              }
+            </mat-option>
+          }
+          <mat-option [value]="setupChoice" class="switcher-choice switcher-setup">
+            {{ 'household.switcher.setup' | translate }}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
     }
   </app-page-header>
 
@@ -22,7 +50,7 @@
     </p>
   }
 
-  @switch (status()) {
+  @switch (view()) {
     @case ('member') {
       <div class="member-view">
         <app-household-overview />
@@ -30,7 +58,7 @@
         <app-household-members />
       </div>
     }
-    @case ('none') {
+    @case ('setup') {
       <app-household-setup />
     }
     @case ('unavailable') {
@@ -40,6 +68,19 @@
         <button mat-stroked-button type="button" class="household-retry" (click)="retry()">
           {{ 'common.retry' | translate }}
         </button>
+      </div>
+    }
+    @case ('notLoaded') {
+      <!-- Offline, a membership never shown on this device: not the setup,
+           which would say the account is in no such household, nor a wait
+           that no answer would end. -->
+      <div class="household-not-loaded">
+        <app-empty-state
+          icon="cloud_off"
+          [headingLevel]="2"
+          [title]="'household.notLoadedTitle' | translate"
+          [description]="'household.notLoadedDescription' | translate"
+        />
       </div>
     }
     @default {

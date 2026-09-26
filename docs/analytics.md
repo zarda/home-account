@@ -70,10 +70,11 @@ addresses, display names, or the Firebase user id. There is no `setUserId`
 call and no `UserTrackingService`. Google signals and ads personalisation are
 off on the property and denied again in the tag's consent defaults.
 
-`page_location` is overwritten with the origin and path only. gtag attaches the
-full URL to every hit on its own, and that is a channel no parameter allowlist
-covers — so the matching invariant is: **no route or query parameter may ever
-carry user-entered text**.
+`page_location` is overwritten with the origin and path only, and a route
+parameter naming a record (`/household/{hid}`) is written as its template.
+gtag attaches the full URL to every hit on its own, and that is a channel no
+parameter allowlist covers — so the matching invariant is: **no route or query
+parameter may ever carry user-entered text**.
 
 Counts are the point; contents are not. `transaction_add` says an expense was
 added by receipt scan. It cannot say what was bought, for how much, or where.
@@ -164,6 +165,7 @@ table can enumerate.
 | `ai` | `ai` | settings |
 | `data` | `data` | sidebar |
 | `household` | `household` | sidebar, settings |
+| `:hid` | `household/:hid` | household switcher |
 | `about` | `about` | sidebar |
 | `search-history` | `search-history` | smart-search dialog |
 | `import/file` | `import/file` | import wizard |
@@ -175,11 +177,17 @@ Notes:
 - **Redirects never report.** The four `redirectTo` routes and the wildcard
   never activate; their destination reports instead. The layout route's empty
   path drops out of the name.
+- **A route parameter reports as its template.** `:hid`, the household
+  page's child naming the household shown, reports `household/:hid`, and
+  `page_location` writes the path the same way: no household id reaches
+  analytics, and every household is one screen. The child renders nothing of
+  its own, so its `screen_class` is the page's, `app-household`.
 - **Query parameters do not make a distinct screen.** `/transactions?showAll=`,
   `?date=`, `?action=add` and `?tx=` (a transaction id, stripped from the URL
   once consumed) all report `transactions`, and the query string is stripped
   from `page_location` regardless.
-- **`screen_class`** is the deepest activated component's element selector.
+- **`screen_class`** is the element selector of the deepest activated route
+  that has a component.
   Note this differs from what `@angular/fire`'s own `ScreenTrackingService`
   would produce: it reads the *top-level* activated route, which in this app is
   always `MainLayoutComponent`, so it would report `app-main-layout` for eight
@@ -187,7 +195,8 @@ Notes:
 - **`page_title`** is the constant `HomeAccount`. There is no `TitleStrategy`.
 - Parity between the web and iOS derivations is not guaranteed by the compiler
   — both call `currentScreenView()`, and `app.smoke.spec.ts` asserts the name
-  for every routed page against a real activated router state.
+  for every page its walkthrough visits against a real activated router
+  state.
 
 ## How it works
 

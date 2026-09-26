@@ -92,13 +92,39 @@ export const ANALYTICS_CONSENT_DEFAULTS: ConsentSettings = {
  * payload even if a future route starts carrying an id or a search term.
  * docs/analytics.md states the matching invariant: no route or query parameter
  * may carry user-entered text.
+ *
+ * The hits gtag logs by itself (session_start, user_engagement) never pass
+ * through the app's logEvent, so a per-event merge cannot reach them. The web
+ * transport also hands these fields to gtag's `set` command
+ * (setDefaultEventParameters): once just before the Analytics token is first
+ * read, and again before every screen_view. gtag's own hits therefore carry a
+ * value from here, never document.location. The screen_view event itself
+ * always names the current page, because logEvent merges these fields into it.
+ *
+ * The page on gtag's own hits can lag one screen behind for a while. The SDK
+ * holds the first `set` until its initialisation finishes (the dynamic-config
+ * fetch plus the installation id) and only then replays it behind `config`,
+ * whereas a `set` made after the token read reaches gtag at once. When a
+ * navigation lands between the first token read and the end of that
+ * initialisation, the replayed older page therefore overrides the screen
+ * view's newer one until the next screen view. Without a navigation in that
+ * window both name the same page and nothing lags. Either way the value is a
+ * template, so the lag misreports a page and never leaks an id.
+ *
+ * The household page's `:hid` child (app.routes.ts) names a household, and
+ * its id is written as the template, `/household/:hid`, as screen_name
+ * reports it: the path is sent, and no id is. This sees only the location,
+ * not the router, so the template is spelled out here; the spec walks the
+ * route table and fails for any parameter this does not write as its
+ * template.
  */
 export function pageFields(location: Location = window.location): {
   page_location: string;
   page_title: string;
 } {
+  const path = location.pathname.replace(/^\/household\/[^/]+\/?$/, '/household/:hid');
   return {
-    page_location: `${location.origin}${location.pathname}`,
+    page_location: `${location.origin}${path}`,
     page_title: 'HomeAccount',
   };
 }

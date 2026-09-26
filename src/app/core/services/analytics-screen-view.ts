@@ -37,7 +37,8 @@ function screenNameOf(snapshot: ActivatedRouteSnapshot): string {
 }
 
 /**
- * screen_class is the component's element selector.
+ * screen_class is the element selector of the deepest activated route that
+ * has a component.
  *
  * This is where the derivation deliberately differs from @angular/fire, which
  * reads the *top-level* activated route and only descends past an empty outlet
@@ -47,11 +48,18 @@ function screenNameOf(snapshot: ActivatedRouteSnapshot): string {
  * screens. Reading the deepest activated route instead makes the field carry
  * something, at the cost of not matching the library byte for byte.
  *
+ * A route that renders nothing of its own reports the page it sits in: the
+ * household page's `:hid` child (app.routes.ts) names the household shown,
+ * and /household/{hid} is still app-household.
+ *
  * reflectComponentType replaces the removed ComponentFactoryResolver; it is
  * the supported way to read a component's selector in v22.
  */
 function screenClassOf(snapshot: ActivatedRouteSnapshot): string {
-  const component = snapshot.component;
+  const owner = snapshot.component
+    ? snapshot
+    : [...snapshot.pathFromRoot].reverse().find(route => route.component);
+  const component = owner?.component;
   if (typeof component === 'string') {
     return component;
   }

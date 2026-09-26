@@ -66,7 +66,13 @@ export const routes: Routes = [
       {
         path: 'household',
         loadComponent: () =>
-          import('./features/household/household.component').then(m => m.HouseholdComponent)
+          import('./features/household/household.component').then(m => m.HouseholdComponent),
+        // /household/{hid} names the household the page shows. A child with
+        // nothing of its own, so a switch keeps the page, its listeners and
+        // its focus: the router rebuilds a page that moves to another route
+        // entry. pageFields (analytics.config.ts) writes the id as `:hid`
+        // before a page_location is sent; a renamed parameter changes it too.
+        children: [{ path: ':hid', children: [] }]
       },
       {
         path: 'search-history',

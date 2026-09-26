@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, Signal, computed, inject, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { Router, provideRouter } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { HouseholdComponent } from './household.component';
@@ -8,20 +9,24 @@ import { HouseholdSetupComponent } from './household-setup/household-setup.compo
 import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
 import { HouseholdPlansComponent } from './household-plans/household-plans.component';
 import { HouseholdMembersComponent } from './household-members/household-members.component';
-import { HouseholdService, HouseholdStatus } from '../../core/services/household.service';
+import {
+  HOUSEHOLD_NAME_MAX_LENGTH,
+  HouseholdService,
+  HouseholdStatus
+} from '../../core/services/household.service';
 import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
 import { PwaService } from '../../core/services/pwa.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { createTranslationStub } from '../../core/services/testing';
-import { Household, HouseholdMember } from '../../models';
+import { Household, HouseholdMember, HouseholdMembership } from '../../models';
 import { HouseholdPageFocus } from './household-focus';
 
 /** The setup state has its own spec; here only its presence, and its first heading, are the question. */
 @Component({
   selector: 'app-household-setup',
   standalone: true,
-  template: '<h2 id="household-invites-title" tabindex="-1">Invites for you</h2><button type="button">Create</button>',
+  template: '<h2 id="household-invites-title" tabindex="-1">Invites for you</h2><button type="button" class="stub-create">Create</button>',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 class StubSetupComponent {}
@@ -64,6 +69,13 @@ const HOUSEHOLD: Household = {
   createdAt: Timestamp.fromMillis(1_700_000_000_000)
 };
 
+const FLAT: Household = {
+  id: 'h2',
+  name: 'Flat 4B',
+  ownerId: 'someone-else',
+  createdAt: Timestamp.fromMillis(1_710_000_000_000)
+};
+
 const member = (uid: string, displayName: string): HouseholdMember => ({
   uid,
   displayName,
@@ -72,23 +84,45 @@ const member = (uid: string, displayName: string): HouseholdMember => ({
   joinedAt: HOUSEHOLD.createdAt
 });
 
+function membership(household: Household, overrides: Partial<HouseholdMembership> = {}): HouseholdMembership {
+  return {
+    householdId: household.id,
+    name: household.name,
+    role: household.ownerId === 'owner-1' ? 'owner' : 'member',
+    since: household.createdAt,
+    joinedAt: household.createdAt,
+    ended: false,
+    ...overrides
+  };
+}
+
+/** The same shape as the app's household route, without the page the spec renders itself. */
+const ROUTES = [{ path: 'household', children: [{ path: ':hid', children: [] }] }];
+
 // Rendered throughout (ADR 0144): which state the page shows is the thing
 // under test, and only the template can say.
 describe('HouseholdComponent', () => {
   let fixture: ComponentFixture<HouseholdComponent>;
+  let router: Router;
   let status: ReturnType<typeof signal<HouseholdStatus>>;
   let household: ReturnType<typeof signal<Household | null>>;
   let lostHouseholds: ReturnType<typeof signal<ReadonlySet<string>>>;
   let online: ReturnType<typeof signal<boolean>>;
   let members: ReturnType<typeof signal<HouseholdMember[]>>;
+  let memberships: ReturnType<typeof signal<HouseholdMembership[]>>;
+  let selected: ReturnType<typeof signal<string | null>>;
   let ledger: { setMembers: jasmine.Spy };
   let catchUp: jasmine.Spy;
   let service: {
     status: typeof status;
     household: typeof household;
     members: typeof members;
+    memberships: typeof memberships;
+    liveMemberships: Signal<HouseholdMembership[]>;
+    selectedHouseholdId: typeof selected;
     lostHouseholds: typeof lostHouseholds;
     lostAccess: Signal<boolean>;
+    select: jasmine.Spy;
     connect: jasmine.Spy;
     disconnect: jasmine.Spy;
     tidyEndedMemberships: jasmine.Spy;
@@ -98,6 +132,12 @@ describe('HouseholdComponent', () => {
   const text = (): string => element().textContent ?? '';
   const heading = (): string => element().querySelector('h1')?.textContent?.trim() ?? '';
   const header = (): Element | null => element().querySelector('app-page-header');
+  const switcher = (): HTMLElement | null => element().querySelector<HTMLElement>('mat-select.household-switcher-select');
+  const switcherValue = (): string =>
+    switcher()?.querySelector('.mat-mdc-select-value')?.textContent?.trim() ?? '';
+  const options = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLElement>('mat-option'));
+  const overviewTitle = (): HTMLElement | null => element().querySelector<HTMLElement>('#household-overview-title');
+  const invitesTitle = (): HTMLElement | null => element().querySelector<HTMLElement>('#household-invites-title');
 
   function render(): void {
     fixture.detectChanges();
@@ -110,7 +150,44 @@ describe('HouseholdComponent', () => {
     TestBed.tick();
   }
 
+  /** Lets a navigation the page started finish, and the page answer it. */
+  async function settleRoute(): Promise<void> {
+    render();
+    await fixture.whenStable();
+    render();
+    await fixture.whenStable();
+    render();
+  }
+
   const pageFocus = (): HouseholdPageFocus => fixture.debugElement.injector.get(HouseholdPageFocus);
+
+  /** The account's index lists these; the first is selected and shown. */
+  function showMember(shown: Household, list: HouseholdMembership[] = [membership(shown)]): void {
+    memberships.set(list);
+    selected.set(shown.id);
+    household.set(shown);
+    status.set('member');
+    render();
+  }
+
+  /** What the service does once a selected household's view has been heard. */
+  function arrive(shown: Household): void {
+    household.set(shown);
+    status.set('member');
+  }
+
+  function openSwitcher(): void {
+    switcher()?.querySelector<HTMLElement>('.mat-mdc-select-trigger')?.click();
+    render();
+  }
+
+  function choose(label: string): void {
+    openSwitcher();
+    const option = options().find(candidate => candidate.textContent?.includes(label));
+    expect(option).withContext(`an option reading ${label}`).toBeDefined();
+    option?.click();
+    render();
+  }
 
   beforeEach(async () => {
     status = signal<HouseholdStatus>('idle');
@@ -118,14 +195,28 @@ describe('HouseholdComponent', () => {
     lostHouseholds = signal<ReadonlySet<string>>(new Set());
     online = signal(true);
     members = signal<HouseholdMember[]>([]);
+    memberships = signal<HouseholdMembership[]>([]);
+    selected = signal<string | null>(null);
     ledger = { setMembers: jasmine.createSpy('setMembers') };
     catchUp = jasmine.createSpy('catchUpRecurringTransactions').and.resolveTo([]);
     service = {
       status,
       household,
       members,
+      memberships,
+      liveMemberships: computed(() => memberships().filter(entry => !entry.ended)),
+      selectedHouseholdId: selected,
       lostHouseholds,
       lostAccess: computed(() => lostHouseholds().size > 0),
+      // As the service does: a live membership becomes the selection, and its
+      // view loads afresh.
+      select: jasmine.createSpy('select').and.callFake((householdId: string) => {
+        const live = memberships().some(entry => entry.householdId === householdId && !entry.ended);
+        if (!live || selected() === householdId) return;
+        selected.set(householdId);
+        household.set(null);
+        status.set('loading');
+      }),
       connect: jasmine.createSpy('connect').and.callFake(() => {
         if (status() === 'idle') status.set('loading');
       }),
@@ -136,6 +227,7 @@ describe('HouseholdComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HouseholdComponent, NoopAnimationsModule],
       providers: [
+        provideRouter(ROUTES),
         { provide: HouseholdService, useValue: service },
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: TranslationService, useValue: createTranslationStub() },
@@ -154,6 +246,7 @@ describe('HouseholdComponent', () => {
       })
       .compileComponents();
 
+    router = TestBed.inject(Router);
     fixture = TestBed.createComponent(HouseholdComponent);
     render();
   });
@@ -194,15 +287,13 @@ describe('HouseholdComponent', () => {
       render();
       pageFocus().afterSwapTo('member');
       await settleFocus();
-      expect(document.activeElement).withContext('not before the swap').not.toBe(
-        element().querySelector('#household-invites-title')
-      );
+      expect(document.activeElement).withContext('not before the swap').not.toBe(invitesTitle());
 
       household.set(HOUSEHOLD);
       status.set('member');
       await settleFocus();
 
-      expect(document.activeElement).toBe(element().querySelector('#household-overview-title'));
+      expect(document.activeElement).toBe(overviewTitle());
       expect(pageFocus().awaited()).withContext('once, not at every later swap').toBeNull();
     });
 
@@ -217,7 +308,28 @@ describe('HouseholdComponent', () => {
       status.set('none');
       await settleFocus();
 
-      expect(document.activeElement).toBe(element().querySelector('#household-invites-title'));
+      expect(document.activeElement).toBe(invitesTitle());
+    });
+
+    it("moves to the next household's first heading when a leave or dissolve lands on it", async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();
+      pageFocus().afterSwapTo('none');
+      await settleFocus();
+      expect(document.activeElement)
+        .withContext('the view the leave was asked from is still on screen, and focus with it')
+        .toBe(element().querySelector('.stub-leave'));
+
+      memberships.set([membership(HOUSEHOLD, { ended: true }), membership(FLAT)]);
+      selected.set(FLAT.id);
+      household.set(null);
+      status.set('loading');
+      await settleFocus();
+      arrive(FLAT);
+      await settleFocus();
+
+      expect(document.activeElement).toBe(overviewTitle());
+      expect(pageFocus().awaited()).toBeNull();
     });
 
     it('moves nothing on a first load, or on a swap nobody here asked for', async () => {
@@ -243,7 +355,7 @@ describe('HouseholdComponent', () => {
       lostHouseholds.set(new Set([HOUSEHOLD.id]));
       await settleFocus();
 
-      expect(document.activeElement).toBe(element().querySelector('#household-invites-title'));
+      expect(document.activeElement).toBe(invitesTitle());
       expect(text()).toContain('household.lostAccess');
     });
 
@@ -262,7 +374,7 @@ describe('HouseholdComponent', () => {
       status.set('member');
       await settleFocus();
 
-      expect(document.activeElement).toBe(element().querySelector('#household-overview-title'));
+      expect(document.activeElement).toBe(overviewTitle());
     });
 
     it('moves to the retry that came back when a retry fails again', async () => {
@@ -296,20 +408,20 @@ describe('HouseholdComponent', () => {
       expect(element().querySelector('app-household-setup')).not.toBeNull();
       expect(heading()).toBe('household.title');
       expect(header()?.textContent).toContain('household.subtitle');
-      expect(header()?.querySelector('.household-name')).toBeNull();
+      expect(switcher()).withContext('nothing to switch between').toBeNull();
       expect(element().querySelector('mat-spinner')).toBeNull();
       expect(element().querySelector('.member-view')).toBeNull();
     });
 
-    it('shows the member view with one, the household named in the page header', () => {
-      household.set(HOUSEHOLD);
-      status.set('member');
-      render();
+    it('shows the member view with one, the household named in the page header', async () => {
+      showMember(HOUSEHOLD);
+      await settleRoute();
 
       expect(element().querySelector('.member-view')).not.toBeNull();
       expect(heading()).toBe('household.title');
       expect(element().querySelectorAll('h1').length).toBe(1);
-      expect(header()?.querySelector('.household-name')?.textContent?.trim()).toBe('The Lins');
+      expect(header()?.contains(switcher())).withContext('the switcher sits in the page header').toBeTrue();
+      expect(switcherValue()).toBe('The Lins');
       expect(header()?.textContent).toContain('household.memberSubtitle');
       expect(header()?.textContent).not.toContain('household.subtitle');
       expect(element().querySelector('app-household-setup')).toBeNull();
@@ -348,6 +460,323 @@ describe('HouseholdComponent', () => {
       expect(service.disconnect).toHaveBeenCalledTimes(1);
       expect(service.connect).toHaveBeenCalledTimes(1);
       expect(service.disconnect).toHaveBeenCalledBefore(service.connect);
+    });
+  });
+
+  describe('the switcher', () => {
+    it('is labelled, and names the household shown', async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      await settleRoute();
+
+      const field = switcher()?.closest('mat-form-field');
+      expect(field?.querySelector('mat-label')?.textContent?.trim()).toBe('household.switcher.label');
+      const labelledBy = (switcher()?.getAttribute('aria-labelledby') ?? '').split(' ');
+      expect(labelledBy).withContext('the select is named by its label').toContain(
+        field?.querySelector('label')?.id ?? 'no label'
+      );
+      expect(switcherValue()).toBe('The Lins');
+    });
+
+    it('lists only the live memberships, by name, and then the way to start or join another', () => {
+      const ended: Household = { ...FLAT, id: 'h3', name: 'Old flat' };
+      const lost: Household = { ...FLAT, id: 'h4', name: 'Gone house' };
+      showMember(HOUSEHOLD, [
+        membership(HOUSEHOLD),
+        membership(FLAT),
+        membership(ended, { ended: true }),
+        membership(lost)
+      ]);
+      lostHouseholds.set(new Set([lost.id]));
+      render();
+      openSwitcher();
+
+      const listed = options().map(option => option.textContent?.trim() ?? '');
+      expect(listed.length).toBe(3);
+      expect(listed[0]).toContain('The Lins');
+      expect(listed[1]).toContain('Flat 4B');
+      expect(listed[2]).toBe('household.switcher.setup');
+      expect(listed.join('|')).not.toContain('Old flat');
+      expect(listed.join('|')).not.toContain('Gone house');
+    });
+
+    it('says which of them the account owns', () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      openSwitcher();
+
+      expect(options()[0].textContent).toContain('household.members.roleOwner');
+      expect(options()[1].textContent).not.toContain('household.members.roleOwner');
+    });
+
+    it('shows with one membership, so starting or joining another stays one choice away', () => {
+      showMember(HOUSEHOLD);
+      openSwitcher();
+
+      expect(switcher()).not.toBeNull();
+      expect(options().map(option => option.textContent?.trim())).toEqual([
+        jasmine.stringContaining('The Lins'),
+        'household.switcher.setup'
+      ]);
+    });
+
+    it("moves to the chosen household's own address, which selects it", async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+
+      choose('Flat 4B');
+      await settleRoute();
+
+      expect(router.url).toBe('/household/h2');
+      expect(service.select).toHaveBeenCalledWith('h2');
+      expect(selected()).toBe('h2');
+      expect(status()).toBe('loading');
+      expect(header()?.textContent).withContext('the header reads the same while it loads').toContain('household.memberSubtitle');
+    });
+
+    it("moves focus from the switcher to the chosen household's first heading once it shows", async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+
+      choose('Flat 4B');
+      expect(document.activeElement).withContext('the list hands focus back to the switcher').toBe(switcher());
+      await settleRoute();
+      await settleFocus();
+      expect(document.activeElement).withContext('not before it shows').not.toBe(overviewTitle());
+
+      arrive(FLAT);
+      await settleFocus();
+
+      expect(document.activeElement).toBe(overviewTitle());
+      expect(pageFocus().awaited()).toBeNull();
+    });
+
+    it('leaves focus where the viewer put it while the household loaded', async () => {
+      const elsewhere = document.createElement('button');
+      document.body.appendChild(elsewhere);
+      try {
+        showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+        choose('Flat 4B');
+        await settleRoute();
+        elsewhere.focus();
+
+        arrive(FLAT);
+        await settleFocus();
+
+        expect(document.activeElement).toBe(elsewhere);
+      } finally {
+        elsewhere.remove();
+      }
+    });
+
+    it('opens its list on an arrow key rather than switching household by household', async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      const select = switcher() as HTMLElement;
+      select.focus();
+      // Material reads the legacy keyCode, which a constructed event leaves at 0.
+      const keydown = (key: string, keyCode: number): KeyboardEvent => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+        return event;
+      };
+
+      for (const [key, keyCode] of [['ArrowDown', 40], ['ArrowUp', 38], ['End', 35], ['f', 70]] as const) {
+        select.dispatchEvent(keydown(key, keyCode));
+        render();
+        await settleRoute();
+        expect(service.select).withContext(key).not.toHaveBeenCalled();
+        expect(switcherValue()).withContext(key).toBe('The Lins');
+        expect(options().length).withContext(`${key} opens the list`).toBe(3);
+
+        select.dispatchEvent(keydown('Escape', 27));
+        await settleRoute();
+        expect(options().length).withContext('closed again').toBe(0);
+      }
+      expect(router.url).toBe('/');
+    });
+
+    describe('starting or joining another household', () => {
+      beforeEach(() => showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]));
+
+      it('shows the setup without leaving the membership', async () => {
+        choose('household.switcher.setup');
+        await settleRoute();
+
+        expect(element().querySelector('app-household-setup')).not.toBeNull();
+        expect(element().querySelector('.member-view')).toBeNull();
+        expect(switcher()).withContext('the switcher stays').not.toBeNull();
+        expect(switcherValue()).toBe('household.switcher.setup');
+        expect(header()?.textContent).toContain('household.subtitle');
+        expect(service.select).not.toHaveBeenCalled();
+        expect(selected()).toBe('h1');
+        expect(router.url).toBe('/');
+      });
+
+      it("moves focus to the setup's first heading", async () => {
+        choose('household.switcher.setup');
+        await settleFocus();
+
+        expect(document.activeElement).toBe(invitesTitle());
+      });
+
+      it('goes back to a household chosen in the switcher, and focus with it', async () => {
+        choose('household.switcher.setup');
+        await settleFocus();
+
+        choose('The Lins');
+        await settleRoute();
+        await settleFocus();
+
+        expect(element().querySelector('app-household-setup')).toBeNull();
+        expect(element().querySelector('.member-view')).not.toBeNull();
+        expect(switcherValue()).toBe('The Lins');
+        expect(document.activeElement).toBe(overviewTitle());
+      });
+
+      it('gives way to the household the account creates or joins from it', async () => {
+        choose('household.switcher.setup');
+        await settleFocus();
+        const made: Household = { ...FLAT, id: 'h-new', name: 'New home', ownerId: 'owner-1' };
+
+        memberships.set([membership(HOUSEHOLD), membership(FLAT), membership(made)]);
+        selected.set(made.id);
+        household.set(null);
+        status.set('loading');
+        render();
+        arrive(made);
+        await settleRoute();
+
+        expect(element().querySelector('app-household-setup')).toBeNull();
+        expect(element().querySelector('.member-view')).not.toBeNull();
+        expect(switcherValue()).toBe('New home');
+      });
+    });
+  });
+
+  describe('its address', () => {
+    let navigate: jasmine.Spy;
+
+    beforeEach(() => {
+      navigate = spyOn(router, 'navigate').and.callThrough();
+    });
+
+    it('selects the household /household/{hid} names', async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+
+      await router.navigateByUrl('/household/h2');
+      await settleRoute();
+
+      expect(service.select).toHaveBeenCalledWith('h2');
+      expect(router.url).toBe('/household/h2');
+    });
+
+    it('falls back to the selection the account would have, in place, for a household it is not in', async () => {
+      await router.navigateByUrl('/household/unknown');
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      await settleRoute();
+
+      expect(service.select).not.toHaveBeenCalled();
+      expect(navigate).toHaveBeenCalledWith(['/household', 'h1'], jasmine.objectContaining({ replaceUrl: true }));
+      expect(router.url).toBe('/household/h1');
+    });
+
+    it('falls back the same way for a membership that has ended', async () => {
+      await router.navigateByUrl('/household/h2');
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT, { ended: true })]);
+      await settleRoute();
+
+      expect(service.select).not.toHaveBeenCalledWith('h2');
+      expect(router.url).toBe('/household/h1');
+    });
+
+    it('waits for the account’s index before judging a household', async () => {
+      await router.navigateByUrl('/household/h2');
+      await settleRoute();
+
+      expect(status()).toBe('loading');
+      expect(navigate).not.toHaveBeenCalled();
+      expect(router.url).toBe('/household/h2');
+
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      await settleRoute();
+
+      expect(service.select).toHaveBeenCalledWith('h2');
+      expect(router.url).toBe('/household/h2');
+    });
+
+    it('falls back to /household, in place, with no live membership at all', async () => {
+      await router.navigateByUrl('/household/unknown');
+      status.set('none');
+      await settleRoute();
+
+      expect(navigate).toHaveBeenCalledWith(['/household'], jasmine.objectContaining({ replaceUrl: true }));
+      expect(router.url).toBe('/household');
+      expect(element().querySelector('app-household-setup')).not.toBeNull();
+    });
+
+    it('leaves /household as it is, showing the selection', async () => {
+      await router.navigateByUrl('/household');
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      await settleRoute();
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(router.url).toBe('/household');
+    });
+
+    it('follows the selection, in place, when it moves to a household the account creates or joins', async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      await router.navigateByUrl('/household/h1');
+      await settleRoute();
+
+      const made: Household = { ...FLAT, id: 'h-new', name: 'New home', ownerId: 'owner-1' };
+      memberships.set([membership(HOUSEHOLD), membership(FLAT), membership(made)]);
+      selected.set(made.id);
+      await settleRoute();
+
+      expect(navigate).toHaveBeenCalledWith(['/household', 'h-new'], jasmine.objectContaining({ replaceUrl: true }));
+      expect(router.url).toBe('/household/h-new');
+    });
+
+    describe('through a retry', () => {
+      beforeEach(async () => {
+        showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+        await router.navigateByUrl('/household/h1');
+        await settleRoute();
+        status.set('unavailable');
+        render();
+        // As the service does: a retry closes every listener, the index's
+        // with them, so nothing is selected until the index answers again.
+        service.disconnect.and.callFake(() => {
+          memberships.set([]);
+          selected.set(null);
+          household.set(null);
+          status.set('idle');
+        });
+        navigate.calls.reset();
+
+        element().querySelector<HTMLButtonElement>('button.household-retry')?.click();
+        await settleRoute();
+      });
+
+      it('keeps the address while the index is heard again', async () => {
+        expect(status()).toBe('loading');
+        expect(navigate).not.toHaveBeenCalled();
+        expect(router.url).toBe('/household/h1');
+
+        memberships.set([membership(HOUSEHOLD), membership(FLAT)]);
+        selected.set(HOUSEHOLD.id);
+        arrive(HOUSEHOLD);
+        await settleRoute();
+
+        expect(navigate).not.toHaveBeenCalled();
+        expect(router.url).toBe('/household/h1');
+        expect(element().querySelector('.member-view')).not.toBeNull();
+      });
+
+      it('falls back to /household, in place, when the index heard again lists no membership', async () => {
+        status.set('none');
+        await settleRoute();
+
+        expect(navigate).toHaveBeenCalledWith(['/household'], jasmine.objectContaining({ replaceUrl: true }));
+        expect(router.url).toBe('/household');
+        expect(element().querySelector('app-household-setup')).not.toBeNull();
+      });
     });
   });
 
@@ -516,6 +945,114 @@ describe('HouseholdComponent', () => {
       expect(text()).not.toContain('household.lostAccess');
       expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
     });
+
+    describe('with another household to go to', () => {
+      beforeEach(() => showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]));
+
+      it('moves to it, still saying why, and tidies the one it lost', () => {
+        loseAccess();
+
+        expect(service.select).toHaveBeenCalledOnceWith('h2');
+        expect(text()).toContain('household.lostAccess');
+        expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+        expect(element().querySelector('app-household-setup')).withContext('not the setup').toBeNull();
+      });
+
+      it("moves focus to its first heading when focus went with the view that was lost", async () => {
+        element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();
+        loseAccess();
+        await settleFocus();
+
+        arrive(FLAT);
+        await settleFocus();
+
+        expect(document.activeElement).toBe(overviewTitle());
+      });
+
+      it("leaves the lost household's address for the next one's, in place", async () => {
+        await router.navigateByUrl('/household/h1');
+        await settleRoute();
+
+        loseAccess();
+        await settleRoute();
+
+        expect(router.url).toBe('/household/h2');
+      });
+
+      it("moves focus to its first heading from the lost household's address too", async () => {
+        await router.navigateByUrl('/household/h1');
+        await settleRoute();
+        element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();
+
+        loseAccess();
+        await settleRoute();
+        await settleFocus();
+        arrive(FLAT);
+        await settleRoute();
+        await settleFocus();
+
+        expect(router.url).toBe('/household/h2');
+        expect(document.activeElement).toBe(overviewTitle());
+      });
+
+      it('keeps a setup the viewer opened, moving on only under it', async () => {
+        choose('household.switcher.setup');
+        await settleFocus();
+
+        loseAccess();
+        arrive(FLAT);
+        await settleRoute();
+
+        expect(service.select).toHaveBeenCalledOnceWith('h2');
+        expect(element().querySelector('app-household-setup')).withContext('the setup stays').not.toBeNull();
+        expect(switcherValue()).toBe('household.switcher.setup');
+        expect(text()).toContain('household.lostAccess');
+      });
+
+      it("keeps it at the lost household's address too, and the focus in it, while the address moves on", async () => {
+        await router.navigateByUrl('/household/h1');
+        await settleRoute();
+        choose('household.switcher.setup');
+        await settleFocus();
+        const create = element().querySelector<HTMLButtonElement>('.stub-create') as HTMLButtonElement;
+        create.focus();
+
+        loseAccess();
+        arrive(FLAT);
+        await settleRoute();
+        await settleFocus();
+
+        expect(router.url).toBe('/household/h2');
+        expect(element().querySelector('app-household-setup')).withContext('the setup stays').not.toBeNull();
+        expect(switcherValue()).toBe('household.switcher.setup');
+        expect(document.activeElement).withContext('the same control, never taken off the page').toBe(create);
+      });
+
+      it('still closes the setup for an address the viewer goes to', async () => {
+        await router.navigateByUrl('/household/h1');
+        await settleRoute();
+        choose('household.switcher.setup');
+        await settleFocus();
+
+        await router.navigateByUrl('/household/h2');
+        await settleRoute();
+
+        expect(element().querySelector('app-household-setup')).toBeNull();
+        expect(selected()).toBe('h2');
+      });
+
+      it('lists only the households still to go to', () => {
+        loseAccess();
+        arrive(FLAT);
+        render();
+        openSwitcher();
+
+        expect(options().map(option => option.textContent?.trim())).toEqual([
+          jasmine.stringContaining('Flat 4B'),
+          'household.switcher.setup'
+        ]);
+      });
+    });
   });
 
   /**
@@ -535,6 +1072,60 @@ describe('HouseholdComponent', () => {
 
     it('is not looked for while the household is still loading', () => {
       expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
+    });
+
+    it('is tidied once for a household the page moves to that reads as no membership, never seen live', () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      service.select(FLAT.id);
+      render();
+      status.set('none');
+      render();
+      render();
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+      expect(text()).not.toContain('household.lostAccess');
+
+      status.set('loading');
+      render();
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).withContext('once for that household').toHaveBeenCalledTimes(1);
+    });
+
+    it('is not looked for when the household shown is left', () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      household.set(null);
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
+    });
+
+    it('is not looked for when the last household shown is left', () => {
+      showMember(HOUSEHOLD);
+      memberships.set([]);
+      selected.set(null);
+      household.set(null);
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
+    });
+
+    it('is not looked for again when the household moved to from a loss reads as no membership', () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      household.set(null);
+      status.set('none');
+      lostHouseholds.set(new Set([HOUSEHOLD.id]));
+      render();
+      expect(service.tidyEndedMemberships).withContext('the loss').toHaveBeenCalledTimes(1);
+      expect(selected()).toBe(FLAT.id);
+
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).withContext('that tidy judged every entry').toHaveBeenCalledTimes(1);
     });
 
     it('is looked for once the connection returns, not while offline', () => {
@@ -597,6 +1188,94 @@ describe('HouseholdComponent', () => {
       render();
 
       expect(note()?.textContent).toContain('household.offline');
+    });
+  });
+
+  describe('at a phone width', () => {
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      host = fixture.nativeElement as HTMLElement;
+      // 375px less the app shell's 16px gutters; the page's own 16px padding
+      // leaves 311px for the header.
+      host.style.display = 'block';
+      host.style.width = '343px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels. Material's fields take their face from the
+      // --mat-sys tokens rather than from the host.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      document.body.appendChild(host);
+    });
+
+    afterEach(() => host.remove());
+
+    it('keeps the switcher, and a household name of the longest length, inside the page', async () => {
+      // One unbroken word: nothing to wrap on but the edge of the box.
+      const longName = 'N'.repeat(HOUSEHOLD_NAME_MAX_LENGTH);
+      const long: Household = { ...HOUSEHOLD, name: longName };
+      showMember(long, [membership(long), membership(FLAT)]);
+      await settleRoute();
+
+      const page = element().querySelector('.page-container') as HTMLElement;
+      const style = getComputedStyle(page);
+      const left = page.getBoundingClientRect().left + parseFloat(style.paddingInlineStart);
+      const right = page.getBoundingClientRect().right - parseFloat(style.paddingInlineEnd);
+      expect(right - left).withContext('the header is 311px wide').toBeCloseTo(311, 0);
+
+      const field = element().querySelector('mat-form-field.household-switcher') as HTMLElement;
+      const valueBox = switcher()?.querySelector('.mat-mdc-select-value') as HTMLElement;
+      const value = switcher()?.querySelector('.mat-mdc-select-value-text') as HTMLElement;
+      expect(value.textContent).withContext('the whole name is shown').toContain(longName);
+      const parts = [field, switcher() as HTMLElement, valueBox, value, element().querySelector('h1') as HTMLElement];
+      for (const part of parts) {
+        const label = `${part.tagName.toLowerCase()}.${part.className}`;
+        const rect = part.getBoundingClientRect();
+        expect(rect.left).withContext(`${label} starts inside`).toBeGreaterThanOrEqual(left - 0.5);
+        expect(rect.right).withContext(`${label} ends inside`).toBeLessThanOrEqual(right + 0.5);
+      }
+      // Material's own trigger CSS keeps its ellipsis declaration, which draws
+      // nothing once the name wraps: what shows a name is cut is text wider
+      // than its box. The select itself is not measured: its arrow glyph
+      // overhangs the arrow's own 10px box by design.
+      for (const part of [valueBox, value]) {
+        expect(getComputedStyle(part).whiteSpace).withContext(`${part.className} wraps`).not.toBe('nowrap');
+        expect(part.scrollWidth).withContext(`nothing overflows ${part.className}`).toBeLessThanOrEqual(part.clientWidth + 1);
+      }
+      expect(value.getBoundingClientRect().height)
+        .withContext('the name wraps onto more than one line')
+        .toBeGreaterThan(parseFloat(getComputedStyle(value).lineHeight) * 1.5);
+      expect(switcher()?.getBoundingClientRect().height)
+        .withContext('a 40px target at least')
+        .toBeGreaterThanOrEqual(40);
+      // Material lays a floated label out at up to 133% of its field and draws
+      // it at 75%; what must stay inside is the label as drawn.
+      const floating = field.querySelector<HTMLElement>('.mdc-floating-label') as HTMLElement;
+      expect(floating.classList).toContain('mdc-floating-label--float-above');
+      expect(floating.getBoundingClientRect().right).toBeLessThanOrEqual(field.getBoundingClientRect().right + 0.5);
+    });
+
+    it('keeps every choice in the open list inside the phone, the long name whole', () => {
+      const longName = 'N'.repeat(HOUSEHOLD_NAME_MAX_LENGTH);
+      const long: Household = { ...HOUSEHOLD, name: longName };
+      showMember(long, [membership(long), membership(FLAT)]);
+      openSwitcher();
+      // The phone's own edges, 16px out from the page on either side.
+      const screenLeft = host.getBoundingClientRect().left - 16;
+      const screenRight = screenLeft + 375;
+
+      expect(options()[0].textContent).toContain(longName);
+      for (const option of options()) {
+        const rect = option.getBoundingClientRect();
+        expect(rect.left).withContext(option.textContent ?? '').toBeGreaterThanOrEqual(screenLeft - 0.5);
+        expect(rect.right).withContext(option.textContent ?? '').toBeLessThanOrEqual(screenRight + 0.5);
+        expect(rect.height).withContext('a 40px target at least').toBeGreaterThanOrEqual(40);
+        expect(option.scrollWidth).withContext('nothing overflows the choice').toBeLessThanOrEqual(option.clientWidth + 1);
+      }
     });
   });
 });

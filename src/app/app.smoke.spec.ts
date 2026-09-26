@@ -210,8 +210,11 @@ describe('App routes (emulator smoke test)', () => {
    * web transport, and the hand-written iOS one), and this is what keeps all
    * three describing the same screen.
    */
-  function expectScreenName(url: string, screenClass?: string): void {
-    const expected = url.replace(/^\//, '').split('?')[0];
+  function expectScreenName(
+    url: string,
+    screenClass?: string,
+    expected = url.replace(/^\//, '').split('?')[0]
+  ): void {
     const screen = currentScreenView(TestBed.inject(Router));
 
     expect(screen?.screenName).withContext(`screen_name for ${url}`).toBe(expected);
@@ -522,6 +525,11 @@ describe('App routes (emulator smoke test)', () => {
       expectScreenName('/household', 'app-household');
       expectCurrentRouteMarked('/household');
       await expectNoAxeViolations('/household');
+      // The household's own address reaches the same page through a child
+      // with no component of its own: named by its template, never the id,
+      // and classed as the page.
+      await harness.navigateByUrl(`/household/${householdId}`);
+      expectScreenName(`/household/${householdId}`, 'app-household', 'household/:hid');
       // The about page has no seeded data of its own, so the landmark is the
       // whole assertion: what it proves is that the route resolves its
       // component at all, which is the part that changed when the layout's

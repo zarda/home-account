@@ -1,6 +1,11 @@
 import { EnvironmentInjector, createEnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NativeAnalyticsTransport, WebAnalyticsTransport } from './analytics-transport';
+import { Analytics } from '@angular/fire/analytics';
+import {
+  NativeAnalyticsTransport,
+  WebAnalyticsSdk,
+  WebAnalyticsTransport,
+} from './analytics-transport';
 
 /**
  * isConfigured() stands in for a real GA4 measurement id, and checkSupported()
@@ -15,9 +20,10 @@ class TestWebAnalyticsTransport extends WebAnalyticsTransport {
 
   constructor(
     injector: EnvironmentInjector,
-    private readonly deferredSupported: Promise<boolean>
+    private readonly deferredSupported: Promise<boolean>,
+    sdk?: Partial<WebAnalyticsSdk>
   ) {
-    super(injector);
+    super(injector, sdk);
   }
 
   protected override isConfigured(): boolean {
@@ -165,6 +171,126 @@ describe('WebAnalyticsTransport', () => {
     // The resolved memo holds: only the very first resolve() call — here,
     // setEnabled's — ever reaches checkSupported().
     expect(transport.checkSupportedCalls).toBe(1);
+  });
+});
+
+describe('WebAnalyticsTransport page fields on the hits gtag logs by itself', () => {
+  // session_start and user_engagement are logged by gtag, not by this app, so
+  // the per-event merge in logEvent never sees them; left alone they carry
+  // document.location, household id included. Only gtag's `set` command
+  // reaches them.
+  const hid = 'abc123';
+  const templated = () => ({
+    page_location: `${window.location.origin}/household/:hid`,
+    page_title: 'HomeAccount',
+  });
+
+  let originalUrl: string;
+  let sdk: {
+    logEvent: jasmine.Spy;
+    setAnalyticsCollectionEnabled: jasmine.Spy;
+    setDefaultEventParameters: jasmine.Spy;
+  };
+  // setDefaultEventParameters' call count each time the Analytics token is
+  // read: reading it is what runs provideAnalytics' factory, and only a
+  // default set before that read is held and replayed behind gtag's config.
+  let defaultsSetWhenTokenRead: number[];
+
+  function at(path: string): void {
+    history.replaceState(history.state, '', path);
+  }
+
+  // The instance is a bare object only the stubbed SDK functions ever
+  // receive, so the real SDK is never handed something it cannot use.
+  function transportWithInstance(): TestWebAnalyticsTransport {
+    const analytics = {} as Analytics;
+    const injector = createEnvironmentInjector(
+      [
+        {
+          provide: Analytics,
+          useFactory: () => {
+            defaultsSetWhenTokenRead.push(sdk.setDefaultEventParameters.calls.count());
+            return analytics;
+          },
+        },
+      ],
+      TestBed.inject(EnvironmentInjector)
+    );
+    return new TestWebAnalyticsTransport(injector, Promise.resolve(true), sdk);
+  }
+
+  beforeEach(() => {
+    originalUrl = window.location.pathname + window.location.search + window.location.hash;
+    defaultsSetWhenTokenRead = [];
+    sdk = {
+      logEvent: jasmine.createSpy('logEvent'),
+      setAnalyticsCollectionEnabled: jasmine.createSpy('setAnalyticsCollectionEnabled'),
+      setDefaultEventParameters: jasmine.createSpy('setDefaultEventParameters'),
+    };
+  });
+
+  afterEach(() => {
+    at(originalUrl);
+  });
+
+  it('sets the templated page fields before a screen_view on a household page is logged', async () => {
+    const transport = transportWithInstance();
+    await transport.setEnabled(true);
+    at(`/household/${hid}`);
+    sdk.setDefaultEventParameters.calls.reset();
+
+    await transport.logScreenView({
+      screenName: 'household/:hid',
+      screenClass: 'HouseholdComponent',
+    });
+
+    expect(sdk.setDefaultEventParameters).toHaveBeenCalledOnceWith(templated());
+    expect(sdk.setDefaultEventParameters).toHaveBeenCalledBefore(sdk.logEvent);
+    expect(sdk.logEvent).toHaveBeenCalledOnceWith(
+      jasmine.anything(),
+      'screen_view',
+      jasmine.objectContaining(templated())
+    );
+    const everySent = JSON.stringify([
+      sdk.setDefaultEventParameters.calls.allArgs(),
+      sdk.logEvent.calls.allArgs(),
+    ]);
+    expect(everySent).not.toContain(hid);
+  });
+
+  it('sets the templated page fields before the Analytics token is first read, so init carries them', async () => {
+    at(`/household/${hid}`);
+    const transport = transportWithInstance();
+
+    await transport.setEnabled(true);
+
+    expect(defaultsSetWhenTokenRead).toEqual([1]);
+    expect(sdk.setDefaultEventParameters).toHaveBeenCalledOnceWith(templated());
+  });
+
+  it('never sets defaults on a transport that was never switched on', async () => {
+    at(`/household/${hid}`);
+    const transport = transportWithInstance();
+
+    await transport.setEnabled(false);
+    await transport.logScreenView({ screenName: 'household/:hid', screenClass: 'HouseholdComponent' });
+    await transport.logEvent('e', {});
+
+    expect(sdk.setDefaultEventParameters).not.toHaveBeenCalled();
+    expect(defaultsSetWhenTokenRead).toEqual([]);
+  });
+
+  it('stops setting defaults once switched back off', async () => {
+    const transport = transportWithInstance();
+    await transport.setEnabled(true);
+    await transport.setEnabled(false);
+    sdk.setDefaultEventParameters.calls.reset();
+    at(`/household/${hid}`);
+
+    await transport.logScreenView({ screenName: 'household/:hid', screenClass: 'HouseholdComponent' });
+
+    expect(sdk.setDefaultEventParameters).not.toHaveBeenCalled();
+    expect(sdk.logEvent).not.toHaveBeenCalled();
   });
 });
 

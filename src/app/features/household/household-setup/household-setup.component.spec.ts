@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -19,7 +19,7 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { createTranslationStub } from '../../../core/services/testing';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
-import { HouseholdInvite } from '../../../models';
+import { HouseholdInvite, HouseholdMembership, MAX_HOUSEHOLDS_PER_ACCOUNT } from '../../../models';
 import { HouseholdPageFocus } from '../household-focus';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -49,6 +49,7 @@ function invite(overrides: Partial<HouseholdInvite> = {}): HouseholdInvite {
 describe('HouseholdSetupComponent', () => {
   let fixture: ComponentFixture<HouseholdSetupComponent>;
   let receivedInvites: ReturnType<typeof signal<HouseholdInvite[]>>;
+  let memberships: ReturnType<typeof signal<HouseholdMembership[]>>;
   let household: jasmine.SpyObj<Pick<HouseholdService, 'create' | 'accept' | 'decline'>>;
   let notification: jasmine.SpyObj<Pick<NotificationService, 'success' | 'error'>>;
   let analytics: jasmine.SpyObj<Pick<AnalyticsService, 'trackHouseholdAction'>>;
@@ -97,6 +98,7 @@ describe('HouseholdSetupComponent', () => {
 
   beforeEach(async () => {
     receivedInvites = signal<HouseholdInvite[]>([]);
+    memberships = signal<HouseholdMembership[]>([]);
     household = jasmine.createSpyObj('HouseholdService', ['create', 'accept', 'decline']);
     household.create.and.resolveTo('h-new');
     household.accept.and.resolveTo('The Lins');
@@ -111,7 +113,16 @@ describe('HouseholdSetupComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HouseholdSetupComponent, NoopAnimationsModule],
       providers: [
-        { provide: HouseholdService, useValue: { ...household, receivedInvites } },
+        {
+          provide: HouseholdService,
+          useValue: {
+            ...household,
+            receivedInvites,
+            memberships,
+            // As the service derives it.
+            liveMemberships: computed(() => memberships().filter(membership => !membership.ended))
+          }
+        },
         { provide: NotificationService, useValue: notification },
         { provide: AnalyticsService, useValue: analytics },
         { provide: MatDialog, useValue: dialog },
@@ -248,6 +259,63 @@ describe('HouseholdSetupComponent', () => {
       await settle();
 
       expect(held(createButton())).toBe(false);
+    });
+  });
+
+  describe('at the most households one account can hold', () => {
+    const note = (): HTMLElement | null => element().querySelector<HTMLElement>('.setup-limit');
+    const tooMany = `household.errors.tooMany:${JSON.stringify({ max: MAX_HOUSEHOLDS_PER_ACCOUNT })}`;
+
+    function holding(live: number, ended = 0): void {
+      const entry = (n: number, isEnded: boolean): HouseholdMembership => ({
+        householdId: `h${n}`,
+        name: `Home ${n}`,
+        role: 'member',
+        since: Timestamp.fromMillis(1_700_000_000_000 + n),
+        joinedAt: Timestamp.fromMillis(1_700_000_000_000 + n),
+        ended: isEnded
+      });
+      memberships.set([
+        ...Array.from({ length: live }, (_, n) => entry(n, false)),
+        ...Array.from({ length: ended }, (_, n) => entry(live + n, true))
+      ]);
+      render();
+    }
+
+    it('says so before anything is tried, in the words a refusal would use', () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT);
+
+      expect(note()?.textContent?.trim()).toBe(tooMany);
+    });
+
+    it('says nothing one below it, nor for memberships that have ended', () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT - 1, 3);
+
+      expect(note()).toBeNull();
+    });
+
+    it('still leaves the create to the service, which counts on the server, and shows its refusal', async () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT);
+      household.create.and.rejectWith(new HouseholdError(tooMany));
+      typeName('One more');
+      await submit();
+
+      expect(household.create).toHaveBeenCalledOnceWith('One more');
+      expect(notification.error).toHaveBeenCalledOnceWith(tooMany);
+      expect(afterSwapTo).not.toHaveBeenCalled();
+    });
+
+    it('still leaves a join to the service, and shows its refusal', async () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT);
+      receivedInvites.set([invite()]);
+      household.accept.and.rejectWith(new HouseholdError(tooMany));
+      render();
+      inviteRows()[0].querySelector<HTMLButtonElement>('button.invite-accept')!.click();
+      render();
+      await settle();
+
+      expect(household.accept).toHaveBeenCalledOnceWith('h1');
+      expect(notification.error).toHaveBeenCalledOnceWith(tooMany);
     });
   });
 

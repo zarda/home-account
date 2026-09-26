@@ -291,7 +291,8 @@ export class HouseholdService {
 
   /** Every membership the account's index lists, earliest joined first. */
   readonly memberships = computed<HouseholdMembership[]>(() => this.index() ?? []);
-  private readonly liveMemberships = computed(() => this.memberships().filter(m => !m.ended));
+  /** The memberships not marked ended, in the same order. */
+  readonly liveMemberships = computed(() => this.memberships().filter(m => !m.ended));
 
   /**
    * The household the per-household view follows: the one asked for on this

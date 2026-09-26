@@ -5,18 +5,26 @@ import { currentScreenView } from './analytics-screen-view';
 @Component({ selector: 'app-dashboard-stub', template: '' })
 class DashboardStubComponent {}
 
+@Component({ selector: 'app-household-stub', template: '' })
+class HouseholdStubComponent {}
+
 /**
  * Builds the snapshot chain the router exposes: a root with no path, the
  * layout route with an empty path, then the page. Mirrors the real shape of
  * app.routes.ts, where every page is a child of the '' MainLayoutComponent
- * route.
+ * route. `ancestors` gives a link of the chain, by its index, a component
+ * of its own.
  */
 function routerWith(
   paths: (string | undefined)[],
   component: unknown = DashboardStubComponent,
-  navigated = true
+  navigated = true,
+  ancestors: Record<number, unknown> = {}
 ): Router {
-  const chain = paths.map(path => ({ routeConfig: path === undefined ? null : { path } }));
+  const chain = paths.map((path, index) => ({
+    routeConfig: path === undefined ? null : { path },
+    component: ancestors[index] ?? null,
+  }));
   const deepest = {
     ...chain[chain.length - 1],
     component,
@@ -63,6 +71,17 @@ describe('currentScreenView', () => {
     // app is always MainLayoutComponent — one value for eight screens. Reading
     // the deepest route instead is the one deliberate divergence.
     expect(screen?.screenClass).toBe('app-dashboard-stub');
+  });
+
+  it("should report the nearest component's selector for a route that renders nothing of its own", () => {
+    // /household/{hid}: the :hid child names the household shown and renders
+    // nothing; the page on screen is its parent's.
+    const screen = currentScreenView(
+      routerWith([undefined, '', 'household', ':hid'], null, true, { 2: HouseholdStubComponent })
+    );
+
+    expect(screen?.screenName).toBe('household/:hid');
+    expect(screen?.screenClass).toBe('app-household-stub');
   });
 
   it('should fall back to a placeholder when the route has no component', () => {

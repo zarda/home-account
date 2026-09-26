@@ -1,3 +1,6 @@
+import { Route } from '@angular/router';
+
+import { routes } from '../../app.routes';
 import {
   ANALYTICS_CONSENT_DEFAULTS,
   ANALYTICS_GTAG_CONFIG,
@@ -76,6 +79,44 @@ describe('pageFields', () => {
     } as Location;
 
     expect(pageFields(location).page_location).toBe('https://example.com/transactions');
+  });
+
+  it("should write a household's id in the path as its route template", () => {
+    // /household/{hid} names the household shown. An id is never sent, and
+    // every household is one screen, as screen_name reports it.
+    for (const pathname of ['/household/Xk3f9QmZ2pL7vB1nR8tY', '/household/Xk3f9QmZ2pL7vB1nR8tY/']) {
+      const location = { origin: 'https://example.com', pathname } as Location;
+
+      expect(pageFields(location).page_location).withContext(pathname).toBe('https://example.com/household/:hid');
+    }
+    const bare = { origin: 'https://example.com', pathname: '/household' } as Location;
+    expect(pageFields(bare).page_location).toBe('https://example.com/household');
+  });
+
+  it('should write every route parameter the route table declares as its template', () => {
+    // pageFields sees only window.location, not the router, so it cannot
+    // read a template off the activated route. This walks the real table
+    // instead: a renamed or a second parameterised route fails here rather
+    // than quietly sending its ids.
+    const paths = (table: Route[], prefix = ''): string[] =>
+      table.flatMap(route => {
+        const path = [prefix, route.path ?? ''].filter(Boolean).join('/');
+        return [path, ...paths(route.children ?? [], path)];
+      });
+    const templates = paths(routes).filter(path => path.split('/').some(segment => segment.startsWith(':')));
+    const id = 'Xk3f9QmZ2pL7vB1nR8tY';
+
+    expect(templates.length).withContext('a parameterised route to check').toBeGreaterThan(0);
+    for (const template of templates) {
+      const pathname = `/${template
+        .split('/')
+        .map(segment => (segment.startsWith(':') ? id : segment))
+        .join('/')}`;
+      const sent = pageFields({ origin: 'https://example.com', pathname } as Location).page_location;
+
+      expect(sent).withContext(template).not.toContain(id);
+      expect(sent).withContext(template).toBe(`https://example.com/${template}`);
+    }
   });
 
   it('should report a constant page title', () => {

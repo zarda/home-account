@@ -1732,6 +1732,10 @@
     "unavailable": "Your household couldn't be loaded.",
     "offline": "You're offline. What's shown may be out of date, and household changes need a connection.",
     "lostAccess": "You're no longer in that household. The owner removed you or dissolved it.",
+    "switcher": {
+      "label": "Viewing household",
+      "setup": "Start or join another household"
+    },
     "unnamedMember": "A member",
     "unnamedMemberInline": "a member",
     "setup": {
