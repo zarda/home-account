@@ -22,6 +22,8 @@
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
+  // A word longer than the line breaks rather than pushing the card wider.
+  overflow-wrap: anywhere;
 
   mat-icon {
     font-size: var(--text-xl);
@@ -81,6 +83,7 @@
   padding-inline-start: calc(1.875 * var(--text-base));
   font-size: var(--text-sm);
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 // The primary colour as a label on the card: the pair check-contrast.mjs
@@ -104,6 +107,7 @@
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .members-text {

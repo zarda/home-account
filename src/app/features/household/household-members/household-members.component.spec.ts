@@ -1039,6 +1039,9 @@ describe('HouseholdMembersComponent', () => {
       host = fixture.nativeElement as HTMLElement;
       // 375px less the app shell's 16px gutters and the page's 16px gutters.
       host.style.width = '311px';
+      // Wider than any runner's fallback face, so a word that only just fits
+      // on one platform cannot pass here and overflow on another.
+      host.style.letterSpacing = '0.1em';
       document.body.appendChild(host);
     });
 
