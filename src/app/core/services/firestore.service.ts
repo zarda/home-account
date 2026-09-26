@@ -19,6 +19,14 @@ import {
   endBefore,
   getCountFromServer,
   getDocsFromServer,
+  getAggregateFromServer,
+  count,
+  sum,
+  writeBatch,
+  waitForPendingWrites,
+  serverTimestamp,
+  AggregateField,
+  TransactionOptions,
   QueryConstraint,
   QueryDocumentSnapshot,
   DocumentData,
@@ -73,6 +81,75 @@ export interface PageResult<T> {
 
 type WhereFilterOp = '<' | '<=' | '==' | '!=' | '>=' | '>' | 'array-contains' | 'array-contains-any' | 'in' | 'not-in';
 
+/**
+ * How a commitBatch set or update stamps `updatedAt`. A stamp overwrites
+ * any `updatedAt` the op's data carries, a `serverTimestamp()` included.
+ * - 'client', the default: `Timestamp.now()`, the device clock, as
+ *   setDocument and updateDocument stamp it.
+ * - 'server': `serverTimestamp()`, the commit's own time, for a document
+ *   whose rules pin `updatedAt` to request.time.
+ * - false: no stamp, and the data is sent exactly as given, for a document
+ *   whose rules allow no `updatedAt`.
+ */
+export type BatchStamp = 'client' | 'server' | false;
+
+/**
+ * One write in a commitBatch commit. Any sentinel an op carries
+ * (serverTimestamp, arrayUnion, arrayRemove, deleteField) must be built
+ * from '@angular/fire/firestore', never from the root 'firebase/firestore':
+ * the root import loads a second copy of the SDK, whose sentinels the
+ * client this app runs does not recognise.
+ */
+export type BatchOp =
+  | { op: 'set'; path: string; data: DocumentData; merge?: boolean; stamp?: BatchStamp }
+  | { op: 'update'; path: string; data: DocumentData; stamp?: BatchStamp }
+  | { op: 'delete'; path: string };
+
+/** What an aggregateFromServer call asks for; at least one part. */
+export interface AggregateFields {
+  /** Count the matching documents. */
+  count?: boolean;
+  /** Sum this field over the matching documents. */
+  sum?: string;
+}
+
+/** An aggregateFromServer answer: exactly the parts that were asked for. */
+export interface AggregateTotals {
+  count?: number;
+  sum?: number;
+}
+
+// A type alias rather than an interface: only an alias is assignable to the
+// SDK's index-signature AggregateSpec.
+export type AggregateRequest = Partial<Record<'count' | 'sum', AggregateField<number>>>;
+
+/**
+ * Refuses a request for neither a count nor a sum. It builds no SDK object,
+ * so the mock applies the same check.
+ */
+export function assertAggregateAsks(fields: AggregateFields): void {
+  if (!fields.count && !fields.sum) {
+    throw new Error('aggregateFromServer needs a count or sum to ask for');
+  }
+}
+
+/** The aggregation a request asks the server for, one field per part. */
+export function aggregateSpecOf(fields: AggregateFields): AggregateRequest {
+  assertAggregateAsks(fields);
+  const spec: AggregateRequest = {};
+  if (fields.count) spec.count = count();
+  if (fields.sum) spec.sum = sum(fields.sum);
+  return spec;
+}
+
+/** The server's answer, cut to the parts the request asked for. */
+export function aggregateTotalsOf(fields: AggregateFields, data: AggregateTotals): AggregateTotals {
+  return {
+    ...(fields.count ? { count: data.count } : {}),
+    ...(fields.sum ? { sum: data.sum } : {})
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class FirestoreService {
   private firestore = inject(Firestore);
@@ -97,6 +174,38 @@ export class FirestoreService {
       return { id: docSnap.id, ...docSnap.data() } as T;
     }
     return null;
+  }
+
+  // Like getDocument, but answered by the server as the rules stand now, or
+  // not at all: it rejects when the rules refuse the read or the server
+  // cannot be reached. Neither getDoc nor getDocFromServer can promise that.
+  // Both join a listener already attached to the document and answer with
+  // what it last heard, which can be a local write the server will refuse
+  // or a state the server has since moved past; getDocFromServer only
+  // refuses an answer the listener marks as from the cache. A transaction's
+  // read always goes to the server, and this one is abandoned before it
+  // commits, so it writes nothing.
+  //
+  // It makes one attempt: the transaction runner would otherwise retry an
+  // unreachable server with backoff, and a read gains nothing from that. A
+  // request the browser fails at once rejects 'unavailable' at once. No
+  // client timeout bounds the attempt, though (the SDK's request timeout is
+  // dropped by the transport it ships with), so on a network that silently
+  // drops traffic it waits as long as the browser does. A caller that needs
+  // a bounded wait has to add its own deadline.
+  async getDocumentFromServer<T>(path: string): Promise<T | null> {
+    const readOnly = new Error('read only');
+    let found: T | null = null;
+    try {
+      await this.runTransaction(async tx => {
+        const snap = await tx.get(doc(this.firestore, path));
+        found = snap.exists() ? ({ id: snap.id, ...snap.data() } as T) : null;
+        throw readOnly;
+      }, { maxAttempts: 1 });
+    } catch (error) {
+      if (error !== readOnly) throw error;
+    }
+    return found;
   }
 
   // Get all documents from a collection with optional query options
@@ -171,6 +280,22 @@ export class FirestoreService {
     const q = query(collectionRef, ...constraints);
     const snapshot = await getCountFromServer(q);
     return snapshot.data().count;
+  }
+
+  // A count and a sum over a query in one server-side aggregation, billed as
+  // countDocuments is. It is answered by the server or rejects: no cache or
+  // listener ever answers it. The server sums numbers only and skips any
+  // other value the field holds.
+  async aggregateFromServer(
+    collectionPath: string,
+    options: QueryOptions | undefined,
+    fields: AggregateFields
+  ): Promise<AggregateTotals> {
+    const spec = aggregateSpecOf(fields);
+    const collectionRef = collection(this.firestore, collectionPath);
+    const q = query(collectionRef, ...this.buildQueryConstraints(options));
+    const snapshot = await getAggregateFromServer(q, spec);
+    return aggregateTotalsOf(fields, snapshot.data());
   }
 
   // Real-time subscription to a collection
@@ -310,13 +435,55 @@ export class FirestoreService {
     await deleteDoc(docRef);
   }
 
+  // Commits the ops as one batch: every write lands or none does, and a
+  // single refused write refuses the whole commit. The writes are issued in
+  // the order given before this returns, so a write issued after the call
+  // cannot overtake them in the local cache or the persistent mutation
+  // queue. The promise settles only when the server accepts or refuses the
+  // commit; offline it stays pending until the connection returns. The
+  // server refuses a commit of more than 500 writes. An op the SDK refuses
+  // before sending, such as one carrying an undefined value or naming no
+  // document, rejects the promise and is never thrown; nothing in the batch
+  // is sent.
+  //
+  // Nothing may be awaited before batch.commit(): the ordering above holds
+  // only while every write is issued before this first returns.
+  async commitBatch(ops: readonly BatchOp[]): Promise<void> {
+    const batch = writeBatch(this.firestore);
+    for (const op of ops) {
+      const ref = doc(this.firestore, op.path);
+      if (op.op === 'delete') {
+        batch.delete(ref);
+      } else if (op.op === 'update') {
+        batch.update(ref, this.stamped(op));
+      } else {
+        batch.set(ref, this.stamped(op), { merge: op.merge ?? false });
+      }
+    }
+    return batch.commit();
+  }
+
+  private stamped(op: Exclude<BatchOp, { op: 'delete' }>): DocumentData {
+    const stamp = op.stamp ?? 'client';
+    if (stamp === false) return op.data;
+    return { ...op.data, updatedAt: stamp === 'server' ? serverTimestamp() : Timestamp.now() };
+  }
+
   // Run an atomic read-then-write transaction. All reads see fresh server
   // data and the writes only commit if none of the read documents changed
   // underneath; note this requires the network and rejects while offline.
   async runTransaction<T>(
-    updateFn: (transaction: FirestoreTransaction) => Promise<T>
+    updateFn: (transaction: FirestoreTransaction) => Promise<T>,
+    options?: TransactionOptions
   ): Promise<T> {
-    return runTransaction(this.firestore, updateFn);
+    return runTransaction(this.firestore, updateFn, options);
+  }
+
+  // Resolves once the server has answered, accepting or refusing, every
+  // write this client issued before the call; writes issued later are not
+  // waited for. Offline it stays pending until the connection returns.
+  async waitForPendingWrites(): Promise<void> {
+    return waitForPendingWrites(this.firestore);
   }
 
   // Helper to build query constraints from options
