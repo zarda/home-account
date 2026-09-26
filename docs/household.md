@@ -6,15 +6,17 @@ the sidebar and from a link card in Settings. It is read-only: every member
 keeps their own records, writes only their own, and reads the others'.
 Dashboard, Transactions, Budgets and Reports stay personal and unchanged.
 
-The decisions behind it are in four records:
+The decisions behind it are in five records:
 [ADR 0152](ADR/0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md)
 (the membership and the rules),
 [ADR 0153](ADR/0153-an-invite-is-an-owners-callable-lookup-by-email-capped-and-its-answers-are-plain.md)
 (the invite callable and its mail),
 [ADR 0154](ADR/0154-the-household-view-is-a-read-only-aggregate-on-its-own-page-and-the-road-to-shared-writes-is-written-down.md)
-(the page, and the road to shared writes) and
+(the page, and the road to shared writes),
 [ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)
-(how the two-account journeys are driven). The issue is #71.
+(how the two-account journeys are driven) and
+[ADR 0156](ADR/0156-a-dissolve-that-finds-its-household-already-gone-finishes-instead-of-failing.md)
+(a dissolve that meets a household already gone). The issue is #71.
 
 ## What members can and cannot see
 
@@ -119,7 +121,11 @@ cannot.
 the word `DELETE`, typed as it is in every language. The owner's pending
 invites are withdrawn first, then the other members' memberships, then the
 household with the owner's own. Everyone keeps their records. The owner
-cannot leave; dissolving is how an owner goes.
+cannot leave; dissolving is how an owner goes. A dissolve that finds the
+household already gone — its own last step sent again after the answer was
+lost, or another tab's dissolve — clears what is left of the owner's
+membership and reports done, not an error
+([ADR 0156](ADR/0156-a-dissolve-that-finds-its-household-already-gone-finishes-instead-of-failing.md)).
 
 **Offline.** The page says what is shown may be out of date. Every action is
 refused with *You're offline. Household changes need a connection.* before it
