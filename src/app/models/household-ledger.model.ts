@@ -14,6 +14,20 @@ export interface LedgerCategorySnapshot {
 }
 
 /**
+ * The longest each string of a category snapshot may be, in UTF-16 code
+ * units, never fewer than the characters the rules count. The rules'
+ * copyShapeValid holds a copy's snapshot to the same bounds, and the ledger
+ * contract check fails when the two differ. Nothing bounds a category's own
+ * strings (a restored backup writes them as the file holds them), so
+ * projectRow cuts a longer one to fit rather than leave its row unshareable.
+ */
+export const LEDGER_SNAPSHOT_MAX_LENGTH = {
+  name: 100,
+  icon: 64,
+  color: 32,
+} as const satisfies Record<keyof LedgerCategorySnapshot, number>;
+
+/**
  * households/{householdId}/ledger/{ledgerCopyId(memberUid, sourceId)}: what
  * a household sees of one row a member shares into it, and nothing more. The
  * revealed fields equal the source row's as its author's commit leaves it,
@@ -180,6 +194,9 @@ const SHARE_KEY_PREFIX = 'households/';
  * kind of share target can be added beside households without a migration.
  * A row holds at most MAX_HOUSEHOLDS_PER_ACCOUNT keys (household.model.ts),
  * one for each household its account can belong to.
+ *
+ * The rules' copyFaithful (firestore.rules) spells the same key to admit a
+ * copy only of a row that names its household, and the two change together.
  */
 export function shareKey(householdId: string): string {
   return SHARE_KEY_PREFIX + householdId;

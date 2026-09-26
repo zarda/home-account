@@ -4,6 +4,7 @@ import {
   LEDGER_COPY_FIELDS,
   LEDGER_PROJECTION_VERSION,
   LEDGER_REQUIRED_FIELDS,
+  LEDGER_SNAPSHOT_MAX_LENGTH,
   LedgerCopy,
   LedgerCopyProjection,
   Transaction,
@@ -309,6 +310,35 @@ describe('ledger-projection.utils', () => {
 
       expect(JSON.stringify(row)).toBe(rowBefore);
       expect(JSON.stringify(MERGED)).toBe(mergedBefore);
+    });
+
+    describe("the category snapshot's bounds", () => {
+      const MAX = LEDGER_SNAPSHOT_MAX_LENGTH;
+      const snapshotOf = (overrides: Partial<Category>) =>
+        projectRow(
+          fullRow({ categoryId: 'cust_long' }),
+          mergeCategories(defaultCategories(), [custom({ id: 'cust_long', ...overrides })]),
+          GEN
+        ).category;
+
+      it('cuts each string past its bound to the bound the rules hold it to', () => {
+        expect(snapshotOf({
+          name: 'n'.repeat(MAX.name + 50),
+          icon: 'i'.repeat(MAX.icon + 1),
+          color: 'c'.repeat(MAX.color + 1),
+        })).toEqual({ name: 'n'.repeat(MAX.name), icon: 'i'.repeat(MAX.icon), color: 'c'.repeat(MAX.color) });
+      });
+
+      it('keeps a string at its bound whole', () => {
+        const atBounds = { name: 'n'.repeat(MAX.name), icon: 'i'.repeat(MAX.icon), color: 'c'.repeat(MAX.color) };
+        expect(snapshotOf(atBounds)).toEqual(atBounds);
+      });
+
+      it('never cuts through a character written as a surrogate pair', () => {
+        const pair = '\u{1F600}';
+        const cut = snapshotOf({ name: 'a' + pair.repeat(MAX.name) }).name;
+        expect(cut).toBe('a' + pair.repeat(Math.floor((MAX.name - 1) / pair.length)));
+      });
     });
   });
 

@@ -16,6 +16,7 @@ import {
   Timestamp
 } from '@angular/fire/firestore';
 import * as lite from '@angular/fire/firestore/lite';
+import { LEDGER_SNAPSHOT_MAX_LENGTH, LedgerCopy, MAX_HOUSEHOLDS_PER_ACCOUNT, shareKey } from '../../models';
 import {
   setDocumentAsOwner,
   patchFieldsAsOwner,
@@ -3690,6 +3691,361 @@ describe('firestore.rules households (emulator smoke test)', () => {
         lite.updateDoc(memberRef(peer, householdId), { photoURL: 'https://example.test/p.png' }),
         'a photo update to another host'
       );
+    });
+  });
+
+  /**
+   * A household sees a row only as the copy its author writes under
+   * households/{hid}/ledger/{author}_{row}, and only while the row names the
+   * household. The writes are the ones the app sends: the row first, through
+   * the author's own rules, then the copy in a commit of its own. One case
+   * puts both in one commit, to show the copy is judged against the row as
+   * that commit leaves it.
+   */
+  describe('the ledger', () => {
+    let householdId: string;
+    /** The household's createdAt, as a member reads it: the generation a copy is stamped with. */
+    let gen: lite.Timestamp;
+
+    interface Row {
+      id: string;
+      data: Record<string, unknown>;
+    }
+
+    const sourceRef = (account: Account, rowId: string) =>
+      lite.doc(account.db, `users/${account.uid}/transactions/${rowId}`);
+    const ledgerRef = (account: Account, copyId: string) =>
+      lite.doc(account.db, `households/${householdId}/ledger/${copyId}`);
+    const ledgerOf = (account: Account) => lite.collection(account.db, `households/${householdId}/ledger`);
+    const copyIdOf = (account: Account, row: Row) => `${account.uid}_${row.id}`;
+
+    /** A row of the author's own, naming the households it is shared into. */
+    async function writeRow(account: Account, sharedInto: string[], overrides: Record<string, unknown> = {}): Promise<Row> {
+      const id = lite.doc(lite.collection(account.db, `users/${account.uid}/transactions`)).id;
+      const data = transactionFixture(account.uid, () => lite.Timestamp.now(), {
+        sharedWith: sharedInto.map(shareKey),
+        ...overrides
+      });
+      await lite.setDoc(sourceRef(account, id), data);
+      return { id, data };
+    }
+
+    /**
+     * The copy of `row` its author writes: the revealed fields as the row
+     * holds them, the category snapshot and bucket, and the server's stamp.
+     * Typed against the copy's fields, so a field the model gains or drops
+     * breaks the fixture before it breaks the rules.
+     */
+    function copyOf(account: Account, row: Row, overrides: Record<string, unknown> = {}) {
+      const copy = {
+        memberUid: account.uid,
+        sourceId: row.id,
+        gen,
+        pv: 1,
+        type: row.data['type'],
+        amount: row.data['amount'],
+        currency: row.data['currency'],
+        date: row.data['date'],
+        description: row.data['description'],
+        categoryId: row.data['categoryId'],
+        category: { name: 'categoryNames.groceries', icon: 'shopping_cart', color: '#4CAF50' },
+        bucket: 'food_groceries',
+        bucketGroup: 'food',
+        updatedAt: lite.serverTimestamp()
+      } satisfies Record<Exclude<keyof LedgerCopy, 'goalId'>, unknown>;
+      return { ...copy, ...overrides };
+    }
+
+    function writeCopy(account: Account, row: Row, overrides: Record<string, unknown> = {}, copyId = copyIdOf(account, row)) {
+      return lite.setDoc(ledgerRef(account, copyId), copyOf(account, row, overrides));
+    }
+
+    /** A row shared into the household with its copy beside it, both through the rules. */
+    async function sharedRowWithCopy(account: Account): Promise<Row> {
+      const row = await writeRow(account, [householdId]);
+      await writeCopy(account, row);
+      return row;
+    }
+
+    /**
+     * A household goal seeded past the rules, so a ledger case depends only on
+     * what a goal link checks: the goal's generation. `gen` is the stored
+     * createdAt read back, with its microseconds, or a generation the
+     * household never had.
+     */
+    async function seedGoal(goalId: string, goalGen?: EmulatorField): Promise<void> {
+      await setDocumentAsOwner(`households/${householdId}/goals/${goalId}`, {
+        gen: goalGen ?? timestampOf(await storedHousehold(householdId), 'createdAt'),
+        name: stringField('Holiday'),
+        currency: stringField('USD')
+      });
+    }
+
+    const genFiltered = (account: Account) => lite.query(ledgerOf(account), lite.where('gen', '==', gen));
+    const ownCopies = (account: Account) => lite.query(ledgerOf(account), lite.where('memberUid', '==', account.uid));
+
+    beforeEach(async () => {
+      householdId = await formWithPeer();
+      gen = await liveCreatedAt(peer, householdId);
+    });
+
+    it('runs as accounts whose ids hold no underscore, which a copy id is split on', () => {
+      for (const account of [owner, peer, stranger]) {
+        expect(account.uid).not.toContain('_');
+      }
+    });
+
+    describe('writing a copy', () => {
+      it('lets a member write a faithful copy of a row it shares into the household', async () => {
+        const row = await writeRow(peer, [householdId]);
+        await expectAllowed(writeCopy(peer, row), 'a faithful copy');
+      });
+
+      it('judges a copy against the row as its own commit leaves it', async () => {
+        const row = await writeRow(peer, [householdId]);
+
+        const unshared = lite.writeBatch(peer.db);
+        unshared.update(sourceRef(peer, row.id), { sharedWith: lite.arrayRemove(shareKey(householdId)) });
+        unshared.set(ledgerRef(peer, copyIdOf(peer, row)), copyOf(peer, row));
+        await expectDenied(unshared.commit(), 'a copy in the commit that unshares its row');
+
+        const edited = lite.writeBatch(peer.db);
+        edited.update(sourceRef(peer, row.id), { amount: 40 });
+        edited.set(ledgerRef(peer, copyIdOf(peer, row)), copyOf(peer, row, { amount: 40 }));
+        await expectAllowed(edited.commit(), 'a copy of the amount its own commit writes');
+      });
+
+      it('lets the author write the same copy twice, the second judged as an update', async () => {
+        const row = await writeRow(peer, [householdId]);
+        await expectAllowed(writeCopy(peer, row), 'the first delivery');
+        await expectAllowed(writeCopy(peer, row), 'the same create sent again');
+      });
+
+      it('lets a member write five copies in one commit', async () => {
+        const rows: Row[] = [];
+        for (let i = 0; i < 5; i += 1) {
+          rows.push(await writeRow(peer, [householdId], { description: `chunk ${i}` }));
+        }
+        const batch = lite.writeBatch(peer.db);
+        for (const row of rows) {
+          batch.set(ledgerRef(peer, copyIdOf(peer, row)), copyOf(peer, row));
+        }
+        await expectAllowed(batch.commit(), 'a chunk of five copies');
+      });
+
+      it('lets the author update its copy to follow an edit of its row', async () => {
+        const row = await sharedRowWithCopy(peer);
+        await lite.updateDoc(sourceRef(peer, row.id), { amount: 31, description: 'edited' });
+
+        await expectAllowed(
+          lite.setDoc(ledgerRef(peer, copyIdOf(peer, row)), copyOf(peer, row, { amount: 31, description: 'edited' })),
+          'a copy following its row'
+        );
+      });
+
+      it('shares a row in any currency its own rules accept', async () => {
+        const row = await writeRow(peer, [householdId], { currency: 'USDT' });
+        await expectAllowed(writeCopy(peer, row), 'a copy of a row whose currency is not three letters');
+      });
+
+      it('refuses a copy that does not match its row, or of a row that does not name the household', async () => {
+        const row = await writeRow(peer, [householdId]);
+        await expectDenied(writeCopy(peer, row, { amount: 99 }), 'a copy with a changed amount');
+        await expectDenied(writeCopy(peer, row, { description: 'something else' }), 'a copy with a changed description');
+
+        const elsewhere = await writeRow(peer, [newHouseholdId()]);
+        await expectDenied(writeCopy(peer, elsewhere), 'a copy of a row shared elsewhere');
+        const unshared = await writeRow(peer, []);
+        await expectDenied(writeCopy(peer, unshared), 'a copy of a private row');
+      });
+
+      it('refuses a field outside the copy, a wrong generation or a goal link at creation', async () => {
+        const row = await writeRow(peer, [householdId]);
+        await expectDenied(writeCopy(peer, row, { note: 'private' }), 'a copy carrying the note');
+        await expectDenied(writeCopy(peer, row, { gen: lite.Timestamp.fromMillis(0) }), 'a copy of another generation');
+        await expectDenied(writeCopy(peer, row, { goalId: 'g1' }), 'a copy created with a goal link');
+        await expectDenied(
+          writeCopy(peer, row, { category: { name: 'x', icon: 'y', color: 'z', extra: 'w' } }),
+          'a category snapshot with an extra key'
+        );
+        await expectDenied(writeCopy(peer, row, { updatedAt: lite.Timestamp.now() }), 'a client-chosen stamp');
+      });
+
+      it('holds each string of the category snapshot to its bound', async () => {
+        const row = await writeRow(peer, [householdId]);
+        // Non-ASCII, so a bound counted in bytes would refuse it.
+        const atBounds = {
+          name: '\u20ac'.repeat(LEDGER_SNAPSHOT_MAX_LENGTH.name),
+          icon: 'i'.repeat(LEDGER_SNAPSHOT_MAX_LENGTH.icon),
+          color: 'c'.repeat(LEDGER_SNAPSHOT_MAX_LENGTH.color)
+        };
+        await expectAllowed(writeCopy(peer, row, { category: atBounds }), 'a snapshot at its bounds');
+        for (const key of ['name', 'icon', 'color'] as const) {
+          await expectDenied(
+            writeCopy(peer, row, { category: { ...atBounds, [key]: 'x'.repeat(LEDGER_SNAPSHOT_MAX_LENGTH[key] + 1) } }),
+            `a snapshot ${key} one past its bound`
+          );
+        }
+      });
+
+      it("refuses a copy by a non-member, under another member's name or at another id", async () => {
+        const strangers = await writeRow(stranger, [householdId]);
+        await expectDenied(writeCopy(stranger, strangers), "a non-member's copy of its own row");
+
+        const row = await writeRow(peer, [householdId]);
+        await expectDenied(writeCopy(peer, row, { memberUid: owner.uid }), 'a copy naming another author');
+        await expectDenied(writeCopy(peer, row, {}, `${owner.uid}_${row.id}`), "a copy filed under another author's id");
+        await expectDenied(writeCopy(peer, row, {}, `${peer.uid}_${row.id}x`), 'a copy filed under another row');
+        await expectDenied(writeCopy(peer, row, {}, row.id), 'a copy filed under the bare row id');
+      });
+
+      it('refuses an update that moves a copy to another row or into another generation', async () => {
+        const row = await sharedRowWithCopy(peer);
+        const other = await writeRow(peer, [householdId]);
+        await expectDenied(
+          lite.setDoc(ledgerRef(peer, copyIdOf(peer, row)), copyOf(peer, other)),
+          'a copy moved to another row'
+        );
+
+        await patchFieldsAsOwner(`households/${householdId}/ledger/${copyIdOf(peer, row)}`, {
+          gen: timestampField(new Date(0))
+        });
+        await expectDenied(writeCopy(peer, row), 'a copy of a generation the household no longer has, moved into the live one');
+      });
+
+      it('refuses an update once the author is no longer a member', async () => {
+        const row = await sharedRowWithCopy(peer);
+        await removeCommit(owner, householdId, [peer.uid]);
+        await lite.updateDoc(sourceRef(peer, row.id), { amount: 55 });
+
+        await expectDenied(
+          lite.setDoc(ledgerRef(peer, copyIdOf(peer, row)), copyOf(peer, row, { amount: 55 })),
+          "a removed member's copy update"
+        );
+      });
+    });
+
+    describe('deleting a copy', () => {
+      it('lets the author delete its copy after it is removed', async () => {
+        const row = await sharedRowWithCopy(peer);
+        await removeCommit(owner, householdId, [peer.uid]);
+        await expectAllowed(lite.deleteDoc(ledgerRef(peer, copyIdOf(peer, row))), "a removed author's delete");
+      });
+
+      it('lets an author delete a copy that is not there, and nobody else', async () => {
+        await expectAllowed(lite.deleteDoc(ledgerRef(peer, `${peer.uid}_missing`)), 'a missing own copy');
+        await expectDenied(lite.deleteDoc(ledgerRef(peer, `${owner.uid}_missing`)), "a missing copy of the owner's");
+        await expectDenied(lite.deleteDoc(ledgerRef(stranger, `${peer.uid}_missing`)), "a stranger's delete of a missing copy");
+      });
+
+      it("lets the owner delete a member's copy", async () => {
+        const row = await sharedRowWithCopy(peer);
+        await expectAllowed(lite.deleteDoc(ledgerRef(owner, copyIdOf(peer, row))), "the owner's delete");
+      });
+
+      it("refuses a member or a stranger deleting another member's copy", async () => {
+        const row = await sharedRowWithCopy(owner);
+        await expectDenied(lite.deleteDoc(ledgerRef(peer, copyIdOf(owner, row))), "a member deleting the owner's copy");
+        await expectDenied(lite.deleteDoc(ledgerRef(stranger, copyIdOf(owner, row))), "a stranger deleting a copy");
+      });
+    });
+
+    describe('reading copies', () => {
+      it("lets a member list the live generation's copies and read each", async () => {
+        const ownersRow = await sharedRowWithCopy(owner);
+        const peersRow = await sharedRowWithCopy(peer);
+
+        for (const account of [owner, peer]) {
+          const listed = await lite.getDocs(genFiltered(account));
+          expect(listed.docs.map(entry => entry.id).sort()).toEqual(
+            [copyIdOf(owner, ownersRow), copyIdOf(peer, peersRow)].sort()
+          );
+          await expectAllowed(lite.getDoc(ledgerRef(account, copyIdOf(owner, ownersRow))), `${account.name} reading a copy`);
+        }
+      });
+
+      it('refuses a list that does not filter on the generation', async () => {
+        await sharedRowWithCopy(owner);
+        await expectDenied(lite.getDocs(ledgerOf(peer)), 'an unfiltered list');
+      });
+
+      it('refuses a stranger and an ex-member every read, a missing copy included', async () => {
+        const row = await sharedRowWithCopy(owner);
+        await expectDenied(lite.getDoc(ledgerRef(stranger, copyIdOf(owner, row))), 'a stranger reading a copy');
+        await expectDenied(lite.getDoc(ledgerRef(stranger, `${owner.uid}_missing`)), 'a stranger probing a missing copy');
+        await expectDenied(lite.getDocs(genFiltered(stranger)), 'a stranger listing the ledger');
+
+        await leaveCommit(peer, householdId);
+        await expectDenied(lite.getDoc(ledgerRef(peer, copyIdOf(owner, row))), "an ex-member reading the owner's copy");
+        await expectDenied(lite.getDocs(genFiltered(peer)), 'an ex-member listing the ledger');
+      });
+
+      it('lets the author read and list its own copies after the household is dissolved', async () => {
+        const row = await sharedRowWithCopy(peer);
+        await removeCommit(owner, householdId, [peer.uid]);
+        await dissolveCommit(owner, householdId);
+
+        await expectAllowed(lite.getDoc(ledgerRef(peer, copyIdOf(peer, row))), "the author reading its copy");
+        const own = await lite.getDocs(ownCopies(peer));
+        expect(own.docs.map(entry => entry.id)).toEqual([copyIdOf(peer, row)]);
+        await expectAllowed(lite.getDoc(ledgerRef(peer, `${peer.uid}_missing`)), 'the author probing a missing copy of its own');
+      });
+    });
+
+    describe('linking a copy to a household goal', () => {
+      it('lets the author link and unlink its copy to a goal of the same generation', async () => {
+        const row = await sharedRowWithCopy(peer);
+        await seedGoal('holiday');
+
+        await expectAllowed(
+          lite.updateDoc(ledgerRef(peer, copyIdOf(peer, row)), { goalId: 'holiday', updatedAt: lite.serverTimestamp() }),
+          'a goal link'
+        );
+        await expectAllowed(
+          lite.updateDoc(ledgerRef(peer, copyIdOf(peer, row)), { goalId: lite.deleteField(), updatedAt: lite.serverTimestamp() }),
+          'an unlink'
+        );
+      });
+
+      it('refuses a link to a goal of another generation, a goal that is not there, or by another member', async () => {
+        const row = await sharedRowWithCopy(peer);
+        await seedGoal('stale', timestampField(new Date(0)));
+        await seedGoal('holiday');
+
+        const copy = ledgerRef(peer, copyIdOf(peer, row));
+        await expectDenied(lite.updateDoc(copy, { goalId: 'stale', updatedAt: lite.serverTimestamp() }), 'a goal of another generation');
+        await expectDenied(lite.updateDoc(copy, { goalId: 'missing', updatedAt: lite.serverTimestamp() }), 'a goal that is not there');
+        await expectDenied(
+          lite.updateDoc(ledgerRef(owner, copyIdOf(peer, row)), { goalId: 'holiday', updatedAt: lite.serverTimestamp() }),
+          "the owner linking the peer's copy"
+        );
+        await expectDenied(
+          lite.updateDoc(copy, { goalId: 'holiday', amount: 77, updatedAt: lite.serverTimestamp() }),
+          'a goal link that also changes the copy'
+        );
+      });
+    });
+
+    describe("a row's share keys", () => {
+      const keys = (count: number) => Array.from({ length: count }, (_, i) => shareKey(`h${i}`));
+
+      it(`accepts a row shared into ${MAX_HOUSEHOLDS_PER_ACCOUNT} households and refuses one more`, async () => {
+        await expectAllowed(writeRow(peer, [], { sharedWith: keys(MAX_HOUSEHOLDS_PER_ACCOUNT) }), 'a row naming the most households');
+        await expectDenied(
+          writeRow(peer, [], { sharedWith: keys(MAX_HOUSEHOLDS_PER_ACCOUNT + 1) }),
+          'a row naming one household more'
+        );
+
+        const row = await writeRow(peer, [], { sharedWith: keys(MAX_HOUSEHOLDS_PER_ACCOUNT) });
+        await expectDenied(
+          lite.updateDoc(sourceRef(peer, row.id), { sharedWith: lite.arrayUnion(shareKey('one-more')) }),
+          'an arrayUnion past the cap'
+        );
+      });
+
+      it('refuses share keys that are not a list', async () => {
+        await expectDenied(writeRow(peer, [], { sharedWith: shareKey('h1') }), 'a single key in place of a list');
+      });
     });
   });
 });

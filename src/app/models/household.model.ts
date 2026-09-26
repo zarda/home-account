@@ -47,7 +47,10 @@ export type HouseholdMemberIdentity = Pick<HouseholdMember, 'uid' | 'displayName
  * refuses to invite an account already at it. The invite callable keeps its
  * own copy (MAX_HOUSEHOLDS_PER_ACCOUNT in functions/src/household-invite.ts,
  * a separate build); the functions test household-client-mirrors.test.ts
- * fails when the two differ.
+ * fails when the two differ. txOptionalsValid in firestore.rules caps a
+ * row's sharedWith at this same number, one key for each household the
+ * account can belong to, and `npm run ledger:check`
+ * (scripts/check-ledger-contract.mjs) fails when the two differ.
  */
 export const MAX_HOUSEHOLDS_PER_ACCOUNT = 10;
 

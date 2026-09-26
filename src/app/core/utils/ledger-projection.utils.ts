@@ -3,6 +3,7 @@ import {
   Category,
   LEDGER_COPY_FIELDS,
   LEDGER_PROJECTION_VERSION,
+  LEDGER_SNAPSHOT_MAX_LENGTH,
   LedgerCopy,
   LedgerCopyProjection,
   Transaction,
@@ -99,6 +100,20 @@ export function bucketOf(
 }
 
 /**
+ * `text` cut to at most `max` UTF-16 code units, whole characters only, so
+ * no surrogate pair is split and the cut is the same on every projection.
+ */
+function clampText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let cut = '';
+  for (const character of text) {
+    if (cut.length + character.length > max) break;
+    cut += character;
+  }
+  return cut;
+}
+
+/**
  * The copy of a row, as a household sees it, without the stamp the writer
  * has the server add. The revealed fields are the row's own values, not
  * converted or rebuilt, because the rules compare each with the source row.
@@ -111,7 +126,8 @@ export function bucketOf(
  * overlaid with the account's own, mergeCategories): a built-in's name stays
  * its translation key so each viewer reads it in their language, and a
  * custom category's is the author's text. A category the list does not hold
- * is shown as the built-in it counts under.
+ * is shown as the built-in it counts under. Each string is cut to
+ * LEDGER_SNAPSHOT_MAX_LENGTH, the bound the rules hold a snapshot to.
  */
 export function projectRow(
   row: ProjectableRow,
@@ -132,7 +148,11 @@ export function projectRow(
     date: row.date,
     description: row.description,
     categoryId: row.categoryId,
-    category: { name: shown.name, icon: shown.icon, color: shown.color },
+    category: {
+      name: clampText(shown.name, LEDGER_SNAPSHOT_MAX_LENGTH.name),
+      icon: clampText(shown.icon, LEDGER_SNAPSHOT_MAX_LENGTH.icon),
+      color: clampText(shown.color, LEDGER_SNAPSHOT_MAX_LENGTH.color),
+    },
     ...bucketFromBuiltIn(builtIn),
   };
 }

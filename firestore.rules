@@ -88,7 +88,14 @@ service cloud.firestore {
              && (!('country' in d.location)
                  || (d.location.country is string && d.location.country.size() == 2))))
         && (!('createdAt' in d) || d.createdAt is timestamp)
-        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+        && (!('updatedAt' in d) || d.updatedAt is timestamp)
+        // The households the row is shared into, one key each. The cap is
+        // MAX_HOUSEHOLDS_PER_ACCOUNT (src/app/models/household.model.ts):
+        // a row names at most every household its account can belong to,
+        // and the ledger contract check fails when the two differ. Keys are
+        // not individually checked (rules cannot iterate a list); a copy is
+        // admitted only for a household the row names (copyFaithful).
+        && (!('sharedWith' in d) || (d.sharedWith is list && d.sharedWith.size() <= 10));
     }
 
     function txCreateValid(userId) {
@@ -848,6 +855,103 @@ service cloud.firestore {
       return resource == null || membershipOver(uid, householdId, resource.data.since);
     }
 
+    // ---- the household ledger ----
+
+    function sourcePath(uid, rowId) {
+      return /databases/$(database)/documents/users/$(uid)/transactions/$(rowId);
+    }
+
+    function goalPath(householdId, goalId) {
+      return /databases/$(database)/documents/households/$(householdId)/goals/$(goalId);
+    }
+
+    // A copy reveals exactly what its row holds, and only while the row
+    // names the household. The row is the caller's own and is read as the
+    // commit leaves it, so a copy written beside the write that unshares,
+    // edits or deletes its row is judged against what that write makes of
+    // it: a copy can fall behind its row, never run ahead of it, and never
+    // outlive its row's share. A row that is gone has no data to read, and
+    // its copy is refused. Lookups: the row, one.
+    //
+    // The key the row names is shareKey(householdId) (SHARE_KEY_PREFIX,
+    // src/app/models/household-ledger.model.ts), and the two change
+    // together. The ledger contract check does not compare them; the rules
+    // smoke builds every row's keys with shareKey, so a drift fails there.
+    function copyFaithful(householdId) {
+      let d = request.resource.data;
+      let row = getAfter(sourcePath(request.auth.uid, d.sourceId)).data;
+      return row.get('sharedWith', []).hasAny(['households/' + householdId])
+        && d.type == row.type
+        && d.amount == row.amount
+        && d.currency == row.currency
+        && d.date == row.date
+        && d.description == row.description
+        && d.categoryId == row.categoryId;
+    }
+
+    // A copy's closed shape, in the household `h` it is written into. The
+    // two key lists are LEDGER_COPY_FIELDS and LEDGER_REQUIRED_FIELDS
+    // (src/app/models/household-ledger.model.ts), and the ledger contract
+    // check fails when either pair differs. The generation is the
+    // household's live one, and the stamp is the server's, never a client
+    // value: a create whose answer was lost, sent again, then differs from
+    // the stored copy in its stamp alone.
+    //
+    // copyFaithful holds the revealed fields equal to the row's, so they are
+    // bounded here only as the row's own rules bound them, the description
+    // not at all: a tighter bound would leave a row its owner may keep
+    // unshareable. The category snapshot and the buckets are the author's
+    // claims, as a member's own rows are. The snapshot's strings are bounded
+    // at LEDGER_SNAPSHOT_MAX_LENGTH (the same model file), and the ledger
+    // contract check fails when the two differ. Nothing bounds a category's
+    // own strings, a restored backup's included, so the projection cuts each
+    // one to its bound (projectRow) rather than this rule refusing the row.
+    function copyShapeValid(h) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+             'memberUid', 'sourceId', 'gen', 'pv',
+             'type', 'amount', 'currency', 'date', 'description', 'categoryId',
+             'category', 'bucket', 'bucketGroup',
+             'goalId', 'updatedAt'
+           ])
+        && d.keys().hasAll([
+             'memberUid', 'sourceId', 'gen', 'pv',
+             'type', 'amount', 'currency', 'date', 'description', 'categoryId',
+             'category', 'bucket', 'bucketGroup',
+             'updatedAt'
+           ])
+        && d.memberUid == request.auth.uid
+        && d.sourceId is string
+        && d.gen == h.createdAt
+        && d.pv is int && d.pv > 0
+        && d.type in ['income', 'expense']
+        && isPositive(d.amount)
+        && d.currency is string
+        && d.date is timestamp
+        && d.description is string
+        && d.categoryId is string
+        && d.category is map
+        && d.category.keys().hasOnly(['name', 'icon', 'color'])
+        && d.category.name is string && d.category.name.size() <= 100
+        && d.category.icon is string && d.category.icon.size() <= 64
+        && d.category.color is string && d.category.color.size() <= 32
+        && d.bucket is string
+        && d.bucketGroup is string
+        && d.updatedAt == request.time
+        && (!('goalId' in d) || d.goalId is string);
+    }
+
+    // The author's link of its copy to one of the household's goals, or the
+    // link's removal, and nothing else. The goal must be of the copy's own
+    // generation; a goal that is not there has no data to read, and the
+    // link is refused. Lookups: the goal, one, when a link is set.
+    function goalLinkOnly(householdId) {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys().hasOnly(['goalId', 'updatedAt'])
+        && (!('goalId' in d)
+            || get(goalPath(householdId, d.goalId)).data.gen == resource.data.gen);
+    }
+
     // ---- user profile ----
 
     function userOptionalsValid(d) {
@@ -1186,6 +1290,62 @@ service cloud.firestore {
             && get(householdPath(householdId)).data.ownerId == request.auth.uid)
           || !exists(householdPath(householdId))
         );
+      }
+
+      // What the household sees of its members' shared rows: one copy per
+      // row, filed as {author}_{row}. Only its author writes a copy, as a
+      // faithful copy of a row that names the household (copyShapeValid,
+      // copyFaithful), and only while a live member. The author reads and
+      // deletes its copies at any time, a member or not, so a leave, a
+      // removal, a dissolve and erasure all find their own copies without a
+      // collection-group query; the owner may delete any copy. Live members
+      // read the live generation's copies.
+      //
+      // A copy that does not exist has no memberUid to read, so its author
+      // is taken from its id, before the first underscore: an account id
+      // holds none. A non-author asking after a missing copy is refused as
+      // it would be for another's, so it cannot learn whether one exists.
+      //
+      // Lookups: an author's read or delete, none. A member's read, two (the
+      // household and its own member document). The owner's delete, one (the
+      // household). A create or update, three (the household, the author's
+      // member document, and its row as the commit leaves it); a goal link,
+      // one more (the goal). A commit of five copy writes stays within the
+      // twenty lookups a commit may make.
+      match /ledger/{copyId} {
+        allow get: if isAuthenticated() && (
+          (resource == null && copyId.split('_')[0] == request.auth.uid)
+          || (resource != null && resource.data.memberUid == request.auth.uid)
+          || (resource != null && liveGenerationRead(householdId, resource.data.gen)));
+        // A member's list must filter on gen for the rules to prove every
+        // copy it returns is of the live generation. An author's may filter
+        // on memberUid alone, whatever became of the household.
+        allow list: if isAuthenticated()
+          && (resource.data.memberUid == request.auth.uid
+              || liveGenerationRead(householdId, resource.data.gen));
+        // A goal link is made only by an update, on a copy that exists.
+        allow create: if isAuthenticated()
+          && copyId == request.auth.uid + '_' + request.resource.data.sourceId
+          && !('goalId' in request.resource.data)
+          && memberOf(householdId, request.auth.uid)
+          && copyShapeValid(get(householdPath(householdId)).data)
+          && copyFaithful(householdId);
+        // Either a goal link, or the copy following its row with the link
+        // left as it is. A create sent again changes the stamp alone and
+        // passes as a goal-link-only write that sets no goal.
+        allow update: if isAuthenticated()
+          && resource.data.memberUid == request.auth.uid
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['memberUid', 'sourceId', 'gen'])
+          && memberOf(householdId, request.auth.uid)
+          && copyShapeValid(get(householdPath(householdId)).data)
+          && (goalLinkOnly(householdId)
+              || (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['goalId'])
+                  && copyFaithful(householdId)));
+        allow delete: if isAuthenticated() && (
+          (resource == null && copyId.split('_')[0] == request.auth.uid)
+          || (resource != null && resource.data.memberUid == request.auth.uid)
+          || get(householdPath(householdId)).data.ownerId == request.auth.uid);
       }
     }
 
