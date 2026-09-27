@@ -652,6 +652,13 @@ export class LedgerShareService implements OnDestroy {
    * generation, at most LEDGER_PURGE_CHUNK per commit (one lookup each).
    * Refused, before anything is read, to any account but the owner. Answers
    * how many.
+   *
+   * The copies are listed first, and before each commit the server is asked
+   * whether the account is a member of this generation again; once it is,
+   * nothing more is deleted. The rules let an owner delete any member's
+   * copy, and a copy shared again after a rejoin takes the id of the one
+   * listed, so only this order keeps the purge off a live member's copies.
+   * A member document the rules refuse is another generation's: no member.
    */
   async purgeMember(householdId: string, memberUid: string): Promise<number> {
     const state = this.stateFor(this.requireUser());
@@ -671,10 +678,24 @@ export class LedgerShareService implements OnDestroy {
     const paths = copies
       .filter(copy => copy.memberUid === memberUid && sameStamp(copy.gen, gen))
       .map(copy => `${ledgerPath(householdId)}/${copy.id}`);
+    let purged = 0;
     for (const chunk of chunked(paths, LEDGER_PURGE_CHUNK)) {
+      if (await this.memberOfGeneration(householdId, memberUid, gen)) break;
       await this.firestore.commitBatch(chunk.map(path => ({ op: 'delete', path })));
+      purged += chunk.length;
     }
-    return paths.length;
+    return purged;
+  }
+
+  /** Whether the server holds a member document of this generation for the account. */
+  private async memberOfGeneration(householdId: string, memberUid: string, gen: Timestamp): Promise<boolean> {
+    try {
+      const member = await this.firestore.getDocumentFromServer<Partial<HouseholdMember>>(memberPath(householdId, memberUid));
+      return member !== null && sameStamp(member.since, gen);
+    } catch (error) {
+      if (isRefused(error)) return false;
+      throw error;
+    }
   }
 
   /**

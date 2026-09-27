@@ -49,6 +49,7 @@ import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
 import { HouseholdService } from './core/services/household.service';
+import { LedgerShareService } from './core/services/ledger-share.service';
 import {
   getDocumentAsOwner,
   setDocumentAsOwner,
@@ -85,6 +86,8 @@ describe('App routes (emulator smoke test)', () => {
   let firestore: Firestore;
   let storage: ReturnType<typeof getStorage>;
   let uid: string;
+  // The seeded row the walkthrough shares into its household.
+  let blueBottleId: string;
   let mockAuth: MockAuthService;
   let harness: RouterTestingHarness;
 
@@ -274,14 +277,14 @@ describe('App routes (emulator smoke test)', () => {
       updatedAt: now,
       isRecurring: false
     };
-    await addDoc(collection(firestore, `users/${uid}/transactions`), {
+    blueBottleId = (await addDoc(collection(firestore, `users/${uid}/transactions`), {
       ...transactionBase,
       amount: 6.4,
       currency: 'USD',
       amountInBaseCurrency: 6.4,
       exchangeRate: 1,
       description: 'Blue Bottle Coffee'
-    });
+    })).id;
     await addDoc(collection(firestore, `users/${uid}/transactions`), {
       ...transactionBase,
       amount: 3800,
@@ -473,24 +476,9 @@ describe('App routes (emulator smoke test)', () => {
       // The member view, swept too: it holds most of the page's markup. The
       // account forms a household through the service's own commits, which
       // the rules check, and one invite written the way the callable writes
-      // it puts the mail-status copy on the page. A goal with a checklist,
-      // one item ticked, puts the read-only card's disabled boxes in the
-      // sweep; it is added only now, so no page swept above changes.
-      await addDoc(collection(firestore, `users/${uid}/goals`), {
-        userId: uid,
-        kind: 'project',
-        name: 'Kitchen',
-        targetAmount: 900,
-        contributedAmount: 150,
-        currency: 'USD',
-        items: [
-          { name: 'Kettle', amount: 150, done: true },
-          { name: 'Toaster', amount: 750, done: false }
-        ],
-        isActive: true,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      });
+      // it puts the mail-status copy on the page. One seeded row is shared
+      // into it the way the app shares one, so the view has a shared row to
+      // show; the other stays private and must not show.
       await setDoc(doc(firestore, `users/${uid}`), {
         email: 'test@example.com',
         displayName: 'Test User',
@@ -500,6 +488,10 @@ describe('App routes (emulator smoke test)', () => {
       });
       const householdService = TestBed.inject(HouseholdService);
       const householdId = await householdService.create('Home');
+      // share() resolves once the row names the household, whether or not
+      // its copy was written (a refused copy is left to the sweep), so the
+      // row showing below is what proves the rules took the copy.
+      await TestBed.inject(LedgerShareService).share([blueBottleId], householdId);
       const stored = await getDocumentAsOwner(`households/${householdId}`);
       await setDocumentAsOwner(`householdInvites/${householdId}_walkthrough-invitee`, {
         householdId: stringField(householdId),
@@ -517,11 +509,12 @@ describe('App routes (emulator smoke test)', () => {
       });
       // Still on /household: the page swaps to the member view as the
       // listeners hear the household, with no navigation to wait on.
-      await waitForDom('the member view, with its rows, its budget and goal, its members and its pending invite', () => {
+      await waitForDom('the member view, with its shared row, its plans section, its members and its pending invite', () => {
         const text = pageText();
-        return ['Blue Bottle Coffee', 'Groceries Budget', 'Toaster', 'household.members.dissolveHeading',
+        return ['Blue Bottle Coffee', 'household.plans.empty', 'household.members.dissolveHeading',
           'household.members.mailHeld'].every(shown => text.includes(shown));
       });
+      expect(pageText()).withContext('a row not shared stays private').not.toContain('Tokyo Dinner');
       expectScreenName('/household', 'app-household');
       expectCurrentRouteMarked('/household');
       await expectNoAxeViolations('/household');

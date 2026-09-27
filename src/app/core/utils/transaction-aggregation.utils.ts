@@ -115,8 +115,15 @@ export function finiteOrNull(value: number): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-/** Income and expense totals in base currency, plus the balance. */
-export function sumByType(transactions: Transaction[], toBase: ToBase): TypeTotals {
+/**
+ * Income and expense totals in base currency, plus the balance. Anything
+ * with a transaction's type folds the same way, a household's shared copy
+ * among them.
+ */
+export function sumByType<T extends Pick<Transaction, 'type'>>(
+  transactions: readonly T[],
+  toBase: (transaction: T) => number
+): TypeTotals {
   let income = 0;
   let expense = 0;
   for (const transaction of transactions) {

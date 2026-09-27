@@ -34,12 +34,12 @@ import {
  * The answer holds only in the time zone that wrote the stamp. The anchor, the
  * window and dayKey are all read in local time, so a caller in another zone
  * can put the same start on a neighbouring day (a Tokyo-midnight anchor on the
- * 1st is the 31st in New York) and reject a current figure. Only the writer
- * re-stamps, so for that caller the figure stays rejected.
+ * 1st is the 31st in New York) and reject a current figure. The recalculation
+ * that follows re-stamps it in that zone, where the zone that stamped it
+ * before rejects it in turn.
  *
  * This only decides. What a stale figure costs is the caller's: the owner's
- * BudgetService shows 0 and queues a recalculation, and a reader that cannot
- * write the document can only show 0.
+ * BudgetService, the only caller, shows 0 and queues a recalculation.
  */
 export function isSpentCurrent(
   budget: Pick<Budget, 'period' | 'startDate' | 'spentPeriod'>,

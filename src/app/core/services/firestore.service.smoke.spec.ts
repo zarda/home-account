@@ -17,7 +17,13 @@ import {
   Timestamp,
   serverTimestamp
 } from '@angular/fire/firestore';
-import { DocumentWithMetadata, FirestoreService, PageQueryOptions, PageResult } from './firestore.service';
+import {
+  CollectionWithMetadata,
+  DocumentWithMetadata,
+  FirestoreService,
+  PageQueryOptions,
+  PageResult
+} from './firestore.service';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -536,6 +542,48 @@ describe('FirestoreService reads, writes and subscriptions (emulator smoke test)
     it('subscribeToDocumentWithMetadata forwards a rules denial as an error', async () => {
       const errors: { code?: string }[] = [];
       const sub = service.subscribeToDocumentWithMetadata('users/somebody-else')
+        .subscribe({ error: e => errors.push(e) });
+
+      await waitFor(() => errors.length === 1, 'the permission error');
+      expect(errors[0].code).toBe('permission-denied');
+      sub.unsubscribe();
+    });
+
+    // Online only: a full client taken offline with a write queued stalls
+    // every other full client in the run (see waitForPendingWrites below).
+    it('subscribeToCollectionWithMetadata says which emissions the server confirmed, a metadata-only one included', async () => {
+      const probe = { field: 'categoryId', op: '==' as const, value: 'meta_probe' };
+      const emissions: CollectionWithMetadata<Row>[] = [];
+      const confirmed = (e: CollectionWithMetadata<Row>) => !e.fromCache && !e.hasPendingWrites;
+      const holds = (e: CollectionWithMetadata<Row>) => e.docs.some(row => row.id === 'rw-meta-list');
+      const sub = service.subscribeToCollectionWithMetadata<Row>(path, { where: [probe] })
+        .subscribe(emission => emissions.push(emission));
+
+      try {
+        await waitFor(() => emissions.some(confirmed), 'a server-confirmed emission');
+        expect(emissions.find(confirmed)!.docs).toEqual([]);
+
+        const beforeWrite = emissions.length;
+        await setDoc(doc(firestore, `${path}/rw-meta-list`), legalRow(90, { categoryId: 'meta_probe' }));
+        await waitFor(() => emissions.some(e => holds(e) && confirmed(e)), 'the written doc, confirmed by the server');
+        const heard = emissions.slice(beforeWrite).filter(holds);
+        // The local write was heard first, from a listener already in sync,
+        // and its confirmation changed nothing but the metadata.
+        expect(heard[0]).toEqual(jasmine.objectContaining({ fromCache: false, hasPendingWrites: true }));
+        expect(heard[heard.length - 1].docs.map(row => [row.id, row.amount])).toEqual(heard[0].docs.map(row => [row.id, row.amount]));
+      } finally {
+        sub.unsubscribe();
+      }
+
+      const countWhenUnsubscribed = emissions.length;
+      await deleteDoc(doc(firestore, `${path}/rw-meta-list`));
+      await new Promise(resolve => setTimeout(resolve, 150));
+      expect(emissions.length).toBe(countWhenUnsubscribed);
+    }, 20000);
+
+    it('subscribeToCollectionWithMetadata forwards a rules denial as an error', async () => {
+      const errors: { code?: string }[] = [];
+      const sub = service.subscribeToCollectionWithMetadata('users/somebody-else/transactions')
         .subscribe({ error: e => errors.push(e) });
 
       await waitFor(() => errors.length === 1, 'the permission error');

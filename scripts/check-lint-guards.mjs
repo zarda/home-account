@@ -121,7 +121,7 @@ const LISTENER_METHOD_ALTERNATION =
   'getTransactions|getTransactionById|getTransactionsInRange|getTransactionsWithReceipts|' +
   'getRecentTransactions|getExpensesInRange|getPeriodTotals|getPeriodCategoryTotals|' +
   'getTransactionDatesForMonth|getByDateRange|getByCategory|getMonthlyTotals|' +
-  'subscribeToCollection|subscribeToDocument|subscribeToDocumentWithMetadata|watch';
+  'subscribeToCollection|subscribeToCollectionWithMetadata|subscribeToDocument|subscribeToDocumentWithMetadata|watch';
 
 // The services whose Observable methods are listeners the ban must name.
 const LISTENER_SOURCES = [

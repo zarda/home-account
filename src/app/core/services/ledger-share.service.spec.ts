@@ -1494,6 +1494,74 @@ describe('LedgerShareService', () => {
       });
     });
 
+    describe("asking the server again before each commit whether the account is a member", () => {
+      const removedPath = 'households/h1/members/removed';
+
+      beforeEach(() => {
+        seedIndex([indexEntry('h1', G1, { role: 'owner' })]);
+        seedCopies('h1', Array.from({ length: 2 * LEDGER_PURGE_CHUNK + 1 }, (_, i) => ({
+          ...copyOf(row(`m${i}`, ['h1']), G1),
+          id: `removed_m${i}`,
+          memberUid: 'removed'
+        })));
+      });
+
+      it('asks after listing the copies, then before every commit', async () => {
+        expect(await service.purgeMember('h1', 'removed')).toBe(2 * LEDGER_PURGE_CHUNK + 1);
+
+        const order = firestore.callLog
+          .filter(call => call.method === 'getCollectionFromServer' || call.method === 'commitBatch'
+            || (call.method === 'getDocumentFromServer' && call.path === removedPath))
+          .map(call => call.method);
+        expect(order).toEqual([
+          'getCollectionFromServer',
+          'getDocumentFromServer', 'commitBatch',
+          'getDocumentFromServer', 'commitBatch',
+          'getDocumentFromServer', 'commitBatch'
+        ]);
+      });
+
+      it('stops once the account is a member of this generation again, answering how many it purged', async () => {
+        let asked = 0;
+        spyOn(firestore, 'getDocumentFromServer').and.callFake((async (path: string) => {
+          if (path !== removedPath) return null;
+          // Rejoined between the first commit and the second: a copy it
+          // shares again takes the same id as one listed.
+          return ++asked === 1 ? null : { uid: 'removed', role: 'member', since: G1, joinedAt: G1 };
+        }) as never);
+
+        expect(await service.purgeMember('h1', 'removed')).toBe(LEDGER_PURGE_CHUNK);
+
+        expect(commits().map(ops => ops.length)).toEqual([LEDGER_PURGE_CHUNK]);
+      });
+
+      it('purges an account whose member document is of an earlier generation', async () => {
+        firestore.setMockDocument(removedPath, { uid: 'removed', role: 'member', since: OLD_GEN, joinedAt: OLD_GEN });
+
+        expect(await service.purgeMember('h1', 'removed')).toBe(2 * LEDGER_PURGE_CHUNK + 1);
+      });
+
+      it('purges when the rules refuse the member document, as they refuse one of another generation', async () => {
+        spyOn(firestore, 'getDocumentFromServer').and.callFake(async (path: string) => {
+          if (path === removedPath) throw Object.assign(new Error('refused'), { code: 'permission-denied' });
+          return null;
+        });
+
+        expect(await service.purgeMember('h1', 'removed')).toBe(2 * LEDGER_PURGE_CHUNK + 1);
+      });
+
+      it('deletes nothing when the server cannot say', async () => {
+        const failure = Object.assign(new Error('unavailable'), { code: 'unavailable' });
+        spyOn(firestore, 'getDocumentFromServer').and.callFake(async (path: string) => {
+          if (path === removedPath) throw failure;
+          return null;
+        });
+
+        await expectAsync(service.purgeMember('h1', 'removed')).toBeRejectedWith(failure);
+        expect(commits()).toEqual([]);
+      });
+    });
+
     it('refuses a member\'s purge of another member\'s copies before reading any', async () => {
       seedCopies('h1', [{ ...copyOf(row('m1', ['h1']), G1), id: 'removed_m1', memberUid: 'removed' }]);
 

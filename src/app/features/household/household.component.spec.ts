@@ -42,16 +42,14 @@ class StubOverviewComponent {
   readonly ledger = inject(HouseholdLedgerService);
 }
 
-/** The budgets and goals have their own spec; here the question is where they sit and which ledger they read. */
+/** The budgets and goals have their own spec; here only where they sit is the question. */
 @Component({
   selector: 'app-household-plans',
   standalone: true,
   template: '',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-class StubPlansComponent {
-  readonly ledger = inject(HouseholdLedgerService);
-}
+class StubPlansComponent {}
 
 /** The members and their management have their own spec; here only where they sit is the question. */
 @Component({
@@ -111,7 +109,7 @@ describe('HouseholdComponent', () => {
   let members: ReturnType<typeof signal<HouseholdMember[]>>;
   let memberships: ReturnType<typeof signal<HouseholdMembership[]>>;
   let selected: ReturnType<typeof signal<string | null>>;
-  let ledger: { setMembers: jasmine.Spy };
+  let ledger: { setHousehold: jasmine.Spy; setMembers: jasmine.Spy };
   let catchUp: jasmine.Spy;
   let service: {
     status: typeof status;
@@ -197,7 +195,7 @@ describe('HouseholdComponent', () => {
     members = signal<HouseholdMember[]>([]);
     memberships = signal<HouseholdMembership[]>([]);
     selected = signal<string | null>(null);
-    ledger = { setMembers: jasmine.createSpy('setMembers') };
+    ledger = { setHousehold: jasmine.createSpy('setHousehold'), setMembers: jasmine.createSpy('setMembers') };
     catchUp = jasmine.createSpy('catchUpRecurringTransactions').and.resolveTo([]);
     service = {
       status,
@@ -785,10 +783,6 @@ describe('HouseholdComponent', () => {
       const host = fixture.debugElement.query(debug => debug.name === 'app-household-overview');
       return host ? (host.componentInstance as StubOverviewComponent) : null;
     };
-    const plans = (): StubPlansComponent | null => {
-      const host = fixture.debugElement.query(debug => debug.name === 'app-household-plans');
-      return host ? (host.componentInstance as StubPlansComponent) : null;
-    };
 
     it('is the one the member view\'s overview reads', () => {
       household.set(HOUSEHOLD);
@@ -799,7 +793,7 @@ describe('HouseholdComponent', () => {
       expect(overview()?.ledger).toBe(ledger as unknown as HouseholdLedgerService);
     });
 
-    it('is the one the budgets and goals read, shown after the overview', () => {
+    it('has the budgets and goals shown after the overview', () => {
       household.set(HOUSEHOLD);
       status.set('member');
       render();
@@ -808,17 +802,31 @@ describe('HouseholdComponent', () => {
       expect(sections.indexOf('app-household-plans'))
         .withContext('after the overview')
         .toBe(sections.indexOf('app-household-overview') + 1);
-      expect(plans()?.ledger).toBe(ledger as unknown as HouseholdLedgerService);
     });
 
-    it('is given nobody outside the member view', () => {
+    it('is given no household and nobody outside the member view', () => {
       status.set('none');
       render();
 
+      expect(ledger.setHousehold).toHaveBeenCalled();
+      expect(ledger.setHousehold.calls.mostRecent().args[0]).toBeNull();
       expect(ledger.setMembers).toHaveBeenCalled();
       expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([]);
       expect(overview()).toBeNull();
-      expect(plans()).toBeNull();
+      expect(element().querySelector('app-household-plans')).toBeNull();
+    });
+
+    it('is given the household shown, and each household switched to', () => {
+      household.set(HOUSEHOLD);
+      status.set('member');
+      render();
+
+      expect(ledger.setHousehold.calls.mostRecent().args[0]).toEqual(HOUSEHOLD);
+
+      household.set(FLAT);
+      render();
+
+      expect(ledger.setHousehold.calls.mostRecent().args[0]).toEqual(FLAT);
     });
 
     it('is given every member, and each change to them', () => {
@@ -837,7 +845,30 @@ describe('HouseholdComponent', () => {
       expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([owner]);
     });
 
-    it('lets them go when the membership ends', () => {
+    it('is given no household and nobody while the setup is open beside a live membership, and both again after', async () => {
+      const owner = member('owner-1', 'Alex');
+      members.set([owner]);
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      expect(ledger.setHousehold.calls.mostRecent().args[0]).toEqual(HOUSEHOLD);
+
+      choose('household.switcher.setup');
+      await settleRoute();
+
+      expect(overview()).toBeNull();
+      expect(ledger.setHousehold.calls.mostRecent().args[0])
+        .withContext('no listener behind the setup, and no purge judged there')
+        .toBeNull();
+      expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([]);
+
+      choose('The Lins');
+      await settleRoute();
+
+      expect(overview()).not.toBeNull();
+      expect(ledger.setHousehold.calls.mostRecent().args[0]).toEqual(HOUSEHOLD);
+      expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([owner]);
+    });
+
+    it('lets the household and its members go when the membership ends', () => {
       const owner = member('owner-1', 'Alex');
       household.set(HOUSEHOLD);
       status.set('member');
@@ -849,6 +880,7 @@ describe('HouseholdComponent', () => {
       members.set([]);
       render();
 
+      expect(ledger.setHousehold.calls.mostRecent().args[0]).toBeNull();
       expect(ledger.setMembers.calls.mostRecent().args[0]).toEqual([]);
     });
   });

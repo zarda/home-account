@@ -90,10 +90,10 @@ interface SwitcherChoice {
  * The page holds the household listeners for exactly as long as it is on
  * screen (ADR 0009): HouseholdService opens nothing until a page connects.
  *
- * It also provides the one HouseholdLedgerService its member-view sections
- * share, so every section reads the same listeners, closed with the page,
- * and the HouseholdPageFocus they hand focus to the page through when an
- * action swaps one view for another.
+ * It also provides the one HouseholdLedgerService, fed here with the shown
+ * household and its members and read by the overview, closed with the page,
+ * and the HouseholdPageFocus its sections hand focus to the page through
+ * when an action swaps one view for another.
  */
 @Component({
   selector: 'app-household',
@@ -207,9 +207,11 @@ export class HouseholdComponent implements OnInit {
   private readonly lossesTidied = new Set<string>();
 
   constructor() {
-    // The members list is empty outside the member view, so leaving it
-    // closes every member's listeners too.
-    effect(() => this.ledger.setMembers(this.householdService.members()));
+    // Only the member view shows the ledger, so the ledger is given nothing
+    // outside it, the setup opened beside a live membership included: its
+    // listener closes, and no owner's purge is judged behind another view.
+    effect(() => this.ledger.setHousehold(this.view() === 'member' ? this.householdService.household() : null));
+    effect(() => this.ledger.setMembers(this.view() === 'member' ? this.householdService.members() : []));
 
     effect(() => {
       const status = this.status();

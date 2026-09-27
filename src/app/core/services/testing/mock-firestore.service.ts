@@ -7,6 +7,7 @@ import {
   type AggregateFields,
   type AggregateTotals,
   type BatchOp,
+  type CollectionWithMetadata,
   type DocumentWithMetadata
 } from '../firestore.service';
 
@@ -216,9 +217,11 @@ export class MockFirestoreService {
   private _txGetSpy = new SimpleSpy();
   private _txDeleteSpy = new SimpleSpy();
   private _subscribeToDocumentWithMetadataSpy = new SimpleSpy();
+  private _subscribeToCollectionWithMetadataSpy = new SimpleSpy();
   private _getDocumentFromServerSpy = new SimpleSpy();
   private _aggregateFromServerSpy = new SimpleSpy();
   private _commitBatchSpy = new SimpleSpy();
+  private _commitOnlineSpy = new SimpleSpy();
   private _waitForPendingWritesSpy = new SimpleSpy();
   private mockAggregates = new Map<string, AggregateTotals>();
 
@@ -239,9 +242,11 @@ export class MockFirestoreService {
   get txGetSpy() { return this._txGetSpy; }
   get txDeleteSpy() { return this._txDeleteSpy; }
   get subscribeToDocumentWithMetadataSpy() { return this._subscribeToDocumentWithMetadataSpy; }
+  get subscribeToCollectionWithMetadataSpy() { return this._subscribeToCollectionWithMetadataSpy; }
   get getDocumentFromServerSpy() { return this._getDocumentFromServerSpy; }
   get aggregateFromServerSpy() { return this._aggregateFromServerSpy; }
   get commitBatchSpy() { return this._commitBatchSpy; }
+  get commitOnlineSpy() { return this._commitOnlineSpy; }
   get waitForPendingWritesSpy() { return this._waitForPendingWritesSpy; }
 
   /**
@@ -252,10 +257,14 @@ export class MockFirestoreService {
   readonly callLog: MockFirestoreCall[] = [];
 
   /**
-   * The ops of every batch that landed, one entry per commitBatch call, in
-   * order. A refused batch is in the call log and the spy, not here.
+   * The ops of every batch that landed, one entry per commitBatch or
+   * commitOnline call, in order. A refused batch is in the call log and the
+   * spy, not here.
    */
   readonly batches: BatchOp[][] = [];
+
+  /** For each entry of `batches`, whether commitOnline committed it, in a transaction, rather than commitBatch. */
+  readonly transactional: boolean[] = [];
 
   /**
    * Invoked at the start of every runTransaction call, before the callback's
@@ -267,9 +276,9 @@ export class MockFirestoreService {
   beforeTransaction?: () => void;
 
   /**
-   * Judges each commitBatch call by its ops: a truthy answer refuses the
-   * whole batch with that answer as the rejection, and nothing in it
-   * applies, as the rules refuse a commit.
+   * Judges each commitBatch and commitOnline call by its ops: a truthy
+   * answer refuses the whole batch with that answer as the rejection, and
+   * nothing in it applies, as the rules refuse a commit.
    */
   refuseBatch?: (ops: readonly BatchOp[]) => unknown;
 
@@ -299,6 +308,7 @@ export class MockFirestoreService {
     this.mockAggregates.clear();
     this.callLog.length = 0;
     this.batches.length = 0;
+    this.transactional.length = 0;
     this._getDocumentSpy.reset();
     this._getCollectionSpy.reset();
     this._getCollectionFromServerSpy.reset();
@@ -316,9 +326,11 @@ export class MockFirestoreService {
     this._txGetSpy.reset();
     this._txDeleteSpy.reset();
     this._subscribeToDocumentWithMetadataSpy.reset();
+    this._subscribeToCollectionWithMetadataSpy.reset();
     this._getDocumentFromServerSpy.reset();
     this._aggregateFromServerSpy.reset();
     this._commitBatchSpy.reset();
+    this._commitOnlineSpy.reset();
     this._waitForPendingWritesSpy.reset();
     this.beforeTransaction = undefined;
     this.refuseBatch = undefined;
@@ -485,6 +497,14 @@ export class MockFirestoreService {
     return of({ data, fromCache: false, hasPendingWrites: false });
   }
 
+  // Answers as the server would: the seeded collection, confirmed.
+  subscribeToCollectionWithMetadata<T>(collectionPath: string, options?: unknown): Observable<CollectionWithMetadata<T>> {
+    this.log('subscribeToCollectionWithMetadata', collectionPath);
+    this._subscribeToCollectionWithMetadataSpy.call(collectionPath, options);
+    const docs = (this.mockCollections.get(collectionPath) as T[]) ?? [];
+    return of({ docs, fromCache: false, hasPendingWrites: false });
+  }
+
   async addDocument<T>(collectionPath: string, data: T): Promise<string> {
     this.log('addDocument', collectionPath);
     this._addDocumentSpy.call(collectionPath, data);
@@ -542,6 +562,23 @@ export class MockFirestoreService {
     const given = [...ops];
     this.log('commitBatch', undefined, given);
     this._commitBatchSpy.call(given);
+    this.land(given, false);
+  }
+
+  /**
+   * FirestoreService.commitOnline's commit: applied, refused and recorded
+   * exactly as commitBatch's is, and flagged in `transactional`. Its own
+   * spy and log entry tell it from a batch; runTransaction's spies and
+   * beforeTransaction are left alone, since it reads nothing.
+   */
+  async commitOnline(ops: readonly BatchOp[]): Promise<void> {
+    const given = [...ops];
+    this.log('commitOnline', undefined, given);
+    this._commitOnlineSpy.call(given);
+    this.land(given, true);
+  }
+
+  private land(given: BatchOp[], transactional: boolean): void {
     const refusal = this.refuseBatch?.(given);
     if (refusal) throw refusal;
 
@@ -561,6 +598,7 @@ export class MockFirestoreService {
     }
     this.mockData = next;
     this.batches.push(given);
+    this.transactional.push(transactional);
   }
 
   async waitForPendingWrites(): Promise<void> {

@@ -73,6 +73,19 @@ export interface DocumentWithMetadata<T> {
   hasPendingWrites: boolean;
 }
 
+/**
+ * One emission of subscribeToCollectionWithMetadata. The server confirmed it
+ * only when both flags are false.
+ */
+export interface CollectionWithMetadata<T> {
+  /** Every matching document with its id merged in, in the query's order. */
+  docs: T[];
+  /** True while the listener is not in sync with the server. */
+  fromCache: boolean;
+  /** True when some of `docs` hold a local write the server has not committed yet. */
+  hasPendingWrites: boolean;
+}
+
 export interface PageResult<T> {
   items: T[];
   // Raw snapshots parallel to items, for use as cursors in subsequent pages.
@@ -390,6 +403,43 @@ export class FirestoreService {
     });
   }
 
+  // Like subscribeToCollection, but each emission carries the snapshot's
+  // metadata, so a caller can tell an answer from this device's cache from
+  // one in sync with the server. fromCache false alone is not confirmation:
+  // a latency-compensated local write emits with fromCache false and
+  // hasPendingWrites true; confirmed is both false. An empty answer from the
+  // cache means only "nothing cached". Metadata-only changes are delivered
+  // too, so the move from the cache to the server is heard even when no
+  // document changed.
+  subscribeToCollectionWithMetadata<T>(
+    collectionPath: string,
+    options?: QueryOptions
+  ): Observable<CollectionWithMetadata<T>> {
+    return new Observable<CollectionWithMetadata<T>>((subscriber) => {
+      // Run within injection context to prevent AngularFire warnings
+      return runInInjectionContext(this.injector, () => {
+        const q = query(collection(this.firestore, collectionPath), ...this.buildQueryConstraints(options));
+
+        const unsubscribe = onSnapshot(
+          q,
+          { includeMetadataChanges: true },
+          (snapshot: QuerySnapshot) => {
+            subscriber.next({
+              docs: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as T[],
+              fromCache: snapshot.metadata.fromCache,
+              hasPendingWrites: snapshot.metadata.hasPendingWrites
+            });
+          },
+          (error) => {
+            subscriber.error(error);
+          }
+        );
+
+        return () => unsubscribe();
+      });
+    });
+  }
+
   // Add a new document with auto-generated ID
   async addDocument<T extends DocumentData>(
     collectionPath: string,
@@ -461,6 +511,34 @@ export class FirestoreService {
       }
     }
     return batch.commit();
+  }
+
+  // Commits the ops as commitBatch does, all or none and each stamped the
+  // same way, but in a transaction that only writes, so nothing enters the
+  // persistent mutation queue: a commit the server never answered is not
+  // kept to land, or be refused unseen, once the page is gone. Offline, or
+  // when the connection drops mid-way, it rejects ('unavailable') once the
+  // runner's attempts are spent.
+  //
+  // The runner's attempts are its default: an attempt whose answer was lost
+  // is sent again, so a caller whose rules refuse a second delivery must
+  // recognise its first one on the server. It does not retry a refusal or a
+  // missing document ('permission-denied', 'not-found'). No client timeout
+  // bounds it: on a network that silently drops traffic it waits as long as
+  // the browser does, as getDocumentFromServer does.
+  async commitOnline(ops: readonly BatchOp[]): Promise<void> {
+    await this.runTransaction(async tx => {
+      for (const op of ops) {
+        const ref = doc(this.firestore, op.path);
+        if (op.op === 'delete') {
+          tx.delete(ref);
+        } else if (op.op === 'update') {
+          tx.update(ref, this.stamped(op));
+        } else {
+          tx.set(ref, this.stamped(op), { merge: op.merge ?? false });
+        }
+      }
+    });
   }
 
   private stamped(op: Exclude<BatchOp, { op: 'delete' }>): DocumentData {

@@ -1842,14 +1842,16 @@
       "byMember": "By member",
       "transactionsTitle": "Everyone's transactions",
       "emptyTitle": "No transactions in this period",
-      "emptyDescription": "Nobody in the household recorded a transaction in this period.",
+      "nothingShared": "Nobody has shared anything in this period.",
       "offlineTitle": "Nothing to show offline",
       "offlineDescription": "This period's household figures haven't been loaded on this device. Connect to see them.",
-      "unavailable": "{{name}}'s records can't be read. They may no longer be in the household.",
-      "incomplete": "Some of {{name}}'s transactions couldn't be loaded, so their figures may be incomplete.",
-      "categoriesIncomplete": "Some of {{name}}'s categories couldn't be loaded, so some of their transactions may show an unknown category, and some of their budgets a generic icon.",
+      "failedTitle": "Shared transactions couldn't be loaded",
+      "failedDescription": "Reopen this page to try again.",
+      "incomplete": "Some shared transactions couldn't be loaded, so these figures may be incomplete.",
       "notLoaded": "Not loaded on this device. Connect to see their figures.",
-      "truncated": "{{name}} has more than {{cap}} transactions in this period. Only the newest {{cap}} are shown and counted.",
+      "memberLoading": "Loading their figures…",
+      "memberFailed": "Their figures couldn't be loaded.",
+      "truncated": "More than {{cap}} transactions were shared in this period. Only the newest {{cap}} are shown and counted.",
       "showMore": {
         "one": "Show more ({{count}} transaction remaining)",
         "other": "Show more ({{count}} transactions remaining)"
@@ -1858,13 +1860,7 @@
     },
     "plans": {
       "title": "Budgets and goals",
-      "loading": "Loading the household's budgets and goals…",
-      "empty": "No active budgets or goals.",
-      "notLoaded": "Not loaded on this device. Connect to see their budgets and goals.",
-      "readFailed": "Some budgets or goals here couldn't be loaded.",
-      "stale": "{{name}}'s spending for this period hasn't been updated yet, so it shows 0 here.",
-      "budgetsIncomplete": "Some of {{name}}'s budgets couldn't be loaded, so not all of them may be shown.",
-      "goalsIncomplete": "Some of {{name}}'s goals couldn't be loaded, so not all of them may be shown."
+      "empty": "No active budgets or goals."
     },
     "members": {
       "title": "Members",

@@ -71,7 +71,8 @@ app-period-selector {
   > span {
     flex: 1 1 0;
     min-width: 0;
-    // A member's name may be one long word.
+    // A translated sentence in this narrow column may still hold an
+    // unbroken run.
     overflow-wrap: anywhere;
   }
 }
@@ -174,6 +175,29 @@ app-period-selector {
   &.negative {
     color: var(--color-expense-text);
   }
+}
+
+// Beside a figure that includes a row in another currency: that row was
+// converted at today's rate, not the rate of its day.
+.rate-caption {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+// Under the three figures, on a line of its own.
+.member-rate {
+  flex: 1 0 100%;
+}
+
+// Under the row, at its trailing edge where the converted figure ends line
+// 3, within the row's own 8px padding: pulled up into the padding below that
+// line, so it reads as that figure's and not as the next row's.
+.row-rate {
+  margin-block-start: -8px;
+  padding: 0 8px 8px;
+  text-align: end;
 }
 
 .overview-row + .overview-row {

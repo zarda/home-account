@@ -53,9 +53,8 @@ export class CategoryHelperService {
   }
 
   /**
-   * A category id this map does not hold: a deleted category, or another
-   * household member's whose categories could not be read. Shown, never
-   * stored, so it is in the reader's language.
+   * A category id this map does not hold, such as a deleted category. Shown,
+   * never stored, so it is in the reader's language.
    */
   private unknown(): string {
     return this.translationService.t('common.unknownCategory');
