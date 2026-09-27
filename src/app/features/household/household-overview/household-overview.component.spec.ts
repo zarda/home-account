@@ -11,8 +11,12 @@ import {
   LedgerTotals,
   MemberTotals
 } from '../../../core/services/household-ledger.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { HouseholdError } from '../../../core/services/household.service';
+import { HouseholdGoalFigures, HouseholdPlansService } from '../../../core/services/household-plans.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { PwaService } from '../../../core/services/pwa.service';
@@ -37,6 +41,7 @@ interface FakeLedger {
   incomplete: WritableSignal<boolean>;
   loading: WritableSignal<boolean>;
   fromCache: WritableSignal<boolean>;
+  ratesPending: WritableSignal<boolean>;
   setPeriod: jasmine.Spy;
 }
 
@@ -94,6 +99,11 @@ describe('HouseholdOverviewComponent', () => {
   let online: WritableSignal<boolean>;
   let viewer: WritableSignal<User | null>;
   let announce: jasmine.Spy;
+  /** The household's active goals, as the page's plans service lists them. */
+  let goals: WritableSignal<HouseholdGoalFigures[]>;
+  let linkCopy: jasmine.Spy;
+  let notification: jasmine.SpyObj<Pick<NotificationService, 'success' | 'error'>>;
+  let analytics: jasmine.SpyObj<Pick<AnalyticsService, 'trackHouseholdAction'>>;
 
   const element = (): HTMLElement => fixture.nativeElement as HTMLElement;
   const text = (): string => element().textContent ?? '';
@@ -132,6 +142,7 @@ describe('HouseholdOverviewComponent', () => {
       incomplete: signal(false),
       loading: signal(true),
       fromCache: signal(false),
+      ratesPending: signal(false),
       setPeriod: jasmine.createSpy('setPeriod')
     };
     online = signal(true);
@@ -148,6 +159,10 @@ describe('HouseholdOverviewComponent', () => {
     currency.amountInBase.and.callFake((t: { amount: number; amountInBaseCurrency?: number }) =>
       t.amountInBaseCurrency ?? t.amount);
     announce = jasmine.createSpy('announce');
+    goals = signal([]);
+    linkCopy = jasmine.createSpy('linkCopy').and.resolveTo(undefined);
+    notification = jasmine.createSpyObj('NotificationService', ['success', 'error']);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackHouseholdAction']);
 
     await TestBed.configureTestingModule({
       imports: [HouseholdOverviewComponent],
@@ -169,7 +184,10 @@ describe('HouseholdOverviewComponent', () => {
           })
         },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
-        { provide: AnnouncerService, useValue: { announce } }
+        { provide: AnnouncerService, useValue: { announce } },
+        { provide: HouseholdPlansService, useValue: { goals, linkCopy } },
+        { provide: NotificationService, useValue: notification },
+        { provide: AnalyticsService, useValue: analytics }
       ]
     }).compileComponents();
 
@@ -285,14 +303,13 @@ describe('HouseholdOverviewComponent', () => {
       expect(described).toEqual(['Matcha', 'Pay', 'Bouldering']);
     });
 
-    it('shows them read-only: no row opens, and nothing in the list is a control', () => {
+    // The one control a row can carry, its goal menu, has its own cases below.
+    it('shows them read-only: no row opens or swipes', () => {
       for (const debug of rowsShown()) {
         const shown = debug.componentInstance as TransactionRowComponent;
         expect(shown.interactive()).toBeFalse();
         expect(shown.swipeActions()).toBeFalse();
       }
-      const list = element().querySelector('.overview-rows') as HTMLElement;
-      expect(list.querySelectorAll('button, a, [tabindex]').length).toBe(0);
     });
 
     it("names each row's category from its snapshot: a built-in in the viewer's language, a custom one as typed", () => {
@@ -897,6 +914,29 @@ describe('HouseholdOverviewComponent', () => {
       });
     }
 
+    it("waits, rows or not, while a row in another currency waits for today's rates, and formats no figure it holds back", () => {
+      answered();
+      ledger.ratesPending.set(true);
+      render();
+
+      expect(element().querySelector('app-loading-spinner mat-spinner')?.getAttribute('aria-label'))
+        .toBe('household.overview.loading');
+      expect(element().querySelector('app-financial-summary')).toBeNull();
+      expect(element().querySelectorAll('.member-line').length).toBe(0);
+      expect(rowsShown().length).toBe(0);
+      expect(fixture.componentInstance.memberLines().map(line => [line.member.uid, line.pending, line.income, line.expense, line.balance]))
+        .withContext('no line formats a total the ledger holds back')
+        .toEqual([['alex', 'loading', '', '', ''], ['sam', 'loading', '', '', '']]);
+
+      ledger.ratesPending.set(false);
+      render();
+
+      expect(element().querySelector('mat-spinner')).toBeNull();
+      expect(element().querySelector('app-financial-summary')).not.toBeNull();
+      expect(rowsShown().length).toBe(3);
+      expect(fixture.componentInstance.memberLines().map(line => line.pending)).toEqual([null, null]);
+    });
+
     it('from the server, shows a member who shared nothing in the period at zero', () => {
       answered();
       ledger.totalsByMember.update(lines => [...lines, { member: kai, totals: totals(0, 0, 0) }]);
@@ -904,6 +944,190 @@ describe('HouseholdOverviewComponent', () => {
 
       expect(memberLine('Kai')?.querySelector('.member-figures')).not.toBeNull();
       expect(memberLine('Kai')?.textContent).not.toContain('household.overview.notLoaded');
+    });
+  });
+
+  describe("counting the viewer's own rows toward a goal", () => {
+    const GEN = Timestamp.fromMillis(1_700_000_000_000);
+    const goal = (id: string, name: string): HouseholdGoalFigures => ({
+      goal: {
+        id,
+        gen: GEN,
+        name,
+        targetAmount: 1000,
+        currency: 'USD',
+        isActive: true,
+        createdBy: 'sam',
+        createdAt: GEN,
+        updatedAt: GEN
+      },
+      saved: 0,
+      linked: 0,
+      contributed: 0,
+      fraction: 0,
+      contributions: [],
+      atTodaysRate: false,
+      incomplete: false,
+      counting: false
+    });
+    const linkButtons = (): HTMLButtonElement[] =>
+      Array.from(element().querySelectorAll<HTMLButtonElement>('.overview-row .row-goal-btn'));
+    const rowOf = (description: string): HTMLElement =>
+      Array.from(element().querySelectorAll<HTMLElement>('.overview-row'))
+        .find(each => each.querySelector('app-transaction-row')?.textContent?.includes(description)) as HTMLElement;
+    /** The menu's choices once it opens from `trigger`: name and whether checked. */
+    function openMenu(trigger: HTMLButtonElement): HTMLButtonElement[] {
+      trigger.click();
+      render();
+      return Array.from(document.querySelectorAll<HTMLButtonElement>('.goal-link-menu [role="menuitemradio"]'));
+    }
+    const choices = (items: HTMLButtonElement[]) =>
+      items.map(item => [item.textContent?.replace(/\s+/g, ' ').replace('check', '').trim(), item.getAttribute('aria-checked')]);
+
+    beforeEach(() => {
+      answered();
+      // Bouldering, the viewer's, already counts toward the holiday.
+      ledger.rows.update(rows => rows.map(each => (each.sourceId === 'tx-a2' ? { ...each, goalId: 'g1' } : each)));
+      goals.set([goal('g1', 'Holiday'), goal('g2', 'Sofa')]);
+      render();
+    });
+
+    afterEach(() => {
+      for (const backdrop of Array.from(document.querySelectorAll<HTMLElement>('.cdk-overlay-backdrop'))) backdrop.click();
+    });
+
+    it("offers it only on the viewer's own rows, each named by its row", () => {
+      expect(linkButtons().map(each => each.getAttribute('aria-label'))).toEqual([
+        'household.overview.countToward:{"name":"Pay"}',
+        'household.overview.countToward:{"name":"Bouldering"}'
+      ]);
+      expect(rowOf('Matcha').querySelector('button, a, [tabindex]')).toBeNull();
+    });
+
+    it('offers nothing while the household has no active goal', () => {
+      goals.set([]);
+      render();
+
+      expect(linkButtons()).toEqual([]);
+      expect(element().querySelector('.overview-rows')?.querySelectorAll('button, a, [tabindex]').length).toBe(0);
+    });
+
+    it("lists the household's active goals and None, the row's own choice checked", () => {
+      expect(choices(openMenu(linkButtons()[1]))).toEqual([
+        ['Holiday', 'true'],
+        ['Sofa', 'false'],
+        ['household.overview.countTowardNone', 'false']
+      ]);
+    });
+
+    it('checks None for a row that counts toward no goal', () => {
+      expect(choices(openMenu(linkButtons()[0]))).toEqual([
+        ['Holiday', 'false'],
+        ['Sofa', 'false'],
+        ['household.overview.countTowardNone', 'true']
+      ]);
+    });
+
+    it("counts the row toward the goal chosen, by the row's own id, and says so", async () => {
+      openMenu(linkButtons()[1])[1].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).toHaveBeenCalledOnceWith('tx-a2', 'g2');
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'goal_link' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.overview.linked:{"name":"Sofa"}');
+    });
+
+    it('stops counting it toward any goal with None', async () => {
+      openMenu(linkButtons()[1])[2].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).toHaveBeenCalledOnceWith('tx-a2', null);
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'goal_link' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.overview.unlinked');
+    });
+
+    it('sends nothing for the choice the row already has', async () => {
+      openMenu(linkButtons()[1])[0].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing for None on a row that counts toward no goal', async () => {
+      openMenu(linkButtons()[0])[2].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('shows None for a row linked to a goal no longer active, and clears that link with None', async () => {
+      ledger.rows.update(rows => rows.map(each => (each.sourceId === 'tx-a2' ? { ...each, goalId: 'gone' } : each)));
+      render();
+
+      const items = openMenu(linkButtons()[1]);
+      expect(choices(items)).toEqual([
+        ['Holiday', 'false'],
+        ['Sofa', 'false'],
+        ['household.overview.countTowardNone', 'true']
+      ]);
+      items[2].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).toHaveBeenCalledOnceWith('tx-a2', null);
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'goal_link' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.overview.unlinked');
+    });
+
+    it("says a refusal in the service's own words, and counts nothing", async () => {
+      linkCopy.and.rejectWith(new HouseholdError('household.errors.copyGone'));
+      openMenu(linkButtons()[0])[0].click();
+      await fixture.whenStable();
+
+      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.copyGone');
+      expect(notification.success).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('says which active goal a row of the viewer counts toward', () => {
+      expect(rowOf('Bouldering').querySelector('.row-goal')?.textContent?.trim())
+        .toBe('household.overview.countsToward:{"name":"Holiday"}');
+      expect(rowOf('Pay').querySelector('.row-goal')).toBeNull();
+      // A goal no longer active counts nothing, and is not named.
+      goals.set([goal('g2', 'Sofa')]);
+      render();
+      expect(rowOf('Bouldering').querySelector('.row-goal')).toBeNull();
+    });
+
+    it("keeps each row and its 40px button inside the section at a phone's width", () => {
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.width = '311px';
+      host.style.fontFamily = "Verdana, 'DejaVu Sans', sans-serif";
+      document.body.appendChild(host);
+      try {
+        ledger.rows.update(rows => rows.map(each =>
+          each.sourceId === 'tx-a1' ? { ...each, description: 'W'.repeat(80), amount: 98765432.1, inBase: 98765432.1 } : each));
+        render();
+        TestBed.inject(FitTextRegistry).flush();
+
+        const section = (element().querySelector('.overview') as HTMLElement).getBoundingClientRect();
+        for (const button of linkButtons()) {
+          const box = button.getBoundingClientRect();
+          expect(box.width).toBeGreaterThanOrEqual(40);
+          expect(box.height).toBeGreaterThanOrEqual(40);
+          expect(box.left).toBeGreaterThanOrEqual(section.left - 0.5);
+          expect(box.right).toBeLessThanOrEqual(section.right + 0.5);
+        }
+        for (const part of Array.from(element().querySelectorAll<HTMLElement>('.overview-row, .overview-row .row-meta, .row-goal'))) {
+          expect(part.scrollWidth).withContext(`nothing overflows ${part.className}`).toBeLessThanOrEqual(part.clientWidth);
+          const rect = part.getBoundingClientRect();
+          expect(rect.left).withContext(`${part.className} starts inside`).toBeGreaterThanOrEqual(section.left - 0.5);
+          expect(rect.right).withContext(`${part.className} ends inside`).toBeLessThanOrEqual(section.right + 0.5);
+        }
+      } finally {
+        host.remove();
+      }
     });
   });
 });

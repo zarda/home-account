@@ -13,11 +13,15 @@ import {
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
 
 import { HouseholdLedgerService, LedgerRow } from '../../../core/services/household-ledger.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { HouseholdPlansService } from '../../../core/services/household-plans.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { pinLeadingMinus, snapDisplayZero } from '../../../core/utils/money-display.utils';
@@ -41,6 +45,7 @@ import { TransactionRowComponent } from '../../../shared/components/transaction-
 import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { FinancialSummaryComponent } from '../../dashboard/financial-summary/financial-summary.component';
+import { writeFailureMessage } from '../household-failure';
 import { FocusContext, focusWhenRendered } from '../household-focus';
 
 /**
@@ -53,7 +58,7 @@ type MemberPending = 'offline' | 'loading' | 'failed';
 /** A member's figures for the period, formatted for their line. */
 interface MemberLine {
   member: HouseholdMemberIdentity;
-  /** Set when the line says why in place of figures. */
+  /** Set when the line says why in place of figures, and then none is formatted. */
   pending: MemberPending | null;
   income: string;
   expense: string;
@@ -72,6 +77,20 @@ interface RowView {
   member: HouseholdMemberIdentity | null;
   /** What the row counts as in the viewer's base was converted at today's rate. */
   atTodaysRate: boolean;
+  /** The viewer's own row: only its member counts it toward a goal. */
+  own: boolean;
+  /** Its row's id among the viewer's transactions, which the goal link is written by. */
+  sourceId: string;
+  /** The active household goal it counts toward, as the menu checks it; null for none, or for a goal no longer active. */
+  goal: GoalChoice | null;
+  /** The goal its copy is linked to as stored, active or not; null for none. */
+  linkedId: string | null;
+}
+
+/** A household goal a row can count toward. */
+interface GoalChoice {
+  id: string;
+  name: string;
 }
 
 /**
@@ -139,12 +158,16 @@ function snapshotCategory(row: LedgerRow): Category {
  * newest first and a page at a time. A row a member has not shared is never
  * here.
  *
- * Read-only throughout. Most rows belong to other members, so no row opens
- * from here, the viewer's own included, and nothing in the list is a control.
+ * Most rows belong to other members, so no row opens from here, the
+ * viewer's own included. The one control in the list is on the viewer's own
+ * rows, while the household has an active goal: a menu that counts the row
+ * toward one of the goals, or toward none, and says which it counts toward.
+ * Another member's link is theirs alone to change.
  *
  * The ledger comes from the household page, which hands it the household and
  * its members; this section owns the period. A period is read the way the
- * dashboard reads it, to the end of today.
+ * dashboard reads it, to the end of today. The goals a row is offered, and
+ * the link written for it, are the page's HouseholdPlansService's.
  *
  * Figures are in the viewer's base currency. Any that include a row in
  * another currency were converted at today's rate, and say so: the
@@ -160,6 +183,7 @@ function snapshotCategory(row: LedgerRow): Category {
     LoadingSpinnerComponent,
     MatButtonModule,
     MatIconModule,
+    MatMenuModule,
     MemberChipComponent,
     PeriodSelectorComponent,
     TransactionRowComponent,
@@ -175,6 +199,9 @@ export class HouseholdOverviewComponent {
   private readonly currency = inject(CurrencyService);
   private readonly announcer = inject(AnnouncerService);
   private readonly translation = inject(TranslationService);
+  private readonly plans = inject(HouseholdPlansService);
+  private readonly notification = inject(NotificationService);
+  private readonly analytics = inject(AnalyticsService);
   private readonly isOnline = inject(PwaService).isOnline;
   private readonly focus: FocusContext = {
     host: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
@@ -234,8 +261,12 @@ export class HouseholdOverviewComponent {
    * shared rows could not be read, and with the cache's rows it shows them
    * under a note that the figures may be incomplete. Rows known from the
    * cache are shown, the page saying offline that they may be out of date.
+   * A row in another currency waiting for today's rates is held out of
+   * every figure (ratesPending), so the page waits for the rates rather
+   * than show figures short of it.
    */
   readonly state = computed<'offline' | 'loading' | 'failed' | 'ready'>(() => {
+    if (this.ledger.ratesPending()) return 'loading';
     if (this.ledger.rows().length > 0) return 'ready';
     if (this.ledger.incomplete()) return 'failed';
     if (!this.ledger.loading() && !this.ledger.fromCache()) return 'ready';
@@ -249,13 +280,17 @@ export class HouseholdOverviewComponent {
     // shared nothing, so no zeros are shown for them.
     const cached = this.ledger.fromCache();
     const why: MemberPending = this.ledger.incomplete() ? 'failed' : this.isOnline() ? 'loading' : 'offline';
-    return this.ledger.totalsByMember().map(({ member, totals }) => {
+    // Totals short of a row held for today's rates are no one's figures.
+    const held = this.ledger.ratesPending();
+    return this.ledger.totalsByMember().map(({ member, totals }): MemberLine => {
+      const pending = held ? 'loading' : cached && totals.count === 0 ? why : null;
+      if (pending) return { member, pending, income: '', expense: '', balance: '', negative: false, atTodaysRate: false };
       // A residue below the currency's smallest unit is zero, not a signed
       // zero in the expense tone.
       const net = snapDisplayZero(totals.balance, base);
       return {
         member,
-        pending: cached && totals.count === 0 ? why : null,
+        pending,
         income: format(totals.income),
         expense: format(totals.expense),
         // A wrapped negative figure must not leave its sign behind on a line
@@ -267,15 +302,26 @@ export class HouseholdOverviewComponent {
     });
   });
 
+  /** The household's active goals, in the plans' order: what a row can count toward. */
+  readonly goalChoices = computed<GoalChoice[]>(
+    () => this.plans.goals().map(({ goal }) => ({ id: goal.id, name: goal.name }))
+  );
+
   private readonly allRows = computed<RowView[]>(() => {
     const base = this.baseCurrency();
+    const viewer = this.auth.userId();
     const members = new Map(this.ledger.totalsByMember().map(({ member }) => [member.uid, member]));
+    const goals = new Map(this.goalChoices().map(choice => [choice.id, choice]));
     return this.ledger.rows().map(row => ({
       key: row.id,
       transaction: shownTransaction(row, base),
       categories: new Map([[row.categoryId, snapshotCategory(row)]]),
       member: members.get(row.memberUid) ?? null,
-      atTodaysRate: row.atTodaysRate
+      atTodaysRate: row.atTodaysRate,
+      own: viewer !== null && row.memberUid === viewer,
+      sourceId: row.sourceId,
+      goal: (row.goalId && goals.get(row.goalId)) || null,
+      linkedId: row.goalId ?? null
     }));
   });
 
@@ -327,6 +373,25 @@ export class HouseholdOverviewComponent {
       return;
     }
     this.handFocusOn(this.allRows()[firstRevealed]?.key);
+  }
+
+  /**
+   * Counts the viewer's own row toward `goal`, or toward none (null). The
+   * link it already has sends nothing. A link to a goal no longer active
+   * counts nothing, so the menu checks None for it, and None clears it. The
+   * menu's check follows the listener, so it moves once the link has landed.
+   */
+  async countToward(view: RowView, goal: GoalChoice | null): Promise<void> {
+    if (!view.own || view.linkedId === (goal?.id ?? null)) return;
+    try {
+      await this.plans.linkCopy(view.sourceId, goal?.id ?? null);
+      this.analytics.trackHouseholdAction({ action: 'goal_link' });
+      this.notification.success(goal
+        ? this.translation.t('household.overview.linked', { name: goal.name })
+        : this.translation.t('household.overview.unlinked'));
+    } catch (error) {
+      this.notification.error(writeFailureMessage(error, key => this.translation.t(key)));
+    }
   }
 
   onMoreFocus(): void {

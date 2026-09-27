@@ -71,10 +71,18 @@ call and no `UserTrackingService`. Google signals and ads personalisation are
 off on the property and denied again in the tag's consent defaults.
 
 `page_location` is overwritten with the origin and path only, and a route
-parameter naming a record (`/household/{hid}`) is written as its template.
-gtag attaches the full URL to every hit on its own, and that is a channel no
-parameter allowlist covers — so the matching invariant is: **no route or query
-parameter may ever carry user-entered text**.
+parameter naming a record (`/household/{hid}`) is written as its template
+(`pageFields` in `analytics.config.ts`). gtag attaches the full URL to every
+hit on its own, and that is a channel no parameter allowlist covers. The
+events the app logs carry `pageFields()` merged in. The hits gtag logs by
+itself (`session_start`, `user_engagement`) never pass through the app, so
+the web transport also hands the same fields to gtag's `set` command
+(`setDefaultEventParameters`): once just before the Analytics instance is
+first read, which is after consent, and again before every screen view.
+Those hits therefore carry the template too, never `document.location`.
+Because the override is only as good as the pattern that writes it, the
+matching invariant is: **no route or query parameter may ever carry
+user-entered text**.
 
 Counts are the point; contents are not. `transaction_add` says an expense was
 added by receipt scan. It cannot say what was bought, for how much, or where.
@@ -88,7 +96,7 @@ the code disagree. `Since` covers the event, not its parameters —
 arrived in 1.18.95. `receipt_import`'s `path`, `engine`, `provider`, `failure`
 and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 `switch`, `plan_create`, `plan_delete`, `goal_link` and `contribute` arrived in
-26.9.169.
+26.10.169.
 
 <!-- analytics-registry:start -->
 | Event | Trigger | Params | Source | Since |
@@ -102,7 +110,7 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `ai_assist_used` | An AI feature issued a real provider request (cache hits and local fallbacks excluded). | `feature` | `src/app/core/services/ai-import.service.ts`, `src/app/core/services/nl-search.service.ts`, `src/app/core/services/note-translation.service.ts`, `src/app/core/services/receipt-translation.service.ts`, `src/app/core/services/weekly-recap.service.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/dashboard/ai-summary/ai-summary.component.ts`, `src/app/features/reports/insights/insight-narrative/insight-narrative.component.ts` | 1.16.91 |
 | `settings_change` | A tracked preference was saved from profile settings. | `setting` | `src/app/features/settings/profile-settings/profile-settings.component.ts`, `src/app/features/settings/accessibility-settings/accessibility-settings.component.ts` | 1.16.91 |
 | `search_history_used` | A stored search record was reopened, refreshed or applied. Never fires for collapsing one. | `action` | `src/app/features/ai/search-history/search-answer-history.component.ts`, `src/app/shared/components/ai-search-dialog/ai-search-dialog.component.ts` | 1.23.116 |
-| `household_action` | A household action succeeded: starting one, or accepting or declining an invite, from the setup; inviting, revoking, renaming, removing, leaving or dissolving from the member view; picking another household in the page's switcher; sharing transactions into a household or stopping, from the transaction form, a row's menu or the transactions list's select bar, once per kind a save, a menu choice or a run of the bar went through for, however many rows and households it covered. A refusal, failure or cancel sends nothing, and neither does the page's own tidying of an ended membership or its move off a household it lost. | `action` | `src/app/features/household/household-members/household-members.component.ts`, `src/app/features/household/household-setup/household-setup.component.ts`, `src/app/features/household/household.component.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/transactions/transaction-list/transaction-list.component.ts` | 26.9.167 |
+| `household_action` | A household action succeeded: starting one, or accepting or declining an invite, from the setup; inviting, revoking, renaming, removing, leaving or dissolving from the member view; picking another household in the page's switcher; sharing transactions into a household or stopping, from the transaction form, a row's menu or the transactions list's select bar, once per kind a save, a menu choice or a run of the bar went through for, however many rows and households it covered; making or deleting one of the household's budgets or goals, or recording a contribution to a goal, from the plans section; setting which goal one of the viewer's own shared rows counts toward, or none, from the overview's row menu. Editing a plan and deleting a contribution send nothing. A refusal, failure or cancel sends nothing, and neither does the page's own tidying of an ended membership or its move off a household it lost. | `action` | `src/app/features/household/household-members/household-members.component.ts`, `src/app/features/household/household-overview/household-overview.component.ts`, `src/app/features/household/household-plans/household-plans.component.ts`, `src/app/features/household/household-setup/household-setup.component.ts`, `src/app/features/household/household.component.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/transactions/transaction-list/transaction-list.component.ts` | 26.9.167 |
 <!-- analytics-registry:end -->
 
 ### Parameter values
@@ -125,7 +133,7 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative`, `translation` (a note or receipt photo read back in the UI language — neither the note nor the image is ever sent here), `recap` (the weekly recap's sentence — figures and category names only) |
 | `setting` | `theme`, `language`, `currency`, `font_scale`, `high_contrast`, `reduced_motion` |
-| `action` | Per event. `search_history_used`: `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent. `household_action`: `create`, `accept`, `decline` (the setup), `invite`, `revoke`, `rename`, `remove`, `leave`, `dissolve` (the member view), `switch` (the viewer picked another household), `share`, `unshare` (transactions shared into a household or taken out of it), `plan_create`, `plan_delete` (a household budget or goal made or deleted), `goal_link` (a shared transaction set to count toward a household goal), `contribute` (a contribution recorded on a household goal) — never the household's name or id, an invitee's address, which member an action concerned, or how many transactions or households it covered |
+| `action` | Per event. `search_history_used`: `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent. `household_action`: `create`, `accept`, `decline` (the setup), `invite`, `revoke`, `rename`, `remove`, `leave`, `dissolve` (the member view), `switch` (the viewer picked another household), `share`, `unshare` (transactions shared into a household or taken out of it), `plan_create`, `plan_delete` (a household budget or goal made or deleted), `goal_link` (one of the viewer's own shared transactions set to count toward a household goal, or toward none), `contribute` (a contribution recorded on a household goal) — never the household's name or id, an invitee's address, which member an action concerned, or how many transactions or households it covered |
 
 ### What is deliberately not tagged
 
@@ -181,9 +189,10 @@ Notes:
   path drops out of the name.
 - **A route parameter reports as its template.** `:hid`, the household
   page's child naming the household shown, reports `household/:hid`, and
-  `page_location` writes the path the same way: no household id reaches
-  analytics, and every household is one screen. The child renders nothing of
-  its own, so its `screen_class` is the page's, `app-household`.
+  `page_location` writes the path the same way, on the app's events and on
+  gtag's own hits: no household id reaches analytics, and every household
+  is one screen. The child renders nothing of its own, so its
+  `screen_class` is the page's, `app-household`.
 - **Query parameters do not make a distinct screen.** `/transactions?showAll=`,
   `?date=`, `?action=add` and `?tx=` (a transaction id, stripped from the URL
   once consumed) all report `transactions`, and the query string is stripped
@@ -279,6 +288,15 @@ CI has no iOS job. Every native change here is verified only by a local
   that.
 - Turning consent off mid-session stops further hits, but the already-loaded
   gtag script and the `_ga` cookie remain until the page is reloaded.
+- **gtag's own hits can name the previous page for a while.** The SDK holds
+  the first `set` until its initialisation finishes (the dynamic-config
+  fetch and the installation id), then replays it behind `config`, while a
+  `set` made later reaches gtag at once. A navigation between the first
+  read of the Analytics instance and the end of that initialisation is
+  therefore overridden by the replayed older page on `session_start` and
+  `user_engagement` until the next screen view. The `screen_view` itself
+  always names the current page, and either value is a template, so the lag
+  misreports a page and never leaks an id.
 
 ## Adding a new event
 

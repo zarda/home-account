@@ -1,0 +1,120 @@
+// The household plan dialogs' one stylesheet: a budget's, a goal's and a
+// contribution's are the same form in different fields.
+//
+// No rule here may give the host a box. Material lays the host out with
+// `display: contents`, and the dialog chain in styles.scss reaches the form
+// through it: a box in between keeps the content at its full height, so the
+// whole surface scrolls and takes Cancel and the save out of view with it.
+
+.plan-dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plan-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-block: 16px;
+  padding-inline: 24px;
+}
+
+// The dialogs size every field's subscript to what it holds (their
+// MAT_FORM_FIELD_DEFAULT_OPTIONS), so a wrapped hint or error pushes the next
+// field down rather than running over it. Dynamic sizing keeps no row while
+// the field is quiet, so this gives back the one Material reserves: a 16px
+// strut on the subscript's baseline, which comes to about 20px, and a full
+// line of the scaled subscript text once that is taller.
+.plan-dialog-content ::ng-deep .mat-mdc-form-field-subscript-dynamic-size {
+  min-block-size: max(20px, var(--mat-sys-body-small-line-height, 1rem));
+}
+
+.plan-dialog-field {
+  inline-size: 100%;
+}
+
+// The amount and its currency share a line; the amount takes what the
+// currency leaves. Each keeps its own height: a field the row stretches grows
+// its outline with it (Material's text-field wrapper is `flex: auto`), so an
+// error under one field would draw the other's outline taller.
+.plan-dialog-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.plan-dialog-grow {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+// MatSelect caps an outlined select's label notch at the field's width less
+// 60px, the room it keeps for the arrow. That reserve stays in pixels while
+// the floated label grows with the font scale, so the basis is the reserve
+// plus a rem part the label itself fits in.
+.plan-dialog-currency {
+  flex: 0 0 calc(60px + 5rem);
+}
+
+// What a field cannot change: under the field it is about.
+.plan-dialog-note {
+  margin: 0;
+  margin-block-end: 12px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+// Which goal a contribution goes toward: above the fields.
+.plan-dialog-lead {
+  margin: 0;
+  margin-block-end: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+// The chosen categories wrap in the closed select rather than ending in an
+// ellipsis: Material's own trigger styles set nowrap on both boxes.
+.plan-dialog-categories {
+  ::ng-deep .mat-mdc-select-value,
+  ::ng-deep .mat-mdc-select-value-text {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+.plan-dialog-spinner {
+  display: inline-block;
+  margin-inline-end: 8px;
+}
+
+// An option in the category list: its icon and name. A group leads its own
+// categories, which sit indented under it.
+.category-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  mat-icon {
+    flex-shrink: 0;
+    font-size: var(--text-lg);
+    width: 1em;
+    height: 1em;
+  }
+
+  > span {
+    overflow-wrap: anywhere;
+  }
+}
+
+.category-group {
+  font-weight: 600;
+}
+
+.category-sub {
+  padding-inline-start: 40px;
+}

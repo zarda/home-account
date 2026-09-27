@@ -110,7 +110,7 @@
           />
         } @else {
           <!-- A list, so its length is read out: the rows themselves are
-               text, with no control to count them by. -->
+               text, and only the viewer's own carry a control. -->
           <ul class="overview-rows">
             @for (view of rows(); track view.key) {
               <li class="overview-row" [attr.tabindex]="view.key === focusRowKey() ? -1 : null">
@@ -120,13 +120,58 @@
                   [member]="view.member"
                   [interactive]="false"
                   [swipeActions]="false"
-                />
+                >
+                  @if (view.own && goalChoices().length > 0) {
+                    <!-- In the row's menu corner. Every row has one, so its
+                         name says which row it counts. -->
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="row-goal-btn"
+                      [matMenuTriggerFor]="goalMenu"
+                      [matMenuTriggerData]="{ view }"
+                      [attr.aria-label]="'household.overview.countToward' | translate: { name: view.transaction.description }"
+                    >
+                      <mat-icon>flag</mat-icon>
+                    </button>
+                  }
+                </app-transaction-row>
+                @if (view.own && view.goal; as goal) {
+                  <p class="row-goal">{{ 'household.overview.countsToward' | translate: { name: goal.name } }}</p>
+                }
                 @if (view.atTodaysRate) {
                   <p class="rate-caption row-rate">{{ 'common.atTodaysRate' | translate }}</p>
                 }
               </li>
             }
           </ul>
+          <!-- One menu for every row, handed the row it opened from. -->
+          <mat-menu #goalMenu="matMenu" class="goal-link-menu">
+            <ng-template matMenuContent let-view="view">
+              @for (goal of goalChoices(); track goal.id) {
+                <button
+                  mat-menu-item
+                  type="button"
+                  role="menuitemradio"
+                  [attr.aria-checked]="view.goal?.id === goal.id"
+                  (click)="countToward(view, goal)"
+                >
+                  <mat-icon [class.goal-unchecked]="view.goal?.id !== goal.id">check</mat-icon>
+                  <span>{{ goal.name }}</span>
+                </button>
+              }
+              <button
+                mat-menu-item
+                type="button"
+                role="menuitemradio"
+                [attr.aria-checked]="!view.goal"
+                (click)="countToward(view, null)"
+              >
+                <mat-icon [class.goal-unchecked]="!!view.goal">check</mat-icon>
+                <span>{{ 'household.overview.countTowardNone' | translate }}</span>
+              </button>
+            </ng-template>
+          </mat-menu>
           @if (hiddenCount() > 0) {
             <button
               mat-stroked-button

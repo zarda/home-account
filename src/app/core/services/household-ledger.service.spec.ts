@@ -354,7 +354,16 @@ describe('HouseholdLedgerService', () => {
       expect(firestore.commitBatchSpy.calls.length).toBe(0);
     });
 
-    it('hides the copies of an account the members list does not hold, from the rows and every figure', () => {
+    it('carries the household goal a copy counts toward, and none for a copy that counts toward none', () => {
+      follow();
+      answer([copy(ME, 'linked', { date: at(20), goalId: 'g1' }), copy(ME, 'unlinked', { date: at(10) })]);
+
+      const [linked, unlinked] = ledger.rows();
+      expect(linked.goalId).toBe('g1');
+      expect('goalId' in unlinked).toBeFalse();
+    });
+
+    it('hides the copies of an account the members list does not hold, from the rows and every figure', async () => {
       follow([me, kai]);
       answer([copy(ME, 'mine'), copy(KAI, 'theirs'), copy(GONE, 'left-behind', { amount: 500 })]);
 
@@ -367,6 +376,12 @@ describe('HouseholdLedgerService', () => {
       ledger.setMembers([me, kai, { uid: GONE, displayName: 'Back' }]);
       expect(ledger.rows().length).toBe(3);
       expect(ledger.combined().expense).toBe(502);
+
+      // The owner's server-read answer started a purge of the stranger's
+      // copies; it runs out here, while the case's fakes and injector stand.
+      await settle();
+      expect(sharing.purgeMember.calls.allArgs()).toEqual([[HOME.id, GONE]]);
+      expect(ledgerLogs(consoleWarn)).toEqual([]);
     });
 
     it('gives every listed member a line in list order, one with nothing shared at zero', () => {
@@ -439,6 +454,58 @@ describe('HouseholdLedgerService', () => {
       // 50 × 30; 10 × 30 / 0.5 + 3200
       expect(ledger.totalsByMember().map(line => line.totals.expense)).toEqual([1500, 3800]);
       expect(ledger.combined().expense).toBe(5300);
+    });
+
+    describe("before today's rates have loaded", () => {
+      // Until the rate table settles on a source it is a placeholder, and
+      // any conversion through it reads 1:1.
+      beforeEach(() => {
+        currency.rateSource.set(null);
+        user.set(viewer('EUR'));
+      });
+
+      const mixed = () => [
+        copy(ME, 'rent', { amount: 50, currency: 'EUR', date: at(20) }),
+        copy(KAI, 'ramen', { amount: 15000, currency: 'JPY', date: at(10) })
+      ];
+
+      it('holds a copy in another currency out of the rows and every figure, and says the rates are pending', () => {
+        follow([me, kai]);
+        answer(mixed());
+
+        expect(ledger.ratesPending()).toBeTrue();
+        expect(ledger.rows().map(row => [row.sourceId, row.atTodaysRate])).toEqual([['rent', false]]);
+        expect(ledger.totalsByMember().map(line => [line.member.uid, line.totals.expense, line.totals.count, line.totals.atTodaysRate]))
+          .toEqual([[ME, 50, 1, false], [KAI, 0, 0, false]]);
+        expect(ledger.combined()).toEqual({ income: 0, expense: 50, balance: -50, count: 1, atTodaysRate: false });
+      });
+
+      it("shows a household whose copies are all in the viewer's currency at once", () => {
+        follow([me, kai]);
+        answer([copy(ME, 'rent', { amount: 50, currency: 'EUR' }), copy(KAI, 'cafe', { amount: 4, currency: 'EUR' })]);
+
+        expect(ledger.ratesPending()).toBeFalse();
+        expect(ledger.rows().length).toBe(2);
+        expect(ledger.combined()).toEqual({ income: 0, expense: 54, balance: -54, count: 2, atTodaysRate: false });
+      });
+
+      for (const source of ['live', 'cached', 'expired', 'fallback'] as const) {
+        it(`releases the converted figures once the rates settle, from the ${source} table as from any`, () => {
+          follow([me, kai]);
+          answer(mixed());
+
+          currency.rateSource.set(source);
+
+          expect(ledger.ratesPending()).toBeFalse();
+          const [rent, ramen] = ledger.rows();
+          expect([rent.sourceId, rent.inBase, rent.atTodaysRate]).toEqual(['rent', 50, false]);
+          expect([ramen.sourceId, ramen.atTodaysRate]).toEqual(['ramen', true]);
+          // 15000 × 0.8 / 150, where the placeholder's 1:1 would give 15000.
+          expect(ramen.inBase).toBeCloseTo(80, 9);
+          expect(ledger.combined().expense).toBeCloseTo(130, 9);
+          expect(ledger.combined()).toEqual(jasmine.objectContaining({ count: 2, atTodaysRate: true }));
+        });
+      }
     });
   });
 

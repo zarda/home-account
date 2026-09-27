@@ -1,8 +1,36 @@
 <section class="plans" aria-labelledby="household-plans-title">
-  <h2 id="household-plans-title" class="plans-title">
+  <!-- Script focuses it once a plan deleted from here has gone; Tab passes it by. -->
+  <h2 id="household-plans-title" class="plans-title" tabindex="-1">
     <mat-icon>savings</mat-icon>
     <span>{{ 'household.plans.title' | translate }}</span>
   </h2>
+
+  @if (canWrite()) {
+    <div class="plans-actions">
+      <button
+        mat-stroked-button
+        type="button"
+        class="plans-new-budget"
+        (click)="newBudget($event)"
+        [disabled]="pending()"
+        disabledInteractive
+      >
+        <mat-icon>add</mat-icon>
+        <span>{{ 'household.plans.newBudget' | translate }}</span>
+      </button>
+      <button
+        mat-stroked-button
+        type="button"
+        class="plans-new-goal"
+        (click)="newGoal($event)"
+        [disabled]="pending()"
+        disabledInteractive
+      >
+        <mat-icon>add</mat-icon>
+        <span>{{ 'household.plans.newGoal' | translate }}</span>
+      </button>
+    </div>
+  }
 
   @if (state() === 'loading') {
     <app-loading-spinner [message]="'household.plans.loading' | translate" />
@@ -27,7 +55,38 @@
         <ul class="plan-list">
           @for (view of budgets(); track view.id) {
             <li class="plan-card">
-              <h4 class="plan-name">{{ view.name }}</h4>
+              <div class="plan-head">
+                <!-- Script focuses it once the budget made from here has come; Tab passes it by. -->
+                <h4 class="plan-name" [id]="view.headingId" tabindex="-1">{{ view.name }}</h4>
+                @if (canWrite()) {
+                  <div class="plan-actions">
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="plan-edit"
+                      (click)="editBudget(view.id)"
+                      [disabled]="pending()"
+                      disabledInteractive
+                      [attr.aria-label]="'household.plans.edit' | translate: { name: view.name }"
+                    >
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    @if (view.deletable) {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        class="plan-delete"
+                        (click)="deleteBudget(view)"
+                        [disabled]="pending()"
+                        disabledInteractive
+                        [attr.aria-label]="'household.plans.delete' | translate: { name: view.name }"
+                      >
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
               <p class="plan-meta">
                 <span class="plan-period">
                   @switch (view.period) {
@@ -95,7 +154,39 @@
         <ul class="plan-list">
           @for (view of goals(); track view.id) {
             <li class="plan-card">
-              <h4 class="plan-name">{{ view.name }}</h4>
+              <div class="plan-head">
+                <!-- Script focuses it once the goal made from here has come, or a
+                     contribution deleted from it has gone; Tab passes it by. -->
+                <h4 class="plan-name" [id]="view.headingId" tabindex="-1">{{ view.name }}</h4>
+                @if (canWrite()) {
+                  <div class="plan-actions">
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="plan-edit"
+                      (click)="editGoal(view.id)"
+                      [disabled]="pending()"
+                      disabledInteractive
+                      [attr.aria-label]="'household.plans.edit' | translate: { name: view.name }"
+                    >
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    @if (view.deletable) {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        class="plan-delete"
+                        (click)="deleteGoal(view)"
+                        [disabled]="pending()"
+                        disabledInteractive
+                        [attr.aria-label]="'household.plans.delete' | translate: { name: view.name }"
+                      >
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
               @if (view.targetDate; as date) {
                 <p class="plan-meta">
                   <span class="plan-target-date">{{ 'household.plans.targetDate' | translate: { date: date } }}</span>
@@ -134,12 +225,40 @@
                         <app-member-chip class="contribution-who" [member]="entry.member" />
                         <span class="contribution-amount" appFitText>{{ entry.amount }}</span>
                         <span class="contribution-date">{{ entry.date }}</span>
+                        @if (canWrite() && entry.deletable) {
+                          <button
+                            mat-icon-button
+                            type="button"
+                            class="contribution-delete"
+                            (click)="deleteContribution(view, entry)"
+                            [disabled]="pending()"
+                            disabledInteractive
+                            [attr.aria-label]="'household.plans.deleteContribution' | translate: { amount: entry.amount, date: entry.date }"
+                          >
+                            <mat-icon>delete</mat-icon>
+                          </button>
+                        }
                       </li>
                     }
                   </ul>
                 } @else {
                   <p class="contributions-empty">{{ 'household.plans.noContributions' | translate }}</p>
                 }
+              }
+              @if (canWrite()) {
+                <!-- Named by what it does, and described by the goal it is for. -->
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="plan-contribute"
+                  (click)="addContribution(view)"
+                  [disabled]="pending()"
+                  disabledInteractive
+                  [attr.aria-describedby]="view.headingId"
+                >
+                  <mat-icon>add</mat-icon>
+                  <span>{{ 'household.plans.addContribution' | translate }}</span>
+                </button>
               }
             </li>
           }

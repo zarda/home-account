@@ -1,12 +1,21 @@
-import { WritableSignal, signal } from '@angular/core';
+import { WritableSignal, computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideNativeDateAdapter } from '@angular/material/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
+import { firstValueFrom } from 'rxjs';
 
 import { HouseholdPlansComponent } from './household-plans.component';
+import { HouseholdBudgetDialogComponent } from './household-budget-dialog/household-budget-dialog.component';
+import { HouseholdGoalDialogComponent } from './household-goal-dialog/household-goal-dialog.component';
+import { HouseholdContributionDialogComponent } from './household-contribution-dialog/household-contribution-dialog.component';
+import { AnalyticsService } from '../../../core/services/analytics.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
-import { HouseholdService } from '../../../core/services/household.service';
+import { HouseholdError, HouseholdService } from '../../../core/services/household.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import {
   HouseholdBudgetFigures,
@@ -14,11 +23,20 @@ import {
   HouseholdPlansService
 } from '../../../core/services/household-plans.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub, runAxe, summarizeViolations } from '../../../core/services/testing';
+import { createTranslationStub, createUser, runAxe, summarizeViolations } from '../../../core/services/testing';
+import { defaultBudgetStart, startOfDay } from '../../../core/utils/transaction-date.utils';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData
+} from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
-import { HouseholdBudget, HouseholdContribution, HouseholdGoal, HouseholdMember } from '../../../models';
+import { Household, HouseholdBudget, HouseholdContribution, HouseholdGoal, HouseholdMember, User } from '../../../models';
+import { PLAN_AUDIT_THEMES } from './household-plan-dialog.testing';
 
 const GEN = Timestamp.fromMillis(1_700_000_000_000);
+
+/** The household the page shows throughout, unless a test moves it. */
+const HOME: Household = { id: 'h1', name: 'Home', ownerId: 'me', createdAt: GEN };
 
 const member = (uid: string, displayName: string): HouseholdMember => ({
   uid,
@@ -102,7 +120,16 @@ describe('HouseholdPlansComponent', () => {
     fromCache: WritableSignal<boolean>;
   };
   let members: WritableSignal<HouseholdMember[]>;
+  /** The household the page shows; null when it shows none. */
+  let shown: WritableSignal<Household | null>;
+  /** The viewer's own member document; null once they are no longer a live member. */
+  let own: WritableSignal<HouseholdMember | null>;
   let online: WritableSignal<boolean>;
+  let writes: jasmine.SpyObj<Pick<HouseholdPlansService,
+    'newId' | 'createBudget' | 'updateBudget' | 'deleteBudget' | 'createGoal' | 'updateGoal' | 'deleteGoal' |
+    'addContribution' | 'deleteContribution'>>;
+  let notification: jasmine.SpyObj<Pick<NotificationService, 'success' | 'error'>>;
+  let analytics: jasmine.SpyObj<Pick<AnalyticsService, 'trackHouseholdAction'>>;
 
   const element = (): HTMLElement => fixture.nativeElement as HTMLElement;
   const all = (selector: string): HTMLElement[] => Array.from(element().querySelectorAll<HTMLElement>(selector));
@@ -128,18 +155,45 @@ describe('HouseholdPlansComponent', () => {
       fromCache: signal(false)
     };
     members = signal([member('me', 'Alex'), member('kai', 'Kai')]);
+    shown = signal<Household | null>(HOME);
+    own = signal<HouseholdMember | null>(members()[0]);
     online = signal(true);
+    writes = jasmine.createSpyObj('HouseholdPlansService', [
+      'newId', 'createBudget', 'updateBudget', 'deleteBudget', 'createGoal', 'updateGoal', 'deleteGoal',
+      'addContribution', 'deleteContribution'
+    ]);
+    let ids = 0;
+    writes.newId.and.callFake(() => `id-${++ids}`);
+    writes.createBudget.and.resolveTo('b-new');
+    writes.createGoal.and.resolveTo('g-new');
+    writes.addContribution.and.resolveTo('c-new');
+    for (const done of [writes.updateBudget, writes.deleteBudget, writes.updateGoal, writes.deleteGoal, writes.deleteContribution]) {
+      done.and.resolveTo(undefined);
+    }
+    notification = jasmine.createSpyObj('NotificationService', ['success', 'error']);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackHouseholdAction']);
+    const viewer = signal<User | null>(createUser({ id: 'me', preferences: { baseCurrency: 'JPY' } as User['preferences'] }));
 
     await TestBed.configureTestingModule({
       imports: [HouseholdPlansComponent],
       providers: [
         provideNoopAnimations(),
-        { provide: HouseholdPlansService, useValue: plans },
-        { provide: HouseholdService, useValue: { members } },
+        provideNativeDateAdapter(),
+        { provide: HouseholdPlansService, useValue: { ...plans, ...writes } },
+        {
+          provide: HouseholdService,
+          useValue: { household: shown, members, ownMember: own, isOwner: computed(() => own()?.role === 'owner') }
+        },
+        { provide: AuthService, useValue: { currentUser: viewer, userId: computed(() => viewer()?.id ?? null) } },
+        { provide: NotificationService, useValue: notification },
+        { provide: AnalyticsService, useValue: analytics },
         { provide: PwaService, useValue: { isOnline: online } },
         {
           provide: CurrencyService,
-          useValue: { formatCurrency: (amount: number, code: string) => `${code} ${amount.toFixed(2)}` }
+          useValue: {
+            formatCurrency: (amount: number, code: string) => `${code} ${amount.toFixed(2)}`,
+            getSupportedCurrencies: () => ['USD', 'EUR', 'JPY'].map(code => ({ code, nameKey: `currencies.${code}`, symbol: code }))
+          }
         },
         {
           provide: DateFormatService,
@@ -358,7 +412,8 @@ describe('HouseholdPlansComponent', () => {
     ]);
   });
 
-  it('holds no control, and no personal budget or goal card', () => {
+  it('holds no control, and no personal budget or goal card, for a viewer who is no longer a live member', () => {
+    own.set(null);
     plans.budgets.set([budgetFigures()]);
     plans.goals.set([goalFigures()]);
     render();
@@ -367,6 +422,574 @@ describe('HouseholdPlansComponent', () => {
     // Material's progress bar carries tabindex="-1": reachable from script, never by Tab.
     const reachable = all('button, a, input, [tabindex]:not([tabindex="-1"])');
     expect(reachable.map(node => node.outerHTML.slice(0, 120))).toEqual([]);
+  });
+
+  describe("a live member's controls", () => {
+    let dialog: MatDialog;
+
+    const button = (selector: string, within?: Element | null): HTMLButtonElement => {
+      const found = (within ?? element()).querySelector<HTMLButtonElement>(selector);
+      if (!found) throw new Error(`${selector} is not shown`);
+      return found;
+    };
+    const card = (name: string): HTMLElement | undefined =>
+      all('.plan-card').find(each => text(each.querySelector('.plan-name')) === name);
+    const openDialog = <T>(): MatDialogRef<T> => {
+      const ref = dialog.openDialogs.at(-1);
+      if (!ref) throw new Error('No dialog is open');
+      return ref as MatDialogRef<T>;
+    };
+    /** Answers the confirm now open, with what it asked. */
+    async function answerConfirm(answer: boolean): Promise<ConfirmDialogData> {
+      const ref = openDialog<ConfirmDialogComponent>();
+      expect(ref.componentInstance).toBeInstanceOf(ConfirmDialogComponent);
+      const asked = ref.componentInstance.data;
+      ref.close(answer);
+      await firstValueFrom(ref.afterClosed());
+      await fixture.whenStable();
+      return asked;
+    }
+    /** Lets a dialog's close reach the section, and the section render what came of it. */
+    async function settle(): Promise<void> {
+      await fixture.whenStable();
+      render();
+      await fixture.whenStable();
+    }
+
+    beforeEach(() => {
+      dialog = TestBed.inject(MatDialog);
+      // A member, not the owner, unless a test says otherwise.
+      own.set({ ...member('me', 'Alex'), role: 'member' });
+      plans.budgets.set([budgetFigures(), budgetFigures({ id: 'b2', name: 'Fuel', createdBy: 'kai' })]);
+      plans.goals.set([goalFigures(), goalFigures({ id: 'g2', name: 'Sofa', createdBy: 'kai' }, { contributions: [] })]);
+      render();
+    });
+
+    afterEach(() => dialog.closeAll());
+
+    it('offer a new budget and a new goal, and every plan to edit, each control 40px or larger', () => {
+      expect(text(button('.plans-new-budget'))).toContain('household.plans.newBudget');
+      expect(text(button('.plans-new-goal'))).toContain('household.plans.newGoal');
+      expect(all('.plan-edit').map(each => each.getAttribute('aria-label'))).toEqual([
+        'household.plans.edit:{"name":"Groceries"}',
+        'household.plans.edit:{"name":"Fuel"}',
+        'household.plans.edit:{"name":"Holiday"}',
+        'household.plans.edit:{"name":"Sofa"}'
+      ]);
+      const host = element();
+      document.body.appendChild(host);
+      try {
+        for (const control of all('.plans button')) {
+          const { width, height } = control.getBoundingClientRect();
+          expect(Math.min(width, height)).withContext(control.className).toBeGreaterThanOrEqual(40);
+        }
+      } finally {
+        host.remove();
+      }
+    });
+
+    it("offer a plan's delete only to its maker or the household's owner", () => {
+      expect(card('Groceries')?.querySelector('.plan-delete')).not.toBeNull();
+      expect(card('Fuel')?.querySelector('.plan-delete')).toBeNull();
+      expect(card('Holiday')?.querySelector('.plan-delete')).not.toBeNull();
+      expect(card('Sofa')?.querySelector('.plan-delete')).toBeNull();
+
+      own.set(member('me', 'Alex'));
+      render();
+      expect(all('.plan-delete').length).toBe(4);
+      expect(button('.plan-delete', card('Fuel')).getAttribute('aria-label')).toBe('household.plans.delete:{"name":"Fuel"}');
+    });
+
+    it("offer a contribution's delete only to the member who recorded it or the owner", () => {
+      const contributions = () => all('.contribution').map(each => !!each.querySelector('.contribution-delete'));
+      // Kai's first, then the viewer's.
+      expect(contributions()).toEqual([false, true]);
+      own.set(member('me', 'Alex'));
+      render();
+      expect(contributions()).toEqual([true, true]);
+      expect(button('.contribution-delete').getAttribute('aria-label'))
+        .toBe('household.plans.deleteContribution:{"amount":"EUR 50.00","date":"2026-9-20"}');
+    });
+
+    it("make a budget from its dialog in the viewer's base currency, counted and said, then focus its card", async () => {
+      const host = element();
+      document.body.appendChild(host);
+      try {
+        const origin = button('.plans-new-budget');
+        origin.focus();
+        origin.click();
+        const ref = openDialog<HouseholdBudgetDialogComponent>();
+        expect(ref.componentInstance).toBeInstanceOf(HouseholdBudgetDialogComponent);
+        ref.componentInstance.form.patchValue({ name: 'Home', categoryIds: ['food', 'bills'], amount: 900 });
+
+        await ref.componentInstance.submit();
+        await settle();
+
+        expect(writes.createBudget).toHaveBeenCalledOnceWith({
+          name: 'Home',
+          categoryIds: ['food', 'bills'],
+          amount: 900,
+          currency: 'JPY',
+          period: 'monthly',
+          startDate: defaultBudgetStart('monthly', new Date()),
+          endDate: null,
+          alertThreshold: null
+        }, 'id-1');
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'plan_create' });
+        expect(notification.success).toHaveBeenCalledOnceWith('household.plans.budgetCreated');
+        expect(document.activeElement).withContext('the dialog hands focus back to its button').toBe(origin);
+
+        // The card comes once the listener says so, and focus moves on to it.
+        plans.budgets.update(budgets => [...budgets, budgetFigures({ id: 'b-new', name: 'Home' })]);
+        render();
+        await settle();
+        expect(document.activeElement?.id).toBe('household-budget-b-new-name');
+      } finally {
+        host.remove();
+      }
+    });
+
+    it("make a goal from its dialog in the viewer's base currency, counted and said, then focus its card", async () => {
+      const host = element();
+      document.body.appendChild(host);
+      try {
+        const origin = button('.plans-new-goal');
+        origin.focus();
+        origin.click();
+        const ref = openDialog<HouseholdGoalDialogComponent>();
+        expect(ref.componentInstance).toBeInstanceOf(HouseholdGoalDialogComponent);
+        ref.componentInstance.form.patchValue({ name: 'Bike', targetAmount: 300 });
+
+        await ref.componentInstance.submit();
+        await settle();
+
+        expect(writes.createGoal).toHaveBeenCalledOnceWith({ name: 'Bike', targetAmount: 300, currency: 'JPY', targetDate: null }, 'id-1');
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'plan_create' });
+        expect(notification.success).toHaveBeenCalledOnceWith('household.plans.goalCreated');
+        expect(document.activeElement).withContext('the dialog hands focus back to its button').toBe(origin);
+
+        plans.goals.update(goals => [...goals, goalFigures({ id: 'g-new', name: 'Bike' })]);
+        render();
+        await settle();
+        expect(document.activeElement?.id).toBe('household-goal-g-new-name');
+      } finally {
+        host.remove();
+      }
+    });
+
+    it('edit a budget in the same dialog, its currency fixed and never sent, sending only what changed, and count nothing', async () => {
+      button('.plan-edit', card('Fuel')).click();
+      const ref = openDialog<HouseholdBudgetDialogComponent>();
+      expect(ref.componentInstance.form.controls.currency.disabled).toBeTrue();
+      expect(ref.componentInstance.form.controls.currency.value).toBe('USD');
+      ref.componentInstance.form.patchValue({ name: ' Fuel and parking ', alertThreshold: 90 });
+
+      await ref.componentInstance.submit();
+      await settle();
+
+      // Another member's edit to any other field, made meanwhile, stands.
+      expect(writes.updateBudget).toHaveBeenCalledOnceWith('b2', { name: 'Fuel and parking', alertThreshold: 90 });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.plans.budgetSaved');
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it("clear a budget's end date and threshold as its only changes, its categories in another order being none", async () => {
+      plans.budgets.set([
+        budgetFigures({
+          id: 'b3',
+          name: 'Home',
+          categoryIds: ['food', 'bills'],
+          endDate: Timestamp.fromDate(new Date(2026, 11, 31)),
+          alertThreshold: 70
+        })
+      ]);
+      render();
+      button('.plan-edit', card('Home')).click();
+      const ref = openDialog<HouseholdBudgetDialogComponent>();
+      ref.componentInstance.clearEndDate();
+      ref.componentInstance.form.patchValue({ alertThreshold: null, categoryIds: ['bills', 'food'] });
+
+      await ref.componentInstance.submit();
+      await settle();
+
+      expect(writes.updateBudget).toHaveBeenCalledOnceWith('b3', { endDate: null, alertThreshold: null });
+    });
+
+    it('send nothing for an edit that changes nothing, and close', async () => {
+      button('.plan-edit', card('Groceries')).click();
+      const ref = openDialog<HouseholdBudgetDialogComponent>();
+
+      await ref.componentInstance.submit();
+      await settle();
+
+      expect(writes.updateBudget).not.toHaveBeenCalled();
+      expect(dialog.openDialogs.length).toBe(0);
+    });
+
+    it('edit a goal in the same dialog, its currency fixed and never sent, sending only what changed', async () => {
+      button('.plan-edit', card('Holiday')).click();
+      const ref = openDialog<HouseholdGoalDialogComponent>();
+      expect(ref.componentInstance.form.controls.currency.disabled).toBeTrue();
+      ref.componentInstance.form.patchValue({ targetAmount: 1500 });
+
+      await ref.componentInstance.submit();
+      await settle();
+
+      expect(writes.updateGoal).toHaveBeenCalledOnceWith('g1', { targetAmount: 1500 });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.plans.goalSaved');
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+
+      button('.plan-edit', card('Holiday')).click();
+      const again = openDialog<HouseholdGoalDialogComponent>();
+      again.componentInstance.clearTargetDate();
+      await again.componentInstance.submit();
+      await settle();
+
+      expect(writes.updateGoal.calls.mostRecent().args).toEqual(['g1', { targetDate: null }]);
+    });
+
+    it('delete a budget only once confirmed, counted and said, then focus the section heading', async () => {
+      const host = element();
+      document.body.appendChild(host);
+      try {
+        button('.plan-delete', card('Groceries')).click();
+        const asked = await answerConfirm(false);
+        expect(asked.title).toBe('household.plans.deleteBudgetTitle:{"name":"Groceries"}');
+        expect(asked.message).toBe('household.plans.deleteBudgetMessage');
+        expect(writes.deleteBudget).not.toHaveBeenCalled();
+
+        button('.plan-delete', card('Groceries')).click();
+        await answerConfirm(true);
+        await settle();
+
+        expect(writes.deleteBudget).toHaveBeenCalledOnceWith('b1');
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'plan_delete' });
+        expect(notification.success).toHaveBeenCalledOnceWith('household.plans.budgetDeleted');
+
+        // The card goes once the listener says so, taking focus with it.
+        (document.activeElement as HTMLElement | null)?.blur();
+        plans.budgets.update(budgets => budgets.filter(each => each.budget.id !== 'b1'));
+        render();
+        await settle();
+        expect(document.activeElement?.id).toBe('household-plans-title');
+      } finally {
+        host.remove();
+      }
+    });
+
+    it("say a goal's delete takes its contributions with it", async () => {
+      button('.plan-delete', card('Holiday')).click();
+      const asked = await answerConfirm(true);
+      await settle();
+
+      expect(asked.message).toBe('household.plans.deleteGoalMessage');
+      expect(writes.deleteGoal).toHaveBeenCalledOnceWith('g1');
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'plan_delete' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.plans.goalDeleted');
+    });
+
+    it("add a contribution in the goal's currency, dated today unless chosen, counted and said", async () => {
+      const add = button('.plan-contribute', card('Holiday'));
+      expect(add.getAttribute('aria-describedby')).toBe('household-goal-g1-name');
+      add.click();
+      const ref = openDialog<HouseholdContributionDialogComponent>();
+      expect(ref.componentInstance).toBeInstanceOf(HouseholdContributionDialogComponent);
+      expect(ref.componentInstance.data.currency).toBe('EUR');
+      ref.componentInstance.form.patchValue({ amount: 75 });
+
+      await ref.componentInstance.submit();
+      await settle();
+
+      expect(writes.addContribution).toHaveBeenCalledOnceWith('g1', 75, startOfDay(new Date()), 'id-1');
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'contribute' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.plans.contributionAdded');
+    });
+
+    it('delete a contribution only once confirmed, and count nothing', async () => {
+      button('.contribution-delete').click();
+      const asked = await answerConfirm(true);
+      await settle();
+
+      expect(asked.message).toBe('household.plans.deleteContributionMessage:{"amount":"EUR 200.00","date":"2026-9-1","name":"Holiday"}');
+      expect(writes.deleteContribution).toHaveBeenCalledOnceWith('g1', 'c1');
+      expect(notification.success).toHaveBeenCalledOnceWith('household.plans.contributionDeleted');
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('refuse offline before any dialog opens', () => {
+      online.set(false);
+      render();
+
+      for (const selector of ['.plans-new-budget', '.plans-new-goal', '.plan-edit', '.plan-delete', '.plan-contribute', '.contribution-delete']) {
+        button(selector).click();
+      }
+
+      expect(dialog.openDialogs.length).toBe(0);
+      expect(notification.error.calls.allArgs()).toEqual(Array(6).fill(['household.errors.offline']));
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it("say a refusal in the service's own words, and count nothing", async () => {
+      writes.deleteBudget.and.rejectWith(new HouseholdError('household.errors.planNotYours'));
+      button('.plan-delete', card('Groceries')).click();
+      await answerConfirm(true);
+      await settle();
+
+      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.planNotYours');
+      expect(notification.success).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('keep focus on the delete confirmed from it while the write is on its way, and once it is refused', async () => {
+      const host = element();
+      document.body.appendChild(host);
+      try {
+        let refuse!: (error: unknown) => void;
+        writes.deleteBudget.and.returnValue(new Promise<void>((_, reject) => (refuse = reject)));
+        const remove = button('.plan-delete', card('Groceries'));
+        remove.focus();
+        remove.click();
+        await answerConfirm(true);
+        render();
+        // Focus fixup runs as the page next renders.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+        expect(remove.getAttribute('aria-disabled')).withContext('it says it is not offered meanwhile').toBe('true');
+        expect(document.activeElement).withContext('the confirm hands focus back, and the write keeps it there').toBe(remove);
+
+        // No card goes, so nothing lands focus anywhere else.
+        refuse(new HouseholdError('household.errors.offline'));
+        await new Promise(resolve => setTimeout(resolve));
+        await settle();
+        expect(notification.error).toHaveBeenCalledOnceWith('household.errors.offline');
+        expect(remove.getAttribute('aria-disabled')).toBeNull();
+        expect(document.activeElement).withContext('once the write is refused').toBe(remove);
+      } finally {
+        host.remove();
+      }
+    });
+
+    it('count nothing when a dialog is closed without saving, or its save is refused', async () => {
+      button('.plans-new-budget').click();
+      openDialog<HouseholdBudgetDialogComponent>().componentInstance.cancel();
+      await settle();
+
+      writes.createGoal.and.rejectWith(new HouseholdError('household.errors.refused'));
+      button('.plans-new-goal').click();
+      const ref = openDialog<HouseholdGoalDialogComponent>();
+      ref.componentInstance.form.patchValue({ name: 'Bike', targetAmount: 300 });
+      await ref.componentInstance.submit();
+      await settle();
+
+      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.refused');
+      expect(dialog.openDialogs).toEqual([ref]);
+      expect(notification.success).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it("send every save of a contribution's dialog under the id it opened with, and a new dialog's under its own", async () => {
+      writes.addContribution.and.rejectWith(new HouseholdError('household.errors.unconfirmed'));
+      button('.plan-contribute', card('Holiday')).click();
+      const ref = openDialog<HouseholdContributionDialogComponent>();
+      ref.componentInstance.form.patchValue({ amount: 75 });
+      await ref.componentInstance.submit();
+      await settle();
+      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.unconfirmed');
+      expect(dialog.openDialogs).toEqual([ref]);
+
+      writes.addContribution.and.resolveTo('c-new');
+      ref.componentInstance.form.patchValue({ amount: 80 });
+      await ref.componentInstance.submit();
+      await settle();
+      expect(dialog.openDialogs).toEqual([]);
+
+      button('.plan-contribute', card('Holiday')).click();
+      const next = openDialog<HouseholdContributionDialogComponent>();
+      next.componentInstance.form.patchValue({ amount: 75 });
+      await next.componentInstance.submit();
+      await settle();
+
+      expect(writes.addContribution.calls.allArgs().map(args => args[3]))
+        .withContext('a save sent again is the same contribution; a new dialog is another')
+        .toEqual(['id-1', 'id-1', 'id-2']);
+    });
+
+    it("send every save of a new budget's or goal's dialog under the id it opened with", async () => {
+      writes.createBudget.and.rejectWith(new HouseholdError('household.errors.unconfirmed'));
+      writes.createGoal.and.rejectWith(new HouseholdError('household.errors.unconfirmed'));
+
+      button('.plans-new-budget').click();
+      const budget = openDialog<HouseholdBudgetDialogComponent>();
+      budget.componentInstance.form.patchValue({ name: 'Home', categoryIds: ['food'], amount: 900 });
+      await budget.componentInstance.submit();
+      await settle();
+      writes.createBudget.and.resolveTo('b-new');
+      await budget.componentInstance.submit();
+      await settle();
+
+      button('.plans-new-goal').click();
+      const goal = openDialog<HouseholdGoalDialogComponent>();
+      goal.componentInstance.form.patchValue({ name: 'Bike', targetAmount: 300 });
+      await goal.componentInstance.submit();
+      await settle();
+      writes.createGoal.and.resolveTo('g-new');
+      await goal.componentInstance.submit();
+      await settle();
+
+      expect(writes.createBudget.calls.allArgs().map(args => args[1])).toEqual(['id-1', 'id-1']);
+      expect(writes.createGoal.calls.allArgs().map(args => args[1])).toEqual(['id-2', 'id-2']);
+      expect(dialog.openDialogs).toEqual([]);
+    });
+
+    it('run one action at a time, refusing rather than queueing another while a dialog is open or a write is on its way', async () => {
+      button('.plans-new-budget').click();
+      button('.plans-new-goal').click();
+      button('.plan-delete', card('Groceries')).click();
+      expect(dialog.openDialogs.length).withContext('a dialog is open').toBe(1);
+      expect(openDialog().componentInstance).toBeInstanceOf(HouseholdBudgetDialogComponent);
+      openDialog<HouseholdBudgetDialogComponent>().componentInstance.cancel();
+      await settle();
+
+      let deleted!: () => void;
+      writes.deleteBudget.and.returnValue(new Promise<void>(resolve => (deleted = resolve)));
+      button('.plan-delete', card('Groceries')).click();
+      await answerConfirm(true);
+      render();
+
+      // Every control says it is not offered meanwhile, staying focusable so
+      // focus is not dropped on the document, and a press on one, or one
+      // reached from script, is refused.
+      const enabled = all('.plans button').filter(each => each.getAttribute('aria-disabled') !== 'true');
+      expect(enabled.map(each => each.className)).toEqual([]);
+      button('.plans-new-budget').click();
+      button('.plan-edit', card('Fuel')).click();
+      await fixture.componentInstance.editBudget('b2');
+      await fixture.componentInstance.newGoal(new Event('click'));
+      expect(dialog.openDialogs.length).withContext('a write is on its way').toBe(0);
+      expect(writes.deleteBudget).toHaveBeenCalledTimes(1);
+
+      deleted();
+      // The write's chain settles over several turns; a task later it has.
+      await new Promise(resolve => setTimeout(resolve));
+      await settle();
+      expect(button('.plans-new-goal').getAttribute('aria-disabled')).toBeNull();
+      button('.plans-new-goal').click();
+      expect(dialog.openDialogs.length).toBe(1);
+    });
+
+    it("name each card's heading by an id any document id is safe in, each reference resolving", async () => {
+      plans.budgets.set([budgetFigures({ id: 'b 1.#"x', name: 'Odd' }), budgetFigures({ id: 'b_1', name: 'Plain' })]);
+      plans.goals.set([goalFigures({ id: 'g 2]', name: 'Odder' })]);
+      render();
+
+      const headings = all('h4.plan-name');
+      expect(headings.length).toBe(3);
+      for (const heading of headings) {
+        expect(heading.id).toMatch(/^[A-Za-z0-9_-]+$/);
+        expect(element().querySelector(`#${heading.id}`)).toBe(heading);
+      }
+      expect(new Set(headings.map(heading => heading.id)).size).withContext('no two ids alike').toBe(3);
+      const goal = card('Odder');
+      const describedBy = button('.plan-contribute', goal).getAttribute('aria-describedby');
+      expect(element().querySelector(`#${describedBy}`)).toBe(goal?.querySelector('h4.plan-name') ?? null);
+      const labelledBy = goal?.querySelector('ul.contributions')?.getAttribute('aria-labelledby');
+      expect(element().querySelector(`#${labelledBy}`)?.classList).toContain('contributions-title');
+
+      // Focus lands on a plan made under such an id.
+      writes.createGoal.and.resolveTo('g new#1');
+      const host = element();
+      document.body.appendChild(host);
+      try {
+        button('.plans-new-goal').click();
+        const ref = openDialog<HouseholdGoalDialogComponent>();
+        ref.componentInstance.form.patchValue({ name: 'Bike', targetAmount: 300 });
+        await ref.componentInstance.submit();
+        await settle();
+        plans.goals.update(goals => [...goals, goalFigures({ id: 'g new#1', name: 'Bike' })]);
+        render();
+        await settle();
+        expect(readAs(document.activeElement)).toBe('Bike');
+      } finally {
+        host.remove();
+      }
+    });
+
+    describe('tied to the household it was opened for', () => {
+      const newBudget = (): MatDialogRef<HouseholdBudgetDialogComponent> => {
+        button('.plans-new-budget').click();
+        const ref = openDialog<HouseholdBudgetDialogComponent>();
+        ref.componentInstance.form.patchValue({ name: 'Home', categoryIds: ['food'], amount: 900 });
+        return ref;
+      };
+
+      it('close a dialog once the page shows another household, having written nothing', async () => {
+        const ref = newBudget();
+
+        shown.set({ ...HOME, id: 'h2', name: 'Other' });
+        render();
+        await firstValueFrom(ref.afterClosed());
+        await settle();
+
+        expect(dialog.openDialogs.length).toBe(0);
+        expect(writes.createBudget).not.toHaveBeenCalled();
+        expect(notification.success).not.toHaveBeenCalled();
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
+      it('keep a dialog open through a rename of the household it was opened for', async () => {
+        newBudget();
+
+        shown.set({ ...HOME, name: 'Renamed' });
+        render();
+        await settle();
+
+        expect(dialog.openDialogs.length).toBe(1);
+      });
+
+      const elsewhere: [string, () => Household | null][] = [
+        ['another household', () => ({ ...HOME, id: 'h2' })],
+        ['another generation of it', () => ({ ...HOME, createdAt: Timestamp.fromMillis(GEN.toMillis() + 1) })],
+        ['no household', () => null]
+      ];
+      for (const [what, next] of elsewhere) {
+        it(`refuse a save made once the page shows ${what}, before anything is sent`, async () => {
+          const ref = newBudget();
+
+          // Saved before the section has looked again.
+          shown.set(next());
+          await ref.componentInstance.submit();
+
+          expect(writes.createBudget).not.toHaveBeenCalled();
+          expect(notification.error).toHaveBeenCalledOnceWith('household.errors.refused');
+          expect(notification.success).not.toHaveBeenCalled();
+          expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+        });
+      }
+
+      it('refuse a delete confirmed once the page shows another household', async () => {
+        button('.plan-delete', card('Groceries')).click();
+        shown.set({ ...HOME, id: 'h2' });
+        const ref = openDialog<ConfirmDialogComponent>();
+        ref.close(true);
+        await firstValueFrom(ref.afterClosed());
+        await settle();
+
+        expect(writes.deleteBudget).not.toHaveBeenCalled();
+        expect(notification.success).not.toHaveBeenCalled();
+      });
+
+      it('close its dialog when the section goes, saying and counting nothing', async () => {
+        const ref = newBudget();
+
+        fixture.destroy();
+        await firstValueFrom(ref.afterClosed());
+
+        expect(dialog.openDialogs.length).toBe(0);
+        expect(writes.createBudget).not.toHaveBeenCalled();
+        expect(notification.success).not.toHaveBeenCalled();
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('while the plans load', () => {
@@ -534,32 +1157,38 @@ describe('HouseholdPlansComponent', () => {
     expect(element().querySelector('.plans-empty')).toBeNull();
   });
 
-  it('gives axe nothing to report with budgets and goals shown, every note and caption included', async () => {
-    plans.incomplete.set(true);
-    plans.budgets.set([
-      budgetFigures({}, { atTodaysRate: true, incomplete: true }),
-      budgetFigures({ id: 'b2' }, { spent: 500 }),
-      budgetFigures({ id: 'b3' }, { spent: 360 })
-    ]);
-    plans.goals.set([
-      goalFigures({}, { atTodaysRate: true, incomplete: true }),
-      goalFigures({ id: 'g2', targetDate: undefined }, { contributions: [] })
-    ]);
-    render();
-    // A plan made while the others are counted again.
-    plans.loading.set(true);
-    plans.goals.update(goals => [...goals, goalFigures({ id: 'g3' }, { counting: true })]);
-    render();
-    expect(all('.plan-counting').length).toBe(1);
-    const host = fixture.nativeElement as HTMLElement;
-    document.body.appendChild(host);
+  // In each theme class, for the reason PLAN_AUDIT_THEMES gives.
+  for (const theme of PLAN_AUDIT_THEMES) {
+    it(`gives axe nothing to report with budgets and goals shown, every note, caption and control included, in the ${theme}`, async () => {
+      plans.incomplete.set(true);
+      plans.budgets.set([
+        budgetFigures({}, { atTodaysRate: true, incomplete: true }),
+        budgetFigures({ id: 'b2' }, { spent: 500 }),
+        budgetFigures({ id: 'b3' }, { spent: 360 })
+      ]);
+      plans.goals.set([
+        goalFigures({}, { atTodaysRate: true, incomplete: true }),
+        goalFigures({ id: 'g2', targetDate: undefined }, { contributions: [] })
+      ]);
+      render();
+      // A plan made while the others are counted again.
+      plans.loading.set(true);
+      plans.goals.update(goals => [...goals, goalFigures({ id: 'g3' }, { counting: true })]);
+      render();
+      expect(all('.plan-counting').length).toBe(1);
+      expect(all('.plan-edit, .plan-delete, .plan-contribute, .contribution-delete').length).toBeGreaterThan(0);
+      const host = fixture.nativeElement as HTMLElement;
+      document.documentElement.classList.add(theme);
+      document.body.appendChild(host);
 
-    try {
-      expect(summarizeViolations(await runAxe(host))).toEqual([]);
-    } finally {
-      host.remove();
-    }
-  });
+      try {
+        expect(summarizeViolations(await runAxe(host))).toEqual([]);
+      } finally {
+        host.remove();
+        document.documentElement.classList.remove(theme);
+      }
+    });
+  }
 
   describe('at a phone width', () => {
     let host: HTMLElement;
@@ -605,7 +1234,7 @@ describe('HouseholdPlansComponent', () => {
       render();
 
       expect(element().querySelector('.plans-empty')?.textContent).toContain('N'.repeat(120));
-      expectInside(['.plans-title', '.plans-empty']);
+      expectInside(['.plans-title', '.plans-empty', '.plans-actions']);
     });
 
     it('keeps the longest names and figures inside each card', () => {
@@ -648,8 +1277,23 @@ describe('HouseholdPlansComponent', () => {
         '.contribution-amount',
         '.contribution-date',
         'app-member-chip',
-        '.plan-alert'
+        '.plan-alert',
+        '.plans-actions',
+        '.plan-head',
+        '.plan-actions',
+        '.contribution-delete',
+        // Measured at their labels: an outlined button's own ripple layer sits
+        // a pixel out over its border, so its scroll size always leads its
+        // client size by one.
+        '.plans-actions .mdc-button__label',
+        '.plan-contribute .mdc-button__label'
       ]);
+      for (const outlined of all('.plans-actions button, .plan-contribute')) {
+        const box = outlined.getBoundingClientRect();
+        const label = (outlined.querySelector('.mdc-button__label') as HTMLElement).getBoundingClientRect();
+        expect(label.left).withContext(`${outlined.className} holds its label`).toBeGreaterThanOrEqual(box.left - 0.5);
+        expect(label.right).withContext(`${outlined.className} holds its label`).toBeLessThanOrEqual(box.right + 0.5);
+      }
 
       // A figure scales to fit, and never breaks between its digits.
       for (const figure of all('.plan-amount, .plan-of, .plan-percent, .contribution-amount')) {

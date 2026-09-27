@@ -27,6 +27,32 @@
   }
 }
 
+// New budget and New goal: side by side while they fit, each on its own
+// line when they do not.
+.plans-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+// A label that outgrows a phone's width takes a second line rather than
+// spilling out of Material's fixed height.
+.plans-actions button,
+.plan-contribute {
+  display: inline-flex;
+  max-inline-size: 100%;
+  block-size: auto;
+  min-block-size: 40px;
+  padding-block: 8px;
+  overflow-wrap: anywhere;
+}
+
+.plan-contribute {
+  align-self: flex-start;
+  margin-block-start: 4px;
+}
+
 .plans-empty {
   margin: 0;
   font-size: var(--text-sm);
@@ -122,8 +148,33 @@
   box-shadow: var(--shadow-sm);
 }
 
+// The name, then Edit and Delete at the line's end.
+.plan-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+// The buttons' 40px may be taller than the name's line; the name's line
+// keeps its own height.
+.plan-actions {
+  display: flex;
+  flex-shrink: 0;
+  margin-block: -8px;
+}
+
+// 40px, the touch target included: Material's own is 48, which would reach
+// past the card's edge and under the neighbouring button.
+.plan-actions button,
+.contribution-delete {
+  --mat-icon-button-touch-target-size: 40px;
+}
+
 // A plan's name is its members' own text, and may be one long word.
 .plan-name {
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
   font-size: var(--text-base);
   font-weight: 600;
@@ -307,4 +358,13 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   overflow-wrap: anywhere;
+}
+
+// At the line's end, or at the start of a line of its own when the rest
+// fills one.
+.contribution-delete {
+  flex-shrink: 0;
+  align-self: center;
+  margin-block: -8px;
+  margin-inline-start: auto;
 }

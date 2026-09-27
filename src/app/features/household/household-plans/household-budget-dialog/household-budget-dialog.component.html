@@ -1,0 +1,133 @@
+<app-dialog-header
+  [titleKey]="editing ? 'household.planForm.editBudgetTitle' : 'household.planForm.newBudgetTitle'"
+  icon="account_balance_wallet"
+  (closed)="cancel()"
+/>
+
+<form [formGroup]="form" (ngSubmit)="submit()" class="plan-dialog-form">
+  <mat-dialog-content class="plan-dialog-content">
+    <mat-form-field appearance="outline" class="plan-dialog-field">
+      <mat-label>{{ 'household.planForm.name' | translate }}</mat-label>
+      <input matInput formControlName="name" autocomplete="off" />
+      @if (form.controls.name.invalid) {
+        <mat-error>{{ 'household.errors.planName' | translate: { max: nameMax } }}</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="plan-dialog-field plan-dialog-categories">
+      <mat-label>{{ 'household.planForm.categories' | translate }}</mat-label>
+      <mat-select formControlName="categoryIds" multiple>
+        <mat-select-trigger>{{ chosenNames() }}</mat-select-trigger>
+        @for (option of categories; track option.id) {
+          <mat-option [value]="option.id" [class.category-sub]="!option.group">
+            <span class="category-option" [class.category-group]="option.group">
+              <mat-icon [style.color]="option.color">{{ option.icon }}</mat-icon>
+              <span>{{ names().get(option.id) }}</span>
+            </span>
+          </mat-option>
+        }
+      </mat-select>
+      <mat-hint>{{ 'household.planForm.categoriesHint' | translate: { max: categoryMax } }}</mat-hint>
+      @if (form.controls.categoryIds.hasError('builtInOnly')) {
+        <mat-error>{{ 'household.planForm.categoriesBuiltIn' | translate }}</mat-error>
+      } @else if (form.controls.categoryIds.invalid) {
+        <mat-error>{{ 'household.errors.planCategories' | translate: { max: categoryMax } }}</mat-error>
+      }
+    </mat-form-field>
+
+    <div class="plan-dialog-row">
+      <mat-form-field appearance="outline" class="plan-dialog-grow">
+        <mat-label>{{ 'household.planForm.limit' | translate }}</mat-label>
+        <input matInput type="number" formControlName="amount" min="0" step="0.01" inputmode="decimal" />
+        @if (form.controls.amount.invalid) {
+          <mat-error>{{ 'household.errors.planAmount' | translate }}</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="plan-dialog-currency">
+        <mat-label>{{ 'settings.currency' | translate }}</mat-label>
+        <mat-select formControlName="currency">
+          @for (currency of currencies; track currency.code) {
+            <mat-option [value]="currency.code">{{ currency.code }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+    @if (editing) {
+      <p class="plan-dialog-note">{{ 'household.planForm.currencyFixed' | translate }}</p>
+    }
+
+    <mat-form-field appearance="outline" class="plan-dialog-field">
+      <mat-label>{{ 'household.planForm.period' | translate }}</mat-label>
+      <mat-select formControlName="period">
+        @for (period of periods; track period) {
+          <mat-option [value]="period">
+            @switch (period) {
+              @case ('weekly') { {{ 'transactions.weekly' | translate }} }
+              @case ('yearly') { {{ 'transactions.yearly' | translate }} }
+              @default { {{ 'transactions.monthly' | translate }} }
+            }
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="plan-dialog-field">
+      <mat-label>{{ 'household.planForm.startDate' | translate }}</mat-label>
+      <input matInput [matDatepicker]="startPicker" formControlName="startDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="startPicker" />
+      <mat-datepicker #startPicker />
+      @if (form.controls.startDate.invalid) {
+        <mat-error>{{ 'household.planForm.startRequired' | translate }}</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="plan-dialog-field">
+      <mat-label>{{ 'household.planForm.endDate' | translate }}</mat-label>
+      <input matInput [matDatepicker]="endPicker" formControlName="endDate" />
+      @if (form.controls.endDate.value) {
+        <button
+          mat-icon-button
+          matIconSuffix
+          type="button"
+          class="plan-dialog-clear-date"
+          (click)="clearEndDate()"
+          [attr.aria-label]="'household.planForm.clearEndDate' | translate"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      }
+      <mat-datepicker-toggle matIconSuffix [for]="endPicker" />
+      <mat-datepicker #endPicker />
+      @if (form.controls.endDate.hasError('endBeforeStart')) {
+        <mat-error>{{ 'household.planForm.endBeforeStart' | translate }}</mat-error>
+      } @else if (form.controls.endDate.invalid) {
+        <mat-error>{{ 'household.planForm.dateInvalid' | translate }}</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="plan-dialog-field">
+      <mat-label>{{ 'household.planForm.threshold' | translate }}</mat-label>
+      <!-- Its range is the control's own validators', said in the error below. -->
+      <input matInput type="number" formControlName="alertThreshold" step="1" inputmode="numeric" />
+      <span matTextSuffix>%</span>
+      <mat-hint>{{ 'household.planForm.thresholdHint' | translate: { default: defaultThreshold } }}</mat-hint>
+      @if (form.controls.alertThreshold.invalid) {
+        <mat-error>{{ 'household.planForm.thresholdRange' | translate: { min: thresholdRange.min, max: thresholdRange.max } }}</mat-error>
+      }
+    </mat-form-field>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" class="plan-dialog-cancel" (click)="cancel()" [disabled]="saving()" disabledInteractive>
+      {{ 'common.cancel' | translate }}
+    </button>
+    <button mat-flat-button type="submit" class="plan-dialog-save" [disabled]="saving()" disabledInteractive>
+      @if (saving()) {
+        <!-- The button's own label says what it does. -->
+        <mat-spinner diameter="20" class="plan-dialog-spinner" aria-hidden="true" />
+      }
+      {{ (editing ? 'common.save' : 'household.planForm.create') | translate }}
+    </button>
+  </mat-dialog-actions>
+</form>
