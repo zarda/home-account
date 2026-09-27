@@ -205,15 +205,27 @@ consecutive periods cannot overlap or leave a gap.
   milliseconds of that month and one millisecond outside each. Its unit spec,
   `household-ledger.service.spec.ts`, checks that a period ending mid-morning
   is still read through the last millisecond of its final local day.
+- `household-plans.utils.spec.ts` and `household-plans.service.spec.ts` — a
+  household budget's window in the viewer's zone (`householdBudgetWindow`,
+  built on `budgetPeriodWindow`). Monthly, weekly and yearly windows, and an
+  end date inside one, run from the first local millisecond through the last
+  millisecond of the final local day. A copy on either of those milliseconds
+  counts, and one a millisecond outside does not. The service spec pins the
+  bounds of the ledger listener that reads the window.
+- `household-plans.service.smoke.spec.ts` — the same window against stored
+  `Timestamp`s, through the rules. Members' shared rows are seeded on its
+  first and last milliseconds and one millisecond outside each, while the
+  page's period is the month three before the current one, so the window is
+  read by a listener of its own.
 - The `test:dates` include list is the enumeration of unit specs whose
   assertions depend on the zone, and `test:smoke:dates` is the same statement
   for the emulator suite — `period-window`, `transaction.service`,
-  `recurring.service`, `reminder.service`, `weekly-recap` and
-  `household-ledger.service`, run under `TZ=America/New_York` and
-  `TZ=Asia/Tokyo` inside one `emulators:exec` by `npm run smoke:dates`
-  (ADR 0050). Anything asserting a calendar day or a window bound belongs in
-  one of the two lists; a spec left out of both is only ever run at one
-  offset.
+  `recurring.service`, `reminder.service`, `weekly-recap`,
+  `household-ledger.service` and `household-plans.service`, run under
+  `TZ=America/New_York` and `TZ=Asia/Tokyo` inside one `emulators:exec` by
+  `npm run smoke:dates` (ADR 0050). Anything asserting a calendar day or a
+  window bound belongs in one of the two lists; a spec left out of both is
+  only ever run at one offset.
 - `import-dto.utils.spec.ts` is left out **on purpose**, and this is the
   place that says so, so it is not re-filed. Every `resolveImportDate` case
   there freezes the clock with `jasmine.clock().mockDate` and then compares

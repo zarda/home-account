@@ -25,7 +25,7 @@ import { TypeTotals, compareIds, sumByType } from '../utils/transaction-aggregat
 export type LedgerHousehold = Pick<Household, 'id' | 'createdAt' | 'ownerId'>;
 
 /** A copy as its listener hands it over: the document with its id. */
-type StoredCopy = LedgerCopy & { id: string };
+export type StoredLedgerCopy = LedgerCopy & { id: string };
 
 /**
  * One row a member shared into the household, as this viewer sees it. What
@@ -72,18 +72,26 @@ export interface MemberTotals {
   totals: LedgerTotals;
 }
 
-/** What the listener last said; `copies` is undefined until it answers. */
+/** What one listener last said; `copies` is undefined until it answers. */
 interface Feed {
-  copies?: readonly StoredCopy[];
-  truncated: boolean;
+  copies?: readonly StoredLedgerCopy[];
+  /**
+   * When the listener held more than LEDGER_VIEW_CAP copies: the date, in
+   * milliseconds, of the oldest copy kept. A copy dated at or before it may
+   * be missing. +Infinity when that copy's date cannot be read, so every
+   * window counts as cut. Null when every copy was kept.
+   */
+  keptFrom: number | null;
   fromCache: boolean;
   /** The listener failed, other than by a refusal, before the server answered. */
   incomplete: boolean;
 }
 
-const UNHEARD: Feed = { truncated: false, fromCache: false, incomplete: false };
+const UNHEARD: Feed = { keptFrom: null, fromCache: false, incomplete: false };
 
 const NO_TOTALS: LedgerTotals = { income: 0, expense: 0, balance: 0, count: 0, atTodaysRate: false };
+
+const LOG = '[HouseholdLedger]';
 
 const millisOf = (value: Timestamp) => toDate(value)?.getTime() ?? 0;
 
@@ -94,35 +102,50 @@ function newestFirst(a: LedgerRow, b: LedgerRow): number {
 const fold = (rows: readonly LedgerRow[]): LedgerTotals =>
   ({ ...sumByType(rows, row => row.inBase), atTodaysRate: rows.some(row => row.atTodaysRate) });
 
-const sameWindow = (a: DateWindow, b: DateWindow) =>
-  a.start.getTime() === b.start.getTime() && a.end.getTime() === b.end.getTime();
+const sameWindow = (a: DateWindow | null, b: DateWindow | null) =>
+  a === b || (a !== null && b !== null && a.start.getTime() === b.start.getTime() && a.end.getTime() === b.end.getTime());
 
-const sameHousehold = (a: LedgerHousehold | null, b: LedgerHousehold | null) =>
+/**
+ * The period reads every date of the plan window: its listener then holds
+ * every copy the plans count. Both are read through the last millisecond of
+ * their final local day.
+ */
+function holds(period: DateWindow | null, plans: DateWindow): boolean {
+  return period !== null
+    && period.start.getTime() <= plans.start.getTime()
+    && endOfDay(plans.end).getTime() <= endOfDay(period.end).getTime();
+}
+
+/** The same household and generation, owned by the same account. */
+export const sameHousehold = (a: LedgerHousehold | null, b: LedgerHousehold | null) =>
   a === b || (a !== null && b !== null && a.id === b.id && a.ownerId === b.ownerId && sameStamp(a.createdAt, b.createdAt));
 
 /**
  * The view's query, built from the shape its composite index serves
  * (LEDGER_QUERY_SHAPES.ledgerByDate): the equality on the generation, the
- * period on the date, and the date's order. One copy past the cap is asked
- * for, so a period that holds more is known to.
+ * window on the date, and the date's order. The window is widened to the
+ * last millisecond of its final day, so the bound takes in a copy posted
+ * that evening whatever time of day the window's end carries. One copy past
+ * the cap is asked for, so a window that holds more is known to.
  */
-function periodQuery(gen: Timestamp, period: DateWindow): QueryOptions {
+function datedQuery(gen: Timestamp, window: DateWindow): QueryOptions {
   const [[genField], [dateField, order]] = LEDGER_QUERY_SHAPES.ledgerByDate.fields;
   return {
     where: [
       { field: genField, op: '==', value: gen },
-      { field: dateField, op: '>=', value: Timestamp.fromDate(period.start) },
-      // Widened to the last millisecond of the day, so the bound takes in a
-      // row posted that evening whatever time of day the period carries.
-      { field: dateField, op: '<=', value: Timestamp.fromDate(endOfDay(period.end)) }
+      { field: dateField, op: '>=', value: Timestamp.fromDate(window.start) },
+      { field: dateField, op: '<=', value: Timestamp.fromDate(endOfDay(window.end)) }
     ],
     orderBy: [{ field: dateField, direction: order === 'DESCENDING' ? 'desc' : 'asc' }],
     limit: LEDGER_VIEW_CAP + 1
   };
 }
 
-/** A copy the view can show: the fields it reads are there and of their types. */
-function readable(copy: StoredCopy): boolean {
+/**
+ * A copy the view can show: the fields it reads are there and of their
+ * types. The household's plans read their copies by the same test.
+ */
+export function readableCopy(copy: StoredLedgerCopy): boolean {
   return typeof copy.memberUid === 'string'
     && typeof copy.amount === 'number' && Number.isFinite(copy.amount)
     && typeof copy.currency === 'string'
@@ -131,16 +154,102 @@ function readable(copy: StoredCopy): boolean {
 }
 
 /**
- * What a household's members shared with it in a period (#71): one listener
- * on the selected household's ledger (households/{hid}/ledger), filtered to
- * the household's live generation, as the rules require of a member's list.
+ * One capped listener on a household's ledger over one window of dates, and
+ * what it last said. Opened afresh for another household or other dates,
+ * and for the same ones once it has stopped, so a failure is retried at the
+ * next change the page makes.
+ */
+class DatedListener {
+  readonly feed = signal<Feed>(UNHEARD);
+  private listener: Subscription | null = null;
+  private household: LedgerHousehold | null = null;
+  private dates: DateWindow | null = null;
+
+  constructor(
+    private readonly firestore: FirestoreService,
+    /** Named in the warning a failure logs. */
+    private readonly what: string,
+    private readonly answered: () => void
+  ) {}
+
+  /** Reads `dates` of the household's ledger; null for either reads nothing. */
+  read(household: LedgerHousehold | null, dates: DateWindow | null): void {
+    const reading = this.listener !== null && sameHousehold(this.household, household) && sameWindow(this.dates, dates);
+    if (household && dates && reading) return;
+    this.close();
+    // What was read for other dates or another household is not shown under these.
+    this.feed.set(UNHEARD);
+    if (!household || !dates) return;
+    this.household = household;
+    this.dates = dates;
+    // Declared first: a listener can fail while it is being subscribed.
+    let subscription: Subscription | undefined = undefined;
+    subscription = this.firestore
+      .subscribeToCollectionWithMetadata<StoredLedgerCopy>(`households/${household.id}/ledger`, datedQuery(household.createdAt, dates))
+      .subscribe({
+        next: answer => this.heard(answer),
+        error: error => this.failed(subscription, error)
+      });
+    // A failure delivered while subscribing has already ended it.
+    if (!subscription.closed) this.listener = subscription;
+  }
+
+  close(): void {
+    this.listener?.unsubscribe();
+    this.listener = null;
+    this.household = null;
+    this.dates = null;
+  }
+
+  private heard({ docs, fromCache }: CollectionWithMetadata<StoredLedgerCopy>): void {
+    // Delivered newest first, so the copies kept are the newest.
+    const truncated = docs.length > LEDGER_VIEW_CAP;
+    const copies = truncated ? docs.slice(0, LEDGER_VIEW_CAP) : docs;
+    const oldest = copies[copies.length - 1]?.date;
+    this.feed.set({
+      copies,
+      keptFrom: !truncated ? null : isStamp(oldest) ? millisOf(oldest) : Number.POSITIVE_INFINITY,
+      fromCache,
+      incomplete: false
+    });
+    this.answered();
+  }
+
+  private failed(subscription: Subscription | undefined, error: unknown): void {
+    if (subscription && this.listener === subscription) this.listener = null;
+    // The membership ended; HouseholdService says so.
+    if (isRefused(error)) return;
+    console.warn(`${LOG} The ${this.what} listener stopped:`, error);
+    // What was shown stays. A stopped listener hears nothing more, so one
+    // the server never answered counts as answered with what the cache
+    // held, or with nothing: the page stops waiting, and says the figures
+    // may be incomplete. The cache's answer keeps saying where it came from.
+    const feed = this.feed();
+    if (feed.copies === undefined || feed.fromCache) this.feed.set({ ...feed, copies: feed.copies ?? [], incomplete: true });
+  }
+}
+
+/**
+ * What a household's members shared with it in a period (#71), read from
+ * the selected household's ledger (households/{hid}/ledger), filtered to the
+ * household's live generation, as the rules require of a member's list.
  * Read only, but for one thing: an owner's purge of a removed member's
  * copies, below.
  *
- * Provided by the household page, not the root: its listener lives exactly
- * as long as the page, and the DestroyRef closes it (ADR 0009). The page
+ * Provided by the household page, not the root: its listeners live exactly
+ * as long as the page, and the DestroyRef closes them (ADR 0009). The page
  * hands in the household, its live members (HouseholdService.members()) and
  * the period.
+ *
+ * The household's own budgets fold their spending from the same copies
+ * (HouseholdPlansService), each over a window of its own that need not lie
+ * inside the period: a budget's month runs on while a past period is
+ * viewed. The period keeps a capped listener of its own, and the budgets'
+ * window (setPlanWindow) is read through a second one whenever the period
+ * does not hold it. One listener over both would be read newest first up to
+ * one cap, so the copies of a later budget window, and of the weeks between,
+ * could crowd the period's own rows out of it. When the period holds the
+ * window, its listener serves the plans too.
  *
  * Only the copies of a live member are shown. The rules keep a copy readable
  * until its author or the owner deletes it, and a removal deletes the member
@@ -152,11 +261,12 @@ function readable(copy: StoredCopy): boolean {
  * own, and the ledger can name a member who has just joined before the list
  * does. Each copy is written by a member who was live when writing it.
  *
- * A refusal of the listener is the rules saying the membership has ended.
+ * A refusal of a listener is the rules saying the membership has ended.
  * HouseholdService reports that loss; the listener stops, and nothing is
  * raised. Any other failure is logged, and what was shown stays; when the
  * server had not answered by then, what was shown is only this device's
- * cache, or nothing, and the figures are marked as possibly incomplete.
+ * cache, or nothing, and the figures are marked as possibly incomplete. A
+ * stopped listener is opened again at the next change of dates.
  *
  * Money figures are in the viewer's base currency. A copy in that currency
  * counts exactly; any other is converted at today's rate, through the rates
@@ -173,15 +283,60 @@ export class HouseholdLedgerService {
 
   private readonly household = signal<LedgerHousehold | null>(null, { equal: sameHousehold });
   private readonly members = signal<readonly HouseholdMemberIdentity[]>([]);
-  private readonly window = signal<DateWindow | null>(null);
-  private readonly feed = signal<Feed>(UNHEARD);
-  private listener: Subscription | null = null;
+  private readonly period = signal<DateWindow | null>(null);
+  private readonly planWindow = signal<DateWindow | null>(null);
+  private readonly periodListener = new DatedListener(this.firestore, 'ledger', () => this.judgeStrangers());
+  private readonly planListener = new DatedListener(this.firestore, "budgets' ledger", () => this.judgeStrangers());
   private destroyed = false;
   /** `{householdId}|{uid}`: accounts whose copies this page has judged for a purge. */
   private readonly judged = new Set<string>();
 
-  /** The live members' uids: only their copies are shown. */
-  private readonly memberUids = computed(() => new Set(this.members().map(member => member.uid)));
+  /** The live members' uids: only their copies are shown, and only their copies count in a plan. */
+  readonly memberUids = computed<ReadonlySet<string>>(() => new Set(this.members().map(member => member.uid)));
+
+  /**
+   * What the plans read: the plan window's own listener, or the period's
+   * when the period holds the window. Null without a household or a window.
+   */
+  private readonly planFeed = computed<Feed | null>(() => {
+    const plans = this.planWindow();
+    if (!this.household() || !plans) return null;
+    return holds(this.period(), plans) ? this.periodListener.feed() : this.planListener.feed();
+  });
+
+  /** A feed's copies of live members whose fields the view can read. */
+  private liveCopies(feed: Feed | null): readonly StoredLedgerCopy[] {
+    const members = this.memberUids();
+    return (feed?.copies ?? []).filter(copy => members.has(copy.memberUid) && readableCopy(copy));
+  }
+
+  /**
+   * Every live member's copy read for the plans (setPlanWindow), newest
+   * first as delivered: at least those dated in the plan window. A copy
+   * whose fields the view cannot read is left out.
+   */
+  readonly windowCopies = computed<readonly StoredLedgerCopy[]>(() => this.liveCopies(this.planFeed()));
+
+  /**
+   * When the copies read for the plans ran past LEDGER_VIEW_CAP, only the
+   * newest were kept: the date, in milliseconds, of the oldest kept. A copy
+   * dated at or before it may be missing, so a budget window reaching back
+   * to it may be incomplete. +Infinity when that copy's date cannot be read,
+   * so every window counts as cut. Null when every copy was kept.
+   */
+  readonly windowKeptFrom = computed(() => this.planFeed()?.keptFrom ?? null);
+
+  /** A plan window is set, and the listener reading it has not answered yet. */
+  readonly windowLoading = computed(() => {
+    const feed = this.planFeed();
+    return feed !== null && feed.copies === undefined;
+  });
+
+  /** The copies read for the plans came from this device's cache, not yet in step with the server. */
+  readonly windowFromCache = computed(() => this.planFeed()?.fromCache ?? false);
+
+  /** The listener reading the plan window failed before the server answered: the plans may be incomplete. */
+  readonly windowIncomplete = computed(() => this.planFeed()?.incomplete ?? false);
 
   /**
    * Converts into the viewer's base: the amount itself in that currency,
@@ -190,7 +345,7 @@ export class HouseholdLedgerService {
    */
   private readonly toBase = computed(() => {
     const base = baseCurrencyOf(this.auth.currentUser());
-    return (copy: StoredCopy): Pick<LedgerRow, 'inBase' | 'atTodaysRate'> =>
+    return (copy: StoredLedgerCopy): Pick<LedgerRow, 'inBase' | 'atTodaysRate'> =>
       copy.currency === base
         ? { inBase: copy.amount, atTodaysRate: false }
         : { inBase: this.currency.convert(copy.amount, copy.currency, base), atTodaysRate: true };
@@ -198,10 +353,8 @@ export class HouseholdLedgerService {
 
   /** Every live member's shared rows in the period, newest first. */
   readonly rows = computed<LedgerRow[]>(() => {
-    const members = this.memberUids();
     const toBase = this.toBase();
-    return (this.feed().copies ?? [])
-      .filter(copy => members.has(copy.memberUid) && readable(copy))
+    return this.liveCopies(this.periodListener.feed())
       .map(copy => ({
         id: copy.id,
         memberUid: copy.memberUid,
@@ -236,29 +389,31 @@ export class HouseholdLedgerService {
   readonly combined = computed<LedgerTotals>(() => fold(this.rows()));
 
   /** The period holds more copies than LEDGER_VIEW_CAP: only the newest are shown and counted. */
-  readonly truncated = computed(() => this.feed().truncated);
+  readonly truncated = computed(() => this.periodListener.feed().keptFrom !== null);
 
-  /** A household and a period are set, and the listener has not answered yet. */
+  /** A household and a period are set, and the period's listener has not answered yet. */
   readonly loading = computed(() =>
-    this.household() !== null && this.window() !== null && this.feed().copies === undefined
+    this.household() !== null && this.period() !== null && this.periodListener.feed().copies === undefined
   );
 
   /**
-   * What is shown came from this device's cache, not yet in step with the
-   * server: offline, it is only what this device last read.
+   * What the period shows came from this device's cache, not yet in step
+   * with the server: offline, it is only what this device last read.
    */
-  readonly fromCache = computed(() => this.feed().fromCache);
+  readonly fromCache = computed(() => this.periodListener.feed().fromCache);
 
   /**
-   * The listener failed before the server answered, so the figures are only
-   * what this device's cache held, if anything, and may be incomplete.
+   * The period's listener failed before the server answered, so its figures
+   * are only what this device's cache held, if anything, and may be
+   * incomplete.
    */
-  readonly incomplete = computed(() => this.feed().incomplete);
+  readonly incomplete = computed(() => this.periodListener.feed().incomplete);
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;
-      this.close();
+      this.periodListener.close();
+      this.planListener.close();
     });
   }
 
@@ -271,7 +426,21 @@ export class HouseholdLedgerService {
       const next = household && { id: household.id, ownerId: household.ownerId, createdAt: household.createdAt };
       if (sameHousehold(this.household(), next)) return;
       this.household.set(next);
-      this.listen();
+      this.follow();
+    });
+  }
+
+  /**
+   * The dates the household's budgets count now (planWindow in
+   * household-plans.utils.ts), read for them apart from the period unless
+   * the period holds them; null for none.
+   */
+  setPlanWindow(window: DateWindow | null): void {
+    untracked(() => {
+      if (this.destroyed) return;
+      if (sameWindow(this.planWindow(), window)) return;
+      this.planWindow.set(window && { start: window.start, end: window.end });
+      this.follow();
     });
   }
 
@@ -286,68 +455,26 @@ export class HouseholdLedgerService {
     });
   }
 
-  /** The period whose copies are read. A different one is read afresh. */
+  /** The period whose copies are shown. A different one is read afresh. */
   setPeriod(period: DateWindow): void {
     untracked(() => {
       if (this.destroyed) return;
-      const current = this.window();
-      if (current && sameWindow(current, period)) return;
-      this.window.set({ start: period.start, end: period.end });
-      this.listen();
+      if (sameWindow(this.period(), period)) return;
+      this.period.set({ start: period.start, end: period.end });
+      this.follow();
     });
   }
 
-  /** (Re)opens the one listener for the household and period, dropping what the last one said. */
-  private listen(): void {
-    this.close();
-    // The last household's or period's copies are not shown under the next.
-    this.feed.set(UNHEARD);
+  /**
+   * Points each listener at the dates it reads now: the period's at the
+   * period, and the plans' at the plan window unless the period holds it.
+   */
+  private follow(): void {
     const household = this.household();
-    const period = this.window();
-    if (!household || !period) return;
-    // Declared first: a listener can fail while it is being subscribed.
-    let subscription: Subscription | undefined = undefined;
-    subscription = this.firestore
-      .subscribeToCollectionWithMetadata<StoredCopy>(
-        `households/${household.id}/ledger`,
-        periodQuery(household.createdAt, period)
-      )
-      .subscribe({
-        next: answer => this.heard(answer),
-        error: error => this.failed(subscription, error)
-      });
-    // A failure delivered while subscribing has already ended it.
-    if (!subscription.closed) this.listener = subscription;
-  }
-
-  private heard({ docs, fromCache }: CollectionWithMetadata<StoredCopy>): void {
-    // Delivered newest first, so the copies kept are the newest.
-    const truncated = docs.length > LEDGER_VIEW_CAP;
-    this.feed.set({
-      copies: truncated ? docs.slice(0, LEDGER_VIEW_CAP) : docs,
-      truncated,
-      fromCache,
-      incomplete: false
-    });
-    this.judgeStrangers();
-  }
-
-  private failed(subscription: Subscription | undefined, error: unknown): void {
-    if (subscription && this.listener === subscription) this.listener = null;
-    // The membership ended; HouseholdService says so.
-    if (isRefused(error)) return;
-    console.warn('[HouseholdLedger] The ledger listener stopped:', error);
-    // What was shown stays. A stopped listener hears nothing more, so one
-    // the server never answered counts as answered with what the cache
-    // held, or with nothing: the page stops waiting, and says the figures
-    // may be incomplete. The cache's answer keeps saying where it came from.
-    const feed = this.feed();
-    if (feed.copies === undefined || feed.fromCache) this.feed.set({ ...feed, copies: feed.copies ?? [], incomplete: true });
-  }
-
-  private close(): void {
-    this.listener?.unsubscribe();
-    this.listener = null;
+    const period = this.period();
+    const plans = this.planWindow();
+    this.periodListener.read(household, period);
+    this.planListener.read(household, plans && !holds(period, plans) ? plans : null);
   }
 
   /**
@@ -359,16 +486,17 @@ export class HouseholdLedgerService {
   private judgeStrangers(): void {
     const household = this.household();
     const uid = this.auth.userId();
-    const feed = this.feed();
     const members = this.memberUids();
     if (!household || !uid || household.ownerId !== uid || !members.has(uid)) return;
-    if (!feed.copies || feed.fromCache) return;
-    for (const copy of feed.copies) {
-      if (typeof copy.memberUid !== 'string' || members.has(copy.memberUid)) continue;
-      const key = `${household.id}|${copy.memberUid}`;
-      if (this.judged.has(key)) continue;
-      this.judged.add(key);
-      void this.purgeIfGone(household, copy.memberUid, key);
+    for (const feed of [this.periodListener.feed(), this.planListener.feed()]) {
+      if (!feed.copies || feed.fromCache) continue;
+      for (const copy of feed.copies) {
+        if (typeof copy.memberUid !== 'string' || members.has(copy.memberUid)) continue;
+        const key = `${household.id}|${copy.memberUid}`;
+        if (this.judged.has(key)) continue;
+        this.judged.add(key);
+        void this.purgeIfGone(household, copy.memberUid, key);
+      }
     }
   }
 
@@ -392,7 +520,7 @@ export class HouseholdLedgerService {
       // own membership is over, which purgeMember then refuses in turn.
       if (!isRefused(error)) {
         this.judged.delete(key);
-        console.warn('[HouseholdLedger] A removed member\'s copies were not judged; the next answer asks again:', error);
+        console.warn(`${LOG} A removed member's copies were not judged; the next answer asks again:`, error);
         return;
       }
       live = false;
@@ -405,7 +533,7 @@ export class HouseholdLedgerService {
       const sharing = await this.ledgerShare();
       await sharing.purgeMember(household.id, memberUid);
     } catch (error) {
-      console.warn('[HouseholdLedger] A removed member\'s copies were not purged:', error);
+      console.warn(`${LOG} A removed member's copies were not purged:`, error);
     }
   }
 

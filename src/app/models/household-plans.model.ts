@@ -158,6 +158,16 @@ export const HOUSEHOLD_PLAN_CATEGORY_MAX = 10;
 export const HOUSEHOLD_PLAN_CATEGORY_ID_LENGTH = { min: 1, max: 64 } as const;
 
 /**
+ * Contribution deletes per commit when a goal is deleted. Once the goal is
+ * gone, the rules look up three documents for a live member's delete of
+ * another member's contribution (the household, the goal as the commit
+ * leaves it and the member's own member document), and a commit may make at
+ * most 20 lookups. The goal's own delete, at most two lookups, shares the
+ * first commit: 2 + 6 × 3 = 20.
+ */
+export const HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK = 6;
+
+/**
  * A household budget's or goal's name, in characters. Every member's
  * browser shows every plan, so the rules bound the name, which they do not
  * for a personal budget or goal; the ledger contract check fails when the

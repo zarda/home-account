@@ -19,6 +19,7 @@ import * as lite from '@angular/fire/firestore/lite';
 import {
   HOUSEHOLD_BUDGET_FIELDS,
   HOUSEHOLD_BUDGET_REQUIRED,
+  HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK,
   HOUSEHOLD_CONTRIBUTION_REQUIRED,
   HOUSEHOLD_GOAL_FIELDS,
   HOUSEHOLD_GOAL_REQUIRED,
@@ -3866,6 +3867,15 @@ describe('firestore.rules households (emulator smoke test)', () => {
         const row = await writeRow(peer, [householdId]);
         await expectDenied(writeCopy(peer, row, { amount: 99 }), 'a copy with a changed amount');
         await expectDenied(writeCopy(peer, row, { description: 'something else' }), 'a copy with a changed description');
+        // Each value is of the shape copyShapeValid admits, so only the
+        // equality with the row refuses it.
+        await expectDenied(writeCopy(peer, row, { type: 'income' }), 'a copy with a changed type');
+        await expectDenied(writeCopy(peer, row, { currency: 'EUR' }), 'a copy with a changed currency');
+        await expectDenied(writeCopy(peer, row, { date: lite.Timestamp.fromMillis(0) }), 'a copy with a changed date');
+        await expectDenied(
+          writeCopy(peer, row, { categoryId: 'transport_fuelAndGas' }),
+          'a copy with a changed category id'
+        );
 
         const elsewhere = await writeRow(peer, [newAutoId()]);
         await expectDenied(writeCopy(peer, elsewhere), 'a copy of a row shared elsewhere');
@@ -4317,11 +4327,18 @@ describe('firestore.rules households (emulator smoke test)', () => {
           ['budgets', { isActive: 'yes' }, 'an active flag that is not a boolean'],
           ['goals', { targetAmount: -1 }, 'a negative target'],
           ['goals', { targetDate: '2027-01-01' }, 'a target date that is not a timestamp'],
-          ['goals', { currency: null }, 'a goal currency that is not a string']
+          ['goals', { currency: null }, 'a goal currency that is not a string'],
+          ['budgets', { currency: 'usd' }, 'a budget currency in lower case'],
+          ['budgets', { currency: 'ZZ' }, 'a budget currency of two letters'],
+          ['goals', { currency: 'X'.repeat(4096) }, 'a goal currency of 4096 characters'],
+          ['goals', { currency: 'usd' }, 'a goal currency in lower case']
         ];
         for (const [kind, overrides, what] of cases) {
           await expectDenied(writePlan(peer, kind, overrides), what);
         }
+        // The rules hold a currency to the shape of a code, not to the codes
+        // a rate table holds.
+        await expectAllowed(writePlan(peer, 'budgets', { currency: 'ZZZ' }), 'a well-formed code no rate table holds');
       });
     });
 
@@ -4594,6 +4611,29 @@ describe('firestore.rules households (emulator smoke test)', () => {
         await expectAllowed(batch.commit(), 'the goal deleted with every contribution to it');
         expect(await getDocumentAsOwner(`households/${householdId}/goals/${peersGoal}/contributions/${owners}`)).toBeNull();
       });
+
+      // HouseholdPlansService.deleteGoal's heaviest commit: the goal and a
+      // full chunk of another member's contributions, by a maker who does
+      // not own the household. The emulator admits far larger commits of
+      // this shape as well, so the lookup ceiling the chunk is sized for
+      // rests on the arithmetic in HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK's
+      // doc, not on this case.
+      it("lets a goal's maker delete it with a full chunk of another member's contributions in one commit", async () => {
+        const peersGoal = await makePlan(peer, 'goals');
+        const owners: string[] = [];
+        for (let i = 0; i < HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK; i++) owners.push(await contribute(owner, peersGoal));
+
+        const batch = lite.writeBatch(peer.db);
+        batch.delete(planRef(peer, 'goals', peersGoal));
+        for (const contributionId of owners) batch.delete(contributionRef(peer, peersGoal, contributionId));
+        await expectAllowed(batch.commit(), "the goal deleted with a full chunk of the owner's contributions");
+
+        expect(await getDocumentAsOwner(`households/${householdId}/goals/${peersGoal}`)).toBeNull();
+        for (const contributionId of owners) {
+          expect(await getDocumentAsOwner(`households/${householdId}/goals/${peersGoal}/contributions/${contributionId}`))
+            .withContext(contributionId).toBeNull();
+        }
+      }, 30000);
 
       it('lets a live member clear the contributions a gone goal left, and refuses a stranger and an ex-member', async () => {
         const owners = await contribute(owner, goalId);

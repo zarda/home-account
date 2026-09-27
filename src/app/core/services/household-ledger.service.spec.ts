@@ -118,9 +118,14 @@ describe('HouseholdLedgerService', () => {
     return opened[opened.length - 1];
   }
 
-  /** The listener's answer: from the server unless `fromCache` says otherwise. */
+  /** A listener's answer: from the server unless `fromCache` says otherwise. */
+  function answerTo(listener: Listener, docs: StoredCopy[], fromCache = false): void {
+    listener.subject.next({ docs, fromCache, hasPendingWrites: false });
+  }
+
+  /** The latest listener's answer. */
   function answer(docs: StoredCopy[], fromCache = false): void {
-    latest().subject.next({ docs, fromCache, hasPendingWrites: false });
+    answerTo(latest(), docs, fromCache);
   }
 
   function follow(
@@ -468,6 +473,208 @@ describe('HouseholdLedgerService', () => {
       ledger.setPeriod(SEPTEMBER);
 
       expect(ledger.truncated()).toBeFalse();
+    });
+  });
+
+  describe("the household's plans' window", () => {
+    // September's budgets, as planWindow hands them over: through the last
+    // millisecond of the month. August, the period, is a month already over.
+    const SEPTEMBER_BUDGETS: DateWindow = { start: new Date(2026, 8, 1), end: new Date(2026, 8, 30, 23, 59, 59, 999) };
+    const JULY: DateWindow = monthWindow({ year: 2026, month: 6 });
+    const open = () => opened.filter(listener => listener.subject.observed);
+    const boundsOf = (listener: Listener) => listener.options!.where!.slice(1);
+    const reading = (window: DateWindow) => [
+      { field: 'date', op: '>=' as const, value: Timestamp.fromDate(window.start) },
+      { field: 'date', op: '<=' as const, value: Timestamp.fromDate(endOfDay(window.end)) }
+    ];
+    /** `count` copies a second apart, newest first as the query delivers them. */
+    const newestFirst = (count: number, from: Date, prefix: string) => Array.from({ length: count }, (_, i) =>
+      copy(KAI, `${prefix}${String(i).padStart(5, '0')}`, { date: Timestamp.fromMillis(from.getTime() - i * 1000) }));
+
+    it("reads a plan window the period does not hold through a capped listener of its own, which never crowds out the period's rows", () => {
+      follow([me, kai]);
+      const period = latest();
+
+      ledger.setPlanWindow(SEPTEMBER_BUDGETS);
+
+      expect(period.subject.observed).withContext("the period's listener is kept").toBeTrue();
+      expect(open().length).toBe(2);
+      const plans = latest();
+      expect(plans.path).toBe(LEDGER);
+      expect(plans.options).toEqual({
+        where: [{ field: 'gen', op: '==', value: GEN }, ...reading(SEPTEMBER_BUDGETS)],
+        orderBy: [{ field: 'date', direction: 'desc' }],
+        limit: LEDGER_VIEW_CAP + 1
+      });
+      // No query spans the weeks between the two.
+      expect(opened.map(boundsOf)).toEqual([reading(AUGUST), reading(SEPTEMBER_BUDGETS)]);
+
+      // September holds more copies than the cap; August far fewer.
+      const september = newestFirst(LEDGER_VIEW_CAP + 1, new Date(2026, 8, 29), 'sep');
+      answerTo(plans, september);
+      answerTo(period, [
+        copy(KAI, 'aug-last', { date: Timestamp.fromDate(endOfDay(AUGUST.end)), amount: 2 }),
+        copy(ME, 'aug', { amount: 4 }),
+        copy(ME, 'aug-first', { date: Timestamp.fromDate(AUGUST.start), amount: 1 })
+      ]);
+
+      expect(ledger.rows().map(row => row.sourceId)).toEqual(['aug-last', 'aug', 'aug-first']);
+      expect(ledger.combined()).toEqual({ income: 0, expense: 7, balance: -7, count: 3, atTodaysRate: false });
+      expect(ledger.truncated()).toBeFalse();
+      // The plans read their own listener's copies, and where it was cut.
+      expect(ledger.windowCopies().length).toBe(LEDGER_VIEW_CAP);
+      expect(ledger.windowCopies().every(held => held.sourceId.startsWith('sep'))).toBeTrue();
+      expect(ledger.windowKeptFrom()).toBe(september[LEDGER_VIEW_CAP - 1].date.toMillis());
+    });
+
+    it('keeps a period whole when the plan window reaching past it holds more than the cap, and says only the plans were cut', () => {
+      const JANUARY: DateWindow = monthWindow({ year: 2026, month: 0 });
+      const YEAR: DateWindow = { start: new Date(2026, 0, 1), end: new Date(2026, 11, 31, 23, 59, 59, 999) };
+      follow([me, kai], JANUARY);
+      const period = latest();
+
+      ledger.setPlanWindow(YEAR);
+
+      expect(open().length).toBe(2);
+      const plans = latest();
+      expect(boundsOf(plans)).toEqual(reading(YEAR));
+      // The year's copies from December back, none of them January's, past the cap.
+      answerTo(plans, newestFirst(LEDGER_VIEW_CAP + 1, new Date(2026, 11, 30), 'dec'));
+      answerTo(period, [
+        copy(KAI, 'jan-late', { date: Timestamp.fromDate(new Date(2026, 0, 30)) }),
+        copy(ME, 'jan-early', { date: Timestamp.fromDate(new Date(2026, 0, 2)) })
+      ]);
+
+      expect(ledger.rows().map(row => row.sourceId)).toEqual(['jan-late', 'jan-early']);
+      expect(ledger.truncated()).toBeFalse();
+      // A budget over the year may be missing copies: those kept stop short of its start.
+      expect(ledger.windowKeptFrom()!).toBeGreaterThanOrEqual(YEAR.start.getTime());
+    });
+
+    it('reads the period alone when it holds the plan window, and lends the plans its copies and its cut', () => {
+      follow();
+
+      ledger.setPlanWindow({ start: new Date(2026, 7, 10), end: new Date(2026, 7, 20, 23, 59, 59, 999) });
+      ledger.setPlanWindow({ start: AUGUST.start, end: endOfDay(AUGUST.end) });
+
+      expect(opened.length).withContext('one listener').toBe(1);
+      expect(boundsOf(latest())).toEqual(reading(AUGUST));
+      expect(ledger.windowLoading()).toBeTrue();
+
+      answer([copy(KAI, 'aug'), copy(ME, 'aug-2', { date: at(3) })]);
+      expect(ledger.windowLoading()).toBeFalse();
+      expect(ledger.windowCopies().map(held => held.sourceId)).toEqual(['aug', 'aug-2']);
+      expect(ledger.windowKeptFrom()).toBeNull();
+
+      const many = newestFirst(LEDGER_VIEW_CAP + 1, at(31).toDate(), 'aug');
+      answer(many);
+      expect(ledger.truncated()).toBeTrue();
+      expect(ledger.windowKeptFrom()).toBe(many[LEDGER_VIEW_CAP - 1].date.toMillis());
+    });
+
+    it("opens, keeps and closes the plans' listener as the dates change, and opens nothing for the same dates again", () => {
+      follow();
+      ledger.setPlanWindow(SEPTEMBER_BUDGETS);
+      expect(opened.length).toBe(2);
+      const plans = latest();
+
+      ledger.setPlanWindow({ start: new Date(SEPTEMBER_BUDGETS.start), end: new Date(SEPTEMBER_BUDGETS.end) });
+      expect(opened.length).withContext('the same plan window again').toBe(2);
+
+      // Another period that does not hold it either: only the period is read afresh.
+      ledger.setPeriod(JULY);
+      expect(opened.length).toBe(3);
+      expect(boundsOf(latest())).toEqual(reading(JULY));
+      expect(plans.subject.observed).withContext("the plans' listener is kept").toBeTrue();
+
+      // A period that holds it: the period's listener serves the plans too.
+      ledger.setPeriod(SEPTEMBER);
+      expect(plans.subject.observed).toBeFalse();
+      expect(open().map(boundsOf)).toEqual([reading(SEPTEMBER)]);
+      expect(ledger.windowLoading()).withContext("September's period has not answered").toBeTrue();
+      answer([copy(KAI, 'sep', { date: Timestamp.fromDate(new Date(2026, 8, 2)) })]);
+      expect(ledger.windowCopies().map(held => held.sourceId)).toEqual(['sep']);
+
+      // No budget window left: the plans read nothing, and the period is read as it was.
+      ledger.setPlanWindow(null);
+      expect(opened.length).toBe(4);
+      expect(ledger.windowCopies()).toEqual([]);
+      expect(ledger.windowLoading()).toBeFalse();
+      expect(ledger.rows().map(row => row.sourceId)).toEqual(['sep']);
+    });
+
+    it('listens for a plan window with no period set, showing no rows', () => {
+      ledger.setMembers([me]);
+      ledger.setHousehold(HOME);
+      expect(opened.length).toBe(0);
+
+      ledger.setPlanWindow(SEPTEMBER_BUDGETS);
+      expect(opened.length).toBe(1);
+      expect(ledger.windowLoading()).toBeTrue();
+      expect(ledger.loading()).withContext('no period to wait for').toBeFalse();
+
+      answer([copy(ME, 'sep', { date: Timestamp.fromDate(new Date(2026, 8, 2)) })]);
+      expect(ledger.windowLoading()).toBeFalse();
+      expect(ledger.rows()).toEqual([]);
+      expect(ledger.windowCopies().map(held => held.sourceId)).toEqual(['sep']);
+    });
+
+    it("says where the plans' copies came from, and that their listener failed, apart from the period's", () => {
+      follow();
+      ledger.setPlanWindow(SEPTEMBER_BUDGETS);
+      const [period, plans] = open();
+      answerTo(plans, [copy(KAI, 'sep', { date: Timestamp.fromDate(new Date(2026, 8, 2)) })], true);
+      answerTo(period, [copy(KAI, 'aug')]);
+
+      expect(ledger.windowFromCache()).toBeTrue();
+      expect(ledger.fromCache()).withContext("the period's own answer").toBeFalse();
+
+      const failure = firebaseError('unavailable');
+      plans.subject.error(failure);
+
+      expect(ledger.windowIncomplete()).toBeTrue();
+      expect(ledger.incomplete()).withContext("the overview's figures are whole").toBeFalse();
+      expect(ledgerLogs(consoleWarn)).toEqual([["[HouseholdLedger] The budgets' ledger listener stopped:", failure]]);
+    });
+
+    it('reads a listener that stopped afresh at the next change of dates', () => {
+      follow();
+      const augustToSeptember: DateWindow = { start: AUGUST.start, end: SEPTEMBER.end };
+      ledger.setPlanWindow(augustToSeptember);
+      const [period, plans] = open();
+
+      period.subject.error(firebaseError('unavailable'));
+      plans.subject.error(firebaseError('unavailable'));
+      expect(ledger.incomplete()).toBeTrue();
+      expect(ledger.windowIncomplete()).toBeTrue();
+
+      ledger.setPeriod(SEPTEMBER);
+
+      expect(opened.length).toBe(4);
+      expect(open().map(boundsOf)).toEqual([reading(SEPTEMBER), reading(augustToSeptember)]);
+      expect(ledger.incomplete()).toBeFalse();
+      expect(ledger.windowIncomplete()).toBeFalse();
+    });
+
+    it('counts every date as cut when the oldest copy kept has a date it cannot read', () => {
+      follow();
+      ledger.setPlanWindow(SEPTEMBER_BUDGETS);
+      const september = newestFirst(LEDGER_VIEW_CAP + 1, new Date(2026, 8, 29), 'sep');
+      september[LEDGER_VIEW_CAP - 1] = { ...september[LEDGER_VIEW_CAP - 1], date: 'yesterday' as unknown as Timestamp };
+
+      answer(september);
+
+      expect(ledger.windowKeptFrom()).toBe(Number.POSITIVE_INFINITY);
+    });
+
+    it("judges an account whose copies only the plans' listener shows", async () => {
+      follow([me]);
+      ledger.setPlanWindow(SEPTEMBER_BUDGETS);
+
+      answer([copy(GONE, 'g-sep', { date: Timestamp.fromDate(new Date(2026, 8, 2)) })]);
+      await settle();
+
+      expect(sharing.purgeMember).toHaveBeenCalledOnceWith('h1', GONE);
     });
   });
 

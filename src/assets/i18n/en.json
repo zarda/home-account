@@ -1927,7 +1927,15 @@
       "expired": "This invite has expired. Ask the owner to send a new one.",
       "inviteGone": "This invite is no longer available. It may have been withdrawn.",
       "tooMany": "You already belong to {{max}} households, the most one account can. Leave or dissolve one before starting or joining another.",
-      "ownerLeaves": "As the owner, you can't leave. Dissolve the household instead."
+      "ownerLeaves": "As the owner, you can't leave. Dissolve the household instead.",
+      "planName": "Enter a name of up to {{max}} characters.",
+      "planAmount": "Enter an amount greater than zero.",
+      "planCategories": "Choose from 1 to {{max}} categories.",
+      "planGone": "That budget or goal no longer exists.",
+      "planNotYours": "Only the member who made it, or the household's owner, can delete it.",
+      "contributionNotYours": "Only the member who recorded it, or the household's owner, can delete it.",
+      "copyGone": "That row is no longer shared with this household.",
+      "refused": "The household didn't accept that change. You may no longer be a member of it."
     }
   }
 }
