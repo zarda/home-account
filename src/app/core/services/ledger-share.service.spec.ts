@@ -486,6 +486,178 @@ describe('LedgerShareService', () => {
     });
   });
 
+  describe('intend', () => {
+    it('journals every household a new row names, and reads and writes nothing', () => {
+      service.intend('t1', null, row('t1', ['h1', 'h2', 'h3', 'h4']));
+
+      expect(journal().rows.map(entry => entry.hid)).toEqual(['h1', 'h2', 'h3', 'h4']);
+      expect(firestore.callLog).toEqual([]);
+    });
+
+    it('journals nothing for an edit that leaves the copies as they were', () => {
+      const shared = row('t1', ['h1', 'h2']);
+
+      service.intend('t1', shared, { ...shared, note: 'a new note', receiptCount: 1 });
+
+      expect(journal()).toEqual({ rows: [], full: [] });
+    });
+
+    it('journals each household of an edit to a revealed field', () => {
+      const shared = row('t1', ['h1', 'h2']);
+
+      service.intend('t1', shared, { ...shared, amount: 40 });
+
+      expect(journal().rows).toEqual([{ hid: 'h1', txId: 't1' }, { hid: 'h2', txId: 't1' }]);
+    });
+
+    it('journals a household the row stops naming, for the repair to take its copy out', () => {
+      service.intend('t1', row('t1', ['h1', 'h2']), row('t1', ['h1']));
+
+      expect(journal().rows).toEqual([{ hid: 'h2', txId: 't1' }]);
+    });
+
+    it('does nothing for a private row, or with no account signed in', () => {
+      service.intend('t1', null, row('t1', []));
+      userId.set(null);
+      service.intend('t1', null, row('t1', ['h1']));
+
+      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(firestore.callLog).toEqual([]);
+    });
+
+    it('never throws', () => {
+      const warn = spyOn(console, 'warn');
+      const hostile = { get sharedWith(): string[] { throw new Error('unreadable'); } } as unknown as Transaction;
+
+      expect(() => service.intend('t1', null, hostile)).not.toThrow();
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
+    });
+
+    it('leaves the entry to the follow made after the commit, which settles it once the copy is acknowledged', async () => {
+      await service.prepare();
+      const source = row('t1', ['h1']);
+
+      service.intend('t1', null, source);
+      expect(journal().rows).toEqual([{ hid: 'h1', txId: 't1' }]);
+      service.follow('t1', null, source);
+      await settle();
+
+      expect(commits()).toEqual([[setOf('h1', source, G1)]]);
+      expect(journal().rows).toEqual([]);
+    });
+
+    it('keeps the entry for the repair when the commit it was made for never lands', async () => {
+      await service.prepare();
+
+      service.intend('t1', null, row('t1', ['h1']));
+      await settle();
+
+      expect(commits()).toEqual([]);
+      expect(journal().rows).toEqual([{ hid: 'h1', txId: 't1' }]);
+    });
+
+    it('keeps the entry when an acknowledged write was issued before it was made', async () => {
+      await service.prepare();
+      const answers = holdAnswers();
+      const source = row('t1', ['h1']);
+
+      service.follow('t1', null, source);
+      service.intend('t1', source, { ...source, amount: 30 });
+      answers.release();
+      await settle();
+
+      // The answered write carries the row before the change the intent is for.
+      expect(journal().rows).toEqual([{ hid: 'h1', txId: 't1' }]);
+    });
+
+    it('journals every household that follow, handed the same change, writes or leaves to the repair', async () => {
+      await service.prepare();
+      const changes: [string, Transaction | null, Transaction][] = [
+        ['a new row', null, row('t1', ['h1', 'h2', 'h3', 'h4'])],
+        ['a revealed field and the shares', row('t1', ['h1', 'h2']), { ...row('t1', ['h1', 'h3']), amount: 40 }],
+        ['the note alone', row('t1', ['h1', 'h2']), { ...row('t1', ['h1', 'h2']), note: 'another note' }],
+        ['the shares alone', row('t1', ['h1', 'h2']), row('t1', ['h2'])]
+      ];
+      const touched = () => [...new Set(journal().rows.map(entry => entry.hid))].sort();
+
+      for (const [what, before, after] of changes) {
+        clearStorage();
+        service.intend('t1', before, after);
+        const intended = touched();
+        clearStorage();
+        // follow journals each copy it writes before issuing it, and each it
+        // leaves to the repair at once: its journal, read before any answer,
+        // is every household it touched.
+        service.follow('t1', before, after);
+        const followed = touched();
+        await settle();
+
+        expect(intended).withContext(what).toEqual(followed);
+      }
+    });
+  });
+
+  describe('followMany', () => {
+    it(`writes several rows' copies by household, at most ${LEDGER_COMMIT_CHUNK} to a commit, before it returns`, async () => {
+      await service.prepare();
+      firestore.callLog.length = 0;
+      const rows = Array.from({ length: LEDGER_COMMIT_CHUNK + 2 }, (_, i) => row(`t${i}`, ['h1', 'h2']));
+
+      service.followMany(rows.map(source => [source.id, null, source]));
+
+      expect(commits()).toEqual([
+        rows.slice(0, LEDGER_COMMIT_CHUNK).map(source => setOf('h1', source, G1)),
+        rows.slice(LEDGER_COMMIT_CHUNK).map(source => setOf('h1', source, G1)),
+        rows.slice(0, LEDGER_COMMIT_CHUNK).map(source => setOf('h2', source, G2)),
+        rows.slice(LEDGER_COMMIT_CHUNK).map(source => setOf('h2', source, G2))
+      ]);
+      await settle();
+      expect(journal().rows).toEqual([]);
+    });
+
+    it('applies follow\'s rule to each change: an unchanged copy is left, an ended membership and an unshare are journaled', async () => {
+      await service.prepare();
+      firestore.callLog.length = 0;
+      const kept = row('t1', ['h1']);
+      const edited = row('t2', ['h1']);
+      const unshared = row('t3', ['h1', 'h2']);
+
+      service.followMany([
+        ['t1', kept, { ...kept, note: 'another note' }],
+        ['t2', edited, { ...edited, amount: 40 }],
+        ['t3', unshared, row('t3', ['h1'])],
+        ['t4', null, row('t4', ['h3'])]
+      ]);
+
+      expect(commits()).toEqual([[setOf('h1', { ...edited, amount: 40 }, G1)]]);
+      await settle();
+      expect(journal().rows).toEqual([{ hid: 'h2', txId: 't3' }, { hid: 'h3', txId: 't4' }]);
+    });
+
+    it('follows each change as follow does until the account is loaded', async () => {
+      const rows = [row('t1', ['h1']), row('t2', ['h1'])];
+
+      service.followMany(rows.map(source => [source.id, null, source]));
+
+      expect(journal().rows).toEqual([{ hid: 'h1', txId: 't1' }, { hid: 'h1', txId: 't2' }]);
+      await settle();
+      expect(commits()).toEqual([[setOf('h1', rows[0], G1)], [setOf('h1', rows[1], G1)]]);
+      expect(journal().rows).toEqual([]);
+    });
+
+    it('does nothing at all for private rows, and never throws', () => {
+      const warn = spyOn(console, 'warn');
+      const hostile = { get sharedWith(): string[] { throw new Error('unreadable'); } } as unknown as Transaction;
+
+      service.followMany([['t1', null, row('t1', [])], ['t2', row('t2', []), { ...row('t2', []), amount: 99 }]]);
+      expect(firestore.callLog).toEqual([]);
+      expect(journal()).toEqual({ rows: [], full: [] });
+
+      expect(() => service.followMany([['t3', null, hostile]])).not.toThrow();
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
+    });
+  });
+
   describe('share', () => {
     it(`adds the key to the rows at most ${LEDGER_OWN_WRITE_CHUNK} per commit, then writes the copies at most ${LEDGER_COMMIT_CHUNK} per commit`, async () => {
       const rows = Array.from({ length: LEDGER_OWN_WRITE_CHUNK + 2 }, (_, i) => row(`t${i}`, []));

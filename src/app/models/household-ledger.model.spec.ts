@@ -13,9 +13,10 @@ import {
   MAX_BULK_SHARE,
   householdOfShareKey,
   ledgerCopyId,
+  ledgerCopyPath,
   shareKey,
 } from './household-ledger.model';
-import { MAX_HOUSEHOLDS_PER_ACCOUNT } from './household.model';
+import { MAX_HOUSEHOLDS_PER_ACCOUNT, householdIndexPath } from './household.model';
 
 /**
  * Every transaction field a household must never see, plus the
@@ -212,5 +213,20 @@ describe('household-ledger.model', () => {
         expect(() => ledgerCopyId(uid, txId)).toThrowError(/ledger copy id/);
       });
     }
+  });
+
+  describe('paths', () => {
+    it('places a copy in its household\'s ledger, at its copy id', () => {
+      expect(ledgerCopyPath('h1', 'u1', 'tx1')).toBe('households/h1/ledger/u1_tx1');
+    });
+
+    it('refuses a copy path wherever it refuses the copy id', () => {
+      expect(() => ledgerCopyPath('h1', 'u_1', 'tx1')).toThrowError(/ledger copy id/);
+      expect(() => ledgerCopyPath('h1', 'u1', 'tx/1')).toThrowError(/ledger copy id/);
+    });
+
+    it('places an account\'s index of households under the account', () => {
+      expect(householdIndexPath('u1')).toBe('users/u1/households');
+    });
   });
 });

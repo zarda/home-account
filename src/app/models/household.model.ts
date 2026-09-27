@@ -73,6 +73,11 @@ export interface HouseholdIndexEntry {
   endedAt?: Timestamp;
 }
 
+/** Where an account's index sits: one HouseholdIndexEntry per membership. */
+export function householdIndexPath(uid: string): string {
+  return `users/${uid}/households`;
+}
+
 /** One membership as the account's index lists it. */
 export interface HouseholdMembership {
   householdId: string;

@@ -16,7 +16,9 @@ import {
   LedgerQueryShape,
   MAX_BULK_SHARE,
   Transaction,
+  householdIndexPath,
   ledgerCopyId,
+  ledgerCopyPath,
   shareKey
 } from '../../models';
 import { AuthService } from './auth.service';
@@ -91,6 +93,9 @@ export interface LedgerReconcileReport {
  */
 export type LedgerFollowedRow = Partial<Transaction>;
 
+/** One row's change as its copies follow it: the row's id, the row before (null for a new row) and after. */
+export type LedgerRowChange = readonly [txId: string, before: LedgerFollowedRow | null, after: LedgerFollowedRow | null];
+
 /**
  * - `tooMany`: more rows than one bulk action takes (MAX_BULK_SHARE).
  * - `notMember`: a household that is not one of the account's live memberships.
@@ -160,12 +165,10 @@ interface AccountState {
 
 const rowsPath = (uid: string) => `users/${uid}/transactions`;
 const rowPath = (uid: string, txId: string) => `${rowsPath(uid)}/${txId}`;
-const indexPath = (uid: string) => `users/${uid}/households`;
 const categoriesPath = (uid: string) => `users/${uid}/categories`;
 const householdPath = (hid: string) => `households/${hid}`;
 const memberPath = (hid: string, uid: string) => `households/${hid}/members/${uid}`;
 const ledgerPath = (hid: string) => `households/${hid}/ledger`;
-const copyPath = (hid: string, uid: string, txId: string) => `${ledgerPath(hid)}/${ledgerCopyId(uid, txId)}`;
 const journalKey = (row: LedgerJournalRow) => `${row.hid}/${row.txId}`;
 
 const namingKey = (key: string): Where => ({ field: 'sharedWith', op: 'array-contains', value: key });
@@ -198,6 +201,45 @@ function projectable(uid: string, txId: string, row: LedgerFollowedRow | null | 
   return { id: txId, userId: uid, type, amount, currency, date, description, categoryId };
 }
 
+/** What one change of a row does to its copies, household by household. */
+interface CopiesTouched {
+  /** The row after the change as a copy is projected from it, or null when no copy may hold it. */
+  next: ProjectableRow | null;
+  /** The households the row names after the change. */
+  named: string[];
+  /** The households whose copy the change writes: each it names (or each of `only`) but those whose copy it leaves as it was. */
+  targets: string[];
+  /** The households the row stopped naming, whose copy the repair takes out. */
+  unshared: string[];
+}
+
+/**
+ * The one rule for which copies a change touches, so what intend journals
+ * before a commit is what follow writes or leaves to the repair after it.
+ * Both sides are projected from the same categories and generation: across
+ * one change of a row, its copy changes only with the fields it reveals.
+ */
+function copiesTouched(
+  uid: string,
+  txId: string,
+  followed: Followed,
+  categories: readonly Category[],
+  only?: readonly string[]
+): CopiesTouched {
+  const named = normalizeShares(followed.after?.sharedWith);
+  const beforeHids = normalizeShares(followed.before?.sharedWith);
+  const next = projectable(uid, txId, followed.after);
+  const previous = projectable(uid, txId, followed.before);
+  const unchanged = !!next && !!previous
+    && !copyDiffers(projectRow(previous, categories, ANY_GENERATION), projectRow(next, categories, ANY_GENERATION));
+  return {
+    next,
+    named,
+    targets: (only ?? named).filter(hid => !(unchanged && beforeHids.includes(hid))),
+    unshared: beforeHids.filter(hid => !named.includes(hid))
+  };
+}
+
 /**
  * The equality filters of a query shape, in the shape's field order, so the
  * query is the one its declared composite serves (the ledger contract check
@@ -225,7 +267,7 @@ function groupByHousehold(rows: readonly LedgerJournalRow[]): Map<string, string
  * (households/{hid}/ledger/{uid}_{txId}) true to the rows, and takes them
  * out with a membership's end.
  *
- * A copy is written in a commit of its own, after the personal write it
+ * A copy is written in a commit of copies only, after the personal write it
  * follows was issued, and never in the same commit: the rules may refuse a
  * copy (copyFaithful judges it against the row as the commit leaves it; an
  * ended membership writes none), and a refused copy must never take a
@@ -301,6 +343,11 @@ export class LedgerShareService implements OnDestroy {
    * repair, which takes its copy out: an unshare does that itself, and this
    * never deletes. A household that is ending, or whose row holds a value no
    * copy may, is journaled for the repair too. Never throws.
+   *
+   * A change a transaction commits comes another way: it is journaled with
+   * intend before the commit and handed to followMany once the commit has
+   * landed, so its copy writes are issued after the commit rather than
+   * queued behind a write.
    */
   follow(txId: string, before: LedgerFollowedRow | null, after: LedgerFollowedRow | null): void {
     try {
@@ -309,7 +356,7 @@ export class LedgerShareService implements OnDestroy {
       const named = [...new Set([...normalizeShares(after?.sharedWith), ...normalizeShares(before?.sharedWith)])];
       if (named.length === 0) return;
       const state = this.stateFor(uid);
-      if (state.index && state.categories && state.deferred.size === 0) {
+      if (this.loaded(state)) {
         this.followNow(state, txId, { before, after });
         return;
       }
@@ -317,6 +364,70 @@ export class LedgerShareService implements OnDestroy {
       this.defer(state, txId, { before, after });
     } catch (error) {
       this.warn('A row\'s copies were not followed; the journal and the sweep repair them', error);
+    }
+  }
+
+  /**
+   * follow for the changes one transaction committed, once its commit has
+   * landed: each row by follow's rule, the copy writes grouped by household
+   * and issued before this returns, at most LEDGER_COMMIT_CHUNK to a commit,
+   * so the rows of a split share their commits rather than taking one each.
+   * Until the account is loaded, each change goes to follow. A row appears
+   * at most once among the changes. Never throws.
+   */
+  followMany(changes: readonly LedgerRowChange[]): void {
+    try {
+      const uid = this.auth.userId();
+      if (!uid) return;
+      const shared = changes.filter(([, before, after]) =>
+        normalizeShares(after?.sharedWith).length > 0 || normalizeShares(before?.sharedWith).length > 0);
+      if (shared.length === 0) return;
+      const state = this.stateFor(uid);
+      if (!this.loaded(state)) {
+        for (const change of shared) this.follow(...change);
+        return;
+      }
+      const writes: CopyWrite[] = [];
+      for (const [txId, before, after] of shared) this.followNow(state, txId, { before, after }, undefined, writes);
+      const byHousehold = new Map<string, CopyWrite[]>();
+      for (const write of writes) byHousehold.set(write.hid, [...(byHousehold.get(write.hid) ?? []), write]);
+      for (const household of byHousehold.values()) {
+        for (const chunk of chunked(household, LEDGER_COMMIT_CHUNK)) {
+          try {
+            void this.issue(state, chunk, true);
+          } catch (error) {
+            this.owe(state, chunk.map(({ hid, txId }) => ({ hid, txId })));
+            this.warn('A copy write was not issued; the journal keeps it for the repair', error);
+          }
+        }
+      }
+    } catch (error) {
+      this.warn('Rows\' copies were not followed; the journal and the sweep repair them', error);
+    }
+  }
+
+  /**
+   * Journals, before a transaction commits a row's change, each household
+   * whose copy the change will write or take out, so a copy the app never
+   * gets to follow (it stops between the commit and the follow) is still
+   * repaired. Takes what follow takes and applies the same rule
+   * (copiesTouched), so an edit that leaves the copies as they were journals
+   * nothing. It issues nothing and reads nothing: once the commit lands, the
+   * change is handed to followMany, whose acknowledged writes settle the
+   * entries. A commit that never lands leaves them to the repair, which finds
+   * the row as it stands. Never throws.
+   */
+  intend(txId: string, before: LedgerFollowedRow | null, after: LedgerFollowedRow | null): void {
+    try {
+      const uid = this.auth.userId();
+      if (!uid) return;
+      // Projected with no categories read: both sides share whichever are
+      // used, so they cannot decide whether the copy changes.
+      const { targets, unshared } = copiesTouched(uid, txId, { before, after }, []);
+      const hids = [...targets, ...unshared];
+      if (hids.length > 0) this.owe(this.stateFor(uid), hids.map(hid => ({ hid, txId })));
+    } catch (error) {
+      this.warn('A row\'s change was not journaled; the sweep repairs its copies', error);
     }
   }
 
@@ -557,7 +668,7 @@ export class LedgerShareService implements OnDestroy {
       const byHousehold = new Map<string, CopyWrite[]>();
       for (const chunk of chunked(wanted, REPAIR_READS_AT_ONCE)) {
         const stored = await Promise.all(chunk.map(write => this.firestore
-          .getDocument<StoredCopy>(copyPath(write.hid, uid, write.txId))
+          .getDocument<StoredCopy>(ledgerCopyPath(write.hid, uid, write.txId))
           .catch(() => undefined)));
         chunk.forEach((write, i) => {
           const copy = stored[i];
@@ -577,25 +688,32 @@ export class LedgerShareService implements OnDestroy {
 
   // ---- following ----
 
-  private followNow(state: AccountState, txId: string, followed: Followed, only?: readonly string[]): void {
+  /** Whether a follow made now issues its writes before it returns. */
+  private loaded(state: AccountState): boolean {
+    return !!state.index && !!state.categories && state.deferred.size === 0;
+  }
+
+  /**
+   * Follows one change on a loaded account. Each copy write is issued in a
+   * commit of its own, or, when `collect` is given, added to it for the
+   * caller to issue with others; a write this makes later (once a category
+   * or the index is read again) is always issued on its own.
+   */
+  private followNow(
+    state: AccountState,
+    txId: string,
+    followed: Followed,
+    only?: readonly string[],
+    collect?: CopyWrite[]
+  ): void {
     const { uid } = state;
     const index = state.index ?? [];
     const categories = state.categories ?? [];
-    const afterHids = normalizeShares(followed.after?.sharedWith);
-    const beforeHids = normalizeShares(followed.before?.sharedWith);
-    if (!only) {
-      const unshared = beforeHids.filter(hid => !afterHids.includes(hid));
-      if (unshared.length > 0) this.owe(state, unshared.map(hid => ({ hid, txId })));
-    }
-
-    const next = projectable(uid, txId, followed.after);
-    const previous = projectable(uid, txId, followed.before);
-    const unchanged = !!next && !!previous
-      && !copyDiffers(projectRow(previous, categories, ANY_GENERATION), projectRow(next, categories, ANY_GENERATION));
-    if (!next && afterHids.length > 0) {
+    const { next, named, targets, unshared } = copiesTouched(uid, txId, followed, categories, only);
+    if (!only && unshared.length > 0) this.owe(state, unshared.map(hid => ({ hid, txId })));
+    if (!next && named.length > 0) {
       this.warn('A shared row holds a value no copy may; the repair reads it again from the server', txId);
     }
-    const targets = (only ?? afterHids).filter(hid => !(unchanged && beforeHids.includes(hid)));
     if (targets.length === 0) return;
 
     // A category the account's list does not hold: one made since it was
@@ -624,7 +742,9 @@ export class LedgerShareService implements OnDestroy {
         } else if (!isLive(membership) || !next) {
           this.owe(state, [{ hid, txId }]);
         } else {
-          void this.issue(state, [{ hid, txId, data: projectRow(next, categories, membership.since) }], true);
+          const write = { hid, txId, data: projectRow(next, categories, membership.since) };
+          if (collect) collect.push(write);
+          else void this.issue(state, [write], true);
         }
       } catch (error) {
         this.owe(state, [{ hid, txId }]);
@@ -683,7 +803,7 @@ export class LedgerShareService implements OnDestroy {
   ): Promise<boolean> {
     const ops: BatchOp[] = writes.map(write => ({
       op: 'set',
-      path: copyPath(write.hid, state.uid, write.txId),
+      path: ledgerCopyPath(write.hid, state.uid, write.txId),
       data: write.data,
       merge: true,
       stamp: 'server'
@@ -803,7 +923,7 @@ export class LedgerShareService implements OnDestroy {
 
   private unsharePair(uid: string, hid: string, key: string, txId: string): BatchOp[] {
     return [
-      { op: 'delete', path: copyPath(hid, uid, txId) },
+      { op: 'delete', path: ledgerCopyPath(hid, uid, txId) },
       { op: 'update', path: rowPath(uid, txId), data: { sharedWith: arrayRemove(key) }, stamp: 'client' }
     ];
   }
@@ -822,7 +942,7 @@ export class LedgerShareService implements OnDestroy {
           await this.firestore.commitBatch(this.unsharePair(uid, hid, key, txId));
         } catch (pairError) {
           if (errorCode(pairError) !== 'not-found') throw pairError;
-          await this.firestore.commitBatch([{ op: 'delete', path: copyPath(hid, uid, txId) }]);
+          await this.firestore.commitBatch([{ op: 'delete', path: ledgerCopyPath(hid, uid, txId) }]);
         }
       }
     });
@@ -914,11 +1034,11 @@ export class LedgerShareService implements OnDestroy {
       }
     }
 
-    const failed = await this.deletePaths(deletes.map(txId => copyPath(hid, uid, txId)));
+    const failed = await this.deletePaths(deletes.map(txId => ledgerCopyPath(hid, uid, txId)));
     for (const txId of deletes) {
-      if (!failed.has(copyPath(hid, uid, txId)) && !sets.some(set => set.txId === txId)) settled.push({ hid, txId });
+      if (!failed.has(ledgerCopyPath(hid, uid, txId)) && !sets.some(set => set.txId === txId)) settled.push({ hid, txId });
     }
-    const writable = sets.filter(set => !failed.has(copyPath(hid, uid, set.txId)));
+    const writable = sets.filter(set => !failed.has(ledgerCopyPath(hid, uid, set.txId)));
     for (const chunk of chunked(writable, LEDGER_COMMIT_CHUNK)) await this.issue(state, chunk, false, owedSince);
     // An entry a write issued since the repair began is in flight for is that
     // write's to settle, and one owed again since it began is the next repair's.
@@ -936,7 +1056,7 @@ export class LedgerShareService implements OnDestroy {
     try {
       const [row, copy] = await Promise.all([
         this.firestore.getDocumentFromServer<Transaction>(rowPath(uid, txId)),
-        this.firestore.getDocumentFromServer<StoredCopy>(copyPath(hid, uid, txId))
+        this.firestore.getDocumentFromServer<StoredCopy>(ledgerCopyPath(hid, uid, txId))
       ]);
       return { txId, row, copy };
     } catch (error) {
@@ -1041,7 +1161,7 @@ export class LedgerShareService implements OnDestroy {
       }
 
       const failed = await this.deletePaths(deletes.map(id => `${ledgerPath(hid)}/${id}`));
-      const writable = sets.filter(set => !failed.has(copyPath(hid, uid, set.txId)));
+      const writable = sets.filter(set => !failed.has(ledgerCopyPath(hid, uid, set.txId)));
       let written = 0;
       for (const chunk of chunked(writable, LEDGER_COMMIT_CHUNK)) {
         if (await this.issue(state, chunk, false, owedSince)) written += chunk.length;
@@ -1153,7 +1273,7 @@ export class LedgerShareService implements OnDestroy {
   private loadIndex(state: AccountState, fresh = false): Promise<HouseholdMembership[]> {
     if (!fresh && state.index) return Promise.resolve(state.index);
     if (!fresh && state.indexLoad) return state.indexLoad;
-    const load = this.firestore.getCollection<HouseholdIndexData>(indexPath(state.uid)).then(entries => {
+    const load = this.firestore.getCollection<HouseholdIndexData>(householdIndexPath(state.uid)).then(entries => {
       const index = entries.map(toMembership);
       state.index = index;
       return index;

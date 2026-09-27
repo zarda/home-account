@@ -231,3 +231,11 @@ export function ledgerCopyId(uid: string, txId: string): string {
   }
   return `${uid}_${txId}`;
 }
+
+/**
+ * Where a copy sits: in its household's ledger, at ledgerCopyId(uid, txId).
+ * Throws wherever ledgerCopyId does.
+ */
+export function ledgerCopyPath(householdId: string, uid: string, txId: string): string {
+  return `households/${householdId}/ledger/${ledgerCopyId(uid, txId)}`;
+}

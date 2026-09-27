@@ -11,6 +11,11 @@ import { LedgerShareService } from './ledger-share.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { PwaService } from './pwa.service';
+import { TransactionService } from './transaction.service';
+import { CurrencyService } from './currency.service';
+import { StorageService } from './storage.service';
+import { ReceiptQuotaService } from './receipt-quota.service';
+import { BudgetService } from './budget.service';
 import { ledgerJournalKey, readLedgerJournal } from './ledger-journal';
 import {
   EmulatorField,
@@ -19,7 +24,7 @@ import {
   stringField,
   timestampField
 } from './testing/emulator-admin';
-import { LEDGER_REQUIRED_FIELDS, Transaction, shareKey } from '../../models';
+import { CreateTransactionDTO, LEDGER_REQUIRED_FIELDS, Transaction, shareKey } from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { unexpectedConsoleErrors } from './testing/firestore-transport-noise';
 silenceFirebaseWarnings();
@@ -28,7 +33,9 @@ silenceFirebaseWarnings();
  * LedgerShareService against the emulators, with firestore.rules live: each
  * passing case proves the service's commits are the ones the rules admit,
  * and that a peer reading the household's ledger as the page does (filtered
- * to the live generation) sees what the owner shared and nothing more.
+ * to the live generation) sees what the owner shared and nothing more. The
+ * TransactionService cases drive the app's own write paths, whose copies
+ * follow each row write.
  *
  * The owner runs the real service on a full client. Its second device, the
  * stale one, is a Lite client on the same app and account; the peer is a
@@ -43,7 +50,10 @@ silenceFirebaseWarnings();
  * waitForPendingWrites), and the whole smoke run with it, so the offline
  * add, share and edit journey is not run here. ledger-share.service.spec.ts
  * shows from the mock's call-order log only that follow issues each copy
- * commit before it returns, behind the personal write issued before it.
+ * commit before it returns, behind the personal write issued before it, and
+ * transaction.service.spec.ts ('issue, then follow, then await') that each
+ * plain write path issues its row write, then follows it in the same step,
+ * the copy commit issued while the row write is held unanswered, as offline.
  * That the commits then land in that order across an offline period rests
  * on the SDK's persistent mutation queue, which this suite does not prove.
  *
@@ -147,11 +157,19 @@ describe('LedgerShareService (emulator smoke test)', () => {
 
   /** The household's ledger as the peer's page lists it: the live generation's copies. */
   async function peerView(): Promise<Map<string, lite.DocumentData>> {
+    return peerViewOf(householdId, gen);
+  }
+
+  async function peerViewOf(hid: string, generation: lite.Timestamp): Promise<Map<string, lite.DocumentData>> {
     const snapshot = await lite.getDocs(lite.query(
-      lite.collection(peer.db, `households/${householdId}/ledger`),
-      lite.where('gen', '==', gen)
+      lite.collection(peer.db, `households/${hid}/ledger`),
+      lite.where('gen', '==', generation)
     ));
     return new Map(snapshot.docs.map(doc => [doc.id, doc.data()]));
+  }
+
+  async function generationOf(hid: string): Promise<lite.Timestamp> {
+    return (await lite.getDoc(lite.doc(peer.db, `households/${hid}`))).get('createdAt') as lite.Timestamp;
   }
 
   async function eventually(check: () => Promise<boolean>, what: string, timeoutMs = 10000): Promise<void> {
@@ -234,9 +252,11 @@ describe('LedgerShareService (emulator smoke test)', () => {
   }
 
   /**
-   * Nothing reached the error handler and the service logged nothing: a
-   * refused or failed write of its own is a `[LedgerShareService]` warning.
-   * The SDK's own transport lines are not faults (unexpectedConsoleErrors).
+   * Nothing reached the error handler and the services logged nothing: a
+   * refused or failed write of LedgerShareService's own is a
+   * `[LedgerShareService]` warning, and sharing code that TransactionService
+   * could not load is a `[Transactions]` one. The SDK's own transport lines
+   * are not faults (unexpectedConsoleErrors).
    */
   function expectQuiet(): void {
     expect(errorHandler.handleError.calls.allArgs().map(args => args.map(String)))
@@ -244,7 +264,7 @@ describe('LedgerShareService (emulator smoke test)', () => {
     const errors = unexpectedConsoleErrors(consoleError.calls.allArgs());
     expect(errors).withContext(`console.error: ${JSON.stringify(errors)}`).toEqual([]);
     const warnings = consoleWarn.calls.allArgs()
-      .filter(args => String(args[0]).startsWith('[LedgerShareService]'))
+      .filter(args => /^\[(LedgerShareService|Transactions)\]/.test(String(args[0])))
       .map(args => args.map(String));
     expect(warnings).withContext(`console.warn: ${JSON.stringify(warnings)}`).toEqual([]);
   }
@@ -274,9 +294,23 @@ describe('LedgerShareService (emulator smoke test)', () => {
       providers: [
         FirestoreService,
         { provide: Firestore, useValue: owner.firestore },
-        { provide: AuthService, useValue: { userId: () => owner.uid } },
+        { provide: AuthService, useValue: { userId: () => owner.uid, currentUser: () => null } },
         { provide: PwaService, useValue: { isOnline: () => true } },
-        { provide: ErrorHandler, useValue: errorHandler }
+        { provide: ErrorHandler, useValue: errorHandler },
+        // What TransactionService needs besides: a loaded 1:1 table, and no
+        // receipt or budget work, none of which a copy reveals.
+        {
+          provide: CurrencyService,
+          useValue: {
+            ensureRatesLoaded: async () => undefined,
+            getExchangeRate: () => 1,
+            convert: (amount: number) => amount,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency ?? t.amount
+          }
+        },
+        { provide: StorageService, useValue: {} },
+        { provide: ReceiptQuotaService, useValue: { invalidateCount: () => undefined } },
+        { provide: BudgetService, useValue: { recalculateBudgetsForCategory: async () => undefined } }
       ]
     });
     service = TestBed.inject(LedgerShareService);
@@ -285,7 +319,7 @@ describe('LedgerShareService (emulator smoke test)', () => {
     consoleWarn = spyOn(console, 'warn').and.callThrough();
 
     householdId = await formWithPeer();
-    gen = (await lite.getDoc(lite.doc(peer.db, `households/${householdId}`))).get('createdAt') as lite.Timestamp;
+    gen = await generationOf(householdId);
   }, 30000);
 
   afterEach(() => {
@@ -327,16 +361,18 @@ describe('LedgerShareService (emulator smoke test)', () => {
     // A delete is one commit: the account's copy in every household it holds, and the row.
     await service.share([id], householdId);
     expect((await peerView()).has(copyId(id))).toBeTrue();
-    const memberships = await service.membershipsOnce();
+    // Every household the account's index lists, ended memberships included.
+    const memberships = await rows.getCollection<{ id: string }>(`users/${owner.uid}/households`);
     await rows.commitBatch([
       ...memberships.map(membership => ({
         op: 'delete' as const,
-        path: `households/${membership.householdId}/ledger/${copyId(id)}`
+        path: `households/${membership.id}/ledger/${copyId(id)}`
       })),
       { op: 'delete', path: rowPath(id) }
     ]);
     expect((await peerView()).has(copyId(id))).withContext('the deleted row\'s copy').toBeFalse();
-    expect(readLedgerJournal(owner.uid)).toEqual({ rows: [], full: [] });
+    expect(readLedgerJournal(owner.uid).rows).toEqual([]);
+    expect(readLedgerJournal(owner.uid).full).toEqual({});
     expectQuiet();
   }, 30000);
 
@@ -420,4 +456,84 @@ describe('LedgerShareService (emulator smoke test)', () => {
     expect(await service.reconcile(householdId, 'check')).toEqual({ pass: 'check', written: 0, deleted: 0 });
     expectQuiet();
   }, 30000);
+
+  describe('through TransactionService', () => {
+    let transactions: TransactionService;
+
+    const dto = (overrides: Partial<CreateTransactionDTO> = {}): CreateTransactionDTO => ({
+      type: 'expense',
+      amount: 12.5,
+      currency: 'USD',
+      categoryId: 'food_groceries',
+      description: 'Shared through the app',
+      date: new Date(DATE_MS),
+      note: 'a private note',
+      tags: ['private'],
+      ...overrides
+    });
+
+    beforeEach(() => {
+      transactions = TestBed.inject(TransactionService);
+    });
+
+    it('adds a row shared at creation, and the peer sees its copy and nothing more', async () => {
+      const id = await transactions.addTransaction(dto({ sharedWith: [shareKey(householdId)] }));
+
+      await eventually(async () => (await peerView()).has(copyId(id)), 'the peer to see the added row');
+      const copy = (await peerView()).get(copyId(id));
+      expect(Object.keys(copy ?? {}).sort()).toEqual([...LEDGER_REQUIRED_FIELDS].sort());
+      expect(copy?.['amount']).toBe(12.5);
+      expect(copy?.['description']).toBe('Shared through the app');
+      expect(copy?.['sourceId']).toBe(id);
+      expectQuiet();
+    }, 30000);
+
+    it('carries an edit of a shared row to its copy, and a private row to none', async () => {
+      const shared = await transactions.addTransaction(dto({ sharedWith: [shareKey(householdId)] }));
+      const privateRow = await transactions.addTransaction(dto({ description: 'Private' }));
+      await eventually(async () => (await peerView()).has(copyId(shared)), 'the peer to see the shared row');
+
+      await transactions.updateTransaction(shared, { amount: 40, description: 'Edited through the app' });
+      await transactions.updateTransaction(privateRow, { amount: 41 });
+
+      await eventually(async () => (await peerView()).get(copyId(shared))?.['amount'] === 40, 'the peer to see the edit');
+      const view = await peerView();
+      expect(view.get(copyId(shared))?.['description']).toBe('Edited through the app');
+      expect(view.has(copyId(privateRow))).withContext('the private row').toBeFalse();
+      expectQuiet();
+    }, 30000);
+
+    it('takes a deleted row\'s copy out of every household it was shared into, in the row delete\'s commit', async () => {
+      const second = await formWithPeer();
+      const secondGen = await generationOf(second);
+      const id = await transactions.addTransaction(dto());
+      await service.share([id], householdId);
+      await service.share([id], second);
+      expect((await peerView()).has(copyId(id))).withContext('shared into the first household').toBeTrue();
+      expect((await peerViewOf(second, secondGen)).has(copyId(id))).withContext('shared into the second').toBeTrue();
+
+      await transactions.deleteTransaction(id);
+
+      expect((await peerView()).has(copyId(id))).withContext('the first household').toBeFalse();
+      expect((await peerViewOf(second, secondGen)).has(copyId(id))).withContext('the second household').toBeFalse();
+      expect(await getDocumentAsOwner(rowPath(id))).toBeNull();
+      expectQuiet();
+    }, 30000);
+
+    it('shares every part of a purchase split with shares', async () => {
+      const ids = await transactions.addSplitTransaction(
+        dto({ amount: 100, sharedWith: [shareKey(householdId)] }),
+        [{ categoryId: 'shopping_clothingAndFashion', amount: 30 }]
+      );
+
+      await eventually(async () => {
+        const view = await peerView();
+        return ids.every(id => view.has(copyId(id)));
+      }, 'the peer to see every part');
+      const view = await peerView();
+      expect(ids.map(id => view.get(copyId(id))?.['amount'])).toEqual([70, 30]);
+      expect(ids.map(id => view.get(copyId(id))?.['categoryId'])).toEqual(['food_groceries', 'shopping_clothingAndFashion']);
+      expectQuiet();
+    }, 30000);
+  });
 });

@@ -7,18 +7,33 @@ import {
   GOAL_LINK_INVALID,
   SPLIT_REFUSED
 } from './transaction.service';
-import { CreateTransactionDTO, Goal, Transaction, TransactionFilters } from '../../models';
-import { FirestoreService } from './firestore.service';
+import {
+  CreateTransactionDTO,
+  Goal,
+  LEDGER_COMMIT_CHUNK,
+  RecurringTransaction,
+  Transaction,
+  TransactionFilters,
+  shareKey
+} from '../../models';
+import { BatchOp, FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { BudgetService } from './budget.service';
+import { GoalService } from './goal.service';
+import { RecurringService } from './recurring.service';
+import { TranslationService } from './translation.service';
+import { PwaService } from './pwa.service';
+import { LedgerShareService } from './ledger-share.service';
+import { ledgerJournalKey } from './ledger-journal';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { MockStorageService } from './testing/mock-storage.service';
 import {
   createBudget,
+  createRecurring,
   createTransaction,
   createMixedTransactions
 } from './testing/test-data';
@@ -2114,6 +2129,32 @@ describe('TransactionService', () => {
       // read only exists to re-read the row inside the transaction.
       expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
       expect(mockFirestore.updateDocumentSpy.calls.length).toBe(1);
+      // One write in all: nothing beside it for a private row.
+      expect(mockFirestore.commitBatchSpy.calls.length).toBe(0);
+    });
+
+    it('keeps a private row\'s add and delete one plain write each, never a transaction', async () => {
+      await service.addTransaction(formEditDto());
+      seedMarchRow();
+      await service.deleteTransaction('txn-1');
+
+      expect(mockFirestore.addDocumentSpy.calls.length).toBe(1);
+      expect(mockFirestore.deleteDocumentSpy.calls.map(call => call.args[0])).toEqual([`${TX}/txn-1`]);
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.commitBatchSpy.calls.length).toBe(0);
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+    });
+
+    it('does not load the sharing code for a private row', async () => {
+      const load = spyOn(service as unknown as { ledgerShare: () => Promise<unknown> }, 'ledgerShare')
+        .and.callThrough();
+      seedMarchRow();
+
+      await service.addTransaction(formEditDto());
+      await service.updateTransaction('txn-1', formEditDto());
+      await service.deleteTransaction('txn-1');
+
+      expect(load).not.toHaveBeenCalled();
     });
 
     it('still routes a linked edit through the transaction', async () => {
@@ -3120,5 +3161,698 @@ describe('TransactionService addSplitTransaction', () => {
         date
       }));
     });
+  });
+});
+
+/**
+ * Every write path of a transaction row and what it does for the row's
+ * household copies (households/{hid}/ledger/{uid}_{txId}). A path that changes
+ * a revealed field of a shared row hands the change to LedgerShareService's
+ * follow, after the personal write is issued; a path committed by a
+ * transaction also journals the change (intend) before the commit. A delete
+ * takes the copy out of every membership in the row's own commit, and the
+ * rest touch nothing a copy reveals. A write path added later belongs in
+ * WRITE_PATHS below.
+ */
+describe('TransactionService and the household copies', () => {
+  const UID = 'test-user-123';
+  const TX = `users/${UID}/transactions`;
+  const GOALS = `users/${UID}/goals`;
+  const INDEX = `users/${UID}/households`;
+  const H1 = shareKey('h1');
+  const G1 = new Timestamp(1_790_000_000, 123_456_000);
+
+  /** The service's one way to the sharing code, a dynamic import. */
+  interface SharingLoader { ledgerShare: () => Promise<LedgerShareService> }
+
+  let service: TransactionService;
+  let mockFirestore: MockFirestoreService;
+  let mockAuth: MockAuthService;
+  let mockStorage: MockStorageService;
+  let mockQuota: jasmine.SpyObj<ReceiptQuotaService>;
+  let mockBudget: jasmine.SpyObj<BudgetService>;
+  let ledger: LedgerShareService;
+  let load: jasmine.Spy;
+
+  function dto(overrides: Partial<CreateTransactionDTO> = {}): CreateTransactionDTO {
+    return {
+      type: 'expense',
+      amount: 100,
+      currency: 'USD',
+      categoryId: 'food_groceries',
+      description: 'Shared',
+      date: new Date('2026-09-20T12:00:00Z'),
+      ...overrides
+    };
+  }
+
+  const receipt = () => new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+  /** txn-1, shared into h1 unless the overrides say otherwise. */
+  function seedRow(overrides: Partial<Transaction> = {}): Transaction {
+    const row = createTransaction({
+      id: 'txn-1',
+      categoryId: 'food_groceries',
+      description: 'Before',
+      sharedWith: [H1],
+      ...overrides
+    });
+    mockFirestore.setMockDocument(`${TX}/txn-1`, row);
+    return row;
+  }
+
+  function seedGoal(id = 'g1'): void {
+    mockFirestore.setMockDocument(`${GOALS}/${id}`, {
+      id,
+      userId: UID,
+      kind: 'saving',
+      name: 'Holiday',
+      targetAmount: 1000,
+      contributedAmount: 0,
+      linkedAmount: 100,
+      currency: 'USD',
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+  }
+
+  /** The account's index: h1 live, h2 ended and not yet cleaned up. */
+  function seedIndex(): void {
+    mockFirestore.setMockCollection(INDEX, [
+      { id: 'h1', since: G1, role: 'member', name: 'Home', joinedAt: G1 },
+      { id: 'h2', since: G1, role: 'member', name: 'Flat', joinedAt: G1, endedAt: G1 }
+    ]);
+  }
+
+  const copyPath = (hid: string, txId: string) => `households/${hid}/ledger/${UID}_${txId}`;
+
+  const isCopyCommit = (call: { method: string; ops?: readonly BatchOp[] }) =>
+    call.method === 'commitBatch' && !!call.ops?.some(op => op.path.startsWith('households/'));
+
+  beforeEach(() => {
+    localStorage.removeItem(ledgerJournalKey(UID));
+    mockQuota = jasmine.createSpyObj<ReceiptQuotaService>('ReceiptQuotaService', [
+      'canAddImages', 'noteImagesAdded', 'noteImagesRemoved', 'invalidateCount',
+    ]);
+    mockQuota.canAddImages.and.resolveTo(true);
+    mockBudget = jasmine.createSpyObj<BudgetService>('BudgetService', ['recalculateBudgetsForCategory']);
+    mockBudget.recalculateBudgetsForCategory.and.resolveTo();
+
+    TestBed.configureTestingModule({
+      providers: [
+        TransactionService,
+        { provide: FirestoreService, useClass: MockFirestoreService },
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: StorageService, useClass: MockStorageService },
+        { provide: ReceiptQuotaService, useValue: mockQuota },
+        { provide: BudgetService, useValue: mockBudget },
+        // A loaded 1:1 table: no path here is about a conversion.
+        {
+          provide: CurrencyService,
+          useValue: {
+            ensureRatesLoaded: async () => undefined,
+            getExchangeRate: () => 1,
+            convert: (amount: number) => amount,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency ?? t.amount
+          }
+        },
+        { provide: PwaService, useValue: { isOnline: () => true } },
+        { provide: TranslationService, useValue: { t: (key: string) => key } }
+      ]
+    });
+
+    mockFirestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
+    mockAuth = TestBed.inject(AuthService) as unknown as MockAuthService;
+    mockStorage = TestBed.inject(StorageService) as unknown as MockStorageService;
+    service = TestBed.inject(TransactionService);
+    ledger = TestBed.inject(LedgerShareService);
+    load = spyOn(service as unknown as SharingLoader, 'ledgerShare').and.callThrough();
+    mockAuth.setAuthenticated(true);
+    seedIndex();
+    mockFirestore.setMockCollection(`users/${UID}/categories`, []);
+  });
+
+  afterEach(() => {
+    mockFirestore.clearMocks();
+    mockAuth.clearMocks();
+    mockStorage.clearMocks();
+    localStorage.removeItem(ledgerJournalKey(UID));
+  });
+
+  describe('every write path', () => {
+    let follow: jasmine.Spy;
+    let followMany: jasmine.Spy;
+    let intend: jasmine.Spy;
+    /** Every change handed on to be followed, by follow or followMany, in order. */
+    let followed: unknown[][];
+    /** Each row as stored when intend was handed its change, read at that moment. */
+    let storedAtIntent: Promise<unknown>[];
+    /** Each row as stored when its change was handed on to be followed, read at that moment. */
+    let storedAtFollow: Promise<unknown>[];
+
+    beforeEach(() => {
+      followed = [];
+      storedAtIntent = [];
+      storedAtFollow = [];
+      const handedOn = (change: readonly unknown[]) => {
+        followed.push([...change]);
+        storedAtFollow.push(mockFirestore.getDocument(`${TX}/${change[0]}`));
+      };
+      follow = spyOn(ledger, 'follow').and.callFake((...change: unknown[]) => handedOn(change));
+      followMany = spyOn(ledger, 'followMany').and.callFake((changes: readonly (readonly unknown[])[]) => {
+        changes.forEach(handedOn);
+      });
+      intend = spyOn(ledger, 'intend').and.callFake((txId: string) => {
+        storedAtIntent.push(mockFirestore.getDocument(`${TX}/${txId}`));
+      });
+      spyOn(ledger, 'purgeOwn').and.resolveTo(0);
+    });
+
+    /** A change as follow and intend are handed it: [txId, before, after]. */
+    type Change = [unknown, unknown, unknown];
+
+    /** What of a row a copy reveals, and the households it names. */
+    function revealed(row: unknown): Record<string, unknown> | null {
+      if (!row) return null;
+      const { type, amount, currency, date, description, categoryId, sharedWith } = row as Transaction;
+      return { type, amount, currency, date, description, categoryId, sharedWith };
+    }
+    const asCopySeesIt = ([txId, before, after]: unknown[]) => [txId, revealed(before), revealed(after)];
+    const newRow = (after: Partial<Transaction>): Change =>
+      [jasmine.any(String), null, jasmine.objectContaining(after)];
+
+    interface WritePath {
+      path: string;
+      seed?: () => void;
+      run: () => Promise<unknown>;
+      /** The changes follow is handed, in order; none for a path that leaves every copy as it is. */
+      follows: Change[];
+      /** A path a transaction commits: each change is journaled before the commit. */
+      journaledFirst?: boolean;
+    }
+
+    const WRITE_PATHS: WritePath[] = [
+      {
+        path: 'addTransaction, a plain row',
+        run: () => service.addTransaction(dto({ sharedWith: [H1] })),
+        follows: [newRow({ sharedWith: [H1], amount: 100, description: 'Shared' })]
+      },
+      {
+        path: 'addTransaction with receipts',
+        run: () => service.addTransaction(dto({ sharedWith: [H1], receiptFiles: [receipt()] })),
+        follows: [newRow({ sharedWith: [H1], receiptCount: 1 })]
+      },
+      {
+        path: 'addTransaction at a caller-chosen id',
+        run: () => service.addTransaction(dto({ sharedWith: [H1] }), { id: 'chosen-1' }),
+        follows: [['chosen-1', null, jasmine.objectContaining({ sharedWith: [H1] })]]
+      },
+      {
+        path: 'addTransaction linked to a goal (createWithGoalLink)',
+        seed: () => seedGoal(),
+        run: () => service.addTransaction(dto({ sharedWith: [H1], goalId: 'g1' })),
+        follows: [newRow({ sharedWith: [H1], goalId: 'g1', goalAmount: 100 })],
+        journaledFirst: true
+      },
+      {
+        path: 'addSplitTransaction',
+        run: () => service.addSplitTransaction(dto({ sharedWith: [H1] }), [{ categoryId: 'shopping_clothing', amount: 30 }]),
+        follows: [
+          newRow({ sharedWith: [H1], amount: 70, categoryId: 'food_groceries' }),
+          newRow({ sharedWith: [H1], amount: 30, categoryId: 'shopping_clothing' })
+        ],
+        journaledFirst: true
+      },
+      {
+        path: 'splitTransaction',
+        seed: () => seedRow(),
+        run: () => service.splitTransaction('txn-1', [{ categoryId: 'shopping_clothing', amount: 30 }]),
+        follows: [
+          ['txn-1', jasmine.objectContaining({ amount: 100 }), jasmine.objectContaining({ amount: 70, sharedWith: [H1] })],
+          newRow({ sharedWith: [H1], amount: 30, categoryId: 'shopping_clothing' })
+        ],
+        journaledFirst: true
+      },
+      {
+        path: 'updateTransaction, a plain edit',
+        seed: () => seedRow(),
+        run: () => service.updateTransaction('txn-1', { description: 'After' }),
+        follows: [['txn-1',
+          jasmine.objectContaining({ description: 'Before' }),
+          jasmine.objectContaining({ description: 'After', sharedWith: [H1] })]]
+      },
+      {
+        path: 'updateTransaction of a goal-linked row (updateWithGoalSync)',
+        seed: () => {
+          seedRow({ goalId: 'g1', goalAmount: 100 });
+          seedGoal();
+        },
+        run: () => service.updateTransaction('txn-1', { description: 'After', goalId: 'g1' }),
+        follows: [['txn-1',
+          jasmine.objectContaining({ description: 'Before' }),
+          jasmine.objectContaining({ description: 'After', sharedWith: [H1] })]],
+        journaledFirst: true
+      },
+      {
+        path: 'updateTransaction appending a receipt (appendReceiptsTransactionally)',
+        seed: () => seedRow(),
+        run: () => service.updateTransaction('txn-1', { description: 'After', receiptFiles: [receipt()] }),
+        follows: [['txn-1',
+          jasmine.objectContaining({ description: 'Before' }),
+          jasmine.objectContaining({ description: 'After', sharedWith: [H1] })]],
+        journaledFirst: true
+      },
+      {
+        path: 'updateTransaction of a private row',
+        seed: () => seedRow({ sharedWith: undefined }),
+        run: () => service.updateTransaction('txn-1', { description: 'After' }),
+        follows: []
+      },
+      {
+        path: 'deleteTransaction, which takes the copies out in its own commit',
+        seed: () => seedRow(),
+        run: () => service.deleteTransaction('txn-1'),
+        follows: []
+      },
+      {
+        path: 'deleteTransaction of a goal-linked row, likewise',
+        seed: () => {
+          seedRow({ goalId: 'g1', goalAmount: 100 });
+          seedGoal();
+        },
+        run: () => service.deleteTransaction('txn-1'),
+        follows: []
+      },
+      {
+        path: 'deleteAllTransactions, which purges the copies instead',
+        seed: () => mockFirestore.setMockCollection(TX, [seedRow()]),
+        run: () => service.deleteAllTransactions(),
+        follows: []
+      },
+      {
+        path: 'removeReceiptAt: receipts never reach a copy',
+        seed: () => seedRow({ receiptUrl: 'u0', receiptUrls: ['u0', 'u1'], receiptCount: 2 }),
+        run: () => service.removeReceiptAt('txn-1', 1),
+        follows: []
+      },
+      {
+        path: 'removeAllReceipts, likewise',
+        seed: () => seedRow({ receiptUrl: 'u0', receiptUrls: ['u0'], receiptCount: 1 }),
+        run: () => service.removeAllReceipts('txn-1'),
+        follows: []
+      },
+      {
+        path: 'resnapshotBaseCurrency: the base snapshot is not revealed',
+        seed: () => mockFirestore.setMockCollection(TX, [seedRow({ baseCurrency: 'EUR' })]),
+        run: () => service.resnapshotBaseCurrency('USD'),
+        follows: []
+      },
+      {
+        path: 'GoalService.deleteGoal\'s sweep: the personal goal link is not revealed',
+        seed: () => {
+          mockFirestore.setMockCollection(TX, [seedRow({ goalId: 'g1', goalAmount: 100 })]);
+          seedGoal();
+        },
+        run: () => TestBed.inject(GoalService).deleteGoal('g1'),
+        follows: []
+      },
+      {
+        path: 'RecurringService\'s claim: an occurrence is posted private',
+        seed: () => mockFirestore.setMockDocument(`users/${UID}/recurring/rec1`, createRecurring({
+          id: 'rec1',
+          type: 'income',
+          startDate: Timestamp.fromDate(new Date(Date.now() - 60_000)),
+          nextOccurrence: Timestamp.fromDate(new Date(Date.now() - 60_000))
+        })),
+        run: async () => {
+          const rule = await mockFirestore.getDocument<RecurringTransaction>(`users/${UID}/recurring/rec1`);
+          const posted = await TestBed.inject(RecurringService).processRecurringTransactions([rule!]);
+          // The path ran: an occurrence was posted, and it names no household.
+          expect(posted.length).toBe(1);
+          expect(posted[0].sharedWith).toBeUndefined();
+        },
+        follows: []
+      }
+    ];
+
+    for (const writePath of WRITE_PATHS) {
+      it(`${writePath.path}: ${writePath.follows.length > 0 ? 'hands each changed row on to be followed' : 'follows nothing'}`, async () => {
+        writePath.seed?.();
+
+        await writePath.run();
+
+        expect(followed).withContext('followed').toEqual(writePath.follows);
+        // The change journaled is the change followed, as a copy sees it.
+        expect(intend.calls.allArgs().map(asCopySeesIt)).withContext('intend')
+          .toEqual(writePath.journaledFirst ? followed.map(asCopySeesIt) : []);
+        if (writePath.journaledFirst) {
+          // Journaled before the commit landed: each row was then as `before` has it.
+          const before = intend.calls.allArgs().map(args => args[1] ?? null);
+          expect(await Promise.all(storedAtIntent)).withContext('stored at intend').toEqual(before);
+          // Followed after the commit landed: each row was then as `after` has it.
+          expect((await Promise.all(storedAtFollow)).map(revealed)).withContext('stored at follow')
+            .toEqual(followed.map(([, , after]) => revealed(after)));
+        }
+      });
+    }
+
+    it('hands a split\'s rows on together, so their copies share commits, and a plain write\'s row alone', async () => {
+      await service.addSplitTransaction(
+        dto({ sharedWith: [H1] }),
+        [{ categoryId: 'shopping_clothing', amount: 30 }, { categoryId: 'home_supplies', amount: 20 }]
+      );
+      expect(followMany.calls.allArgs().map(([changes]) => (changes as unknown[]).length)).toEqual([3]);
+      expect(follow).not.toHaveBeenCalled();
+
+      followMany.calls.reset();
+      await service.addTransaction(dto({ sharedWith: [H1] }));
+      expect(follow).toHaveBeenCalledTimes(1);
+      expect(followMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses a merge write carrying shares before anything is uploaded or written', async () => {
+      await expectAsync(
+        service.addTransaction(dto({ sharedWith: [H1] }), { id: 'restored-1', merge: true })
+      ).toBeRejectedWithError(/merge/i);
+
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('refuses an edit carrying shares, which change only through share and unshare', async () => {
+      seedRow();
+
+      await expectAsync(service.updateTransaction('txn-1', { description: 'After', sharedWith: [] }))
+        .toBeRejectedWithError(/share/i);
+
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('writes a plain shared row at a pre-generated id, the one its copy follows', async () => {
+      const id = await service.addTransaction(dto({ sharedWith: [H1, H1] }));
+
+      expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.setDocumentSpy.calls.map(call => call.args[0])).toEqual([`${TX}/${id}`]);
+      const stored = mockFirestore.setDocumentSpy.calls[0].args[1] as Transaction;
+      expect(stored.sharedWith).toEqual([H1]);
+      expect(follow.calls.allArgs()).toEqual([[id, null, stored]]);
+    });
+
+    it('gives every part of a split purchase the purchase\'s shares', async () => {
+      const ids = await service.addSplitTransaction(
+        dto({ sharedWith: [H1] }),
+        [{ categoryId: 'shopping_clothing', amount: 30 }, { categoryId: 'home_supplies', amount: 20 }]
+      );
+
+      const written = mockFirestore.txSetSpy.calls.map(call => call.args as [string, Transaction]);
+      expect(written.map(([path]) => path)).toEqual(ids.map(id => `${TX}/${id}`));
+      for (const [, row] of written) expect(row.sharedWith).toEqual([H1]);
+    });
+
+    it('gives each part a stored row is split into the row\'s shares, and a private row\'s parts none', async () => {
+      seedRow({ sharedWith: [H1, shareKey('h2')] });
+      const [sharedPart] = await service.splitTransaction('txn-1', [{ categoryId: 'shopping_clothing', amount: 30 }]);
+      const sharedSet = mockFirestore.txSetSpy.calls.find(call => call.args[0] === `${TX}/${sharedPart}`);
+      expect((sharedSet?.args[1] as Transaction).sharedWith).toEqual([H1, shareKey('h2')]);
+
+      seedRow({ sharedWith: undefined });
+      const [privatePart] = await service.splitTransaction('txn-1', [{ categoryId: 'shopping_clothing', amount: 30 }]);
+      const privateSet = mockFirestore.txSetSpy.calls.find(call => call.args[0] === `${TX}/${privatePart}`);
+      expect('sharedWith' in (privateSet?.args[1] as object)).toBeFalse();
+    });
+
+    it('never loads the sharing code for a private row\'s add, edit or split', async () => {
+      await service.addTransaction(dto());
+      seedRow({ sharedWith: undefined });
+      await service.updateTransaction('txn-1', { description: 'After' });
+      await service.splitTransaction('txn-1', [{ categoryId: 'shopping_clothing', amount: 30 }]);
+
+      expect(load).not.toHaveBeenCalled();
+      expect(followed).toEqual([]);
+      expect(intend).not.toHaveBeenCalled();
+    });
+
+    it('writes a shared row as a plain write when the sharing code does not load', async () => {
+      load.and.rejectWith(new Error('the chunk did not load'));
+      const warn = spyOn(console, 'warn');
+      seedRow();
+
+      const id = await service.addTransaction(dto({ sharedWith: [H1] }));
+      await service.updateTransaction('txn-1', { description: 'After' });
+
+      expect(mockFirestore.setDocumentSpy.calls.map(call => call.args[0])).toEqual([`${TX}/${id}`]);
+      expect(mockFirestore.updateDocumentSpy.calls.map(call => call.args[0])).toEqual([`${TX}/txn-1`]);
+      expect(followed).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[Transactions\]/), jasmine.anything());
+    });
+
+    it('loads the sharing code once, and a later shared write reaches it without loading it again', async () => {
+      seedRow();
+
+      await service.addTransaction(dto({ sharedWith: [H1] }));
+      await service.updateTransaction('txn-1', { description: 'After' });
+      await service.addSplitTransaction(dto({ sharedWith: [H1] }), [{ categoryId: 'shopping_clothing', amount: 30 }]);
+
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(followed.length).toBe(4);
+    });
+  });
+
+  describe('deletes', () => {
+    it('takes the copy out of every membership in the index, live or ended, in the row delete\'s own commit', async () => {
+      // A private row too: a stale cache may have missed its share.
+      seedRow({ sharedWith: undefined });
+
+      await service.deleteTransaction('txn-1');
+
+      expect(mockFirestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([[
+        { op: 'delete', path: copyPath('h1', 'txn-1') },
+        { op: 'delete', path: copyPath('h2', 'txn-1') },
+        { op: 'delete', path: `${TX}/txn-1` }
+      ]]);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(0);
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('works from the cache: no transaction and no server-only read', async () => {
+      seedRow();
+
+      await service.deleteTransaction('txn-1');
+
+      expect(mockFirestore.getCollectionSpy.calls.map(call => call.args[0])).toEqual([INDEX]);
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+      expect(mockFirestore.getCollectionFromServerSpy.calls.length).toBe(0);
+      expect(mockFirestore.getDocumentFromServerSpy.calls.length).toBe(0);
+    });
+
+    it('stays one plain delete for an account with no memberships', async () => {
+      mockFirestore.setMockCollection(INDEX, []);
+      seedRow({ sharedWith: undefined });
+
+      await service.deleteTransaction('txn-1');
+
+      expect(mockFirestore.deleteDocumentSpy.calls.map(call => call.args[0])).toEqual([`${TX}/txn-1`]);
+      expect(mockFirestore.commitBatchSpy.calls.length).toBe(0);
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('stages the copy deletes of a goal-linked row inside its transaction', async () => {
+      seedRow({ goalId: 'g1', goalAmount: 100 });
+      seedGoal();
+
+      await service.deleteTransaction('txn-1');
+
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(1);
+      expect(mockFirestore.txDeleteSpy.calls.map(call => call.args[0]))
+        .toEqual([copyPath('h1', 'txn-1'), copyPath('h2', 'txn-1'), `${TX}/txn-1`]);
+      expect(mockFirestore.commitBatchSpy.calls.length).toBe(0);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('purges the account\'s copies from every membership once the rows are gone', async () => {
+      mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' }), createTransaction({ id: 'b' })]);
+      const deletesAtPurge: number[] = [];
+      const purgeOwn = spyOn(ledger, 'purgeOwn').and.callFake(async () => {
+        deletesAtPurge.push(mockFirestore.deleteDocumentSpy.calls.length);
+        return 1;
+      });
+
+      expect(await service.deleteAllTransactions()).toBe(2);
+
+      expect(purgeOwn.calls.allArgs()).toEqual([['h1'], ['h2']]);
+      expect(deletesAtPurge).toEqual([2, 2]);
+    });
+
+    it('rejects a wipe whose purge failed, after trying every membership', async () => {
+      mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' })]);
+      const purgeOwn = spyOn(ledger, 'purgeOwn').and.callFake(async (hid: string) => {
+        if (hid === 'h1') throw new Error('unavailable');
+        return 0;
+      });
+
+      await expectAsync(service.deleteAllTransactions()).toBeRejectedWithError('unavailable');
+
+      expect(purgeOwn.calls.allArgs()).toEqual([['h1'], ['h2']]);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(1);
+    });
+
+    it('never loads the sharing code for a wipe of an account with no memberships', async () => {
+      mockFirestore.setMockCollection(INDEX, []);
+      mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' })]);
+
+      await service.deleteAllTransactions();
+
+      expect(load).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * The copy writes are the real service's, issued behind the personal write
+   * (the mock's call-order log records each call as it is made). The personal
+   * write is held unanswered, as offline: the copy is issued all the same,
+   * while the path still waits for its own write. Each path runs twice: with
+   * the sharing code's account loaded, as the app holds it once its start-up
+   * sweep is armed, where follow issues the copy before it returns; and cold,
+   * where follow journals the copy and issues it once the account is read.
+   */
+  describe('issue, then follow, then await', () => {
+    /** At each follow: how many calls the log held, and whether the step that issued the row write had ended. */
+    let atFollow: { logged: number; stepEnded: boolean }[];
+    /** How many calls the log held as each follow returned. */
+    let afterFollow: number[];
+    /** Whether the step that issued the row write has ended: a microtask queued at its issue has run. */
+    let stepEnded: boolean;
+
+    beforeEach(() => {
+      mockFirestore.setMockCollection(INDEX, [{ id: 'h1', since: G1, role: 'member', name: 'Home', joinedAt: G1 }]);
+      atFollow = [];
+      afterFollow = [];
+      stepEnded = false;
+      const follow = ledger.follow.bind(ledger);
+      spyOn(ledger, 'follow').and.callFake((...change: Parameters<LedgerShareService['follow']>) => {
+        atFollow.push({ logged: mockFirestore.callLog.length, stepEnded });
+        follow(...change);
+        afterFollow.push(mockFirestore.callLog.length);
+      });
+    });
+
+    /** The personal write as issued, never answered. */
+    function holdWrite(method: 'setDocument' | 'updateDocument'): void {
+      const issue = mockFirestore[method].bind(mockFirestore) as (...args: unknown[]) => Promise<void>;
+      spyOn(mockFirestore, method).and.callFake(((...args: unknown[]) => {
+        void issue(...args);
+        void Promise.resolve().then(() => {
+          stepEnded = true;
+        });
+        return new Promise<void>(() => undefined);
+      }) as never);
+    }
+
+    async function untilCopyIssued(): Promise<void> {
+      const deadline = Date.now() + 2000;
+      while (!mockFirestore.callLog.some(isCopyCommit) && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+    }
+
+    const PLAIN_PATHS: { path: string; method: 'setDocument' | 'updateDocument'; seed?: () => void; run: () => Promise<unknown> }[] = [
+      { path: 'addTransaction, a plain row', method: 'setDocument', run: () => service.addTransaction(dto({ sharedWith: [H1] })) },
+      {
+        path: 'addTransaction with receipts',
+        method: 'setDocument',
+        run: () => service.addTransaction(dto({ sharedWith: [H1], receiptFiles: [receipt()] }))
+      },
+      {
+        path: 'addTransaction at a caller-chosen id',
+        method: 'setDocument',
+        run: () => service.addTransaction(dto({ sharedWith: [H1] }), { id: 'chosen-1' })
+      },
+      {
+        path: 'updateTransaction, a plain edit',
+        method: 'updateDocument',
+        seed: () => seedRow(),
+        run: () => service.updateTransaction('txn-1', { amount: 40 })
+      }
+    ];
+
+    for (const loaded of [true, false]) {
+      for (const plainPath of PLAIN_PATHS) {
+        const account = loaded ? 'the account loaded' : 'the account not yet loaded';
+        it(`${plainPath.path}, ${account}: follow comes in the row write's own step, before its answer`, async () => {
+          if (loaded) await ledger.prepare();
+          plainPath.seed?.();
+          holdWrite(plainPath.method);
+          mockFirestore.callLog.length = 0;
+          let answered = false;
+
+          void plainPath.run().then(() => {
+            answered = true;
+          });
+          await untilCopyIssued();
+
+          const log = mockFirestore.callLog;
+          const rowWrite = log.findIndex(call => call.method === plainPath.method && !!call.path?.startsWith(`${TX}/`));
+          const copyWrite = log.findIndex(isCopyCommit);
+          expect(atFollow.length).withContext('follow, once').toBe(1);
+          const [{ logged, stepEnded: endedAtFollow }] = atFollow;
+          expect(rowWrite).withContext('the row write').toBeGreaterThanOrEqual(0);
+          expect(rowWrite).withContext('the row write, issued before follow').toBeLessThan(logged);
+          expect(endedAtFollow).withContext('follow, in the step that issued the row write').toBeFalse();
+          expect(copyWrite).withContext('the copy write, issued by follow or after it').toBeGreaterThanOrEqual(logged);
+          if (loaded) expect(copyWrite).withContext('the copy write, issued before follow returned').toBeLessThan(afterFollow[0]);
+          // The copy is the row's, at the row's own id.
+          const txId = log[rowWrite].path?.split('/').pop() ?? '';
+          expect(log[copyWrite].ops?.map(op => op.path)).toEqual([copyPath('h1', txId)]);
+          expect(answered).withContext('the path waits for its own write').toBeFalse();
+          // Nothing on the way needs the server: it all works offline.
+          const methods = log.map(call => call.method);
+          for (const online of ['runTransaction', 'getDocumentFromServer', 'getCollectionFromServer', 'aggregateFromServer']) {
+            expect(methods).withContext(online).not.toContain(online);
+          }
+        });
+      }
+    }
+
+    it('loads the sharing code before it issues a shared row\'s write, never between the write and its follow', async () => {
+      let release!: () => void;
+      const loading = new Promise<void>(resolve => {
+        release = resolve;
+      });
+      load.and.callFake(async () => {
+        await loading;
+        return ledger;
+      });
+
+      const added = service.addTransaction(dto({ sharedWith: [H1] }));
+      for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 0));
+      expect(load).withContext('the load under way').toHaveBeenCalledTimes(1);
+      expect(mockFirestore.setDocumentSpy.calls.length).withContext('no row write while it loads').toBe(0);
+
+      release();
+      await added;
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(1);
+      expect(atFollow.length).toBe(1);
+    });
+  });
+
+  it(`writes a split purchase's copies at most ${LEDGER_COMMIT_CHUNK} to a commit`, async () => {
+    mockFirestore.setMockCollection(INDEX, [{ id: 'h1', since: G1, role: 'member', name: 'Home', joinedAt: G1 }]);
+    await ledger.prepare();
+    mockFirestore.callLog.length = 0;
+
+    const ids = await service.addSplitTransaction(
+      dto({ amount: 100, sharedWith: [H1] }),
+      Array.from({ length: LEDGER_COMMIT_CHUNK + 1 }, () => ({ categoryId: 'shopping_clothingAndFashion', amount: 10 }))
+    );
+
+    const copyCommits = mockFirestore.callLog.filter(isCopyCommit).map(call => call.ops?.map(op => op.path));
+    expect(ids.length).toBe(LEDGER_COMMIT_CHUNK + 2);
+    expect(copyCommits).toEqual([
+      ids.slice(0, LEDGER_COMMIT_CHUNK).map(id => copyPath('h1', id)),
+      ids.slice(LEDGER_COMMIT_CHUNK).map(id => copyPath('h1', id))
+    ]);
   });
 });
