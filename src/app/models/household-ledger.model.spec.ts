@@ -14,7 +14,10 @@ import {
   householdOfShareKey,
   ledgerCopyId,
   ledgerCopyPath,
+  normalizeShares,
   shareKey,
+  sharedChipLabel,
+  sharedHouseholdNames,
 } from './household-ledger.model';
 import { MAX_HOUSEHOLDS_PER_ACCOUNT, householdIndexPath } from './household.model';
 
@@ -181,6 +184,74 @@ describe('household-ledger.model', () => {
         expect(householdOfShareKey(key)).toBeNull();
       });
     }
+  });
+
+  describe('normalizeShares', () => {
+    const CASES: readonly { name: string; sharedWith: readonly unknown[] | null | undefined; ids: string[] }[] = [
+      { name: 'no field', sharedWith: undefined, ids: [] },
+      { name: 'null', sharedWith: null, ids: [] },
+      { name: 'an empty list', sharedWith: [], ids: [] },
+      { name: 'household keys, in order', sharedWith: ['households/b', 'households/a'], ids: ['b', 'a'] },
+      { name: 'a repeated key, kept where it first appears',
+        sharedWith: ['households/b', 'households/a', 'households/b'], ids: ['b', 'a'] },
+      { name: 'keys of other shapes, dropped',
+        sharedWith: ['groups/g1', 'households/a', '', 'households/', 'households/x/y', 'a'], ids: ['a'] },
+      { name: 'entries that are not strings, dropped', sharedWith: [null, 42, { id: 'x' }, 'households/a'], ids: ['a'] },
+    ];
+
+    for (const { name, sharedWith, ids } of CASES) {
+      it(`reads ${name}`, () => {
+        expect(normalizeShares(sharedWith as string[] | null | undefined)).toEqual(ids);
+      });
+    }
+
+    it('reads a value that is not a list as no shares', () => {
+      expect(normalizeShares('households/a' as unknown as string[])).toEqual([]);
+    });
+
+    it('leaves its input as it was', () => {
+      const sharedWith = ['households/b', 'households/b', 'groups/g'];
+
+      normalizeShares(sharedWith);
+
+      expect(sharedWith).toEqual(['households/b', 'households/b', 'groups/g']);
+    });
+  });
+
+  describe('sharedHouseholdNames', () => {
+    const names = new Map([['a', 'Home'], ['b', 'Office']]);
+
+    it('names each household the row is shared with, in the order the row holds them', () => {
+      expect(sharedHouseholdNames(['households/b', 'households/a'], names)).toEqual(['Office', 'Home']);
+    });
+
+    it('leaves out a household the map does not name', () => {
+      expect(sharedHouseholdNames(['households/gone', 'households/a'], names)).toEqual(['Home']);
+      expect(sharedHouseholdNames(['households/gone'], names)).withContext('no live membership named').toBeNull();
+    });
+
+    it('names nothing for a private row', () => {
+      expect(sharedHouseholdNames(undefined, names)).toBeNull();
+      expect(sharedHouseholdNames([], names)).toBeNull();
+    });
+
+    it('names nothing when no household is known', () => {
+      expect(sharedHouseholdNames(['households/a'], new Map())).toBeNull();
+    });
+  });
+
+  describe('sharedChipLabel', () => {
+    const t = (key: string, params?: Record<string, string | number>) =>
+      key === 'transactions.share.separator' ? ' / ' : `${key}:${JSON.stringify(params ?? {})}`;
+
+    it('names every household, joined by the language\'s own separator', () => {
+      expect(sharedChipLabel(['Office', 'Home', 'Studio'], t))
+        .toBe('transactions.share.chipLabel:{"names":"Office / Home / Studio"}');
+    });
+
+    it('names a single household alone', () => {
+      expect(sharedChipLabel(['Home'], t)).toBe('transactions.share.chipLabel:{"names":"Home"}');
+    });
   });
 
   describe('ledgerCopyId', () => {

@@ -8,13 +8,14 @@ import {
   LedgerCopyProjection,
   Transaction,
   TransactionType,
-  householdOfShareKey,
 } from '../../models';
 import { defaultCategories } from './category-merge.utils';
 import { fallbackCategoryFor } from './categorization.utils';
 // The stamp test HouseholdService judges a membership by, so a copy's
-// generation and a membership's are equal by one test.
-import { isStamp, sameStamp } from './household-index.utils';
+// generation and a membership's are equal by one test; and the cut it
+// bounds a member's name by, so every string the household rules bound is
+// cut alike.
+import { clampText, isStamp, sameStamp } from './household-index.utils';
 
 /** Where a row counts in a household budget: see LedgerCopy.bucket. */
 export interface LedgerBucket {
@@ -100,20 +101,6 @@ export function bucketOf(
   type: TransactionType
 ): LedgerBucket {
   return bucketFromBuiltIn(bucketCategory(categoryId, indexById(mergedCategories), type));
-}
-
-/**
- * `text` cut to at most `max` UTF-16 code units, whole characters only, so
- * no surrogate pair is split and the cut is the same on every projection.
- */
-function clampText(text: string, max: number): string {
-  if (text.length <= max) return text;
-  let cut = '';
-  for (const character of text) {
-    if (cut.length + character.length > max) break;
-    cut += character;
-  }
-  return cut;
 }
 
 /**
@@ -217,19 +204,4 @@ export function copyDiffers(
   if (typeof previous.pv !== 'number' || previous.pv < next.pv) return true;
   const fields = previous.pv > next.pv ? VERSION_INDEPENDENT_FIELDS : PROJECTED_FIELDS;
   return fields.some(field => !sameValue(previous[field], next[field]));
-}
-
-/**
- * The households a row's `sharedWith` names, each once, in the order they
- * first appear. A key of another kind, and anything that is not a key, is
- * left out: the field is stored data.
- */
-export function normalizeShares(sharedWith: readonly string[] | null | undefined): string[] {
-  if (!Array.isArray(sharedWith)) return [];
-  const ids: string[] = [];
-  for (const key of sharedWith) {
-    const id = householdOfShareKey(key);
-    if (id !== null && !ids.includes(id)) ids.push(id);
-  }
-  return ids;
 }

@@ -27,7 +27,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category, receiptImageCount, baseCurrencyOf} from '../../../models';
+import { Transaction, Category, receiptImageCount, baseCurrencyOf, normalizeShares, sharedChipLabel, sharedHouseholdNames } from '../../../models';
 import {
   TransactionWindowService,
   WindowSortDirection
@@ -43,6 +43,10 @@ import { TransactionRowComponent } from '../../../shared/components/transaction-
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { NoteDialogComponent, NoteDialogData } from '../note-dialog/note-dialog.component';
+import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
+import { RowSharingService } from '../../../core/services/row-sharing.service';
+import { PwaService } from '../../../core/services/pwa.service';
+import { shareChange } from '../../../core/utils/share-change.utils';
 import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
@@ -101,6 +105,16 @@ export class TransactionListComponent {
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   private quickAdd = inject(QuickAddService);
+  private rowSharing = inject(RowSharingService);
+  private pwa = inject(PwaService);
+
+  /** The account's live households, which the row menus offer to share into. */
+  readonly shareTargets = toSignal(this.rowSharing.targets(), { initialValue: [] });
+
+  /** Id to name, for the rows' share chips. */
+  readonly householdNames = computed(
+    () => new Map(this.shareTargets().map(target => [target.householdId, target.name]))
+  );
 
   displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
 
@@ -188,6 +202,15 @@ export class TransactionListComponent {
 
   constructor() {
     afterNextRender(() => this.setupEdgeObserver());
+
+    // A row whose shares changed is read again, so its chip follows: the
+    // window reads rows once, and an edit's shares land after the edit's
+    // own refresh may already have read the row.
+    const sharedAt = this.rowSharing.revision();
+    effect(() => {
+      if (this.rowSharing.revision() === sharedAt) return;
+      untracked(() => void this.windowSource.refresh());
+    });
 
     // Window data changed (page fetched, filters reset, mutation applied):
     // re-check the edges once the DOM reflects it, since a sentinel that
@@ -293,6 +316,74 @@ export class TransactionListComponent {
    */
   openReceipt(transaction: Transaction, slot?: number): void {
     openReceiptViewer(this.dialog, { transaction, slot });
+  }
+
+  /** The live households a row is shared with, by name; null for a private row. */
+  sharedNames(transaction: Transaction): string[] | null {
+    return sharedHouseholdNames(transaction.sharedWith, this.householdNames());
+  }
+
+  /** A share chip's name: every household, where the chip shows only the first. */
+  sharedLabel(names: readonly string[]): string {
+    return sharedChipLabel(names, (key, params) => this.translationService.t(key, params));
+  }
+
+  /**
+   * Who one row is shared with, chosen in a dialog set from the row. The
+   * difference becomes one share per household added and one unshare per
+   * household taken off, as the transaction form's chips do; a failure is
+   * reported by RowSharingService.
+   */
+  openShare(transaction: Transaction): void {
+    const targets = this.shareTargets();
+    const shared = normalizeShares(transaction.sharedWith);
+    this.dialog
+      .open<ShareDialogComponent, ShareDialogData, string[]>(ShareDialogComponent, {
+        width: '400px',
+        maxWidth: '95vw',
+        data: { description: transaction.description, targets, shared },
+      })
+      .afterClosed()
+      .subscribe(chosen => {
+        if (!chosen) return;
+        const change = shareChange(shared, chosen, targets.map(target => target.householdId));
+        void this.rowSharing.apply(transaction.id, change, targets);
+      });
+  }
+
+  /**
+   * Stops sharing one row with every live household it names, once
+   * confirmed. The confirm says what an unshare takes away: the household's
+   * view of the row and any of its goals counting it; offline, that the
+   * household keeps seeing the row until the device reconnects. A key for a
+   * membership that has ended is left alone, as the share dialog leaves it.
+   */
+  stopSharing(transaction: Transaction): void {
+    const targets = this.shareTargets();
+    const names = this.sharedNames(transaction);
+    const change = shareChange(normalizeShares(transaction.sharedWith), [], targets.map(target => target.householdId));
+    if (!names || change.unshare.length === 0) return;
+    const row = { description: transaction.description };
+    this.dialog
+      .open<ConfirmDialogComponent, ConfirmDialogData, boolean>(ConfirmDialogComponent, {
+        width: '400px',
+        maxWidth: '95vw',
+        data: {
+          title: this.translationService.t('transactions.share.stopTitle', {
+            names: names.join(this.translationService.t('transactions.share.separator')),
+          }),
+          message: this.pwa.isOnline()
+            ? this.translationService.t('transactions.share.stopMessage', row)
+            : this.translationService.t('transactions.share.stopMessageOffline', row),
+          confirmLabel: this.translationService.t('transactions.share.stop'),
+          cancelLabel: this.translationService.t('common.cancel'),
+          icon: 'group_remove',
+        },
+      })
+      .afterClosed()
+      .subscribe(confirmed => {
+        if (confirmed) void this.rowSharing.apply(transaction.id, change, targets);
+      });
   }
 
   confirmDelete(transaction: Transaction): void {

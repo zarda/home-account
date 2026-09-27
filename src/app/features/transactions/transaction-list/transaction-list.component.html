@@ -40,6 +40,7 @@
         <app-transaction-row
           [transaction]="transaction"
           [categories]="categories()"
+          [householdNames]="householdNames()"
           [swipeActions]="true"
           [attr.data-tx-id]="transaction.id"
           [class.row-highlight]="transaction.id === highlightedId()"
@@ -69,6 +70,18 @@
               <button mat-menu-item type="button" (click)="openReceipt(transaction)">
                 <mat-icon>receipt_long</mat-icon>
                 <span>{{ 'transactions.viewReceipt' | translate }}</span>
+              </button>
+            }
+            @if (shareTargets().length > 0) {
+              <button mat-menu-item type="button" (click)="openShare(transaction)">
+                <mat-icon>group_add</mat-icon>
+                <span>{{ 'transactions.share.menu' | translate }}</span>
+              </button>
+            }
+            @if (sharedNames(transaction)) {
+              <button mat-menu-item type="button" (click)="stopSharing(transaction)">
+                <mat-icon>group_remove</mat-icon>
+                <span>{{ 'transactions.share.stop' | translate }}</span>
               </button>
             }
             <button mat-menu-item (click)="edit.emit(transaction)">
@@ -170,6 +183,22 @@
               </span>
             }
           }
+          <!-- The desktop row's share chip, the same mark app-transaction-row
+               shows on the mobile row's meta line, in the cell that holds the
+               row's other marks: one thing to a screen reader, named for
+               every household it is shared with. -->
+          @if (sharedNames(transaction); as shared) {
+            <span class="shared-chip" role="img" [attr.aria-label]="sharedLabel(shared)">
+              <mat-icon class="shared-chip-icon">group</mat-icon>
+              <span class="shared-chip-text">
+                @if (shared.length === 1) {
+                  {{ 'transactions.share.chip' | translate: { name: shared[0] } }}
+                } @else {
+                  {{ 'transactions.share.chipMore' | translate: { name: shared[0], count: shared.length - 1 } }}
+                }
+              </span>
+            </span>
+          }
           @if (visibleTags(transaction).length > 0) {
             <span class="cell-tags">
               @for (tag of visibleTags(transaction); track tag) {
@@ -258,6 +287,18 @@
               <button mat-menu-item type="button" (click)="openReceipt(transaction)">
                 <mat-icon>receipt_long</mat-icon>
                 <span>{{ 'transactions.viewReceipt' | translate }}</span>
+              </button>
+            }
+            @if (shareTargets().length > 0) {
+              <button mat-menu-item type="button" (click)="openShare(transaction)">
+                <mat-icon>group_add</mat-icon>
+                <span>{{ 'transactions.share.menu' | translate }}</span>
+              </button>
+            }
+            @if (sharedNames(transaction)) {
+              <button mat-menu-item type="button" (click)="stopSharing(transaction)">
+                <mat-icon>group_remove</mat-icon>
+                <span>{{ 'transactions.share.stop' | translate }}</span>
               </button>
             }
             <button mat-menu-item (click)="edit.emit(transaction)">

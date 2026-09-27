@@ -19,9 +19,17 @@ import { AuthService } from '../../../core/services/auth.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { NoteDialogComponent } from '../note-dialog/note-dialog.component';
 import { ReceiptViewerDialogComponent } from '../receipt-viewer/receipt-viewer-dialog.component';
-import { ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { FirestoreService } from '../../../core/services/firestore.service';
+import { LedgerShareRefusal, LedgerShareService } from '../../../core/services/ledger-share.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { PwaService } from '../../../core/services/pwa.service';
+import { ShareDialogComponent } from '../sharing/share-dialog.component';
 import { Transaction } from '../../../models';
 import { createTransaction, createUser } from '../../../core/services/testing';
+
+/** An account in no household: its index, as the share controls read it, is empty. */
+const NO_HOUSEHOLDS = { subscribeToCollection: () => of([]) };
 
 // Signal-based stand-in for the page-provided window source.
 function createMockWindowSource() {
@@ -41,6 +49,7 @@ function createMockWindowSource() {
     fetchNext: jasmine.createSpy('fetchNext').and.resolveTo(0),
     fetchPrev: jasmine.createSpy('fetchPrev').and.resolveTo(0),
     retry: jasmine.createSpy('retry').and.resolveTo(undefined),
+    refresh: jasmine.createSpy('refresh').and.resolveTo(undefined),
     clearScrollTarget: jasmine.createSpy('clearScrollTarget'),
   };
 }
@@ -91,6 +100,7 @@ describe('TransactionListComponent', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: quickAdd },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
       ],
     }).compileComponents();
 
@@ -468,6 +478,7 @@ describe('TransactionListComponent mobile row wiring', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
       ],
     }).compileComponents();
 
@@ -661,6 +672,7 @@ describe('TransactionListComponent desktop note doors', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
       ],
     }).compileComponents();
 
@@ -812,6 +824,7 @@ describe('TransactionListComponent desktop receipt doors', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
       ],
     }).compileComponents();
 
@@ -907,6 +920,7 @@ describe('TransactionListComponent desktop category cell', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
       ],
     }).compileComponents();
 
@@ -995,6 +1009,7 @@ describe('TransactionListComponent desktop hit boxes', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
       ],
     }).compileComponents();
 
@@ -1109,6 +1124,7 @@ describe('TransactionListComponent desktop table width floor', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
       ],
     }).compileComponents();
 
@@ -1130,5 +1146,338 @@ describe('TransactionListComponent desktop table width floor', () => {
     expect(scroll.scrollWidth)
       .withContext('table-scroll scrollWidth vs clientWidth at the 704px floor')
       .toBeLessThanOrEqual(scroll.clientWidth + 1);
+  });
+});
+
+/**
+ * The row menu's door to sharing, on both views. The memberships come from
+ * the account's own index (FirestoreService stands in for it); the shares
+ * change through the sharing code, reached lazily, which LedgerShareService
+ * stands in for.
+ */
+describe('TransactionListComponent sharing', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+  let index: Record<string, unknown>[];
+  let ledger: jasmine.SpyObj<Pick<LedgerShareService, 'share' | 'unshare'>>;
+  let notifications: jasmine.SpyObj<NotificationService>;
+  let windowSource: ReturnType<typeof createMockWindowSource>;
+  let desktop: boolean;
+  let online: ReturnType<typeof signal<boolean>>;
+
+  const joined = Timestamp.fromMillis(1_000);
+  const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
+  const OFFICE = { id: 'h2', name: 'Office', role: 'member', since: joined, joinedAt: Timestamp.fromMillis(2_000) };
+
+  const txns: Transaction[] = [
+    createTransaction({ id: 'a', amount: 30, description: 'Banana', sharedWith: ['households/h1'] }),
+    createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
+    // Its only key is for a household the account has left: nothing to stop.
+    createTransaction({ id: 'c', amount: 20, description: 'Cherry', sharedWith: ['households/h9'] }),
+    createTransaction({
+      id: 'd', amount: 40, description: 'Dates', sharedWith: ['households/h2', 'households/h9', 'households/h1'],
+    }),
+  ];
+
+  function menuItems(): HTMLElement[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel button[mat-menu-item]'));
+  }
+
+  function shareItem(): HTMLElement | undefined {
+    return menuItems().find(item => item.textContent!.includes('transactions.share.menu'));
+  }
+
+  function stopItem(): HTMLElement | undefined {
+    return menuItems().find(item => item.textContent!.includes('transactions.share.stop'));
+  }
+
+  /** The confirm Stop sharing opened, as the dialog was asked for it. */
+  function stopConfirm(): ConfirmDialogData {
+    const call = dialog.open.calls.all().find(each => each.args[0] === ConfirmDialogComponent);
+    expect(call).withContext('the confirm opened').toBeDefined();
+    return (call!.args[1] as { data: ConfirmDialogData }).data;
+  }
+
+  function openRowMenu(index: number): void {
+    const triggers: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll(desktop ? '.action-btn' : '.row-menu-btn')
+    );
+    triggers[index].click();
+    fixture.detectChanges();
+  }
+
+  async function render(): Promise<void> {
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: windowSource },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a}`, amountInBase: (t: { amount: number }) => t.amount },
+        },
+        { provide: AuthService, useValue: { currentUser: signal(createUser({ id: 'u1' })) } },
+        { provide: DateFormatService, useValue: { formatDate: () => 'date', formatRelativeDate: () => 'rel' } },
+        {
+          provide: CategoryHelperService,
+          useValue: { getCategoryName: () => 'Cat', getCategoryIcon: () => 'icon', getCategoryColor: () => '#000' },
+        },
+        {
+          provide: TranslationService,
+          useValue: { t: (k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k) },
+        },
+        { provide: MatDialog, useValue: dialog },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: { subscribeToCollection: () => of(index) } },
+        { provide: LedgerShareService, useValue: ledger },
+        { provide: NotificationService, useValue: notifications },
+        { provide: PwaService, useValue: { isOnline: online } },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  }
+
+  /** Lets the lazily loaded sharing code resolve and its calls settle. */
+  async function settle(): Promise<void> {
+    await fixture.whenStable();
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve));
+    fixture.detectChanges();
+  }
+
+  beforeEach(() => {
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+    index = [HOME, OFFICE];
+    ledger = jasmine.createSpyObj('LedgerShareService', ['share', 'unshare']);
+    ledger.share.and.resolveTo(undefined);
+    ledger.unshare.and.resolveTo(undefined);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
+    windowSource = createMockWindowSource();
+    desktop = false;
+    online = signal(true);
+  });
+
+  describe('on a phone', () => {
+    it('offers no Share entry while the account belongs to no household', async () => {
+      index = [];
+      await render();
+
+      openRowMenu(0);
+
+      expect(menuItems().length).withContext('the menu opened').toBeGreaterThan(0);
+      expect(shareItem()).toBeUndefined();
+    });
+
+    it("hands each row the names of the account's live households", async () => {
+      await render();
+
+      const rows = fixture.debugElement.queryAll(By.directive(TransactionRowComponent));
+      const names = (rows[0].componentInstance as TransactionRowComponent).householdNames();
+      expect([...names]).toEqual([['h1', 'Home'], ['h2', 'Office']]);
+    });
+
+    it('opens the share dialog pre-set from the row', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+      await render();
+
+      openRowMenu(0);
+      shareItem()!.click();
+
+      expect(dialog.open).toHaveBeenCalledWith(
+        ShareDialogComponent,
+        jasmine.objectContaining({
+          data: {
+            description: 'Banana',
+            targets: [{ householdId: 'h1', name: 'Home' }, { householdId: 'h2', name: 'Office' }],
+            shared: ['h1'],
+          },
+        })
+      );
+    });
+
+    it('turns the choice into exactly the shares and unshares it differs by', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(['h2']) } as never);
+      await render();
+
+      openRowMenu(0);
+      shareItem()!.click();
+      await settle();
+
+      expect(ledger.share).toHaveBeenCalledOnceWith(['a'], 'h2');
+      expect(ledger.unshare).toHaveBeenCalledOnceWith(['a'], 'h1');
+      // The window reads the row again, so its chip shows the new shares.
+      expect(windowSource.refresh).toHaveBeenCalled();
+    });
+
+    it('changes nothing when the dialog is dismissed', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+      await render();
+
+      openRowMenu(0);
+      shareItem()!.click();
+      await settle();
+
+      expect(ledger.share).not.toHaveBeenCalled();
+      expect(ledger.unshare).not.toHaveBeenCalled();
+      expect(windowSource.refresh).not.toHaveBeenCalled();
+    });
+
+    it('says which household refused a share when the membership has ended', async () => {
+      ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+      dialog.open.and.returnValue({ afterClosed: () => of(['h2']) } as never);
+      await render();
+
+      openRowMenu(1);
+      shareItem()!.click();
+      await settle();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('transactions.share.notMember:{"name":"Office"}');
+    });
+
+    it('offers Stop sharing on a row shared with a live household', async () => {
+      await render();
+
+      openRowMenu(0);
+
+      expect(stopItem()).toBeDefined();
+    });
+
+    it('offers no Stop sharing on a private row', async () => {
+      await render();
+
+      openRowMenu(1);
+
+      expect(menuItems().length).withContext('the menu opened').toBeGreaterThan(0);
+      expect(stopItem()).toBeUndefined();
+    });
+
+    it('offers no Stop sharing on a row whose only key is for a household the account has left', async () => {
+      await render();
+
+      openRowMenu(2);
+
+      expect(menuItems().length).withContext('the menu opened').toBeGreaterThan(0);
+      expect(stopItem()).toBeUndefined();
+    });
+
+    it('stops sharing with every live household the row names, once confirmed', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      await render();
+
+      openRowMenu(3);
+      stopItem()!.click();
+      await settle();
+
+      const data = stopConfirm();
+      expect(data.title).toContain('transactions.share.stopTitle');
+      expect(data.title).toContain('Office');
+      expect(data.title).toContain('Home');
+      expect(data.message).toBe('transactions.share.stopMessage:{"description":"Dates"}');
+      expect(data.confirmLabel).toBe('transactions.share.stop');
+      expect(data.icon).toBe('group_remove');
+      expect(ledger.unshare).toHaveBeenCalledTimes(2);
+      expect(ledger.unshare).toHaveBeenCalledWith(['d'], 'h1');
+      expect(ledger.unshare).toHaveBeenCalledWith(['d'], 'h2');
+      expect(ledger.share).not.toHaveBeenCalled();
+      // The window reads the row again, so its chip goes.
+      expect(windowSource.refresh).toHaveBeenCalled();
+    });
+
+    it('stops nothing when the confirm is dismissed', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+      await render();
+
+      openRowMenu(0);
+      stopItem()!.click();
+      await settle();
+
+      expect(dialog.open).toHaveBeenCalled();
+      expect(ledger.unshare).not.toHaveBeenCalled();
+    });
+
+    it('says, offline, that the household keeps seeing the row until the device reconnects', async () => {
+      online.set(false);
+      dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      await render();
+
+      openRowMenu(0);
+      stopItem()!.click();
+      await settle();
+
+      expect(stopConfirm().message).toBe('transactions.share.stopMessageOffline:{"description":"Banana"}');
+      expect(ledger.unshare).toHaveBeenCalledOnceWith(['a'], 'h1');
+    });
+  });
+
+  describe('on a desktop', () => {
+    beforeEach(() => {
+      desktop = true;
+    });
+
+    it('offers Stop sharing in the actions menu of a shared row, and stops sharing once confirmed', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      await render();
+
+      openRowMenu(0);
+      stopItem()!.click();
+      await settle();
+
+      expect(stopConfirm().message).toBe('transactions.share.stopMessage:{"description":"Banana"}');
+      expect(ledger.unshare).toHaveBeenCalledOnceWith(['a'], 'h1');
+    });
+
+    it('offers no Stop sharing on a private row', async () => {
+      await render();
+
+      openRowMenu(1);
+
+      expect(menuItems().length).withContext('the menu opened').toBeGreaterThan(0);
+      expect(stopItem()).toBeUndefined();
+    });
+
+    it('offers no Stop sharing on a row whose only key is for a household the account has left', async () => {
+      await render();
+
+      openRowMenu(2);
+
+      expect(menuItems().length).withContext('the menu opened').toBeGreaterThan(0);
+      expect(stopItem()).toBeUndefined();
+    });
+
+    it('offers Share with… in the actions menu', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(['h1', 'h2']) } as never);
+      await render();
+
+      openRowMenu(1);
+      shareItem()!.click();
+      await settle();
+
+      expect(ledger.share).toHaveBeenCalledWith(['b'], 'h1');
+      expect(ledger.share).toHaveBeenCalledWith(['b'], 'h2');
+      expect(ledger.unshare).not.toHaveBeenCalled();
+    });
+
+    it('offers no Share entry while the account belongs to no household', async () => {
+      index = [];
+      await render();
+
+      openRowMenu(0);
+
+      expect(menuItems().length).withContext('the menu opened').toBeGreaterThan(0);
+      expect(shareItem()).toBeUndefined();
+    });
+
+    it('marks a shared row in its description cell, named for its households', async () => {
+      await render();
+
+      const cells: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('td.col-description'));
+      const shared = cells[0].querySelector('.shared-chip');
+      expect(shared?.querySelector('.shared-chip-text')?.textContent?.trim()).toBe('transactions.share.chip:{"name":"Home"}');
+      expect(shared?.getAttribute('role')).toBe('img');
+      expect(shared?.getAttribute('aria-label')).toContain('transactions.share.chipLabel');
+      expect(cells[1].querySelector('.shared-chip')).withContext('a private row').toBeNull();
+    });
   });
 });

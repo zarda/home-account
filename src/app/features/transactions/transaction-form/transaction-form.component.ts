@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, Injector, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
@@ -61,7 +61,9 @@ import {
   Goal,
   SplitPart,
   VERIFY_FIELD_THRESHOLD,
-  baseCurrencyOf
+  baseCurrencyOf,
+  normalizeShares,
+  shareKey
 } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -87,6 +89,8 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { splitRemainder } from '../../../core/utils/split-purchase.utils';
 import { SplitPartsComponent } from './split-parts/split-parts.component';
+import type { RowSharingService } from '../../../core/services/row-sharing.service';
+import { ShareTarget, applyShareChange, shareChange } from '../../../core/utils/share-change.utils';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -160,6 +164,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private announcer = inject(AnnouncerService);
   pwa = inject(PwaService);
   private destroyRef = inject(DestroyRef);
+  private injector = inject(Injector);
+  /** The share controls' service, once loaded; see rowSharing(). */
+  private sharingLoad?: Promise<RowSharingService | null>;
   /** True from a scan that fell back until the user settles the currency; what makes a hand edit worth remembering. */
   private scanCurrencyFellBack = false;
   /** The currency control's own edits, the placeholder filtered out once for both subscribers below; see OTHER_CURRENCY. */
@@ -225,10 +232,18 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   // lock its siblings.
   busyStoredSlot = signal<number | null>(null);
 
+  /**
+   * Images a saved edit took with it while the form stayed open (a share or
+   * a split refused after the edit landed). They left the queue so a second
+   * save does not append them again; the row holds them now, so they still
+   * count against the cap.
+   */
+  private readonly receiptsLanded = signal(0);
+
   /** True while another image can be queued under the per-transaction cap. */
   canQueueMore = computed(
     () =>
-      this.storedReceipts().length + this.pendingReceipts().length <
+      this.storedReceipts().length + this.receiptsLanded() + this.pendingReceipts().length <
       MAX_RECEIPTS_PER_TRANSACTION
   );
 
@@ -355,6 +370,39 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    */
   readonly noteValue = signal<string>('');
 
+  /**
+   * The account's live households, offered as the Shared with chips; with
+   * none, the control is not there at all. Filled once the share controls'
+   * service has loaded (watchShareTargets).
+   */
+  readonly shareTargets = signal<ShareTarget[]>([]);
+
+  /** The households chosen in the chips: on edit, the row's own to begin with. */
+  readonly shareSelection = signal<string[]>(normalizeShares(this.data.transaction?.sharedWith));
+
+  /**
+   * The households the row names, as far as this form knows: the row's own
+   * as it opened, moved on by each share change that went through, so a
+   * second save after a refusal sends only what is still owed.
+   */
+  private readonly sharesHeld = signal<string[]>(normalizeShares(this.data.transaction?.sharedWith));
+
+  /**
+   * A household taken off the chips stops seeing the row, and its goals stop
+   * counting it; the form says so beside the chips before it is saved.
+   */
+  readonly pendingUnshare = computed(() =>
+    shareChange(this.sharesHeld(), this.shareSelection(), this.shareTargets().map(target => target.householdId))
+      .unshare.length > 0
+  );
+
+  /**
+   * An unshare made offline is queued, and the household keeps seeing the
+   * row until the device reconnects and the unshare lands; the form says
+   * that too.
+   */
+  readonly offlineUnshare = computed(() => !this.pwa.isOnline() && this.pendingUnshare());
+
   private goalsSub?: Subscription;
 
   /**
@@ -425,6 +473,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   ngOnInit(): void {
     this.initForm();
+    this.watchShareTargets();
     this.ensureCurrencyListed(this.data.transaction?.currency);
     // The goals signal is only warm if some page subscribed (ADR 0009), and
     // the transactions page has no goal surface — the picker owns its own.
@@ -698,7 +747,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
     try {
       const formValue = this.form.value;
-      const receipts = this.pendingReceipts().map(pending => pending.file);
+      const sent = this.pendingReceipts();
+      const receipts = sent.map(pending => pending.file);
 
       const transactionData: CreateTransactionDTO = {
         type: formValue.type,
@@ -732,6 +782,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
             ? { tags: this.tags() }
             : {}),
         ...this.locationField(formValue.locationName),
+        // Only a new row carries its shares: updateTransaction refuses them,
+        // and an edit's are applied on their own once it is saved.
+        ...(this.data.mode === 'add' ? this.sharedWithField() : {}),
       };
 
       if (this.data.mode === 'add') {
@@ -762,15 +815,33 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           );
         }
       } else if (this.data.transaction) {
-        await this.transactionService.updateTransaction(
-          this.data.transaction.id,
-          transactionData
-        );
+        const txId = this.data.transaction.id;
+        const queued: { shares?: Promise<boolean> } = {};
+        await this.transactionService.updateTransaction(txId, transactionData, {
+          // Offline the server's answer waits for the connection, which the
+          // app may not live to see: the share changes are queued right
+          // behind the edit instead, where the mutation queue keeps them in
+          // order and across a restart.
+          onIssued: () => {
+            if (!this.pwa.isOnline()) queued.shares = this.applyShares(txId);
+          },
+        });
+        // The edit has landed with these images: a second save, after a
+        // refusal below, must not append them again.
+        this.pendingReceipts.update(list => list.filter(pending => !sent.includes(pending)));
+        this.receiptsLanded.update(count => count + sent.length);
+        // Online, after the update, so a failed save changes no share; and
+        // before the split, so every part is shared as the purchase now is.
+        // A refused share is a message and not a close: the edit landed, and
+        // the chips are still here to correct.
+        if (!(await (queued.shares ?? this.applyShares(txId)))) {
+          return;
+        }
         // After the update, never with it: the split shrinks the stored row
         // to its remainder, so it has to read the amount this edit just
         // wrote rather than the one it replaced.
         if (splitParts.length) {
-          await this.transactionService.splitTransaction(this.data.transaction.id, splitParts);
+          await this.transactionService.splitTransaction(txId, splitParts);
         }
       }
 
@@ -841,6 +912,56 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     return locationSlot(name, country, coords);
   }
 
+  /**
+   * The share controls' service. This form is in the initial bundle, the
+   * service and the index reading it does are not: it is reached by this
+   * dynamic import, once per form. Null for a form closed before the code
+   * arrived, whose injector can no longer be asked.
+   */
+  private rowSharing(): Promise<RowSharingService | null> {
+    return this.sharingLoad ??= import('../../../core/services/row-sharing.service')
+      .then(({ RowSharingService }) => (this.destroyRef.destroyed ? null : this.injector.get(RowSharingService)));
+  }
+
+  /** Lists the account's live households in the chips for as long as the form is open. */
+  private watchShareTargets(): void {
+    this.rowSharing().then(sharing => {
+      if (!sharing || this.destroyRef.destroyed) return;
+      sharing.targets()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(targets => this.shareTargets.set(targets));
+    }).catch(error => console.warn('[TransactionForm] The share controls did not load', error));
+  }
+
+  /** The chosen households as a new row's share keys, in the order the chips list them. */
+  private sharedWithField(): Partial<CreateTransactionDTO> {
+    const chosen = this.shareSelection();
+    const keys = this.shareTargets()
+      .filter(target => chosen.includes(target.householdId))
+      .map(target => shareKey(target.householdId));
+    return keys.length ? { sharedWith: keys } : {};
+  }
+
+  /**
+   * Turns the chips' difference from the row into one share per household
+   * added and one unshare per household taken off. False when any of it did
+   * not go through, which RowSharingService has already reported.
+   */
+  private async applyShares(txId: string): Promise<boolean> {
+    const targets = this.shareTargets();
+    const change = shareChange(this.sharesHeld(), this.shareSelection(), targets.map(target => target.householdId));
+    if (change.share.length === 0 && change.unshare.length === 0) return true;
+    const sharing = await this.rowSharing().catch(error => {
+      console.warn('[TransactionForm] The share controls did not load; no share was changed', error);
+      this.notifications.error(this.translationService.t('transactions.share.failed'));
+      return null;
+    });
+    if (!sharing) return false;
+    const { landed, failed } = await sharing.apply(txId, change, targets);
+    this.sharesHeld.update(held => applyShareChange(held, landed));
+    return !failed;
+  }
+
   private openLimitDialog(): void {
     this.dialog.open(ReceiptLimitDialogComponent, {
       maxWidth: '95vw',
@@ -886,6 +1007,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     // Cap the queue at what the transaction can still hold.
     const capacity = MAX_RECEIPTS_PER_TRANSACTION
       - this.storedReceipts().length
+      - this.receiptsLanded()
       - this.pendingReceipts().length;
     if (capacity <= 0) {
       this.notifications.error(

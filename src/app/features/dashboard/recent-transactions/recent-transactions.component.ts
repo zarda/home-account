@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 
 import { Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -6,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, Category } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
+import { RowSharingService } from '../../../core/services/row-sharing.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -31,6 +33,16 @@ export class RecentTransactionsComponent {
   categories = input<Map<string, Category>>(new Map());
 
   private router = inject(Router);
+  private rowSharing = inject(RowSharingService);
+  private readonly shareTargets = toSignal(this.rowSharing.targets(), { initialValue: [] });
+
+  /**
+   * The account's live households, id to name, so a shared row carries the
+   * same share chip here as on the transactions page.
+   */
+  readonly householdNames = computed(
+    () => new Map(this.shareTargets().map(target => [target.householdId, target.name]))
+  );
 
   onAddTransaction(): void {
     // Navigate to transactions page with add mode (SPA navigation, no full reload)

@@ -475,3 +475,33 @@
   font-size: var(--text-sm);
   color: var(--color-error);
 }
+
+.share-field {
+  margin-bottom: 16px;
+}
+
+.share-label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+// A household name runs to 100 characters: each chip grows to hold its name
+// on as many lines as it needs, from the 40px target floor, and is never cut
+// (G3). The label is Material's own, which truncates unless told otherwise.
+.share-chips .mat-mdc-standard-chip {
+  height: auto;
+  min-block-size: 40px;
+}
+
+.share-chips ::ng-deep .mdc-evolution-chip__text-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.share-hint,
+.share-unshare-note,
+.share-offline-note {
+  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

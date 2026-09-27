@@ -1,0 +1,29 @@
+<app-dialog-header titleKey="transactions.share.title" icon="group_add" (closed)="cancel()" />
+
+<mat-dialog-content>
+  <p class="share-row">{{ data.description }}</p>
+
+  <div class="share-options" role="group" [attr.aria-label]="'transactions.share.label' | translate">
+    @for (target of data.targets; track target.householdId) {
+      <mat-checkbox
+        class="share-option"
+        [checked]="isChosen(target.householdId)"
+        (change)="toggle(target.householdId, $event.checked)"
+      >{{ target.name }}</mat-checkbox>
+    }
+  </div>
+
+  <p class="share-hint">{{ 'transactions.share.hint' | translate }}</p>
+
+  @if (pendingUnshare()) {
+    <p class="share-unshare-note" role="status">{{ 'transactions.share.unshareGoalLink' | translate }}</p>
+  }
+  @if (offlineUnshare()) {
+    <p class="share-offline-note" role="status">{{ 'transactions.share.offlineUnshare' | translate }}</p>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">{{ 'common.cancel' | translate }}</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()">{{ 'common.save' | translate }}</button>
+</mat-dialog-actions>

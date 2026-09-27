@@ -216,6 +216,53 @@ export function householdOfShareKey(key: unknown): string | null {
 }
 
 /**
+ * The households a row's `sharedWith` names, each once, in the order they
+ * first appear. A key of another kind, and anything that is not a key, is
+ * left out: the field is stored data.
+ */
+export function normalizeShares(sharedWith: readonly string[] | null | undefined): string[] {
+  if (!Array.isArray(sharedWith)) return [];
+  const ids: string[] = [];
+  for (const key of sharedWith) {
+    const id = householdOfShareKey(key);
+    if (id !== null && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * The names of the households a row is shared with, in the order its
+ * `sharedWith` holds them, as `names` (household id to name) knows them;
+ * null when it names none of them, which is how a row's share chip is left
+ * out. A household `names` does not hold is left out: a caller passes only
+ * the account's live memberships, so a key left behind by one that has
+ * ended names nobody.
+ */
+export function sharedHouseholdNames(
+  sharedWith: readonly string[] | null | undefined,
+  names: ReadonlyMap<string, string>
+): string[] | null {
+  const named = normalizeShares(sharedWith).flatMap(id => {
+    const name = names.get(id);
+    return name === undefined ? [] : [name];
+  });
+  return named.length > 0 ? named : null;
+}
+
+/**
+ * A share chip's accessible name: every household the row is shared with,
+ * where the chip's text shows only the first and counts the rest. `t` is the
+ * translation lookup, so the mobile row and the desktop cell name the chip
+ * alike.
+ */
+export function sharedChipLabel(
+  names: readonly string[],
+  t: (key: string, params?: Record<string, string | number>) => string
+): string {
+  return t('transactions.share.chipLabel', { names: names.join(t('transactions.share.separator')) });
+}
+
+/**
  * A copy's document id. The rules take the author of a copy that does not
  * exist from the part of its id before the first underscore, so an account
  * id holding one would be judged as another account; neither part may hold a

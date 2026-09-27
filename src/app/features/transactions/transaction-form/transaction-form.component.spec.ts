@@ -49,6 +49,9 @@ import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { PwaService } from '../../../core/services/pwa.service';
+import { FirestoreService } from '../../../core/services/firestore.service';
+import { LedgerShareRefusal, LedgerShareService } from '../../../core/services/ledger-share.service';
+import { MAX_RECEIPTS_PER_TRANSACTION } from '../../../core/services/storage.service';
 import { Transaction, Category, Goal, User } from '../../../models';
 import { createTransaction, createCategory, createUser, createTranslationStub } from '../../../core/services/testing';
 
@@ -61,6 +64,25 @@ function attemptStub() {
   const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
   service.begin.and.returnValue(handle);
   return { service, handle };
+}
+
+/** Waits, a short while at most, for a condition a promise chain settles. */
+async function until(done: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (!done() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+}
+
+/**
+ * The share controls' service is reached by dynamic import; waits until the
+ * form has listed the households it offers, or a short while for a form that
+ * offers none.
+ */
+async function shareTargetsListed(component: TransactionFormComponent, expected = true): Promise<void> {
+  const until = Date.now() + 2000;
+  while ((component.shareTargets().length > 0) !== expected && Date.now() < until) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  if (!expected) await new Promise(resolve => setTimeout(resolve, 20));
 }
 
 describe('TransactionFormComponent', () => {
@@ -97,6 +119,10 @@ describe('TransactionFormComponent', () => {
   // The real root service registers window and service-worker listeners in
   // its constructor; the split's offline refusal only needs the signal.
   let isOnline: ReturnType<typeof signal<boolean>>;
+  // The account's household index as the share control reads it, and the
+  // sharing code it reaches lazily.
+  let householdIndex: Record<string, unknown>[];
+  let ledger: jasmine.SpyObj<Pick<LedgerShareService, 'share' | 'unshare'>>;
 
   /** One receipt photo, as the strategy service hands it back. */
   function scanResult(
@@ -190,6 +216,10 @@ describe('TransactionFormComponent', () => {
     };
     attempts = attemptStub();
     isOnline = signal(true);
+    householdIndex = [];
+    ledger = jasmine.createSpyObj('LedgerShareService', ['share', 'unshare']);
+    ledger.share.and.resolveTo(undefined);
+    ledger.unshare.and.resolveTo(undefined);
 
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
@@ -223,6 +253,8 @@ describe('TransactionFormComponent', () => {
         { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
         { provide: PwaService, useValue: { isOnline } },
+        { provide: FirestoreService, useValue: { subscribeToCollection: () => of(householdIndex) } },
+        { provide: LedgerShareService, useValue: ledger },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -804,7 +836,7 @@ describe('TransactionFormComponent', () => {
       const component = build({ mode: 'edit', transaction: txn }).componentInstance;
       validForm(component);
       await component.onSubmit();
-      expect(transactionService.updateTransaction).toHaveBeenCalledWith('e1', jasmine.any(Object));
+      expect(transactionService.updateTransaction).toHaveBeenCalledWith('e1', jasmine.any(Object), jasmine.any(Object));
     });
 
     it('swallows save errors', async () => {
@@ -822,6 +854,327 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
       expect(dialog.open).toHaveBeenCalledWith(ReceiptLimitDialogComponent, jasmine.any(Object));
       expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    describe('shared with households', () => {
+      const joined = Timestamp.fromMillis(1_000);
+      const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
+      const OFFICE = { id: 'h2', name: 'Office', role: 'member', since: joined, joinedAt: Timestamp.fromMillis(2_000) };
+      const ENDED = { id: 'h3', name: 'Old flat', role: 'member', since: joined, joinedAt: joined, endedAt: joined };
+      const parts = [{ categoryId: 'food', amount: 5 }];
+
+      function sharedRow(sharedWith: string[]): Transaction {
+        return createTransaction({
+          id: 'tx-1', type: 'expense', amount: 20, categoryId: 'food', description: 'Dinner', sharedWith,
+          date: Timestamp.fromDate(new Date(2026, 0, 2)),
+        });
+      }
+
+      beforeEach(() => {
+        householdIndex = [HOME, OFFICE, ENDED];
+      });
+
+      it("offers the account's live households, earliest joined first", async () => {
+        const component = build().componentInstance;
+        await shareTargetsListed(component);
+
+        expect(component.shareTargets()).toEqual([
+          { householdId: 'h1', name: 'Home' },
+          { householdId: 'h2', name: 'Office' },
+        ]);
+      });
+
+      it('starts a new entry private', async () => {
+        const component = build().componentInstance;
+        await shareTargetsListed(component);
+        expect(component.shareTargets().length).withContext('both households are offered').toBe(2);
+        expect(component.shareSelection()).withContext('none chosen to begin with').toEqual([]);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(component.shareSelection()).toEqual([]);
+        expect('sharedWith' in transactionService.addTransaction.calls.mostRecent().args[0]).toBeFalse();
+      });
+
+      it('writes a new entry with the chosen households, and asks the sharing code for nothing more', async () => {
+        const component = build().componentInstance;
+        await shareTargetsListed(component);
+        validForm(component);
+        component.shareSelection.set(['h2', 'h1']);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction).toHaveBeenCalledWith(
+          jasmine.objectContaining({ sharedWith: ['households/h1', 'households/h2'] })
+        );
+        expect(ledger.share).not.toHaveBeenCalled();
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('shares every part of a new split, through the purchase the parts are taken off', async () => {
+        const component = build().componentInstance;
+        await shareTargetsListed(component);
+        validForm(component);
+        component.splitParts.set(parts);
+        component.shareSelection.set(['h2']);
+
+        await component.onSubmit();
+
+        expect(transactionService.addSplitTransaction).toHaveBeenCalledWith(
+          jasmine.objectContaining({ sharedWith: ['households/h2'] }),
+          parts
+        );
+      });
+
+      it('starts an edit from the households the row is shared with', () => {
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h2']) }).componentInstance;
+
+        expect(component.shareSelection()).toEqual(['h2']);
+      });
+
+      it('sends an edit without shares, then shares and unshares exactly the difference', async () => {
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        component.shareSelection.set(['h2']);
+
+        await component.onSubmit();
+
+        const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+        expect('sharedWith' in dto).withContext('updateTransaction refuses shares').toBeFalse();
+        expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
+        expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
+        expect(transactionService.updateTransaction).toHaveBeenCalledBefore(ledger.share);
+        expect(transactionService.updateTransaction).toHaveBeenCalledBefore(ledger.unshare);
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('asks the sharing code for nothing when the shares did not change', async () => {
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+
+        await component.onSubmit();
+
+        expect(ledger.share).not.toHaveBeenCalled();
+        expect(ledger.unshare).not.toHaveBeenCalled();
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('leaves alone a key the row holds for a membership that has ended', async () => {
+        const component = build({
+          mode: 'edit', transaction: sharedRow(['households/h1', 'households/h3']),
+        }).componentInstance;
+        await shareTargetsListed(component);
+
+        await component.onSubmit();
+
+        expect(ledger.unshare).not.toHaveBeenCalled();
+      });
+
+      it('shares the edited row before splitting it, so every part is shared as the purchase is', async () => {
+        const component = build({ mode: 'edit', transaction: sharedRow([]) }).componentInstance;
+        await shareTargetsListed(component);
+        component.splitParts.set(parts);
+        component.shareSelection.set(['h1']);
+
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction).toHaveBeenCalledBefore(ledger.share);
+        expect(ledger.share).toHaveBeenCalledBefore(transactionService.splitTransaction);
+        expect(transactionService.splitTransaction).toHaveBeenCalledWith('tx-1', parts);
+      });
+
+      it('shows a refused share and keeps the saved edit open to correct', async () => {
+        ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        component.form.patchValue({ description: 'Late dinner' });
+        component.shareSelection.set(['h2']);
+
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction).toHaveBeenCalledWith(
+          'tx-1', jasmine.objectContaining({ description: 'Late dinner' }), jasmine.any(Object)
+        );
+        expect(notifications.error).toHaveBeenCalledOnceWith('transactions.share.notMember');
+        expect(translation.t).toHaveBeenCalledWith('transactions.share.notMember', { name: 'Office' });
+        expect(dialogRef.close).not.toHaveBeenCalled();
+        expect(component.isSubmitting()).toBeFalse();
+        expect(component.form.get('description')?.value).withContext('the edit is still in the form').toBe('Late dinner');
+      });
+
+      it('does not send again what already landed when the edit is saved a second time', async () => {
+        ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        component.shareSelection.set(['h2']);
+        await component.onSubmit();
+        ledger.share.calls.reset();
+        ledger.unshare.calls.reset();
+        ledger.share.and.resolveTo(undefined);
+
+        await component.onSubmit();
+
+        expect(ledger.unshare).withContext('h1 was unshared the first time').not.toHaveBeenCalled();
+        expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('sends a photo that went with the saved edit only once, and still sends one queued after it', async () => {
+        ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        const landed = new File(['a'], 'landed.jpg', { type: 'image/jpeg' });
+        component.pendingReceipts.set([{ file: landed, preview: 'data:image/jpeg;base64,a' }]);
+        component.shareSelection.set(['h2']);
+
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction.calls.mostRecent().args[1].receiptFiles).toEqual([landed]);
+        expect(component.pendingReceipts()).withContext('the photo went with the edit').toEqual([]);
+
+        const later = new File(['b'], 'later.jpg', { type: 'image/jpeg' });
+        component.pendingReceipts.set([{ file: later, preview: 'data:image/jpeg;base64,b' }]);
+        ledger.share.and.resolveTo(undefined);
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction.calls.mostRecent().args[1].receiptFiles).toEqual([later]);
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('counts the photos a saved edit took against the cap, so a second save cannot queue past it', async () => {
+        ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        component.pendingReceipts.set(Array.from({ length: MAX_RECEIPTS_PER_TRANSACTION }, (_, i) => ({
+          file: new File([`${i}`], `r${i}.jpg`, { type: 'image/jpeg' }),
+          preview: `data:image/jpeg;base64,${i}`,
+        })));
+        component.shareSelection.set(['h2']);
+
+        await component.onSubmit();
+
+        expect(component.pendingReceipts()).toEqual([]);
+        expect(component.canQueueMore()).withContext('the row holds the cap now').toBeFalse();
+      });
+
+      it('offline, stops and starts sharing right behind the edit, without waiting for the server', async () => {
+        const order: string[] = [];
+        transactionService.updateTransaction.and.callFake((_id, _dto, options) => {
+          order.push('edit issued');
+          options?.onIssued?.();
+          // Offline, the server's answer waits for the connection.
+          return new Promise<void>(() => undefined);
+        });
+        ledger.unshare.and.callFake(async () => {
+          order.push('unshare');
+        });
+        ledger.share.and.callFake(async () => {
+          order.push('share');
+        });
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        isOnline.set(false);
+        component.shareSelection.set(['h2']);
+
+        void component.onSubmit();
+        await until(() => order.length === 3);
+
+        expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
+        expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
+        expect(order[0]).withContext('the edit is queued first, so the shares land after it').toBe('edit issued');
+        expect(dialogRef.close).withContext('the edit itself is still on its way').not.toHaveBeenCalled();
+      });
+
+      it('offline, changes no share when the edit is refused before it is queued', async () => {
+        transactionService.updateTransaction.and.rejectWith(new Error(GOAL_LINK_INVALID));
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        isOnline.set(false);
+        component.shareSelection.set(['h2']);
+
+        await component.onSubmit();
+
+        expect(ledger.share).not.toHaveBeenCalled();
+        expect(ledger.unshare).not.toHaveBeenCalled();
+        expect(notifications.error).toHaveBeenCalledWith('transactions.goalLinkInvalid');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+      });
+
+      it('offline, keeps the form open to correct a share refused while the edit was on its way', async () => {
+        let acknowledge!: () => void;
+        transactionService.updateTransaction.and.callFake((_id, _dto, options) => {
+          options?.onIssued?.();
+          return new Promise<void>(resolve => {
+            acknowledge = resolve;
+          });
+        });
+        ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+        const component = build({ mode: 'edit', transaction: sharedRow([]) }).componentInstance;
+        await shareTargetsListed(component);
+        isOnline.set(false);
+        component.shareSelection.set(['h2']);
+
+        const saving = component.onSubmit();
+        await until(() => ledger.share.calls.count() > 0);
+        acknowledge();
+        await saving;
+
+        expect(notifications.error).toHaveBeenCalledOnceWith('transactions.share.notMember');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+      });
+
+      it('online, changes the shares only once the server has the edit', async () => {
+        let acknowledge!: () => void;
+        transactionService.updateTransaction.and.callFake((_id, _dto, options) => {
+          options?.onIssued?.();
+          return new Promise<void>(resolve => {
+            acknowledge = resolve;
+          });
+        });
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        component.shareSelection.set(['h2']);
+
+        const saving = component.onSubmit();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(ledger.unshare).withContext('a failed save changes no share').not.toHaveBeenCalled();
+        expect(ledger.share).not.toHaveBeenCalled();
+
+        acknowledge();
+        await saving;
+
+        expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
+        expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('does not split a row whose shares could not be changed', async () => {
+        ledger.share.and.rejectWith(new Error('unavailable'));
+        spyOn(console, 'warn');
+        const component = build({ mode: 'edit', transaction: sharedRow([]) }).componentInstance;
+        await shareTargetsListed(component);
+        component.splitParts.set(parts);
+        component.shareSelection.set(['h1']);
+
+        await component.onSubmit();
+
+        expect(notifications.error).toHaveBeenCalledOnceWith('transactions.share.failed');
+        expect(transactionService.splitTransaction).not.toHaveBeenCalled();
+      });
+
+      it('knows when an unshare made offline reaches the household only on reconnect', async () => {
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        isOnline.set(false);
+        expect(component.offlineUnshare()).withContext('nothing unshared yet').toBeFalse();
+
+        component.shareSelection.set([]);
+        expect(component.offlineUnshare()).toBeTrue();
+
+        isOnline.set(true);
+        expect(component.offlineUnshare()).withContext('online, the unshare lands at once').toBeFalse();
+      });
     });
 
     describe('with split parts', () => {
@@ -882,6 +1235,25 @@ describe('TransactionFormComponent', () => {
         expect(transactionService.updateTransaction).toHaveBeenCalled();
         expect(notifications.error).toHaveBeenCalledWith('transactions.splitFailed');
         expect(dialogRef.close).not.toHaveBeenCalled();
+      });
+
+      it('sends a photo that went with the saved edit only once when the edit is saved again after a refused split', async () => {
+        transactionService.splitTransaction.and.rejectWith(new Error(SPLIT_REFUSED));
+        const txn = createTransaction({ id: 'e1' });
+        const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+        validForm(component);
+        const landed = new File(['a'], 'landed.jpg', { type: 'image/jpeg' });
+        component.pendingReceipts.set([{ file: landed, preview: 'data:image/jpeg;base64,a' }]);
+        component.splitParts.set(parts);
+
+        await component.onSubmit();
+        expect(transactionService.updateTransaction.calls.mostRecent().args[1].receiptFiles).toEqual([landed]);
+        transactionService.splitTransaction.and.resolveTo([]);
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction).toHaveBeenCalledTimes(2);
+        expect('receiptFiles' in transactionService.updateTransaction.calls.mostRecent().args[1]).toBeFalse();
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
       });
 
       it('names the split when the add seam refuses it, rather than the generic error', async () => {
@@ -1949,6 +2321,8 @@ describe('TransactionFormComponent, through its own template', () => {
   let dialogRefSpy: jasmine.SpyObj<MatDialogRef<TransactionFormComponent>>;
   let strategySpy: jasmine.SpyObj<AIStrategyService>;
   let online: ReturnType<typeof signal<boolean>>;
+  let householdIndex: Record<string, unknown>[];
+  let activeGoals: ReturnType<typeof signal<Goal[]>>;
   let transactionsSpy: jasmine.SpyObj<TransactionService>;
   let sessionSpy: jasmine.SpyObj<CurrencyChoiceSessionService>;
 
@@ -1996,6 +2370,8 @@ describe('TransactionFormComponent, through its own template', () => {
 
   beforeEach(async () => {
     online = signal(true);
+    householdIndex = [];
+    activeGoals = signal<Goal[]>([]);
     dialogRefSpy = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
     dialogRefSpy.afterClosed.and.returnValue(of(undefined) as never);
 
@@ -2068,13 +2444,15 @@ describe('TransactionFormComponent, through its own template', () => {
           provide: GoalService,
           useValue: {
             goals: signal<Goal[]>([]),
-            activeGoals: signal<Goal[]>([]),
+            activeGoals,
             getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
           },
         },
         { provide: ReceiptAttemptService, useValue: attemptStub().service },
         { provide: CurrencyChoiceSessionService, useValue: session },
         { provide: PwaService, useValue: { isOnline: online } },
+        { provide: FirestoreService, useValue: { subscribeToCollection: () => of(householdIndex) } },
+        { provide: LedgerShareService, useValue: jasmine.createSpyObj('LedgerShareService', ['share', 'unshare']) },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -2319,6 +2697,126 @@ describe('TransactionFormComponent, through its own template', () => {
 
     const locate = el().querySelector('button[aria-label="transactions.useMyLocation"]') as HTMLElement;
     expect(locate.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  describe('the Shared with control', () => {
+    const joined = Timestamp.fromMillis(1_000);
+    const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
+    const OFFICE = { id: 'h2', name: 'Office', role: 'member', since: joined, joinedAt: Timestamp.fromMillis(2_000) };
+
+    const control = () => el().querySelector('.share-field') as HTMLElement | null;
+    const chips = () => Array.from(el().querySelectorAll<HTMLElement>('.share-field mat-chip-option'));
+    const note = () => el().querySelector('.share-offline-note') as HTMLElement | null;
+    const goalNote = () => el().querySelector('.share-unshare-note') as HTMLElement | null;
+
+    function sharedRow(sharedWith: string[]): Transaction {
+      return createTransaction({ id: 'tx-1', categoryId: 'food', description: 'Dinner', sharedWith });
+    }
+
+    /**
+     * Renders, then waits for the share controls' service to load and list
+     * the households, and for the listbox to mark its options from its value,
+     * which it does a microtask after they render.
+     */
+    async function renderListed(
+      data: { mode: 'add' | 'edit'; transaction?: Transaction } = { mode: 'add' },
+      offersHouseholds = true
+    ): Promise<void> {
+      render(data);
+      await shareTargetsListed(component, offersHouseholds);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    it('is not there while the account belongs to no household', async () => {
+      await renderListed({ mode: 'add' }, false);
+
+      expect(control()).toBeNull();
+    });
+
+    it("offers a named chip per live household, in a listbox named for what it chooses", async () => {
+      householdIndex = [HOME, OFFICE];
+      await renderListed();
+
+      const listbox = control()!.querySelector('mat-chip-listbox') as HTMLElement;
+      expect(listbox.getAttribute('aria-label')).toBe('transactions.share.label');
+      expect(listbox.getAttribute('aria-multiselectable')).toBe('true');
+      expect(chips().map(chip => chip.textContent?.trim())).toEqual(['Home', 'Office']);
+      expect(control()!.textContent).toContain('transactions.share.hint');
+    });
+
+    it('sits after the goal field and before the tags', async () => {
+      householdIndex = [HOME];
+      activeGoals.set([{
+        id: 'g1', userId: 'u1', kind: 'saving', name: 'Emergency fund', targetAmount: 1000, contributedAmount: 0,
+        currency: 'USD', isActive: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }]);
+      await renderListed();
+
+      const tags = el().querySelector('mat-chip-grid')!.closest('mat-form-field')!;
+      const goal = el().querySelector('mat-select[formControlName="goalId"]')?.closest('mat-form-field');
+      expect(goal).withContext('the goal field is there to sit after').toBeTruthy();
+      expect(goal!.compareDocumentPosition(control()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(control()!.compareDocumentPosition(tags) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('starts a new entry with no chip selected', async () => {
+      householdIndex = [HOME, OFFICE];
+      await renderListed();
+
+      expect(chips().length).toBe(2);
+      expect(chips().map(chip => chip.classList.contains('mat-mdc-chip-selected'))).toEqual([false, false]);
+    });
+
+    it('starts an edit with the households the row is shared with selected', async () => {
+      householdIndex = [HOME, OFFICE];
+      await renderListed({ mode: 'edit', transaction: sharedRow(['households/h2']) });
+
+      expect(chips().map(chip => chip.classList.contains('mat-mdc-chip-selected'))).toEqual([false, true]);
+    });
+
+    it('gives every chip a 40px target', async () => {
+      householdIndex = [HOME, OFFICE];
+      await renderListed();
+
+      for (const chip of chips()) {
+        expect(chip.getBoundingClientRect().height).withContext(chip.textContent!).toBeGreaterThanOrEqual(40);
+      }
+    });
+
+    it('says, offline, that the household keeps seeing an unshared row until the device reconnects', async () => {
+      householdIndex = [HOME, OFFICE];
+      online.set(false);
+      await renderListed({ mode: 'edit', transaction: sharedRow(['households/h1']) });
+      expect(note()).withContext('nothing unshared yet').toBeNull();
+
+      (chips()[0].querySelector('.mat-mdc-chip-action') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(component.shareSelection()).toEqual([]);
+      expect(note()?.textContent?.trim()).toBe('transactions.share.offlineUnshare');
+
+      online.set(true);
+      fixture.detectChanges();
+      expect(note()).toBeNull();
+    });
+
+    it('says, once a shared household is deselected, that it stops seeing the row and none of its goals count it', async () => {
+      householdIndex = [HOME, OFFICE];
+      await renderListed({ mode: 'edit', transaction: sharedRow(['households/h1']) });
+      expect(goalNote()).withContext('nothing unshared yet').toBeNull();
+
+      (chips()[1].querySelector('.mat-mdc-chip-action') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(goalNote()).withContext('a share takes nothing out').toBeNull();
+
+      (chips()[0].querySelector('.mat-mdc-chip-action') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(component.shareSelection()).toEqual(['h2']);
+      expect(goalNote()?.textContent?.trim()).toBe('transactions.share.unshareGoalLink');
+      expect(note()).withContext('online, the unshare lands at once').toBeNull();
+    });
   });
 
   // #430 (P7): the select's last option opens the code dialog rather than

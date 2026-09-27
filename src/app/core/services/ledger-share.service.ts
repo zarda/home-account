@@ -19,13 +19,14 @@ import {
   householdIndexPath,
   ledgerCopyId,
   ledgerCopyPath,
+  normalizeShares,
   shareKey
 } from '../../models';
 import { AuthService } from './auth.service';
 import { BatchOp, FirestoreService, QueryOptions } from './firestore.service';
 import { PwaService } from './pwa.service';
 import { defaultCategories, mergeCategories } from '../utils/category-merge.utils';
-import { ProjectableRow, copyDiffers, normalizeShares, projectRow } from '../utils/ledger-projection.utils';
+import { ProjectableRow, copyDiffers, projectRow } from '../utils/ledger-projection.utils';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
 import { HouseholdIndexData, isStamp, sameStamp, toMembership } from '../utils/household-index.utils';
 import {
@@ -439,7 +440,9 @@ export class LedgerShareService implements OnDestroy {
    * behind its key, from the row as the cache holds it; for more rows only
    * the key writes queue, and the household is marked for a full pass, which
    * writes the copies once the device is back. Resolves once the writes are
-   * answered, or offline once they are queued.
+   * answered, or offline once they are queued. Rejects only when the keys
+   * did not all land (or the household is refused): once they have, a copy
+   * that could not be written is left to a full pass.
    */
   async share(txIds: readonly string[], householdId: string): Promise<void> {
     const uid = this.requireUser();
@@ -469,20 +472,29 @@ export class LedgerShareService implements OnDestroy {
       throw error;
     }
 
-    // The rows as this device's writes leave them, the key included: the
-    // copies are judged against the same.
-    const categories = await this.loadCategories(state);
-    const copies: Promise<boolean>[] = [];
-    for (const chunk of chunked(ids, LEDGER_COMMIT_CHUNK)) {
-      const rows = await Promise.all(chunk.map(txId => this.firestore.getDocument<Transaction>(rowPath(uid, txId))));
-      const writes: CopyWrite[] = [];
-      chunk.forEach((txId, i) => {
-        const source = normalizeShares(rows[i]?.sharedWith).includes(householdId) ? projectable(uid, txId, rows[i]) : null;
-        if (source) writes.push({ hid: householdId, txId, data: projectRow(source, categories, membership.since) });
-      });
-      if (writes.length > 0) copies.push(this.issue(state, writes, true));
+    // From here the rows name the household, so the share has gone through
+    // and a failure resolves: a caller reads a rejection as the key not
+    // landing. Copies this phase does not write are owed to a full pass, as
+    // a refused copy write is to the journal.
+    try {
+      // The rows as this device's writes leave them, the key included: the
+      // copies are judged against the same.
+      const categories = await this.loadCategories(state);
+      const copies: Promise<boolean>[] = [];
+      for (const chunk of chunked(ids, LEDGER_COMMIT_CHUNK)) {
+        const rows = await Promise.all(chunk.map(txId => this.firestore.getDocument<Transaction>(rowPath(uid, txId))));
+        const writes: CopyWrite[] = [];
+        chunk.forEach((txId, i) => {
+          const source = normalizeShares(rows[i]?.sharedWith).includes(householdId) ? projectable(uid, txId, rows[i]) : null;
+          if (source) writes.push({ hid: householdId, txId, data: projectRow(source, categories, membership.since) });
+        });
+        if (writes.length > 0) copies.push(this.issue(state, writes, true));
+      }
+      await Promise.all(copies);
+    } catch (error) {
+      markFullPass(uid, householdId);
+      this.warn('A share\'s copies were not all written; a full pass writes them', error);
     }
-    await Promise.all(copies);
   }
 
   /**

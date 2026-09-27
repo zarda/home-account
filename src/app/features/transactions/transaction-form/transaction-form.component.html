@@ -356,6 +356,34 @@
         </mat-form-field>
       }
 
+      <!-- Shared with (Optional) — only for an account in a household. A new
+           row is written with its shares; an edit's are applied once the
+           edit is saved (offline, once it is queued), and a split's parts
+           share whatever the purchase does. -->
+      @if (shareTargets().length > 0) {
+        <div class="share-field">
+          <span class="share-label" aria-hidden="true">{{ 'transactions.share.label' | translate }}</span>
+          <mat-chip-listbox
+            class="share-chips"
+            multiple
+            [attr.aria-label]="'transactions.share.label' | translate"
+            [value]="shareSelection()"
+            (change)="shareSelection.set($event.value)"
+          >
+            @for (target of shareTargets(); track target.householdId) {
+              <mat-chip-option [value]="target.householdId">{{ target.name }}</mat-chip-option>
+            }
+          </mat-chip-listbox>
+          <p class="share-hint">{{ 'transactions.share.hint' | translate }}</p>
+          @if (pendingUnshare()) {
+            <p class="share-unshare-note" role="status">{{ 'transactions.share.unshareGoalLink' | translate }}</p>
+          }
+          @if (offlineUnshare()) {
+            <p class="share-offline-note" role="status">{{ 'transactions.share.offlineUnshare' | translate }}</p>
+          }
+        </div>
+      }
+
       <!-- Tags (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.tags' | translate }}</mat-label>

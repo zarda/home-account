@@ -757,6 +757,21 @@ describe('LedgerShareService', () => {
       expect(journal().full).toEqual(['h1']);
     });
 
+    it('resolves once the keys have landed, leaving the copies to a full pass when the rows cannot be read back', async () => {
+      const warn = spyOn(console, 'warn');
+      seedRows([row('t1', [])]);
+      spyOn(firestore, 'getDocument').and.rejectWith(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
+
+      // A rejection would tell the share controls the key did not land,
+      // while the row already names the household.
+      await expectAsync(service.share(['t1'], 'h1')).toBeResolved();
+
+      expect(commits().length).withContext('only the key').toBe(1);
+      expect(commits()[0].map(op => `${op.op} ${op.path}`)).toEqual([`update ${rowPath('t1')}`]);
+      expect(journal().full).toEqual(['h1']);
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
+    });
+
     it(`refuses more than ${MAX_BULK_SHARE} rows at once, writing nothing`, async () => {
       const ids = Array.from({ length: MAX_BULK_SHARE + 1 }, (_, i) => `t${i}`);
 

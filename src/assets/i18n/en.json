@@ -220,7 +220,25 @@
     "splitOfflineHint": "Splitting needs a connection — reconnect, or save this purchase to one category.",
     "splitPart": "Part of a split purchase",
     "rowLabel": "{{description}}, {{amount}}, {{date}}",
-    "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay."
+    "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay.",
+    "share": {
+      "label": "Shared with",
+      "hint": "Household members see its type, amount, date, description and category, never its note, receipts, tags or place.",
+      "offlineUnshare": "You're offline: the household keeps seeing this transaction until your device reconnects.",
+      "unshareGoalLink": "A household you stop sharing with no longer sees this transaction, and none of its goals count it.",
+      "notMember": "You're no longer a member of {{name}}, so the transaction wasn't shared there.",
+      "failed": "Couldn't change who this transaction is shared with",
+      "chip": "Shared · {{name}}",
+      "chipMore": "Shared · {{name}} +{{count}}",
+      "chipLabel": "Shared with {{names}}",
+      "separator": ", ",
+      "menu": "Share with…",
+      "stop": "Stop sharing",
+      "stopTitle": "Stop sharing with {{names}}?",
+      "stopMessage": "They'll no longer see \"{{description}}\", and none of their goals will count it.",
+      "stopMessageOffline": "You're offline: they'll keep seeing \"{{description}}\" until your device reconnects. Then it's taken out, and none of their goals will count it.",
+      "title": "Share with households"
+    }
   },
   "budget": {
     "title": "Budget",

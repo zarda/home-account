@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import {
   TransactionService,
+  CopiesNotPurgedError,
   RECEIPT_IMAGE_LIMIT_ERROR,
   RECEIPT_ATTACH_FAILED,
   GOAL_LINK_INVALID,
@@ -3686,24 +3687,71 @@ describe('TransactionService and the household copies', () => {
       expect(deletesAtPurge).toEqual([2, 2]);
     });
 
-    it('rejects a wipe whose purge failed, after trying every membership', async () => {
-      mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' })]);
+    it('answers how many rows the wipe deleted and how many copies it took out of the households', async () => {
+      mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' }), createTransaction({ id: 'b' })]);
+      spyOn(ledger, 'purgeOwn').and.callFake(async (hid: string) => (hid === 'h1' ? 3 : 1));
+
+      expect(await service.wipeTransactions()).toEqual({ deleted: 2, copiesPurged: 4 });
+    });
+
+    // A run after a failed purge finds no rows; what it did is the copies'
+    // count, which "0 deleted" alone would not tell.
+    it('counts the copies a wipe with no rows left takes out', async () => {
+      mockFirestore.setMockCollection(TX, []);
+      spyOn(ledger, 'purgeOwn').and.resolveTo(20);
+
+      expect(await service.wipeTransactions()).toEqual({ deleted: 0, copiesPurged: 40 });
+    });
+
+    // Still a rejection, so the erasure step fails and keeps the auth user;
+    // typed and counted, so the Data page can say the rows are gone while
+    // some households still show them.
+    it('rejects a wipe whose purge failed with the count it deleted, after trying every membership', async () => {
+      mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' }), createTransaction({ id: 'b' })]);
+      const unavailable = new Error('unavailable');
       const purgeOwn = spyOn(ledger, 'purgeOwn').and.callFake(async (hid: string) => {
-        if (hid === 'h1') throw new Error('unavailable');
+        if (hid === 'h1') throw unavailable;
         return 0;
       });
 
-      await expectAsync(service.deleteAllTransactions()).toBeRejectedWithError('unavailable');
+      const error = await service.deleteAllTransactions().then(
+        () => fail('the wipe resolved'),
+        (reason: unknown) => reason
+      );
 
+      expect(error).toBeInstanceOf(CopiesNotPurgedError);
+      expect((error as CopiesNotPurgedError).deleted).toBe(2);
+      expect((error as CopiesNotPurgedError).cause).toBe(unavailable);
       expect(purgeOwn.calls.allArgs()).toEqual([['h1'], ['h2']]);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(2);
+      expect(service.transactions()).toEqual([]);
+    });
+
+    it('rejects typed when the index naming the memberships cannot be read', async () => {
+      mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' })]);
+      const unavailable = new Error('unavailable');
+      const serve = mockFirestore.getCollection.bind(mockFirestore);
+      spyOn(mockFirestore, 'getCollection').and.callFake(
+        <T>(path: string, options?: unknown): Promise<T[]> =>
+          path === INDEX ? Promise.reject(unavailable) : serve<T>(path, options)
+      );
+
+      const error = await service.deleteAllTransactions().then(
+        () => fail('the wipe resolved'),
+        (reason: unknown) => reason
+      );
+
       expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(1);
+      expect(error).toBeInstanceOf(CopiesNotPurgedError);
+      expect((error as CopiesNotPurgedError).deleted).toBe(1);
+      expect((error as CopiesNotPurgedError).cause).toBe(unavailable);
     });
 
     it('never loads the sharing code for a wipe of an account with no memberships', async () => {
       mockFirestore.setMockCollection(INDEX, []);
       mockFirestore.setMockCollection(TX, [createTransaction({ id: 'a' })]);
 
-      await service.deleteAllTransactions();
+      expect(await service.wipeTransactions()).toEqual({ deleted: 1, copiesPurged: 0 });
 
       expect(load).not.toHaveBeenCalled();
     });
@@ -3815,6 +3863,70 @@ describe('TransactionService and the household copies', () => {
         });
       }
     }
+
+    describe("updateTransaction's issued point", () => {
+      const rowWritten = () => mockFirestore.callLog.some(call => call.method === 'updateDocument' && call.path === `${TX}/txn-1`);
+
+      async function until(done: () => boolean): Promise<void> {
+        const deadline = Date.now() + 2000;
+        while (!done() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+      }
+
+      it('is reached once the row write and its follow are issued, before the answer', async () => {
+        seedRow();
+        holdWrite('updateDocument');
+        const issued: { followed: number; rowWritten: boolean }[] = [];
+        let answered = false;
+
+        void service.updateTransaction('txn-1', { amount: 40 }, {
+          onIssued: () => issued.push({ followed: atFollow.length, rowWritten: rowWritten() })
+        }).then(() => {
+          answered = true;
+        });
+        await until(() => issued.length > 0);
+
+        expect(issued).toEqual([{ followed: 1, rowWritten: true }]);
+        expect(answered).withContext('the answer is still to come').toBeFalse();
+      });
+
+      it("is reached for a private row's write too, before the answer", async () => {
+        seedRow({ sharedWith: undefined });
+        holdWrite('updateDocument');
+        const onIssued = jasmine.createSpy('onIssued').and.callFake(() => expect(rowWritten()).toBeTrue());
+
+        void service.updateTransaction('txn-1', { amount: 40 }, { onIssued });
+        await until(() => onIssued.calls.count() > 0);
+
+        expect(onIssued).toHaveBeenCalledTimes(1);
+        expect(atFollow.length).withContext('a private row is not followed').toBe(0);
+      });
+
+      it('is never reached by an edit refused before its write is issued', async () => {
+        seedRow();
+        const onIssued = jasmine.createSpy('onIssued');
+
+        await expectAsync(service.updateTransaction('txn-1', { description: 'After', sharedWith: [] }, { onIssued }))
+          .toBeRejected();
+
+        expect(onIssued).not.toHaveBeenCalled();
+      });
+
+      it("is reached by a goal-linked edit only once its commit is answered, which offline it never is", async () => {
+        seedRow({ goalId: 'g1', goalAmount: 10 });
+        seedGoal('g1');
+        const order: string[] = [];
+        const commit = mockFirestore.runTransaction.bind(mockFirestore);
+        spyOn(mockFirestore, 'runTransaction').and.callFake((async (...args: Parameters<typeof commit>) => {
+          const result = await commit(...args);
+          order.push('committed');
+          return result;
+        }) as typeof commit);
+
+        await service.updateTransaction('txn-1', { description: 'After' }, { onIssued: () => order.push('issued') });
+
+        expect(order).toEqual(['committed', 'issued']);
+      });
+    });
 
     it('loads the sharing code before it issues a shared row\'s write, never between the write and its follow', async () => {
       let release!: () => void;

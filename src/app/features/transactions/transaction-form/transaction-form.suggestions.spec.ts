@@ -27,6 +27,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { NoteTranslationService } from '../../../core/services/note-translation.service';
 import { NoteTranslationComponent } from '../../../shared/components/note-translation/note-translation.component';
 import { PwaService } from '../../../core/services/pwa.service';
+import { FirestoreService } from '../../../core/services/firestore.service';
 import { Category, Goal, Transaction, User } from '../../../models';
 import { createCategory, createTransaction, createUser } from '../../../core/services/testing';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
@@ -159,6 +160,8 @@ describe('TransactionFormComponent suggestion chips', () => {
           getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
         } },
         { provide: PwaService, useValue: { isOnline } },
+        // An account in no household: the share control reads an empty index.
+        { provide: FirestoreService, useValue: { subscribeToCollection: () => of([]) } },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     }).compileComponents();

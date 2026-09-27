@@ -1,0 +1,29 @@
+// The row's own description, so the reader knows which row the choice is for.
+// A description runs long and is never cut (G3): it wraps.
+.share-row {
+  margin: 0 0 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.share-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+// A household name runs to 100 characters and wraps beside its box; the
+// checkbox keeps its own 40px state layer as the target.
+.share-option {
+  min-block-size: 40px;
+  overflow-wrap: anywhere;
+}
+
+.share-hint,
+.share-unshare-note,
+.share-offline-note {
+  margin: 12px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

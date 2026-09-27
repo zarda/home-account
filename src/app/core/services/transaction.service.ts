@@ -82,6 +82,19 @@ function isShared(row: { sharedWith?: unknown } | null | undefined): boolean {
   return Array.isArray(shares) && shares.length > 0;
 }
 
+export interface UpdateTransactionOptions {
+  /**
+   * Called once the edit's write has been issued (and a shared row's copies
+   * followed), before the server answers; never when the edit is refused
+   * before that. Offline the answer waits for the connection, and a caller
+   * can queue a write of its own right behind the edit from here: the
+   * persistent mutation queue keeps both, in order, across a restart. The
+   * edits that commit in a transaction reach it only once the commit is
+   * answered, which offline they never are. Must not throw.
+   */
+  onIssued?: () => void;
+}
+
 export interface TransactionMutation {
   kind: 'add' | 'update' | 'delete';
   id: string;
@@ -89,6 +102,28 @@ export interface TransactionMutation {
   // for updates that did not touch the date.
   date?: Timestamp;
   seq: number;
+}
+
+/** What a wipe removed: the account's rows, and their copies in the households. */
+export interface TransactionWipe {
+  deleted: number;
+  copiesPurged: number;
+}
+
+/**
+ * A wipe whose rows are all deleted while copies of them may still stand in a
+ * household: the purge failed, or the index naming the households could not
+ * be read, or the sharing code did not load. It still rejects, so an erasure
+ * step reports failure and keeps the auth user; `deleted` counts the rows
+ * this call removed, and `cause` is the first purge failure. A retry finds no
+ * rows and runs the purge again.
+ */
+export class CopiesNotPurgedError extends Error {
+  override name = 'CopiesNotPurgedError';
+
+  constructor(readonly deleted: number, options?: ErrorOptions) {
+    super(`${deleted} transactions deleted, but their household copies were not all purged`, options);
+  }
 }
 
 @Injectable({ providedIn: 'root' })
@@ -1032,7 +1067,11 @@ export class TransactionService {
   }
 
   // Update an existing transaction
-  async updateTransaction(id: string, data: Partial<CreateTransactionDTO>): Promise<void> {
+  async updateTransaction(
+    id: string,
+    data: Partial<CreateTransactionDTO>,
+    options: UpdateTransactionOptions = {}
+  ): Promise<void> {
     this.isLoading.set(true);
 
     try {
@@ -1136,8 +1175,10 @@ export class TransactionService {
         // After the commit, not before: a placement retry or abort must not
         // bump the local quota count for images that never landed.
         this.receiptQuota.noteImagesAdded(appended);
+        options.onIssued?.();
       } else if (linkInvolved) {
         await this.updateWithGoalSync(id, data, updateData, moneyTouched);
+        options.onIssued?.();
       } else {
         // Issued, followed, then awaited, with the sharing code at hand first
         // (sharingOrNull).
@@ -1148,6 +1189,9 @@ export class TransactionService {
           updateData
         );
         if (shared) ledger?.follow(id, shared, { ...shared, ...updateData });
+        // In the step that issued the write, so nothing a caller queues from
+        // here can land ahead of the edit or its copies.
+        options.onIssued?.();
         await write;
       }
 
@@ -1614,9 +1658,10 @@ export class TransactionService {
   }
 
   /**
-   * Delete every transaction in the account (danger zone). Returns how many
-   * documents were actually removed, so the caller can report a number rather
-   * than an unconditional "all deleted".
+   * Delete every transaction in the account (danger zone), answering how many
+   * rows it removed and how many of their copies it took out of the
+   * households, so the caller can report numbers rather than an unconditional
+   * "all deleted".
    *
    * Enumerates the collection, never the `transactions` signal: that signal
    * holds only whatever the last live query published — usually the current
@@ -1628,10 +1673,12 @@ export class TransactionService {
    * household its index lists (users/{uid}/households), ended memberships
    * included. So it can reject after every row is already deleted: when a
    * household's copies are not purged, the index is not read, or the sharing
-   * code does not load. A retry then finds no rows, returns 0 and runs the
-   * purge again.
+   * code does not load. That rejection is a CopiesNotPurgedError carrying the
+   * count, so a caller can say the rows are gone while a household still
+   * shows them. A retry then finds no rows, deletes 0 and runs the purge
+   * again; its copies count is then the only sign of what it did.
    */
-  async deleteAllTransactions(): Promise<number> {
+  async wipeTransactions(): Promise<TransactionWipe> {
     this.isLoading.set(true);
 
     try {
@@ -1683,31 +1730,47 @@ export class TransactionService {
         this.noteMutation('delete', lastId);
       }
 
-      await this.purgeCopies();
-      return deleted;
+      let copiesPurged: number;
+      try {
+        copiesPurged = await this.purgeCopies();
+      } catch (error) {
+        throw new CopiesNotPurgedError(deleted, { cause: error });
+      }
+      return { deleted, copiesPurged };
     } finally {
       this.isLoading.set(false);
     }
   }
 
   /**
+   * The wipe, answering only how many rows it deleted: an erasure step needs
+   * no more than whether it resolved. It rejects as the wipe does.
+   */
+  async deleteAllTransactions(): Promise<number> {
+    return (await this.wipeTransactions()).deleted;
+  }
+
+  /**
    * Takes the account's copies out of every household its index names, once
    * its rows are gone: a copy needs its row, so none can be written again.
-   * Tries every household, then rejects with the first failure.
+   * Tries every household, then rejects with the first failure; otherwise
+   * answers how many copies went.
    */
-  private async purgeCopies(): Promise<void> {
+  private async purgeCopies(): Promise<number> {
     const households = await this.indexedHouseholds();
-    if (households.length === 0) return;
+    if (households.length === 0) return 0;
     const ledger = (this.sharing ??= await this.ledgerShare());
     const failures: unknown[] = [];
+    let purged = 0;
     for (const hid of households) {
       try {
-        await ledger.purgeOwn(hid);
+        purged += await ledger.purgeOwn(hid);
       } catch (error) {
         failures.push(error);
       }
     }
     if (failures.length > 0) throw failures[0];
+    return purged;
   }
 
   // Get transactions by date range. The ONE path that publishes the shared

@@ -211,7 +211,25 @@
     "splitOfflineHint": "分拆需要網路連線，請重新連線，或先以單一類別儲存。",
     "splitPart": "分拆消費的一部分",
     "rowLabel": "{{description}}，{{amount}}，{{date}}",
-    "deleteSplitPartMessage": "要刪除「{{description}}」的這個部分嗎？其他部分會保留。"
+    "deleteSplitPartMessage": "要刪除「{{description}}」的這個部分嗎？其他部分會保留。",
+    "share": {
+      "label": "分享給",
+      "hint": "家庭成員會看到類型、金額、日期、說明和類別，不會看到備註、收據、標籤或地點。",
+      "offlineUnshare": "目前離線：在裝置重新連線前，家庭成員仍會看到這筆交易。",
+      "unshareGoalLink": "停止分享的家庭將不再看到這筆交易，該家庭的目標也不再計入它。",
+      "notMember": "你已不是「{{name}}」的成員，因此這筆交易沒有分享到該家庭。",
+      "failed": "無法變更這筆交易的分享對象",
+      "chip": "已分享・{{name}}",
+      "chipMore": "已分享・{{name}} +{{count}}",
+      "chipLabel": "已分享給{{names}}",
+      "separator": "、",
+      "menu": "分享給…",
+      "stop": "停止分享",
+      "stopTitle": "要停止分享給{{names}}嗎？",
+      "stopMessage": "對方將不再看到「{{description}}」，其家庭目標也不再計入它。",
+      "stopMessageOffline": "目前離線：在裝置重新連線前，對方仍會看到「{{description}}」。重新連線後便會移除，其家庭目標也不再計入它。",
+      "title": "分享給家庭"
+    }
   },
   "budget": {
     "title": "預算",

@@ -211,7 +211,25 @@
     "splitOfflineHint": "分割には接続が必要です。再接続するか、1つのカテゴリで保存してください。",
     "splitPart": "分割した支出の一部",
     "rowLabel": "{{description}}、{{amount}}、{{date}}",
-    "deleteSplitPartMessage": "「{{description}}」のこの部分を削除しますか？他の部分はそのまま残ります。"
+    "deleteSplitPartMessage": "「{{description}}」のこの部分を削除しますか？他の部分はそのまま残ります。",
+    "share": {
+      "label": "共有先",
+      "hint": "世帯のメンバーには種類、金額、日付、説明、カテゴリが表示されます。メモ、レシート、タグ、場所は表示されません。",
+      "offlineUnshare": "オフラインです。デバイスが再接続するまで、世帯にはこの取引が表示されたままです。",
+      "unshareGoalLink": "共有をやめた世帯にはこの取引が表示されなくなり、その世帯の目標にも含まれなくなります。",
+      "notMember": "{{name}}のメンバーではなくなったため、この取引はそこに共有されませんでした。",
+      "failed": "この取引の共有先を変更できませんでした",
+      "chip": "共有・{{name}}",
+      "chipMore": "共有・{{name}} +{{count}}",
+      "chipLabel": "{{names}}と共有中",
+      "separator": "、",
+      "menu": "共有先を選ぶ…",
+      "stop": "共有をやめる",
+      "stopTitle": "{{names}}との共有をやめますか？",
+      "stopMessage": "「{{description}}」は表示されなくなり、その世帯の目標にも含まれなくなります。",
+      "stopMessageOffline": "オフラインです。デバイスが再接続するまで「{{description}}」は表示されたままです。再接続後に取り除かれ、その世帯の目標にも含まれなくなります。",
+      "title": "世帯と共有"
+    }
   },
   "budget": {
     "title": "予算",

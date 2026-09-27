@@ -12,7 +12,7 @@ import {
 } from '../../models';
 import { createCategory } from '../services/testing/test-data';
 import { defaultCategories, mergeCategories } from './category-merge.utils';
-import { bucketOf, copyDiffers, normalizeShares, projectRow } from './ledger-projection.utils';
+import { bucketOf, copyDiffers, projectRow } from './ledger-projection.utils';
 
 const GEN = Timestamp.fromMillis(1_790_000_000_000);
 
@@ -339,6 +339,11 @@ describe('ledger-projection.utils', () => {
         const cut = snapshotOf({ name: 'a' + pair.repeat(MAX.name) }).name;
         expect(cut).toBe('a' + pair.repeat(Math.floor((MAX.name - 1) / pair.length)));
       });
+
+      it('never ends a cut on a lone high surrogate', () => {
+        const kept = 'n'.repeat(MAX.name - 1);
+        expect(snapshotOf({ name: kept + '\uD800' + 'tail' }).name).toBe(kept);
+      });
     });
   });
 
@@ -454,38 +459,6 @@ describe('ledger-projection.utils', () => {
           expect(copyDiffers(newer({ [field]: value } as Partial<LedgerCopyProjection>), next)).toBe(!derived);
         });
       }
-    });
-  });
-
-  describe('normalizeShares', () => {
-    const CASES: readonly { name: string; sharedWith: readonly unknown[] | null | undefined; ids: string[] }[] = [
-      { name: 'no field', sharedWith: undefined, ids: [] },
-      { name: 'null', sharedWith: null, ids: [] },
-      { name: 'an empty list', sharedWith: [], ids: [] },
-      { name: 'household keys, in order', sharedWith: ['households/b', 'households/a'], ids: ['b', 'a'] },
-      { name: 'a repeated key, kept where it first appears',
-        sharedWith: ['households/b', 'households/a', 'households/b'], ids: ['b', 'a'] },
-      { name: 'keys of other shapes, dropped',
-        sharedWith: ['groups/g1', 'households/a', '', 'households/', 'households/x/y', 'a'], ids: ['a'] },
-      { name: 'entries that are not strings, dropped', sharedWith: [null, 42, { id: 'x' }, 'households/a'], ids: ['a'] },
-    ];
-
-    for (const { name, sharedWith, ids } of CASES) {
-      it(`reads ${name}`, () => {
-        expect(normalizeShares(sharedWith as string[] | null | undefined)).toEqual(ids);
-      });
-    }
-
-    it('reads a value that is not a list as no shares', () => {
-      expect(normalizeShares('households/a' as unknown as string[])).toEqual([]);
-    });
-
-    it('leaves its input as it was', () => {
-      const sharedWith = ['households/b', 'households/b', 'groups/g'];
-
-      normalizeShares(sharedWith);
-
-      expect(sharedWith).toEqual(['households/b', 'households/b', 'groups/g']);
     });
   });
 });

@@ -305,6 +305,36 @@
   flex-shrink: 0;
 }
 
+// Where the row is shared, in the tag chip's pill; the mobile row's chip on
+// line 3 is the same mark. The name wraps anywhere rather than being cut (G3).
+.shared-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-inline-start: 6px;
+  max-width: 100%;
+  padding-inline: 6px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+
+.shared-chip-icon {
+  flex-shrink: 0;
+  font-size: var(--text-sm) !important;
+  width: 1em !important;
+  height: 1em !important;
+  line-height: 1em;
+}
+
+.shared-chip-text {
+  min-width: 0;
+}
+
 // Tag chips in the description cell, capped at three plus "+N"
 .cell-tags {
   display: inline-flex;

@@ -40,3 +40,37 @@ export function toMembership(entry: HouseholdIndexData): HouseholdMembership {
     ended: entry.endedAt !== undefined
   };
 }
+
+/**
+ * Memberships earliest joined first; one whose join is still being stamped
+ * comes last. The household switcher and the share controls both list them
+ * in this order.
+ */
+export function joinedFirst(a: HouseholdMembership, b: HouseholdMembership): number {
+  const at = (m: HouseholdMembership) => (m.joinedAt ? m.joinedAt.toMillis() : Number.POSITIVE_INFINITY);
+  return at(a) - at(b) || a.householdId.localeCompare(b.householdId);
+}
+
+/**
+ * `items` in runs of at most `size` (a positive count), in order, the last
+ * run holding what is left. The household services write, read and filter
+ * by id in runs, each within a bound the rules or Firestore set.
+ */
+export function chunked<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+/**
+ * `text` cut to at most `max` UTF-16 code units, so no rule bounding its
+ * size() at `max` refuses it for its length, and every cut of one string is
+ * the same. A cut never ends on a high surrogate: one that opens a pair
+ * would split a character, and a lone one has no UTF-8 form, the form
+ * Firestore stores a string in. What the cut keeps is the text as given.
+ */
+export function clampText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+}

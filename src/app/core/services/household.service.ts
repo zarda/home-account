@@ -19,7 +19,7 @@ import {
   isMemberPhotoUrl
 } from '../../models';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
-import { HouseholdIndexData as IndexData, isStamp, sameStamp, toMembership } from '../utils/household-index.utils';
+import { HouseholdIndexData as IndexData, isStamp, joinedFirst, sameStamp, toMembership } from '../utils/household-index.utils';
 
 /** firestore.rules, householdNameValid. */
 export const HOUSEHOLD_NAME_MAX_LENGTH = 60;
@@ -188,12 +188,6 @@ function newestFirst(a: HouseholdInvite, b: HouseholdInvite): number {
 function ownerThenJoined(a: HouseholdMember, b: HouseholdMember): number {
   if (a.role !== b.role) return a.role === 'owner' ? -1 : 1;
   return millisOf(a.joinedAt) - millisOf(b.joinedAt) || a.uid.localeCompare(b.uid);
-}
-
-/** Earliest joined first; one whose join is still being stamped comes last. */
-function joinedFirst(a: HouseholdMembership, b: HouseholdMembership): number {
-  const at = (m: HouseholdMembership) => (m.joinedAt ? m.joinedAt.toMillis() : Number.POSITIVE_INFINITY);
-  return at(a) - at(b) || a.householdId.localeCompare(b.householdId);
 }
 
 function chunked<T>(items: T[]): T[][] {

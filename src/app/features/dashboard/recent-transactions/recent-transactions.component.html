@@ -27,6 +27,7 @@
           <app-transaction-row
             [transaction]="transaction"
             [categories]="categories()"
+            [householdNames]="householdNames()"
             (activate)="onTransactionClick($event)"
           />
           @if (!last) {
