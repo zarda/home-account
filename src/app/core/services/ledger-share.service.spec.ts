@@ -1,6 +1,6 @@
 import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
-import { BehaviorSubject, Observable } from 'rxjs';
+import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { FieldValue, Timestamp, arrayRemove, arrayUnion } from '@angular/fire/firestore';
 import {
   LEDGER_REPAIR_DELAY_MS,
@@ -118,6 +118,15 @@ describe('LedgerShareService', () => {
     firestore.setMockCollection(`users/${UID}/households`, entries);
   }
 
+  /** An index document (users/{uid}/households/{hid}) as a single read names it. */
+  const indexDocPath = (hid: string) => `users/${UID}/households/${hid}`;
+
+  /** A generation the server stamped after the index read last heard: a household formed or joined just now. */
+  const JUST = new Timestamp(1_790_300_000, 987_654_000);
+
+  /** The documents asked of the server alone, in order. */
+  const serverAsked = () => firestore.getDocumentFromServerSpy.calls.map(call => call.args[0]);
+
   /** The server's side of a live membership: the own member document and the household of its generation. */
   function seedLive(hid: string, gen: Timestamp) {
     firestore.setMockDocument(`households/${hid}/members/${UID}`, { uid: UID, role: 'member', since: gen, joinedAt: gen });
@@ -138,6 +147,10 @@ describe('LedgerShareService', () => {
   const commits = () => firestore.callLog.filter(call => call.method === 'commitBatch').map(call => call.ops ?? []);
   const methods = () => firestore.callLog.map(call => call.method);
   const journal = () => readLedgerJournal(UID);
+  /** The households marked for a full pass. */
+  const marks = () => Object.keys(journal().full);
+  /** The rows journaled and the households marked. */
+  const journaled = () => ({ rows: journal().rows, full: marks() });
 
   /** Every promise chain the service started, run to its end. */
   async function settle(): Promise<void> {
@@ -221,9 +234,12 @@ describe('LedgerShareService', () => {
 
     it('never reveals a field outside the copy\'s own, whatever the row holds', async () => {
       await service.prepare();
+      const withPlace = { ...shared, location: { name: 'Home' } } as unknown as Transaction;
 
-      service.follow('t1', null, { ...shared, location: { name: 'Home' } } as unknown as Transaction);
+      service.follow('t1', null, withPlace);
 
+      // A copy is written for a row with a place, so the loop below reads real commits.
+      expect(commits()).toEqual([[setOf('h1', withPlace, G1)], [setOf('h2', withPlace, G2)]]);
       for (const [op] of commits()) {
         if (op.op !== 'set') throw new Error('expected a set');
         expect(Object.keys(op.data)).not.toContain('note');
@@ -256,7 +272,7 @@ describe('LedgerShareService', () => {
       service.follow('t1', row('t1', []), { ...row('t1', []), amount: 99 });
 
       expect(firestore.callLog).toEqual([]);
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
     });
 
     it('journals the copy before it issues the write, and settles it once acknowledged', async () => {
@@ -499,7 +515,7 @@ describe('LedgerShareService', () => {
 
       service.intend('t1', shared, { ...shared, note: 'a new note', receiptCount: 1 });
 
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
     });
 
     it('journals each household of an edit to a revealed field', () => {
@@ -521,7 +537,7 @@ describe('LedgerShareService', () => {
       userId.set(null);
       service.intend('t1', null, row('t1', ['h1']));
 
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
       expect(firestore.callLog).toEqual([]);
     });
 
@@ -651,7 +667,7 @@ describe('LedgerShareService', () => {
 
       service.followMany([['t1', null, row('t1', [])], ['t2', row('t2', []), { ...row('t2', []), amount: 99 }]]);
       expect(firestore.callLog).toEqual([]);
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
 
       expect(() => service.followMany([['t3', null, hostile]])).not.toThrow();
       expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
@@ -692,7 +708,7 @@ describe('LedgerShareService', () => {
 
       expect(commits().length).toBe(1);
       expect(commits()[0].every(op => op.op === 'update')).toBeTrue();
-      expect(journal().full).toEqual(['h1']);
+      expect(marks()).toEqual(['h1']);
     });
 
     it('offline, a single row\'s share queues its key and then its copy, journaled, and resolves without the server\'s answer', async () => {
@@ -709,7 +725,7 @@ describe('LedgerShareService', () => {
       expect(fieldValue(keyed[0], 'sharedWith').isEqual(arrayUnion(shareKey('h1')))).toBeTrue();
       // The copy of the row as the cache holds it, the queued key included.
       expect(copy).toEqual([setOf('h1', { ...source, sharedWith: [shareKey('h2'), shareKey('h1')] }, G1)]);
-      expect(journal()).toEqual({ rows: [{ hid: 'h1', txId: 't1' }], full: [] });
+      expect(journaled()).toEqual({ rows: [{ hid: 'h1', txId: 't1' }], full: [] });
     });
 
     it('offline, a single row the cache cannot read marks the household for a full pass and queues only its key', async () => {
@@ -722,13 +738,101 @@ describe('LedgerShareService', () => {
 
       expect(commits().length).toBe(1);
       expect(commits()[0].every(op => op.op === 'update')).toBeTrue();
-      expect(journal()).toEqual({ rows: [], full: ['h1'] });
+      expect(journaled()).toEqual({ rows: [], full: ['h1'] });
       expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
     });
 
-    it('shares the rows still there when one was deleted since it was chosen, key by key', async () => {
+    it('shares only the rows a copy may hold, and answers the rest as skipped', async () => {
+      const good = row('good', []);
+      seedRows([good, row('zero', [], { amount: 0 })]);
+
+      expect(await service.share(['good', 'zero'], 'h1')).toEqual({ skipped: ['zero'] });
+
+      // The key would name the household with no copy ever written, so the
+      // server's counts of rows and copies would never agree.
+      const keyed = commits().filter(ops => ops.every(op => op.op === 'update'));
+      expect(keyed.flat().map(op => op.path)).toEqual([rowPath('good')]);
+      expect(fieldValue(keyed[0][0], 'sharedWith').isEqual(arrayUnion(shareKey('h1')))).toBeTrue();
+      expect(commits().flat().filter((op): boolean => op.op === 'set'))
+        .toEqual([setOf('h1', { ...good, sharedWith: [shareKey('h1')] }, G1)]);
+      expect(journaled()).toEqual({ rows: [], full: [] });
+    });
+
+    it('refuses rows of which a copy may hold none, writing nothing', async () => {
+      seedRows([row('zero', [], { amount: 0 }), row('untitled', [], { description: 7 as unknown as string })]);
+
+      await expectAsync(service.share(['zero', 'untitled'], 'h1'))
+        .toBeRejectedWith(jasmine.objectContaining({ reason: 'unshareable' }));
+      await expectAsync(service.share(['zero'], 'h1')).toBeRejectedWith(jasmine.any(LedgerShareRefusal));
+
+      expect(commits()).toEqual([]);
+      expect(journaled()).toEqual({ rows: [], full: [] });
+    });
+
+    it('keys nothing, and rejects, when the rows cannot be read before they are keyed', async () => {
+      seedRows([row('t1', [])]);
+      const failure = Object.assign(new Error('unavailable'), { code: 'unavailable' });
+      spyOn(firestore, 'getDocument').and.rejectWith(failure);
+
+      await expectAsync(service.share(['t1'], 'h1')).toBeRejectedWith(failure);
+
+      expect(commits()).toEqual([]);
+      expect(journaled()).toEqual({ rows: [], full: [] });
+    });
+
+    it('passes over a row already gone when it is read, answering it as neither shared nor skipped', async () => {
       const kept = [row('t1', []), row('t3', [])];
       seedRows(kept);
+
+      expect(await service.share(['t1', 't2', 't3'], 'h1')).toEqual({ skipped: [] });
+
+      expect(commits()).toEqual([
+        [
+          jasmine.objectContaining({ op: 'update', path: rowPath('t1') }),
+          jasmine.objectContaining({ op: 'update', path: rowPath('t3') })
+        ],
+        [
+          setOf('h1', { ...kept[0], sharedWith: [shareKey('h1')] }, G1),
+          setOf('h1', { ...kept[1], sharedWith: [shareKey('h1')] }, G1)
+        ]
+      ]);
+    });
+
+    it('reads the rows before keying them at most ten at a time', async () => {
+      // REPAIR_READS_AT_ONCE, the bound every fan-out of reads in the service keeps.
+      const readsAtOnce = 10;
+      const rows = Array.from({ length: readsAtOnce * 2 + 5 }, (_, i) => row(`t${i}`, []));
+      seedRows(rows);
+      const read = firestore.getDocument.bind(firestore);
+      let inFlight = 0;
+      let most = 0;
+      spyOn(firestore, 'getDocument').and.callFake((async (path: string) => {
+        inFlight++;
+        most = Math.max(most, inFlight);
+        // Answered a turn later, so reads issued together are in flight together.
+        await Promise.resolve();
+        inFlight--;
+        return read(path);
+      }) as never);
+
+      expect(await service.share(rows.map(source => source.id), 'h1')).toEqual({ skipped: [] });
+
+      expect(most).toBe(readsAtOnce);
+      expect(commits().filter(ops => ops.every(op => op.op === 'set')).flat().length)
+        .withContext('every row\'s copy')
+        .toBe(rows.length);
+    });
+
+    it('shares the rows still there when one was deleted after it was read, key by key', async () => {
+      const kept = [row('t1', []), row('t3', [])];
+      seedRows([kept[0], row('t2', []), kept[1]]);
+      const read = firestore.getDocument.bind(firestore);
+      spyOn(firestore, 'getDocument').and.callFake((async (path: string) => {
+        const answer = await read(path);
+        // Deleted on another device just after this one read it.
+        if (path === rowPath('t2')) firestore.setMockDocument(path, null);
+        return answer;
+      }) as never);
 
       await service.share(['t1', 't2', 't3'], 'h1');
 
@@ -744,7 +848,7 @@ describe('LedgerShareService', () => {
         setOf('h1', { ...kept[0], sharedWith: [shareKey('h1')] }, G1),
         setOf('h1', { ...kept[1], sharedWith: [shareKey('h1')] }, G1)
       ]]);
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
     });
 
     it('marks the household for a full pass when a key commit fails, some rows perhaps already keyed', async () => {
@@ -754,13 +858,17 @@ describe('LedgerShareService', () => {
 
       await expectAsync(service.share(['t1'], 'h1')).toBeRejected();
 
-      expect(journal().full).toEqual(['h1']);
+      expect(marks()).toEqual(['h1']);
     });
 
     it('resolves once the keys have landed, leaving the copies to a full pass when the rows cannot be read back', async () => {
       const warn = spyOn(console, 'warn');
       seedRows([row('t1', [])]);
-      spyOn(firestore, 'getDocument').and.rejectWith(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
+      const read = firestore.getDocument.bind(firestore);
+      // Read before the key is written, and not after.
+      spyOn(firestore, 'getDocument').and.callFake((<T>(path: string) => commits().length === 0
+        ? read<T>(path)
+        : Promise.reject(Object.assign(new Error('unavailable'), { code: 'unavailable' }))) as never);
 
       // A rejection would tell the share controls the key did not land,
       // while the row already names the household.
@@ -768,7 +876,7 @@ describe('LedgerShareService', () => {
 
       expect(commits().length).withContext('only the key').toBe(1);
       expect(commits()[0].map(op => `${op.op} ${op.path}`)).toEqual([`update ${rowPath('t1')}`]);
-      expect(journal().full).toEqual(['h1']);
+      expect(marks()).toEqual(['h1']);
       expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
     });
 
@@ -786,6 +894,81 @@ describe('LedgerShareService', () => {
       await expectAsync(service.share(['t1'], 'h3')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
       await expectAsync(service.share(['t1'], 'h9')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
       expect(commits()).toEqual([]);
+    });
+
+    // The index read can be answered by a listener already on the index,
+    // from what it last heard, and a household formed or joined through a
+    // transaction reaches that listener only once the server's answer does.
+    describe('a household the index read does not list as a live membership', () => {
+      it('is shared into when the server holds its entry live: formed just now, not yet heard of', async () => {
+        const source = row('t1', []);
+        seedRows([source]);
+        firestore.setMockDocument(indexDocPath('h4'), indexEntry('h4', JUST, { role: 'owner' }));
+
+        expect(await service.share(['t1'], 'h4')).toEqual({ skipped: [] });
+
+        expect(serverAsked()).toEqual([indexDocPath('h4')]);
+        expect(commits()).toEqual([
+          [jasmine.objectContaining({ op: 'update', path: rowPath('t1') })],
+          [setOf('h4', { ...source, sharedWith: [shareKey('h4')] }, JUST)]
+        ]);
+        expect(journaled()).toEqual({ rows: [], full: [] });
+      });
+
+      it('is shared into, in the generation the server holds, when the read still lists an earlier membership ended', async () => {
+        const source = row('t1', []);
+        seedRows([source]);
+        firestore.setMockDocument(indexDocPath('h3'), indexEntry('h3', JUST));
+
+        await service.share(['t1'], 'h3');
+
+        expect(commits().flat().filter((op): boolean => op.op === 'set'))
+          .toEqual([setOf('h3', { ...source, sharedWith: [shareKey('h3')] }, JUST)]);
+      });
+
+      it('is refused, with nothing written, when the server holds no entry or an ended one either', async () => {
+        seedRows([row('t1', [])]);
+        firestore.setMockDocument(indexDocPath('h3'), indexEntry('h3', G3, { endedAt: DATE }));
+
+        await expectAsync(service.share(['t1'], 'h3')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
+        await expectAsync(service.share(['t1'], 'h9')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
+
+        expect(serverAsked()).toEqual([indexDocPath('h3'), indexDocPath('h9')]);
+        expect(commits()).toEqual([]);
+        expect(journaled()).toEqual({ rows: [], full: [] });
+      });
+
+      it('is refused offline as the read lists it, the server not asked', async () => {
+        seedRows([row('t1', [])]);
+        firestore.setMockDocument(indexDocPath('h4'), indexEntry('h4', JUST, { role: 'owner' }));
+        online.set(false);
+
+        await expectAsync(service.share(['t1'], 'h4')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
+
+        expect(serverAsked()).toEqual([]);
+        expect(commits()).toEqual([]);
+      });
+
+      it('rejects with the server\'s failure, writing nothing, when the server does not answer', async () => {
+        seedRows([row('t1', [])]);
+        const failure = Object.assign(new Error('unavailable'), { code: 'unavailable' });
+        spyOn(firestore, 'getDocumentFromServer').and.rejectWith(failure);
+
+        // Not a refusal: the account may well be a member, and the share
+        // controls would say it is not.
+        await expectAsync(service.share(['t1'], 'h4')).toBeRejectedWith(failure);
+
+        expect(commits()).toEqual([]);
+        expect(journaled()).toEqual({ rows: [], full: [] });
+      });
+
+      it('costs no server read when the read lists the household live', async () => {
+        seedRows([row('t1', [])]);
+
+        await service.share(['t1'], 'h1');
+
+        expect(serverAsked()).toEqual([]);
+      });
     });
 
     it(`reports how many rows are done as each commit of ${LEDGER_COMMIT_CHUNK} copies is answered`, async () => {
@@ -861,7 +1044,7 @@ describe('LedgerShareService', () => {
       await expectAsync(service.share(['t1'], 'h1', () => { throw new Error('view gone'); })).toBeResolved();
 
       expect(commits().length).withContext('the key, then the copy').toBe(2);
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
       expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
     });
   });
@@ -1233,7 +1416,7 @@ describe('LedgerShareService', () => {
         ],
         [setOf('h1', missing, G1), setOf('h1', different, G1), setOf('h1', wrongGen, G1)]
       ]);
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
       expect(readSweepStamps(UID, 'h1').full).toEqual(jasmine.any(Number));
     });
 
@@ -1252,16 +1435,230 @@ describe('LedgerShareService', () => {
       firestore.refuseBatch = () => Object.assign(new Error('refused'), { code: 'permission-denied' });
 
       await expectAsync(service.reconcile('h1', 'full')).toBeRejected();
-      expect(journal().full).toEqual(['h1']);
+      expect(marks()).toEqual(['h1']);
 
       firestore.refuseBatch = undefined;
       await service.reconcile('h1', 'full');
-      expect(journal().full).toEqual([]);
+      expect(marks()).toEqual([]);
+    });
+
+    it('keeps a mark made while a full pass lists, which the pass may not have seen', async () => {
+      seedRows([row('t1', ['h1'])]);
+      const list = firestore.getCollectionFromServer.bind(firestore);
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      let listings = 0;
+      spyOn(firestore, 'getCollectionFromServer').and.callFake(((path: string, options?: unknown) => {
+        listings++;
+        return held.then(() => list(path, options));
+      }) as never);
+
+      const pass = service.reconcile('h1', 'full');
+      for (let i = 0; i < 50 && listings === 0; i++) await new Promise(resolve => setTimeout(resolve));
+      expect(listings).withContext('the pass listing').toBeGreaterThan(0);
+      // A category moved in another tab, or a restore's row write landing.
+      markFullPass(UID, 'h1');
+      release();
+      await pass;
+
+      expect(marks()).toEqual(['h1']);
+      for (const hid of ['h1', 'h2']) stampSweep(UID, hid, 'full', Date.now());
+      firestore.callLog.length = 0;
+      await service.reconcileAll('page');
+      expect(firestore.callLog.filter(call => call.method === 'getCollectionFromServer').map(call => call.path))
+        .withContext('the next sweep diffs h1 in full')
+        .toContain(ledgerPath('h1'));
+      expect(marks()).toEqual([]);
+    });
+
+    it('in a full pass, takes the key off a row no copy may hold, so the counts agree after it', async () => {
+      const zero = row('zero', ['h1'], { amount: 0 });
+      seedRows([zero]);
+      seedCopies('h1', [copyOf({ ...zero, amount: 5 }, G1)]);
+      firestore.setMockAggregate(rowsPath(), { count: 1 });
+      firestore.setMockAggregate(ledgerPath('h1'), { count: 0 });
+
+      await service.reconcile('h1', 'full');
+
+      expect(commits().flat().some(op => op.op === 'set')).withContext('no copy written').toBeFalse();
+      const strips = commits().filter(ops => ops.every(op => op.op === 'update'));
+      expect(strips.length).toBe(1);
+      expect(strips[0].map(op => op.path)).toEqual([rowPath('zero')]);
+      const [strip] = strips[0];
+      expect(Object.keys(strip.op === 'update' ? strip.data : {})).toEqual(['sharedWith']);
+      expect(fieldValue(strip, 'sharedWith').isEqual(arrayRemove(shareKey('h1')))).toBeTrue();
+      expect(strip.op === 'update' && strip.stamp).toBe('client');
+      // A copy of a row no copy may hold is an orphan, and taken out.
+      expect(commits().flat()).toContain({ op: 'delete', path: copyPath('h1', 'zero') });
+
+      // As the server counts once the key is off.
+      firestore.setMockAggregate(rowsPath(), { count: 0 });
+      firestore.setMockAggregate(ledgerPath('h1'), { count: 0 });
+      firestore.callLog.length = 0;
+      expect(await service.reconcile('h1', 'check')).toEqual({ pass: 'check', written: 0, deleted: 0 });
+      expect(methods()).not.toContain('getCollectionFromServer');
+    });
+
+    it('keeps the household marked when a key cannot be taken off a row no copy may hold', async () => {
+      spyOn(console, 'warn');
+      seedRows([row('zero', ['h1'], { amount: 0 })]);
+      firestore.refuseBatch = ops => ops.some(op => op.op === 'update')
+        ? Object.assign(new Error('unavailable'), { code: 'unavailable' })
+        : undefined;
+
+      await expectAsync(service.reconcile('h1', 'full')).toBeRejected();
+
+      expect(commits().length).withContext('the strip, refused').toBe(1);
+      expect(marks()).toEqual(['h1']);
+    });
+
+    /**
+     * Every listing from the server, the first held until released: the
+     * reconcile's or the sweep's that asked first.
+     */
+    function holdFirstListing(): { listed: string[]; release: () => void } {
+      const list = firestore.getCollectionFromServer.bind(firestore);
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const listed: string[] = [];
+      spyOn(firestore, 'getCollectionFromServer').and.callFake(((path: string, options?: unknown) => {
+        listed.push(path);
+        return listed.length === 1 ? held.then(() => list(path, options)) : list(path, options);
+      }) as never);
+      return { listed, release };
+    }
+
+    it('holds the sweep\'s lock: a sweep asked for while it runs waits for it, then runs', async () => {
+      const { listed, release } = holdFirstListing();
+
+      const reconciling = service.reconcile('h1', 'full');
+      for (let i = 0; i < 50 && listed.length === 0; i++) await new Promise(resolve => setTimeout(resolve));
+      const sweeping = service.reconcileAll('page');
+      await settle();
+
+      expect(listed).withContext('the reconcile\'s own listings, and no sweep\'s').toEqual([rowsPath(), ledgerPath('h1')]);
+      release();
+      await reconciling;
+      await sweeping;
+      // The sweep ran once the reconcile was done: h2, never diffed in full
+      // on this device, is listed in full.
+      expect(listed.slice(2)).toContain(ledgerPath('h2'));
+    });
+
+    it('waits for a sweep running when it is asked for, then runs its own pass', async () => {
+      const { listed, release } = holdFirstListing();
+
+      const sweeping = service.reconcileAll('restore');
+      for (let i = 0; i < 50 && listed.length === 0; i++) await new Promise(resolve => setTimeout(resolve));
+      let reconciled = false;
+      const reconciling = service.reconcile('h2', 'check').then(report => {
+        reconciled = true;
+        return report;
+      });
+      await settle();
+
+      expect(methods()).withContext('no count asked while the sweep runs').not.toContain('aggregateFromServer');
+      expect(reconciled).toBeFalse();
+      release();
+      await sweeping;
+      expect(await reconciling).toEqual({ pass: 'check', written: 0, deleted: 0 });
+    });
+
+    describe('when the rules refuse a full pass\'s copies', () => {
+      const ownMember = `households/h1/members/${UID}`;
+      const refused = Object.assign(new Error('refused'), { code: 'permission-denied' });
+      const copyCommits = () => commits().filter(ops => ops.some(op => op.op === 'set'));
+
+      /** Twelve rows naming h1 with no copy (three commits of copies), and one whose copy is as it should be. */
+      function seedRefusedPass(): void {
+        const kept = row('kept', ['h1']);
+        seedRows([kept, ...Array.from({ length: 12 }, (_, i) => row(`t${i}`, ['h1']))]);
+        seedCopies('h1', [copyOf(kept, G1)]);
+        firestore.refuseBatch = ops => ops.some(op => op.op === 'set') ? refused : undefined;
+      }
+
+      it('asks the server once, and cleans up a membership that has ended instead of writing on', async () => {
+        spyOn(console, 'warn');
+        seedRefusedPass();
+        // The owner removed the account; its index entry still reads live.
+        firestore.setMockDocument(ownMember, null);
+        markFullPass(UID, 'h1');
+
+        await expectAsync(service.reconcile('h1', 'full')).toBeResolved();
+
+        expect(copyCommits().length).withContext('commits of copies').toBe(1);
+        const after = commits().slice(commits().indexOf(copyCommits()[0]) + 1);
+        // Its own copies purged, then the key off every row naming the household.
+        expect(after.map(ops => ops.map(op => `${op.op} ${op.path}`))).toEqual([
+          [`delete ${copyPath('h1', 'kept')}`],
+          [rowPath('kept'), ...Array.from({ length: 12 }, (_, i) => rowPath(`t${i}`))].map(path => `update ${path}`)
+        ]);
+        expect(journaled()).toEqual({ rows: [], full: [] });
+      });
+
+      it('purges and strips nothing, and rejects with the mark kept, when the membership stands again by its cleanup', async () => {
+        spyOn(console, 'warn');
+        seedRefusedPass();
+        firestore.setMockDocument(ownMember, null);
+        const ask = firestore.getDocumentFromServer.bind(firestore);
+        spyOn(firestore, 'getDocumentFromServer').and.callFake((async (path: string) => {
+          const answer = await ask(path);
+          // Joined again just after the judgement read the member document.
+          if (path === ownMember) seedLive('h1', G1);
+          return answer;
+        }) as never);
+
+        await expectAsync(service.reconcile('h1', 'full')).toBeRejected();
+
+        expect(commits().length).withContext('the one commit of copies, and no purge or strip').toBe(1);
+        expect(copyCommits().length).toBe(1);
+        expect(marks()).toEqual(['h1']);
+      });
+
+      it('writes every commit of copies, and rejects with the mark kept, while the membership is live', async () => {
+        spyOn(console, 'warn');
+        seedRefusedPass();
+
+        await expectAsync(service.reconcile('h1', 'full')).toBeRejected();
+
+        expect(copyCommits().length).toBe(3);
+        expect(firestore.getDocumentFromServerSpy.calls.filter(call => call.args[0] === ownMember).length)
+          .withContext('one judgement a pass')
+          .toBe(1);
+        expect(marks()).toEqual(['h1']);
+      });
+
+      it('stops, and rejects with the mark kept, when the server cannot say whether the membership stands', async () => {
+        spyOn(console, 'warn');
+        seedRefusedPass();
+        spyOn(firestore, 'getDocumentFromServer').and.rejectWith(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
+
+        await expectAsync(service.reconcile('h1', 'full')).toBeRejected();
+
+        expect(copyCommits().length).toBe(1);
+        expect(commits().some(ops => ops.some(op => op.op === 'update'))).withContext('no key taken off').toBeFalse();
+        expect(marks()).toEqual(['h1']);
+      });
     });
 
     it('refuses a household that is not one of the account\'s live memberships', async () => {
       await expectAsync(service.reconcile('h3', 'full')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
       expect(commits()).toEqual([]);
+    });
+
+    it('asks the server for a household the index read does not list live, refusing only when it holds none either', async () => {
+      await expectAsync(service.reconcile('h9', 'check')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
+      expect(serverAsked()).toEqual([indexDocPath('h9')]);
+      expect(methods()).not.toContain('aggregateFromServer');
+    });
+
+    it('reconciles a household formed just now, whose entry the server holds and the index read does not list', async () => {
+      firestore.setMockDocument(indexDocPath('h4'), indexEntry('h4', JUST, { role: 'owner' }));
+      firestore.setMockAggregate(rowsAggregate, { count: 1 });
+      firestore.setMockAggregate(ledgerPath('h4'), { count: 1 });
+
+      expect(await service.reconcile('h4', 'check')).toEqual({ pass: 'check', written: 0, deleted: 0 });
+      expect(readSweepStamps(UID, 'h4').check).toEqual(jasmine.any(Number));
     });
   });
 
@@ -1327,7 +1724,7 @@ describe('LedgerShareService', () => {
       journalRows(UID, [{ hid: 'h2', txId: 't1' }]);
       // An absent journal is all a sweep can see of a lost one.
       localStorage.removeItem(ledgerJournalKey(UID));
-      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(journaled()).toEqual({ rows: [], full: [] });
 
       await service.reconcileAll('start');
 
@@ -1426,20 +1823,75 @@ describe('LedgerShareService', () => {
   });
 
   describe('ending a membership', () => {
-    it('cleans up in order: its own copies purged, then the key stripped from its rows, then the journal forgotten', async () => {
+    const ownMemberPath = (hid: string) => `households/${hid}/members/${UID}`;
+
+    it('cleans up in order: the server asked whether the account is a member, its own copies purged, the server asked again, the key stripped from its rows, then the journal forgotten', async () => {
+      firestore.setMockDocument(ownMemberPath('h1'), null);
       journalRows(UID, [{ hid: 'h1', txId: 't1' }, { hid: 'h2', txId: 't1' }]);
       seedCopies('h1', [copyOf(row('t1', ['h1']), G1)]);
       seedRows([row('t1', ['h1', 'h2'])]);
 
-      await service.cleanupMembership('h1');
+      expect(await service.cleanupMembership('h1')).toBeTrue();
 
       expect(firestore.callLog.map(call => `${call.method} ${call.path ?? call.ops?.[0]?.path}`)).toEqual([
+        `getDocumentFromServer ${ownMemberPath('h1')}`,
         `getCollectionFromServer ${ledgerPath('h1')}`,
         `commitBatch ${copyPath('h1', 't1')}`,
+        `getDocumentFromServer ${ownMemberPath('h1')}`,
         `getCollectionFromServer ${rowsPath()}`,
         `commitBatch ${rowPath('t1')}`
       ]);
       expect(journal().rows).toEqual([{ hid: 'h2', txId: 't1' }]);
+    });
+
+    it('purges nothing, strips nothing and keeps the journal while the account is a live member of the household', async () => {
+      // seedLive: the member document and the household of one generation.
+      journalRows(UID, [{ hid: 'h1', txId: 't1' }]);
+      seedCopies('h1', [copyOf(row('t1', ['h1']), G1)]);
+      seedRows([row('t1', ['h1'])]);
+
+      expect(await service.cleanupMembership('h1')).toBeFalse();
+
+      expect(commits()).toEqual([]);
+      expect(firestore.getCollectionFromServerSpy.calls.length).toBe(0);
+      expect(journal().rows).toEqual([{ hid: 'h1', txId: 't1' }]);
+    });
+
+    it('strips nothing, and keeps the journal, once a join of the household lands between the purge and the strip', async () => {
+      firestore.setMockDocument(ownMemberPath('h1'), null);
+      journalRows(UID, [{ hid: 'h1', txId: 't1' }]);
+      seedCopies('h1', [copyOf(row('t1', ['h1']), G1)]);
+      seedRows([row('t1', ['h1'])]);
+      const apply = firestore.commitBatch.bind(firestore);
+      spyOn(firestore, 'commitBatch').and.callFake(async (ops: readonly BatchOp[]) => {
+        await apply(ops);
+        seedLive('h1', G1);
+      });
+
+      expect(await service.cleanupMembership('h1')).toBeFalse();
+
+      expect(commits().flat().map(op => op.path)).toEqual([copyPath('h1', 't1')]);
+      expect(firestore.getCollectionFromServerSpy.calls.map(call => call.args[0])).toEqual([ledgerPath('h1')]);
+      expect(journal().rows).toEqual([{ hid: 'h1', txId: 't1' }]);
+    });
+
+    it('strips the key when the member document left is of a household gone or formed again', async () => {
+      firestore.setMockDocument('households/h1', { name: 'h1', ownerId: 'someone', createdAt: G3 });
+      seedRows([row('t1', ['h1'])]);
+
+      expect(await service.cleanupMembership('h1')).toBeTrue();
+
+      expect(commits().flat().map(op => op.path)).toEqual([rowPath('t1')]);
+    });
+
+    it('purges and strips nothing when the server cannot say whether the account is a member', async () => {
+      const failure = Object.assign(new Error('unavailable'), { code: 'unavailable' });
+      spyOn(firestore, 'getDocumentFromServer').and.rejectWith(failure);
+      seedRows([row('t1', ['h1'])]);
+
+      await expectAsync(service.cleanupMembership('h1')).toBeRejectedWith(failure);
+
+      expect(commits()).toEqual([]);
     });
 
     it(`purges the account's own copies, and only its own, at most ${LEDGER_OWN_WRITE_CHUNK} per commit`, async () => {
@@ -1456,15 +1908,21 @@ describe('LedgerShareService', () => {
     });
 
     it(`strips the key from the rows naming it, at most ${LEDGER_OWN_WRITE_CHUNK} per commit`, async () => {
+      firestore.setMockDocument(ownMemberPath('h1'), null);
       seedRows([
         ...Array.from({ length: LEDGER_OWN_WRITE_CHUNK + 1 }, (_, i) => row(`t${i}`, ['h1'])),
         row('private', []),
         row('elsewhere', ['h2'])
       ]);
 
-      expect(await service.stripKey('h1')).toBe(LEDGER_OWN_WRITE_CHUNK + 1);
+      expect(await service.cleanupMembership('h1')).toBeTrue();
 
+      // No copies to purge, so every commit is the strip's.
       expect(commits().map(ops => ops.length)).toEqual([LEDGER_OWN_WRITE_CHUNK, 1]);
+      for (const op of commits().flat()) {
+        expect(op.op).toBe('update');
+        expect(fieldValue(op, 'sharedWith').isEqual(arrayRemove(shareKey('h1')))).toBeTrue();
+      }
       expect(firestore.getCollectionFromServerSpy.mostRecent()?.args[1])
         .toEqual({ where: [{ field: 'sharedWith', op: 'array-contains', value: shareKey('h1') }] });
     });
@@ -1562,6 +2020,25 @@ describe('LedgerShareService', () => {
       });
     });
 
+    it("purges as the owner of a household formed just now, whose entry the server holds and the index read does not list", async () => {
+      firestore.setMockDocument(indexDocPath('h4'), indexEntry('h4', JUST, { role: 'owner' }));
+      seedCopies('h4', [{ ...copyOf(row('m1', ['h4']), JUST), id: 'removed_m1', memberUid: 'removed' }]);
+
+      expect(await service.purgeMember('h4', 'removed')).toBe(1);
+
+      expect(commits()).toEqual([[{ op: 'delete', path: `${ledgerPath('h4')}/removed_m1` }]]);
+    });
+
+    it("refuses a removed member's purge, reading no copy, when the server holds no live entry either", async () => {
+      seedCopies('h9', [{ ...copyOf(row('m1', ['h9']), JUST), id: 'removed_m1', memberUid: 'removed' }]);
+
+      await expectAsync(service.purgeMember('h9', 'removed'))
+        .toBeRejectedWith(jasmine.objectContaining({ name: 'LedgerShareRefusal', reason: 'notMember' }));
+      expect(serverAsked()).toEqual([indexDocPath('h9')]);
+      expect(firestore.getCollectionFromServerSpy.calls.length).toBe(0);
+      expect(commits()).toEqual([]);
+    });
+
     it('refuses a member\'s purge of another member\'s copies before reading any', async () => {
       seedCopies('h1', [{ ...copyOf(row('m1', ['h1']), G1), id: 'removed_m1', memberUid: 'removed' }]);
 
@@ -1569,6 +2046,65 @@ describe('LedgerShareService', () => {
         .toBeRejectedWith(jasmine.objectContaining({ name: 'LedgerShareRefusal', reason: 'notOwner' }));
       expect(firestore.getCollectionFromServerSpy.calls.length).toBe(0);
       expect(commits()).toEqual([]);
+    });
+
+    it("reports a removed member's purge as it goes: the copies listed, then each commit answered", async () => {
+      seedIndex([indexEntry('h1', G1, { role: 'owner' })]);
+      seedCopies('h1', Array.from({ length: LEDGER_PURGE_CHUNK + 1 }, (_, i) => ({
+        ...copyOf(row(`m${i}`, ['h1']), G1),
+        id: `removed_m${i}`,
+        memberUid: 'removed'
+      })));
+      const reports: [number, number][] = [];
+
+      await service.purgeMember('h1', 'removed', (done, total) => reports.push([done, total]));
+
+      expect(reports).toEqual([[0, LEDGER_PURGE_CHUNK + 1], [LEDGER_PURGE_CHUNK, LEDGER_PURGE_CHUNK + 1], [LEDGER_PURGE_CHUNK + 1, LEDGER_PURGE_CHUNK + 1]]);
+    });
+  });
+
+  describe("the account's categories listener", () => {
+    let heard: Subject<Category[]>;
+
+    beforeEach(() => {
+      heard = new Subject<Category[]>();
+      spyOn(firestore, 'subscribeToCollection').and.returnValue(heard.asObservable() as never);
+    });
+
+    it('stops once the account signs out', async () => {
+      await service.prepare();
+      expect(heard.observed).toBeTrue();
+
+      userId.set(null);
+      TestBed.tick();
+
+      expect(heard.observed).toBeFalse();
+    });
+
+    it('stops when the service is destroyed', async () => {
+      await service.prepare();
+
+      TestBed.resetTestingModule();
+
+      expect(heard.observed).toBeFalse();
+    });
+
+    it('says nothing when the SDK shuts down under it', async () => {
+      const warn = spyOn(console, 'warn');
+      await service.prepare();
+
+      heard.error(Object.assign(new Error('Firestore shutting down'), { code: 'aborted' }));
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('still says when it stops for another reason', async () => {
+      const warn = spyOn(console, 'warn');
+      await service.prepare();
+
+      heard.error(Object.assign(new Error('internal'), { code: 'internal' }));
+
+      expect(warn).toHaveBeenCalledTimes(1);
     });
   });
 

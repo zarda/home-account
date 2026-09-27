@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { DestroyRef, Injectable, Injector, computed, effect, inject, signal, untracked } from '@angular/core';
 import type { AbstractControl, ValidationErrors } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { Timestamp, deleteField, serverTimestamp } from '@angular/fire/firestore';
@@ -9,12 +9,15 @@ import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { HOUSEHOLD_INVITE_CALLABLE, HouseholdInviteResponse } from './household-invite-callable';
 import { clearLedgerDeviceState } from './ledger-journal';
+import type { LedgerShareProgress, LedgerShareService } from './ledger-share.service';
 import {
   Household,
   HouseholdInvite,
   HouseholdMember,
   HouseholdMemberIdentity,
   HouseholdMembership,
+  LEDGER_PURGE_CHUNK,
+  LEDGER_QUERY_SHAPES,
   MAX_HOUSEHOLDS_PER_ACCOUNT,
   isMemberPhotoUrl
 } from '../../models';
@@ -155,6 +158,30 @@ export class HouseholdError extends Error {
 }
 
 /**
+ * A removal whose member is out of the household, and the rows they shared
+ * into it not all purged: purgeRemoved finishes it.
+ */
+export class HouseholdPurgeError extends HouseholdError {
+  override name = 'HouseholdPurgeError';
+}
+
+/**
+ * An ending of the account's own membership (a leave, a dissolve) that
+ * landed, the membership over, with the rows the account shared into the
+ * household not all taken out, or its index entry left: the next tidy
+ * finishes it, from the entry.
+ */
+export class HouseholdCleanupError extends HouseholdError {
+  override name = 'HouseholdCleanupError';
+}
+
+/**
+ * The household an action was asked for, as the page showed it when the
+ * action began: its id, and its generation.
+ */
+export type HouseholdTarget = Pick<Household, 'id' | 'createdAt'>;
+
+/**
  * What the server says of one index entry's membership:
  * - `live`: the own member document of the entry's generation, in a
  *   household of that generation;
@@ -170,6 +197,12 @@ const householdPath = (householdId: string) => `households/${householdId}`;
 const membersPath = (householdId: string) => `households/${householdId}/members`;
 const memberPath = (householdId: string, uid: string) => `${membersPath(householdId)}/${uid}`;
 const invitePath = (inviteId: string) => `${INVITES}/${inviteId}`;
+const budgetsPath = (householdId: string) => `${householdPath(householdId)}/budgets`;
+const goalsPath = (householdId: string) => `${householdPath(householdId)}/goals`;
+const contributionsPath = (householdId: string, goalId: string) => `${goalsPath(householdId)}/${goalId}/contributions`;
+
+/** The field every household plan and contribution holds its generation in. */
+const [[PLAN_GENERATION]] = LEDGER_QUERY_SHAPES.activeBudgets.fields;
 const inviteIdOf = (householdId: string, uid: string) => `${householdId}_${uid}`;
 
 function millisOf(value: unknown): number {
@@ -190,10 +223,10 @@ function ownerThenJoined(a: HouseholdMember, b: HouseholdMember): number {
   return millisOf(a.joinedAt) - millisOf(b.joinedAt) || a.uid.localeCompare(b.uid);
 }
 
-function chunked<T>(items: T[]): T[][] {
+function chunked<T>(items: T[], size = HOUSEHOLD_COMMIT_CHUNK): T[][] {
   const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += HOUSEHOLD_COMMIT_CHUNK) {
-    chunks.push(items.slice(i, i + HOUSEHOLD_COMMIT_CHUNK));
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
   }
   return chunks;
 }
@@ -231,7 +264,8 @@ function clip(text: string, max: number): string {
  * state it was decided on. Each write is shaped for firestore.rules exactly:
  * the rules, not this service, decide who may do what. A membership ends in
  * a fixed order: its member document goes and its index entry is marked
- * ended in one commit, and the entry itself goes last.
+ * ended in one commit, the rows the account shared into the household are
+ * taken out, and the entry itself goes last.
  */
 @Injectable({ providedIn: 'root' })
 export class HouseholdService {
@@ -240,6 +274,7 @@ export class HouseholdService {
   private readonly pwa = inject(PwaService);
   private readonly translation = inject(TranslationService);
   private readonly inviteCallable = inject(HOUSEHOLD_INVITE_CALLABLE);
+  private readonly injector = inject(Injector);
 
   private readonly connected = signal(false);
   /** The account's index as its listener last answered; undefined until it has. */
@@ -463,6 +498,11 @@ export class HouseholdService {
     const uid = this.requireUser();
     return this.attempt(async () => {
       await this.refuseAtLimit(uid, householdId);
+      // An earlier membership of this household whose ending was cut off
+      // can have left copies of the account's rows in its ledger, and its
+      // key on the rows. Both go before the join: once joined, the next
+      // sweep would share those rows into the household again.
+      await (await this.ledgerShare()).cleanupMembership(householdId);
       const inviteId = inviteIdOf(householdId, uid);
       const inviteRef = this.ref(invitePath(inviteId));
       const read: { invite?: HouseholdInvite } = {};
@@ -519,7 +559,7 @@ export class HouseholdService {
   async invite(email: string): Promise<HouseholdInviteResponse> {
     const uid = this.requireUser();
     return this.attempt(async () => {
-      const { householdId } = this.ownedMembership(uid);
+      const { householdId } = await this.ownedTarget(uid);
       return this.inviteCallable({
         householdId,
         email: email.trim(),
@@ -528,19 +568,26 @@ export class HouseholdService {
     });
   }
 
-  /** Withdraws one of the owner's pending invites. */
-  async revoke(inviteId: string): Promise<void> {
+  /**
+   * Withdraws one of the owner's pending invites.
+   *
+   * This and the actions on a household below it (rename, remove,
+   * purgeRemoved, leave, dissolve) take `household`, the household the
+   * action was asked for, and act on that one whichever is selected by
+   * then; without it, on the selected household.
+   */
+  async revoke(inviteId: string, household?: HouseholdTarget): Promise<void> {
     const uid = this.requireUser();
     await this.attempt(async () => {
-      this.ownedMembership(uid);
+      await this.ownedTarget(uid, household);
       await this.deleteInvite(inviteId);
     });
   }
 
-  async rename(name: string): Promise<void> {
+  async rename(name: string, household?: HouseholdTarget): Promise<void> {
     const uid = this.requireUser();
     await this.attempt(async () => {
-      const { householdId } = this.ownedMembership(uid);
+      const { householdId } = await this.ownedTarget(uid, household);
       const clean = this.validName(name);
       await this.firestore.runTransaction(async tx => {
         tx.update(this.ref(householdPath(householdId)), { name: clean, updatedAt: serverTimestamp() });
@@ -549,33 +596,60 @@ export class HouseholdService {
   }
 
   /**
-   * The owner removes another member of the selected household. The removed
-   * member's index entry is its own to delete (tidyEndedMemberships).
+   * The owner removes another member: their member document goes, then the
+   * rows they shared into the household are purged
+   * (LedgerShareService.purgeMember), `progress` hearing how far. A purge
+   * that fails once the member is out rejects with HouseholdPurgeError, and
+   * purgeRemoved finishes it; until then the household's view hides the
+   * rows of anyone no longer a member. The removed member's index entry,
+   * and the key on their rows, are theirs to clear (tidyEndedMemberships).
    */
-  async remove(memberUid: string): Promise<void> {
+  async remove(memberUid: string, household?: HouseholdTarget, progress?: LedgerShareProgress): Promise<void> {
     const uid = this.requireUser();
     await this.attempt(async () => {
-      const { householdId } = this.ownedMembership(uid);
+      const { householdId } = await this.ownedTarget(uid, household);
       if (memberUid === uid) throw new HouseholdError(this.t('household.errors.ownerLeaves'));
       await this.commitDeletes([memberPath(householdId, memberUid)]);
+      await this.purgeMemberRows(householdId, memberUid, progress);
     });
   }
 
-  /** A member leaves the selected household. The owner cannot: it dissolves instead. */
-  async leave(): Promise<void> {
+  /** The purge of a removal that rejected with HouseholdPurgeError, asked for again by the owner. */
+  async purgeRemoved(memberUid: string, household?: HouseholdTarget, progress?: LedgerShareProgress): Promise<void> {
     const uid = this.requireUser();
     await this.attempt(async () => {
-      const { householdId, member } = this.liveMembership(uid);
+      const { householdId } = await this.ownedTarget(uid, household);
+      await this.purgeMemberRows(householdId, memberUid, progress);
+    });
+  }
+
+  /**
+   * A member leaves: its member document goes and its index entry is marked
+   * ended, then the rows it shared are taken out of the household and the
+   * key off them, then the entry goes. The owner cannot leave: it dissolves
+   * instead. A step after the member document went that fails rejects with
+   * HouseholdCleanupError: the account is out, and the next tidy finishes
+   * the rest.
+   */
+  async leave(household?: HouseholdTarget): Promise<void> {
+    const uid = this.requireUser();
+    await this.attempt(async () => {
+      const { householdId, member } = await this.targetMembership(uid, household);
       if (member.role === 'owner') throw new HouseholdError(this.t('household.errors.ownerLeaves'));
       await this.endingMembership(householdId, () =>
         this.endOwnMembership(uid, householdId, { member: true, household: false }));
     });
   }
 
-  async dissolve(): Promise<void> {
+  /**
+   * The owner dissolves the household (dissolveHousehold). As for a leave,
+   * a step after the final commit that fails rejects with
+   * HouseholdCleanupError: the household is gone.
+   */
+  async dissolve(household?: HouseholdTarget): Promise<void> {
     const uid = this.requireUser();
     await this.attempt(async () => {
-      const { householdId, member } = this.ownedMembership(uid);
+      const { householdId, member } = await this.ownedTarget(uid, household);
       await this.dissolveHousehold(uid, householdId, member.since);
     });
   }
@@ -584,7 +658,8 @@ export class HouseholdService {
    * Ends every index entry whose membership the server says is over: a
    * removal, a dissolve, or an ending cut off part-way. What is left of each
    * goes in the usual order, an orphaned member document of the entry's own
-   * generation with it. Also removes, once per account in a session, the
+   * generation with it, and the rows the account shared into the household
+   * before the entry. Also removes, once per account in a session, the
    * profile's householdId left from before the index. Answers whether
    * anything stale was ended.
    *
@@ -609,10 +684,11 @@ export class HouseholdService {
   /**
    * For account deletion: every entry in the index is ended, live or not.
    * An owner dissolves, a member leaves, and what is left of an ended one is
-   * cleared. Then every invite addressed to or sent by the account is
-   * deleted, and this device forgets the household it last selected for the
-   * account. The index outlives the profile, so a retry after a failure
-   * finds whatever is left.
+   * cleared, the rows the account shared into each household taken out
+   * before its entry goes. Then every invite addressed to or sent by the
+   * account is deleted, and this device forgets the household it last
+   * selected for the account. The index outlives the profile, so a retry
+   * after a failure finds whatever is left.
    */
   async deleteAll(): Promise<void> {
     const uid = this.requireUser();
@@ -892,13 +968,17 @@ export class HouseholdService {
    * The owner's sent invites into this household go first: with none left,
    * nobody can join between the member sweep and the final commit. Invites
    * into another household it owns stay. The members are read from the
-   * server, not from a listener that may hold a partial view.
+   * server, not from a listener that may hold a partial view. The
+   * household's own plans go next, once no other member is left to add one,
+   * then the final commit, then the owner's own shared rows, and the index
+   * entry last. The other members' copies are unreadable from the final
+   * commit on; each author's device takes its own out when it next tidies.
    *
    * A step refused because the household is already gone means a dissolve
    * got there first: this one's own final commit, sent again after its
    * answer was lost, or another tab's. What is left of the membership is
    * cleared, which the rules allow once the household is gone, and the
-   * dissolve stands (ADR 0156). The index entry goes last either way.
+   * dissolve stands (ADR 0156), going on to the shared rows and the entry.
    */
   private dissolveHousehold(uid: string, householdId: string, since: Timestamp): Promise<void> {
     return this.endingMembership(householdId, async () => {
@@ -911,13 +991,33 @@ export class HouseholdService {
         for (const chunk of chunked(others)) {
           await this.commitDeletes(chunk.map(memberUid => memberPath(householdId, memberUid)));
         }
+        await this.deletePlans(householdId, since);
         await this.markEnded(uid, householdId, { member: true, household: true });
       } catch (error) {
         if (!isRefused(error) || !(await this.householdGone(householdId))) throw error;
         await this.markEnded(uid, householdId, { member: true, household: false });
       }
-      await this.dropIndex(uid, householdId);
+      return this.closeEnded(uid, householdId);
     });
+  }
+
+  /**
+   * The household's own budgets and goals, and each goal's contributions,
+   * listed from the server and deleted as the owner, whose delete the rules
+   * judge by one lookup (the household): LEDGER_PURGE_CHUNK per commit.
+   * Each goal's contributions go before the goal, since nothing finds a
+   * contribution once its goal is gone.
+   */
+  private async deletePlans(householdId: string, since: Timestamp): Promise<void> {
+    const ofGeneration = { where: [{ field: PLAN_GENERATION, op: '==' as const, value: since }] };
+    const idsIn = async (path: string) =>
+      (await this.firestore.getCollectionFromServer<{ id: string }>(path, ofGeneration)).map(doc => doc.id);
+    const paths = (await idsIn(budgetsPath(householdId))).map(id => `${budgetsPath(householdId)}/${id}`);
+    for (const goalId of await idsIn(goalsPath(householdId))) {
+      const contributions = contributionsPath(householdId, goalId);
+      paths.push(...(await idsIn(contributions)).map(id => `${contributions}/${id}`), `${goalsPath(householdId)}/${goalId}`);
+    }
+    for (const chunk of chunked(paths, LEDGER_PURGE_CHUNK)) await this.commitDeletes(chunk);
   }
 
   /**
@@ -946,15 +1046,18 @@ export class HouseholdService {
   /**
    * Runs work that ends one of this account's own memberships, so its
    * listeners hearing the member document go do not report that as lost
-   * access. Work that fails, or answers false because the membership turned
-   * out not to be its to end, leaves a later loss to be reported.
+   * access. Work that fails before the membership ended, or answers false
+   * because the membership turned out not to be its to end, leaves a later
+   * loss to be reported. One that fails after it (HouseholdCleanupError)
+   * ended it all the same: the household stays among those ending until its
+   * entry goes (onIndex).
    */
   private async endingMembership(householdId: string, work: () => Promise<boolean | void>): Promise<void> {
     this.ending.add(householdId);
     try {
       if ((await work()) === false) this.ending.delete(householdId);
     } catch (error) {
-      this.ending.delete(householdId);
+      if (!(error instanceof HouseholdCleanupError)) this.ending.delete(householdId);
       throw error;
     }
   }
@@ -969,8 +1072,7 @@ export class HouseholdService {
     let ended = false;
     await this.endingMembership(entry.id, async () => {
       if (state === 'gone' && entry.endedAt !== undefined) {
-        await this.dropIndex(uid, entry.id);
-        ended = true;
+        ended = await this.closeEntry(uid, entry.id);
       } else {
         ended = await this.endOwnMembership(uid, entry.id, { member: state !== 'gone', household: false }, entry);
       }
@@ -980,9 +1082,10 @@ export class HouseholdService {
   }
 
   /**
-   * The two steps that end a membership in order: marked ended with its
-   * member document gone, then the entry. Answers false, having written
-   * nothing, when the entry no longer reads as `judged` (markEnded).
+   * The steps that end a membership in order: marked ended with its member
+   * document gone, then closeEntry (closeEnded). Answers false, having
+   * written nothing, when the entry no longer reads as `judged`
+   * (markEnded), and false when closeEntry finds the account a member again.
    */
   private async endOwnMembership(
     uid: string,
@@ -991,8 +1094,58 @@ export class HouseholdService {
     judged?: IndexData
   ): Promise<boolean> {
     if (!(await this.markEnded(uid, householdId, parts, judged))) return false;
+    return this.closeEnded(uid, householdId);
+  }
+
+  /**
+   * closeEntry for a membership this run has just ended: whatever stops it
+   * is a HouseholdCleanupError, since the membership is over by then and
+   * the entry left for the next tidy.
+   */
+  private async closeEnded(uid: string, householdId: string): Promise<boolean> {
+    try {
+      return await this.closeEntry(uid, householdId);
+    } catch (error) {
+      throw new HouseholdCleanupError(this.t('household.errors.cleanup'), { cause: error });
+    }
+  }
+
+  /**
+   * The last steps of every ending, once the membership has ended: the rows
+   * the account shared into the household are taken out and the key off
+   * them (LedgerShareService.cleanupMembership), then the index entry goes.
+   * The entry is how a later tidy or erasure finds the household again, so
+   * it goes only once the rows are out. When the server says, just before
+   * the key is stripped, that the account is a member again, the entry is
+   * that membership's: it stays, and this answers false.
+   */
+  private async closeEntry(uid: string, householdId: string): Promise<boolean> {
+    if (!(await (await this.ledgerShare()).cleanupMembership(householdId))) return false;
     await this.dropIndex(uid, householdId);
     return true;
+  }
+
+  /**
+   * An owner's purge of the rows a removed member shared into the
+   * household. Whatever stops it is a HouseholdPurgeError: the member is
+   * already out.
+   */
+  private async purgeMemberRows(householdId: string, memberUid: string, progress?: LedgerShareProgress): Promise<void> {
+    try {
+      await (await this.ledgerShare()).purgeMember(householdId, memberUid, progress);
+    } catch (error) {
+      throw new HouseholdPurgeError(this.t('household.errors.purge'), { cause: error });
+    }
+  }
+
+  /**
+   * The code that takes a membership's shared rows out (LedgerShareService),
+   * reached only by this dynamic import, so it stays out of the initial
+   * bundle.
+   */
+  private async ledgerShare(): Promise<LedgerShareService> {
+    const { LedgerShareService } = await import('./ledger-share.service');
+    return this.injector.get(LedgerShareService);
   }
 
   /**
@@ -1037,7 +1190,7 @@ export class HouseholdService {
     return true;
   }
 
-  /** The last step of every ending. The rules let it through only once the membership is gone. */
+  /** The index entry's delete, which the rules let through only once the membership is gone. */
   private dropIndex(uid: string, householdId: string): Promise<void> {
     return this.commitDeletes([indexPath(uid, householdId)]);
   }
@@ -1251,8 +1404,36 @@ export class HouseholdService {
     return { householdId: household.id, member };
   }
 
-  private ownedMembership(uid: string): { householdId: string; member: HouseholdMember } {
-    const live = this.liveMembership(uid);
+  /**
+   * The caller's live membership of the household an action was asked for,
+   * or of the selected one when none is named. A named household is taken
+   * as shown when it is the one shown, of the generation asked for;
+   * otherwise its member document is read from the server, and must be of
+   * that generation. An action whose household changed under it, by a
+   * switch or a loss, so never lands on another.
+   */
+  private async targetMembership(
+    uid: string,
+    household?: HouseholdTarget
+  ): Promise<{ householdId: string; member: HouseholdMember }> {
+    if (!household) return this.liveMembership(uid);
+    const shown = this.household();
+    const own = this.ownMember();
+    if (shown?.id === household.id && own && this.uid === uid && sameStamp(own.since, household.createdAt)) {
+      return { householdId: household.id, member: own };
+    }
+    const member = await this.firestore.getDocumentFromServer<HouseholdMember>(memberPath(household.id, uid));
+    if (!member || !sameStamp(member.since, household.createdAt)) {
+      throw new HouseholdError(this.t('household.errors.refused'));
+    }
+    return { householdId: household.id, member };
+  }
+
+  private async ownedTarget(
+    uid: string,
+    household?: HouseholdTarget
+  ): Promise<{ householdId: string; member: HouseholdMember }> {
+    const live = await this.targetMembership(uid, household);
     if (live.member.role !== 'owner') throw new HouseholdError(this.t('household.errors.notOwner'));
     return live;
   }

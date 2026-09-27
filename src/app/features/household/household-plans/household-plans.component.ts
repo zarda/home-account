@@ -34,7 +34,6 @@ import { NotificationService } from '../../../core/services/notification.service
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
-import { sameStamp } from '../../../core/utils/household-index.utils';
 import {
   BudgetAlertSeverity,
   BudgetPeriod,
@@ -53,7 +52,7 @@ import { MemberChipComponent } from '../../../shared/components/member-chip/memb
 import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { writeFailureMessage } from '../household-failure';
-import { FocusContext, focusWhenRendered } from '../household-focus';
+import { FocusContext, OpenDialog, closeDialogsOnSwitch, focusWhenRendered, sameShownHousehold } from '../household-focus';
 import {
   HouseholdBudgetDialogComponent,
   HouseholdBudgetDialogData
@@ -201,10 +200,6 @@ function goalChanges(before: HouseholdGoal, input: HouseholdGoalInput): Househol
   return changes;
 }
 
-/** The same household, and the same generation of it: a rename is no change. */
-const sameHousehold = (a: Household | null, b: Household | null): boolean =>
-  a !== null && b !== null && a.id === b.id && sameStamp(a.createdAt, b.createdAt);
-
 /** A threshold as stored: any number the rules let through, so one that is not finite is taken as none. */
 const thresholdOf = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -221,6 +216,8 @@ const thresholdOf = (value: unknown): number | undefined =>
  * rules refuse anyone else. Every write needs a connection, so offline one
  * is refused before its dialog opens. A dialog stays open when its save is
  * refused, with the service's words for why; one action runs at a time.
+ * Every save of a new plan's or a contribution's dialog goes under one id,
+ * so saving again after the connection dropped never makes it twice.
  *
  * A dialog or confirm belongs to the household it was opened for. It
  * closes once the page shows another household, another generation of it,
@@ -279,8 +276,9 @@ export class HouseholdPlansComponent {
   };
 
   /**
-   * A write is on its way. Every control is disabled meanwhile, and an
-   * action reached from script is refused, not queued, until it ends.
+   * A write is on its way. Every control says it is not offered meanwhile
+   * (aria-disabled) but keeps focus, and a press on one, or an action
+   * reached from script, is refused, not queued, until it ends.
    */
   readonly pending = signal(false);
 
@@ -288,7 +286,7 @@ export class HouseholdPlansComponent {
    * The dialogs open from here, confirms included, each with the household
    * it was opened for. While one is open no other action starts.
    */
-  private readonly dialogsOpen = new Map<Pick<MatDialogRef<unknown>, 'close'>, Household | null>();
+  private readonly dialogsOpen = new Map<OpenDialog, Household | null>();
 
   /** Where focus goes once the plans show what the last action did. */
   private readonly landing = signal<Landing | null>(null);
@@ -420,29 +418,23 @@ export class HouseholdPlansComponent {
         focusWhenRendered(this.focus, landing.selectors, { from: landing.from });
       });
     });
-    // Nothing asked of one household is answered in another.
-    effect(() => {
-      const shown = this.householdService.household();
-      untracked(() => {
-        for (const [ref, opened] of this.dialogsOpen) if (!sameHousehold(opened, shown)) ref.close();
-      });
-    });
-    this.focus.destroyRef.onDestroy(() => {
-      for (const ref of this.dialogsOpen.keys()) ref.close();
-    });
+    closeDialogsOnSwitch(() => this.householdService.household(), this.dialogsOpen, this.focus.destroyRef);
   }
 
   async newBudget(event: Event): Promise<void> {
     if (this.refused()) return;
     const from = event.currentTarget as Element | null;
     const opened = this.householdService.household();
+    // One id for every save of this dialog: a save sent again after the
+    // connection dropped is then recognised if it landed, not made twice.
+    const id = this.plans.newId();
     let created = '';
     const saved = await this.openDialog<HouseholdBudgetDialogComponent, HouseholdBudgetDialogData>(
       HouseholdBudgetDialogComponent,
       {
         currency: this.baseCurrency(),
         save: async input => {
-          created = await this.writeFor(opened, () => this.plans.createBudget(input));
+          created = await this.writeFor(opened, () => this.plans.createBudget(input, id));
         }
       },
       opened
@@ -457,13 +449,15 @@ export class HouseholdPlansComponent {
     if (this.refused()) return;
     const from = event.currentTarget as Element | null;
     const opened = this.householdService.household();
+    // One id for every save of this dialog, as a new budget's.
+    const id = this.plans.newId();
     let created = '';
     const saved = await this.openDialog<HouseholdGoalDialogComponent, HouseholdGoalDialogData>(
       HouseholdGoalDialogComponent,
       {
         currency: this.baseCurrency(),
         save: async input => {
-          created = await this.writeFor(opened, () => this.plans.createGoal(input));
+          created = await this.writeFor(opened, () => this.plans.createGoal(input, id));
         }
       },
       opened
@@ -561,13 +555,16 @@ export class HouseholdPlansComponent {
     const goal = this.plans.goals().find(figures => figures.goal.id === view.id)?.goal;
     if (!goal) return;
     const opened = this.householdService.household();
+    // One id for every save of this dialog, as a new budget's; another
+    // dialog, even for the same amount, is another contribution.
+    const id = this.plans.newId();
     const saved = await this.openDialog<HouseholdContributionDialogComponent, HouseholdContributionDialogData>(
       HouseholdContributionDialogComponent,
       {
         goalName: goal.name,
         currency: goal.currency,
         save: async (amount, date) => {
-          await this.writeFor(opened, () => this.plans.addContribution(goal.id, amount, date));
+          await this.writeFor(opened, () => this.plans.addContribution(goal.id, amount, date, id));
         }
       },
       opened
@@ -601,7 +598,9 @@ export class HouseholdPlansComponent {
    * Refuses an action while another is on its way or a dialog is open, and
    * offline before its first dialog: the service refuses offline too, but
    * only once a dialog has been filled in; it still catches a connection
-   * lost meanwhile.
+   * lost meanwhile. The section's buttons stay focusable while a write is on
+   * its way, so focus is not dropped on the document: this is what refuses
+   * their press.
    */
   private refused(): boolean {
     if (this.pending() || this.dialogsOpen.size > 0) return true;
@@ -631,7 +630,7 @@ export class HouseholdPlansComponent {
    * and the service taking its household.
    */
   private writeFor<T>(opened: Household | null, write: () => Promise<T>): Promise<T> {
-    if (!sameHousehold(opened, this.householdService.household())) {
+    if (!sameShownHousehold(opened, this.householdService.household())) {
       return Promise.reject(new HouseholdError(this.t('household.errors.refused')));
     }
     return write();

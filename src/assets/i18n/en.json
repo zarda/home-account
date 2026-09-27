@@ -228,6 +228,7 @@
       "unshareGoalLink": "A household you stop sharing with no longer sees this transaction, and none of its goals count it.",
       "notMember": "You're no longer a member of {{name}}, so the transaction wasn't shared there.",
       "failed": "Couldn't change who this transaction is shared with",
+      "unshareable": "This transaction can't be shared: it needs an amount above zero, a date, a description and a category.",
       "chip": "Shared · {{name}}",
       "chipMore": "Shared · {{name}} +{{count}}",
       "chipLabel": "Shared with {{names}}",
@@ -294,7 +295,11 @@
       },
       "tooMany": "Only {{max}} transactions can be shared or unshared at once",
       "notMember": "You're no longer a member of {{name}}, so the transactions weren't shared there.",
-      "failed": "Couldn't change who the selected transactions are shared with"
+      "failed": "Couldn't change who the selected transactions are shared with",
+      "unshareable": {
+        "one": "{{count}} transaction couldn't be shared: it needs an amount above zero, a date, a description and a category.",
+        "other": "{{count}} transactions couldn't be shared: each needs an amount above zero, a date, a description and a category."
+      }
     }
   },
   "budget": {
@@ -593,11 +598,11 @@
     "deleteAccount": "Delete Account",
     "deleteAccountDescription": "Permanently erase this account, its data, and its receipt images",
     "deleteAccountBackupTitle": "Export a backup first?",
-    "deleteAccountBackupMessage": "The backup carries your transactions, categories, budgets, recurring rules, goals, saved searches, stored answers, merchant memory, import history and monthly insights. It cannot carry your stored keys, the sign-in history or the feedback you have sent. Once the account is deleted nothing can be recovered. Export a backup before continuing?",
+    "deleteAccountBackupMessage": "The backup carries your transactions, categories, budgets, recurring rules, goals, saved searches, stored answers, merchant memory, import history and monthly insights. It cannot carry your stored keys, the sign-in history or the feedback you have sent. Nor does it carry which households your transactions are shared with, or anything that belongs to a household (its shared transactions, budgets, goals and contributions): restored transactions come back private. Once the account is deleted nothing can be recovered. Export a backup before continuing?",
     "deleteAccountBackupExport": "Export backup",
     "deleteAccountBackupSkip": "Continue without backup",
     "deleteAccountTitle": "Delete this account?",
-    "deleteAccountWarning": "This permanently erases everything: transactions, receipt images, categories, budgets, recurring rules, goals, saved searches, stored answers, merchant memory, import history, insights, stored keys, the feedback you have sent, the sign-in history, your household memberships and the rows you shared into them (a household you own is dissolved for every member), and the account itself. This cannot be undone.",
+    "deleteAccountWarning": "This permanently erases everything: transactions, receipt images, categories, budgets, recurring rules, goals, saved searches, stored answers, merchant memory, import history, insights, stored keys, the feedback you have sent, the sign-in history, your household memberships and the transactions you shared into them (a household you own is dissolved for every member), the contributions you recorded on the goals of a household you're still in, and the account itself. The household budgets and goals you made in a household you don't own stay with that household, as do the contributions you recorded in a household you've left or been removed from. This cannot be undone.",
     "deleteAccountConfirm": "Continue",
     "deleteAccountTypeConfirm": "Type \"DELETE\" to erase this account permanently.",
     "deleteAccountFinal": "Erase account",
@@ -615,7 +620,7 @@
     "csvParseFailed": "Failed to parse CSV file",
     "invalidBackupFormat": "Invalid backup file format",
     "confirmRestore": "Restore backup?",
-    "confirmRestoreMessage": "This will restore {{transactions}} transactions, {{categories}} categories, {{budgets}} budgets, {{recurring}} recurring rules, {{goals}} goals, {{insightSnapshots}} monthly insights, {{savedSearches}} saved searches, {{searchAnswers}} stored answers, {{categoryMemory}} remembered categories, {{tagMemory}} remembered tag sets and {{imports}} import records. Existing records with the same ids are updated in place, keeping anything the backup does not carry.",
+    "confirmRestoreMessage": "This will restore {{transactions}} transactions, {{categories}} categories, {{budgets}} budgets, {{recurring}} recurring rules, {{goals}} goals, {{insightSnapshots}} monthly insights, {{savedSearches}} saved searches, {{searchAnswers}} stored answers, {{categoryMemory}} remembered categories, {{tagMemory}} remembered tag sets and {{imports}} import records. Existing records with the same ids are updated in place, keeping anything the backup does not carry. A restored transaction that isn't already in this account comes back private; share it again from Transactions. One that is keeps its sharing.",
     "previewBackup": "Full backup (version {{version}})",
     "restoreBackup": "Restore backup",
     "sectionTransactions": "Transactions",
@@ -648,6 +653,12 @@
       "other": "{{count}} transactions deleted"
     },
     "deleteTransactionsFailed": "Failed to delete transactions",
+    "transactionsDeletedCopiesKept": {
+      "one": "{{count}} transaction deleted, but some households still show it. Try again to remove it.",
+      "other": "{{count}} transactions deleted, but some households still show them. Try again to remove them."
+    },
+    "householdCopiesNotPurged": "Some households still show transactions you deleted. Try again to remove them.",
+    "householdCopiesRemoved": "Households no longer show the transactions you deleted.",
     "confirmImport": "Confirm Import",
     "confirmImportMessage": {
       "one": "Import {{count}} transaction? This will add a new transaction to your account.",
@@ -1807,6 +1818,8 @@
     "unavailable": "Your household couldn't be loaded.",
     "offline": "You're offline. What's shown may be out of date, and household changes need a connection.",
     "lostAccess": "You're no longer in that household. The owner removed you or dissolved it.",
+    "notLoadedTitle": "Not loaded on this device",
+    "notLoadedDescription": "This household hasn't been loaded on this device yet. Connect to see it.",
     "switcher": {
       "label": "Viewing household",
       "setup": "Start or join another household"
@@ -1939,7 +1952,7 @@
       "you": "You",
       "remove": "Remove",
       "removeTitle": "Remove {{name}}?",
-      "removeMessage": "The transactions {{name}} shared leave the household, and they stop seeing the others' shared transactions. Everyone keeps their own records, and you can invite them again later.",
+      "removeMessage": "The transactions {{name}} shared leave the household, and they stop seeing the others' shared transactions. The contributions they recorded on its goals stay with those goals, left out of the goals' totals and lists unless {{name}} rejoins. Everyone keeps their own records, and you can invite them again later.",
       "removeConfirm": "Remove",
       "removed": "{{name}} was removed from the household.",
       "inviteTitle": "Invite by email",
@@ -1963,13 +1976,14 @@
       "nameLabel": "Household name",
       "rename": "Rename",
       "renamed": "Household renamed.",
-      "leaveDescription": "Leaving takes your shared transactions out of the household and stops you seeing the others'. Your own records stay yours.",
+      "leaveDescription": "Leaving takes your shared transactions out of the household and stops you seeing the others'. The contributions you recorded on its goals stay with those goals, left out of the goals' totals and lists unless you rejoin. Your own records stay yours.",
       "dissolveHeading": "Dissolve the household",
       "leave": "Leave household",
       "leaveTitle": "Leave {{name}}?",
-      "leaveMessage": "Your shared transactions leave the household, and you'll stop seeing the others'. Your own records stay yours. To come back, you'll need a new invite.",
+      "leaveMessage": "Your shared transactions leave the household, and you'll stop seeing the others'. The contributions you recorded on its goals stay with those goals, left out of the goals' totals and lists unless you rejoin. Your own records stay yours. To come back, you'll need a new invite.",
       "leaveConfirm": "Leave",
       "left": "You left {{name}}.",
+      "leftPending": "You left {{name}}. Some of the transactions you shared are still in it; they'll be taken out automatically later.",
       "dissolveDescription": "Dissolving ends the household for everyone: its pending invites are withdrawn, everyone's shared transactions are taken out, and its own budgets and goals are deleted. Everyone keeps their own records.",
       "dissolve": "Dissolve household",
       "dissolveTitle": "Dissolve {{name}}?",
@@ -1978,7 +1992,12 @@
       "finalTitle": "Final confirmation",
       "dissolveTypeConfirm": "Type \"{{text}}\" to dissolve {{name}}.",
       "dissolveConfirm": "Dissolve",
-      "dissolved": "The household was dissolved."
+      "dissolved": "The household was dissolved.",
+      "dissolvedPending": "The household was dissolved. Some of the transactions you shared are still stored with it; they'll be taken out automatically later.",
+      "purging": "Taking the transactions {{name}} shared out of the household…",
+      "purgeFailed": "{{name}} was removed, but some of the transactions they shared are still in the household. Try again to take them out.",
+      "purgeRetry": "Try again",
+      "purged": "The transactions {{name}} shared are out of the household."
     },
     "errors": {
       "signedOut": "You're signed out. Sign in again to send invites.",
@@ -1993,6 +2012,7 @@
       "full": "This household is full. Pending invites count toward the limit.",
       "inviteeTooMany": "That person already belongs to {{max}} households, the most one account can.",
       "offline": "You're offline. Household changes need a connection.",
+      "unconfirmed": "The connection dropped before this was confirmed, so it may already be saved. Save again once you're back online: it won't be saved twice.",
       "name": "Enter a household name of up to {{max}} characters.",
       "expired": "This invite has expired. Ask the owner to send a new one.",
       "inviteGone": "This invite is no longer available. It may have been withdrawn.",
@@ -2004,8 +2024,10 @@
       "planGone": "That budget or goal no longer exists.",
       "planNotYours": "Only the member who made it, or the household's owner, can delete it.",
       "contributionNotYours": "Only the member who recorded it, or the household's owner, can delete it.",
-      "copyGone": "That row is no longer shared with this household.",
-      "refused": "The household didn't accept that change. You may no longer be a member of it."
+      "copyGone": "That transaction is no longer shared with this household.",
+      "refused": "The household didn't accept that change. You may no longer be a member of it.",
+      "purge": "The member was removed, but some of the transactions they shared are still in the household. Try again.",
+      "cleanup": "The membership ended, but some of the transactions you shared are still in the household. They'll be taken out automatically later."
     }
   }
 }

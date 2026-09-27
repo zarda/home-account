@@ -42,6 +42,39 @@
     }
   </ul>
 
+  @for (removal of purges(); track removal.key) {
+    <div class="member-purge">
+      <p class="members-text" [id]="removal.statusId">
+        @if (removal.state === 'failed') {
+          {{ 'household.members.purgeFailed' | translate: { name: removal.name } }}
+        } @else {
+          {{ 'household.members.purging' | translate: { name: removal.name } }}
+        }
+      </p>
+      @if (removal.state !== 'failed') {
+        <mat-progress-bar
+          [mode]="removal.percent === null ? 'indeterminate' : 'determinate'"
+          [value]="removal.percent ?? 0"
+          [attr.aria-labelledby]="removal.statusId"
+        />
+      }
+      <!-- Kept while the purge runs again, held, so focus stays on it. -->
+      @if (removal.state !== 'running') {
+        <button
+          mat-stroked-button
+          type="button"
+          class="member-purge-retry"
+          [attr.aria-describedby]="removal.statusId"
+          [disabled]="pending()"
+          disabledInteractive
+          (click)="retryPurge(removal.key)"
+        >
+          {{ 'household.members.purgeRetry' | translate }}
+        </button>
+      }
+    </div>
+  }
+
   @if (isOwner()) {
     <div class="members-block">
       <h3 class="members-subtitle">{{ 'household.members.inviteTitle' | translate }}</h3>
@@ -50,7 +83,7 @@
       <form class="invite-form" #inviteDirective="ngForm" [formGroup]="inviteForm" (ngSubmit)="invite()">
         <mat-form-field appearance="outline" class="members-field">
           <mat-label>{{ 'household.members.emailLabel' | translate }}</mat-label>
-          <input matInput type="email" name="inviteEmail" formControlName="email" autocomplete="email" />
+          <input matInput #inviteInput type="email" name="inviteEmail" formControlName="email" autocomplete="email" />
           @if (inviteForm.controls.email.hasError('required')) {
             <mat-error>{{ 'household.members.emailRequired' | translate }}</mat-error>
           } @else if (inviteForm.controls.email.invalid) {

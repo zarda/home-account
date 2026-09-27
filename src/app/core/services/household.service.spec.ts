@@ -1,11 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, computed, signal } from '@angular/core';
 import { FormControl } from '@angular/forms';
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, map, merge } from 'rxjs';
 import { Timestamp, deleteField, serverTimestamp } from '@angular/fire/firestore';
 import {
   HOUSEHOLD_NAME_MAX_LENGTH,
+  HouseholdCleanupError,
   HouseholdError,
+  HouseholdPurgeError,
   HouseholdService,
   householdNameValid,
   householdNameValidator,
@@ -20,12 +22,14 @@ import { TranslationService } from './translation.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { createTranslationStub } from './testing/translation-stub';
 import { journalRows, ledgerJournalKey, ledgerSweepKey, readLedgerJournal, stampSweep } from './ledger-journal';
+import { LedgerShareProgress, LedgerShareService } from './ledger-share.service';
 import {
   Household,
   HouseholdIndexEntry,
   HouseholdInvite,
   HouseholdMember,
   HouseholdRole,
+  LEDGER_PURGE_CHUNK,
   MAX_HOUSEHOLDS_PER_ACCOUNT,
   User
 } from '../../models';
@@ -44,6 +48,8 @@ type EntryData = Omit<HouseholdIndexEntry, 'since' | 'joinedAt' | 'endedAt'> & {
 const confirmed = (data: HouseholdMember | null): OwnMember => ({ data, fromCache: false, hasPendingWrites: false });
 /** The own member document as the local cache answered it. */
 const cached = (data: HouseholdMember | null): OwnMember => ({ data, fromCache: true, hasPendingWrites: false });
+/** Any document as the server confirmed it. */
+const fromServer = <T>(data: T | null): DocumentWithMetadata<T> => ({ data, fromCache: false, hasPendingWrites: false });
 
 /**
  * The one name rule the setup's create form, the owner's rename field and the
@@ -137,9 +143,19 @@ describe('HouseholdService', () => {
   let invite: jasmine.Spy;
   let consoleError: jasmine.Spy;
   let consoleWarn: jasmine.Spy;
+  /** The copies and share keys a membership leaves (LedgerShareService), as a stub. */
+  let ledger: { cleanupMembership: jasmine.Spy; purgeMember: jasmine.Spy };
+  /**
+   * Every commit recordCommits records and every call to the ledger stub,
+   * in the order made: how a spec says one came after another.
+   */
+  let timeline: string[];
 
   let index$: Subject<EntryData[]>;
+  /** The household document as the server answers it. */
   let household$: Subject<Household | null>;
+  /** The household document as the local cache answers it. */
+  let householdCache$: Subject<DocumentWithMetadata<Household>>;
   let own$: Subject<OwnMember>;
   let members$: Subject<HouseholdMember[]>;
   let household2$: Subject<Household | null>;
@@ -215,6 +231,22 @@ describe('HouseholdService', () => {
     online = signal(true);
     user = signal<User | null>(userFixture());
     invite = jasmine.createSpy('inviteToHousehold').and.resolveTo({ inviteId: `${HID}_sam`, mail: 'sent' });
+    timeline = [];
+    ledger = {
+      cleanupMembership: jasmine.createSpy('cleanupMembership').and.callFake(async (householdId: string) => {
+        timeline.push(`cleanup ${householdId}`);
+        return true;
+      }),
+      purgeMember: jasmine.createSpy('purgeMember').and.callFake(async (
+        householdId: string,
+        memberUid: string,
+        progress?: LedgerShareProgress
+      ) => {
+        timeline.push(`purgeMember ${householdId} ${memberUid}`);
+        progress?.(0, 0);
+        return 0;
+      })
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -226,7 +258,8 @@ describe('HouseholdService', () => {
         },
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: TranslationService, useValue: createTranslationStub() },
-        { provide: HOUSEHOLD_INVITE_CALLABLE, useValue: invite }
+        { provide: HOUSEHOLD_INVITE_CALLABLE, useValue: invite },
+        { provide: LedgerShareService, useValue: ledger }
       ]
     });
     firestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
@@ -234,6 +267,7 @@ describe('HouseholdService', () => {
 
     index$ = new Subject();
     household$ = new Subject();
+    householdCache$ = new Subject();
     own$ = new Subject();
     members$ = new Subject();
     household2$ = new Subject();
@@ -250,13 +284,16 @@ describe('HouseholdService', () => {
       if (path === `households/${HID2}`) return household2$;
       throw new Error(`unexpected document listener: ${path}`);
     }) as never);
-    const ownListener = (path: string): Observable<OwnMember> => {
+    const metadataListener = (path: string): Observable<DocumentWithMetadata<unknown>> => {
       if (path === `households/${HID}/members/${ME}`) return own$;
       if (path === `households/${HID2}/members/${ME}`) return own2$;
+      // Read when the listener opens: a case may replace household$ first.
+      if (path === `households/${HID}`) return merge(household$.pipe(map(fromServer)), householdCache$);
+      if (path === `households/${HID2}`) return household2$.pipe(map(fromServer));
       throw new Error(`unexpected metadata listener: ${path}`);
     };
     spyOn(firestore, 'subscribeToDocumentWithMetadata')
-      .and.callFake(ownListener as MockFirestoreService['subscribeToDocumentWithMetadata']);
+      .and.callFake(metadataListener as MockFirestoreService['subscribeToDocumentWithMetadata']);
     spyOn(firestore, 'subscribeToCollection').and.callFake(((path: string, options?: { where?: Where }) => {
       const where = options?.where;
       if (path === INDEX && !where) return index$;
@@ -335,12 +372,17 @@ describe('HouseholdService', () => {
       const refusal = refuse?.(writes);
       if (refusal) throw refusal;
       commits.push(writes);
+      if (writes.length > 0) timeline.push(`commit ${writes.map(w => `${w.op} ${w.path}`).join(', ')}`);
       return result;
     }) as never);
     return commits;
   }
 
   const shape = (commits: Write[][]) => commits.map(writes => writes.map(w => `${w.op} ${w.path}`));
+
+  /** How many times a document listener with metadata was opened on this path. */
+  const listenedTo = (path: string) =>
+    (firestore.subscribeToDocumentWithMetadata as jasmine.Spy).calls.allArgs().filter(([listened]) => listened === path).length;
 
   /** Lets a write the service did not await settle. */
   const fixtureSettled = () => new Promise<void>(resolve => setTimeout(resolve));
@@ -428,15 +470,16 @@ describe('HouseholdService', () => {
 
       index$.next([entry()]);
       expect(firestore.subscribeToDocumentWithMetadata).toHaveBeenCalledOnceWith(`households/${HID}/members/${ME}`);
-      expect(firestore.subscribeToDocument).not.toHaveBeenCalledWith(`households/${HID}`);
+      expect(listenedTo(`households/${HID}`)).toBe(0);
       expect(service.status()).toBe('loading');
 
       // A member document whose since is not a Timestamp attaches nothing.
       own$.next(cached(member({ since: null as unknown as Timestamp })));
-      expect(firestore.subscribeToDocument).not.toHaveBeenCalledWith(`households/${HID}`);
+      expect(listenedTo(`households/${HID}`)).toBe(0);
 
       own$.next(confirmed(member()));
-      expect(firestore.subscribeToDocument).toHaveBeenCalledWith(`households/${HID}`);
+      expect(listenedTo(`households/${HID}`)).toBe(1);
+      expect(firestore.subscribeToDocument).not.toHaveBeenCalled();
       expect(membersWhere).toEqual([[{ field: 'since', op: '==', value: CREATED }]]);
       expect(service.status()).toBe('loading');
 
@@ -457,7 +500,8 @@ describe('HouseholdService', () => {
       own$.next(cached(member()));
       index$.next([entry()]);
       expect(membersWhere.length).toBe(1);
-      expect(firestore.subscribeToDocumentWithMetadata).toHaveBeenCalledTimes(1);
+      expect(listenedTo(`households/${HID}/members/${ME}`)).toBe(1);
+      expect(listenedTo(`households/${HID}`)).toBe(1);
       expectNoConsoleNoise();
     });
 
@@ -622,7 +666,7 @@ describe('HouseholdService', () => {
 
       expect(service.status()).toBe('none');
       expect(service.lostAccess()).toBeFalse();
-      expect(firestore.subscribeToDocument).not.toHaveBeenCalledWith(`households/${HID}`);
+      expect(listenedTo(`households/${HID}`)).toBe(0);
       expectNoConsoleNoise();
     });
 
@@ -658,13 +702,78 @@ describe('HouseholdService', () => {
       expect(service.lostAccess()).toBeTrue();
     });
 
-    it('treats an offline boot with nothing cached as no membership, without deciding it was lost', () => {
+    it('reads an offline boot with nothing cached as not loaded on this device, not as no membership, deciding nothing lost', () => {
+      online.set(false);
       service.connect();
       index$.next([entry()]);
       own$.next(cached(null));
 
-      expect(service.status()).toBe('none');
+      expect(service.status()).toBe('notLoaded');
+      expect(service.selectedHouseholdId()).toBe(HID);
+      expect(service.household()).toBeNull();
       expect(service.lostAccess()).toBeFalse();
+    });
+
+    it('waits online for the server when the cache has nothing, and reads as none only once the server confirms it', () => {
+      service.connect();
+      index$.next([entry()]);
+      own$.next(cached(null));
+      expect(service.status()).toBe('loading');
+
+      online.set(false);
+      expect(service.status()).withContext('the connection lost before the server answered').toBe('notLoaded');
+      online.set(true);
+
+      own$.next(confirmed(null));
+      expect(service.status()).toBe('none');
+      online.set(false);
+      expect(service.status()).withContext('the server has said').toBe('none');
+      expect(service.lostAccess()).toBeFalse();
+    });
+
+    it('reads a membership never viewed on this device as not loaded once switched to offline, and shows it once connected', () => {
+      goLive();
+      index$.next(twoEntries());
+      online.set(false);
+
+      service.select(HID2);
+      own2$.next(cached(null));
+
+      expect(service.status()).toBe('notLoaded');
+      expect(service.selectedHouseholdId()).toBe(HID2);
+      expect(service.lostAccess()).toBeFalse();
+
+      online.set(true);
+      expect(service.status()).toBe('loading');
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
+      household2$.next(householdDoc({ id: HID2, name: 'Flat', ownerId: ME, createdAt: CREATED2 }));
+      members2$.next([member({ role: 'owner', since: CREATED2 })]);
+      expect(service.status()).toBe('member');
+      expect(service.household()?.name).toBe('Flat');
+    });
+
+    it('reads a household document the cache does not hold as not loaded offline, and loading online until the server answers', () => {
+      online.set(false);
+      service.connect();
+      index$.next([entry()]);
+      own$.next(cached(member()));
+      householdCache$.next({ data: null, fromCache: true, hasPendingWrites: false });
+      members$.next([member()]);
+
+      expect(service.status()).toBe('notLoaded');
+      expect(service.household()).toBeNull();
+
+      online.set(true);
+      expect(service.status()).toBe('loading');
+
+      household$.next(householdDoc());
+      expect(service.status()).toBe('member');
+
+      // Only the server says the household is gone.
+      householdCache$.next({ data: null, fromCache: true, hasPendingWrites: false });
+      expect(service.status()).withContext('a later cache answer decides nothing').toBe('member');
+      household$.next(null);
+      expect(service.status()).toBe('none');
     });
 
     it('closes the old membership when its index entry goes away, without calling it lost', () => {
@@ -869,6 +978,28 @@ describe('HouseholdService', () => {
       expect(service.lostAccess()).toBeFalse();
     });
 
+    // The usual order: the page moves on, and its tidy lands a few round
+    // trips later. Lifting the notice at the tidy would only flash it.
+    it('keeps a loss shown while another membership is seen live through its tidy, until a membership is seen live again', () => {
+      goLive();
+      index$.next(twoEntries());
+      own$.next(confirmed(null));
+      service.select(HID2);
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+
+      index$.next([entry({ endedAt: LATER }), twoEntries()[1]]);
+      expect(service.lostHouseholds()).withContext('once the tidy marks it ended').toEqual(new Set([HID]));
+      index$.next([twoEntries()[1]]);
+      expect(service.lostHouseholds()).withContext('once the tidy deletes it').toEqual(new Set([HID]));
+      expect(service.selectedHouseholdId()).toBe(HID2);
+      expect(service.lostAccess()).toBeTrue();
+
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
+      expect(service.lostHouseholds()).toEqual(new Set());
+      expect(service.lostAccess()).toBeFalse();
+    });
+
     it('keeps a loss whose entry is gone while no other membership is seen live', () => {
       goLive();
       own$.next(confirmed(null));
@@ -893,6 +1024,94 @@ describe('HouseholdService', () => {
       own2$.next(confirmed(member({ role: 'owner', since: CREATED2 })));
       own2$.next(confirmed(null));
       expect(service.lostHouseholds()).toEqual(new Set([HID2]));
+    });
+
+    it('keeps a loss the tidy ends while no other membership is seen live', async () => {
+      goLive();
+      own$.next(confirmed(null));
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({});
+      recordCommits(undefined, { [INDEX_PATH]: entry() });
+
+      expect(await service.tidyEndedMemberships()).toBeTrue();
+      index$.next([entry({ endedAt: LATER })]);
+      index$.next([]);
+
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+    });
+
+    /**
+     * HID confirmed lost while shown, then HID2, held with `role`, shown in
+     * its place with the notice up. A leave or a dissolve of HID2 reads and
+     * commits as stubbed here.
+     */
+    function loseHomeAndShowFlat(role: HouseholdRole): EntryData {
+      const flat = entry({ id: HID2, role, name: 'Flat', since: CREATED2, joinedAt: LATER });
+      goLive();
+      index$.next([entry(), flat]);
+      own$.next(confirmed(null));
+      service.select(HID2);
+      own2$.next(confirmed(member({ role, since: CREATED2 })));
+      household2$.next(householdDoc({ id: HID2, name: 'Flat', ownerId: role === 'owner' ? ME : 'alex', createdAt: CREATED2 }));
+      members2$.next([member({ role, since: CREATED2 })]);
+      serveServerReads({ [`households/${HID2}/members?since`]: [[member({ role, since: CREATED2 })]] });
+      recordCommits(undefined, { [`${INDEX}/${HID2}`]: flat });
+      expect(service.status()).toBe('member');
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+      return flat;
+    }
+
+    // The account's own ending moves the view on, often to the setup, where
+    // no membership is seen live; the notice is not to stay up there.
+    const OWN_ENDINGS: [string, HouseholdRole, () => Promise<void>][] = [
+      ['leave', 'member', () => service.leave()],
+      ['dissolve', 'owner', () => service.dissolve()],
+      ['dissolve done bar its shared rows', 'owner', async () => {
+        ledger.cleanupMembership.and.rejectWith(firebaseError('unavailable'));
+        await expectAsync(service.dissolve()).toBeRejectedWithError(HouseholdCleanupError);
+      }]
+    ];
+    for (const [ending, role, end] of OWN_ENDINGS) {
+      it(`lifts a loss shown before the account's own ${ending} once the tidy then marks it ended`, async () => {
+        const flat = loseHomeAndShowFlat(role);
+
+        await end();
+        index$.next([entry(), { ...flat, endedAt: LATER }]);
+        expect(service.lostHouseholds()).withContext('while its entry is listed live').toEqual(new Set([HID]));
+
+        index$.next([entry({ endedAt: LATER }), { ...flat, endedAt: LATER }]);
+        expect(service.selectedHouseholdId()).toBeNull();
+        expect(service.lostHouseholds()).toEqual(new Set());
+        expect(service.lostAccess()).toBeFalse();
+      });
+    }
+
+    it("lifts a loss shown before the account's own dissolve when one answer heard while it runs marks both entries ended", async () => {
+      const flat = loseHomeAndShowFlat('owner');
+      ledger.cleanupMembership.and.callFake(async () => {
+        index$.next([entry({ endedAt: LATER }), { ...flat, endedAt: LATER }]);
+        return true;
+      });
+
+      await service.dissolve();
+
+      expect(service.selectedHouseholdId()).toBeNull();
+      expect(service.lostHouseholds()).toEqual(new Set());
+      expect(service.lostAccess()).toBeFalse();
+    });
+
+    it("keeps a loss reported after the account's own dissolve once its tidy marks it ended", async () => {
+      const flat = loseHomeAndShowFlat('owner');
+      await service.dissolve();
+      index$.next([entry(), { ...flat, endedAt: LATER }]);
+      // Seen live again, then lost again: news the dissolve did not answer.
+      own$.next(confirmed(member()));
+      own$.next(confirmed(null));
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+
+      index$.next([entry({ endedAt: LATER }), { ...flat, endedAt: LATER }]);
+
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
     });
   });
 
@@ -1620,7 +1839,10 @@ describe('HouseholdService', () => {
 
       expect(reads.calls.allArgs()).toEqual([
         ['householdInvites', { where: [{ field: 'inviterUid', op: '==', value: ME }] }],
-        [`households/${HID}/members`, { where: [{ field: 'since', op: '==', value: CREATED }] }]
+        [`households/${HID}/members`, { where: [{ field: 'since', op: '==', value: CREATED }] }],
+        // The household's plans, none here.
+        [`households/${HID}/budgets`, { where: [{ field: 'gen', op: '==', value: CREATED }] }],
+        [`households/${HID}/goals`, { where: [{ field: 'gen', op: '==', value: CREATED }] }]
       ]);
       expect(shape(commits)).toEqual([
         [`delete householdInvites/${HID}_kai`, `delete householdInvites/${HID}_lee`],
@@ -1756,6 +1978,317 @@ describe('HouseholdService', () => {
     });
   });
 
+  describe('the shared rows a membership leaves', () => {
+    const OWN_PATH = `households/${HID}/members/${ME}`;
+    const GEN_FILTER = { where: [{ field: 'gen', op: '==', value: CREATED }] };
+
+    it('leaves in order: the member document goes and the entry is marked ended, then the shared rows are taken out, then the entry goes', async () => {
+      goLive('member');
+      recordCommits(undefined, { [INDEX_PATH]: entry() });
+
+      await service.leave();
+
+      expect(timeline).toEqual([
+        `commit delete ${OWN_PATH}, update ${INDEX_PATH}`,
+        `cleanup ${HID}`,
+        `commit delete ${INDEX_PATH}`
+      ]);
+    });
+
+    it('deletes the index entry only after the shared rows are out: a failure keeps it for the next tidy, and says the leave itself is done', async () => {
+      goLive('member');
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
+      ledger.cleanupMembership.and.rejectWith(firebaseError('unavailable'));
+
+      await expectAsync(service.leave()).toBeRejectedWithError(HouseholdCleanupError, 'household.errors.cleanup');
+
+      expect(shape(commits)).toEqual([[`delete ${OWN_PATH}`, `update ${INDEX_PATH}`]]);
+      // The member document's delete is this account's own leave, not a loss.
+      own$.next(confirmed(null));
+      expect(service.lostHouseholds()).toEqual(new Set());
+    });
+
+    it('reports a failure before the member document went as the leave failing, and a later loss as a loss', async () => {
+      goLive('member');
+      recordCommits(() => firebaseError('unavailable'), { [INDEX_PATH]: entry() });
+
+      const leaving = service.leave();
+
+      await expectAsync(leaving).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
+      await expectAsync(leaving).not.toBeRejectedWithError(HouseholdCleanupError);
+      expect(ledger.cleanupMembership).not.toHaveBeenCalled();
+      own$.next(confirmed(null));
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+    });
+
+    it('says a dissolve whose final commit landed, but whose shared rows are not all out, is done bar those rows', async () => {
+      goLive('owner');
+      serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ role: 'owner' }) });
+      ledger.cleanupMembership.and.rejectWith(firebaseError('unavailable'));
+
+      await expectAsync(service.dissolve()).toBeRejectedWithError(HouseholdCleanupError, 'household.errors.cleanup');
+
+      expect(shape(commits).at(-1)).toEqual([`delete households/${HID}`, `delete ${OWN_PATH}`, `update ${INDEX_PATH}`]);
+      own$.next(confirmed(null));
+      expect(service.lostHouseholds()).toEqual(new Set());
+    });
+
+    it('keeps an erasure failing when a membership it ended still has shared rows in the household, and its entry for the retry', async () => {
+      serveServerReads({ [`${INDEX}?`]: [[entry()]] });
+      serverReadsFor({
+        [OWN_PATH]: member(),
+        [`households/${HID}`]: householdDoc()
+      });
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
+      ledger.cleanupMembership.and.rejectWith(firebaseError('unavailable'));
+
+      await expectAsync(service.deleteAll()).toBeRejectedWithError(HouseholdCleanupError, 'household.errors.cleanup');
+
+      expect(shape(commits)).toEqual([[`delete ${OWN_PATH}`, `update ${INDEX_PATH}`]]);
+    });
+
+    it('removes a member, then purges the rows they shared into the household, reporting how far it got', async () => {
+      goLive('owner');
+      recordCommits();
+      const progress = jasmine.createSpy('progress');
+
+      await service.remove('sam', undefined, progress);
+
+      expect(timeline).toEqual([`commit delete households/${HID}/members/sam`, `purgeMember ${HID} sam`]);
+      expect(progress).toHaveBeenCalledOnceWith(0, 0);
+    });
+
+    it('says a removal whose member is out, but whose shared rows were not all purged, is half done', async () => {
+      goLive('owner');
+      const commits = recordCommits();
+      ledger.purgeMember.and.rejectWith(firebaseError('unavailable'));
+
+      const removal = service.remove('sam');
+
+      await expectAsync(removal).toBeRejectedWithError(HouseholdPurgeError, 'household.errors.purge');
+      expect(shape(commits)).toEqual([[`delete households/${HID}/members/sam`]]);
+    });
+
+    it("purges a removed member's shared rows again, touching no member document", async () => {
+      goLive('owner');
+      const commits = recordCommits();
+
+      await service.purgeRemoved('sam');
+
+      expect(commits).toEqual([]);
+      expect(ledger.purgeMember).toHaveBeenCalledOnceWith(HID, 'sam', undefined);
+    });
+
+    it("refuses a member's purge of another member's rows before asking for it", async () => {
+      goLive('member');
+
+      await expectAsync(service.purgeRemoved('alex')).toBeRejectedWithError(HouseholdError, 'household.errors.notOwner');
+      expect(ledger.purgeMember).not.toHaveBeenCalled();
+    });
+
+    it("dissolves the household's own budgets and goals, each goal's contributions before it, between the members and the final commit", async () => {
+      goLive('owner');
+      const contributions = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}` }));
+      const reads = serveServerReads({
+        [`households/${HID}/members?since`]: [[member({ role: 'owner' }), member({ uid: 'sam' })]],
+        [`households/${HID}/budgets?gen`]: [[{ id: 'b1' }, { id: 'b2' }, { id: 'b3' }]],
+        [`households/${HID}/goals?gen`]: [[{ id: 'g1' }, { id: 'g2' }]],
+        [`households/${HID}/goals/g1/contributions?gen`]: [contributions]
+      });
+      recordCommits(undefined, { [INDEX_PATH]: entry({ role: 'owner' }) });
+
+      await service.dissolve();
+
+      const plans = [
+        ...['b1', 'b2', 'b3'].map(id => `delete households/${HID}/budgets/${id}`),
+        ...contributions.map(({ id }) => `delete households/${HID}/goals/g1/contributions/${id}`),
+        `delete households/${HID}/goals/g1`,
+        `delete households/${HID}/goals/g2`
+      ];
+      expect(timeline).toEqual([
+        `commit delete households/${HID}/members/sam`,
+        `commit ${plans.slice(0, LEDGER_PURGE_CHUNK).join(', ')}`,
+        `commit ${plans.slice(LEDGER_PURGE_CHUNK).join(', ')}`,
+        `commit delete households/${HID}, delete ${OWN_PATH}, update ${INDEX_PATH}`,
+        `cleanup ${HID}`,
+        `commit delete ${INDEX_PATH}`
+      ]);
+      const listed = reads.calls.allArgs();
+      for (const path of ['budgets', 'goals', 'goals/g1/contributions', 'goals/g2/contributions']) {
+        expect(listed).withContext(path).toContain([`households/${HID}/${path}`, GEN_FILTER]);
+      }
+    });
+
+    it('takes its own shared rows out after a dissolve whose final commit finds the household gone, then the entry', async () => {
+      goLive('owner');
+      serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
+      recordCommits(writes => (writes.some(w => w.path === `households/${HID}`) ? firebaseError('permission-denied') : null), {
+        [`households/${HID}`]: firebaseError('permission-denied'),
+        [INDEX_PATH]: entry({ role: 'owner' })
+      });
+
+      await service.dissolve();
+
+      expect(timeline).toEqual([
+        `commit delete ${OWN_PATH}, update ${INDEX_PATH}`,
+        `cleanup ${HID}`,
+        `commit delete ${INDEX_PATH}`
+      ]);
+    });
+
+    it("takes an earlier membership's shared rows out of the household before joining it again", async () => {
+      firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc());
+      let joinWritesAtCleanup = -1;
+      ledger.cleanupMembership.and.callFake(async () => {
+        joinWritesAtCleanup = firestore.txSetSpy.calls.length;
+        return true;
+      });
+
+      await service.accept(HID);
+
+      expect(ledger.cleanupMembership).toHaveBeenCalledOnceWith(HID);
+      expect(joinWritesAtCleanup).toBe(0);
+      expect(firestore.txSetSpy.calls.length).toBe(2);
+    });
+
+    it('does not join while the earlier rows could not be taken out', async () => {
+      firestore.setMockDocument(`householdInvites/${HID}_${ME}`, inviteDoc());
+      ledger.cleanupMembership.and.rejectWith(firebaseError('unavailable'));
+
+      await expectAsync(service.accept(HID)).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
+      expect(firestore.txSetSpy.calls.length).toBe(0);
+    });
+
+    it('tidies each ended membership in order: marked ended, its shared rows taken out, then its entry deleted', async () => {
+      const ended = entry({ id: HID2, since: CREATED2, endedAt: LATER });
+      serveServerReads({ [`${INDEX}?`]: [[entry(), ended]] });
+      serverReadsFor({});
+      recordCommits(undefined, { [INDEX_PATH]: entry(), [`${INDEX}/${HID2}`]: ended });
+
+      expect(await service.tidyEndedMemberships()).toBeTrue();
+
+      expect(timeline).toEqual([
+        `commit update ${INDEX_PATH}`,
+        `cleanup ${HID}`,
+        `commit delete ${INDEX_PATH}`,
+        `cleanup ${HID2}`,
+        `commit delete ${INDEX}/${HID2}`
+      ]);
+    });
+
+    it('keeps the entry of a household joined again since the tidy judged it, and reports a later loss of it', async () => {
+      goLive();
+      serveServerReads({ [`${INDEX}?`]: [[entry({ endedAt: LATER })]] });
+      serverReadsFor({});
+      recordCommits(undefined, { [INDEX_PATH]: entry({ endedAt: LATER }) });
+      // What cleanupMembership answers when the server says, just before the
+      // strip, that the account is a member again.
+      ledger.cleanupMembership.and.resolveTo(false);
+
+      expect(await service.tidyEndedMemberships()).toBeFalse();
+      own$.next(confirmed(null));
+
+      expect(timeline).toEqual([]);
+      expect(service.lostHouseholds()).toEqual(new Set([HID]));
+    });
+  });
+
+  describe('an action on the household it was opened for', () => {
+    const AS_OPENED = { id: HID, createdAt: CREATED };
+
+    /** Two live memberships, HID2 selected and shown by the time the action starts. */
+    function selectSecond(role: HouseholdRole): void {
+      goLive(role);
+      index$.next([entry({ role }), entry({ id: HID2, role: 'owner', name: 'Flat', since: CREATED2, joinedAt: LATER })]);
+      service.select(HID2);
+      own2$.next(confirmed(member({ role: 'owner', since: CREATED2, joinedAt: LATER })));
+      household2$.next(householdDoc({ id: HID2, name: 'Flat', ownerId: ME, createdAt: CREATED2 }));
+      members2$.next([member({ role: 'owner', since: CREATED2, joinedAt: LATER })]);
+      expect(service.household()?.id).toBe(HID2);
+    }
+
+    it('leaves the household it was asked for, whichever is selected by then', async () => {
+      selectSecond('member');
+      serverReadsFor({ [`households/${HID}/members/${ME}`]: member() });
+      recordCommits(undefined, { [INDEX_PATH]: entry() });
+
+      await service.leave(AS_OPENED);
+
+      expect(timeline).toEqual([
+        `commit delete households/${HID}/members/${ME}, update ${INDEX_PATH}`,
+        `cleanup ${HID}`,
+        `commit delete ${INDEX_PATH}`
+      ]);
+    });
+
+    it('dissolves only the household it was asked for, never the one selected by then', async () => {
+      selectSecond('owner');
+      serverReadsFor({ [`households/${HID}/members/${ME}`]: member({ role: 'owner' }) });
+      serveServerReads({ [`households/${HID}/members?since`]: [[member({ role: 'owner' })]] });
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry({ role: 'owner' }) });
+
+      await service.dissolve(AS_OPENED);
+
+      expect(commits.flat().map(w => w.path).filter(path => path.includes(HID2))).toEqual([]);
+      expect(shape(commits)).toContain([`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update ${INDEX_PATH}`]);
+      expect(ledger.cleanupMembership).toHaveBeenCalledOnceWith(HID);
+    });
+
+    it('removes, renames and revokes in the household it was asked for', async () => {
+      selectSecond('owner');
+      serverReadsFor({ [`households/${HID}/members/${ME}`]: member({ role: 'owner' }) });
+      const commits = recordCommits();
+
+      await service.remove('sam', AS_OPENED);
+      await service.rename('Home again', AS_OPENED);
+      await service.revoke(`${HID}_lee`, AS_OPENED);
+
+      expect(shape(commits)).toEqual([
+        [`delete households/${HID}/members/sam`],
+        [`update households/${HID}`],
+        [`delete householdInvites/${HID}_lee`]
+      ]);
+      expect(ledger.purgeMember).toHaveBeenCalledOnceWith(HID, 'sam', undefined);
+    });
+
+    it('reads nothing when the household asked for is the one shown', async () => {
+      goLive('owner');
+      const reads = serverReadsFor({});
+      const commits = recordCommits();
+
+      await service.remove('sam', AS_OPENED);
+
+      expect(reads).not.toHaveBeenCalled();
+      expect(shape(commits)).toEqual([[`delete households/${HID}/members/sam`]]);
+    });
+
+    it('refuses, before writing anything, a household the account is no longer a member of, or of another generation', async () => {
+      selectSecond('owner');
+      serverReadsFor({ [`households/${HID}/members/${ME}`]: member({ role: 'owner', since: LATER }) });
+      const commits = recordCommits();
+      const gone = { id: 'gone', createdAt: CREATED };
+
+      for (const target of [AS_OPENED, gone]) {
+        const attempts: [string, () => Promise<unknown>][] = [
+          ['leave', () => service.leave(target)],
+          ['dissolve', () => service.dissolve(target)],
+          ['remove', () => service.remove('sam', target)],
+          ['purgeRemoved', () => service.purgeRemoved('sam', target)],
+          ['rename', () => service.rename('Flat', target)],
+          ['revoke', () => service.revoke(`${target.id}_lee`, target)]
+        ];
+        for (const [name, attempt] of attempts) {
+          await expectAsync(attempt()).withContext(`${name} ${target.id}`)
+            .toBeRejectedWithError(HouseholdError, 'household.errors.refused');
+        }
+      }
+      expect(commits).toEqual([]);
+      expect(ledger.cleanupMembership).not.toHaveBeenCalled();
+      expect(ledger.purgeMember).not.toHaveBeenCalled();
+    });
+  });
+
   describe('invite', () => {
     const REASONS: [string, string, string][] = [
       ['unauthenticated', 'signed-out', 'household.errors.signedOut'],
@@ -1840,6 +2373,7 @@ describe('HouseholdService', () => {
         ['revoke', () => service.revoke(`${HID}_sam`)],
         ['rename', () => service.rename('Flat')],
         ['remove', () => service.remove('sam')],
+        ['purgeRemoved', () => service.purgeRemoved('sam')],
         ['leave', () => service.leave()],
         ['dissolve', () => service.dissolve()],
         ['tidyEndedMemberships', () => service.tidyEndedMemberships()],
@@ -1856,6 +2390,8 @@ describe('HouseholdService', () => {
       expect(serverReads).not.toHaveBeenCalled();
       expect(serverDocuments).not.toHaveBeenCalled();
       expect(aggregations).not.toHaveBeenCalled();
+      expect(ledger.cleanupMembership).not.toHaveBeenCalled();
+      expect(ledger.purgeMember).not.toHaveBeenCalled();
     });
 
     it('says offline for a Firestore unavailable or deadline-exceeded, and generic for a refusal', async () => {
@@ -1974,6 +2510,54 @@ describe('HouseholdService', () => {
       expect(commits).toEqual([]);
     });
 
+    // A leave cut off after its member document went: the entry is marked
+    // ended, and its shared rows and the entry itself are still to go.
+    it('leaves an entry this client is ending, until the next connection', async () => {
+      goLive('member');
+      serveServerReads({ [`${INDEX}?`]: [[entry({ endedAt: LATER })], [entry({ endedAt: LATER })]] });
+      serverReadsFor({});
+      const commits = recordCommits(undefined, { [INDEX_PATH]: entry() });
+      ledger.cleanupMembership.and.rejectWith(firebaseError('unavailable'));
+      await expectAsync(service.leave()).toBeRejectedWithError(HouseholdCleanupError);
+      ledger.cleanupMembership.and.resolveTo(true);
+      const cutOff = shape(commits);
+
+      expect(await service.tidyEndedMemberships()).withContext('while the leave is its own').toBeFalse();
+      expect(shape(commits)).toEqual(cutOff);
+      expect(ledger.cleanupMembership).toHaveBeenCalledTimes(1);
+
+      service.disconnect();
+      service.connect();
+
+      expect(await service.tidyEndedMemberships()).withContext('on the next connection').toBeTrue();
+      expect(shape(commits).slice(cutOff.length)).toEqual([[`delete ${INDEX_PATH}`]]);
+      expect(ledger.cleanupMembership).toHaveBeenCalledTimes(2);
+    });
+
+    it('ends a membership the page is not showing, which leaves the switcher, the one shown still selected', async () => {
+      const flat = entry({ id: HID2, name: 'Flat', since: CREATED2, joinedAt: LATER });
+      goLive('member');
+      index$.next([entry(), flat]);
+      serveServerReads({ [`${INDEX}?`]: [[entry(), flat]] });
+      serverReadsFor({
+        [`households/${HID}/members/${ME}`]: member(),
+        [`households/${HID}`]: householdDoc()
+      });
+      const commits = recordCommits(undefined, { [`${INDEX}/${HID2}`]: flat });
+
+      expect(await service.tidyEndedMemberships()).toBeTrue();
+
+      expect(shape(commits)).toEqual([[`update ${INDEX}/${HID2}`], [`delete ${INDEX}/${HID2}`]]);
+      expect(ledger.cleanupMembership).toHaveBeenCalledOnceWith(HID2);
+      // The index listener hears each commit in turn.
+      index$.next([entry(), { ...flat, endedAt: LATER }]);
+      expect(service.liveMemberships().map(m => m.householdId)).toEqual([HID]);
+      index$.next([entry()]);
+      expect(service.selectedHouseholdId()).toBe(HID);
+      expect(service.status()).toBe('member');
+      expect(service.lostAccess()).toBeFalse();
+    });
+
     it("does not report its own tidying as lost access on the page's listener", async () => {
       goLive();
       serveServerReads({ [`${INDEX}?`]: [[entry()]] });
@@ -2059,6 +2643,106 @@ describe('HouseholdService', () => {
       ]);
       expect(reads.calls.allArgs()).toContain(
         ['householdInvites', { where: [{ field: 'inviteeUid', op: '==', value: ME }] }]);
+      // Each membership's shared rows go after it ends and before its entry.
+      expect(timeline.filter(line => line.startsWith('cleanup'))).toEqual([
+        `cleanup ${OWNED}`,
+        `cleanup ${JOINED}`,
+        `cleanup ${ENDED}`
+      ]);
+      for (const id of [OWNED, JOINED, ENDED]) {
+        const entryGone = timeline.indexOf(`commit delete ${INDEX}/${id}`);
+        expect(timeline.indexOf(`cleanup ${id}`)).withContext(id).toBe(entryGone - 1);
+      }
+    });
+
+    describe("the account's contributions to a household's goals", () => {
+      const JOINED_OWN = `households/${JOINED}/members/${ME}`;
+      const JOINED_ENTRY = `${INDEX}/${JOINED}`;
+      const goals = `households/${JOINED}/goals`;
+      const GEN2_FILTER = { where: [{ field: 'gen', op: '==', value: CREATED2 }] };
+      const joined = () => entry({ id: JOINED, since: CREATED2 });
+
+      function liveJoined(): void {
+        serverReadsFor({
+          [JOINED_OWN]: member({ since: CREATED2 }),
+          [`households/${JOINED}`]: householdDoc({ id: JOINED, createdAt: CREATED2 })
+        });
+      }
+
+      it('are deleted from a household it only joined, and nobody else\'s, before its member document goes', async () => {
+        const mine = Array.from({ length: LEDGER_PURGE_CHUNK }, (_, i) => ({ id: `m${i}`, memberUid: ME }));
+        const reads = serveServerReads({
+          [`${INDEX}?`]: [[joined()]],
+          [`${goals}?gen`]: [[{ id: 'g1' }, { id: 'g2' }]],
+          [`${goals}/g1/contributions?gen`]: [[...mine, { id: 'sams', memberUid: 'sam' }]],
+          [`${goals}/g2/contributions?gen`]: [[{ id: 'last', memberUid: ME }]]
+        });
+        liveJoined();
+        recordCommits(undefined, { [JOINED_ENTRY]: joined() });
+
+        await service.deleteAll();
+
+        const own = [
+          ...mine.map(({ id }) => `delete ${goals}/g1/contributions/${id}`),
+          `delete ${goals}/g2/contributions/last`
+        ];
+        expect(timeline).toEqual([
+          `commit ${own.slice(0, LEDGER_PURGE_CHUNK).join(', ')}`,
+          `commit ${own.slice(LEDGER_PURGE_CHUNK).join(', ')}`,
+          `commit delete ${JOINED_OWN}, update ${JOINED_ENTRY}`,
+          `cleanup ${JOINED}`,
+          `commit delete ${JOINED_ENTRY}`
+        ]);
+        const listed = reads.calls.allArgs();
+        for (const path of [goals, `${goals}/g1/contributions`, `${goals}/g2/contributions`]) {
+          expect(listed).withContext(path).toContain([path, GEN2_FILTER]);
+        }
+      });
+
+      it('go with the plans when the account owns the household: every member\'s', async () => {
+        const owned = entry({ role: 'owner' });
+        serveServerReads({
+          [`${INDEX}?`]: [[owned]],
+          [`households/${HID}/members?since`]: [[member({ role: 'owner' })]],
+          [`households/${HID}/goals?gen`]: [[{ id: 'g1' }]],
+          [`households/${HID}/goals/g1/contributions?gen`]: [[
+            { id: 'mine', memberUid: ME },
+            { id: 'sams', memberUid: 'sam' }
+          ]]
+        });
+        serverReadsFor({
+          [`households/${HID}/members/${ME}`]: member({ role: 'owner' }),
+          [`households/${HID}`]: householdDoc({ ownerId: ME })
+        });
+        const commits = recordCommits(undefined, { [INDEX_PATH]: owned });
+
+        await service.deleteAll();
+
+        expect(shape(commits)).toEqual([
+          [
+            `delete households/${HID}/goals/g1/contributions/mine`,
+            `delete households/${HID}/goals/g1/contributions/sams`,
+            `delete households/${HID}/goals/g1`
+          ],
+          [`delete households/${HID}`, `delete households/${HID}/members/${ME}`, `update ${INDEX_PATH}`],
+          [`delete ${INDEX_PATH}`]
+        ]);
+      });
+
+      it('fail the erasure before the membership ends when they cannot be listed, for the retry', async () => {
+        spyOn(firestore, 'getCollectionFromServer').and.callFake((async (path: string) => {
+          if (path === INDEX) return [joined()];
+          if (path === goals) throw firebaseError('unavailable');
+          return [];
+        }) as never);
+        liveJoined();
+        const commits = recordCommits(undefined, { [JOINED_ENTRY]: joined() });
+
+        await expectAsync(service.deleteAll()).toBeRejectedWithError(HouseholdError, 'household.errors.offline');
+
+        expect(commits).toEqual([]);
+        expect(ledger.cleanupMembership).not.toHaveBeenCalled();
+      });
     });
 
     it('withdraws each owned household\'s invites with it, and every other sent invite at the end', async () => {
@@ -2183,6 +2867,7 @@ describe('HouseholdService', () => {
         ['revoke', () => service.revoke(`${HID}_sam`)],
         ['rename', () => service.rename('Flat')],
         ['remove', () => service.remove('sam')],
+        ['purgeRemoved', () => service.purgeRemoved('sam')],
         ['leave', () => service.leave()],
         ['dissolve', () => service.dissolve()],
         ['tidyEndedMemberships', () => service.tidyEndedMemberships()],

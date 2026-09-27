@@ -219,6 +219,7 @@
       "unshareGoalLink": "停止分享的家庭將不再看到這筆交易，該家庭的目標也不再計入它。",
       "notMember": "你已不是「{{name}}」的成員，因此這筆交易沒有分享到該家庭。",
       "failed": "無法變更這筆交易的分享對象",
+      "unshareable": "這筆交易無法分享：需要大於零的金額、日期、說明和類別。",
       "chip": "已分享・{{name}}",
       "chipMore": "已分享・{{name}} +{{count}}",
       "chipLabel": "已分享給{{names}}",
@@ -255,7 +256,8 @@
       "partialNotMember": "已將 {{count}} 筆交易分享給{{names}}。你已不是{{failed}}的成員，因此這些交易沒有分享到那裡。",
       "tooMany": "一次最多只能分享或停止分享 {{max}} 筆交易",
       "notMember": "你已不是「{{name}}」的成員，因此這些交易沒有分享到該家庭。",
-      "failed": "無法變更所選交易的分享對象"
+      "failed": "無法變更所選交易的分享對象",
+      "unshareable": "有 {{count}} 筆交易無法分享：每筆都需要大於零的金額、日期、說明和類別。"
     }
   },
   "budget": {
@@ -530,11 +532,11 @@
     "deleteAccount": "刪除帳戶",
     "deleteAccountDescription": "永久清除此帳戶及其資料與收據影像",
     "deleteAccountBackupTitle": "要先匯出備份嗎？",
-    "deleteAccountBackupMessage": "備份包含交易、類別、預算、定期規則、目標、已儲存的搜尋、已儲存的答案、商家記憶、匯入紀錄與月度洞察，但無法包含已儲存的金鑰、登入紀錄或你送出的意見回饋。帳戶刪除後將無法復原任何資料。繼續之前要先匯出備份嗎？",
+    "deleteAccountBackupMessage": "備份包含交易、類別、預算、定期規則、目標、已儲存的搜尋、已儲存的答案、商家記憶、匯入紀錄與月度洞察，但無法包含已儲存的金鑰、登入紀錄或你送出的意見回饋，也不包含你的交易分享給哪些家庭，或任何屬於家庭的內容（分享的交易、預算、目標和存入紀錄）：還原的交易不會分享給任何家庭。帳戶刪除後將無法復原任何資料。繼續之前要先匯出備份嗎？",
     "deleteAccountBackupExport": "匯出備份",
     "deleteAccountBackupSkip": "不備份並繼續",
     "deleteAccountTitle": "要刪除此帳戶嗎？",
-    "deleteAccountWarning": "這將永久清除所有內容：交易、收據影像、分類、預算、定期規則、目標、已儲存的搜尋、已儲存的答案、商家記憶、匯入紀錄、洞察、已儲存的金鑰、你送出的意見回饋、登入紀錄、你的家庭成員身分和你分享到其中的交易（你擁有的家庭會對所有成員解散），以及帳戶本身。此操作無法復原。",
+    "deleteAccountWarning": "這將永久清除所有內容：交易、收據影像、分類、預算、定期規則、目標、已儲存的搜尋、已儲存的答案、商家記憶、匯入紀錄、洞察、已儲存的金鑰、你送出的意見回饋、登入紀錄、你的家庭成員身分和你分享到其中的交易（你擁有的家庭會對所有成員解散）、你在仍加入的家庭目標中記錄的存入紀錄，以及帳戶本身。你在非你擁有的家庭中建立的家庭預算和目標會保留在該家庭。你在已退出或被移出的家庭中記錄的存入紀錄，也會保留在該家庭。此操作無法復原。",
     "deleteAccountConfirm": "繼續",
     "deleteAccountTypeConfirm": "輸入「DELETE」以永久刪除此帳戶。",
     "deleteAccountFinal": "清除帳戶",
@@ -552,7 +554,7 @@
     "csvParseFailed": "解析 CSV 檔案失敗",
     "invalidBackupFormat": "備份檔案格式無效",
     "confirmRestore": "要還原備份嗎？",
-    "confirmRestoreMessage": "將還原 {{transactions}} 筆交易、{{categories}} 個類別、{{budgets}} 個預算、{{recurring}} 條定期規則、{{goals}} 個目標、{{insightSnapshots}} 份月度洞察、{{savedSearches}} 筆已儲存的搜尋、{{searchAnswers}} 筆已儲存的答案、{{categoryMemory}} 筆記住的類別、{{tagMemory}} 筆記住的標籤、{{imports}} 筆匯入紀錄。相同 ID 的現有記錄會被更新，備份未包含的內容會保留。",
+    "confirmRestoreMessage": "將還原 {{transactions}} 筆交易、{{categories}} 個類別、{{budgets}} 個預算、{{recurring}} 條定期規則、{{goals}} 個目標、{{insightSnapshots}} 份月度洞察、{{savedSearches}} 筆已儲存的搜尋、{{searchAnswers}} 筆已儲存的答案、{{categoryMemory}} 筆記住的類別、{{tagMemory}} 筆記住的標籤、{{imports}} 筆匯入紀錄。相同 ID 的現有記錄會被更新，備份未包含的內容會保留。帳戶中尚未存在的交易還原後不會分享給任何家庭，請從「交易紀錄」重新分享；已存在的交易則保留原有的分享。",
     "previewBackup": "完整備份（版本 {{version}}）",
     "restoreBackup": "還原備份",
     "sectionTransactions": "交易",
@@ -570,6 +572,9 @@
     "transactionsImportedPartial": "已匯入 {{count}} 筆交易，略過 {{skipped}} 筆",
     "allTransactionsDeleted": "已刪除 {{count}} 筆交易",
     "deleteTransactionsFailed": "刪除交易失敗",
+    "transactionsDeletedCopiesKept": "已刪除 {{count}} 筆交易，但部分家庭仍會顯示這些交易。請再試一次以移除。",
+    "householdCopiesNotPurged": "部分家庭仍會顯示你已刪除的交易。請再試一次以移除。",
+    "householdCopiesRemoved": "家庭中已不再顯示你刪除的交易。",
     "confirmImport": "確認匯入",
     "confirmImportMessage": "匯入 {{count}} 筆交易？這將新增交易到您的帳戶。",
     "deleteAllConfirmMessage": "這將永久刪除所有交易。此操作無法復原。您確定嗎？",
@@ -1654,6 +1659,8 @@
     "unavailable": "無法載入家庭。",
     "offline": "你目前離線。顯示的內容可能不是最新的，變更家庭需要網路連線。",
     "lostAccess": "你已不在該家庭中。擁有者已將你移除，或已解散家庭。",
+    "notLoadedTitle": "尚未在此裝置上載入",
+    "notLoadedDescription": "這個家庭尚未在此裝置上載入。連線後即可查看。",
     "switcher": {
       "label": "目前檢視的家庭",
       "setup": "建立或加入另一個家庭"
@@ -1783,7 +1790,7 @@
       "you": "你",
       "remove": "移除",
       "removeTitle": "要將 {{name}} 移出家庭嗎？",
-      "removeMessage": "{{name}} 分享的交易會離開這個家庭，對方也無法再看到其他成員分享的交易。每個人都會保留自己的紀錄，你之後也可以再次邀請對方。",
+      "removeMessage": "{{name}} 分享的交易會離開這個家庭，對方也無法再看到其他成員分享的交易。對方在家庭目標中記錄的存入紀錄會留在這些目標中，但除非對方重新加入，否則不會計入目標，也不會顯示在清單中。每個人都會保留自己的紀錄，你之後也可以再次邀請對方。",
       "removeConfirm": "移除",
       "removed": "已將 {{name}} 移出家庭。",
       "inviteTitle": "以電子郵件邀請",
@@ -1807,13 +1814,14 @@
       "nameLabel": "家庭名稱",
       "rename": "重新命名",
       "renamed": "已重新命名家庭。",
-      "leaveDescription": "退出後，你分享的交易會離開這個家庭，你也無法再看到其他成員分享的交易。你自己的紀錄會保留。",
+      "leaveDescription": "退出後，你分享的交易會離開這個家庭，你也無法再看到其他成員分享的交易。你在家庭目標中記錄的存入紀錄會留在這些目標中，但除非你重新加入，否則不會計入目標，也不會顯示在清單中。你自己的紀錄會保留。",
       "dissolveHeading": "解散家庭",
       "leave": "退出家庭",
       "leaveTitle": "要退出「{{name}}」嗎？",
-      "leaveMessage": "你分享的交易會離開這個家庭，你也無法再看到其他成員分享的交易。你自己的紀錄會保留。若要回來，需要新的邀請。",
+      "leaveMessage": "你分享的交易會離開這個家庭，你也無法再看到其他成員分享的交易。你在家庭目標中記錄的存入紀錄會留在這些目標中，但除非你重新加入，否則不會計入目標，也不會顯示在清單中。你自己的紀錄會保留。若要回來，需要新的邀請。",
       "leaveConfirm": "退出",
       "left": "已退出「{{name}}」。",
+      "leftPending": "已退出「{{name}}」。你分享的部分交易仍留在家庭中，稍後會自動移出。",
       "dissolveDescription": "解散後，家庭將對所有人結束：待回覆的邀請會撤回，所有人分享的交易會移出，家庭自己的預算和目標會刪除。每個人都會保留自己的紀錄。",
       "dissolve": "解散家庭",
       "dissolveTitle": "要解散「{{name}}」嗎？",
@@ -1822,7 +1830,12 @@
       "finalTitle": "最終確認",
       "dissolveTypeConfirm": "輸入「{{text}}」以解散「{{name}}」。",
       "dissolveConfirm": "解散",
-      "dissolved": "已解散家庭。"
+      "dissolved": "已解散家庭。",
+      "dissolvedPending": "已解散家庭。你分享的部分交易仍留在家庭中，稍後會自動移出。",
+      "purging": "正在將 {{name}} 分享的交易移出家庭…",
+      "purgeFailed": "已將 {{name}} 移出家庭，但對方分享的部分交易仍留在家庭中。請再試一次。",
+      "purgeRetry": "再試一次",
+      "purged": "已將 {{name}} 分享的交易移出家庭。"
     },
     "errors": {
       "signedOut": "你已登出。請重新登入後再傳送邀請。",
@@ -1837,6 +1850,7 @@
       "full": "這個家庭已滿。待回覆的邀請也會計入人數。",
       "inviteeTooMany": "對方已經加入 {{max}} 個家庭，已達每個帳號的上限。",
       "offline": "你目前離線。變更家庭需要網路連線。",
+      "unconfirmed": "連線在確認前中斷，所以可能已經儲存。恢復連線後請再儲存一次，不會重複儲存。",
       "name": "請輸入不超過 {{max}} 個字元的家庭名稱。",
       "expired": "這個邀請已過期。請聯絡擁有者重新傳送邀請。",
       "inviteGone": "這個邀請已無法使用，可能已被撤回。",
@@ -1849,7 +1863,9 @@
       "planNotYours": "只有建立它的成員或家庭的擁有者可以刪除它。",
       "contributionNotYours": "只有記錄它的成員或家庭的擁有者可以刪除它。",
       "copyGone": "這筆紀錄已不再與這個家庭共用。",
-      "refused": "家庭未接受這項變更。你可能已不再是這個家庭的成員。"
+      "refused": "家庭未接受這項變更。你可能已不再是這個家庭的成員。",
+      "purge": "成員已移出，但對方分享的部分交易仍留在家庭中。請再試一次。",
+      "cleanup": "你已不再是這個家庭的成員，但你分享的部分交易仍留在家庭中，稍後會自動移出。"
     }
   }
 }

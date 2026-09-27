@@ -93,6 +93,19 @@
   color: var(--color-primary);
 }
 
+// What a removal's purge has got to, under the list it took the member from.
+.member-purge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+
+  mat-progress-bar {
+    align-self: stretch;
+  }
+}
+
 .members-block {
   display: flex;
   flex-direction: column;

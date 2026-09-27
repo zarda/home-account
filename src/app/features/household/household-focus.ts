@@ -1,6 +1,9 @@
-import { DestroyRef, Injectable, Injector, afterNextRender, signal } from '@angular/core';
+import { DestroyRef, Injectable, Injector, afterNextRender, effect, signal, untracked } from '@angular/core';
+import type { MatDialogRef } from '@angular/material/dialog';
 
 import type { HouseholdStatus } from '../../core/services/household.service';
+import { sameStamp } from '../../core/utils/household-index.utils';
+import type { Household } from '../../models';
 
 /** What a section needs to move focus within its own markup. */
 export interface FocusContext {
@@ -15,6 +18,43 @@ export interface FocusOptions {
    * swap: focus left on it moves too, as focus left on the document does.
    */
   from?: Element | null;
+}
+
+/**
+ * The same household, and the same generation of it, as a section holds
+ * the one the page showed: a rename is no change. None shown (null)
+ * matches nothing, not even null, so an action begun with no household
+ * never counts as the page still showing it. Unlike the ledger's
+ * sameHousehold, the owner is not compared: one generation has one owner.
+ */
+export const sameShownHousehold = (a: Household | null, b: Household | null): boolean =>
+  a !== null && b !== null && a.id === b.id && sameStamp(a.createdAt, b.createdAt);
+
+/** A dialog as a section holds it: all it needs of one is to close it. */
+export type OpenDialog = Pick<MatDialogRef<unknown>, 'close'>;
+
+/**
+ * Closes, unanswered, each of a section's open dialogs once the page shows
+ * a household other than the one it was opened for (sameShownHousehold),
+ * and every one of them when the section goes: nothing asked about one
+ * household is answered in another. Called from a constructor, where
+ * `effect` has its injection context; `open` is the section's own map, which
+ * it keeps as its dialogs open and close.
+ */
+export function closeDialogsOnSwitch(
+  shown: () => Household | null,
+  open: ReadonlyMap<OpenDialog, Household | null>,
+  destroyRef: DestroyRef
+): void {
+  effect(() => {
+    const household = shown();
+    untracked(() => {
+      for (const [ref, opened] of open) if (!sameShownHousehold(opened, household)) ref.close();
+    });
+  });
+  destroyRef.onDestroy(() => {
+    for (const ref of open.keys()) ref.close();
+  });
 }
 
 /** Focus went to the document, as it does when the element holding it is removed. */

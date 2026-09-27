@@ -30,12 +30,13 @@ import { AuthService } from './auth.service';
 import { FirestoreService } from './firestore.service';
 import { HouseholdService, householdSelectionKey } from './household.service';
 import { HOUSEHOLD_INVITE_CALLABLE } from './household-invite-callable';
+import { LedgerShareService } from './ledger-share.service';
 import { PwaService } from './pwa.service';
 import { StorageService } from './storage.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import { createTranslationStub } from './testing/translation-stub';
-import { User } from '../../models';
+import { User, ledgerCopyId } from '../../models';
 import { SHARE_STASH_DB, SHARE_STASH_STORE, ShareStashStore } from './share-stash.store';
 import { reminderSentStorageKey } from './reminder.service';
 import { weeklyRecapStorageKeys } from '../utils/weekly-recap.utils';
@@ -66,13 +67,14 @@ silenceFirebaseWarnings();
  * outlives the profile, and the auth user both stay for the retry. An invite
  * that arrives while the records are erased is swept before the auth user
  * goes. Every household write goes through the real
- * HouseholdService on both sides. The other account gets a service stack of
- * its own through a child EnvironmentInjector (the
+ * HouseholdService on both sides, and every share through the real
+ * LedgerShareService. The other account gets a service stack of its own
+ * through a child EnvironmentInjector (the
  * transaction-receipts.smoke.spec.ts pattern) over a second app. Two full
- * clients is the most one file holds: each keeps a listen stream open,
- * Chrome allows six connections per host, and the admin REST reads and
- * writes need the rest. Invites are written past the rules, as the invite
- * callable writes them.
+ * clients is the most one file holds: each keeps a listen stream and a
+ * write stream open, Chrome allows six connections per host, and the admin
+ * REST reads and writes need the rest. Invites are written past the rules,
+ * as the invite callable writes them.
  *
  * Every case signs in an account of its own, since each ends with that
  * account erased or holding a household.
@@ -168,6 +170,7 @@ describe('AccountDeletionService (emulator smoke test)', () => {
   function otherStack(): Provider[] {
     return [
       HouseholdService,
+      LedgerShareService,
       FirestoreService,
       { provide: Firestore, useValue: other.firestore },
       { provide: AuthService, useValue: { userId: () => other.uid, currentUser: () => other.user } },
@@ -629,6 +632,44 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     expect(await getDocumentAsOwner(`householdInvites/${sent}`)).toBeNull();
     expect(await getDocumentAsOwner(`users/${uid}/households/${householdId}`)).toBeNull();
     expect(await getDocumentAsOwner(`users/${uid}`)).toBeNull();
+  }, 60000);
+
+  it('takes every row the account shared out of every household it was in, owned or joined, and leaves no membership of it', async () => {
+    const shared = ['smoke-del-shared-1', 'smoke-del-shared-2'];
+    await seedProfile();
+    await seedTransaction(shared[0], 8, 'shared into theirs');
+    await seedTransaction(shared[1], 9, 'shared into both');
+    const household = TestBed.inject(HouseholdService);
+    const sharing = TestBed.inject(LedgerShareService);
+    // Theirs is the other account's, and this one joins it; mine is this
+    // one's, and the other account joins it.
+    const theirs = await otherHousehold.create('Theirs');
+    await seedInvite(theirs, await storedGeneration(theirs), other.uid, uid);
+    await household.accept(theirs);
+    const mine = await household.create('Mine');
+    await seedInvite(mine, await storedGeneration(mine), uid, other.uid);
+    await otherHousehold.accept(mine);
+    await sharing.share(shared, theirs);
+    await sharing.share([shared[1]], mine);
+    /** The account's copies in a household's ledger, read past the rules. */
+    const copiesIn = async (householdId: string) =>
+      (await listDocumentIdsAsOwner(`households/${householdId}/ledger`)).filter(id => id.startsWith(`${uid}_`)).sort();
+    expect(await copiesIn(theirs)).toEqual(shared.map(txId => ledgerCopyId(uid, txId)).sort());
+    expect(await copiesIn(mine)).toEqual([ledgerCopyId(uid, shared[1])]);
+
+    const report = await service.deleteAccount();
+
+    expect(report.failed).toEqual([]);
+    expect(report.ok).toBeTrue();
+    expect(deleteFirebaseUserCalls).toBe(1);
+    expect(await copiesIn(theirs)).toEqual([]);
+    expect(await copiesIn(mine)).toEqual([]);
+    expect(await indexIds()).toEqual([]);
+    expect(await getDocumentAsOwner(`households/${theirs}/members/${uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${mine}/members/${uid}`)).toBeNull();
+    expect(await getDocumentAsOwner(`households/${mine}`)).toBeNull();
+    // The household the account joined is the other account's, and stands.
+    expect(await getDocumentAsOwner(`households/${theirs}/members/${other.uid}`)).not.toBeNull();
   }, 60000);
 
   it('keeps the index and the auth user for a retry when the household step fails', async () => {

@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy, inject } from '@angular/core';
+import { DestroyRef, Injectable, effect, inject, untracked } from '@angular/core';
 import { Timestamp, arrayRemove, arrayUnion } from '@angular/fire/firestore';
 import { Subscription } from 'rxjs';
 import {
@@ -28,11 +28,12 @@ import { PwaService } from './pwa.service';
 import { defaultCategories, mergeCategories } from '../utils/category-merge.utils';
 import { ProjectableRow, copyDiffers, projectRow } from '../utils/ledger-projection.utils';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
-import { HouseholdIndexData, isStamp, sameStamp, toMembership } from '../utils/household-index.utils';
+import { HouseholdIndexData, chunked, isStamp, sameStamp, toMembership } from '../utils/household-index.utils';
 import {
   LedgerJournalRow,
   clearFullPass,
   forgetJournalHousehold,
+  fullPassSeq,
   journalRows,
   markFullPass,
   readLedgerJournal,
@@ -102,7 +103,8 @@ export type LedgerRowChange = readonly [txId: string, before: LedgerFollowedRow 
  * rows asked for have had their commit answered (for a share, the commit of
  * their copies, or no commit at all for rows gone meanwhile). Called only
  * online, where the commits take their time; offline a share or unshare
- * resolves as soon as it is queued.
+ * resolves as soon as it is queued. An owner's purge of a removed member's
+ * copies (purgeMember) counts copies instead of rows.
  */
 export type LedgerShareProgress = (done: number, total: number) => void;
 
@@ -110,10 +112,18 @@ export type LedgerShareProgress = (done: number, total: number) => void;
  * - `tooMany`: more rows than one bulk action takes (MAX_BULK_SHARE).
  * - `notMember`: a household that is not one of the account's live memberships.
  * - `notOwner`: another member's copies, which only the household's owner purges.
+ * - `unshareable`: rows of which a copy may hold none (an amount of zero, no
+ *   description), so a share keys none of them.
  */
-export type LedgerShareRefusalReason = 'tooMany' | 'notMember' | 'notOwner';
+export type LedgerShareRefusalReason = 'tooMany' | 'notMember' | 'notOwner' | 'unshareable';
 
-/** A share, unshare, reconcile or purge refused before anything was read or written. */
+/** What a share did besides the rows it shared. */
+export interface LedgerShareResult {
+  /** The rows it passed over: each holds a value no copy may, so none was keyed. */
+  skipped: string[];
+}
+
+/** A share, unshare, reconcile or purge refused before anything was written. */
 export class LedgerShareRefusal extends Error {
   constructor(readonly reason: LedgerShareRefusalReason, message: string) {
     super(message);
@@ -178,17 +188,16 @@ const rowPath = (uid: string, txId: string) => `${rowsPath(uid)}/${txId}`;
 const categoriesPath = (uid: string) => `users/${uid}/categories`;
 const householdPath = (hid: string) => `households/${hid}`;
 const memberPath = (hid: string, uid: string) => `households/${hid}/members/${uid}`;
+const indexEntryPath = (uid: string, hid: string) => `${householdIndexPath(uid)}/${hid}`;
 const ledgerPath = (hid: string) => `households/${hid}/ledger`;
 const journalKey = (row: LedgerJournalRow) => `${row.hid}/${row.txId}`;
 
 const namingKey = (key: string): Where => ({ field: 'sharedWith', op: 'array-contains', value: key });
 const authoredBy = (uid: string): Where => ({ field: 'memberUid', op: '==', value: uid });
 
-function chunked<T>(items: readonly T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
+/** The update that takes a household's key off one of the account's rows. */
+const keyRemoval = (uid: string, key: string, txId: string): BatchOp =>
+  ({ op: 'update', path: rowPath(uid, txId), data: { sharedWith: arrayRemove(key) }, stamp: 'client' });
 
 /** A membership copies are written for: not ending, and its generation known. */
 function isLive(membership: HouseholdMembership | undefined): membership is LiveMembership {
@@ -307,7 +316,7 @@ function groupByHousehold(rows: readonly LedgerJournalRow[]): Map<string, string
  * they stand, a change made on another device included.
  */
 @Injectable({ providedIn: 'root' })
-export class LedgerShareService implements OnDestroy {
+export class LedgerShareService {
   private readonly firestore = inject(FirestoreService);
   private readonly auth = inject(AuthService);
   private readonly pwa = inject(PwaService);
@@ -315,15 +324,27 @@ export class LedgerShareService implements OnDestroy {
   private state: AccountState | null = null;
   private destroyed = false;
 
-  ngOnDestroy(): void {
-    this.destroyed = true;
-    this.dropState();
+  constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
+      this.dropState();
+    });
+    // What the service holds is one account's, its categories listener
+    // included, which must not outlive a sign-out (ADR 0009). The next
+    // account's first call loads its own.
+    effect(() => {
+      const uid = this.auth.userId();
+      untracked(() => {
+        if (this.state && this.state.uid !== uid) this.dropState();
+      });
+    });
   }
 
   /**
    * Loads the account's memberships and categories, so a follow made after
    * it resolves issues its writes before it returns. The categories are
-   * heard from then on.
+   * heard from then on. Specs and the smoke drive it; the app loads the
+   * account through follow's deferral, a share or a sweep.
    */
   async prepare(): Promise<void> {
     const state = this.stateFor(this.requireUser());
@@ -331,22 +352,13 @@ export class LedgerShareService implements OnDestroy {
   }
 
   /**
-   * Every entry in the account's index (users/{uid}/households), ended ones
-   * included, read afresh: from the server when online, from the cache when
-   * not. What follow uses until the next read.
-   */
-  membershipsOnce(): Promise<HouseholdMembership[]> {
-    return this.loadIndex(this.stateFor(this.requireUser()), true);
-  }
-
-  /**
    * Carries a row's change to its copies: `before` is the row as it was
    * (null for a new row), `after` as the personal write just issued leaves
    * it. Call it right after issuing that write and before awaiting it: the
    * copy writes are issued behind it, in the same persistent queue, before
-   * this returns. Once the account is loaded (prepare), that is; until then
-   * each household the row names is journaled at once and the writes follow
-   * the load.
+   * this returns. Once the account's index and categories are loaded (by an
+   * earlier follow, a share or a sweep), that is; until then each household
+   * the row names is journaled at once and the writes follow the load.
    *
    * One commit per live household the row names whose copy changes. A
    * household `before` names and `after` does not is journaled for the
@@ -445,34 +457,67 @@ export class LedgerShareService implements OnDestroy {
    * Shares rows into a household: the key is added to each row with
    * arrayUnion, in commits of at most LEDGER_OWN_WRITE_CHUNK, then each copy
    * is written, at most LEDGER_COMMIT_CHUNK per commit. A row deleted since
-   * it was chosen is passed over. Offline, a single row's copy is queued
-   * behind its key, from the row as the cache holds it; for more rows only
-   * the key writes queue, and the household is marked for a full pass, which
-   * writes the copies once the device is back. Resolves once the writes are
-   * answered, or offline once they are queued. Rejects only when the keys
-   * did not all land (or the household is refused): once they have, a copy
-   * that could not be written is left to a full pass. `progress` hears the
-   * rows done as each commit of copies is answered.
+   * it was chosen is passed over.
+   *
+   * Online, the rows are read first and only a row a copy may hold
+   * (projectable) is keyed: a key naming the household with no copy behind
+   * it would keep the server's counts of rows and copies apart for good
+   * (sidesAgree). The others are answered as `skipped`; when no row is left
+   * to key, the share is refused ('unshareable') with nothing written.
+   *
+   * So online a shared row is read twice: once, REPAIR_READS_AT_ONCE at a
+   * time, to decide whether to key it, and once keyed, to write its copy
+   * from the row as this device's writes leave it, which also hears an
+   * unshare or an edit landing between the two. The first read costs up to
+   * MAX_BULK_SHARE / REPAIR_READS_AT_ONCE round trips before any key is
+   * written, and progress hears nothing during them; should that prove too
+   * slow, the cure is a window of that many reads kept in flight, never an
+   * unbounded fan-out.
+   *
+   * Offline, a single row's copy is queued behind its key, from the row as
+   * the cache holds it; for more rows only the key writes queue, and the
+   * household is marked for a full pass, which writes the copies once the
+   * device is back and takes the key off a row no copy may hold. Nothing is
+   * skipped there.
+   *
+   * Resolves once the writes are answered, or offline once they are queued.
+   * Rejects only when the rows could not be read, the keys did not all land
+   * or the share is refused: once the keys have landed, a copy that could
+   * not be written is left to a full pass. `progress` hears the rows done as
+   * each commit of copies is answered, a row passed over counted as done.
    */
-  async share(txIds: readonly string[], householdId: string, progress?: LedgerShareProgress): Promise<void> {
+  async share(txIds: readonly string[], householdId: string, progress?: LedgerShareProgress): Promise<LedgerShareResult | void> {
     const uid = this.requireUser();
     const ids = [...new Set(txIds)];
     this.refuseBulk(ids);
     const state = this.stateFor(uid);
-    const membership = (await this.loadIndex(state, true)).find(entry => entry.householdId === householdId);
+    const membership = await this.membershipOf(state, householdId);
     if (!isLive(membership)) {
       throw new LedgerShareRefusal('notMember', 'Rows are shared only into a household the account belongs to');
     }
-    if (ids.length === 0) return;
+    if (ids.length === 0) return { skipped: [] };
 
     const key = shareKey(householdId);
-    const keyed = chunked(ids, LEDGER_OWN_WRITE_CHUNK).map(chunk => this.keyRows(uid, key, chunk));
     if (!this.pwa.isOnline()) {
-      this.quietly(keyed, 'A share queued offline did not land');
+      this.quietly(chunked(ids, LEDGER_OWN_WRITE_CHUNK).map(chunk => this.keyRows(uid, key, chunk)),
+        'A share queued offline did not land');
       if (ids.length === 1) await this.shareOneOffline(state, ids[0], householdId);
       else markFullPass(uid, householdId);
-      return;
+      return { skipped: [] };
     }
+
+    const shareable: string[] = [];
+    const skipped: string[] = [];
+    for (const chunk of chunked(ids, REPAIR_READS_AT_ONCE)) {
+      const read = await Promise.all(chunk.map(txId => this.firestore.getDocument<Transaction>(rowPath(uid, txId))));
+      chunk.forEach((txId, i) => {
+        if (read[i]) (projectable(uid, txId, read[i]) ? shareable : skipped).push(txId);
+      });
+    }
+    if (shareable.length === 0 && skipped.length > 0) {
+      throw new LedgerShareRefusal('unshareable', 'Every row asked for holds a value no copy may');
+    }
+    const keyed = chunked(shareable, LEDGER_OWN_WRITE_CHUNK).map(chunk => this.keyRows(uid, key, chunk));
     try {
       await Promise.all(keyed);
     } catch (error) {
@@ -491,8 +536,8 @@ export class LedgerShareService implements OnDestroy {
       // copies are judged against the same.
       const categories = await this.loadCategories(state);
       const copies: Promise<boolean>[] = [];
-      let done = 0;
-      for (const chunk of chunked(ids, LEDGER_COMMIT_CHUNK)) {
+      let done = ids.length - shareable.length;
+      for (const chunk of chunked(shareable, LEDGER_COMMIT_CHUNK)) {
         const rows = await Promise.all(chunk.map(txId => this.firestore.getDocument<Transaction>(rowPath(uid, txId))));
         const writes: CopyWrite[] = [];
         chunk.forEach((txId, i) => {
@@ -513,6 +558,7 @@ export class LedgerShareService implements OnDestroy {
       markFullPass(uid, householdId);
       this.warn('A share\'s copies were not all written; a full pass writes them', error);
     }
+    return { skipped };
   }
 
   /**
@@ -571,25 +617,28 @@ export class LedgerShareService implements OnDestroy {
    * does not answer, goes on to a full pass. Online only: every read is the
    * server's. Rejects when a full pass could not write or take out every
    * copy it had to, leaving the household marked for another.
+   *
+   * Specs and the smoke drive it; the app reconciles through reconcileAll.
+   * It runs under the sweep's lock: a sweep running when it is asked for
+   * finishes first, and one asked for while it runs follows it.
    */
   async reconcile(householdId: string, mode: LedgerReconcileMode): Promise<LedgerReconcileReport> {
     const state = this.stateFor(this.requireUser());
-    const membership = (await this.loadIndex(state, true)).find(entry => entry.householdId === householdId);
-    if (!isLive(membership)) {
-      throw new LedgerShareRefusal('notMember', 'Only a live membership\'s copies are reconciled');
-    }
-    // Read again, as a sweep does, so a full pass never writes a copy from
-    // categories the listener has not caught up with.
-    await this.loadCategories(state, true);
-    return this.reconcileMembership(state, membership, mode);
+    // Asked again after each wait: another caller may have taken the lock
+    // between the sweep's end and this resuming.
+    while (state.sweep) await state.sweep;
+    const report = this.reconcileHousehold(state, householdId, mode);
+    this.lockSweeps(state, report);
+    return report;
   }
 
   /**
    * The sweep, online and signed in only: the journal repaired, then each
    * live membership checked, or diffed in full when the journal marks it,
    * when its last full pass on this device is a week old or unknown, or
-   * after a restore. One sweep runs at a time; a call made while one runs
-   * runs it once more afterwards. Never rejects.
+   * after a restore. One sweep, or one reconcile, runs at a time; a call
+   * made while one runs runs the sweep once more afterwards, and resolves
+   * after it. Never rejects.
    */
   reconcileAll(reason: LedgerSweepReason): Promise<void> {
     const uid = this.auth.userId();
@@ -599,9 +648,21 @@ export class LedgerShareService implements OnDestroy {
       state.rerun = state.rerun === 'restore' || reason === 'restore' ? 'restore' : reason;
       return state.sweep;
     }
+    state.rerun = undefined;
+    return this.lockSweeps(state, this.sweepOnce(state, reason));
+  }
+
+  /**
+   * Holds the sweep's lock (state.sweep) while `work` runs, then runs the
+   * sweep once more for each reconcileAll made meanwhile, and releases it.
+   * Answers what every waiting caller waits on, which never rejects: a
+   * rejection of `work` is its caller's.
+   */
+  private lockSweeps(state: AccountState, work: Promise<unknown>): Promise<void> {
     const sweep = (async () => {
       try {
-        let next: LedgerSweepReason | undefined = reason;
+        await work.catch(() => undefined);
+        let next = state.rerun;
         while (next) {
           state.rerun = undefined;
           await this.sweepOnce(state, next);
@@ -612,12 +673,28 @@ export class LedgerShareService implements OnDestroy {
       } finally {
         // In the same step as the last read of rerun, so no call can land
         // between them and be joined to a sweep that has already ended.
-        // Always after the assignment below: the loop awaits at least once.
+        // Always after the assignment below: the body awaits at least once.
         state.sweep = undefined;
       }
     })();
     state.sweep = sweep;
     return sweep;
+  }
+
+  /** reconcile's pass, once it holds the lock. */
+  private async reconcileHousehold(
+    state: AccountState,
+    householdId: string,
+    mode: LedgerReconcileMode
+  ): Promise<LedgerReconcileReport> {
+    const membership = await this.membershipOf(state, householdId);
+    if (!isLive(membership)) {
+      throw new LedgerShareRefusal('notMember', 'Only a live membership\'s copies are reconciled');
+    }
+    // Read again, as a sweep does, so a full pass never writes a copy from
+    // categories the listener has not caught up with.
+    await this.loadCategories(state, true);
+    return this.reconcileMembership(state, membership, mode);
   }
 
   /**
@@ -629,21 +706,19 @@ export class LedgerShareService implements OnDestroy {
   }
 
   /**
-   * Removes a household's key from every row of the account's that names
-   * it, at most LEDGER_OWN_WRITE_CHUNK per commit. Answers how many rows.
-   */
-  stripKey(householdId: string): Promise<number> {
-    return this.stripKeyOf(this.requireUser(), householdId);
-  }
-
-  /**
    * What is left of a membership that has ended, in order: the account's
    * copies purged, then the key stripped from its rows, then this device's
    * journal entries for it forgotten. The membership must have ended first,
    * so no copy can be written behind the purge. The index entry is not
-   * touched: HouseholdService deletes it once this resolves, last.
+   * touched: HouseholdService deletes it once this resolves true, last.
+   *
+   * The server is asked whether the account is a member of the household
+   * before the purge, and again just before the strip. When it is, what is
+   * left from there (the copies, the rows and the journal) stays as it is,
+   * and this answers false: the ending is over, and the index entry is the
+   * live membership's.
    */
-  cleanupMembership(householdId: string): Promise<void> {
+  cleanupMembership(householdId: string): Promise<boolean> {
     return this.cleanup(this.requireUser(), householdId);
   }
 
@@ -659,10 +734,13 @@ export class LedgerShareService implements OnDestroy {
    * copy, and a copy shared again after a rejoin takes the id of the one
    * listed, so only this order keeps the purge off a live member's copies.
    * A member document the rules refuse is another generation's: no member.
+   *
+   * `progress` hears the copies done of those listed: once they are listed,
+   * then as each commit is answered.
    */
-  async purgeMember(householdId: string, memberUid: string): Promise<number> {
+  async purgeMember(householdId: string, memberUid: string, progress?: LedgerShareProgress): Promise<number> {
     const state = this.stateFor(this.requireUser());
-    const membership = (await this.loadIndex(state, true)).find(entry => entry.householdId === householdId);
+    const membership = await this.membershipOf(state, householdId);
     if (!isLive(membership)) {
       throw new LedgerShareRefusal('notMember', 'Only a live member purges a household\'s copies');
     }
@@ -679,10 +757,12 @@ export class LedgerShareService implements OnDestroy {
       .filter(copy => copy.memberUid === memberUid && sameStamp(copy.gen, gen))
       .map(copy => `${ledgerPath(householdId)}/${copy.id}`);
     let purged = 0;
+    this.report(progress, purged, paths.length);
     for (const chunk of chunked(paths, LEDGER_PURGE_CHUNK)) {
       if (await this.memberOfGeneration(householdId, memberUid, gen)) break;
       await this.firestore.commitBatch(chunk.map(path => ({ op: 'delete', path })));
       purged += chunk.length;
+      this.report(progress, purged, paths.length);
     }
     return purged;
   }
@@ -983,10 +1063,7 @@ export class LedgerShareService implements OnDestroy {
   // ---- unsharing ----
 
   private unsharePair(uid: string, hid: string, key: string, txId: string): BatchOp[] {
-    return [
-      { op: 'delete', path: ledgerCopyPath(hid, uid, txId) },
-      { op: 'update', path: rowPath(uid, txId), data: { sharedWith: arrayRemove(key) }, stamp: 'client' }
-    ];
+    return [{ op: 'delete', path: ledgerCopyPath(hid, uid, txId) }, keyRemoval(uid, key, txId)];
   }
 
   /**
@@ -1046,22 +1123,27 @@ export class LedgerShareService implements OnDestroy {
    */
   private async judgeMembership(uid: string, hid: string): Promise<MembershipJudgement> {
     try {
-      const own = await this.firestore.getDocumentFromServer<Partial<HouseholdMember>>(memberPath(hid, uid));
-      if (!own || !isStamp(own.since)) return 'ended';
-      let household: Partial<Household> | null;
-      try {
-        household = await this.firestore.getDocumentFromServer<Partial<Household>>(householdPath(hid));
-      } catch (error) {
-        // A live member reads its household; a get of one that is gone is refused.
-        if (isRefused(error)) return 'ended';
-        throw error;
-      }
-      if (!household || !sameStamp(household.createdAt, own.since)) return 'ended';
-      return { since: own.since };
+      return await this.readMembership(uid, hid);
     } catch (error) {
       this.warn('A membership was not judged; its journaled copies are kept', error);
       return 'unknown';
     }
+  }
+
+  /** judgeMembership's reads, rejecting when the server does not answer. */
+  private async readMembership(uid: string, hid: string): Promise<{ since: Timestamp } | 'ended'> {
+    const own = await this.firestore.getDocumentFromServer<Partial<HouseholdMember>>(memberPath(hid, uid));
+    if (!own || !isStamp(own.since)) return 'ended';
+    let household: Partial<Household> | null;
+    try {
+      household = await this.firestore.getDocumentFromServer<Partial<Household>>(householdPath(hid));
+    } catch (error) {
+      // A live member reads its household; a get of one that is gone is refused.
+      if (isRefused(error)) return 'ended';
+      throw error;
+    }
+    if (!household || !sameStamp(household.createdAt, own.since)) return 'ended';
+    return { since: own.since };
   }
 
   private async repairHousehold(
@@ -1126,6 +1208,24 @@ export class LedgerShareService implements OnDestroy {
     }
   }
 
+  /**
+   * Takes a household's key off the account's rows named, at most
+   * LEDGER_OWN_WRITE_CHUNK per commit. Answers how many rows keep it.
+   */
+  private async removeKeys(uid: string, hid: string, txIds: readonly string[]): Promise<number> {
+    const key = shareKey(hid);
+    let kept = 0;
+    for (const chunk of chunked(txIds, LEDGER_OWN_WRITE_CHUNK)) {
+      try {
+        await this.firestore.commitBatch(chunk.map(txId => keyRemoval(uid, key, txId)));
+      } catch (error) {
+        kept += chunk.length;
+        this.warn('Keys were not taken off rows no copy may hold; the next pass tries again', error);
+      }
+    }
+    return kept;
+  }
+
   /** Deletes own copies, at most LEDGER_OWN_WRITE_CHUNK per commit. Answers the paths not deleted. */
   private async deletePaths(paths: readonly string[]): Promise<Set<string>> {
     const failed = new Set<string>();
@@ -1158,7 +1258,9 @@ export class LedgerShareService implements OnDestroy {
   /**
    * Whether the rows naming a household and the account's copies in it are
    * as many, as the server counts them. An aggregation the server does not
-   * answer proves nothing alike.
+   * answer proves nothing alike. A row no copy may hold is not left naming
+   * the household (share keys none, and a full pass takes its key off), so
+   * both sides count the same rows.
    *
    * A count only: under one filter it is served by the automatic
    * single-field indexes. A sum filtered on another field needs a composite
@@ -1187,12 +1289,25 @@ export class LedgerShareService implements OnDestroy {
    * Lists the account's rows naming the household and its copies in it,
    * both from the server, and diffs them by row: a missing copy is written,
    * a different one written again, and an orphan taken out (its row gone or
-   * no longer naming the household, or of another generation). Deletes go
-   * first, then the writes, each journaled. Any failure marks the household
-   * for another full pass and rejects.
+   * no longer naming the household, or of another generation). A row that
+   * names it and holds a value no copy may has the household's key taken
+   * off instead, so the next check counts the two sides alike. Deletes go
+   * first, then those keys, then the writes, each journaled. Any failure
+   * marks the household for another full pass and rejects. A mark made after
+   * the pass began is left for the next (clearFullPass).
+   *
+   * The membership was judged live from the index, whose entry outlives a
+   * removal or a dissolve until a tidy closes it, and the rules refuse every
+   * copy of an ended one. So the first commit of copies refused has the
+   * server asked, once a pass (judgeMembership): an ended membership is
+   * cleaned up (cleanup) and the pass ends there, resolved; one it cannot
+   * judge ends the pass, rejected; a live one goes on with the rest.
    */
   private async fullPass(state: AccountState, membership: LiveMembership): Promise<LedgerReconcileReport> {
     const { uid } = state;
+    // Before anything is read: a mark made after this is one the pass may
+    // not see, a category it read too early or a row it listed too early.
+    const seen = fullPassSeq(uid);
     const hid = membership.householdId;
     const since = membership.since;
     const owedSince = new Map(state.owed);
@@ -1205,10 +1320,15 @@ export class LedgerShareService implements OnDestroy {
       const held = new Map(copies.filter(copy => copy.memberUid === uid).map(copy => [copy.id, copy]));
       const wanted = new Set<string>();
       const deletes: string[] = [];
+      const unkeyed: string[] = [];
       const sets: CopyWrite[] = [];
       for (const row of rows) {
-        const source = normalizeShares(row.sharedWith).includes(hid) ? projectable(uid, row.id, row) : null;
-        if (!source) continue;
+        if (!normalizeShares(row.sharedWith).includes(hid)) continue;
+        const source = projectable(uid, row.id, row);
+        if (!source) {
+          unkeyed.push(row.id);
+          continue;
+        }
         const id = ledgerCopyId(uid, row.id);
         wanted.add(id);
         const next = projectRow(source, categories, since);
@@ -1222,14 +1342,28 @@ export class LedgerShareService implements OnDestroy {
       }
 
       const failed = await this.deletePaths(deletes.map(id => `${ledgerPath(hid)}/${id}`));
+      const keysLeft = await this.removeKeys(uid, hid, unkeyed);
       const writable = sets.filter(set => !failed.has(ledgerCopyPath(hid, uid, set.txId)));
       let written = 0;
+      let judged = false;
       for (const chunk of chunked(writable, LEDGER_COMMIT_CHUNK)) {
-        if (await this.issue(state, chunk, false, owedSince)) written += chunk.length;
+        if (await this.issue(state, chunk, false, owedSince)) {
+          written += chunk.length;
+          continue;
+        }
+        if (judged) continue;
+        judged = true;
+        const judgement = await this.judgeMembership(uid, hid);
+        if (judgement === 'unknown') throw new Error('A household\'s copies were refused, and its membership was not judged');
+        if (judgement === 'ended') {
+          // cleanup forgets the household's journal entries, its mark and stamps included.
+          if (!(await this.cleanup(uid, hid))) throw new Error('A household\'s membership ended and began again during a pass');
+          return { pass: 'full', written, deleted: deletes.length };
+        }
       }
-      const missed = failed.size + (sets.length - written);
+      const missed = failed.size + keysLeft + (sets.length - written);
       if (missed > 0) throw new Error(`${missed} of a household's copies were not written or taken out`);
-      clearFullPass(uid, hid);
+      clearFullPass(uid, hid, seen);
       stampSweep(uid, hid, 'full', Date.now());
       return { pass: 'full', written, deleted: deletes.length };
     } catch (error) {
@@ -1254,7 +1388,7 @@ export class LedgerShareService implements OnDestroy {
       for (const membership of live) {
         const hid = membership.householdId;
         const lastFull = readSweepStamps(uid, hid).full;
-        const full = reason === 'restore' || marked.includes(hid)
+        const full = reason === 'restore' || typeof marked[hid] === 'number'
           || lastFull === undefined || now - lastFull >= FULL_SWEEP_EVERY_MS;
         try {
           await this.reconcileMembership(state, membership, full ? 'full' : 'check');
@@ -1269,10 +1403,19 @@ export class LedgerShareService implements OnDestroy {
 
   // ---- ending ----
 
-  private async cleanup(uid: string, hid: string): Promise<void> {
+  private async cleanup(uid: string, hid: string): Promise<boolean> {
+    // A live membership's copies are its shares, not leftovers: a stale
+    // accept, or a tidy judged before a join, must not purge them.
+    if ((await this.readMembership(uid, hid)) !== 'ended') return false;
     await this.purgeOwnOf(uid, hid);
+    // A join of the same household can still land during the purge: its
+    // rows' keys are the new membership's shares, which a strip would undo
+    // for good. A copy purged meanwhile is rewritten by the next sweep, from
+    // the key the row keeps.
+    if ((await this.readMembership(uid, hid)) !== 'ended') return false;
     await this.stripKeyOf(uid, hid);
     forgetJournalHousehold(uid, hid);
+    return true;
   }
 
   private async purgeOwnOf(uid: string, hid: string): Promise<number> {
@@ -1291,12 +1434,7 @@ export class LedgerShareService implements OnDestroy {
     const rows = await this.firestore.getCollectionFromServer<Transaction>(rowsPath(uid), { where: [namingKey(key)] });
     const ids = rows.filter(row => Array.isArray(row.sharedWith) && row.sharedWith.includes(key)).map(row => row.id);
     for (const chunk of chunked(ids, LEDGER_OWN_WRITE_CHUNK)) {
-      await this.firestore.commitBatch(chunk.map(txId => ({
-        op: 'update',
-        path: rowPath(uid, txId),
-        data: { sharedWith: arrayRemove(key) },
-        stamp: 'client'
-      })));
+      await this.firestore.commitBatch(chunk.map(txId => keyRemoval(uid, key, txId)));
     }
     return ids.length;
   }
@@ -1348,6 +1486,29 @@ export class LedgerShareService implements OnDestroy {
   }
 
   /**
+   * The account's membership of a household as share, reconcile and
+   * purgeMember judge it before they write: the index read again, or, when
+   * that read does not list the household live and the device is online,
+   * the household's index document as the server holds it.
+   *
+   * The read again is answered by a listener already on the index
+   * (HouseholdService keeps one) from what it last heard, and a membership
+   * formed or joined in a transaction reaches that listener only once the
+   * server sends it on: until then the read misses the household, or still
+   * lists an earlier membership of it as ended. A transaction's read is the
+   * server's alone (getDocumentFromServer). Offline the read again stands,
+   * as nothing else can answer. Rejects when the server does not answer: a
+   * refusal would tell the account it is no member of a household it may
+   * well belong to.
+   */
+  private async membershipOf(state: AccountState, householdId: string): Promise<HouseholdMembership | undefined> {
+    const listed = (await this.loadIndex(state, true)).find(entry => entry.householdId === householdId);
+    if (isLive(listed) || !this.pwa.isOnline()) return listed;
+    const stored = await this.firestore.getDocumentFromServer<HouseholdIndexData>(indexEntryPath(state.uid, householdId));
+    return stored ? toMembership(stored) : undefined;
+  }
+
+  /**
    * The account's categories: as held, or read (afresh when asked, from the
    * server when online). The first call also starts a listener that keeps
    * them current.
@@ -1371,8 +1532,9 @@ export class LedgerShareService implements OnDestroy {
 
   /**
    * Keeps the categories current from a listener. One that fails is
-   * dropped, so the next load starts another; a refusal (the account signed
-   * out) is expected and not logged.
+   * dropped, so the next load starts another. A refusal (the account signed
+   * out) and the SDK's abort as it shuts down (the app closing, which ends
+   * every listener still attached) are expected and not logged.
    */
   private watchCategories(state: AccountState): void {
     if (state.categoriesWatch || this.destroyed || this.state !== state) return;
@@ -1387,7 +1549,9 @@ export class LedgerShareService implements OnDestroy {
         error: error => {
           failed = true;
           if (watch && state.categoriesWatch === watch) state.categoriesWatch = undefined;
-          if (!isRefused(error)) this.warn('The account\'s categories are no longer heard; the next read starts again', error);
+          if (!isRefused(error) && errorCode(error) !== 'aborted') {
+            this.warn('The account\'s categories are no longer heard; the next read starts again', error);
+          }
         }
       });
       if (!failed) state.categoriesWatch = watch;
