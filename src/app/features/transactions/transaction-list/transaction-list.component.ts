@@ -9,6 +9,7 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
   untracked,
@@ -24,10 +25,22 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatCheckboxChange, MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category, receiptImageCount, baseCurrencyOf, normalizeShares, sharedChipLabel, sharedHouseholdNames } from '../../../models';
+import {
+  Transaction,
+  Category,
+  MAX_BULK_SHARE,
+  receiptImageCount,
+  baseCurrencyOf,
+  normalizeShares,
+  sharedChipLabel,
+  sharedHouseholdNames,
+  signedAmountText
+} from '../../../models';
 import {
   TransactionWindowService,
   WindowSortDirection
@@ -44,9 +57,10 @@ import { CategoryChipComponent } from '../../../shared/components/category-chip/
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { NoteDialogComponent, NoteDialogData } from '../note-dialog/note-dialog.component';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
-import { RowSharingService } from '../../../core/services/row-sharing.service';
+import { BulkShareKind, RowSharingService } from '../../../core/services/row-sharing.service';
 import { PwaService } from '../../../core/services/pwa.service';
-import { shareChange } from '../../../core/utils/share-change.utils';
+import { AnnouncerService } from '../../../core/services/announcer.service';
+import { ShareTarget, shareChange } from '../../../core/utils/share-change.utils';
 import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
@@ -60,6 +74,7 @@ const PREFETCH_MARGIN_PX = 600;
 // almost nothing can scan.
 const MAX_AUTO_FETCHES = 10;
 const HIGHLIGHT_MS = 2000;
+const TABLE_COLUMNS = ['date', 'category', 'description', 'amount', 'actions'];
 
 @Component({
   selector: 'app-transaction-list',
@@ -75,6 +90,8 @@ const HIGHLIGHT_MS = 2000;
     MatButtonModule,
     MatMenuModule,
     MatProgressSpinnerModule,
+    MatProgressBarModule,
+    MatCheckboxModule,
     MatTooltipModule,
     EmptyStateComponent,
     TranslatePipe,
@@ -83,6 +100,13 @@ const HIGHLIGHT_MS = 2000;
   templateUrl: './transaction-list.component.html',
   styleUrl: './transaction-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // On the document, so Escape leaves the select mode from wherever focus is
+  // in the list (the toggle, the bar, a row or its checkbox), and only once
+  // an overlay has passed on it: a tooltip open on a row's button takes its
+  // Escape at the body and stops it there.
+  host: {
+    '(document:keydown.escape)': 'onEscape($event)',
+  },
 })
 export class TransactionListComponent {
   // Modern Angular 21: signal-based inputs/outputs
@@ -107,6 +131,7 @@ export class TransactionListComponent {
   private quickAdd = inject(QuickAddService);
   private rowSharing = inject(RowSharingService);
   private pwa = inject(PwaService);
+  private announcer = inject(AnnouncerService);
 
   /** The account's live households, which the row menus offer to share into. */
   readonly shareTargets = toSignal(this.rowSharing.targets(), { initialValue: [] });
@@ -116,7 +141,70 @@ export class TransactionListComponent {
     () => new Map(this.shareTargets().map(target => [target.householdId, target.name]))
   );
 
-  displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
+  // === Select mode ===
+  // Many rows chosen at once, then shared into or taken out of households
+  // together. Offered only to an account that belongs to a household.
+
+  readonly maxBulkShare = MAX_BULK_SHARE;
+
+  /** True while the reader is choosing rows; see `inSelectMode`. */
+  private readonly selecting = signal(false);
+
+  /**
+   * The mode as the page shows it: on only while the account belongs to a
+   * household, so leaving the last one ends it wherever that happened.
+   */
+  readonly inSelectMode = computed(() => this.selecting() && this.shareTargets().length > 0);
+
+  /**
+   * Kept after the mode is left over a list with no rows, so the toggle, and
+   * the focus on it, stay; let go once the list has rows again, or loses
+   * them after that.
+   */
+  private readonly keepBar = linkedSignal({
+    source: () => this.sortedTransactions().length > 0,
+    computation: () => false,
+  });
+
+  /** Offered with a household to share into and a row to choose, or while on, so it can always be left. */
+  readonly showSelectBar = computed(
+    () => this.shareTargets().length > 0 &&
+      (this.inSelectMode() || this.sortedTransactions().length > 0 || this.keepBar())
+  );
+
+  /**
+   * The chosen rows' ids in the order they were chosen. Ids rather than
+   * rows: a chosen row may leave the loaded window as it scrolls, and is
+   * still chosen.
+   */
+  private readonly selection = signal<readonly string[]>([]);
+  private readonly selectedIds = computed(() => new Set(this.selection()));
+  readonly selectedCount = computed(() => this.selection().length);
+
+  /**
+   * Moves each time the mode is entered or left. A run clears the rows it
+   * applied only from the selection it was started from, never from one
+   * made after the mode was left and entered again.
+   */
+  private selectSession = 0;
+
+  /** How many rows the last choice left out for the cap; 0 hides the note. */
+  readonly cappedCount = signal(0);
+
+  /** A share or unshare of the chosen rows is running. */
+  readonly bulkRunning = signal(false);
+
+  /** How far it has got, 0 to 100. */
+  readonly bulkProgress = signal(0);
+
+  /** Share with… and Stop sharing wait for a row, and for a run to finish. */
+  readonly bulkHeld = computed(() => this.selectedCount() === 0 || this.bulkRunning());
+
+  // `read`, because the toggle is a MatButton host, whose reference is the
+  // component rather than the element.
+  private selectToggle = viewChild('selectToggle', { read: ElementRef<HTMLElement> });
+
+  readonly displayedColumns = computed(() => this.inSelectMode() ? ['select', ...TABLE_COLUMNS] : TABLE_COLUMNS);
 
   // Templates cannot call module functions, so the model helper is exposed
   // through the component.
@@ -384,6 +472,202 @@ export class TransactionListComponent {
       .subscribe(confirmed => {
         if (confirmed) void this.rowSharing.apply(transaction.id, change, targets);
       });
+  }
+
+  // === Select mode ===
+
+  /**
+   * Enters the mode or, from Done, leaves it. The toggle is one element in
+   * both states, so focus stays on it either way.
+   */
+  toggleSelectMode(): void {
+    if (this.inSelectMode()) {
+      this.leaveSelectMode();
+      return;
+    }
+    this.selectSession++;
+    this.selecting.set(true);
+    this.selection.set([]);
+    this.cappedCount.set(0);
+    this.announceCount();
+  }
+
+  /**
+   * Escape leaves the mode, from anywhere in the list, and hands focus back
+   * to the toggle. An Escape from outside the list, or one an overlay has
+   * already taken, is not the list's.
+   */
+  onEscape(event: Event): void {
+    if (!this.inSelectMode() || event.defaultPrevented) return;
+    if (!this.host.nativeElement.contains(event.target as Node | null)) return;
+    this.leaveSelectMode();
+    this.selectToggle()?.nativeElement.focus();
+  }
+
+  private leaveSelectMode(): void {
+    this.selectSession++;
+    this.selecting.set(false);
+    this.selection.set([]);
+    this.cappedCount.set(0);
+    this.keepBar.set(this.sortedTransactions().length === 0);
+  }
+
+  isSelected(transaction: Transaction): boolean {
+    return this.selectedIds().has(transaction.id);
+  }
+
+  /** A row's click, and Enter on its button: it opens the row, or in the mode chooses it. */
+  onRowActivate(transaction: Transaction): void {
+    if (this.inSelectMode()) this.toggleRow(transaction);
+    else this.edit.emit(transaction);
+  }
+
+  /**
+   * A row's checkbox. A row past the cap is refused, and the box is set
+   * back, since its binding has not changed and would leave it checked.
+   */
+  onRowChecked(transaction: Transaction, event: MatCheckboxChange): void {
+    if (event.checked === this.isSelected(transaction)) return;
+    if (!this.toggleRow(transaction)) event.source.checked = false;
+  }
+
+  /** Chooses a row or lets it go; false when the cap refused it. */
+  toggleRow(transaction: Transaction): boolean {
+    if (this.isSelected(transaction)) {
+      this.selection.update(ids => ids.filter(id => id !== transaction.id));
+      this.cappedCount.set(0);
+      this.announceCount();
+      return true;
+    }
+    if (this.selectedCount() >= MAX_BULK_SHARE) {
+      this.cappedCount.set(1);
+      this.announceCount();
+      return false;
+    }
+    this.selection.update(ids => [...ids, transaction.id]);
+    this.cappedCount.set(0);
+    this.announceCount();
+    return true;
+  }
+
+  /**
+   * Chooses every row the loaded window holds, after those already chosen,
+   * up to MAX_BULK_SHARE; the note says how many it left out.
+   */
+  selectAllShown(): void {
+    const held = this.selection();
+    const chosen = new Set(held);
+    const shown = this.sortedTransactions().map(row => row.id).filter(id => !chosen.has(id));
+    const room = Math.max(0, MAX_BULK_SHARE - held.length);
+    this.selection.set([...held, ...shown.slice(0, room)]);
+    this.cappedCount.set(Math.max(0, shown.length - room));
+    this.announceCount();
+  }
+
+  /**
+   * The count, followed by the cap's note when a choice was refused, as one
+   * message that replaces any not yet spoken: each refused choice still says
+   * why, and a run of them never piles up notes behind the count. Only a
+   * reader's own change is announced: the result of a run is told by its
+   * notification.
+   */
+  private announceCount(): void {
+    const count = this.translationService.t('transactions.select.count', { count: this.selectedCount() });
+    const capped = this.cappedCount();
+    const message = capped > 0
+      ? `${count} ${this.translationService.t('transactions.select.capped', { max: MAX_BULK_SHARE, count: capped })}`
+      : count;
+    this.announcer.announce(message, 'polite', 'replace');
+  }
+
+  /** Share with…: the households to share the chosen rows into; the only one is offered checked. */
+  shareSelected(): void {
+    if (this.bulkHeld()) return;
+    const targets = this.shareTargets();
+    this.chooseHouseholds('share', targets.length === 1 ? [targets[0].householdId] : []);
+  }
+
+  /**
+   * Stop sharing: the households to take the chosen rows out of, checked
+   * where a chosen row the list holds is shared with them. The dialog says
+   * what that takes away, and offline that it waits for the device.
+   */
+  stopSharingSelected(): void {
+    if (this.bulkHeld()) return;
+    const offered = new Set(this.shareTargets().map(target => target.householdId));
+    const chosen = this.selectedIds();
+    const named = new Set(this.transactions()
+      .filter(row => chosen.has(row.id))
+      .flatMap(row => normalizeShares(row.sharedWith)));
+    this.chooseHouseholds('unshare', [...offered].filter(id => named.has(id)));
+  }
+
+  private chooseHouseholds(kind: BulkShareKind, suggested: string[]): void {
+    const targets = this.shareTargets();
+    const ids = [...this.selection()];
+    // The dialog is modal: nothing leaves or enters the mode while it is open.
+    const session = this.selectSession;
+    this.dialog
+      .open<ShareDialogComponent, ShareDialogData, string[]>(ShareDialogComponent, {
+        width: '400px',
+        maxWidth: '95vw',
+        data: {
+          description: this.translationService.t('transactions.select.dialogRows', { count: ids.length }),
+          targets,
+          shared: suggested,
+          mode: kind,
+        },
+      })
+      .afterClosed()
+      .subscribe(households => {
+        if (households?.length) void this.runBulk(kind, ids, households, targets, session);
+      });
+  }
+
+  /**
+   * Runs the change for the rows chosen when the dialog opened. The rows it
+   * went through for leave the selection; a row chosen meanwhile stays, and
+   * so does a whole selection made after the mode was left and entered
+   * again. A failure keeps them all, to be tried again. Focus stays in the
+   * bar: the held buttons keep it (disabledInteractive), and if it was lost
+   * anyway it goes to the bar's first control, the toggle. Focus the reader
+   * moved elsewhere meanwhile is left where it is.
+   */
+  private async runBulk(
+    kind: BulkShareKind,
+    ids: string[],
+    households: string[],
+    targets: ShareTarget[],
+    session: number
+  ): Promise<void> {
+    if (this.bulkRunning()) return;
+    this.bulkRunning.set(true);
+    this.bulkProgress.set(0);
+    try {
+      const outcome = await this.rowSharing.applyToRows(kind, ids, households, targets, fraction =>
+        this.bulkProgress.set(Math.round(Math.min(1, Math.max(0, fraction)) * 100)));
+      if (!outcome.failed && session === this.selectSession) {
+        const applied = new Set(ids);
+        this.selection.update(held => held.filter(id => !applied.has(id)));
+        this.cappedCount.set(0);
+      }
+    } finally {
+      this.bulkRunning.set(false);
+    }
+    if (this.destroyRef.destroyed || !this.inSelectMode()) return;
+    afterNextRender(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body) this.selectToggle()?.nativeElement.focus();
+    }, { injector: this.injector });
+  }
+
+  /** The row's name for its checkbox: what, how much and when, as the row's own button says it. */
+  rowLabel(transaction: Transaction): string {
+    return this.translationService.t('transactions.rowLabel', {
+      description: transaction.description,
+      amount: signedAmountText(transaction, (amount, currency) => this.formatAmount(amount, currency)),
+      date: this.formatRelativeDate(transaction.date),
+    });
   }
 
   confirmDelete(transaction: Transaction): void {

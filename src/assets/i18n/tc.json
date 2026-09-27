@@ -229,6 +229,33 @@
       "stopMessage": "對方將不再看到「{{description}}」，其家庭目標也不再計入它。",
       "stopMessageOffline": "目前離線：在裝置重新連線前，對方仍會看到「{{description}}」。重新連線後便會移除，其家庭目標也不再計入它。",
       "title": "分享給家庭"
+    },
+    "select": {
+      "start": "選取",
+      "done": "完成",
+      "barLabel": "選取要分享或停止分享的交易",
+      "count": "已選取 {{count}} 筆交易",
+      "selectAll": "選取所有顯示的交易",
+      "capped": "一次最多只能選取 {{max}} 筆，因此有 {{count}} 筆顯示的交易未被選取。",
+      "progress": "正在更新所選交易的分享對象",
+      "dialogRows": "已選取的 {{count}} 筆交易",
+      "shareLabel": "要分享的家庭",
+      "stopLabel": "要停止分享的家庭",
+      "stopTitle": "停止分享給家庭",
+      "shareAction": "分享",
+      "offlineShare": "目前離線：裝置恢復連線後，家庭成員才會看到這些交易。",
+      "unshareGoalLink": "停止分享的家庭將不再看到這些交易，該家庭的目標也不再計入它們。",
+      "offlineUnshare": "目前離線：在裝置重新連線前，家庭成員仍會看到這些交易。",
+      "shared": "已將 {{count}} 筆交易分享給{{names}}",
+      "sharedOffline": "裝置恢復連線後，{{names}}就會看到 {{count}} 筆交易",
+      "unshared": "已停止將 {{count}} 筆交易分享給{{names}}",
+      "unsharedOffline": "已停止將 {{count}} 筆交易分享給{{names}}；在裝置重新連線前，對方仍會看到這些交易",
+      "partialShared": "已將 {{count}} 筆交易分享給{{names}}，但無法分享給{{failed}}",
+      "partialUnshared": "已停止將 {{count}} 筆交易分享給{{names}}，但無法停止分享給{{failed}}",
+      "partialNotMember": "已將 {{count}} 筆交易分享給{{names}}。你已不是{{failed}}的成員，因此這些交易沒有分享到那裡。",
+      "tooMany": "一次最多只能分享或停止分享 {{max}} 筆交易",
+      "notMember": "你已不是「{{name}}」的成員，因此這些交易沒有分享到該家庭。",
+      "failed": "無法變更所選交易的分享對象"
     }
   },
   "budget": {

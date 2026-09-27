@@ -1,9 +1,21 @@
-<app-dialog-header titleKey="transactions.share.title" icon="group_add" (closed)="cancel()" />
+<app-dialog-header
+  [titleKey]="mode === 'unshare' ? 'transactions.select.stopTitle' : 'transactions.share.title'"
+  [icon]="mode === 'unshare' ? 'group_remove' : 'group_add'"
+  (closed)="cancel()"
+/>
 
 <mat-dialog-content>
   <p class="share-row">{{ data.description }}</p>
 
-  <div class="share-options" role="group" [attr.aria-label]="'transactions.share.label' | translate">
+  <div
+    class="share-options"
+    role="group"
+    [attr.aria-label]="mode === 'row'
+      ? ('transactions.share.label' | translate)
+      : mode === 'share'
+        ? ('transactions.select.shareLabel' | translate)
+        : ('transactions.select.stopLabel' | translate)"
+  >
     @for (target of data.targets; track target.householdId) {
       <mat-checkbox
         class="share-option"
@@ -13,17 +25,53 @@
     }
   </div>
 
-  <p class="share-hint">{{ 'transactions.share.hint' | translate }}</p>
+  @if (mode !== 'unshare') {
+    <p class="share-hint">{{ 'transactions.share.hint' | translate }}</p>
+  }
 
+  @if (offlineShare()) {
+    <p class="share-offline-share-note" role="status">{{ 'transactions.select.offlineShare' | translate }}</p>
+  }
   @if (pendingUnshare()) {
-    <p class="share-unshare-note" role="status">{{ 'transactions.share.unshareGoalLink' | translate }}</p>
+    <p class="share-unshare-note" role="status">
+      @if (mode === 'unshare') {
+        {{ 'transactions.select.unshareGoalLink' | translate }}
+      } @else {
+        {{ 'transactions.share.unshareGoalLink' | translate }}
+      }
+    </p>
   }
   @if (offlineUnshare()) {
-    <p class="share-offline-note" role="status">{{ 'transactions.share.offlineUnshare' | translate }}</p>
+    <p class="share-offline-note" role="status">
+      @if (mode === 'unshare') {
+        {{ 'transactions.select.offlineUnshare' | translate }}
+      } @else {
+        {{ 'transactions.share.offlineUnshare' | translate }}
+      }
+    </p>
   }
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
   <button mat-button type="button" (click)="cancel()">{{ 'common.cancel' | translate }}</button>
-  <button mat-flat-button color="primary" type="button" (click)="save()">{{ 'common.save' | translate }}</button>
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    class="share-confirm"
+    [disabled]="!canSave()"
+    (click)="save()"
+  >
+    @switch (mode) {
+      @case ('share') {
+        {{ 'transactions.select.shareAction' | translate }}
+      }
+      @case ('unshare') {
+        {{ 'transactions.share.stop' | translate }}
+      }
+      @default {
+        {{ 'common.save' | translate }}
+      }
+    }
+  </button>
 </mat-dialog-actions>

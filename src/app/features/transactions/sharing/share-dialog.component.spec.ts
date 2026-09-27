@@ -124,4 +124,76 @@ describe('ShareDialogComponent', () => {
     fixture.detectChanges();
     expect(goalNote()).withContext('checked again, nothing is taken out').toBeNull();
   });
+
+  describe('for many selected rows', () => {
+    const title = () => root().querySelector('app-dialog-header')?.textContent ?? '';
+    const group = () => root().querySelector('.share-options')!;
+    const confirm = () => root().querySelector<HTMLButtonElement>('mat-dialog-actions button.share-confirm')!;
+    const shareNote = () => root().querySelector('.share-offline-share-note');
+
+    it('asks which households to share them into, none chosen yet, and closes with only those', () => {
+      render({ description: '3 selected', shared: [], mode: 'share' });
+
+      expect(title()).toContain('transactions.share.title');
+      expect(root().querySelector('.share-row')?.textContent?.trim()).toBe('3 selected');
+      expect(group().getAttribute('aria-label')).toBe('transactions.select.shareLabel');
+      expect(boxes().map(box => box.checked)).toEqual([false, false]);
+      expect(root().textContent).withContext('what members see').toContain('transactions.share.hint');
+      expect(confirm().textContent?.trim()).toBe('transactions.select.shareAction');
+      expect(confirm().disabled).withContext('nothing chosen yet').toBeTrue();
+
+      boxes()[1].click();
+      fixture.detectChanges();
+      expect(confirm().disabled).toBeFalse();
+      confirm().click();
+
+      expect(dialogRef.close).toHaveBeenCalledOnceWith(['h2']);
+    });
+
+    it('says, offline, that the households see the rows once the device is back online', () => {
+      online.set(false);
+      render({ description: '3 selected', shared: [], mode: 'share' });
+
+      expect(shareNote()?.textContent?.trim()).toBe('transactions.select.offlineShare');
+      expect(shareNote()?.getAttribute('role')).toBe('status');
+      expect(goalNote()).toBeNull();
+
+      online.set(true);
+      fixture.detectChanges();
+      expect(shareNote()).toBeNull();
+    });
+
+    it('asks which households to stop sharing them with, pre-set, and says what that takes away', () => {
+      render({ description: '2 selected', shared: ['h1'], mode: 'unshare' });
+
+      expect(title()).toContain('transactions.select.stopTitle');
+      expect(group().getAttribute('aria-label')).toBe('transactions.select.stopLabel');
+      expect(boxes().map(box => box.checked)).toEqual([true, false]);
+      expect(root().textContent).not.toContain('transactions.share.hint');
+      expect(goalNote()?.textContent?.trim()).toBe('transactions.select.unshareGoalLink');
+      expect(note()).withContext('online').toBeNull();
+      expect(confirm().textContent?.trim()).toBe('transactions.share.stop');
+
+      boxes()[1].click();
+      fixture.detectChanges();
+      confirm().click();
+
+      expect(dialogRef.close).toHaveBeenCalledOnceWith(['h1', 'h2']);
+    });
+
+    it('says, offline, that the households keep seeing the rows until the device reconnects', () => {
+      online.set(false);
+      render({ description: '2 selected', shared: [], mode: 'unshare' });
+      expect(note()).withContext('nothing chosen').toBeNull();
+      expect(goalNote()).withContext('nothing chosen').toBeNull();
+      expect(confirm().disabled).toBeTrue();
+
+      boxes()[0].click();
+      fixture.detectChanges();
+
+      expect(note()?.textContent?.trim()).toBe('transactions.select.offlineUnshare');
+      expect(goalNote()?.textContent?.trim()).toBe('transactions.select.unshareGoalLink');
+      expect(shareNote()).toBeNull();
+    });
+  });
 });

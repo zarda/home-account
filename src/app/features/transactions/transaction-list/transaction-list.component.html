@@ -1,3 +1,75 @@
+<!-- The select mode's bar: Select on its own until the mode is on, then the
+     count, Done, and the actions for the chosen rows. The toggle is one
+     element in both states, so entering and leaving keep focus on it. -->
+@if (showSelectBar()) {
+  <div
+    class="select-bar"
+    [class.selecting]="inSelectMode()"
+    role="region"
+    [attr.aria-label]="'transactions.select.barLabel' | translate"
+  >
+    <div class="select-head">
+      @if (inSelectMode()) {
+        <span class="select-count">{{ 'transactions.select.count' | translate: { count: selectedCount() } }}</span>
+      }
+      <button #selectToggle mat-button type="button" class="select-toggle" (click)="toggleSelectMode()">
+        <mat-icon>{{ inSelectMode() ? 'done' : 'checklist' }}</mat-icon>
+        @if (inSelectMode()) {
+          {{ 'transactions.select.done' | translate }}
+        } @else {
+          {{ 'transactions.select.start' | translate }}
+        }
+      </button>
+    </div>
+    @if (inSelectMode()) {
+      <div class="select-actions">
+        <button mat-stroked-button type="button" class="select-all" (click)="selectAllShown()">
+          <mat-icon>select_all</mat-icon>
+          {{ 'transactions.select.selectAll' | translate }}
+        </button>
+        <!-- Share with… and Stop sharing are held while no row is chosen or
+             a run is under way: disabledInteractive rather than disabled, so
+             a button that held focus through a run keeps it. -->
+        <button
+          mat-stroked-button
+          type="button"
+          class="select-share"
+          [disabled]="bulkHeld()"
+          disabledInteractive
+          (click)="shareSelected()"
+        >
+          <mat-icon>group_add</mat-icon>
+          {{ 'transactions.share.menu' | translate }}
+        </button>
+        <button
+          mat-stroked-button
+          type="button"
+          class="select-stop"
+          [disabled]="bulkHeld()"
+          disabledInteractive
+          (click)="stopSharingSelected()"
+        >
+          <mat-icon>group_remove</mat-icon>
+          {{ 'transactions.share.stop' | translate }}
+        </button>
+      </div>
+      @if (bulkRunning()) {
+        <mat-progress-bar
+          class="select-progress"
+          mode="determinate"
+          [value]="bulkProgress()"
+          [attr.aria-label]="'transactions.select.progress' | translate"
+        />
+      }
+      @if (cappedCount() > 0) {
+        <p class="select-capped">
+          {{ 'transactions.select.capped' | translate: { max: maxBulkShare, count: cappedCount() } }}
+        </p>
+      }
+    }
+  </div>
+}
+
 <div #topSentinel class="window-sentinel" aria-hidden="true"></div>
 
 @if (windowSource.loadError() === 'prev') {
@@ -41,58 +113,72 @@
           [transaction]="transaction"
           [categories]="categories()"
           [householdNames]="householdNames()"
-          [swipeActions]="true"
+          [swipeActions]="!inSelectMode()"
           [attr.data-tx-id]="transaction.id"
           [class.row-highlight]="transaction.id === highlightedId()"
-          (activate)="edit.emit(transaction)"
+          [class.row-selected]="inSelectMode() && isSelected(transaction)"
+          (activate)="onRowActivate(transaction)"
           (edit)="edit.emit(transaction)"
           (delete)="confirmDelete(transaction)"
         >
-          <!-- Trailing overflow actions. A sibling of the row button, not
-               inside it, so its name has to say which row it acts on. -->
-          <button
-            mat-icon-button
-            class="row-menu-btn"
-            [matMenuTriggerFor]="mobileMenu"
-            (click)="$event.stopPropagation()"
-            [attr.aria-label]="'common.moreActionsFor' | translate: { description: transaction.description }"
-          >
-            <mat-icon>more_vert</mat-icon>
-          </button>
-          <mat-menu #mobileMenu="matMenu">
-            @if (transaction.note) {
-              <button mat-menu-item (click)="openNote(transaction)">
-                <mat-icon>notes</mat-icon>
-                <span>{{ 'transactions.viewNote' | translate }}</span>
-              </button>
-            }
-            @if (transaction.receiptUrl) {
-              <button mat-menu-item type="button" (click)="openReceipt(transaction)">
-                <mat-icon>receipt_long</mat-icon>
-                <span>{{ 'transactions.viewReceipt' | translate }}</span>
-              </button>
-            }
-            @if (shareTargets().length > 0) {
-              <button mat-menu-item type="button" (click)="openShare(transaction)">
-                <mat-icon>group_add</mat-icon>
-                <span>{{ 'transactions.share.menu' | translate }}</span>
-              </button>
-            }
-            @if (sharedNames(transaction)) {
-              <button mat-menu-item type="button" (click)="stopSharing(transaction)">
-                <mat-icon>group_remove</mat-icon>
-                <span>{{ 'transactions.share.stop' | translate }}</span>
-              </button>
-            }
-            <button mat-menu-item (click)="edit.emit(transaction)">
-              <mat-icon>edit</mat-icon>
-              <span>{{ 'common.edit' | translate }}</span>
+          @if (inSelectMode()) {
+            <!-- In the menu's corner while choosing. Its click stops here:
+                 the row behind it would choose the row a second time. -->
+            <mat-checkbox
+              class="row-select"
+              [checked]="isSelected(transaction)"
+              [aria-label]="rowLabel(transaction)"
+              (change)="onRowChecked(transaction, $event)"
+              (click)="$event.stopPropagation()"
+              (keydown.enter)="$event.preventDefault(); toggleRow(transaction)"
+            />
+          } @else {
+            <!-- Trailing overflow actions. A sibling of the row button, not
+                 inside it, so its name has to say which row it acts on. -->
+            <button
+              mat-icon-button
+              class="row-menu-btn"
+              [matMenuTriggerFor]="mobileMenu"
+              (click)="$event.stopPropagation()"
+              [attr.aria-label]="'common.moreActionsFor' | translate: { description: transaction.description }"
+            >
+              <mat-icon>more_vert</mat-icon>
             </button>
-            <button mat-menu-item (click)="confirmDelete(transaction)">
-              <mat-icon class="text-red-500">delete</mat-icon>
-              <span class="text-red-500">{{ 'common.delete' | translate }}</span>
-            </button>
-          </mat-menu>
+            <mat-menu #mobileMenu="matMenu">
+              @if (transaction.note) {
+                <button mat-menu-item (click)="openNote(transaction)">
+                  <mat-icon>notes</mat-icon>
+                  <span>{{ 'transactions.viewNote' | translate }}</span>
+                </button>
+              }
+              @if (transaction.receiptUrl) {
+                <button mat-menu-item type="button" (click)="openReceipt(transaction)">
+                  <mat-icon>receipt_long</mat-icon>
+                  <span>{{ 'transactions.viewReceipt' | translate }}</span>
+                </button>
+              }
+              @if (shareTargets().length > 0) {
+                <button mat-menu-item type="button" (click)="openShare(transaction)">
+                  <mat-icon>group_add</mat-icon>
+                  <span>{{ 'transactions.share.menu' | translate }}</span>
+                </button>
+              }
+              @if (sharedNames(transaction)) {
+                <button mat-menu-item type="button" (click)="stopSharing(transaction)">
+                  <mat-icon>group_remove</mat-icon>
+                  <span>{{ 'transactions.share.stop' | translate }}</span>
+                </button>
+              }
+              <button mat-menu-item (click)="edit.emit(transaction)">
+                <mat-icon>edit</mat-icon>
+                <span>{{ 'common.edit' | translate }}</span>
+              </button>
+              <button mat-menu-item (click)="confirmDelete(transaction)">
+                <mat-icon class="text-red-500">delete</mat-icon>
+                <span class="text-red-500">{{ 'common.delete' | translate }}</span>
+              </button>
+            </mat-menu>
+          }
         </app-transaction-row>
         @if (!last) {
           <div class="mobile-divider"></div>
@@ -117,6 +203,24 @@
       (matSortChange)="onSortChange($event)"
       class="desktop-table"
     >
+      <!-- Select Column, in the select mode only. A row's click chooses it
+           there too; the checkbox's own click stops here so it counts once. -->
+      <ng-container matColumnDef="select">
+        <th mat-header-cell *matHeaderCellDef class="col-select">
+          <span class="sr-only">{{ 'transactions.select.start' | translate }}</span>
+        </th>
+        <td mat-cell *matCellDef="let transaction" class="col-select">
+          <mat-checkbox
+            class="row-select"
+            [checked]="isSelected(transaction)"
+            [aria-label]="rowLabel(transaction)"
+            (change)="onRowChecked(transaction, $event)"
+            (click)="$event.stopPropagation()"
+            (keydown.enter)="$event.preventDefault(); toggleRow(transaction)"
+          />
+        </td>
+      </ng-container>
+
       <!-- Date Column -->
       <ng-container matColumnDef="date">
         <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-date">{{ 'transactions.date' | translate }}</th>
@@ -313,14 +417,15 @@
         </td>
       </ng-container>
 
-      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-header-row *matHeaderRowDef="displayedColumns()"></tr>
       <tr
         mat-row
-        *matRowDef="let row; columns: displayedColumns"
+        *matRowDef="let row; columns: displayedColumns()"
         class="table-row"
         [attr.data-tx-id]="row.id"
         [class.row-highlight]="row.id === highlightedId()"
-        (click)="edit.emit(row)"
+        [class.row-selected]="inSelectMode() && isSelected(row)"
+        (click)="onRowActivate(row)"
       ></tr>
       </table>
     </div>

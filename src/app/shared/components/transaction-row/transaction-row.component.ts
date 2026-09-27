@@ -13,7 +13,16 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category, HouseholdMemberIdentity, receiptImageCount, baseCurrencyOf, sharedChipLabel, sharedHouseholdNames } from '../../../models';
+import {
+  Transaction,
+  Category,
+  HouseholdMemberIdentity,
+  receiptImageCount,
+  baseCurrencyOf,
+  sharedChipLabel,
+  sharedHouseholdNames,
+  signedAmountText,
+} from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
@@ -176,15 +185,11 @@ export class TransactionRowComponent {
     return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
   }
 
-  formatAmount(): string {
-    const transaction = this.transaction();
-    return this.currencyService.formatCurrency(transaction.amount, transaction.currency);
-  }
-
   // One string for the amount on screen and the amount in the row button's
-  // name, so the two cannot disagree.
+  // name, so the two cannot disagree; the transactions list's select
+  // checkbox builds its name from the same helper.
   signedAmount(): string {
-    return `${this.transaction().type === 'income' ? '+' : '-'}${this.formatAmount()}`;
+    return signedAmountText(this.transaction(), (amount, currency) => this.currencyService.formatCurrency(amount, currency));
   }
 
   // Unique per page: a transaction appears in at most one list on a route.

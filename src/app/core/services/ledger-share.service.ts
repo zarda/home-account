@@ -98,6 +98,15 @@ export type LedgerFollowedRow = Partial<Transaction>;
 export type LedgerRowChange = readonly [txId: string, before: LedgerFollowedRow | null, after: LedgerFollowedRow | null];
 
 /**
+ * How far a share or an unshare of many rows has got: `done` of the `total`
+ * rows asked for have had their commit answered (for a share, the commit of
+ * their copies, or no commit at all for rows gone meanwhile). Called only
+ * online, where the commits take their time; offline a share or unshare
+ * resolves as soon as it is queued.
+ */
+export type LedgerShareProgress = (done: number, total: number) => void;
+
+/**
  * - `tooMany`: more rows than one bulk action takes (MAX_BULK_SHARE).
  * - `notMember`: a household that is not one of the account's live memberships.
  * - `notOwner`: another member's copies, which only the household's owner purges.
@@ -442,9 +451,10 @@ export class LedgerShareService implements OnDestroy {
    * writes the copies once the device is back. Resolves once the writes are
    * answered, or offline once they are queued. Rejects only when the keys
    * did not all land (or the household is refused): once they have, a copy
-   * that could not be written is left to a full pass.
+   * that could not be written is left to a full pass. `progress` hears the
+   * rows done as each commit of copies is answered.
    */
-  async share(txIds: readonly string[], householdId: string): Promise<void> {
+  async share(txIds: readonly string[], householdId: string, progress?: LedgerShareProgress): Promise<void> {
     const uid = this.requireUser();
     const ids = [...new Set(txIds)];
     this.refuseBulk(ids);
@@ -481,6 +491,7 @@ export class LedgerShareService implements OnDestroy {
       // copies are judged against the same.
       const categories = await this.loadCategories(state);
       const copies: Promise<boolean>[] = [];
+      let done = 0;
       for (const chunk of chunked(ids, LEDGER_COMMIT_CHUNK)) {
         const rows = await Promise.all(chunk.map(txId => this.firestore.getDocument<Transaction>(rowPath(uid, txId))));
         const writes: CopyWrite[] = [];
@@ -488,7 +499,14 @@ export class LedgerShareService implements OnDestroy {
           const source = normalizeShares(rows[i]?.sharedWith).includes(householdId) ? projectable(uid, txId, rows[i]) : null;
           if (source) writes.push({ hid: householdId, txId, data: projectRow(source, categories, membership.since) });
         });
-        if (writes.length > 0) copies.push(this.issue(state, writes, true));
+        const rowsDone = () => {
+          done += chunk.length;
+          this.report(progress, done, ids.length);
+        };
+        // issue() never rejects: the rows are done whether the commit landed
+        // or was left to the journal.
+        if (writes.length > 0) copies.push(this.issue(state, writes, true).finally(rowsDone));
+        else rowsDone();
       }
       await Promise.all(copies);
     } catch (error) {
@@ -502,21 +520,31 @@ export class LedgerShareService implements OnDestroy {
    * arrayRemove in one commit, at most LEDGER_UNSHARE_PAIRS_PER_COMMIT pairs
    * each. The rules refuse neither, member or not, so it works offline and
    * after a membership has ended. A row gone meanwhile still has its copy
-   * taken out. Resolves once the commits are answered, or offline once they
-   * are queued.
+   * taken out. Settles once every commit is answered, rejecting with the
+   * first refusal, or offline resolves once they are queued. `progress`
+   * hears the rows done as each commit is answered, never after it settles.
    */
-  async unshare(txIds: readonly string[], householdId: string): Promise<void> {
+  async unshare(txIds: readonly string[], householdId: string, progress?: LedgerShareProgress): Promise<void> {
     const uid = this.requireUser();
     const ids = [...new Set(txIds)];
     this.refuseBulk(ids);
     const key = shareKey(householdId);
-    const commits = chunked(ids, LEDGER_UNSHARE_PAIRS_PER_COMMIT)
-      .map(chunk => this.unshareChunk(uid, householdId, key, chunk));
+    const chunks = chunked(ids, LEDGER_UNSHARE_PAIRS_PER_COMMIT);
+    const commits = chunks.map(chunk => this.unshareChunk(uid, householdId, key, chunk));
     if (!this.pwa.isOnline()) {
       this.quietly(commits, 'An unshare queued offline did not land');
       return;
     }
-    await Promise.all(commits);
+    let done = 0;
+    // Every commit is waited for, a refused one included: the others are
+    // still in flight, and a report after the unshare settled would reach a
+    // caller that has moved on.
+    const answers = await Promise.allSettled(commits.map((commit, i) => commit.then(() => {
+      done += chunks[i].length;
+      this.report(progress, done, ids.length);
+    })));
+    const refused = answers.find((answer): answer is PromiseRejectedResult => answer.status === 'rejected');
+    if (refused) throw refused.reason;
   }
 
   /**
@@ -1373,6 +1401,15 @@ export class LedgerShareService implements OnDestroy {
   private refuseBulk(ids: readonly string[]): void {
     if (ids.length > MAX_BULK_SHARE) {
       throw new LedgerShareRefusal('tooMany', `At most ${MAX_BULK_SHARE} rows are shared or unshared at once`);
+    }
+  }
+
+  /** A caller's progress callback, which cannot stop the writes it watches. */
+  private report(progress: LedgerShareProgress | undefined, done: number, total: number): void {
+    try {
+      progress?.(done, total);
+    } catch (error) {
+      this.warn('A progress report threw; the rows are shared or unshared all the same', error);
     }
   }
 

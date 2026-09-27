@@ -787,6 +787,83 @@ describe('LedgerShareService', () => {
       await expectAsync(service.share(['t1'], 'h9')).toBeRejectedWith(jasmine.objectContaining({ reason: 'notMember' }));
       expect(commits()).toEqual([]);
     });
+
+    it(`reports how many rows are done as each commit of ${LEDGER_COMMIT_CHUNK} copies is answered`, async () => {
+      const rows = Array.from({ length: LEDGER_COMMIT_CHUNK * 2 + 2 }, (_, i) => row(`t${i}`, []));
+      seedRows(rows);
+      const progress = jasmine.createSpy('progress');
+
+      await service.share(rows.map(source => source.id), 'h1', progress);
+
+      expect(progress.calls.allArgs()).toEqual([
+        [LEDGER_COMMIT_CHUNK, rows.length],
+        [LEDGER_COMMIT_CHUNK * 2, rows.length],
+        [rows.length, rows.length]
+      ]);
+    });
+
+    it('reports no rows done while their commit of copies waits for its answer', async () => {
+      const rows = Array.from({ length: LEDGER_COMMIT_CHUNK + 1 }, (_, i) => row(`t${i}`, []));
+      seedRows(rows);
+      // The keys are answered at once; each commit of copies only when released.
+      const apply = firestore.commitBatch.bind(firestore);
+      const held: (() => void)[] = [];
+      spyOn(firestore, 'commitBatch').and.callFake((ops: readonly BatchOp[]) => {
+        const landed = apply(ops);
+        if (ops.every(op => op.op === 'update')) return landed;
+        return new Promise<void>((resolve, reject) => held.push(() => landed.then(resolve, reject)));
+      });
+      const progress = jasmine.createSpy('progress');
+      let resolved = false;
+
+      const run = service.share(rows.map(source => source.id), 'h1', progress).then(() => (resolved = true));
+      await settle();
+
+      expect(held.length).withContext('both commits of copies issued').toBe(2);
+      expect(progress).withContext('nothing answered yet').not.toHaveBeenCalled();
+      expect(resolved).toBeFalse();
+
+      held[0]();
+      await settle();
+      expect(progress.calls.allArgs()).toEqual([[LEDGER_COMMIT_CHUNK, rows.length]]);
+      expect(resolved).toBeFalse();
+
+      held[1]();
+      await run;
+      expect(progress.calls.allArgs()).toEqual([[LEDGER_COMMIT_CHUNK, rows.length], [rows.length, rows.length]]);
+    });
+
+    it('counts a chunk whose rows are all gone as done, since it has nothing to write', async () => {
+      // t5 is chosen but deleted: its chunk writes no copy.
+      const rows = Array.from({ length: LEDGER_COMMIT_CHUNK }, (_, i) => row(`t${i}`, []));
+      seedRows(rows);
+      const progress = jasmine.createSpy('progress');
+
+      await service.share([...rows.map(source => source.id), `t${LEDGER_COMMIT_CHUNK}`], 'h1', progress);
+
+      expect(progress.calls.mostRecent().args).toEqual([rows.length + 1, rows.length + 1]);
+    });
+
+    it('reports nothing offline, where the share resolves once its keys are queued', async () => {
+      seedRows([row('t1', []), row('t2', [])]);
+      online.set(false);
+      const progress = jasmine.createSpy('progress');
+
+      await service.share(['t1', 't2'], 'h1', progress);
+
+      expect(progress).not.toHaveBeenCalled();
+    });
+
+    it('still shares when the progress callback throws', async () => {
+      const warn = spyOn(console, 'warn');
+      seedRows([row('t1', [])]);
+
+      await expectAsync(service.share(['t1'], 'h1', () => { throw new Error('view gone'); })).toBeResolved();
+
+      expect(commits().length).withContext('the key, then the copy').toBe(2);
+      expect(journal()).toEqual({ rows: [], full: [] });
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
+    });
   });
 
   describe('unshare', () => {
@@ -839,6 +916,76 @@ describe('LedgerShareService', () => {
 
       await expectAsync(service.unshare(ids, 'h1')).toBeRejectedWith(jasmine.objectContaining({ reason: 'tooMany' }));
       expect(commits()).toEqual([]);
+    });
+
+    it('reports how many rows are done as each commit is answered', async () => {
+      const rows = Array.from({ length: LEDGER_UNSHARE_PAIRS_PER_COMMIT + 3 }, (_, i) => row(`t${i}`, ['h1']));
+      seedRows(rows);
+      const progress = jasmine.createSpy('progress');
+
+      await service.unshare(rows.map(source => source.id), 'h1', progress);
+
+      // One report per commit, in the order the commits are answered.
+      expect(progress.calls.allArgs()).toEqual([
+        [LEDGER_UNSHARE_PAIRS_PER_COMMIT, rows.length],
+        [rows.length, rows.length]
+      ]);
+    });
+
+    it('settles only once every commit is answered, so a refused one reports nothing after it', async () => {
+      const rows = Array.from({ length: LEDGER_UNSHARE_PAIRS_PER_COMMIT * 2 + 1 }, (_, i) => row(`t${i}`, ['h1']));
+      seedRows(rows);
+      // The first commit is answered, the second refused, the third held.
+      const apply = firestore.commitBatch.bind(firestore);
+      const refusal = Object.assign(new Error('refused'), { code: 'permission-denied' });
+      let releaseLast!: () => void;
+      let call = 0;
+      spyOn(firestore, 'commitBatch').and.callFake((ops: readonly BatchOp[]) => {
+        call++;
+        if (call === 1) return apply(ops);
+        if (call === 2) return Promise.reject(refusal);
+        const landed = apply(ops);
+        return new Promise<void>((resolve, reject) => (releaseLast = () => landed.then(resolve, reject)));
+      });
+      const progress = jasmine.createSpy('progress');
+      let settled = false;
+
+      const run = service.unshare(rows.map(source => source.id), 'h1', progress);
+      run.then(() => (settled = true), () => (settled = true));
+      await settle();
+
+      expect(settled).withContext('a commit is still unanswered').toBeFalse();
+      expect(progress.calls.allArgs()).toEqual([[LEDGER_UNSHARE_PAIRS_PER_COMMIT, rows.length]]);
+
+      releaseLast();
+      await expectAsync(run).toBeRejectedWith(refusal);
+      const reports = progress.calls.allArgs();
+      expect(reports).toEqual([
+        [LEDGER_UNSHARE_PAIRS_PER_COMMIT, rows.length],
+        [LEDGER_UNSHARE_PAIRS_PER_COMMIT + 1, rows.length]
+      ]);
+      await settle();
+      expect(progress.calls.count()).withContext('nothing after it settled').toBe(reports.length);
+    });
+
+    it('reports nothing offline, where the unshare resolves once its commits are queued', async () => {
+      online.set(false);
+      spyOn(firestore, 'commitBatch').and.returnValue(new Promise<void>(() => undefined));
+      const progress = jasmine.createSpy('progress');
+
+      await service.unshare(['t1'], 'h1', progress);
+
+      expect(progress).not.toHaveBeenCalled();
+    });
+
+    it('still unshares when the progress callback throws', async () => {
+      const warn = spyOn(console, 'warn');
+      seedRows([row('t1', ['h1'])]);
+
+      await expectAsync(service.unshare(['t1'], 'h1', () => { throw new Error('view gone'); })).toBeResolved();
+
+      expect(commits().length).toBe(1);
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[LedgerShareService\]/), jasmine.anything());
     });
   });
 

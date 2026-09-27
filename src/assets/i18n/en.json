@@ -223,7 +223,7 @@
     "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay.",
     "share": {
       "label": "Shared with",
-      "hint": "Household members see its type, amount, date, description and category, never its note, receipts, tags or place.",
+      "hint": "Household members see the type, amount, date, description and category, never the note, receipts, tags or place.",
       "offlineUnshare": "You're offline: the household keeps seeing this transaction until your device reconnects.",
       "unshareGoalLink": "A household you stop sharing with no longer sees this transaction, and none of its goals count it.",
       "notMember": "You're no longer a member of {{name}}, so the transaction wasn't shared there.",
@@ -238,6 +238,63 @@
       "stopMessage": "They'll no longer see \"{{description}}\", and none of their goals will count it.",
       "stopMessageOffline": "You're offline: they'll keep seeing \"{{description}}\" until your device reconnects. Then it's taken out, and none of their goals will count it.",
       "title": "Share with households"
+    },
+    "select": {
+      "start": "Select",
+      "done": "Done",
+      "barLabel": "Select transactions to share or stop sharing",
+      "count": {
+        "one": "{{count}} transaction selected",
+        "other": "{{count}} transactions selected"
+      },
+      "selectAll": "Select all shown",
+      "capped": {
+        "one": "Only {{max}} can be selected at once, so {{count}} shown transaction wasn't selected.",
+        "other": "Only {{max}} can be selected at once, so {{count}} shown transactions weren't selected."
+      },
+      "progress": "Updating who the selected transactions are shared with",
+      "dialogRows": {
+        "one": "{{count}} selected transaction",
+        "other": "{{count}} selected transactions"
+      },
+      "shareLabel": "Households to share with",
+      "stopLabel": "Households to stop sharing with",
+      "stopTitle": "Stop sharing with households",
+      "shareAction": "Share",
+      "offlineShare": "You're offline: the households see these transactions once your device is back online.",
+      "unshareGoalLink": "Households you stop sharing with no longer see these transactions, and none of their goals count them.",
+      "offlineUnshare": "You're offline: the households keep seeing these transactions until your device reconnects.",
+      "shared": {
+        "one": "Shared {{count}} transaction with {{names}}",
+        "other": "Shared {{count}} transactions with {{names}}"
+      },
+      "sharedOffline": {
+        "one": "{{names}} will see {{count}} transaction once your device is back online",
+        "other": "{{names}} will see {{count}} transactions once your device is back online"
+      },
+      "unshared": {
+        "one": "Stopped sharing {{count}} transaction with {{names}}",
+        "other": "Stopped sharing {{count}} transactions with {{names}}"
+      },
+      "unsharedOffline": {
+        "one": "Stopped sharing {{count}} transaction with {{names}}; they keep seeing it until your device reconnects",
+        "other": "Stopped sharing {{count}} transactions with {{names}}; they keep seeing them until your device reconnects"
+      },
+      "partialShared": {
+        "one": "Shared {{count}} transaction with {{names}}, but couldn't with {{failed}}",
+        "other": "Shared {{count}} transactions with {{names}}, but couldn't with {{failed}}"
+      },
+      "partialUnshared": {
+        "one": "Stopped sharing {{count}} transaction with {{names}}, but couldn't with {{failed}}",
+        "other": "Stopped sharing {{count}} transactions with {{names}}, but couldn't with {{failed}}"
+      },
+      "partialNotMember": {
+        "one": "Shared {{count}} transaction with {{names}}. You're no longer a member of {{failed}}, so it wasn't shared there.",
+        "other": "Shared {{count}} transactions with {{names}}. You're no longer a member of {{failed}}, so they weren't shared there."
+      },
+      "tooMany": "Only {{max}} transactions can be shared or unshared at once",
+      "notMember": "You're no longer a member of {{name}}, so the transactions weren't shared there.",
+      "failed": "Couldn't change who the selected transactions are shared with"
     }
   },
   "budget": {

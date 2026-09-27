@@ -7,13 +7,28 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { ShareTarget, shareChange } from '../../../core/utils/share-change.utils';
 
+/**
+ * - `row`: who one row is shared with.
+ * - `share`: the households many selected rows are to be shared into.
+ * - `unshare`: the households many selected rows are to be taken out of.
+ */
+export type ShareDialogMode = 'row' | 'share' | 'unshare';
+
 export interface ShareDialogData {
-  /** The row's description, so the dialog says which row it shares. */
+  /**
+   * The row's description, so the dialog says which row it shares; for many
+   * rows, how many are selected.
+   */
   description: string;
   /** The account's live memberships, one checkbox each. */
   targets: ShareTarget[];
-  /** The households the row is shared with now. */
+  /**
+   * The households checked when the dialog opens: for one row, those it is
+   * shared with now; for many, a suggestion the reader may change.
+   */
   shared: string[];
+  /** `row` when left out. */
+  mode?: ShareDialogMode;
 }
 
 /**
@@ -21,6 +36,10 @@ export interface ShareDialogData {
  * a checkbox per live membership, set from the row. Closes with every
  * household the row is to name, or with nothing when dismissed; the caller
  * turns the difference into shares and unshares.
+ *
+ * For many rows, from the list's select mode, it asks instead which
+ * households to share them into or to take them out of, and closes with just
+ * those. It cannot close with none: a choice of nothing is a dismissal.
  */
 @Component({
   selector: 'app-share-dialog',
@@ -35,15 +54,20 @@ export class ShareDialogComponent {
   private readonly dialogRef = inject<MatDialogRef<ShareDialogComponent, string[]>>(MatDialogRef);
   private readonly pwa = inject(PwaService);
 
+  readonly mode: ShareDialogMode = this.data.mode ?? 'row';
+
   readonly chosen = signal<string[]>([...this.data.shared]);
 
   /**
    * A household unchecked stops seeing the row, and its goals stop counting
-   * it; the dialog says so before it is saved.
+   * it; for many rows, a household checked to be taken out of does. The
+   * dialog says so before it is saved.
    */
-  readonly pendingUnshare = computed(() =>
-    shareChange(this.data.shared, this.chosen(), this.data.targets.map(target => target.householdId)).unshare.length > 0
-  );
+  readonly pendingUnshare = computed(() => {
+    if (this.mode === 'share') return false;
+    if (this.mode === 'unshare') return this.chosen().length > 0;
+    return shareChange(this.data.shared, this.chosen(), this.data.targets.map(target => target.householdId)).unshare.length > 0;
+  });
 
   /**
    * An unshare made offline is queued, and the household keeps seeing the
@@ -51,6 +75,15 @@ export class ShareDialogComponent {
    * that too.
    */
   readonly offlineUnshare = computed(() => !this.pwa.isOnline() && this.pendingUnshare());
+
+  /**
+   * Offline, many rows' keys are queued and their copies wait for the
+   * device to come back, so the households see nothing until then.
+   */
+  readonly offlineShare = computed(() => this.mode === 'share' && !this.pwa.isOnline());
+
+  /** For many rows there is nothing to do until a household is checked. */
+  readonly canSave = computed(() => this.mode === 'row' || this.chosen().length > 0);
 
   isChosen(householdId: string): boolean {
     return this.chosen().includes(householdId);
@@ -63,6 +96,7 @@ export class ShareDialogComponent {
   }
 
   save(): void {
+    if (!this.canSave()) return;
     this.dialogRef.close(this.chosen());
   }
 

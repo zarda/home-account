@@ -229,6 +229,33 @@
       "stopMessage": "「{{description}}」は表示されなくなり、その世帯の目標にも含まれなくなります。",
       "stopMessageOffline": "オフラインです。デバイスが再接続するまで「{{description}}」は表示されたままです。再接続後に取り除かれ、その世帯の目標にも含まれなくなります。",
       "title": "世帯と共有"
+    },
+    "select": {
+      "start": "選択",
+      "done": "完了",
+      "barLabel": "共有または共有解除する取引を選択",
+      "count": "{{count}} 件の取引を選択中",
+      "selectAll": "表示中をすべて選択",
+      "capped": "一度に選択できるのは {{max}} 件までのため、表示中の {{count}} 件は選択されませんでした。",
+      "progress": "選択した取引の共有先を更新しています",
+      "dialogRows": "選択した {{count}} 件の取引",
+      "shareLabel": "共有する世帯",
+      "stopLabel": "共有をやめる世帯",
+      "stopTitle": "世帯との共有をやめる",
+      "shareAction": "共有",
+      "offlineShare": "オフラインです。デバイスがオンラインに戻ると、世帯にこれらの取引が表示されます。",
+      "unshareGoalLink": "共有をやめた世帯にはこれらの取引が表示されなくなり、その世帯の目標にも含まれなくなります。",
+      "offlineUnshare": "オフラインです。デバイスが再接続するまで、世帯にはこれらの取引が表示されたままです。",
+      "shared": "{{count}} 件の取引を{{names}}と共有しました",
+      "sharedOffline": "デバイスがオンラインに戻ると、{{names}}に {{count}} 件の取引が表示されます",
+      "unshared": "{{count}} 件の取引について{{names}}との共有をやめました",
+      "unsharedOffline": "{{count}} 件の取引について{{names}}との共有をやめました。デバイスが再接続するまでは表示されたままです",
+      "partialShared": "{{count}} 件の取引を{{names}}と共有しましたが、{{failed}}とは共有できませんでした",
+      "partialUnshared": "{{count}} 件の取引について{{names}}との共有をやめましたが、{{failed}}との共有はやめられませんでした",
+      "partialNotMember": "{{count}} 件の取引を{{names}}と共有しました。{{failed}}のメンバーではなくなったため、そこには共有されませんでした。",
+      "tooMany": "一度に共有または共有解除できる取引は {{max}} 件までです",
+      "notMember": "{{name}}のメンバーではなくなったため、取引はそこに共有されませんでした。",
+      "failed": "選択した取引の共有先を変更できませんでした"
     }
   },
   "budget": {

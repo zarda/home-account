@@ -3,7 +3,9 @@ import { computed, signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { BreakpointObserver } from '@angular/cdk/layout';
+import { FocusMonitor } from '@angular/cdk/a11y';
 import { MatDialog } from '@angular/material/dialog';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Sort } from '@angular/material/sort';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
@@ -23,10 +25,11 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/compo
 import { FirestoreService } from '../../../core/services/firestore.service';
 import { LedgerShareRefusal, LedgerShareService } from '../../../core/services/ledger-share.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { PwaService } from '../../../core/services/pwa.service';
-import { ShareDialogComponent } from '../sharing/share-dialog.component';
-import { Transaction } from '../../../models';
-import { createTransaction, createUser } from '../../../core/services/testing';
+import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
+import { MAX_BULK_SHARE, Transaction } from '../../../models';
+import { createTransaction, createUser, runAxe, summarizeViolations } from '../../../core/services/testing';
 
 /** An account in no household: its index, as the share controls read it, is empty. */
 const NO_HOUSEHOLDS = { subscribeToCollection: () => of([]) };
@@ -1478,6 +1481,820 @@ describe('TransactionListComponent sharing', () => {
       expect(shared?.getAttribute('role')).toBe('img');
       expect(shared?.getAttribute('aria-label')).toContain('transactions.share.chipLabel');
       expect(cells[1].querySelector('.shared-chip')).withContext('a private row').toBeNull();
+    });
+  });
+});
+
+/**
+ * The select mode: many rows chosen at once, then shared into or taken out
+ * of the account's households together. The memberships come from the
+ * account's own index (FirestoreService stands in for it); the shares change
+ * through the sharing code, reached lazily, which LedgerShareService stands
+ * in for.
+ */
+describe('TransactionListComponent select mode', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let host: HTMLElement;
+  let dialog: jasmine.SpyObj<MatDialog>;
+  let index: Record<string, unknown>[];
+  let ledger: jasmine.SpyObj<Pick<LedgerShareService, 'share' | 'unshare'>>;
+  let notifications: jasmine.SpyObj<NotificationService>;
+  let announcer: jasmine.SpyObj<AnnouncerService>;
+  let windowSource: ReturnType<typeof createMockWindowSource>;
+  let desktop: boolean;
+  let online: ReturnType<typeof signal<boolean>>;
+  let rows: Transaction[];
+  let edited: jasmine.Spy;
+  let labels: Record<string, string>;
+
+  const joined = Timestamp.fromMillis(1_000);
+  const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
+  const OFFICE = { id: 'h2', name: 'Office', role: 'member', since: joined, joinedAt: Timestamp.fromMillis(2_000) };
+
+  const toggle = () => host.querySelector<HTMLButtonElement>('button.select-toggle');
+  /** The toggle's words, without its icon's ligature. */
+  const toggleText = () => toggle()?.querySelector('.mdc-button__label')?.textContent?.trim();
+  const bar = () => host.querySelector<HTMLElement>('.select-bar');
+  const count = () => host.querySelector('.select-count')?.textContent?.trim();
+  const barButton = (name: string) => host.querySelector<HTMLButtonElement>(`.select-bar button.${name}`)!;
+  const progress = () => host.querySelector<HTMLElement>('.select-bar mat-progress-bar');
+  const capped = () => host.querySelector('.select-capped')?.textContent?.trim();
+  const rowOf = (id: string) => host.querySelector<HTMLElement>(`[data-tx-id="${id}"]`)!;
+  const boxOf = (id: string) => rowOf(id).querySelector<HTMLInputElement>('.row-select input[type="checkbox"]')!;
+  const boxes = () => Array.from(host.querySelectorAll<HTMLInputElement>('.row-select input[type="checkbox"]'));
+
+  async function render(): Promise<void> {
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: windowSource },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a}`, amountInBase: (t: { amount: number }) => t.amount },
+        },
+        { provide: AuthService, useValue: { currentUser: signal(createUser({ id: 'u1' })) } },
+        { provide: DateFormatService, useValue: { formatDate: () => 'date', formatRelativeDate: () => 'rel' } },
+        {
+          provide: CategoryHelperService,
+          useValue: { getCategoryName: () => 'Cat', getCategoryIcon: () => 'icon', getCategoryColor: () => '#000' },
+        },
+        {
+          provide: TranslationService,
+          useValue: {
+            t: (k: string, p?: Record<string, unknown>) => labels[k] ?? (p ? `${k}:${JSON.stringify(p)}` : k),
+          },
+        },
+        { provide: MatDialog, useValue: dialog },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: { subscribeToCollection: () => of(index) } },
+        { provide: LedgerShareService, useValue: ledger },
+        { provide: NotificationService, useValue: notifications },
+        { provide: AnnouncerService, useValue: announcer },
+        { provide: PwaService, useValue: { isOnline: online } },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.componentInstance.edit.subscribe(edited);
+    fixture.componentRef.setInput('transactions', rows);
+    fixture.detectChanges();
+  }
+
+  /**
+   * Lets the lazily loaded sharing code resolve and its calls settle. The
+   * first test to load it waits on the module's fetch, which no zone tracks,
+   * so this waits in real time rather than a count of turns.
+   */
+  async function settle(): Promise<void> {
+    await fixture.whenStable();
+    for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    fixture.detectChanges();
+  }
+
+  function enter(): void {
+    toggle()!.focus();
+    toggle()!.click();
+    fixture.detectChanges();
+  }
+
+  function pick(...ids: string[]): void {
+    for (const id of ids) boxOf(id).click();
+    fixture.detectChanges();
+  }
+
+  /** The dialog the bulk bar opened, as it was asked for it. */
+  function dialogData(): ShareDialogData {
+    const call = dialog.open.calls.all().find(each => each.args[0] === ShareDialogComponent);
+    expect(call).withContext('the share dialog opened').toBeDefined();
+    return (call!.args[1] as { data: ShareDialogData }).data;
+  }
+
+  const closesWith = (chosen: string[] | undefined) =>
+    dialog.open.and.returnValue({ afterClosed: () => of(chosen) } as never);
+
+  beforeEach(() => {
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+    index = [HOME, OFFICE];
+    ledger = jasmine.createSpyObj('LedgerShareService', ['share', 'unshare']);
+    ledger.share.and.resolveTo(undefined);
+    ledger.unshare.and.resolveTo(undefined);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
+    announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
+    windowSource = createMockWindowSource();
+    desktop = false;
+    online = signal(true);
+    edited = jasmine.createSpy('edit');
+    labels = { 'transactions.share.separator': ', ' };
+    rows = [
+      createTransaction({ id: 'a', amount: 30, description: 'Banana', sharedWith: ['households/h1'] }),
+      createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
+      // Its other key is for a household the account has left.
+      createTransaction({ id: 'c', amount: 20, description: 'Cherry', sharedWith: ['households/h2', 'households/h9'] }),
+    ];
+  });
+
+  afterEach(() => host?.remove());
+
+  describe('on a phone', () => {
+    it('offers no Select while the account belongs to no household', async () => {
+      index = [];
+      await render();
+
+      expect(toggle()).toBeNull();
+      expect(bar()).toBeNull();
+      expect(boxes()).toEqual([]);
+    });
+
+    it('offers Select, a 40px control, in a labelled region', async () => {
+      await render();
+
+      expect(toggleText()).toBe('transactions.select.start');
+      expect(bar()?.getAttribute('role')).toBe('region');
+      expect(bar()?.getAttribute('aria-label')).toBe('transactions.select.barLabel');
+      expect(toggle()!.getBoundingClientRect().height).toBeGreaterThanOrEqual(40);
+      expect(boxes()).withContext('rows open, not select, until the mode is on').toEqual([]);
+    });
+
+    it('offers no Select over an empty list', async () => {
+      rows = [];
+      await render();
+
+      expect(toggle()).toBeNull();
+    });
+
+    it("enters the mode with focus kept on the toggle, each row's menu becoming a checkbox named for the row", async () => {
+      await render();
+
+      enter();
+
+      expect(toggleText()).toBe('transactions.select.done');
+      expect(document.activeElement).withContext('focus stays on the toggle').toBe(toggle());
+      expect(count()).toBe('transactions.select.count:{"count":0}');
+      expect(host.querySelector('.row-menu-btn')).withContext('the row menus give way').toBeNull();
+      expect(boxes().length).toBe(3);
+      const name = boxOf('a').getAttribute('aria-label')!;
+      expect(name).toContain('transactions.rowLabel');
+      expect(name).toContain('Banana');
+      expect(boxes().every(box => !box.checked)).toBeTrue();
+      const row = fixture.debugElement.queryAll(By.directive(TransactionRowComponent))[0];
+      expect((row.componentInstance as TransactionRowComponent).swipeActions()).withContext('no swipe drawer').toBeFalse();
+    });
+
+    it("names each checkbox exactly as its row's own button is named", async () => {
+      rows = [
+        createTransaction({ id: 'in', type: 'income', amount: 5, currency: 'EUR', description: 'Refund' }),
+        createTransaction({ id: 'out', type: 'expense', amount: 7, currency: 'USD', description: 'Lunch' }),
+      ];
+      await render();
+      enter();
+
+      for (const id of ['in', 'out']) {
+        const button = rowOf(id).querySelector('.row-activate')!.getAttribute('aria-label');
+        expect(button).withContext(`${id}: the row button is named`).toBeTruthy();
+        expect(boxOf(id).getAttribute('aria-label')).withContext(id).toBe(button);
+      }
+    });
+
+    it('gives each row checkbox a 40px target', async () => {
+      await render();
+      enter();
+
+      const box = rowOf('a').querySelector<HTMLElement>('mat-checkbox .mdc-checkbox')!.getBoundingClientRect();
+      expect(box.width).toBeGreaterThanOrEqual(40);
+      expect(box.height).toBeGreaterThanOrEqual(40);
+    });
+
+    it('selects a row on its own click instead of opening it, and deselects it on a second', async () => {
+      await render();
+      enter();
+
+      rowOf('b').click();
+      fixture.detectChanges();
+      expect(boxOf('b').checked).toBeTrue();
+      expect(rowOf('b').classList).toContain('row-selected');
+      expect(getComputedStyle(rowOf('b'), '::before').width).withContext('the leading bar').toBe('3px');
+      expect(count()).toBe('transactions.select.count:{"count":1}');
+
+      // Enter on the row's button arrives as the button's click.
+      rowOf('b').querySelector<HTMLButtonElement>('.row-activate')!.click();
+      fixture.detectChanges();
+      expect(boxOf('b').checked).toBeFalse();
+      expect(count()).toBe('transactions.select.count:{"count":0}');
+      expect(edited).not.toHaveBeenCalled();
+    });
+
+    it('selects a row from its checkbox once, never twice through the row behind it', async () => {
+      await render();
+      enter();
+
+      pick('a');
+
+      expect(boxOf('a').checked).toBeTrue();
+      expect(count()).toBe('transactions.select.count:{"count":1}');
+      expect(edited).not.toHaveBeenCalled();
+    });
+
+    it('selects a row with Enter on its checkbox', async () => {
+      await render();
+      enter();
+
+      boxOf('c').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(boxOf('c').checked).toBeTrue();
+      expect(edited).not.toHaveBeenCalled();
+    });
+
+    it('still opens a row outside the mode', async () => {
+      await render();
+
+      rowOf('b').click();
+
+      expect(edited).toHaveBeenCalledOnceWith(rows[1]);
+    });
+
+    it('announces the count as it changes, each one replacing a count not yet spoken', async () => {
+      await render();
+      enter();
+      announcer.announce.calls.reset();
+
+      pick('a', 'b');
+
+      expect(announcer.announce.calls.allArgs()).toEqual([
+        ['transactions.select.count:{"count":1}', 'polite', 'replace'],
+        ['transactions.select.count:{"count":2}', 'polite', 'replace'],
+      ]);
+    });
+
+    it('leaves with Done: the selection cleared, the menus back, focus still on the toggle', async () => {
+      await render();
+      enter();
+      pick('a');
+
+      toggle()!.click();
+      fixture.detectChanges();
+
+      expect(toggleText()).toBe('transactions.select.start');
+      expect(document.activeElement).toBe(toggle());
+      expect(boxes()).toEqual([]);
+      expect(host.querySelectorAll('.row-menu-btn').length).toBe(3);
+
+      enter();
+      expect(count()).withContext('the selection went with the mode').toBe('transactions.select.count:{"count":0}');
+    });
+
+    it('leaves on Escape from anywhere in the list, focus returning to the toggle', async () => {
+      await render();
+      enter();
+      pick('a');
+      boxOf('a').focus();
+
+      boxOf('a').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(boxes()).toEqual([]);
+      expect(toggleText()).toBe('transactions.select.start');
+      expect(document.activeElement).toBe(toggle());
+    });
+
+    it('keeps the toggle, and focus on it, when the mode is left over a list with no rows', async () => {
+      await render();
+      enter();
+      fixture.componentRef.setInput('transactions', []);
+      fixture.detectChanges();
+      expect(toggleText()).withContext('the mode holds the bar').toBe('transactions.select.done');
+
+      toggle()!.click();
+      fixture.detectChanges();
+
+      expect(toggleText()).toBe('transactions.select.start');
+      expect(document.activeElement).withContext('focus is not dropped to the page').toBe(toggle());
+
+      enter();
+      toggle()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('nor by Escape').toBe(toggle());
+
+      fixture.componentRef.setInput('transactions', rows);
+      fixture.detectChanges();
+      fixture.componentRef.setInput('transactions', []);
+      fixture.detectChanges();
+      expect(toggle()).withContext('an empty list offers no Select once rows have come and gone').toBeNull();
+    });
+
+    it('selects every row shown with Select all shown', async () => {
+      await render();
+      enter();
+      pick('b');
+
+      barButton('select-all').click();
+      fixture.detectChanges();
+
+      expect(boxes().every(box => box.checked)).toBeTrue();
+      expect(count()).toBe('transactions.select.count:{"count":3}');
+      expect(capped()).withContext('nothing was left out').toBeUndefined();
+    });
+
+    it(`selects at most ${MAX_BULK_SHARE} with Select all shown, saying how many were left out`, async () => {
+      rows = Array.from({ length: MAX_BULK_SHARE + 3 }, (_, i) =>
+        createTransaction({ id: `t${i}`, amount: i + 1, description: `Row ${i}` }));
+      await render();
+      enter();
+      announcer.announce.calls.reset();
+
+      barButton('select-all').click();
+      fixture.detectChanges();
+
+      expect(count()).toBe(`transactions.select.count:{"count":${MAX_BULK_SHARE}}`);
+      expect(boxes().filter(box => box.checked).length).toBe(MAX_BULK_SHARE);
+      expect(boxOf(`t${MAX_BULK_SHARE}`).checked).withContext('the first rows shown are the ones taken').toBeFalse();
+      expect(capped()).toBe(`transactions.select.capped:{"max":${MAX_BULK_SHARE},"count":3}`);
+      // The count and the note are one message, so a later state replaces
+      // both rather than a note per refused choice piling up behind it.
+      expect(announcer.announce.calls.allArgs()).toEqual([[
+        `transactions.select.count:{"count":${MAX_BULK_SHARE}}` +
+          ` transactions.select.capped:{"max":${MAX_BULK_SHARE},"count":3}`,
+        'polite',
+        'replace',
+      ]]);
+
+      // One more past the cap is refused the same way, and says why again.
+      announcer.announce.calls.reset();
+      boxOf(`t${MAX_BULK_SHARE + 1}`).click();
+      fixture.detectChanges();
+      expect(boxOf(`t${MAX_BULK_SHARE + 1}`).checked).toBeFalse();
+      expect(count()).toBe(`transactions.select.count:{"count":${MAX_BULK_SHARE}}`);
+      expect(capped()).toBe(`transactions.select.capped:{"max":${MAX_BULK_SHARE},"count":1}`);
+      expect(announcer.announce.calls.allArgs()).toEqual([[
+        `transactions.select.count:{"count":${MAX_BULK_SHARE}}` +
+          ` transactions.select.capped:{"max":${MAX_BULK_SHARE},"count":1}`,
+        'polite',
+        'replace',
+      ]]);
+    });
+
+    it('holds Share with… and Stop sharing, still focusable, until a row is selected', async () => {
+      await render();
+      enter();
+
+      for (const name of ['select-share', 'select-stop']) {
+        const button = barButton(name);
+        expect(button.getAttribute('aria-disabled')).withContext(name).toBe('true');
+        expect(button.disabled).withContext(`${name} stays in the tab order`).toBeFalse();
+        button.click();
+      }
+      expect(dialog.open).not.toHaveBeenCalled();
+
+      pick('a');
+      expect(barButton('select-share').getAttribute('aria-disabled')).toBeNull();
+      expect(barButton('select-stop').getAttribute('aria-disabled')).toBeNull();
+    });
+
+    it('shares the selected rows into each household chosen: one call per household, exactly those rows', async () => {
+      closesWith(['h1', 'h2']);
+      await render();
+      enter();
+      pick('b', 'a');
+
+      barButton('select-share').click();
+      await settle();
+
+      expect(dialogData()).toEqual({
+        description: 'transactions.select.dialogRows:{"count":2}',
+        targets: [{ householdId: 'h1', name: 'Home' }, { householdId: 'h2', name: 'Office' }],
+        shared: [],
+        mode: 'share',
+      });
+      expect(ledger.share.calls.allArgs().map(([ids, hid]) => [ids, hid])).toEqual([[['b', 'a'], 'h1'], [['b', 'a'], 'h2']]);
+      expect(ledger.unshare).not.toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledOnceWith(
+        'transactions.select.shared:{"count":2,"names":"Home, Office"}'
+      );
+    });
+
+    it('offers the only household already chosen when the account belongs to one', async () => {
+      index = [HOME];
+      closesWith(undefined);
+      await render();
+      enter();
+      pick('b');
+
+      barButton('select-share').click();
+      await settle();
+
+      expect(dialogData().shared).toEqual(['h1']);
+      expect(ledger.share).not.toHaveBeenCalled();
+    });
+
+    it('stops sharing the selected rows with each household chosen, pre-set from the rows', async () => {
+      closesWith(['h1']);
+      await render();
+      enter();
+      pick('a', 'c');
+
+      barButton('select-stop').click();
+      await settle();
+
+      expect(dialogData()).toEqual({
+        description: 'transactions.select.dialogRows:{"count":2}',
+        targets: [{ householdId: 'h1', name: 'Home' }, { householdId: 'h2', name: 'Office' }],
+        // The live households the rows name, never a key for one the account has left.
+        shared: ['h1', 'h2'],
+        mode: 'unshare',
+      });
+      expect(ledger.unshare.calls.allArgs().map(([ids, hid]) => [ids, hid])).toEqual([[['a', 'c'], 'h1']]);
+      expect(ledger.share).not.toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledOnceWith('transactions.select.unshared:{"count":2,"names":"Home"}');
+    });
+
+    it('changes nothing when the dialog is dismissed or closes with no household', async () => {
+      await render();
+      enter();
+      pick('a');
+
+      closesWith(undefined);
+      barButton('select-share').click();
+      closesWith([]);
+      barButton('select-stop').click();
+      await settle();
+
+      expect(ledger.share).not.toHaveBeenCalled();
+      expect(ledger.unshare).not.toHaveBeenCalled();
+      expect(count()).toBe('transactions.select.count:{"count":1}');
+    });
+
+    it('shows determinate progress while the shares run, holding the actions, and clears the selection after', async () => {
+      let finish!: () => void;
+      ledger.share.and.callFake((_ids, _hid, report) => {
+        report?.(1, 4);
+        return new Promise<void>(resolve => (finish = resolve));
+      });
+      closesWith(['h1']);
+      await render();
+      enter();
+      pick('a', 'b');
+
+      barButton('select-share').focus();
+      barButton('select-share').click();
+      await settle();
+
+      const meter = progress()!;
+      expect(meter).withContext('progress shows while the shares run').not.toBeNull();
+      expect(meter.getAttribute('mode')).toBe('determinate');
+      expect(meter.getAttribute('aria-valuenow')).toBe('25');
+      expect(meter.getAttribute('aria-label')).toBe('transactions.select.progress');
+      expect(barButton('select-share').getAttribute('aria-disabled')).toBe('true');
+      expect(barButton('select-stop').getAttribute('aria-disabled')).toBe('true');
+
+      finish();
+      await settle();
+
+      expect(progress()).toBeNull();
+      expect(count()).withContext('the selection clears once it went through').toBe('transactions.select.count:{"count":0}');
+      expect(boxes().some(box => box.checked)).toBeFalse();
+      expect(toggleText()).withContext('still selecting').toBe('transactions.select.done');
+      expect(meter.isConnected).toBeFalse();
+      expect(bar()!.contains(document.activeElement)).withContext('focus stays in the bar').toBeTrue();
+      // The window reads the rows again, so their chips show the shares as changed.
+      expect(windowSource.refresh).toHaveBeenCalled();
+      // The result is announced once, by the notification alone.
+      expect(notifications.success).toHaveBeenCalledTimes(1);
+      expect(announcer.announce).not.toHaveBeenCalledWith(jasmine.stringMatching('transactions.select.shared'), jasmine.anything(), jasmine.anything());
+      expect(announcer.announce).not.toHaveBeenCalledWith(jasmine.stringMatching('transactions.select.shared'));
+    });
+
+    it('hands focus lost during a run to the bar\'s first control, and leaves focus the reader moved alone', async () => {
+      let finish!: () => void;
+      ledger.share.and.callFake(() => new Promise<void>(resolve => (finish = resolve)));
+      closesWith(['h1']);
+      await render();
+      enter();
+      pick('a');
+      barButton('select-share').click();
+      await settle();
+
+      (document.activeElement as HTMLElement | null)?.blur();
+      finish();
+      await settle();
+      expect(document.activeElement).toBe(toggle());
+
+      pick('b');
+      barButton('select-share').click();
+      await settle();
+      boxOf('c').focus();
+      finish();
+      await settle();
+      expect(document.activeElement).toBe(boxOf('c'));
+    });
+
+    it('leaves a selection made after leaving and re-entering the mode alone when an earlier run finishes', async () => {
+      let finish!: () => void;
+      ledger.share.and.callFake(() => new Promise<void>(resolve => (finish = resolve)));
+      closesWith(['h1']);
+      await render();
+      enter();
+      pick('a', 'b');
+      barButton('select-share').click();
+      await settle();
+      expect(progress()).withContext('a run under way').not.toBeNull();
+
+      // Done, then Select again: a fresh selection, one of the run's rows among it.
+      toggle()!.click();
+      fixture.detectChanges();
+      enter();
+      pick('a');
+      expect(count()).toBe('transactions.select.count:{"count":1}');
+
+      finish();
+      await settle();
+
+      expect(count()).withContext('the new choice is not the run\'s to clear').toBe('transactions.select.count:{"count":1}');
+      expect(boxOf('a').checked).toBeTrue();
+      expect(notifications.success).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the selection when too many rows are refused, saying so in its own words', async () => {
+      ledger.share.and.rejectWith(new LedgerShareRefusal('tooMany', 'too many'));
+      closesWith(['h1']);
+      await render();
+      enter();
+      pick('a', 'b');
+
+      barButton('select-share').click();
+      await settle();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith(`transactions.select.tooMany:{"max":${MAX_BULK_SHARE}}`);
+      expect(count()).toBe('transactions.select.count:{"count":2}');
+      expect(progress()).toBeNull();
+    });
+
+    it('names the household that refused the rows because the membership has ended', async () => {
+      ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+      closesWith(['h2']);
+      await render();
+      enter();
+      pick('b');
+
+      barButton('select-share').click();
+      await settle();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('transactions.select.notMember:{"name":"Office"}');
+      expect(count()).toBe('transactions.select.count:{"count":1}');
+    });
+
+    it('says, offline, that the households see the rows once the device is back online', async () => {
+      online.set(false);
+      closesWith(['h1']);
+      await render();
+      enter();
+      pick('a', 'b');
+
+      barButton('select-share').click();
+      await settle();
+
+      expect(ledger.share).toHaveBeenCalledTimes(1);
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        'transactions.select.sharedOffline:{"count":2,"names":"Home"}'
+      );
+    });
+
+    it('stops sharing offline, saying the households keep seeing the rows until the device reconnects', async () => {
+      online.set(false);
+      closesWith(['h2']);
+      await render();
+      enter();
+      pick('c');
+
+      barButton('select-stop').click();
+      await settle();
+
+      expect(ledger.unshare).toHaveBeenCalledTimes(1);
+      expect(notifications.success).toHaveBeenCalledOnceWith(
+        'transactions.select.unsharedOffline:{"count":1,"names":"Office"}'
+      );
+    });
+  });
+
+  describe('under the axe sweep', () => {
+    /** A share of the chosen rows that has reported half its rows and never finishes. */
+    function runStalls(): void {
+      ledger.share.and.callFake((_ids, _hid, report) => {
+        report?.(1, 2);
+        return new Promise<void>(() => undefined);
+      });
+      closesWith(['h1']);
+    }
+
+    /** The mode with rows chosen and a run under way. */
+    async function busyMode(): Promise<void> {
+      runStalls();
+      await render();
+      enter();
+      pick('a', 'c');
+      barButton('select-share').click();
+      await settle();
+      expect(progress()).withContext('a run under way').not.toBeNull();
+    }
+
+    it('finds nothing on a phone', async () => {
+      await busyMode();
+
+      expect(summarizeViolations(await runAxe(host))).toEqual([]);
+    });
+
+    it("finds nothing on a desktop, the select column's header included", async () => {
+      desktop = true;
+      await busyMode();
+
+      expect(host.querySelector('th.col-select')).withContext('the swept table has the select column').not.toBeNull();
+      expect(summarizeViolations(await runAxe(host))).toEqual([]);
+    });
+
+    it("finds nothing in the bar with the cap's note beside a run under way", async () => {
+      rows = Array.from({ length: MAX_BULK_SHARE + 1 }, (_, i) =>
+        createTransaction({ id: `t${i}`, amount: i + 1, description: `Row ${i}` }));
+      runStalls();
+      await render();
+      enter();
+      barButton('select-all').click();
+      fixture.detectChanges();
+      expect(capped()).withContext('the note shows').toBeDefined();
+      barButton('select-share').click();
+      await settle();
+      expect(progress()).withContext('a run under way').not.toBeNull();
+      expect(capped()).withContext('the note still shows').toBeDefined();
+
+      // The bar alone: the rows are swept above, and five hundred of them
+      // would only slow the pass.
+      expect(summarizeViolations(await runAxe(bar()!))).toEqual([]);
+    });
+  });
+
+  describe('on a desktop', () => {
+    beforeEach(() => {
+      desktop = true;
+    });
+
+    it('adds a checkbox column named for each row, and a row click selects instead of opening', async () => {
+      await render();
+      expect(host.querySelector('th.col-select')).withContext('no column outside the mode').toBeNull();
+
+      enter();
+
+      expect(host.querySelector('th.col-select')?.textContent?.trim()).toBe('transactions.select.start');
+      expect(boxOf('a').getAttribute('aria-label')).toContain('Banana');
+      rowOf('b').click();
+      fixture.detectChanges();
+      expect(boxOf('b').checked).toBeTrue();
+      expect(rowOf('b').classList).toContain('row-selected');
+      pick('b');
+      expect(boxOf('b').checked).withContext('the checkbox alone, once').toBeFalse();
+      expect(edited).not.toHaveBeenCalled();
+
+      boxOf('a').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+      expect(host.querySelector('th.col-select')).toBeNull();
+      rowOf('b').click();
+      expect(edited).toHaveBeenCalledOnceWith(rows[1]);
+    });
+
+    it('lets Escape close a note\'s tooltip without leaving the mode or dropping the selection', async () => {
+      rows[0] = createTransaction({ id: 'a', amount: 30, description: 'Banana', note: 'Paid in cash', sharedWith: ['households/h1'] });
+      await render();
+      enter();
+      pick('a', 'b');
+      const note = rowOf('a').querySelector<HTMLButtonElement>('button.note-button')!;
+      const tip = fixture.debugElement.query(By.css('button.note-button')).injector.get(MatTooltip);
+      /** Escape as a keyboard sends it: the overlay reads its key code. */
+      const escape = () => {
+        const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'keyCode', { get: () => 27 });
+        return event;
+      };
+
+      TestBed.inject(FocusMonitor).focusVia(note, 'keyboard');
+      await settle();
+      expect(tip._isTooltipVisible()).withContext('the tooltip shows for keyboard focus').toBeTrue();
+
+      note.dispatchEvent(escape());
+      await settle();
+
+      expect(tip._isTooltipVisible()).withContext('Escape closed it').toBeFalse();
+      expect(toggleText()).toBe('transactions.select.done');
+      expect(count()).toBe('transactions.select.count:{"count":2}');
+
+      // With no tooltip showing, Escape leaves the mode as it does anywhere in the list.
+      note.dispatchEvent(escape());
+      fixture.detectChanges();
+      expect(toggleText()).toBe('transactions.select.start');
+    });
+
+    it('fits the table and its checkbox column at the 704px floor without a sideways scrollbar', async () => {
+      labels = {
+        ...labels,
+        'transactions.date': 'Date',
+        'transactions.category': 'Category',
+        'transactions.description': 'Description',
+        'transactions.amount': 'Amount',
+        'common.moreActions': 'More actions',
+        'transactions.select.start': 'Select',
+        'transactions.select.done': 'Done',
+      };
+      await render();
+      host.style.display = 'block';
+      host.style.width = '704px';
+      enter();
+
+      const scroll = host.querySelector('.table-scroll') as HTMLElement;
+      expect(scroll.scrollWidth).toBeLessThanOrEqual(scroll.clientWidth + 1);
+    });
+  });
+
+  describe('at a phone width', () => {
+    const face = "Verdana, 'DejaVu Sans', sans-serif";
+    const within = (inner: DOMRect, outer: DOMRect) =>
+      inner.left >= outer.left - 0.5 && inner.right <= outer.right + 0.5;
+
+    beforeEach(() => {
+      const long = (letter: string) => letter.repeat(100);
+      index = [{ ...HOME, name: long('H') }, { ...OFFICE, name: long('O') }];
+      labels = {
+        ...labels,
+        'transactions.select.start': 'Select',
+        'transactions.select.done': 'Done',
+        'transactions.select.selectAll': 'Select all shown',
+        'transactions.share.menu': 'Share with…',
+        'transactions.share.stop': 'Stop sharing',
+      };
+    });
+
+    async function renderNarrow(): Promise<void> {
+      await render();
+      // 375px less the app shell's 16px gutters and the page's 16px gutters.
+      host.style.display = 'block';
+      host.style.width = '311px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels. Material's buttons take their face from the
+      // --mat-sys tokens rather than from the host.
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      fixture.detectChanges();
+    }
+
+    it('keeps the bar, the count, the note and every control inside 311px, with long household names', async () => {
+      rows = Array.from({ length: MAX_BULK_SHARE + 12 }, (_, i) => createTransaction({
+        id: `t${i}`,
+        amount: 1_234_567.89,
+        description: `Row ${i}`,
+        sharedWith: ['households/h1', 'households/h2'],
+      }));
+      labels['transactions.select.count'] = `${MAX_BULK_SHARE} transactions selected`;
+      labels['transactions.select.capped'] = `Only ${MAX_BULK_SHARE} can be selected at once, so 12 shown transactions weren't selected.`;
+      await renderNarrow();
+      enter();
+      barButton('select-all').click();
+      fixture.detectChanges();
+
+      const region = bar()!.getBoundingClientRect();
+      expect(region.width).toBeLessThanOrEqual(311.5);
+      const parts = Array.from(bar()!.querySelectorAll<HTMLElement>('.select-count, .select-capped, button'));
+      expect(parts.length).withContext('the count, the note and four buttons').toBe(6);
+      for (const part of parts) {
+        const box = part.getBoundingClientRect();
+        expect(within(box, region)).withContext(`${part.className} inside the bar`).toBeTrue();
+        if (part.tagName === 'BUTTON') {
+          expect(box.height).withContext(`${part.className} target height`).toBeGreaterThanOrEqual(40);
+        }
+      }
+      expect(host.scrollWidth).withContext('no sideways scroll').toBeLessThanOrEqual(host.clientWidth + 1);
+      const firstRow = rowOf('t0').getBoundingClientRect();
+      expect(within(firstRow, host.getBoundingClientRect())).withContext('a row with long shares').toBeTrue();
     });
   });
 });

@@ -5,6 +5,96 @@
   overflow-anchor: none;
 }
 
+/* The select mode's bar. Outside the mode it is one line holding Select at
+   the trailing edge. In the mode it sticks to the top of the page's scroller
+   (whose padding already clears the app header) on the card surface, so the
+   rows pass under it rather than showing through, and it holds the count,
+   Done and the actions for the chosen rows. Named as a container so the
+   actions can fold to a phone's width wherever the list is laid out. */
+.select-bar {
+  container: select-bar / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-block-end: 8px;
+}
+
+.select-bar.selecting {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  padding: 8px 12px;
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+// The count leads and takes what room is left; Done keeps the trailing edge,
+// and drops to a line of its own before either is squeezed.
+.select-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 8px;
+}
+
+.select-count {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.select-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+// The 40px floor for every control on the bar. Material's buttons are 40px
+// at the default density; this keeps them there under any other.
+.select-toggle,
+.select-actions .mat-mdc-button-base {
+  min-block-size: 40px;
+}
+
+.select-capped {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* A phone's third of the bar cannot hold an icon and a label side by side,
+   so each action stacks its label under its icon and the three share the
+   width equally; a label wraps rather than being cut (G3). The height is let
+   go for the wrap and never falls under the 40px floor. The threshold is in
+   px because a rem one would grow with the very font size it answers. */
+@container select-bar (max-width: 480px) {
+  .select-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .select-actions .mat-mdc-button-base {
+    --mat-button-outlined-icon-spacing: 0;
+    --mat-button-outlined-icon-offset: 0;
+    --mat-button-outlined-label-text-size: var(--text-xs);
+    --mat-button-outlined-horizontal-padding: 4px;
+    flex-direction: column;
+    gap: 2px;
+    block-size: auto;
+    min-inline-size: 0;
+    padding-block: 4px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+}
+
 // Zero-impact probes for the IntersectionObserver that drives window paging.
 .window-sentinel {
   height: 1px;
@@ -26,6 +116,28 @@
   flex-direction: column;
   padding: 32px 16px;
   @apply text-gray-500 dark:text-gray-400;
+}
+
+/* A chosen row, in the select mode: a bar of the primary colour along its
+   leading edge, beside the checked box. Not a tint: any tone darker than the
+   card sinks the table's gray-500 dates under AA in the light scheme, and the
+   bar changes no text's background. Above the row's own hover tone. On the
+   table it rides the checkbox cell, the row's leading edge in the mode. */
+app-transaction-row.row-selected,
+.row-selected > .col-select {
+  position: relative;
+}
+
+app-transaction-row.row-selected::before,
+.row-selected > .col-select::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 3px;
+  background: var(--color-primary);
+  pointer-events: none;
 }
 
 // Brief flash marking the row a jump/refresh landed on.
@@ -101,10 +213,12 @@
   height: 40px;
 }
 
+// --text-muted rather than gray-500, which falls under AA on the sunken row
+// in the light scheme.
 ::ng-deep .desktop-table .mat-mdc-header-cell {
   font-size: var(--text-xs);
   font-weight: 600;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   @apply border-b border-gray-200 dark:border-gray-700;
@@ -145,6 +259,12 @@
 
 .col-actions {
   width: 48px;
+  padding: 4px 8px !important;
+}
+
+// The checkbox's own 40px state layer is the target.
+.col-select {
+  inline-size: 56px;
   padding: 4px 8px !important;
 }
 
@@ -391,6 +511,20 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* A row's checkbox in the select mode, on both sites: the phone row's menu
+   corner, whose 40px it takes so the row keeps the reserve the menu has, and
+   the desktop table's select column. Its empty label would add a few pixels
+   beside the box and push it past that reserve. */
+.row-select {
+  display: block;
+  inline-size: 40px;
+  block-size: 40px;
+}
+
+.row-select ::ng-deep .mdc-label:empty {
+  display: none;
 }
 
 /* The overflow menu projected into the shared row's leading column, stacked

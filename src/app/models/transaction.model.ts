@@ -99,6 +99,18 @@ export interface Transaction {
   sharedWith?: string[];
 }
 
+/**
+ * A row's amount with its sign: + for income, - otherwise. The row's amount
+ * on screen, its button's name and the transactions list's select checkbox
+ * all read it from here, so none of them can disagree with another.
+ */
+export function signedAmountText(
+  transaction: Pick<Transaction, 'type' | 'amount' | 'currency'>,
+  format: (amount: number, currency: string) => string
+): string {
+  return `${transaction.type === 'income' ? '+' : '-'}${format(transaction.amount, transaction.currency)}`;
+}
+
 type ReceiptFields = Pick<Transaction, 'receiptUrl' | 'receiptUrls' | 'receiptCount'>;
 
 /**
