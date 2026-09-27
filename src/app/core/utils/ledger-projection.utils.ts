@@ -12,6 +12,9 @@ import {
 } from '../../models';
 import { defaultCategories } from './category-merge.utils';
 import { fallbackCategoryFor } from './categorization.utils';
+// The stamp test HouseholdService judges a membership by, so a copy's
+// generation and a membership's are equal by one test.
+import { isStamp, sameStamp } from './household-index.utils';
 
 /** Where a row counts in a household budget: see LedgerCopy.bucket. */
 export interface LedgerBucket {
@@ -172,18 +175,6 @@ const VERSION_INDEPENDENT_FIELDS = [
   'memberUid', 'sourceId', 'gen',
   'type', 'amount', 'currency', 'date', 'description', 'categoryId',
 ] as const satisfies readonly (keyof LedgerCopyProjection)[];
-
-/**
- * Told apart and compared as household.service.ts judges a membership's
- * stamps, so a copy's generation and a membership's are equal by one test.
- */
-function isStamp(value: unknown): value is Timestamp {
-  return !!value && typeof (value as Timestamp).toMillis === 'function';
-}
-
-function sameStamp(a: unknown, b: unknown): boolean {
-  return isStamp(a) && isStamp(b) && a.seconds === b.seconds && a.nanoseconds === b.nanoseconds;
-}
 
 /**
  * Equal as Firestore stores them. A copy read back holds other Timestamp and

@@ -98,6 +98,9 @@ const WRITERS = {
     "a personal goal's delete clears its link off the rows that counted toward it",
   'src/app/core/services/recurring.service.ts':
     'a recurring rule posts its due occurrences as rows, in the claim transaction',
+  'src/app/core/services/ledger-share.service.ts':
+    "a row's share keys only, by arrayUnion and arrayRemove: a share adds one, and an unshare or a " +
+    "membership's cleanup takes it off; its copies follow in the same service",
 };
 
 // ---------------------------------------------------------------------------

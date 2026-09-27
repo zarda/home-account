@@ -1,4 +1,11 @@
-import { EnvironmentInjector, EnvironmentProviders, createEnvironmentInjector } from '@angular/core';
+import {
+  EnvironmentInjector,
+  EnvironmentProviders,
+  Injector,
+  WritableSignal,
+  createEnvironmentInjector,
+  signal,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FirebaseApp } from '@angular/fire/app';
 import { Auth, browserLocalPersistence, connectAuthEmulator, getAuth, initializeAuth } from '@angular/fire/auth';
@@ -8,15 +15,24 @@ import { Analytics, AnalyticsSettings, initializeAnalytics, setConsent } from '@
 import { RemoteConfig } from '@angular/fire/remote-config';
 
 import {
+  LEDGER_SWEEP_IDLE_FALLBACK_MS,
+  LEDGER_SWEEP_IDLE_TIMEOUT_MS,
+  LedgerSweeper,
   appAnalyticsFactory,
   appAuthFactory,
   appFirestoreFactory,
   appStorageFactory,
+  armLedgerSweep,
   firestoreCacheTabManager,
   firestorePersistentCacheSettings,
+  ledgerSweepHooks,
   provideAppAnalytics,
   provideAppRemoteConfig,
+  whenBrowserIdle,
 } from './app.config';
+import { AuthService } from './core/services/auth.service';
+import { PwaService } from './core/services/pwa.service';
+import { LedgerShareService } from './core/services/ledger-share.service';
 // The hosts the `emulators` build configuration swaps in; imported directly
 // because the unit build compiles the committed, null EMULATOR_HOSTS.
 import { EMULATOR_HOSTS as EMULATOR_BUILD_HOSTS } from '../environments/emulators.on';
@@ -423,5 +439,201 @@ describe('provideAppRemoteConfig', () => {
 
   it('should default to the committed hosts, which name no emulator', () => {
     expect(providerCount(provideAppRemoteConfig())).toBeGreaterThan(0);
+  });
+});
+
+describe('armLedgerSweep', () => {
+  interface Armed {
+    userId: WritableSignal<string | null>;
+    online: WritableSignal<boolean>;
+    /** Tasks handed to the idle scheduler and not run yet. */
+    idle: (() => void)[];
+    load: jasmine.Spy<() => Promise<LedgerSweeper>>;
+    sweeper: jasmine.SpyObj<LedgerSweeper>;
+  }
+
+  function arm(start: { userId?: string | null; online?: boolean } = {}): Armed {
+    const userId = signal<string | null>(start.userId === undefined ? 'u1' : start.userId);
+    const online = signal(start.online ?? true);
+    const idle: (() => void)[] = [];
+    const sweeper = jasmine.createSpyObj<LedgerSweeper>('LedgerSweeper', ['reconcileAll']);
+    sweeper.reconcileAll.and.resolveTo();
+    const load = jasmine.createSpy<() => Promise<LedgerSweeper>>('load').and.resolveTo(sweeper);
+    armLedgerSweep(
+      { userId, isOnline: online, whenIdle: task => idle.push(task), load },
+      TestBed.inject(Injector),
+    );
+    TestBed.tick();
+    return { userId, online, idle, load, sweeper };
+  }
+
+  function change(update: () => void): void {
+    update();
+    TestBed.tick();
+  }
+
+  async function runIdle(armed: Armed): Promise<void> {
+    for (const task of armed.idle.splice(0)) task();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  }
+
+  it('loads the sweep only from an idle task, never while the app starts', () => {
+    const armed = arm();
+
+    // The service's chunk is reached only by the idle task's dynamic import,
+    // so it is never part of the initial bundle's start-up work.
+    expect(armed.idle.length).toBe(1);
+    expect(armed.load).not.toHaveBeenCalled();
+  });
+
+  it('runs the start-up sweep once per account in a session', async () => {
+    const armed = arm();
+    await runIdle(armed);
+    expect(armed.sweeper.reconcileAll.calls.allArgs()).toEqual([['start']]);
+
+    change(() => armed.userId.set(null));
+    change(() => armed.userId.set('u1'));
+    expect(armed.idle).toEqual([]);
+
+    change(() => armed.userId.set('u2'));
+    await runIdle(armed);
+    expect(armed.sweeper.reconcileAll.calls.allArgs()).toEqual([['start'], ['start']]);
+  });
+
+  it('schedules nothing for a signed-out account, or offline', () => {
+    expect(arm({ userId: null }).idle).toEqual([]);
+    expect(arm({ online: false }).idle).toEqual([]);
+  });
+
+  it('starts once the account is signed in and online, whichever comes last', async () => {
+    const armed = arm({ userId: null, online: false });
+    change(() => armed.userId.set('u1'));
+    expect(armed.idle).toEqual([]);
+
+    change(() => armed.online.set(true));
+    await runIdle(armed);
+
+    // The first sweep of the account is its start-up sweep, not a reconnect.
+    expect(armed.sweeper.reconcileAll.calls.allArgs()).toEqual([['start']]);
+  });
+
+  it('sweeps again each time the device comes back online', async () => {
+    const armed = arm();
+    await runIdle(armed);
+
+    change(() => armed.online.set(false));
+    change(() => armed.online.set(true));
+    await runIdle(armed);
+
+    expect(armed.sweeper.reconcileAll.calls.allArgs()).toEqual([['start'], ['reconnect']]);
+  });
+
+  it('drops an idle task whose account signed out before it ran', async () => {
+    const armed = arm();
+    armed.userId.set(null);
+    await runIdle(armed);
+
+    expect(armed.load).not.toHaveBeenCalled();
+  });
+
+  it('drops an idle task whose device went offline before it ran', async () => {
+    const armed = arm();
+    // Not ticked: the effect never hears the change, so only the idle
+    // task's own check can drop the sweep already queued.
+    armed.online.set(false);
+    await runIdle(armed);
+
+    expect(armed.load).not.toHaveBeenCalled();
+  });
+
+  it('logs a sweep that does not load or run, and lets nothing reach the error handler', async () => {
+    const warn = spyOn(console, 'warn');
+    const armed = arm();
+    armed.load.and.rejectWith(new Error('the chunk did not load'));
+    await runIdle(armed);
+
+    change(() => armed.online.set(false));
+    change(() => armed.online.set(true));
+    armed.load.and.resolveTo(armed.sweeper);
+    armed.sweeper.reconcileAll.and.rejectWith(new Error('the sweep failed'));
+    await runIdle(armed);
+
+    expect(warn.calls.allArgs().map(args => [String(args[0]).startsWith('[LedgerShareService]'), String(args[1])]))
+      .toEqual([[true, 'Error: the chunk did not load'], [true, 'Error: the sweep failed']]);
+  });
+
+  it('never throws, whatever its collaborators do', () => {
+    const warn = spyOn(console, 'warn');
+    const userId = signal<string | null>('u1');
+
+    expect(() => {
+      armLedgerSweep(
+        {
+          userId,
+          isOnline: () => true,
+          whenIdle: () => {
+            throw new Error('no scheduler');
+          },
+          load: () => Promise.reject(new Error('unused')),
+        },
+        TestBed.inject(Injector),
+      );
+      TestBed.tick();
+    }).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+  });
+});
+
+describe('ledgerSweepHooks', () => {
+  it('holds no reference to the sweep until its load runs, and then reaches it through the injector', async () => {
+    const sweep = { reconcileAll: () => Promise.resolve() };
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthService, useValue: { userId: () => 'u1' } },
+        { provide: PwaService, useValue: { isOnline: () => true } },
+        { provide: LedgerShareService, useValue: sweep },
+      ],
+    });
+    const injector = TestBed.inject(Injector);
+    const get = spyOn(injector, 'get').and.callThrough();
+
+    const hooks = ledgerSweepHooks(injector);
+    expect(get.calls.allArgs().some(([token]) => token === LedgerShareService)).toBeFalse();
+    expect(hooks.userId()).toBe('u1');
+    expect(hooks.isOnline()).toBeTrue();
+
+    expect(await hooks.load()).toBe(sweep as unknown as LedgerSweeper);
+    expect(get.calls.allArgs().some(([token]) => token === LedgerShareService)).toBeTrue();
+  });
+});
+
+describe('whenBrowserIdle', () => {
+  it('waits for an idle period, bounded, where the browser has one', () => {
+    const task = jasmine.createSpy('task');
+    const host = {
+      requestIdleCallback: jasmine.createSpy('requestIdleCallback'),
+      setTimeout: jasmine.createSpy('setTimeout'),
+    };
+
+    whenBrowserIdle(task, host);
+
+    expect(host.setTimeout).not.toHaveBeenCalled();
+    expect(host.requestIdleCallback).toHaveBeenCalledOnceWith(jasmine.any(Function), {
+      timeout: LEDGER_SWEEP_IDLE_TIMEOUT_MS,
+    });
+    expect(task).not.toHaveBeenCalled();
+    host.requestIdleCallback.calls.mostRecent().args[0]();
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back on a timer where it has none (Safari, the iOS web view)', () => {
+    const task = jasmine.createSpy('task');
+    const host = { setTimeout: jasmine.createSpy('setTimeout') };
+
+    whenBrowserIdle(task, host);
+
+    expect(host.setTimeout).toHaveBeenCalledOnceWith(jasmine.any(Function), LEDGER_SWEEP_IDLE_FALLBACK_MS);
+    host.setTimeout.calls.mostRecent().args[0]();
+    expect(task).toHaveBeenCalledTimes(1);
   });
 });

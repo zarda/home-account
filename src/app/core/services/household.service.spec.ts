@@ -19,6 +19,7 @@ import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { createTranslationStub } from './testing/translation-stub';
+import { journalRows, ledgerJournalKey, ledgerSweepKey, readLedgerJournal, stampSweep } from './ledger-journal';
 import {
   Household,
   HouseholdIndexEntry,
@@ -282,7 +283,11 @@ describe('HouseholdService', () => {
   });
 
   afterEach(() => {
-    for (const uid of [ME, OTHER]) localStorage.removeItem(householdSelectionKey(uid));
+    for (const uid of [ME, OTHER]) {
+      localStorage.removeItem(householdSelectionKey(uid));
+      localStorage.removeItem(ledgerJournalKey(uid));
+      localStorage.removeItem(ledgerSweepKey(uid, HID));
+    }
   });
 
   /** Connects and drives the listeners to a live membership. */
@@ -2102,6 +2107,22 @@ describe('HouseholdService', () => {
 
       expect(localStorage.getItem(householdSelectionKey(ME))).toBeNull();
       expect(localStorage.getItem(householdSelectionKey(OTHER))).toBe(HID2);
+    });
+
+    it('erases this device\'s record of the account\'s shared copies, and only the account\'s', async () => {
+      for (const uid of [ME, OTHER]) {
+        journalRows(uid, [{ hid: HID, txId: 't1' }]);
+        stampSweep(uid, HID, 'full', 1000);
+      }
+      serveServerReads({});
+      recordCommits();
+
+      await service.deleteAll();
+
+      expect(localStorage.getItem(ledgerJournalKey(ME))).toBeNull();
+      expect(localStorage.getItem(ledgerSweepKey(ME, HID))).toBeNull();
+      expect(readLedgerJournal(OTHER).rows).toEqual([{ hid: HID, txId: 't1' }]);
+      expect(localStorage.getItem(ledgerSweepKey(OTHER, HID))).not.toBeNull();
     });
 
     it('keeps the selection when the erasure fails, for the retry', async () => {

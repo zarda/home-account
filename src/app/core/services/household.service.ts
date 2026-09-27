@@ -8,9 +8,9 @@ import { AuthService } from './auth.service';
 import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { HOUSEHOLD_INVITE_CALLABLE, HouseholdInviteResponse } from './household-invite-callable';
+import { clearLedgerDeviceState } from './ledger-journal';
 import {
   Household,
-  HouseholdIndexEntry,
   HouseholdInvite,
   HouseholdMember,
   HouseholdMemberIdentity,
@@ -19,6 +19,7 @@ import {
   isMemberPhotoUrl
 } from '../../models';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
+import { HouseholdIndexData as IndexData, isStamp, sameStamp, toMembership } from '../utils/household-index.utils';
 
 /** firestore.rules, householdNameValid. */
 export const HOUSEHOLD_NAME_MAX_LENGTH = 60;
@@ -153,9 +154,6 @@ export class HouseholdError extends Error {
   override name = 'HouseholdError';
 }
 
-/** An index document as a read or a listener hands it over: a stamp still on its way reads as null. */
-type IndexData = { id: string } & Partial<Record<Exclude<keyof HouseholdIndexEntry, 'id'>, unknown>>;
-
 /**
  * What the server says of one index entry's membership:
  * - `live`: the own member document of the entry's generation, in a
@@ -174,17 +172,8 @@ const memberPath = (householdId: string, uid: string) => `${membersPath(househol
 const invitePath = (inviteId: string) => `${INVITES}/${inviteId}`;
 const inviteIdOf = (householdId: string, uid: string) => `${householdId}_${uid}`;
 
-function isStamp(value: unknown): value is Timestamp {
-  return !!value && typeof (value as Timestamp).toMillis === 'function';
-}
-
 function millisOf(value: unknown): number {
   return isStamp(value) ? value.toMillis() : 0;
-}
-
-/** Two stamps to the nanosecond, as the rules compare a generation. */
-function sameStamp(a: unknown, b: unknown): boolean {
-  return isStamp(a) && isStamp(b) && a.seconds === b.seconds && a.nanoseconds === b.nanoseconds;
 }
 
 /** Two readings of one index entry as the same join: every join stamps joinedAt afresh. */
@@ -205,18 +194,6 @@ function ownerThenJoined(a: HouseholdMember, b: HouseholdMember): number {
 function joinedFirst(a: HouseholdMembership, b: HouseholdMembership): number {
   const at = (m: HouseholdMembership) => (m.joinedAt ? m.joinedAt.toMillis() : Number.POSITIVE_INFINITY);
   return at(a) - at(b) || a.householdId.localeCompare(b.householdId);
-}
-
-function toMembership(entry: IndexData): HouseholdMembership {
-  return {
-    householdId: entry.id,
-    name: typeof entry.name === 'string' ? entry.name : '',
-    role: entry.role === 'owner' ? 'owner' : 'member',
-    since: isStamp(entry.since) ? entry.since : null,
-    joinedAt: isStamp(entry.joinedAt) ? entry.joinedAt : null,
-    // Present at all, a stamp still on its way included, the ending is under way.
-    ended: entry.endedAt !== undefined
-  };
 }
 
 function chunked<T>(items: T[]): T[][] {
@@ -658,6 +635,9 @@ export class HouseholdService {
       const sent = await this.inviteIdsWhere('inviterUid', uid);
       await this.deleteInvites([...received, ...sent]);
       forgetSelection(uid);
+      // After the whole walk, so no membership ended in it writes the
+      // journal again behind the erasure.
+      clearLedgerDeviceState(uid);
     });
   }
 
