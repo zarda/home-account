@@ -86,7 +86,9 @@ in. `scripts/check-analytics-registry.mjs` fails the build when this table and
 the code disagree. `Since` covers the event, not its parameters —
 `transaction_add`'s `has_tags`, `has_location` and `receipt_image_count`
 arrived in 1.18.95. `receipt_import`'s `path`, `engine`, `provider`, `failure`
-and `duration` arrived in 1.27.140.
+and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
+`switch`, `plan_create`, `plan_delete`, `goal_link` and `contribute` arrived in
+26.9.169.
 
 <!-- analytics-registry:start -->
 | Event | Trigger | Params | Source | Since |
@@ -100,7 +102,7 @@ and `duration` arrived in 1.27.140.
 | `ai_assist_used` | An AI feature issued a real provider request (cache hits and local fallbacks excluded). | `feature` | `src/app/core/services/ai-import.service.ts`, `src/app/core/services/nl-search.service.ts`, `src/app/core/services/note-translation.service.ts`, `src/app/core/services/receipt-translation.service.ts`, `src/app/core/services/weekly-recap.service.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/dashboard/ai-summary/ai-summary.component.ts`, `src/app/features/reports/insights/insight-narrative/insight-narrative.component.ts` | 1.16.91 |
 | `settings_change` | A tracked preference was saved from profile settings. | `setting` | `src/app/features/settings/profile-settings/profile-settings.component.ts`, `src/app/features/settings/accessibility-settings/accessibility-settings.component.ts` | 1.16.91 |
 | `search_history_used` | A stored search record was reopened, refreshed or applied. Never fires for collapsing one. | `action` | `src/app/features/ai/search-history/search-answer-history.component.ts`, `src/app/shared/components/ai-search-dialog/ai-search-dialog.component.ts` | 1.23.116 |
-| `household_action` | A household action succeeded: starting one, or accepting or declining an invite, from the setup; inviting, revoking, renaming, removing, leaving or dissolving from the member view. A refusal or failure sends nothing, and neither does the page's own clearing of a stale pointer. | `action` | `src/app/features/household/household-members/household-members.component.ts`, `src/app/features/household/household-setup/household-setup.component.ts` | 26.9.167 |
+| `household_action` | A household action succeeded: starting one, or accepting or declining an invite, from the setup; inviting, revoking, renaming, removing, leaving or dissolving from the member view; picking another household in the page's switcher; sharing transactions into a household or stopping, from the transaction form, a row's menu or the transactions list's select bar, once per kind a save, a menu choice or a run of the bar went through for, however many rows and households it covered. A refusal, failure or cancel sends nothing, and neither does the page's own tidying of an ended membership or its move off a household it lost. | `action` | `src/app/features/household/household-members/household-members.component.ts`, `src/app/features/household/household-setup/household-setup.component.ts`, `src/app/features/household/household.component.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/transactions/transaction-list/transaction-list.component.ts` | 26.9.167 |
 <!-- analytics-registry:end -->
 
 ### Parameter values
@@ -123,7 +125,7 @@ and `duration` arrived in 1.27.140.
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative`, `translation` (a note or receipt photo read back in the UI language — neither the note nor the image is ever sent here), `recap` (the weekly recap's sentence — figures and category names only) |
 | `setting` | `theme`, `language`, `currency`, `font_scale`, `high_contrast`, `reduced_motion` |
-| `action` | Per event. `search_history_used`: `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent. `household_action`: `create`, `accept`, `decline` (the setup), `invite`, `revoke`, `rename`, `remove`, `leave`, `dissolve` (the member view) — never the household's name, an invitee's address, or which member an action concerned |
+| `action` | Per event. `search_history_used`: `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent. `household_action`: `create`, `accept`, `decline` (the setup), `invite`, `revoke`, `rename`, `remove`, `leave`, `dissolve` (the member view), `switch` (the viewer picked another household), `share`, `unshare` (transactions shared into a household or taken out of it), `plan_create`, `plan_delete` (a household budget or goal made or deleted), `goal_link` (a shared transaction set to count toward a household goal), `contribute` (a contribution recorded on a household goal) — never the household's name or id, an invitee's address, which member an action concerned, or how many transactions or households it covered |
 
 ### What is deliberately not tagged
 

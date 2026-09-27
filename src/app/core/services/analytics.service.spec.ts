@@ -256,7 +256,10 @@ describe('AnalyticsService', () => {
   });
 
   describe('household_action', () => {
-    const ACTIONS = ['create', 'invite', 'revoke', 'accept', 'decline', 'leave', 'remove', 'dissolve', 'rename'] as const;
+    const ACTIONS = [
+      'create', 'invite', 'revoke', 'accept', 'decline', 'leave', 'remove', 'dissolve', 'rename',
+      'share', 'unshare', 'switch', 'plan_create', 'plan_delete', 'goal_link', 'contribute'
+    ] as const;
 
     it('sends each action through the typed wrapper', fakeAsync(() => {
       currentUser.set(premiumUser(true));

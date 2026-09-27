@@ -176,8 +176,8 @@ export class AnalyticsService {
 
   /**
    * A household action succeeded. Only which one: the household's name, an
-   * invitee's address and the member it concerned are never sent, and a
-   * refusal is not an action taken.
+   * invitee's address, the member it concerned and how many rows it covered
+   * are never sent, and a refusal is not an action taken.
    */
   trackHouseholdAction(params: AnalyticsEventParams<'household_action'>): void {
     this.send('household_action', params);

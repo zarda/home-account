@@ -1,4 +1,4 @@
-import { applyShareChange, shareChange } from './share-change.utils';
+import { applyShareChange, landedKinds, shareChange } from './share-change.utils';
 
 describe('share change utils', () => {
   describe('shareChange', () => {
@@ -21,6 +21,18 @@ describe('share change utils', () => {
   describe('applyShareChange', () => {
     it('adds what was shared and drops what was unshared, each once', () => {
       expect(applyShareChange(['h1', 'h3'], { share: ['h2', 'h3'], unshare: ['h1'] })).toEqual(['h3', 'h2']);
+    });
+  });
+
+  describe('landedKinds', () => {
+    it('names each kind once, however many households it went through for', () => {
+      expect(landedKinds({ share: ['h1', 'h2'], unshare: ['h3'] })).toEqual(['share', 'unshare']);
+      expect(landedKinds({ share: ['h1'], unshare: [] })).toEqual(['share']);
+      expect(landedKinds({ share: [], unshare: ['h1', 'h2'] })).toEqual(['unshare']);
+    });
+
+    it('names nothing when nothing went through', () => {
+      expect(landedKinds({ share: [], unshare: [] })).toEqual([]);
     });
   });
 });

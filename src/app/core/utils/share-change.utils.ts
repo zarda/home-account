@@ -39,3 +39,15 @@ export function applyShareChange(held: readonly string[], landed: ShareChange): 
   const kept = held.filter(id => !landed.unshare.includes(id));
   return [...kept, ...landed.share.filter(id => !kept.includes(id))];
 }
+
+/**
+ * The kinds of change that went through for at least one household, each
+ * named once: a household_action reports the kind alone, since which
+ * households, or how many, would say more than the action.
+ */
+export function landedKinds(landed: ShareChange): ('share' | 'unshare')[] {
+  const kinds: ('share' | 'unshare')[] = [];
+  if (landed.share.length > 0) kinds.push('share');
+  if (landed.unshare.length > 0) kinds.push('unshare');
+  return kinds;
+}

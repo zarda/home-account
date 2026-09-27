@@ -5,6 +5,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 
+import en from '../../../../assets/i18n/en.json';
 import { HouseholdMembersComponent, INVITE_MAIL_MARGIN_MS } from './household-members.component';
 import {
   HOUSEHOLD_NAME_MAX_LENGTH,
@@ -1110,5 +1111,44 @@ describe('HouseholdMembersComponent', () => {
           .toBeLessThanOrEqual(field.getBoundingClientRect().right + 0.5);
       }
     });
+  });
+});
+
+/**
+ * The keys are asserted above; the English copy under them is asserted here,
+ * in the catalog every other locale is kept at parity with. A member sees
+ * only the transactions others share, so an ending takes shared transactions
+ * out and never promises to hide anyone's whole record.
+ */
+describe('the copy an ending shows', () => {
+  const copy = en.household.members;
+  const endings = {
+    removeMessage: copy.removeMessage,
+    leaveDescription: copy.leaveDescription,
+    leaveMessage: copy.leaveMessage,
+    dissolveDescription: copy.dissolveDescription,
+    dissolveMessage: copy.dissolveMessage
+  };
+
+  it("says each ending takes shared transactions out, not everyone's records", () => {
+    for (const [key, text] of Object.entries(endings)) {
+      expect(text).withContext(key).toMatch(/shared transactions/);
+      expect(text).withContext(key).not.toMatch(/everyone's records|anyone else's/);
+    }
+  });
+
+  it("keeps everyone's own records theirs", () => {
+    for (const [key, text] of Object.entries(endings)) {
+      expect(text).withContext(key).toMatch(/own records/);
+    }
+  });
+
+  it("says dissolving deletes the household's own budgets and goals", () => {
+    expect(copy.dissolveDescription).toContain('budgets and goals');
+    expect(copy.dissolveMessage).toContain('budgets and goals');
+  });
+
+  it("keeps the removed member's name", () => {
+    expect(copy.removeMessage).toContain('{{name}}');
   });
 });

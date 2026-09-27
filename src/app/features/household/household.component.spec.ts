@@ -4,6 +4,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router, provideRouter } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 
+import en from '../../../assets/i18n/en.json';
 import { HouseholdComponent } from './household.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
 import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
@@ -16,6 +17,7 @@ import {
 } from '../../core/services/household.service';
 import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { AnalyticsService } from '../../core/services/analytics.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { createTranslationStub } from '../../core/services/testing';
@@ -111,6 +113,7 @@ describe('HouseholdComponent', () => {
   let selected: ReturnType<typeof signal<string | null>>;
   let ledger: { setHousehold: jasmine.Spy; setMembers: jasmine.Spy };
   let catchUp: jasmine.Spy;
+  let analytics: jasmine.SpyObj<Pick<AnalyticsService, 'trackHouseholdAction'>>;
   let service: {
     status: typeof status;
     household: typeof household;
@@ -197,6 +200,7 @@ describe('HouseholdComponent', () => {
     selected = signal<string | null>(null);
     ledger = { setHousehold: jasmine.createSpy('setHousehold'), setMembers: jasmine.createSpy('setMembers') };
     catchUp = jasmine.createSpy('catchUpRecurringTransactions').and.resolveTo([]);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackHouseholdAction']);
     service = {
       status,
       household,
@@ -229,7 +233,8 @@ describe('HouseholdComponent', () => {
         { provide: HouseholdService, useValue: service },
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: TranslationService, useValue: createTranslationStub() },
-        { provide: RecurringService, useValue: { catchUpRecurringTransactions: catchUp } }
+        { provide: RecurringService, useValue: { catchUpRecurringTransactions: catchUp } },
+        { provide: AnalyticsService, useValue: analytics }
       ]
     })
       .overrideComponent(HouseholdComponent, {
@@ -261,20 +266,10 @@ describe('HouseholdComponent', () => {
       expect(service.disconnect).toHaveBeenCalledTimes(1);
     });
 
-    it("catches up the viewer's own recurring rules as it opens, as the dashboard does", () => {
-      expect(catchUp).toHaveBeenCalledTimes(1);
-    });
-
-    it('lets a failed catch-up pass without a word', async () => {
-      const consoleError = spyOn(console, 'error');
-      catchUp.and.rejectWith(new Error('offline'));
-      fixture.destroy();
-      fixture = TestBed.createComponent(HouseholdComponent);
-      render();
-      await fixture.whenStable();
-
-      expect(catchUp).toHaveBeenCalledTimes(2);
-      expect(consoleError).not.toHaveBeenCalled();
+    // A recurring rule's occurrences start private, and the page reads only
+    // what members shared, so posting them here would change nothing it shows.
+    it("leaves the viewer's recurring rules to the pages that show their own records", () => {
+      expect(catchUp).not.toHaveBeenCalled();
     });
   });
 
@@ -645,6 +640,47 @@ describe('HouseholdComponent', () => {
         expect(switcherValue()).toBe('New home');
       });
     });
+
+    /**
+     * A switch is the viewer's own pick of another household, reported once
+     * its address is reached; which household it was would say more than
+     * the action.
+     */
+    describe('household_action', () => {
+      beforeEach(async () => {
+        showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+        await settleRoute();
+      });
+
+      it('reports one switch when the viewer picks another household', async () => {
+        choose('Flat 4B');
+        await settleRoute();
+
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'switch' });
+      });
+
+      it('reports nothing for the household the page opens on', () => {
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
+      it('reports nothing for opening the setup, or for going back from it to the same household', async () => {
+        choose('household.switcher.setup');
+        await settleFocus();
+        choose('The Lins');
+        await settleRoute();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
+      it('reports nothing when the move to the chosen household does not go through', async () => {
+        spyOn(router, 'navigate').and.resolveTo(false);
+
+        choose('Flat 4B');
+        await settleRoute();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('its address', () => {
@@ -990,6 +1026,17 @@ describe('HouseholdComponent', () => {
         expect(element().querySelector('app-household-setup')).withContext('not the setup').toBeNull();
       });
 
+      it('reports no switch for the move the page makes itself', async () => {
+        await router.navigateByUrl('/household/h1');
+        await settleRoute();
+
+        loseAccess();
+        await settleRoute();
+
+        expect(router.url).toBe('/household/h2');
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
       it("moves focus to its first heading when focus went with the view that was lost", async () => {
         element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();
         loseAccess();
@@ -1309,5 +1356,33 @@ describe('HouseholdComponent', () => {
         expect(option.scrollWidth).withContext('nothing overflows the choice').toBeLessThanOrEqual(option.clientWidth + 1);
       }
     });
+  });
+});
+
+/**
+ * The keys are asserted above; the English copy under them is asserted here,
+ * in the catalog every other locale is kept at parity with. A household sees
+ * only the rows its members share, and keeps budgets and goals of its own.
+ */
+describe('the copy the household pages show', () => {
+  const copy = en.household;
+
+  it('offers to share chosen transactions, never whole finances', () => {
+    for (const [key, text] of Object.entries({
+      subtitle: copy.subtitle,
+      memberSubtitle: copy.memberSubtitle,
+      cardDescription: copy.cardDescription
+    })) {
+      expect(text).withContext(key).toMatch(/shar/i);
+      expect(text).withContext(key).not.toMatch(/finances/i);
+    }
+  });
+
+  it('titles the overview list as the shared transactions', () => {
+    expect(copy.overview.transactionsTitle).toBe('Shared transactions');
+  });
+
+  it("says the plans are the household's own", () => {
+    expect(copy.plans.empty).toBe('This household has no budgets or goals yet.');
   });
 });

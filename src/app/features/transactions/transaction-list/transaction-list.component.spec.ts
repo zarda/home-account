@@ -27,6 +27,7 @@ import { LedgerShareRefusal, LedgerShareService } from '../../../core/services/l
 import { NotificationService } from '../../../core/services/notification.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { PwaService } from '../../../core/services/pwa.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
 import { MAX_BULK_SHARE, Transaction } from '../../../models';
 import { createTransaction, createUser, runAxe, summarizeViolations } from '../../../core/services/testing';
@@ -1167,6 +1168,7 @@ describe('TransactionListComponent sharing', () => {
   let windowSource: ReturnType<typeof createMockWindowSource>;
   let desktop: boolean;
   let online: ReturnType<typeof signal<boolean>>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
 
   const joined = Timestamp.fromMillis(1_000);
   const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
@@ -1235,6 +1237,7 @@ describe('TransactionListComponent sharing', () => {
         { provide: LedgerShareService, useValue: ledger },
         { provide: NotificationService, useValue: notifications },
         { provide: PwaService, useValue: { isOnline: online } },
+        { provide: AnalyticsService, useValue: analytics },
       ],
     }).compileComponents();
 
@@ -1260,6 +1263,7 @@ describe('TransactionListComponent sharing', () => {
     windowSource = createMockWindowSource();
     desktop = false;
     online = signal(true);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackHouseholdAction']);
   });
 
   describe('on a phone', () => {
@@ -1412,6 +1416,82 @@ describe('TransactionListComponent sharing', () => {
       expect(stopConfirm().message).toBe('transactions.share.stopMessageOffline:{"description":"Banana"}');
       expect(ledger.unshare).toHaveBeenCalledOnceWith(['a'], 'h1');
     });
+
+    /**
+     * One event per kind the menu's change went through for, however many
+     * households it touched: a household id or a count would say more
+     * than the action.
+     */
+    describe('household_action', () => {
+      it('reports one share and one unshare for a row moved between households', async () => {
+        dialog.open.and.returnValue({ afterClosed: () => of(['h2']) } as never);
+        await render();
+
+        openRowMenu(0);
+        shareItem()!.click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction.calls.allArgs()).toEqual([[{ action: 'share' }], [{ action: 'unshare' }]]);
+      });
+
+      it('reports nothing when the share dialog is dismissed', async () => {
+        dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+        await render();
+
+        openRowMenu(0);
+        shareItem()!.click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
+      it('reports nothing when the only share is refused', async () => {
+        ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+        dialog.open.and.returnValue({ afterClosed: () => of(['h2']) } as never);
+        await render();
+
+        openRowMenu(1);
+        shareItem()!.click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
+      it('reports one unshare for Stop sharing with two households, once confirmed', async () => {
+        dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+        await render();
+
+        openRowMenu(3);
+        stopItem()!.click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'unshare' });
+      });
+
+      it('reports nothing when Stop sharing is not confirmed', async () => {
+        dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+        await render();
+
+        openRowMenu(0);
+        stopItem()!.click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
+      it('reports nothing when Stop sharing fails', async () => {
+        ledger.unshare.and.rejectWith(new Error('unavailable'));
+        spyOn(console, 'warn');
+        dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+        await render();
+
+        openRowMenu(0);
+        stopItem()!.click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('on a desktop', () => {
@@ -1506,6 +1586,7 @@ describe('TransactionListComponent select mode', () => {
   let rows: Transaction[];
   let edited: jasmine.Spy;
   let labels: Record<string, string>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
 
   const joined = Timestamp.fromMillis(1_000);
   const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
@@ -1552,6 +1633,7 @@ describe('TransactionListComponent select mode', () => {
         { provide: NotificationService, useValue: notifications },
         { provide: AnnouncerService, useValue: announcer },
         { provide: PwaService, useValue: { isOnline: online } },
+        { provide: AnalyticsService, useValue: analytics },
       ],
     }).compileComponents();
 
@@ -1606,6 +1688,7 @@ describe('TransactionListComponent select mode', () => {
     windowSource = createMockWindowSource();
     desktop = false;
     online = signal(true);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackHouseholdAction']);
     edited = jasmine.createSpy('edit');
     labels = { 'transactions.share.separator': ', ' };
     rows = [
@@ -2095,6 +2178,79 @@ describe('TransactionListComponent select mode', () => {
       expect(notifications.success).toHaveBeenCalledOnceWith(
         'transactions.select.unsharedOffline:{"count":1,"names":"Office"}'
       );
+    });
+
+    /**
+     * A run of the bar is one action however many rows and households it
+     * covers, and is reported only once it went through for at least one
+     * household: a count or a household id would say more than the action.
+     */
+    describe('household_action', () => {
+      it('reports one share for rows shared into two households', async () => {
+        closesWith(['h1', 'h2']);
+        await render();
+        enter();
+        pick('b', 'a');
+
+        barButton('select-share').click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'share' });
+      });
+
+      it('reports one unshare for rows taken out of a household', async () => {
+        closesWith(['h1']);
+        await render();
+        enter();
+        pick('a', 'c');
+
+        barButton('select-stop').click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'unshare' });
+      });
+
+      it('reports one share when only one of the households took the rows', async () => {
+        ledger.share.and.callFake((_ids, householdId) => householdId === 'h2'
+          ? Promise.reject(new LedgerShareRefusal('notMember', 'not a member'))
+          : Promise.resolve());
+        closesWith(['h1', 'h2']);
+        await render();
+        enter();
+        pick('b');
+
+        barButton('select-share').click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'share' });
+      });
+
+      it('reports nothing when the dialog is dismissed or closes with no household', async () => {
+        await render();
+        enter();
+        pick('a');
+
+        closesWith(undefined);
+        barButton('select-share').click();
+        closesWith([]);
+        barButton('select-stop').click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
+
+      it('reports nothing when the rows are refused', async () => {
+        ledger.share.and.rejectWith(new LedgerShareRefusal('tooMany', 'too many'));
+        closesWith(['h1']);
+        await render();
+        enter();
+        pick('a', 'b');
+
+        barButton('select-share').click();
+        await settle();
+
+        expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+      });
     });
   });
 

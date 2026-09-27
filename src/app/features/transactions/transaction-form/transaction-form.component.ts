@@ -90,7 +90,7 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { splitRemainder } from '../../../core/utils/split-purchase.utils';
 import { SplitPartsComponent } from './split-parts/split-parts.component';
 import type { RowSharingService } from '../../../core/services/row-sharing.service';
-import { ShareTarget, applyShareChange, shareChange } from '../../../core/utils/share-change.utils';
+import { ShareChange, ShareTarget, applyShareChange, landedKinds, shareChange } from '../../../core/utils/share-change.utils';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -783,7 +783,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
             : {}),
         ...this.locationField(formValue.locationName),
         // Only a new row carries its shares: updateTransaction refuses them,
-        // and an edit's are applied on their own once it is saved.
+        // and an edit's are applied on their own, the unshares before it and
+        // the shares once it is saved.
         ...(this.data.mode === 'add' ? this.sharedWithField() : {}),
       };
 
@@ -804,6 +805,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           has_location: !!transactionData.location,
           receipt_image_count: receipts.length,
         });
+        // One share however many households: see landedKinds.
+        if (transactionData.sharedWith?.length) this.analytics.trackHouseholdAction({ action: 'share' });
         // The chips left on and the offers taken off, so the next scan of
         // this merchant starts from the user's own decision.
         if (this.filledByScan && this.scanSuggestedTags.length) {
@@ -816,25 +819,35 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         }
       } else if (this.data.transaction) {
         const txId = this.data.transaction.id;
+        // Before the edit: the update rewrites the copy in every household
+        // the row names, so one still named would receive the text it is
+        // being withdrawn from, and would keep it if anything after the edit
+        // failed. Offline this resolves once queued, which puts the
+        // withdrawal ahead of the edit in the mutation queue, and the cached
+        // row the update reads already lacks the key. A household that could
+        // not be taken off stops the save, with the edit still in the form.
+        if (!(await this.applyShares(txId, 'unshare'))) {
+          return;
+        }
         const queued: { shares?: Promise<boolean> } = {};
         await this.transactionService.updateTransaction(txId, transactionData, {
           // Offline the server's answer waits for the connection, which the
-          // app may not live to see: the share changes are queued right
-          // behind the edit instead, where the mutation queue keeps them in
-          // order and across a restart.
+          // app may not live to see: the shares are queued right behind the
+          // edit instead, where the mutation queue keeps them in order and
+          // across a restart.
           onIssued: () => {
-            if (!this.pwa.isOnline()) queued.shares = this.applyShares(txId);
+            if (!this.pwa.isOnline()) queued.shares = this.applyShares(txId, 'share');
           },
         });
         // The edit has landed with these images: a second save, after a
         // refusal below, must not append them again.
         this.pendingReceipts.update(list => list.filter(pending => !sent.includes(pending)));
         this.receiptsLanded.update(count => count + sent.length);
-        // Online, after the update, so a failed save changes no share; and
+        // Online, after the update, so a failed save adds no household; and
         // before the split, so every part is shared as the purchase now is.
         // A refused share is a message and not a close: the edit landed, and
         // the chips are still here to correct.
-        if (!(await (queued.shares ?? this.applyShares(txId)))) {
+        if (!(await (queued.shares ?? this.applyShares(txId, 'share')))) {
           return;
         }
         // After the update, never with it: the split shrinks the stored row
@@ -850,12 +863,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       if (error instanceof Error && error.message === RECEIPT_IMAGE_LIMIT_ERROR) {
         this.openLimitDialog();
       } else if (error instanceof Error && error.message === RECEIPT_ATTACH_FAILED) {
-        // The batch rolled back: the transaction is unchanged and none of
-        // the queued images were kept.
+        // The batch rolled back: the entry or edit and its queued images
+        // were not kept. On an edit, a household taken off in the same save went
+        // before it and stays off; sharesHeld records that, so a retry does
+        // not send it again.
         this.notifications.error(this.translationService.t('receiptImages.attachFailed'));
       } else if (error instanceof Error && error.message === GOAL_LINK_INVALID) {
-        // The chosen goal vanished or was deactivated under the open form;
-        // nothing was saved, and the entry is still here to re-aim.
+        // The chosen goal vanished or was deactivated under the open form.
+        // Nothing of the entry or edit was saved, except that on an edit a
+        // household taken off went before it and stays off. The entry is
+        // still here to re-aim.
         this.notifications.error(this.translationService.t('transactions.goalLinkInvalid'));
       } else if (error instanceof Error && error.message === SPLIT_REFUSED) {
         // The service refused the parts — nothing of the split was written.
@@ -943,13 +960,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   /**
-   * Turns the chips' difference from the row into one share per household
-   * added and one unshare per household taken off. False when any of it did
-   * not go through, which RowSharingService has already reported.
+   * Turns one half of the chips' difference from the row into a change:
+   * 'share', one share per household added; 'unshare', one unshare per
+   * household taken off. The halves go on either side of an edit, so each
+   * sends only its own kind. False when any of it did not go through, which
+   * RowSharingService has already reported.
    */
-  private async applyShares(txId: string): Promise<boolean> {
+  private async applyShares(txId: string, half: keyof ShareChange): Promise<boolean> {
     const targets = this.shareTargets();
-    const change = shareChange(this.sharesHeld(), this.shareSelection(), targets.map(target => target.householdId));
+    const difference = shareChange(this.sharesHeld(), this.shareSelection(), targets.map(target => target.householdId));
+    const change: ShareChange = { share: [], unshare: [], [half]: difference[half] };
     if (change.share.length === 0 && change.unshare.length === 0) return true;
     const sharing = await this.rowSharing().catch(error => {
       console.warn('[TransactionForm] The share controls did not load; no share was changed', error);
@@ -959,6 +979,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (!sharing) return false;
     const { landed, failed } = await sharing.apply(txId, change, targets);
     this.sharesHeld.update(held => applyShareChange(held, landed));
+    for (const action of landedKinds(landed)) this.analytics.trackHouseholdAction({ action });
     return !failed;
   }
 

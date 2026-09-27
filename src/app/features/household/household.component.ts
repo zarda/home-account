@@ -20,10 +20,10 @@ import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter, map } from 'rxjs';
 
+import { AnalyticsService } from '../../core/services/analytics.service';
 import { HouseholdService, HouseholdStatus } from '../../core/services/household.service';
 import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
 import { PwaService } from '../../core/services/pwa.service';
-import { RecurringService } from '../../core/services/recurring.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -121,7 +121,7 @@ export class HouseholdComponent implements OnInit {
   private readonly householdService = inject(HouseholdService);
   private readonly ledger = inject(HouseholdLedgerService);
   private readonly pageFocus = inject(HouseholdPageFocus);
-  private readonly recurring = inject(RecurringService);
+  private readonly analytics = inject(AnalyticsService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly focus: FocusContext = {
@@ -257,24 +257,19 @@ export class HouseholdComponent implements OnInit {
   ngOnInit(): void {
     this.householdService.connect();
     this.destroyRef.onDestroy(() => this.householdService.disconnect());
-    // The viewer's own recurring rules post only when their app catches them
-    // up, which the dashboard does. A link straight to this page would
-    // otherwise show the viewer's line short of what their dashboard shows.
-    // Other members' rules post only from their own apps: the rules let no
-    // one else write their records.
-    this.recurring.catchUpRecurringTransactions().catch(() => {
-      // Non-fatal: the page still shows every posted row.
-    });
   }
 
   /**
    * A choice in the switcher. A household is reached through its own
    * address, which selects it; the setup opens beside the membership, which
    * stays selected. Either way the view swaps under the switcher, and focus
-   * goes from the switcher to the view that comes in.
+   * goes from the switcher to the view that comes in. Reaching another
+   * household is a switch; the setup, a return from it to the household
+   * still selected, and a navigation that did not go through are not.
    */
   choose(value: string): void {
     const origin = this.switcher()?.nativeElement ?? null;
+    const from = this.householdService.selectedHouseholdId();
     this.followedTo = undefined;
     if (value === SETUP_CHOICE) {
       this.setupOpen.set(true);
@@ -283,7 +278,9 @@ export class HouseholdComponent implements OnInit {
     }
     this.setupOpen.set(false);
     this.pageFocus.afterSwitchTo(value, origin);
-    void this.router.navigate(['/household', value]);
+    void this.router.navigate(['/household', value]).then(moved => {
+      if (moved && value !== from) this.analytics.trackHouseholdAction({ action: 'switch' });
+    });
   }
 
   /**

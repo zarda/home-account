@@ -199,7 +199,7 @@ describe('TransactionFormComponent', () => {
     receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
     receiptQuota.canAddImages.and.resolveTo(true);
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
-    analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction']);
     tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
     tagSuggestions.suggest.and.resolveTo([[]]);
     groundingHistory = jasmine.createSpyObj<GroundingHistoryService>('GroundingHistoryService', ['recent']);
@@ -933,7 +933,7 @@ describe('TransactionFormComponent', () => {
         expect(component.shareSelection()).toEqual(['h2']);
       });
 
-      it('sends an edit without shares, then shares and unshares exactly the difference', async () => {
+      it('sends an edit without shares, unsharing before it and sharing after it exactly the difference', async () => {
         const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
         await shareTargetsListed(component);
         component.shareSelection.set(['h2']);
@@ -944,8 +944,46 @@ describe('TransactionFormComponent', () => {
         expect('sharedWith' in dto).withContext('updateTransaction refuses shares').toBeFalse();
         expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
         expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
+        expect(ledger.unshare)
+          .withContext('a household taken off never receives the edited text')
+          .toHaveBeenCalledBefore(transactionService.updateTransaction);
         expect(transactionService.updateTransaction).toHaveBeenCalledBefore(ledger.share);
-        expect(transactionService.updateTransaction).toHaveBeenCalledBefore(ledger.unshare);
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+      });
+
+      it('stops the save when a household could not be taken off, so it never sees the edit', async () => {
+        ledger.unshare.and.rejectWith(new Error('unavailable'));
+        spyOn(console, 'warn');
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        component.form.patchValue({ description: 'Surprise gift' });
+        component.shareSelection.set(['h2']);
+
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction).not.toHaveBeenCalled();
+        expect(ledger.share).not.toHaveBeenCalled();
+        expect(notifications.error).toHaveBeenCalledOnceWith('transactions.share.failed');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+        expect(component.isSubmitting()).toBeFalse();
+        expect(component.form.get('description')?.value).withContext('the edit is still in the form').toBe('Surprise gift');
+      });
+
+      it('does not take a household off again when the edit after it is saved a second time', async () => {
+        transactionService.updateTransaction.and.rejectWith(new Error(GOAL_LINK_INVALID));
+        const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+        await shareTargetsListed(component);
+        component.shareSelection.set(['h2']);
+        await component.onSubmit();
+        expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
+        expect(ledger.share).withContext('a failed save adds no share').not.toHaveBeenCalled();
+        ledger.unshare.calls.reset();
+        transactionService.updateTransaction.and.resolveTo(undefined);
+
+        await component.onSubmit();
+
+        expect(ledger.unshare).withContext('h1 was taken off the first time').not.toHaveBeenCalled();
+        expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
         expect(dialogRef.close).toHaveBeenCalledWith(true);
       });
 
@@ -1058,7 +1096,7 @@ describe('TransactionFormComponent', () => {
         expect(component.canQueueMore()).withContext('the row holds the cap now').toBeFalse();
       });
 
-      it('offline, stops and starts sharing right behind the edit, without waiting for the server', async () => {
+      it('offline, queues the unshare before the edit and the share right behind it, without waiting for the server', async () => {
         const order: string[] = [];
         transactionService.updateTransaction.and.callFake((_id, _dto, options) => {
           order.push('edit issued');
@@ -1082,11 +1120,13 @@ describe('TransactionFormComponent', () => {
 
         expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
         expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
-        expect(order[0]).withContext('the edit is queued first, so the shares land after it').toBe('edit issued');
+        expect(order).withContext(
+          'the queue withdraws the row from h1 before it carries the edit, and shares into h2 only after it'
+        ).toEqual(['unshare', 'edit issued', 'share']);
         expect(dialogRef.close).withContext('the edit itself is still on its way').not.toHaveBeenCalled();
       });
 
-      it('offline, changes no share when the edit is refused before it is queued', async () => {
+      it('offline, adds no share when the edit is refused before it is queued', async () => {
         transactionService.updateTransaction.and.rejectWith(new Error(GOAL_LINK_INVALID));
         const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
         await shareTargetsListed(component);
@@ -1096,7 +1136,9 @@ describe('TransactionFormComponent', () => {
         await component.onSubmit();
 
         expect(ledger.share).not.toHaveBeenCalled();
-        expect(ledger.unshare).not.toHaveBeenCalled();
+        expect(ledger.unshare)
+          .withContext('the household taken off goes before the edit, whatever becomes of it')
+          .toHaveBeenCalledOnceWith(['tx-1'], 'h1');
         expect(notifications.error).toHaveBeenCalledWith('transactions.goalLinkInvalid');
         expect(dialogRef.close).not.toHaveBeenCalled();
       });
@@ -1124,7 +1166,7 @@ describe('TransactionFormComponent', () => {
         expect(dialogRef.close).not.toHaveBeenCalled();
       });
 
-      it('online, changes the shares only once the server has the edit', async () => {
+      it('online, takes a household off before the edit and shares only once the server has the edit', async () => {
         let acknowledge!: () => void;
         transactionService.updateTransaction.and.callFake((_id, _dto, options) => {
           options?.onIssued?.();
@@ -1137,14 +1179,16 @@ describe('TransactionFormComponent', () => {
         component.shareSelection.set(['h2']);
 
         const saving = component.onSubmit();
+        await until(() => transactionService.updateTransaction.calls.count() > 0);
+        expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
+        expect(ledger.unshare).toHaveBeenCalledBefore(transactionService.updateTransaction);
         await new Promise(resolve => setTimeout(resolve, 20));
-        expect(ledger.unshare).withContext('a failed save changes no share').not.toHaveBeenCalled();
-        expect(ledger.share).not.toHaveBeenCalled();
+        expect(ledger.share).withContext('a failed save adds no share').not.toHaveBeenCalled();
 
         acknowledge();
         await saving;
 
-        expect(ledger.unshare).toHaveBeenCalledOnceWith(['tx-1'], 'h1');
+        expect(ledger.unshare).toHaveBeenCalledTimes(1);
         expect(ledger.share).toHaveBeenCalledOnceWith(['tx-1'], 'h2');
         expect(dialogRef.close).toHaveBeenCalledWith(true);
       });
@@ -1174,6 +1218,98 @@ describe('TransactionFormComponent', () => {
 
         isOnline.set(true);
         expect(component.offlineUnshare()).withContext('online, the unshare lands at once').toBeFalse();
+      });
+
+      /**
+       * One event per kind a save changed, however many households it
+       * touched, and only for what went through: a household id or a count
+       * would say more about the household than the action.
+       */
+      describe('household_action', () => {
+        it('reports one share for a new entry written into two households', async () => {
+          const component = build().componentInstance;
+          await shareTargetsListed(component);
+          validForm(component);
+          component.shareSelection.set(['h1', 'h2']);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'share' });
+        });
+
+        it('reports nothing for a new private entry', async () => {
+          const component = build().componentInstance;
+          await shareTargetsListed(component);
+          validForm(component);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+        });
+
+        it('reports nothing when a shared new entry is not saved', async () => {
+          transactionService.addTransaction.and.rejectWith(new Error('permission-denied'));
+          const component = build().componentInstance;
+          await shareTargetsListed(component);
+          validForm(component);
+          component.shareSelection.set(['h1']);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+        });
+
+        it('reports one share and one unshare for an edit that moved the row between households', async () => {
+          const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+          await shareTargetsListed(component);
+          component.shareSelection.set(['h2']);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction.calls.allArgs()).toEqual([[{ action: 'unshare' }], [{ action: 'share' }]]);
+        });
+
+        it('reports one share for an edit that shared the row into two households', async () => {
+          const component = build({ mode: 'edit', transaction: sharedRow([]) }).componentInstance;
+          await shareTargetsListed(component);
+          component.shareSelection.set(['h1', 'h2']);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'share' });
+        });
+
+        it('reports nothing when an edit leaves the shares as they were', async () => {
+          const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+          await shareTargetsListed(component);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+        });
+
+        it('reports no share that was refused, only the unshare that went through', async () => {
+          ledger.share.and.rejectWith(new LedgerShareRefusal('notMember', 'not a member'));
+          const component = build({ mode: 'edit', transaction: sharedRow(['households/h1']) }).componentInstance;
+          await shareTargetsListed(component);
+          component.shareSelection.set(['h2']);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'unshare' });
+        });
+
+        it('reports nothing when the only change fails', async () => {
+          ledger.share.and.rejectWith(new Error('unavailable'));
+          spyOn(console, 'warn');
+          const component = build({ mode: 'edit', transaction: sharedRow([]) }).componentInstance;
+          await shareTargetsListed(component);
+          component.shareSelection.set(['h1']);
+
+          await component.onSubmit();
+
+          expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+        });
       });
     });
 
@@ -2436,7 +2572,7 @@ describe('TransactionFormComponent, through its own template', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: ReceiptQuotaService, useValue: quota },
         { provide: ReceiptToNoteService, useValue: jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']) },
-        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']) },
+        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction']) },
         { provide: TagSuggestionService, useValue: tagSuggest },
         { provide: GroundingHistoryService, useValue: grounding },
         { provide: TagMemoryService, useValue: jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']) },

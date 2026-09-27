@@ -57,10 +57,11 @@ import { CategoryChipComponent } from '../../../shared/components/category-chip/
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { NoteDialogComponent, NoteDialogData } from '../note-dialog/note-dialog.component';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
-import { BulkShareKind, RowSharingService } from '../../../core/services/row-sharing.service';
+import { BulkShareKind, RowSharingService, ShareOutcome } from '../../../core/services/row-sharing.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
-import { ShareTarget, shareChange } from '../../../core/utils/share-change.utils';
+import { ShareTarget, landedKinds, shareChange } from '../../../core/utils/share-change.utils';
 import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
@@ -132,6 +133,7 @@ export class TransactionListComponent {
   private rowSharing = inject(RowSharingService);
   private pwa = inject(PwaService);
   private announcer = inject(AnnouncerService);
+  private analytics = inject(AnalyticsService);
 
   /** The account's live households, which the row menus offer to share into. */
   readonly shareTargets = toSignal(this.rowSharing.targets(), { initialValue: [] });
@@ -435,7 +437,7 @@ export class TransactionListComponent {
       .subscribe(chosen => {
         if (!chosen) return;
         const change = shareChange(shared, chosen, targets.map(target => target.householdId));
-        void this.rowSharing.apply(transaction.id, change, targets);
+        void this.rowSharing.apply(transaction.id, change, targets).then(outcome => this.reportShares(outcome));
       });
   }
 
@@ -470,8 +472,12 @@ export class TransactionListComponent {
       })
       .afterClosed()
       .subscribe(confirmed => {
-        if (confirmed) void this.rowSharing.apply(transaction.id, change, targets);
+        if (confirmed) void this.rowSharing.apply(transaction.id, change, targets).then(outcome => this.reportShares(outcome));
       });
+  }
+
+  private reportShares({ landed }: ShareOutcome): void {
+    for (const action of landedKinds(landed)) this.analytics.trackHouseholdAction({ action });
   }
 
   // === Select mode ===
@@ -646,6 +652,8 @@ export class TransactionListComponent {
     try {
       const outcome = await this.rowSharing.applyToRows(kind, ids, households, targets, fraction =>
         this.bulkProgress.set(Math.round(Math.min(1, Math.max(0, fraction)) * 100)));
+      // One action for the run, however many rows: see landedKinds.
+      if (outcome.landed.length > 0) this.analytics.trackHouseholdAction({ action: kind });
       if (!outcome.failed && session === this.selectSession) {
         const applied = new Set(ids);
         this.selection.update(held => held.filter(id => !applied.has(id)));

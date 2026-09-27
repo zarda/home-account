@@ -19,7 +19,7 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { createTranslationStub } from '../../../core/services/testing';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
-import { HouseholdInvite, HouseholdMembership, MAX_HOUSEHOLDS_PER_ACCOUNT } from '../../../models';
+import { HouseholdInvite, HouseholdMembership, LEDGER_COPY_FIELDS, MAX_HOUSEHOLDS_PER_ACCOUNT } from '../../../models';
 import { HouseholdPageFocus } from '../household-focus';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -437,24 +437,78 @@ describe('HouseholdSetupComponent', () => {
       });
 
       /**
-       * The disclosure is the one place a joiner learns that the receipt
-       * photos open through their stored links, which no rule governs. The
-       * key is asserted above; the copy under it is asserted here, in the
-       * catalog every other locale is kept at parity with.
+       * The disclosure is the one place a joiner learns what the others will
+       * read: only the rows they share, and of each only the fields a ledger
+       * copy carries. The key is asserted above; the copy under it is
+       * asserted here, in the catalog every other locale is kept at parity
+       * with.
        */
-      it('names every kind the others will read, the receipt links, and who can change them', () => {
+      describe('the disclosure copy', () => {
         const copy = en.household.setup.acceptDisclosure;
 
-        expect(copy).toContain('{{name}}');
-        expect(copy).toMatch(/^\{\{from\}\} /);
-        for (const phrase of [
-          'transactions', 'past and future', 'notes', 'places', 'receipt photos', 'links',
-          'after you leave', 'until you delete the receipt', 'categories', 'budgets', 'goals',
-          'anyone who joins it later'
-        ]) {
-          expect(copy).withContext(phrase).toContain(phrase);
-        }
-        expect(copy).toMatch(/nobody can change/i);
+        it('keeps the sender line first and names the household', () => {
+          expect(copy).toContain('{{name}}');
+          expect(copy).toMatch(/^\{\{from\}\} /);
+        });
+
+        it('says only the rows the joiner chooses to share are seen', () => {
+          expect(copy).toContain('only the transactions you choose to share');
+        });
+
+        /**
+         * Every field a copy carries is either named here by the word the
+         * disclosure uses for it, or null for why it shows nothing of the
+         * row: who wrote the copy and when (memberUid, sourceId, gen, pv,
+         * updatedAt), and goalId, which ties the copy to one of the
+         * household's own goals. bucket and bucketGroup are the category's
+         * nearest built-in ancestor and its top-level group, so they reveal
+         * the category. Keyed by the field list itself, a field added to a
+         * copy does not compile here until it is classified.
+         */
+        const WORD: Record<(typeof LEDGER_COPY_FIELDS)[number], string | null> = {
+          memberUid: null,
+          sourceId: null,
+          gen: null,
+          pv: null,
+          updatedAt: null,
+          goalId: null,
+          type: 'type',
+          amount: 'amount',
+          currency: 'currency',
+          date: 'date',
+          description: 'description',
+          categoryId: 'category',
+          category: 'category',
+          bucket: 'category',
+          bucketGroup: 'category'
+        };
+
+        it('names every field a copy reveals', () => {
+          for (const field of LEDGER_COPY_FIELDS) {
+            const word = WORD[field];
+            if (word) expect(copy).withContext(field).toContain(word);
+          }
+        });
+
+        it('names what a copy never reveals', () => {
+          const never = copy.slice(copy.indexOf('never'));
+          for (const word of ['note', 'receipts', 'tags', 'place']) {
+            expect(never).withContext(word).toContain(word);
+          }
+        });
+
+        it('says a later joiner sees what was already shared, and unsharing takes a row out', () => {
+          expect(copy).toContain('Anyone who joins later');
+          expect(copy).toContain('already shared');
+          expect(copy).toMatch(/stop sharing a transaction and it leaves the household/i);
+          expect(copy).toMatch(/nobody can change/i);
+        });
+
+        it('does not promise every row, the receipt links or the personal plans', () => {
+          for (const phrase of ['all your transactions', 'past and future', 'receipt photos', 'budgets and goals']) {
+            expect(copy).withContext(phrase).not.toContain(phrase);
+          }
+        });
       });
 
       it('does not join when the disclosure is dismissed', async () => {
