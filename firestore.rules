@@ -873,6 +873,11 @@ service cloud.firestore {
     // outlive its row's share. A row that is gone has no data to read, and
     // its copy is refused. Lookups: the row, one.
     //
+    // Every field of LEDGER_COPY_FIELDS (src/app/models/household-ledger.model.ts)
+    // that the row decides has its term here, and the ledger contract check
+    // fails when one has none or a term names a field the row does not
+    // decide.
+    //
     // The key the row names is shareKey(householdId) (SHARE_KEY_PREFIX,
     // src/app/models/household-ledger.model.ts), and the two change
     // together. The ledger contract check does not compare them; the rules
@@ -950,6 +955,179 @@ service cloud.firestore {
       return d.diff(resource.data).affectedKeys().hasOnly(['goalId', 'updatedAt'])
         && (!('goalId' in d)
             || get(goalPath(householdId, d.goalId)).data.gen == resource.data.gen);
+    }
+
+    // ---- the household's own budgets and goals ----
+
+    // Every member's browser shows every plan, so its name is bounded, as a
+    // personal budget's or goal's is not. HOUSEHOLD_PLAN_NAME_LENGTH
+    // (src/app/models/household-plans.model.ts) holds the same bounds, the
+    // ledger contract check fails when the two differ, and the rules smoke
+    // builds its cases from it.
+    function householdPlanNameValid(name) {
+      return name is string && name.size() >= 1 && name.size() <= 100;
+    }
+
+    // The budget category at place `i` of `ids`, when the list reaches that
+    // far: a string of HOUSEHOLD_PLAN_CATEGORY_ID_LENGTH characters (the
+    // same model file, checked against this by the ledger contract check),
+    // which every built-in id fits. Every member's browser shows every
+    // budget's categories, so no entry may be another type or run long.
+    function planCategoryAt(ids, i) {
+      return ids.size() <= i
+        || (ids[i] is string && ids[i].size() >= 1 && ids[i].size() <= 64);
+    }
+
+    // A plan's shape in the household `h` it is written into, whether made or
+    // edited. The two key lists of each kind are HOUSEHOLD_BUDGET_FIELDS /
+    // _REQUIRED and HOUSEHOLD_GOAL_FIELDS / _REQUIRED (the same model file),
+    // and the ledger contract check fails when a pair differs. The
+    // generation is the household's live one, so a plan left under an id
+    // formed again is neither made nor edited into the new household. The
+    // stamp is the server's. A budget stores nothing it spends: the page
+    // folds that from the shared copies as it reads the budget.
+    //
+    // The categories are built-in ids the budget counts a copy under (its
+    // bucket or bucketGroup), at most HOUSEHOLD_PLAN_CATEGORY_MAX (the same
+    // model file). Rules cannot loop, so each place up to that cap is
+    // checked by its own planCategoryAt call, and the ledger contract check
+    // fails when the calls and the cap disagree. An id no copy is bucketed
+    // under counts nothing.
+    //
+    // Every member's page formats and converts each plan's figures with its
+    // currency, and householdPlanUpdateValid fixes it once the plan is made,
+    // so a create is the only write that sets it and a malformed code could
+    // only be deleted. It is held to three capital letters, the pattern
+    // HouseholdPlansService.currencyCode holds it to (the ledger contract
+    // check fails when the two differ); a code the rate table lacks is well
+    // formed and passes. The alert threshold is held as a personal budget
+    // holds it.
+    function householdBudgetShapeValid(h) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+             'gen', 'name', 'categoryIds', 'amount', 'currency', 'period',
+             'startDate', 'endDate', 'alertThreshold',
+             'isActive', 'createdBy', 'createdAt', 'updatedAt'
+           ])
+        && d.keys().hasAll([
+             'gen', 'name', 'categoryIds', 'amount', 'currency', 'period',
+             'startDate',
+             'isActive', 'createdBy', 'createdAt', 'updatedAt'
+           ])
+        && d.gen == h.createdAt
+        && householdPlanNameValid(d.name)
+        && d.categoryIds is list
+        && d.categoryIds.size() >= 1
+        && d.categoryIds.size() <= 10
+        && planCategoryAt(d.categoryIds, 0)
+        && planCategoryAt(d.categoryIds, 1)
+        && planCategoryAt(d.categoryIds, 2)
+        && planCategoryAt(d.categoryIds, 3)
+        && planCategoryAt(d.categoryIds, 4)
+        && planCategoryAt(d.categoryIds, 5)
+        && planCategoryAt(d.categoryIds, 6)
+        && planCategoryAt(d.categoryIds, 7)
+        && planCategoryAt(d.categoryIds, 8)
+        && planCategoryAt(d.categoryIds, 9)
+        && isPositive(d.amount)
+        && d.currency is string && d.currency.matches('^[A-Z]{3}$')
+        && d.period in ['weekly', 'monthly', 'yearly']
+        && d.startDate is timestamp
+        && (!('endDate' in d) || d.endDate is timestamp)
+        && (!('alertThreshold' in d) || d.alertThreshold is number)
+        && d.isActive is bool
+        && d.createdBy is string
+        && d.createdAt is timestamp
+        && d.updatedAt == request.time;
+    }
+
+    // A household goal's shape, as householdBudgetShapeValid holds a
+    // budget's. Its progress (the copies linked to it and the members'
+    // contributions) is read from those, never stored here.
+    function householdGoalShapeValid(h) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+             'gen', 'name', 'targetAmount', 'currency', 'targetDate',
+             'isActive', 'createdBy', 'createdAt', 'updatedAt'
+           ])
+        && d.keys().hasAll([
+             'gen', 'name', 'targetAmount', 'currency',
+             'isActive', 'createdBy', 'createdAt', 'updatedAt'
+           ])
+        && d.gen == h.createdAt
+        && householdPlanNameValid(d.name)
+        && isPositive(d.targetAmount)
+        && d.currency is string && d.currency.matches('^[A-Z]{3}$')
+        && (!('targetDate' in d) || d.targetDate is timestamp)
+        && d.isActive is bool
+        && d.createdBy is string
+        && d.createdAt is timestamp
+        && d.updatedAt == request.time;
+    }
+
+    // A plan is made by a live member, who is named its maker, at the
+    // request time. Lookups: the household and the maker's member document,
+    // two (the shape reads the same household).
+    function householdPlanCreateValid(householdId) {
+      let d = request.resource.data;
+      return memberOf(householdId, request.auth.uid)
+        && d.createdBy == request.auth.uid
+        && d.createdAt == request.time;
+    }
+
+    // Any live member edits any plan: the plans are the household's, not the
+    // maker's. Who made it, when and in which generation stay as they were,
+    // and so does its currency, which its amount and every contribution to a
+    // goal were entered in. A create sent again after its answer was lost is
+    // judged as an edit and refused over its creation time; the writer
+    // reads the plan back to tell that from a refusal. Lookups: two, as a
+    // create.
+    function householdPlanUpdateValid(householdId) {
+      return memberOf(householdId, request.auth.uid)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['gen', 'createdBy', 'createdAt', 'currency']);
+    }
+
+    // The owner deletes any plan, as a dissolve does before the household
+    // goes; the maker deletes its own while a member. A plan that is not
+    // there has nothing to delete, so a live member's delete sent again
+    // passes. Lookups: the owner's, one (the household); anyone else's,
+    // two (the household and its own member document).
+    function householdPlanDeleteValid(householdId) {
+      return get(householdPath(householdId)).data.ownerId == request.auth.uid
+        || (resource == null && memberOf(householdId, request.auth.uid))
+        || (resource != null
+            && resource.data.createdBy == request.auth.uid
+            && memberOf(householdId, request.auth.uid));
+    }
+
+    // A live member reads a plan or a contribution of the live generation.
+    // One asking for a document that is not there hears not-found rather
+    // than a refusal, as for a member document; anyone else is refused
+    // either way, so a stranger cannot tell which ids exist. Lookups: the
+    // household and the reader's own member document, two.
+    function householdPlanReadable(householdId) {
+      return (resource == null && memberOf(householdId, request.auth.uid))
+        || (resource != null && liveGenerationRead(householdId, resource.data.gen));
+    }
+
+    // A contribution's shape: its member's own, in the live generation, to
+    // a goal of that same generation, stamped with the request time. The key
+    // list is HOUSEHOLD_CONTRIBUTION_FIELDS, every one required
+    // (HOUSEHOLD_CONTRIBUTION_REQUIRED, the same model file), and the ledger
+    // contract check fails when either differs. The amount is in the goal's
+    // currency; a goal that is not there has no data to read, and the
+    // contribution is refused. Lookups: the goal, one.
+    function householdContributionShapeValid(h, householdId, goalId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['gen', 'memberUid', 'amount', 'date', 'createdAt'])
+        && d.keys().hasAll(['gen', 'memberUid', 'amount', 'date', 'createdAt'])
+        && d.gen == h.createdAt
+        && d.memberUid == request.auth.uid
+        && isPositive(d.amount)
+        && d.date is timestamp
+        && d.createdAt == request.time
+        && get(goalPath(householdId, goalId)).data.gen == d.gen;
     }
 
     // ---- user profile ----
@@ -1308,10 +1486,15 @@ service cloud.firestore {
       //
       // Lookups: an author's read or delete, none. A member's read, two (the
       // household and its own member document). The owner's delete, one (the
-      // household). A create or update, three (the household, the author's
-      // member document, and its row as the commit leaves it); a goal link,
-      // one more (the goal). A commit of five copy writes stays within the
-      // twenty lookups a commit may make.
+      // household). A create, or an update that follows its row, three (the
+      // household, the author's member document, and its row as the commit
+      // leaves it). A goal link, three: the goal in place of the row, since
+      // goalLinkOnly passes before copyFaithful is asked. A link's removal,
+      // two. A write that changes only the stamp costs two on a copy with no
+      // link and three on a linked one (the goal); four when that goal is
+      // gone or of another generation, and the write falls through to its
+      // row. A commit of five copy writes stays within the twenty lookups a
+      // commit may make, at four each.
       match /ledger/{copyId} {
         allow get: if isAuthenticated() && (
           (resource == null && copyId.split('_')[0] == request.auth.uid)
@@ -1346,6 +1529,83 @@ service cloud.firestore {
           (resource == null && copyId.split('_')[0] == request.auth.uid)
           || (resource != null && resource.data.memberUid == request.auth.uid)
           || get(householdPath(householdId)).data.ownerId == request.auth.uid);
+      }
+
+      // The household's own budgets and goals: made and edited by any live
+      // member, deleted by their maker while a member or by the owner, and
+      // read by live members in the live generation. A list must filter on
+      // gen for the rules to prove every plan it returns is of the live
+      // generation; a single read is householdPlanReadable's.
+      //
+      // Lookups: a read, two (the household and the reader's member
+      // document); a write, two, as householdPlanCreateValid says; the
+      // owner's delete, one.
+      match /budgets/{budgetId} {
+        allow get: if isAuthenticated() && householdPlanReadable(householdId);
+        allow list: if isAuthenticated()
+          && liveGenerationRead(householdId, resource.data.gen);
+        allow create: if isAuthenticated()
+          && householdPlanCreateValid(householdId)
+          && householdBudgetShapeValid(get(householdPath(householdId)).data);
+        allow update: if isAuthenticated()
+          && householdPlanUpdateValid(householdId)
+          && householdBudgetShapeValid(get(householdPath(householdId)).data);
+        allow delete: if isAuthenticated() && householdPlanDeleteValid(householdId);
+      }
+
+      match /goals/{goalId} {
+        allow get: if isAuthenticated() && householdPlanReadable(householdId);
+        allow list: if isAuthenticated()
+          && liveGenerationRead(householdId, resource.data.gen);
+        allow create: if isAuthenticated()
+          && householdPlanCreateValid(householdId)
+          && householdGoalShapeValid(get(householdPath(householdId)).data);
+        allow update: if isAuthenticated()
+          && householdPlanUpdateValid(householdId)
+          && householdGoalShapeValid(get(householdPath(householdId)).data);
+        allow delete: if isAuthenticated() && householdPlanDeleteValid(householdId);
+
+        // What one member puts toward the goal, in the goal's currency.
+        // Written once by that live member and never changed: a create sent
+        // again after its answer was lost is judged as a change and refused,
+        // and the writer reads it back to tell that from a refusal. Read as
+        // the plans are.
+        //
+        // Deleted by:
+        // - its author, at any time, a member or not. An ex-member can
+        //   neither read nor list its contributions, nor the goal ids they
+        //   sit under, so after a leave or a removal this serves only ids
+        //   its client already holds.
+        // - the owner, any.
+        // - a live member, once the goal is gone as the commit leaves it.
+        //   The goal's delete cannot reach its subcollection, so the commit
+        //   that deletes a goal deletes its contributions beside it, whoever
+        //   wrote them, and a later commit clears any it left. The goal's
+        //   maker is not asked for: once the goal is gone nothing names it.
+        // - a live member, one that is not there, so a delete sent again
+        //   passes.
+        //
+        // Lookups: a read, two; a create, three (the household, the member's
+        // own member document and the goal); the author's delete, none; the
+        // owner's, one; a live member's delete of one that is gone, two; a
+        // live member's delete under a goal that is gone, three (the
+        // household, the goal as the commit leaves it and its own member
+        // document).
+        match /contributions/{contributionId} {
+          allow get: if isAuthenticated() && householdPlanReadable(householdId);
+          allow list: if isAuthenticated()
+            && liveGenerationRead(householdId, resource.data.gen);
+          allow create: if isAuthenticated()
+            && memberOf(householdId, request.auth.uid)
+            && householdContributionShapeValid(get(householdPath(householdId)).data, householdId, goalId);
+          allow update: if false;
+          allow delete: if isAuthenticated() && (
+            (resource != null && resource.data.memberUid == request.auth.uid)
+            || get(householdPath(householdId)).data.ownerId == request.auth.uid
+            || (resource == null && memberOf(householdId, request.auth.uid))
+            || (!existsAfter(goalPath(householdId, goalId))
+                && memberOf(householdId, request.auth.uid)));
+        }
       }
     }
 
