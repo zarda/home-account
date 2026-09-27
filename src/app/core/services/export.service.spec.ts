@@ -87,6 +87,17 @@ describe('ExportService', () => {
   });
 
   describe('exportToCSV', () => {
+    it('writes no share key in either format', async () => {
+      const shared = createTransaction({ sharedWith: ['households/h1'] });
+
+      for (const format of ['detailed', 'summary'] as const) {
+        const content = await service.exportToCSV([shared], { format }).text();
+
+        expect(content).withContext(format).not.toContain('households/');
+        expect(content.toLowerCase()).withContext(format).not.toContain('shared');
+      }
+    });
+
     it('names every detailed column in the header', async () => {
       const blob = service.exportToCSV([createTransaction()]);
 
@@ -735,6 +746,48 @@ describe('ExportService', () => {
         done();
       };
       reader.readAsText(blob);
+    });
+
+    it('carries no row\'s share keys, and every other field as it was', async () => {
+      // A key names a household of this account: meaningless in any other,
+      // and a list of the account's memberships in a file meant to be kept.
+      const shared = createTransaction({
+        id: 'tx-shared',
+        note: 'kept',
+        sharedWith: ['households/h1', 'households/h2'],
+      });
+      const privateRow = createTransaction({ id: 'tx-private' });
+
+      const blob = service.exportToJSON({
+        transactions: [shared, privateRow],
+        categories: [],
+        exportDate: new Date().toISOString(),
+        version: BACKUP_SCHEMA_VERSION,
+      });
+      const text = await blob.text();
+      const parsed = JSON.parse(text);
+
+      expect(parsed.transactions.map((row: object) => 'sharedWith' in row)).toEqual([false, false]);
+      expect(text).not.toContain('households/');
+      const expected: Partial<Transaction> = { ...shared };
+      delete expected.sharedWith;
+      expect(parsed.transactions[0]).toEqual(JSON.parse(JSON.stringify(expected)));
+      expect(parsed.transactions[1]).toEqual(JSON.parse(JSON.stringify(privateRow)));
+      // A file without share keys is a complete 1.5 file: a restore reads nothing from them.
+      expect(parsed.version).toBe('1.5');
+    });
+
+    it('leaves the rows it was handed as they were', () => {
+      const shared = createTransaction({ sharedWith: ['households/h1'] });
+
+      service.exportToJSON({
+        transactions: [shared],
+        categories: [],
+        exportDate: new Date().toISOString(),
+        version: BACKUP_SCHEMA_VERSION,
+      });
+
+      expect(shared.sharedWith).toEqual(['households/h1']);
     });
 
     it('should include export date', (done) => {

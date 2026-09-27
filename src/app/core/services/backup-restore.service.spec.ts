@@ -18,6 +18,13 @@ import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { CategoryMemoryService } from './category-memory.service';
 import { TagMemoryService } from './tag-memory.service';
 import { ImportHistoryService } from './import-history.service';
+import { FirestoreService } from './firestore.service';
+import { AuthService } from './auth.service';
+import { PwaService } from './pwa.service';
+import { LedgerShareService } from './ledger-share.service';
+import { clearFullPass, clearLedgerDeviceState, fullPassSeq, readLedgerJournal, stampSweep } from './ledger-journal';
+import { MockFirestoreService } from './testing/mock-firestore.service';
+import { MockAuthService } from './testing/mock-auth.service';
 import {
   Budget,
   Category,
@@ -221,6 +228,12 @@ describe('BackupRestoreService', () => {
         { provide: CategoryMemoryService, useValue: categoryMemory },
         { provide: TagMemoryService, useValue: tagMemory },
         { provide: ImportHistoryService, useValue: importHistory },
+        // What the end of a restore reads (the account's household index)
+        // and what the sharing code it may load injects. Signed out unless a
+        // spec signs in, so the index is read only where a spec asks.
+        { provide: FirestoreService, useClass: MockFirestoreService },
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: PwaService, useValue: { isOnline: () => true } },
       ],
     });
     service = TestBed.inject(BackupRestoreService);
@@ -986,6 +999,254 @@ describe('BackupRestoreService', () => {
       expect(summary.skipped).toEqual([
         { section: 'goals', id: 'g-1', reason: 'offline' },
       ]);
+    });
+  });
+
+  /**
+   * A restore writes every row private: the file's share keys are never
+   * sourced, so a file shares nothing into any household. A merge onto a
+   * live shared row keeps the row's own keys while it may change what the
+   * row's copies show, and a restored category may change a snapshot. So
+   * before anything is written, each live household in the account's index
+   * is marked for a full pass (ledger-journal.ts), which outlives a restore
+   * that stops part-way; and the restore ends with that full pass
+   * (LedgerShareService.reconcileAll('restore')), which clears the marks.
+   * The sharing code is reached only by a dynamic import, and only for an
+   * account with a live membership.
+   */
+  describe('household shares', () => {
+    const UID = 'test-user-123';
+    const INDEX = `users/${UID}/households`;
+    const G1 = new Timestamp(1_790_000_000, 123_456_000);
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    /** The service's one way to the sharing code, a dynamic import. */
+    interface SharingLoader { ledgerShare: () => Promise<LedgerShareService> }
+
+    let mockFirestore: MockFirestoreService;
+    let load: jasmine.Spy;
+    let reconcileAll: jasmine.Spy;
+
+    /** The account's index: one live membership, and one that has ended. */
+    function seedIndex(): void {
+      mockFirestore.setMockCollection(INDEX, [
+        { id: 'h1', since: G1, role: 'member', name: 'Home', joinedAt: G1 },
+        { id: 'h2', since: G1, role: 'member', name: 'Old flat', joinedAt: G1, endedAt: G1 }
+      ]);
+    }
+
+    /** The households this device owes a full pass. */
+    const marked = () => Object.keys(readLedgerJournal(UID).full);
+
+    beforeEach(() => {
+      clearLedgerDeviceState(UID);
+      mockFirestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
+      (TestBed.inject(AuthService) as unknown as MockAuthService).setAuthenticated(true, UID);
+      load = spyOn(service as unknown as SharingLoader, 'ledgerShare').and.callThrough();
+      reconcileAll = spyOn(TestBed.inject(LedgerShareService), 'reconcileAll').and.resolveTo();
+    });
+
+    afterEach(() => clearLedgerDeviceState(UID));
+
+    it('writes a row the file names as shared as a private row', async () => {
+      seedIndex();
+
+      await service.restore(backup({
+        transactions: [transaction({ sharedWith: ['households/h1', 'households/h2'] })],
+      }));
+
+      const [dto, options] = transactions.addTransaction.calls.mostRecent().args;
+      expect('sharedWith' in dto).toBeFalse();
+      expect('sharedWith' in (options ?? {})).toBeFalse();
+      expect(JSON.stringify([dto, options])).not.toContain('households/');
+    });
+
+    it('ends with a full pass of the memberships, once every section is back', async () => {
+      seedIndex();
+      const steps: string[] = [];
+      transactions.addTransaction.and.callFake(async () => { steps.push('transaction'); return 'id'; });
+      budgets.recalculateBudgetsForCategory.and.callFake(async () => { steps.push('budget recalculation'); });
+      goals.recomputeLinkedAmount.and.callFake(async () => { steps.push('goal recompute'); });
+      importHistory.restore.and.callFake(async () => { steps.push('import history'); });
+      reconcileAll.and.callFake(async () => { steps.push('full pass'); });
+
+      await service.restore(backup({
+        version: '1.5',
+        transactions: [transaction()],
+        goals: [goal()],
+        imports: [importRecord()],
+      }));
+
+      expect(reconcileAll).toHaveBeenCalledOnceWith('restore');
+      expect(steps[steps.length - 1]).toBe('full pass');
+      expect(steps.filter(step => step === 'full pass').length).toBe(1);
+    });
+
+    it('reports once the full pass has settled', async () => {
+      seedIndex();
+      let finish!: () => void;
+      reconcileAll.and.returnValue(new Promise<void>(resolve => { finish = resolve; }));
+      let reported = false;
+
+      const restored = service.restore(backup({ transactions: [transaction()] })).then(summary => {
+        reported = true;
+        return summary;
+      });
+      for (let i = 0; i < 50 && reconcileAll.calls.count() === 0; i++) {
+        await new Promise<void>(resolve => setTimeout(resolve));
+      }
+
+      expect(reconcileAll).toHaveBeenCalled();
+      expect(reported).toBeFalse();
+      finish();
+      expect((await restored).transactions).toBe(1);
+    });
+
+    it('marks each live household for a full pass before the first write', async () => {
+      seedIndex();
+      const markedAt: string[][] = [];
+      categories.addCategory.and.callFake(async () => { markedAt.push(marked()); return 'id'; });
+      transactions.addTransaction.and.callFake(async () => { markedAt.push(marked()); return 'id'; });
+      reconcileAll.and.callFake(async () => { markedAt.push(marked()); });
+
+      await service.restore(backup({ categories: [category()], transactions: [transaction()] }));
+
+      // Categories are restored first, and a category can change a snapshot
+      // as a merged row can change a revealed field. An ended membership is
+      // owed nothing.
+      expect(markedAt).toEqual([['h1'], ['h1'], ['h1']]);
+      // The index is read once, before the first write.
+      expect(mockFirestore.getCollectionSpy.calls.map(call => call.args[0])).toEqual([INDEX]);
+    });
+
+    it('marks each live household again as each category and row write lands, so a pass begun before one keeps the mark', async () => {
+      seedIndex();
+      const markOf = () => readLedgerJournal(UID).full['h1'];
+      const markAtEachWrite: (number | undefined)[] = [];
+      let seenBetweenRows = -1;
+      categories.addCategory.and.callFake(async () => {
+        markAtEachWrite.push(markOf());
+        return 'id';
+      });
+      transactions.addTransaction.and.callFake(async () => {
+        markAtEachWrite.push(markOf());
+        // What a full pass that began between the two row writes reads first.
+        if (markAtEachWrite.length === 3) seenBetweenRows = fullPassSeq(UID);
+        return 'id';
+      });
+
+      await service.restore(backup({
+        categories: [category()],
+        transactions: [transaction({ id: 'r1' }), transaction({ id: 'r2' })],
+      }));
+
+      // Each write finds a later mark than the one before it, made as that one landed.
+      const [category1, row1, row2] = markAtEachWrite as number[];
+      expect(markAtEachWrite.length).toBe(3);
+      expect(row1).toBeGreaterThan(category1);
+      expect(row2).toBeGreaterThan(row1);
+      expect(markOf()).toBeGreaterThan(row2);
+      // That pass never saw the second row land, so its clear leaves the
+      // mark; and the full pass stubbed here stands for a restore stopped
+      // before it ran.
+      clearFullPass(UID, 'h1', seenBetweenRows);
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('does not mark again for a write that is refused', async () => {
+      seedIndex();
+      const markOf = () => readLedgerJournal(UID).full['h1'];
+      const markAtEachWrite: (number | undefined)[] = [];
+      transactions.addTransaction.and.callFake(async () => {
+        markAtEachWrite.push(markOf());
+        throw new Error('permission-denied');
+      });
+
+      await service.restore(backup({ transactions: [transaction({ id: 'r1' }), transaction({ id: 'r2' })] }));
+
+      expect(markAtEachWrite[1]).toBe(markAtEachWrite[0]);
+    });
+
+    it('keeps the marks when the full pass cannot start', async () => {
+      seedIndex();
+      spyOn(console, 'warn');
+      load.and.rejectWith(new Error('chunk load failed'));
+
+      await service.restore(backup({ transactions: [transaction()] }));
+
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('keeps the marks while offline, and the next sweep diffs those households in full', async () => {
+      seedIndex();
+      // Diffed in full a day ago: only the mark sends the next sweep to a full pass.
+      stampSweep(UID, 'h1', 'full', Date.now() - DAY_MS);
+      const pwa = spyOn(TestBed.inject(PwaService), 'isOnline').and.returnValue(false);
+      reconcileAll.and.callThrough();
+
+      await service.restore(backup({ transactions: [transaction()] }));
+
+      expect(reconcileAll).toHaveBeenCalledOnceWith('restore');
+      expect(marked()).toEqual(['h1']);
+
+      pwa.and.returnValue(true);
+      mockFirestore.callLog.length = 0;
+      await TestBed.inject(LedgerShareService).reconcileAll('start');
+
+      const fullPassReads = mockFirestore.callLog
+        .filter(call => call.method === 'getCollectionFromServer' && call.path === 'households/h1/ledger');
+      expect(fullPassReads.length).toBe(1);
+      expect(marked()).toEqual([]);
+    });
+
+    it('loads nothing and marks nothing in an account with no memberships', async () => {
+      mockFirestore.setMockCollection(INDEX, []);
+
+      const summary = await service.restore(backup({
+        transactions: [transaction({ sharedWith: ['households/h1'] })],
+      }));
+
+      expect(summary.transactions).toBe(1);
+      expect(mockFirestore.getCollectionSpy.calls.map(call => call.args[0])).toEqual([INDEX]);
+      expect(load).not.toHaveBeenCalled();
+      expect(reconcileAll).not.toHaveBeenCalled();
+      expect(marked()).toEqual([]);
+    });
+
+    it('loads nothing and marks nothing in an account whose memberships have all ended', async () => {
+      mockFirestore.setMockCollection(INDEX, [
+        { id: 'h2', since: G1, role: 'member', name: 'Old flat', joinedAt: G1, endedAt: G1 }
+      ]);
+
+      await service.restore(backup({ transactions: [transaction()] }));
+
+      expect(load).not.toHaveBeenCalled();
+      expect(reconcileAll).not.toHaveBeenCalled();
+      expect(marked()).toEqual([]);
+    });
+
+    it('still reports a restore whose full pass could not start', async () => {
+      seedIndex();
+      const warn = spyOn(console, 'warn');
+      load.and.rejectWith(new Error('chunk load failed'));
+
+      const summary = await service.restore(backup({ transactions: [transaction()] }));
+
+      expect(summary.transactions).toBe(1);
+      expect(summary.skipped).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[BackupRestore\] /), jasmine.any(Error));
+      expect(reconcileAll).not.toHaveBeenCalled();
+    });
+
+    it('still reports a restore whose index could not be read', async () => {
+      const warn = spyOn(console, 'warn');
+      spyOn(mockFirestore, 'getCollection').and.rejectWith(new Error('unavailable'));
+
+      const summary = await service.restore(backup({ transactions: [transaction()] }));
+
+      expect(summary.transactions).toBe(1);
+      expect(warn).toHaveBeenCalledWith(jasmine.stringMatching(/^\[BackupRestore\] /), jasmine.any(Error));
+      expect(load).not.toHaveBeenCalled();
     });
   });
 });

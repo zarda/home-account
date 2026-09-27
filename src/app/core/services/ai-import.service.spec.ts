@@ -2862,6 +2862,39 @@ describe('AIImportService', () => {
     });
   });
 
+  describe('a backup row\'s share keys', () => {
+    // A key names a household of the account the file came from. The door
+    // lists what it reads off a row, so a key never reaches the review card
+    // or the write: an imported row starts private, and is shared only by
+    // its owner, afterwards.
+    const shared = {
+      description: 'Groceries', amount: -42, currency: 'USD', type: 'expense',
+      categoryId: 'food_groceries', date: { seconds: 1700000000 },
+      sharedWith: ['households/h1', 'households/h2'],
+    };
+
+    beforeEach(() => {
+      importHistoryService.createPendingImport.and.resolveTo('hist-1');
+      importHistoryService.completeImport.and.resolveTo();
+      importHistoryService.getImportById.and.returnValue(of({ id: 'hist-1' } as ImportHistory));
+      transactionService.addTransaction.and.resolveTo('txn-id');
+    });
+
+    it('reads none onto the review row, and writes none', async () => {
+      const [row] = (await service.importFromJSON(
+        makeFile('backup.json', 'application/json', JSON.stringify({ transactions: [shared] }))
+      )).transactions;
+
+      expect('sharedWith' in row).toBeFalse();
+
+      await service.confirmImport([row], 'backup.json', 10, 'json', 'backup_json');
+
+      const [dto, options] = transactionService.addTransaction.calls.mostRecent().args;
+      expect('sharedWith' in dto).toBeFalse();
+      expect(JSON.stringify([dto, options])).not.toContain('households/');
+    });
+  });
+
   describe('categorizeTransactions', () => {
     it('should return an empty array for empty input', async () => {
       const result = await service.categorizeTransactions([]);

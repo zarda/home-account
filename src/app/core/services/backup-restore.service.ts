@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { locationSlotFrom, readTransactionSnapshot } from '../utils/import-dto.utils';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -18,6 +18,10 @@ import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { CategoryMemoryService } from './category-memory.service';
 import { TagMemoryService } from './tag-memory.service';
 import { ImportHistoryService } from './import-history.service';
+import { FirestoreService } from './firestore.service';
+import { AuthService } from './auth.service';
+import type { LedgerShareService } from './ledger-share.service';
+import { markFullPass } from './ledger-journal';
 import {
   Budget,
   Category,
@@ -30,8 +34,10 @@ import {
   SearchRecord,
   TagMemoryEntry,
   Transaction,
+  householdIndexPath,
 } from '../../models';
 import { parseDateInput } from '../utils/transaction-date.utils';
+import type { HouseholdIndexData } from '../utils/household-index.utils';
 
 /** Thrown when a backup's `version` is one this build cannot read. */
 export const UNSUPPORTED_BACKUP_VERSION = 'UNSUPPORTED_BACKUP_VERSION';
@@ -70,6 +76,12 @@ export interface BackupContents {
   categoryMemory: number;
   tagMemory: number;
   imports: number;
+}
+
+/** The live households a restore owes a full pass, and the account they are its memberships of. */
+interface SharesOwed {
+  userId: string;
+  households: string[];
 }
 
 function toDate(value: unknown): Date {
@@ -136,6 +148,9 @@ export class BackupRestoreService {
   private categoryMemory = inject(CategoryMemoryService);
   private tagMemory = inject(TagMemoryService);
   private importHistory = inject(ImportHistoryService);
+  private firestore = inject(FirestoreService);
+  private auth = inject(AuthService);
+  private injector = inject(Injector);
 
   /**
    * Validate a parsed JSON file as a backup.
@@ -233,6 +248,8 @@ export class BackupRestoreService {
       });
     };
 
+    const owed = await this.markSharesOwed();
+
     for (const category of data.categories) {
       // Built-in categories are generated, not stored, so restoring one would
       // write a duplicate of something the app already provides.
@@ -254,6 +271,7 @@ export class BackupRestoreService {
           // so the list comes back reshuffled, and rows can collide on one
           // position.
         }, { id: category.id, isActive: category.isActive ?? true, order: category.order });
+        this.markSharesOwedAgain(owed);
         summary.categories++;
       } catch (error) {
         skip('categories', category.id, error);
@@ -296,6 +314,10 @@ export class BackupRestoreService {
         // erasing the receipts a live row already carries, which nothing could
         // then reclaim. `createdAt` comes from the file so a pre-existing row
         // is not restamped and a second restore is a genuine no-op.
+        //
+        // Nor are the share keys (`sharedWith`), which name households of the
+        // account that took the backup: every row restores private, and a
+        // merge onto a live row leaves the keys it holds alone.
         await this.transactionService.addTransaction(dto, {
           id: transaction.id,
           merge: true,
@@ -318,6 +340,7 @@ export class BackupRestoreService {
             }
             : {}),
         });
+        this.markSharesOwedAgain(owed);
         summary.transactions++;
         if (transaction.type === 'expense') {
           affectedExpenseCategories.add(transaction.categoryId);
@@ -506,7 +529,70 @@ export class BackupRestoreService {
       }
     }
 
+    await this.reconcileShares(owed);
     return summary;
+  }
+
+  /**
+   * Owes a full pass (ledger-journal.ts) to each live household in the
+   * account's index (users/{uid}/households), before the restore writes
+   * anything: a merged row keeps its share keys while its revealed fields
+   * may change, and a restored category may change what a copy shows. The
+   * mark outlives a restore that stops part-way, a device offline at its end
+   * and a full pass that cannot start; the next sweep runs the pass and
+   * clears it. Answers the households owed one, null for none. Never
+   * rejects: a restore is not refused for want of a mark, and the weekly
+   * full pass is the floor.
+   */
+  private async markSharesOwed(): Promise<SharesOwed | null> {
+    try {
+      const userId = this.auth.userId();
+      if (!userId) return null;
+      const index = await this.firestore.getCollection<HouseholdIndexData>(householdIndexPath(userId));
+      const households = index.filter(entry => entry.endedAt === undefined).map(entry => entry.id);
+      if (households.length === 0) return null;
+      for (const hid of households) markFullPass(userId, hid);
+      return { userId, households };
+    } catch (error) {
+      console.warn('[BackupRestore] The household index was not read; the copies wait for the weekly full pass', error);
+      return null;
+    }
+  }
+
+  /**
+   * Marks the owed households again once a category or row write has
+   * landed. A full pass that read the categories or listed the rows before
+   * the write reached the server (a sweep in this tab or another) began
+   * before this mark, so its end leaves it: the mark is cleared only by a
+   * pass that sees the write, this restore's own last one or the next
+   * sweep's.
+   */
+  private markSharesOwedAgain(owed: SharesOwed | null): void {
+    if (!owed) return;
+    for (const hid of owed.households) markFullPass(owed.userId, hid);
+  }
+
+  /**
+   * The full pass markSharesOwed owed, run as the restore ends and awaited
+   * (LedgerShareService.reconcileAll('restore')), so a finished restore has
+   * its copies settled; it clears the marks. Only when a household is owed
+   * one, and only by a dynamic import, so the sharing code stays out of the
+   * initial bundle. Never rejects: the rows are written, and the marks keep
+   * the pass owed to the next sweep.
+   */
+  private async reconcileShares(owed: SharesOwed | null): Promise<void> {
+    if (!owed) return;
+    try {
+      const ledger = await this.ledgerShare();
+      await ledger.reconcileAll('restore');
+    } catch (error) {
+      console.warn('[BackupRestore] The household copies were not reconciled; the next sweep runs the full pass', error);
+    }
+  }
+
+  private async ledgerShare(): Promise<LedgerShareService> {
+    const { LedgerShareService } = await import('./ledger-share.service');
+    return this.injector.get(LedgerShareService);
   }
 
   /**

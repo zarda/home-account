@@ -661,6 +661,13 @@ export class ExportService {
   exportToJSON(data: ExportData): Blob {
     const exportObject = {
       ...data,
+      // Without the rows' share keys: each names a household of this
+      // account, meaningless in any other and a list of its memberships in a
+      // file meant to be kept. A restore writes every row private whatever
+      // the file holds and derives no field from the keys, so a file without
+      // them is a complete BACKUP_SCHEMA_VERSION file. JSON.stringify leaves
+      // out a key whose value is undefined.
+      transactions: data.transactions.map(row => ({ ...row, sharedWith: undefined })),
       exportDate: new Date().toISOString(),
       version: BACKUP_SCHEMA_VERSION
     };

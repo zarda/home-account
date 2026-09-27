@@ -1,4 +1,4 @@
-import { imageMetadataOf, importAmount, locationSlot, readTransactionSnapshot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
+import { ImportRowFields, imageMetadataOf, importAmount, locationSlot, readTransactionSnapshot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
 import { parseDateInput } from './transaction-date.utils';
 import { ProcessedTransaction } from '../services/ai-types';
 
@@ -54,6 +54,20 @@ describe('toCreateTransactionDTO', () => {
       recurringId: 'rec-1',
       period: 'monthly'
     });
+  });
+
+  it('writes no share keys, whatever the row it is handed carries', () => {
+    // Every import door writes a new row private: a row is shared only by its
+    // owner, once it exists. The field list is spelled out, so a key a source
+    // row carries never reaches the write.
+    const row: ImportRowFields & { sharedWith: string[] } = {
+      type: 'expense', amount: 5, date, sharedWith: ['households/h1'],
+    };
+
+    const dto = toCreateTransactionDTO(row, 'USD');
+
+    expect('sharedWith' in dto).toBeFalse();
+    expect(JSON.stringify(dto)).not.toContain('households/');
   });
 
   it('derives the type from the sign when the row has none', () => {
