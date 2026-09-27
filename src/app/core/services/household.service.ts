@@ -22,7 +22,15 @@ import {
   isMemberPhotoUrl
 } from '../../models';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
-import { HouseholdIndexData as IndexData, isStamp, joinedFirst, sameStamp, toMembership } from '../utils/household-index.utils';
+import {
+  HouseholdIndexData as IndexData,
+  chunked,
+  clampText,
+  isStamp,
+  joinedFirst,
+  sameStamp,
+  toMembership
+} from '../utils/household-index.utils';
 
 /** firestore.rules, householdNameValid. */
 export const HOUSEHOLD_NAME_MAX_LENGTH = 60;
@@ -141,16 +149,23 @@ const ENDED_ENTRIES = { field: 'endedAt', op: '>' as const, value: new Timestamp
  * The selected household's view:
  * - `idle` before connect().
  * - `loading` until the account's index has answered and, for the selected
- *   household, the household and its members have both answered.
+ *   household, the household and its members have both answered. Online, a
+ *   null the local cache alone answers for the selected household's own
+ *   member document, or for its household, is part of the wait: the
+ *   server's answer follows.
+ * - `notLoaded` offline, while that cache null is all there is: nothing of
+ *   the household is on this device, which says nothing of the membership
+ *   the index lists.
  * - `none` with no live membership to show: the index lists none, or the
- *   selected one's own member document is gone.
+ *   server says the selected one's own member document, or its household,
+ *   is gone.
  * - `member` with one. An owner's sentInvites() is not part of it and can
  *   trail it by a round trip.
  * - `unavailable` when the household or members listener failed, for a
  *   reason other than the rules ending the membership, before the member
  *   view was first heard. A failure after that keeps the last view.
  */
-export type HouseholdStatus = 'idle' | 'loading' | 'none' | 'member' | 'unavailable';
+export type HouseholdStatus = 'idle' | 'loading' | 'notLoaded' | 'none' | 'member' | 'unavailable';
 
 /** A refusal or failure whose message is already in the user's language. */
 export class HouseholdError extends Error {
@@ -223,21 +238,6 @@ function ownerThenJoined(a: HouseholdMember, b: HouseholdMember): number {
   return millisOf(a.joinedAt) - millisOf(b.joinedAt) || a.uid.localeCompare(b.uid);
 }
 
-function chunked<T>(items: T[], size = HOUSEHOLD_COMMIT_CHUNK): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
-
-/** Clips to a length the rules accept without splitting a surrogate pair. */
-function clip(text: string, max: number): string {
-  if (text.length <= max) return text;
-  const cut = text.slice(0, max);
-  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
-}
-
 /**
  * Households (#71): forming, joining, leaving, managing and dissolving them,
  * and the live view of the caller's own memberships.
@@ -283,8 +283,12 @@ export class HouseholdService {
   private readonly preferred = signal<string | null>(null);
   /** Undefined while unknown, null when there is no member document. */
   private readonly ownMemberDoc = signal<HouseholdMember | null | undefined>(undefined);
+  /** The own member document's null came from the local cache alone (setOwnMemberDoc). */
+  private readonly ownUncached = signal(false);
   /** Undefined while unknown, null when refused or absent. */
   private readonly householdDoc = signal<Household | null | undefined>(undefined);
+  /** The household document's null came from the local cache alone (setHouseholdDoc). */
+  private readonly householdUncached = signal(false);
   /** Undefined until the members listener first answers. */
   private readonly memberDocs = signal<HouseholdMember[] | undefined>(undefined);
   /** The household or members listener failed for a reason other than a refusal. */
@@ -317,9 +321,9 @@ export class HouseholdService {
     if (!this.selectedHouseholdId()) return 'none';
     const own = this.ownMemberDoc();
     if (own === undefined) return 'loading';
-    if (own === null) return 'none';
+    if (own === null) return this.ownUncached() ? this.uncachedStatus() : 'none';
     const household = this.householdDoc();
-    if (household === null) return 'none';
+    if (household === null) return this.householdUncached() ? this.uncachedStatus() : 'none';
     if (household && this.memberDocs()) return 'member';
     return this.membershipFailed() ? 'unavailable' : 'loading';
   });
@@ -342,7 +346,9 @@ export class HouseholdService {
    * confirmed gone: a removal, or a dissolve by the owner. Never one the
    * caller is ending itself, nor anything the cache says. A household leaves
    * the set when it is seen live again, or when another membership is seen
-   * live once the index no longer lists it as live.
+   * live once the index no longer lists it as live. One the account's own
+   * leave or dissolve answered leaves once the index no longer lists it as
+   * live, whatever is seen live by then.
    */
   readonly lostHouseholds = this.lostSet.asReadonly();
   /** Some membership seen live in this session is confirmed gone (lostHouseholds). */
@@ -357,9 +363,16 @@ export class HouseholdService {
   /** The selected household, once its membership was seen live, for telling a loss from a boot. */
   private liveHouseholdId: string | null = null;
   /**
+   * Losses the account's own leave or dissolve answered (answeringLosses):
+   * the notice was up when it began, and that ending has moved the view on.
+   * Only ever households in lostSet.
+   */
+  private readonly answered = new Set<string>();
+  /**
    * Households this client is ending itself, so its own deletion is not
-   * reported as lost access. One leaves the set when the ending fails, or
-   * when its index entry is gone.
+   * reported as lost access, and a tidy leaves their entries alone. One
+   * leaves the set when the ending fails, when its index entry is gone, or
+   * at the last disconnect.
    */
   private readonly ending = new Set<string>();
   /**
@@ -636,8 +649,8 @@ export class HouseholdService {
     await this.attempt(async () => {
       const { householdId, member } = await this.targetMembership(uid, household);
       if (member.role === 'owner') throw new HouseholdError(this.t('household.errors.ownerLeaves'));
-      await this.endingMembership(householdId, () =>
-        this.endOwnMembership(uid, householdId, { member: true, household: false }));
+      await this.answeringLosses(() => this.endingMembership(householdId, () =>
+        this.endOwnMembership(uid, householdId, { member: true, household: false })));
     });
   }
 
@@ -650,7 +663,7 @@ export class HouseholdService {
     const uid = this.requireUser();
     await this.attempt(async () => {
       const { householdId, member } = await this.ownedTarget(uid, household);
-      await this.dissolveHousehold(uid, householdId, member.since);
+      await this.answeringLosses(() => this.dissolveHousehold(uid, householdId, member.since));
     });
   }
 
@@ -667,14 +680,25 @@ export class HouseholdService {
    * listeners, which a page may not have connected and which can answer
    * from what they last heard. The listing of the entries is the exception
    * (indexEntries).
+   *
+   * An entry of a household this client is ending itself is left to that
+   * ending while the page stays connected: a leave or a dissolve still
+   * running, or one cut off after the membership ended. A tidy run beside
+   * it would take the same rows out and delete the same entry under it. The
+   * last disconnect clears the set, so the next visit's tidy picks up a
+   * cut-off one, and it can also run beside an ending still running from an
+   * earlier visit. That is harmless: cleanup re-reads the membership, and
+   * the rules admit deletes of copies and entries that are already gone.
    */
   async tidyEndedMemberships(): Promise<boolean> {
     const uid = this.requireUser();
     return this.attempt(async () => {
       let tidied = false;
       for (const entry of await this.indexEntries(uid)) {
+        if (this.ending.has(entry.id)) continue;
         const { state } = await this.membershipState(uid, entry);
-        if (state === 'live') continue;
+        // Checked again: an ending can start while the entry is judged.
+        if (state === 'live' || this.ending.has(entry.id)) continue;
         if (await this.endEntry(uid, entry, state)) tidied = true;
       }
       return (await this.dropLeftoverPointer(uid)) || tidied;
@@ -683,12 +707,20 @@ export class HouseholdService {
 
   /**
    * For account deletion: every entry in the index is ended, live or not.
-   * An owner dissolves, a member leaves, and what is left of an ended one is
+   * An owner dissolves, taking the household's plans and every member's
+   * contributions with it; a member first deletes its own contributions to
+   * the household's goals, then leaves; and what is left of an ended one is
    * cleared, the rows the account shared into each household taken out
    * before its entry goes. Then every invite addressed to or sent by the
    * account is deleted, and this device forgets the household it last
    * selected for the account. The index outlives the profile, so a retry
    * after a failure finds whatever is left.
+   *
+   * A membership that ended before the erasure through a removal, or
+   * through the account's own earlier leave, leaves its contributions where
+   * they are: an ex-member can list neither them nor the goals they sit
+   * under. A dissolve has already taken them with the plans (the owner's
+   * deletePlans, then onHouseholdDissolved for anything left).
    */
   async deleteAll(): Promise<void> {
     const uid = this.requireUser();
@@ -698,6 +730,7 @@ export class HouseholdService {
         if (state === 'live' && own?.role === 'owner') {
           await this.dissolveHousehold(uid, entry.id, own.since);
         } else {
+          if (state === 'live' && own) await this.deleteOwnContributions(uid, entry.id, own.since);
           await this.endEntry(uid, entry, state);
         }
       }
@@ -759,9 +792,10 @@ export class HouseholdService {
     this.asked.clear();
     this.index.set(undefined);
     this.preferred.set(null);
-    this.ownMemberDoc.set(undefined);
+    this.setOwnMemberDoc(undefined);
     this.receivedDocs.set([]);
     this.lostSet.set(new Set());
+    this.answered.clear();
   }
 
   private onIndex(entries: IndexData[]): void {
@@ -774,6 +808,13 @@ export class HouseholdService {
     }
     this.index.set(memberships);
     this.followSelection();
+    // Only a loss the account's own leave or dissolve answered lifts here,
+    // since that ending moved the view on, often to the setup where nothing
+    // is seen live. Any other loss waits for a membership to be seen live
+    // once its entry is tidied (onOwnMember): the page moves on to another
+    // household a few round trips before the tidy lands, so lifting at the
+    // tidy would only flash the notice.
+    this.liftAnswered();
   }
 
   /** Points the per-household listeners at the selected household, when it changed. */
@@ -787,10 +828,10 @@ export class HouseholdService {
     this.followed = householdId;
     this.closeMembership();
     if (!householdId) {
-      this.ownMemberDoc.set(null);
+      this.setOwnMemberDoc(null);
       return;
     }
-    this.ownMemberDoc.set(undefined);
+    this.setOwnMemberDoc(undefined);
     this.ownSub = this.firestore
       .subscribeToDocumentWithMetadata<HouseholdMember>(memberPath(householdId, uid))
       .subscribe({
@@ -799,7 +840,7 @@ export class HouseholdService {
         error: error => {
           this.quietly(error, 'membership');
           this.detachMembership();
-          this.ownMemberDoc.set(null);
+          this.setOwnMemberDoc(null);
         }
       });
   }
@@ -810,7 +851,7 @@ export class HouseholdService {
       // generation-filtered members query or the membership key, so it
       // attaches nothing.
       if (!isStamp(data.since)) return;
-      this.ownMemberDoc.set(data);
+      this.setOwnMemberDoc(data);
       this.liveHouseholdId = householdId;
       this.liftLosses(householdId);
       this.attachMembership(uid, householdId, data);
@@ -822,16 +863,35 @@ export class HouseholdService {
     this.confirmedOwn.set(null);
     if (!confirmed) {
       // Only the server says the document is gone. An uncached document
-      // reads null offline, and a local delete not yet committed may still
-      // be refused. It decides nothing, beyond ending the wait.
-      if (this.ownMemberDoc() === undefined) this.ownMemberDoc.set(null);
+      // reads null offline, as every membership never shown on this device
+      // does, and a local delete not yet committed may still be refused. It
+      // decides nothing: the wait goes on online, and offline the household
+      // reads as not loaded here.
+      if (this.ownMemberDoc() === undefined) this.setOwnMemberDoc(null, true);
       return;
     }
     const wasLive = this.liveHouseholdId === householdId;
     this.detachMembership();
     this.liveHouseholdId = null;
-    this.ownMemberDoc.set(null);
+    this.setOwnMemberDoc(null);
     if (wasLive && !this.ending.has(householdId)) this.reportLoss(householdId);
+  }
+
+  /** What a null the local cache alone answered reads as: the wait online, `notLoaded` offline. */
+  private uncachedStatus(): HouseholdStatus {
+    return this.pwa.isOnline() ? 'loading' : 'notLoaded';
+  }
+
+  /** `uncached` marks a null that only the local cache answered. */
+  private setOwnMemberDoc(doc: HouseholdMember | null | undefined, uncached = false): void {
+    this.ownMemberDoc.set(doc);
+    this.ownUncached.set(uncached);
+  }
+
+  /** `uncached` marks a null that only the local cache answered. */
+  private setHouseholdDoc(doc: Household | null | undefined, uncached = false): void {
+    this.householdDoc.set(doc);
+    this.householdUncached.set(uncached);
   }
 
   private reportLoss(householdId: string): void {
@@ -842,14 +902,56 @@ export class HouseholdService {
    * The account is seen live in a household. That household's own loss is
    * over, and so is any loss whose entry the index no longer lists as live:
    * it was tidied, and the view has moved on. A loss whose entry is still
-   * listed live stays until it is tidied or seen live again.
+   * listed live stays until it is seen live again, or until a membership is
+   * seen live after its entry is tidied.
    */
   private liftLosses(householdId: string): void {
+    this.dropLosses((id, listed) => id === householdId || !listed);
+  }
+
+  /** The answered losses whose entries the index no longer lists as live. */
+  private liftAnswered(): void {
+    if (this.answered.size > 0) this.dropLosses((id, listed) => this.answered.has(id) && !listed);
+  }
+
+  /** Drops each loss `lifted` picks, told whether the index still lists its entry as live. */
+  private dropLosses(lifted: (householdId: string, listed: boolean) => boolean): void {
     const lost = untracked(this.lostSet);
     if (lost.size === 0) return;
     const listed = new Set(untracked(this.liveMemberships).map(m => m.householdId));
-    const kept = [...lost].filter(id => id !== householdId && listed.has(id));
-    if (kept.length < lost.size) this.lostSet.set(new Set(kept));
+    const kept = new Set([...lost].filter(id => !lifted(id, listed.has(id))));
+    if (kept.size === lost.size) return;
+    this.lostSet.set(kept);
+    // A loss reported again later is news that no ending has answered.
+    for (const id of [...this.answered]) if (!kept.has(id)) this.answered.delete(id);
+  }
+
+  /**
+   * The account's own leave or dissolve, which moves the view on to another
+   * household or the setup: once it has ended the membership, even with its
+   * cleanup cut off (HouseholdCleanupError), the losses shown as it began
+   * are answered, and each lifts once its entry is no longer listed live, so
+   * the notice does not outlast the tidy there. One that failed before the
+   * membership ended answers nothing. Only leave() and dissolve() run through
+   * here, never endingMembership, which also runs the tidy's endings: the
+   * viewer did not ask for those.
+   */
+  private async answeringLosses(ending: () => Promise<void>): Promise<void> {
+    const shown = untracked(this.lostSet);
+    try {
+      await ending();
+    } catch (error) {
+      if (error instanceof HouseholdCleanupError) this.answer(shown);
+      throw error;
+    }
+    this.answer(shown);
+  }
+
+  private answer(shown: ReadonlySet<string>): void {
+    const lost = untracked(this.lostSet);
+    for (const householdId of shown) if (lost.has(householdId)) this.answered.add(householdId);
+    // The index may have heard the tidy before the ending was done.
+    this.liftAnswered();
   }
 
   private attachMembership(uid: string, householdId: string, member: HouseholdMember): void {
@@ -858,10 +960,18 @@ export class HouseholdService {
     this.detachMembership();
     this.membershipKey = key;
 
-    this.householdSub = this.firestore.subscribeToDocument<Household>(householdPath(householdId)).subscribe({
-      next: household => {
-        this.householdDoc.set(household);
-        if (household) this.refreshIndexName(uid, household);
+    this.householdSub = this.firestore.subscribeToDocumentWithMetadata<Household>(householdPath(householdId)).subscribe({
+      next: ({ data, fromCache, hasPendingWrites }) => {
+        if (data) {
+          this.setHouseholdDoc(data);
+          this.refreshIndexName(uid, data);
+          return;
+        }
+        // As for the own member document, only the server says the
+        // household is gone: a member document cached without its household
+        // reads it null offline.
+        if (!fromCache && !hasPendingWrites) this.setHouseholdDoc(null);
+        else if (this.householdDoc() === undefined) this.setHouseholdDoc(null, true);
       },
       error: error => this.membershipListenerFailed(error, 'household')
     });
@@ -906,7 +1016,7 @@ export class HouseholdService {
       const key = this.membershipKey;
       this.detachMembership();
       this.membershipKey = key;
-      this.householdDoc.set(null);
+      this.setHouseholdDoc(null);
       return;
     }
     this.unsubscribeMembership();
@@ -926,7 +1036,7 @@ export class HouseholdService {
     this.unsubscribeMembership();
     this.membershipKey = null;
     this.membershipFailed.set(false);
-    this.householdDoc.set(undefined);
+    this.setHouseholdDoc(undefined);
     this.memberDocs.set(undefined);
     this.sentDocs.set([]);
   }
@@ -967,12 +1077,21 @@ export class HouseholdService {
   /**
    * The owner's sent invites into this household go first: with none left,
    * nobody can join between the member sweep and the final commit. Invites
-   * into another household it owns stay. The members are read from the
-   * server, not from a listener that may hold a partial view. The
+   * into another household it owns stay. The members are listed with
+   * getDocsFromServer. While the page's members listener with the same query
+   * is attached, the SDK answers from that listener's latest synced view
+   * instead of a fresh read. That view is complete once synced, and a
+   * from-cache view is refused, so a partial list is never used. The
    * household's own plans go next, once no other member is left to add one,
    * then the final commit, then the owner's own shared rows, and the index
    * entry last. The other members' copies are unreadable from the final
-   * commit on; each author's device takes its own out when it next tidies.
+   * commit on. Each member document deleted here, the owner's own in the
+   * final commit too, sets off onHouseholdMemberDeleted
+   * (functions/src/index.ts), which deletes that member's copies of this
+   * generation; the household's delete sets off onHouseholdDissolved, which
+   * deletes whatever of the generation is still left under the household.
+   * Both run on their own time. Each author's device also takes its own
+   * copies out when it next tidies.
    *
    * A step refused because the household is already gone means a dissolve
    * got there first: this one's own final commit, sent again after its
@@ -988,7 +1107,7 @@ export class HouseholdService {
           where: [{ field: 'since', op: '==', value: since }]
         });
         const others = members.map(member => member.uid).filter(memberUid => memberUid !== uid);
-        for (const chunk of chunked(others)) {
+        for (const chunk of chunked(others, HOUSEHOLD_COMMIT_CHUNK)) {
           await this.commitDeletes(chunk.map(memberUid => memberPath(householdId, memberUid)));
         }
         await this.deletePlans(householdId, since);
@@ -1009,15 +1128,42 @@ export class HouseholdService {
    * contribution once its goal is gone.
    */
   private async deletePlans(householdId: string, since: Timestamp): Promise<void> {
-    const ofGeneration = { where: [{ field: PLAN_GENERATION, op: '==' as const, value: since }] };
-    const idsIn = async (path: string) =>
-      (await this.firestore.getCollectionFromServer<{ id: string }>(path, ofGeneration)).map(doc => doc.id);
+    const idsIn = async (path: string) => (await this.ofGeneration(path, since)).map(doc => doc.id);
     const paths = (await idsIn(budgetsPath(householdId))).map(id => `${budgetsPath(householdId)}/${id}`);
     for (const goalId of await idsIn(goalsPath(householdId))) {
       const contributions = contributionsPath(householdId, goalId);
       paths.push(...(await idsIn(contributions)).map(id => `${contributions}/${id}`), `${goalsPath(householdId)}/${goalId}`);
     }
     for (const chunk of chunked(paths, LEDGER_PURGE_CHUNK)) await this.commitDeletes(chunk);
+  }
+
+  /**
+   * An erasure's delete of the account's own contributions to a household
+   * it does not own, while the membership is still live: an ex-member can
+   * list neither them nor the goals they sit under. Every goal of the
+   * generation, active or not, has its contributions listed from the server
+   * and kept to the account's own on the client, so the listing stays the
+   * one-field query a single-field index serves. They go as their author's
+   * deletes, which the rules judge by no lookup: LEDGER_PURGE_CHUNK per
+   * commit. Whatever stops it stops the erasure before the membership ends,
+   * so a retry finds the rest.
+   */
+  private async deleteOwnContributions(uid: string, householdId: string, since: Timestamp): Promise<void> {
+    const paths: string[] = [];
+    for (const goal of await this.ofGeneration(goalsPath(householdId), since)) {
+      const contributions = contributionsPath(householdId, goal.id);
+      const own = (await this.ofGeneration<{ memberUid?: unknown }>(contributions, since))
+        .filter(contribution => contribution.memberUid === uid);
+      paths.push(...own.map(contribution => `${contributions}/${contribution.id}`));
+    }
+    for (const chunk of chunked(paths, LEDGER_PURGE_CHUNK)) await this.commitDeletes(chunk);
+  }
+
+  /** The documents of one generation under a household's plans, listed from the server. */
+  private ofGeneration<T extends object = object>(path: string, since: Timestamp): Promise<(T & { id: string })[]> {
+    return this.firestore.getCollectionFromServer<T & { id: string }>(path, {
+      where: [{ field: PLAN_GENERATION, op: '==', value: since }]
+    });
   }
 
   /**
@@ -1350,7 +1496,10 @@ export class HouseholdService {
   /**
    * The ids of the invites addressed to, or sent by, the account; given a
    * household, only those into it. That one is kept on the client, so the
-   * listing stays the single-field query the rules already admit.
+   * listing stays the single-field query the rules already admit. As with
+   * the members a dissolve lists, the owner's sent-invites listener with
+   * the same query, while attached, answers this from its latest synced
+   * view.
    */
   private async inviteIdsWhere(
     field: 'inviteeUid' | 'inviterUid',
@@ -1364,7 +1513,7 @@ export class HouseholdService {
   }
 
   private async deleteInvites(inviteIds: string[]): Promise<void> {
-    for (const chunk of chunked(inviteIds)) {
+    for (const chunk of chunked(inviteIds, HOUSEHOLD_COMMIT_CHUNK)) {
       try {
         await this.commitDeletes(chunk.map(invitePath));
       } catch (error) {
@@ -1502,7 +1651,7 @@ export class HouseholdService {
     const user = this.auth.currentUser();
     const identity: HouseholdMemberIdentity = {
       uid,
-      displayName: clip((user?.displayName ?? '').trim(), MEMBER_NAME_MAX_LENGTH)
+      displayName: clampText((user?.displayName ?? '').trim(), MEMBER_NAME_MAX_LENGTH)
     };
     const photo = user?.photoURL;
     if (isMemberPhotoUrl(photo)) identity.photoURL = photo;
