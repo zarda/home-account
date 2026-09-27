@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   Injector,
+  NgZone,
   OnInit,
   computed,
   effect,
@@ -12,6 +13,7 @@ import {
   untracked,
   viewChild
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -23,7 +25,11 @@ import { filter, map } from 'rxjs';
 import { AnalyticsService } from '../../core/services/analytics.service';
 import { HouseholdService, HouseholdStatus } from '../../core/services/household.service';
 import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
+import { HouseholdPlansService } from '../../core/services/household-plans.service';
+import type { LedgerShareService } from '../../core/services/ledger-share.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { addDays, startOfDay } from '../../core/utils/transaction-date.utils';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -38,13 +44,17 @@ import { SwitchOnChoiceDirective } from './switch-on-choice.directive';
 /**
  * What the page's body shows: the setup (no live membership, or the viewer
  * chose to start or join another household), the selected household's member
- * view, the notice that it could not be loaded, or the wait for it.
+ * view, the notice that it could not be loaded, the notice that it was never
+ * loaded on this device (offline), or the wait for it.
  */
-type HouseholdView = 'setup' | 'member' | 'unavailable' | 'loading';
+type HouseholdView = 'setup' | 'member' | 'unavailable' | 'notLoaded' | 'loading';
 
 /**
  * Where focus lands when an action swaps what the page shows: the first
- * heading of the view that came in, or the retry that came back.
+ * heading of the view that came in, or the retry that came back. The notice
+ * that a household is not loaded here has nothing to act on and announces
+ * itself, so focus stays where it is (the switcher, after a switch) and the
+ * swap waits for the household's own view once the connection brings it.
  */
 const SWAP_LANDINGS: Partial<Record<HouseholdView, string>> = {
   member: '#household-overview-title',
@@ -57,8 +67,12 @@ const VIEW_STATUS: Record<HouseholdView, HouseholdStatus> = {
   setup: 'none',
   member: 'member',
   unavailable: 'unavailable',
+  notLoaded: 'notLoaded',
   loading: 'loading'
 };
+
+/** The statuses that say the account's index has answered, and the selected household with it. */
+const INDEX_ANSWERED: ReadonlySet<HouseholdStatus> = new Set<HouseholdStatus>(['member', 'none', 'unavailable']);
 
 /**
  * The switcher's choice that shows the setup. Firestore reserves ids of the
@@ -91,14 +105,24 @@ interface SwitcherChoice {
  * screen (ADR 0009): HouseholdService opens nothing until a page connects.
  *
  * It also provides the one HouseholdLedgerService, fed here with the shown
- * household and its members and read by the overview, closed with the page,
- * and the HouseholdPageFocus its sections hand focus to the page through
- * when an action swaps one view for another.
+ * household and its members and read by the overview; the one
+ * HouseholdPlansService, fed here with the shown household and the day,
+ * read by the plans, which hand the ledger the dates its budgets count, and
+ * by the overview, whose goal menu lists the active goals and links the
+ * viewer's own copy to one; both closed with the page; and the
+ * HouseholdPageFocus its sections hand focus to the page through when an
+ * action swaps one view for another.
+ *
+ * The first household the member view shows in a visit is also the cue for
+ * one sweep of the account's shared rows (LedgerShareService.reconcileAll),
+ * which checks every live membership, so the copies any household view reads
+ * have been checked against their rows at least once a visit.
  */
 @Component({
   selector: 'app-household',
   standalone: true,
   imports: [
+    EmptyStateComponent,
     HouseholdMembersComponent,
     HouseholdOverviewComponent,
     HouseholdPlansComponent,
@@ -113,20 +137,24 @@ interface SwitcherChoice {
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [HouseholdLedgerService, HouseholdPageFocus],
+  providers: [HouseholdLedgerService, HouseholdPlansService, HouseholdPageFocus],
   templateUrl: './household.component.html',
   styleUrl: './household.component.scss'
 })
 export class HouseholdComponent implements OnInit {
   private readonly householdService = inject(HouseholdService);
   private readonly ledger = inject(HouseholdLedgerService);
+  private readonly plans = inject(HouseholdPlansService);
   private readonly pageFocus = inject(HouseholdPageFocus);
   private readonly analytics = inject(AnalyticsService);
   private readonly router = inject(Router);
+  private readonly zone = inject(NgZone);
+  private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   private readonly focus: FocusContext = {
     host: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
-    injector: inject(Injector),
+    injector: this.injector,
     destroyRef: this.destroyRef
   };
   private readonly switcher = viewChild(MatSelect, { read: ElementRef });
@@ -160,7 +188,7 @@ export class HouseholdComponent implements OnInit {
   readonly view = computed<HouseholdView>(() => {
     const status = this.status();
     if (status === 'none' || (this.setupOpen() && this.choices().length > 0)) return 'setup';
-    if (status === 'member' || status === 'unavailable') return status;
+    if (status === 'member' || status === 'unavailable' || status === 'notLoaded') return status;
     return 'loading';
   });
 
@@ -201,17 +229,31 @@ export class HouseholdComponent implements OnInit {
 
   /** The households the index was already looked at for: each seen live, or judged by a tidy. */
   private readonly lookedAt = new Set<string>();
-  /** With nothing selected: a live membership was seen, or the index was already looked at. */
+  /** This visit has asked for its tidy of the account's index. */
   private indexLookedAt = false;
   /** The lost households whose index entries a tidy was already asked to end. */
   private readonly lossesTidied = new Set<string>();
 
+  /** This visit has started its sweep of the account's shared rows. */
+  private sweptThisVisit = false;
+  /** Moves the plans on to the next day at local midnight. */
+  private dayTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The local day, as startOfDay's time, last handed to the plans. */
+  private handedDay = Number.NaN;
+
   constructor() {
-    // Only the member view shows the ledger, so the ledger is given nothing
-    // outside it, the setup opened beside a live membership included: its
-    // listener closes, and no owner's purge is judged behind another view.
+    // Only the member view shows the ledger and the plans, so neither is
+    // given anything outside it, the setup opened beside a live membership
+    // included: their listeners close, and no owner's purge is judged behind
+    // another view.
     effect(() => this.ledger.setHousehold(this.view() === 'member' ? this.householdService.household() : null));
     effect(() => this.ledger.setMembers(this.view() === 'member' ? this.householdService.members() : []));
+    effect(() => this.plans.setHousehold(this.view() === 'member' ? this.householdService.household() : null));
+
+    effect(() => {
+      const shown = this.view() === 'member' && this.householdService.household() !== null;
+      if (shown) untracked(() => this.sweepOnce());
+    });
 
     effect(() => {
       const status = this.status();
@@ -257,6 +299,18 @@ export class HouseholdComponent implements OnInit {
   ngOnInit(): void {
     this.householdService.connect();
     this.destroyRef.onDestroy(() => this.householdService.disconnect());
+    this.handOverDay(new Date());
+    this.armNextDay();
+    // Outside Angular: a tab switch on the same day changes nothing the
+    // views read, so it checks nothing.
+    const onShown = () => {
+      if (!this.document.hidden) this.checkDay();
+    };
+    this.zone.runOutsideAngular(() => this.document.addEventListener('visibilitychange', onShown));
+    this.destroyRef.onDestroy(() => {
+      clearTimeout(this.dayTimer);
+      this.document.removeEventListener('visibilitychange', onShown);
+    });
   }
 
   /**
@@ -419,21 +473,32 @@ export class HouseholdComponent implements OnInit {
 
   /**
    * An index entry outlives a membership that ended without this account's
-   * own hand: the rules let only the account itself delete it. A loss seen
-   * live says so. A loss that happened while no page listened says nothing:
-   * from a cold cache it reads as no membership at all, and the switcher
-   * would go on offering it. So the index is looked at once for each
-   * household the page finds no membership in without having seen it live
-   * or had it judged by a tidy already; and once, with nothing selected, the
-   * first time the page finds none, unless a live membership was seen first.
-   * The viewer's own leave or dissolve of a household the page showed is
-   * not taken for such an entry.
+   * own hand: the rules let only the account itself delete it, and only a
+   * tidy does. No listener hears a removal from, or a dissolve of, a
+   * household the page is not showing, and a leave or a dissolve of the
+   * account's own cut off after its entry was marked is finished by a tidy
+   * too. Left there, such an entry stays in the switcher and among the
+   * households a row can be shared into. So each visit asks for one tidy,
+   * once the index has answered (the member view, no membership, or the
+   * notice that the household could not be loaded) and the connection is
+   * up.
+   *
+   * Beyond that one, the index is looked at again for a household the page
+   * finds no membership in without having seen it live or had it judged by
+   * a tidy already. The visit's tidy counts as judging only a selected
+   * household it found no membership in: it runs at the first view, and a
+   * membership it found live can end later in the visit, with no loss seen
+   * when the page moves to it and this device never held its member
+   * document. A household that could not be loaded is not judged by it
+   * either. The viewer's own leave or dissolve of a household the page
+   * showed is not taken for such an entry.
    *
    * Each lost household is tidied once while it stays lost, so a second
    * loss is tidied even while the first one's notice still shows; one that
    * leaves the set and is lost again is tidied again.
    *
-   * Offline, the tidy would only be refused, so it waits for the connection.
+   * Offline, a tidy would only be refused, so it waits for the connection,
+   * and an offline member view does not spend the visit's.
    */
   private tidyMemberships(
     status: HouseholdStatus,
@@ -444,10 +509,7 @@ export class HouseholdComponent implements OnInit {
     for (const householdId of [...this.lossesTidied]) {
       if (!lost.has(householdId)) this.lossesTidied.delete(householdId);
     }
-    if (status === 'member') {
-      this.indexLookedAt = true;
-      if (selected !== null) this.lookedAt.add(selected);
-    }
+    if (status === 'member' && selected !== null) this.lookedAt.add(selected);
     if (!online) return;
 
     const untidied = [...lost].filter(householdId => !this.lossesTidied.has(householdId));
@@ -456,21 +518,106 @@ export class HouseholdComponent implements OnInit {
       this.lookAtIndex();
       return;
     }
-    if (status !== 'none') return;
-    const unjudged = selected === null ? !this.indexLookedAt : !this.lookedAt.has(selected) && !lost.has(selected);
-    if (unjudged) this.lookAtIndex();
+    if (!this.indexLookedAt && INDEX_ANSWERED.has(status)) {
+      if (status === 'none' && selected !== null) this.lookedAt.add(selected);
+      this.askForTidy();
+      return;
+    }
+    if (status === 'none' && selected !== null && !this.lookedAt.has(selected) && !lost.has(selected)) {
+      this.lookAtIndex();
+    }
   }
 
   /**
-   * A tidy judges every entry the index lists, so none of them is looked at
-   * again by this page. One that ends after it, while another household is
-   * shown, is left for the next visit.
+   * The tidy after a loss, or for a household found with no membership: it
+   * judges every entry the index lists, so none of them is looked at again
+   * by this page. One that ends after it, while another household is shown,
+   * is left for the next visit unless the page sees it lost.
    */
   private lookAtIndex(): void {
-    this.indexLookedAt = true;
     for (const membership of this.householdService.memberships()) this.lookedAt.add(membership.householdId);
+    this.askForTidy();
+  }
+
+  /**
+   * Any tidy spends the visit's. One costs a listing of the index and at
+   * most two server reads per entry.
+   */
+  private askForTidy(): void {
+    this.indexLookedAt = true;
     // Nobody asked for this, and the page already shows the right state
     // either way. An entry it could not tidy is left for the next visit.
     this.householdService.tidyEndedMemberships().catch(() => undefined);
+  }
+
+  /** Hands the plans the moment their budgets' windows are judged at, and notes its day. */
+  private handOverDay(now: Date): void {
+    this.handedDay = startOfDay(now).getTime();
+    this.plans.setNow(now);
+  }
+
+  /**
+   * A budget's window is judged against the day, so a page left open past
+   * midnight hands the plans the new day then. Rebuilt from local parts at
+   * each run, so a daylight-saving change never lands it an hour out.
+   *
+   * The timer can run late: a device asleep across midnight holds it back
+   * for as long as it sleeps. So the day is also compared whenever the page
+   * is shown again (checkDay).
+   *
+   * The wait runs outside Angular: a zone task pending for hours would keep
+   * the app from ever reporting itself stable. The new day is handed over
+   * inside it, so the views that read it are checked.
+   */
+  private armNextDay(): void {
+    const now = new Date();
+    const wait = addDays(startOfDay(now), 1).getTime() - now.getTime();
+    this.zone.runOutsideAngular(() => {
+      this.dayTimer = setTimeout(() => {
+        this.zone.run(() => this.handOverDay(new Date()));
+        this.armNextDay();
+      }, wait);
+    });
+  }
+
+  /**
+   * The page is shown again, perhaps after a sleep that held the midnight
+   * timer back. A day that has changed since is handed over then, and the
+   * wait for the next midnight is measured afresh from the real time. The
+   * same day hands nothing over: the plans would read the ledger's window
+   * again for no change.
+   */
+  private checkDay(): void {
+    const now = new Date();
+    if (startOfDay(now).getTime() !== this.handedDay) this.zone.run(() => this.handOverDay(now));
+    clearTimeout(this.dayTimer);
+    this.armNextDay();
+  }
+
+  /**
+   * Sweeps the account's shared rows once a visit, when the member view
+   * first shows a household. The sweep checks every live membership, so
+   * switching households starts no other; a household created or joined
+   * during the visit has no shared rows to check yet. The sweep itself does
+   * nothing offline or signed out; the app's reconnect sweep covers a visit
+   * that began offline. It is maintenance nobody asked for, so a failure is
+   * logged, never shown, and the next visit tries again.
+   */
+  private sweepOnce(): void {
+    if (this.sweptThisVisit) return;
+    this.sweptThisVisit = true;
+    this.ledgerShare()
+      .then(sharing => sharing.reconcileAll('page'))
+      .catch(error => console.warn('[Household] The shared rows were not checked:', error));
+  }
+
+  /**
+   * The code that keeps shared rows' copies in step (LedgerShareService),
+   * reached only by this dynamic import, so it stays out of the initial
+   * bundle.
+   */
+  private async ledgerShare(): Promise<LedgerShareService> {
+    const { LedgerShareService } = await import('../../core/services/ledger-share.service');
+    return this.injector.get(LedgerShareService);
   }
 }

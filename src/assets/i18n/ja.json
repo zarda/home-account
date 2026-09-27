@@ -1704,7 +1704,19 @@
     },
     "plans": {
       "title": "予算と目標",
-      "empty": "この世帯にはまだ予算も目標もありません。"
+      "empty": "この世帯にはまだ予算も目標もありません。",
+      "loading": "世帯の予算と目標を読み込み中…",
+      "listIncomplete": "一部の予算や目標を読み込めなかったため、表示されていないものがある可能性があります。",
+      "budgetsTitle": "予算",
+      "goalsTitle": "目標",
+      "window": "{{start}}〜{{end}}",
+      "incomplete": "集計対象の共有された取引をすべて読み込めなかったため、不完全な可能性があります。",
+      "targetDate": "目標日：{{date}}",
+      "contributionsTitle": "積み立て",
+      "noContributions": "まだ積み立てはありません。",
+      "goalIncomplete": "集計対象の共有された取引や積み立てをすべて読み込めなかったため、不完全な可能性があります。",
+      "counting": "集計中…",
+      "notLoaded": "この世帯の予算と目標はこの端末に読み込まれていません。接続すると表示されます。"
     },
     "members": {
       "title": "メンバー",

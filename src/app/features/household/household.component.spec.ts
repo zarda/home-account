@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router, provideRouter } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
+import { Subject } from 'rxjs';
 
 import en from '../../../assets/i18n/en.json';
 import { HouseholdComponent } from './household.component';
@@ -16,12 +17,18 @@ import {
   HouseholdStatus
 } from '../../core/services/household.service';
 import { HouseholdLedgerService } from '../../core/services/household-ledger.service';
+import { HouseholdPlansService } from '../../core/services/household-plans.service';
+import { LedgerShareService } from '../../core/services/ledger-share.service';
+import { AuthService } from '../../core/services/auth.service';
+import { CurrencyService } from '../../core/services/currency.service';
+import { CollectionWithMetadata, FirestoreService } from '../../core/services/firestore.service';
 import { PwaService } from '../../core/services/pwa.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { createTranslationStub } from '../../core/services/testing';
-import { Household, HouseholdMember, HouseholdMembership } from '../../models';
+import { planWindow } from '../../core/utils/household-plans.utils';
+import { Household, HouseholdBudget, HouseholdMember, HouseholdMembership } from '../../models';
 import { HouseholdPageFocus } from './household-focus';
 
 /** The setup state has its own spec; here only its presence, and its first heading, are the question. */
@@ -44,14 +51,21 @@ class StubOverviewComponent {
   readonly ledger = inject(HouseholdLedgerService);
 }
 
-/** The budgets and goals have their own spec; here only where they sit is the question. */
+/** The budgets and goals have their own spec; here the questions are where they sit and which plans they read. */
 @Component({
   selector: 'app-household-plans',
   standalone: true,
   template: '',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-class StubPlansComponent {}
+class StubPlansComponent {
+  readonly plans = inject(HouseholdPlansService);
+}
+
+/** The page's one way to the sharing code, a dynamic import. */
+interface SharingLoader {
+  ledgerShare: () => Promise<LedgerShareService>;
+}
 
 /** The members and their management have their own spec; here only where they sit is the question. */
 @Component({
@@ -111,7 +125,13 @@ describe('HouseholdComponent', () => {
   let members: ReturnType<typeof signal<HouseholdMember[]>>;
   let memberships: ReturnType<typeof signal<HouseholdMembership[]>>;
   let selected: ReturnType<typeof signal<string | null>>;
-  let ledger: { setHousehold: jasmine.Spy; setMembers: jasmine.Spy };
+  let ledger: { setHousehold: jasmine.Spy; setMembers: jasmine.Spy; setPlanWindow: jasmine.Spy };
+  /** The plans' listeners, by path, as the page's own HouseholdPlansService opened them. */
+  let planListeners: Map<string, Subject<CollectionWithMetadata<unknown>>>;
+  let plansHousehold: jasmine.Spy;
+  let plansNow: jasmine.Spy;
+  let sharing: { reconcileAll: jasmine.Spy };
+  let loader: jasmine.Spy;
   let catchUp: jasmine.Spy;
   let analytics: jasmine.SpyObj<Pick<AnalyticsService, 'trackHouseholdAction'>>;
   let service: {
@@ -198,7 +218,22 @@ describe('HouseholdComponent', () => {
     members = signal<HouseholdMember[]>([]);
     memberships = signal<HouseholdMembership[]>([]);
     selected = signal<string | null>(null);
-    ledger = { setHousehold: jasmine.createSpy('setHousehold'), setMembers: jasmine.createSpy('setMembers') };
+    ledger = {
+      setHousehold: jasmine.createSpy('setHousehold'),
+      setMembers: jasmine.createSpy('setMembers'),
+      setPlanWindow: jasmine.createSpy('setPlanWindow')
+    };
+    planListeners = new Map();
+    // The page's own plans service, watched: which household and which day
+    // the page hands it is the question, and its budgets' answer reaching the
+    // page's ledger.
+    plansHousehold = spyOn(HouseholdPlansService.prototype, 'setHousehold').and.callThrough();
+    plansNow = spyOn(HouseholdPlansService.prototype, 'setNow').and.callThrough();
+    sharing = { reconcileAll: jasmine.createSpy('reconcileAll').and.resolveTo() };
+    // Straight to the fake: the case that needs the dynamic import itself
+    // lets it through.
+    loader = spyOn(HouseholdComponent.prototype as unknown as SharingLoader, 'ledgerShare')
+      .and.callFake(async () => sharing as unknown as LedgerShareService);
     catchUp = jasmine.createSpy('catchUpRecurringTransactions').and.resolveTo([]);
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackHouseholdAction']);
     service = {
@@ -234,7 +269,20 @@ describe('HouseholdComponent', () => {
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: RecurringService, useValue: { catchUpRecurringTransactions: catchUp } },
-        { provide: AnalyticsService, useValue: analytics }
+        { provide: AnalyticsService, useValue: analytics },
+        {
+          provide: FirestoreService,
+          useValue: {
+            subscribeToCollectionWithMetadata: (path: string) => {
+              const listener = new Subject<CollectionWithMetadata<unknown>>();
+              planListeners.set(path, listener);
+              return listener.asObservable();
+            }
+          }
+        },
+        { provide: AuthService, useValue: { userId: signal('owner-1'), currentUser: signal(null) } },
+        { provide: CurrencyService, useValue: { convert: (amount: number) => amount } },
+        { provide: LedgerShareService, useValue: sharing }
       ]
     })
       .overrideComponent(HouseholdComponent, {
@@ -435,6 +483,29 @@ describe('HouseholdComponent', () => {
       render();
 
       expect(element().querySelector('app-household-members')).toBeNull();
+    });
+
+    it('says a household switched to offline, never loaded on this device, is not loaded, rather than offering the setup', async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      online.set(false);
+      choose('Flat 4B');
+      await settleRoute();
+      status.set('notLoaded');
+      render();
+
+      const notice = element().querySelector('.household-not-loaded');
+      expect(notice?.textContent).toContain('household.notLoadedTitle');
+      expect(notice?.textContent).toContain('household.notLoadedDescription');
+      expect(element().querySelector('app-household-setup')).withContext('not the setup').toBeNull();
+      expect(element().querySelector('app-loading-spinner')).withContext('not a wait that never ends').toBeNull();
+      expect(switcherValue()).toBe('Flat 4B');
+
+      online.set(true);
+      arrive(FLAT);
+      render();
+
+      expect(element().querySelector('.household-not-loaded')).toBeNull();
+      expect(overviewTitle()).not.toBeNull();
     });
 
     it('says the household could not be loaded, and a retry reconnects', () => {
@@ -921,6 +992,258 @@ describe('HouseholdComponent', () => {
     });
   });
 
+  describe('the plans', () => {
+    const plansSection = (): StubPlansComponent | null => {
+      const host = fixture.debugElement.query(debug => debug.name === 'app-household-plans');
+      return host ? (host.componentInstance as StubPlansComponent) : null;
+    };
+
+    const budget: HouseholdBudget = {
+      id: 'b1',
+      gen: HOUSEHOLD.createdAt,
+      name: 'Groceries',
+      categoryIds: ['food'],
+      amount: 400,
+      currency: 'USD',
+      period: 'monthly',
+      startDate: Timestamp.fromDate(new Date(2026, 0, 1)),
+      isActive: true,
+      createdBy: 'owner-1',
+      createdAt: HOUSEHOLD.createdAt,
+      updatedAt: HOUSEHOLD.createdAt
+    };
+
+    it("are the page's own, the ones its plans section reads", () => {
+      showMember(HOUSEHOLD);
+
+      expect(plansSection()?.plans).toBe(fixture.debugElement.injector.get(HouseholdPlansService));
+    });
+
+    it('are given the household shown, each household switched to, and none outside the member view', async () => {
+      status.set('none');
+      render();
+      expect(plansHousehold).toHaveBeenCalled();
+      expect(plansHousehold.calls.mostRecent().args[0]).toBeNull();
+
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      expect(plansHousehold.calls.mostRecent().args[0]).toEqual(HOUSEHOLD);
+
+      choose('household.switcher.setup');
+      await settleRoute();
+      expect(plansHousehold.calls.mostRecent().args[0])
+        .withContext('no listener behind the setup')
+        .toBeNull();
+
+      choose('Flat 4B');
+      await settleRoute();
+      arrive(FLAT);
+      render();
+      expect(plansHousehold.calls.mostRecent().args[0]).toEqual(FLAT);
+
+      household.set(null);
+      status.set('none');
+      render();
+      expect(plansHousehold.calls.mostRecent().args[0]).toBeNull();
+    });
+
+    it("hand the page's ledger the dates their active budgets count", () => {
+      showMember(HOUSEHOLD);
+      const budgets = planListeners.get('households/h1/budgets');
+      expect(budgets).withContext('the budgets are listened to').toBeDefined();
+
+      budgets!.next({ docs: [budget], fromCache: false, hasPendingWrites: false });
+
+      const now = plansNow.calls.mostRecent().args[0] as Date;
+      const window = planWindow([budget], now);
+      expect(window).not.toBeNull();
+      expect(ledger.setPlanWindow.calls.mostRecent().args[0]).toEqual(window);
+    });
+
+    describe('across midnight', () => {
+      beforeEach(() => {
+        // The page the outer setup made armed a real timer; this one is made
+        // under the fake clock.
+        fixture.destroy();
+        plansNow.calls.reset();
+        jasmine.clock().install();
+        jasmine.clock().mockDate(new Date(2026, 8, 27, 23, 59, 30));
+        fixture = TestBed.createComponent(HouseholdComponent);
+        render();
+      });
+
+      afterEach(() => jasmine.clock().uninstall());
+
+      it('are told the day the page opened on, and each new day while it stays open', () => {
+        expect(plansNow).toHaveBeenCalledTimes(1);
+        expect(plansNow.calls.mostRecent().args[0]).toEqual(new Date(2026, 8, 27, 23, 59, 30));
+
+        jasmine.clock().tick(29_000);
+        expect(plansNow).withContext('not before midnight').toHaveBeenCalledTimes(1);
+
+        jasmine.clock().tick(1_000);
+        expect(plansNow).toHaveBeenCalledTimes(2);
+        expect((plansNow.calls.mostRecent().args[0] as Date).getDate()).toBe(28);
+
+        jasmine.clock().tick(24 * 60 * 60 * 1000);
+        expect(plansNow).toHaveBeenCalledTimes(3);
+        expect((plansNow.calls.mostRecent().args[0] as Date).getDate()).toBe(29);
+      });
+
+      it('are told the day the device wakes on when the page is shown again, however long its sleep held the timer back', () => {
+        // Asleep across midnight: the timer did not run.
+        jasmine.clock().mockDate(new Date(2026, 8, 28, 7, 0, 0));
+        document.dispatchEvent(new Event('visibilitychange'));
+
+        expect(plansNow).toHaveBeenCalledTimes(2);
+        expect(plansNow.calls.mostRecent().args[0]).toEqual(new Date(2026, 8, 28, 7, 0, 0));
+
+        // The wait is measured again from the time it woke at.
+        jasmine.clock().tick(60_000);
+        expect(plansNow).withContext("the night's timer does not run as well").toHaveBeenCalledTimes(2);
+        jasmine.clock().tick(17 * 60 * 60 * 1000);
+        expect(plansNow).toHaveBeenCalledTimes(3);
+        expect((plansNow.calls.mostRecent().args[0] as Date).getDate()).toBe(29);
+      });
+
+      it('are told nothing when the page is shown again on the same day', () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(plansNow).toHaveBeenCalledTimes(1);
+
+        jasmine.clock().tick(30_000);
+        expect(plansNow).withContext('midnight still comes').toHaveBeenCalledTimes(2);
+      });
+
+      it('are not told another day once the page has gone', () => {
+        fixture.destroy();
+
+        jasmine.clock().tick(2 * 24 * 60 * 60 * 1000);
+        document.dispatchEvent(new Event('visibilitychange'));
+
+        expect(plansNow).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe("the account's shared rows", () => {
+    /** Lets the sweep's loader and the sweep it starts run out. */
+    async function settleSweep(): Promise<void> {
+      for (let i = 0; i < 3; i++) await new Promise(resolve => setTimeout(resolve));
+    }
+
+    it('are checked once when the member view opens, and not again for the same household', async () => {
+      showMember(HOUSEHOLD);
+      await settleSweep();
+
+      expect(sharing.reconcileAll).toHaveBeenCalledOnceWith('page');
+
+      members.set([member('owner-1', 'Alex')]);
+      household.set({ ...HOUSEHOLD, name: 'The Lins at home' });
+      render();
+      await settleSweep();
+
+      expect(sharing.reconcileAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('are checked once in a visit, however many households it shows: the sweep covers every membership', async () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      await settleSweep();
+      expect(sharing.reconcileAll).toHaveBeenCalledTimes(1);
+
+      choose('Flat 4B');
+      await settleRoute();
+      arrive(FLAT);
+      render();
+      await settleSweep();
+
+      choose('The Lins');
+      await settleRoute();
+      arrive(HOUSEHOLD);
+      render();
+      await settleSweep();
+
+      expect(sharing.reconcileAll).toHaveBeenCalledOnceWith('page');
+    });
+
+    it('are checked when a visit that opened on the setup first shows a household', async () => {
+      status.set('none');
+      render();
+      await settleSweep();
+      expect(sharing.reconcileAll).not.toHaveBeenCalled();
+
+      showMember(HOUSEHOLD);
+      await settleSweep();
+
+      expect(sharing.reconcileAll).toHaveBeenCalledOnceWith('page');
+    });
+
+    it('are not checked outside the member view', async () => {
+      status.set('none');
+      render();
+      await settleSweep();
+
+      status.set('unavailable');
+      render();
+      await settleSweep();
+
+      expect(loader).not.toHaveBeenCalled();
+      expect(sharing.reconcileAll).not.toHaveBeenCalled();
+    });
+
+    it('are checked again on the next visit', async () => {
+      showMember(HOUSEHOLD);
+      await settleSweep();
+      fixture.destroy();
+
+      fixture = TestBed.createComponent(HouseholdComponent);
+      render();
+      await settleSweep();
+
+      expect(sharing.reconcileAll).toHaveBeenCalledTimes(2);
+      expect(sharing.reconcileAll.calls.allArgs()).toEqual([['page'], ['page']]);
+    });
+
+    it('stay unchecked until the next visit, with a warning and nothing thrown, when the sharing code does not load', async () => {
+      const warn = spyOn(console, 'warn');
+      loader.and.rejectWith(new Error('chunk failed'));
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      await settleSweep();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.calls.mostRecent().args[0])).toMatch(/^\[Household\]/);
+
+      loader.and.callFake(async () => sharing as unknown as LedgerShareService);
+      choose('Flat 4B');
+      await settleRoute();
+      arrive(FLAT);
+      render();
+      await settleSweep();
+
+      expect(sharing.reconcileAll).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('stay unchecked, with a warning and nothing thrown, when the sweep fails', async () => {
+      const warn = spyOn(console, 'warn');
+      sharing.reconcileAll.and.rejectWith(new Error('boom'));
+      showMember(HOUSEHOLD);
+      await settleSweep();
+
+      expect(sharing.reconcileAll).toHaveBeenCalledOnceWith('page');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.calls.mostRecent().args[0])).toMatch(/^\[Household\]/);
+    });
+
+    it('are reached through the dynamic import of the sharing code', async () => {
+      loader.and.callThrough();
+      showMember(HOUSEHOLD);
+
+      const start = Date.now();
+      while (sharing.reconcileAll.calls.count() === 0 && Date.now() - start < 5000) await settleSweep();
+
+      expect(sharing.reconcileAll).toHaveBeenCalledOnceWith('page');
+    });
+  });
+
   describe('losing access', () => {
     function loseAccess(): void {
       household.set(null);
@@ -933,6 +1256,9 @@ describe('HouseholdComponent', () => {
       household.set(HOUSEHOLD);
       status.set('member');
       render();
+      // The visit's own tidy aside (an index entry left from before): these
+      // count what a loss asks for.
+      service.tidyEndedMemberships.calls.reset();
     });
 
     it('shows the notice', () => {
@@ -1135,11 +1461,15 @@ describe('HouseholdComponent', () => {
   });
 
   /**
-   * An index entry whose membership ended while no page was listening reads
-   * as `none` from a cold cache, with no loss seen, so nothing else would
-   * ever tidy it.
+   * An index entry whose membership ended while no page was listening, or
+   * while the page showed another household, is heard by no listener: a
+   * removal or a dissolve says nothing to a household the page does not
+   * follow, and a cold start reads the ended one as no membership with no
+   * loss seen. Nothing else would ever tidy it, so a visit tidies once.
    */
   describe('an index entry left from before', () => {
+    const TRIP = membership({ ...FLAT, id: 'h3', name: 'Trip' }, { ended: true });
+
     it('is tidied quietly the first time the page finds no membership', () => {
       status.set('none');
       render();
@@ -1153,15 +1483,54 @@ describe('HouseholdComponent', () => {
       expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
     });
 
-    it('is tidied once for a household the page moves to that reads as no membership, never seen live', () => {
-      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+    it('is tidied once per visit while another household is shown', () => {
+      showMember(FLAT, [membership(HOUSEHOLD), membership(FLAT), TRIP]);
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+      expect(text()).not.toContain('household.lostAccess');
+
+      for (const next of ['loading', 'unavailable', 'member', 'none', 'member'] as const) {
+        status.set(next);
+        render();
+      }
+
+      expect(service.tidyEndedMemberships).withContext('once in the visit').toHaveBeenCalledTimes(1);
+    });
+
+    it('is tidied once for the visit when the household shown could not be loaded', () => {
+      memberships.set([membership(HOUSEHOLD)]);
+      selected.set(HOUSEHOLD.id);
+      status.set('unavailable');
+      render();
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for the connection before an offline member view spends the visit's tidy", () => {
+      online.set(false);
+      showMember(FLAT, [membership(HOUSEHOLD), membership(FLAT)]);
+      render();
+
+      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
+
+      online.set(true);
+      render();
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+    });
+
+    it('is tidied once more for a household listed after the visit tidied, which reads as no membership, never seen live', () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD)]);
+      expect(service.tidyEndedMemberships).withContext("the visit's").toHaveBeenCalledTimes(1);
+
+      memberships.set([membership(HOUSEHOLD), membership(FLAT)]);
       service.select(FLAT.id);
       render();
       status.set('none');
       render();
       render();
 
-      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(2);
       expect(text()).not.toContain('household.lostAccess');
 
       status.set('loading');
@@ -1169,19 +1538,77 @@ describe('HouseholdComponent', () => {
       status.set('none');
       render();
 
-      expect(service.tidyEndedMemberships).withContext('once for that household').toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).withContext('once for that household').toHaveBeenCalledTimes(2);
     });
 
-    it('is not looked for when the household shown is left', () => {
+    it("is tidied once more for a household the visit's tidy found live, which reads as no membership when moved to", () => {
+      showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
+      expect(service.tidyEndedMemberships).withContext("the visit's").toHaveBeenCalledTimes(1);
+
+      // Removed since, with its member document never held on this device:
+      // the server's null reads as no membership, and no loss is seen.
+      service.select(FLAT.id);
+      render();
+      status.set('none');
+      render();
+      render();
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(2);
+      expect(text()).not.toContain('household.lostAccess');
+
+      status.set('loading');
+      render();
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).withContext('once for that household').toHaveBeenCalledTimes(2);
+    });
+
+    it('is tidied once more when the household the visit could not load then reads as no membership', () => {
+      memberships.set([membership(HOUSEHOLD)]);
+      selected.set(HOUSEHOLD.id);
+      status.set('unavailable');
+      render();
+      expect(service.tidyEndedMemberships).withContext("the visit's").toHaveBeenCalledTimes(1);
+
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(2);
+
+      status.set('loading');
+      render();
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).withContext('once for that household').toHaveBeenCalledTimes(2);
+    });
+
+    it('is not tidied again for the household the visit found no membership in', () => {
+      memberships.set([membership(HOUSEHOLD)]);
+      selected.set(HOUSEHOLD.id);
+      status.set('none');
+      render();
+      expect(service.tidyEndedMemberships).withContext("the visit's").toHaveBeenCalledTimes(1);
+
+      status.set('loading');
+      render();
+      status.set('none');
+      render();
+
+      expect(service.tidyEndedMemberships).withContext('that tidy judged it').toHaveBeenCalledTimes(1);
+    });
+
+    it("is not looked for again when the household shown is left: the visit's tidy stands", () => {
       showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
       household.set(null);
       status.set('none');
       render();
 
-      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
     });
 
-    it('is not looked for when the last household shown is left', () => {
+    it("is not looked for again when the last household shown is left: the visit's tidy stands", () => {
       showMember(HOUSEHOLD);
       memberships.set([]);
       selected.set(null);
@@ -1189,7 +1616,7 @@ describe('HouseholdComponent', () => {
       status.set('none');
       render();
 
-      expect(service.tidyEndedMemberships).not.toHaveBeenCalled();
+      expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
     });
 
     it('is not looked for again when the household moved to from a loss reads as no membership', () => {
@@ -1198,13 +1625,13 @@ describe('HouseholdComponent', () => {
       status.set('none');
       lostHouseholds.set(new Set([HOUSEHOLD.id]));
       render();
-      expect(service.tidyEndedMemberships).withContext('the loss').toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).withContext("the visit's, then the loss").toHaveBeenCalledTimes(2);
       expect(selected()).toBe(FLAT.id);
 
       status.set('none');
       render();
 
-      expect(service.tidyEndedMemberships).withContext('that tidy judged every entry').toHaveBeenCalledTimes(1);
+      expect(service.tidyEndedMemberships).withContext('those tidies judged every entry').toHaveBeenCalledTimes(2);
     });
 
     it('is looked for once the connection returns, not while offline', () => {

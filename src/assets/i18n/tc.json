@@ -1704,7 +1704,19 @@
     },
     "plans": {
       "title": "預算與目標",
-      "empty": "這個家庭還沒有預算或目標。"
+      "empty": "這個家庭還沒有預算或目標。",
+      "loading": "正在載入家庭的預算與目標…",
+      "listIncomplete": "部分預算或目標無法載入，因此可能有所遺漏。",
+      "budgetsTitle": "預算",
+      "goalsTitle": "目標",
+      "window": "{{start}} 至 {{end}}",
+      "incomplete": "無法載入所有計入的共享交易，因此可能不完整。",
+      "targetDate": "目標日期：{{date}}",
+      "contributionsTitle": "存入紀錄",
+      "noContributions": "還沒有存入紀錄。",
+      "goalIncomplete": "無法載入所有計入的共享交易或存入紀錄，因此可能不完整。",
+      "counting": "計算中…",
+      "notLoaded": "此家庭的預算與目標尚未載入到此裝置。連線後即可查看。"
     },
     "members": {
       "title": "成員",

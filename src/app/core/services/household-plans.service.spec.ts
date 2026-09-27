@@ -182,6 +182,8 @@ describe('HouseholdPlansService', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
   }
   const landed = () => firestore.batches;
+  /** Every commit sent, landed or refused, of either kind. */
+  const commits = () => firestore.callLog.filter(call => call.method === 'commitBatch' || call.method === 'commitOnline');
 
   async function refusal(work: Promise<unknown>): Promise<HouseholdError> {
     try {
@@ -375,7 +377,8 @@ describe('HouseholdPlansService', () => {
         spent: 15,
         atTodaysRate: true,
         window: { start: new Date(2026, 8, 1), end: new Date(2026, 8, 30, 23, 59, 59, 999) },
-        incomplete: false
+        incomplete: false,
+        counting: false
       });
       // 5 dollars in euros.
       expect([eatOut.budget.id, eatOut.spent, eatOut.atTodaysRate]).toEqual(['eat-out', 4, true]);
@@ -447,6 +450,38 @@ describe('HouseholdPlansService', () => {
 
       expect(plans.budgets().map(line => line.budget.id)).toEqual(['first', 'second', 'pending']);
     });
+
+    it('says a budget is still being counted until the copies its window reads have answered, and one with no window never is', () => {
+      follow();
+      answerBudgets([budget('food'), budget('ended', { endDate: stamp(new Date(2026, 7, 1)) })]);
+
+      expect(plans.budgets().map(line => [line.budget.id, line.counting])).toEqual([['food', true], ['ended', false]]);
+
+      answerLedger([copy(KAI, 'market', { amount: 3 })]);
+      expect(plans.budgets().map(line => line.counting)).toEqual([false, false]);
+
+      plans.setNow(new Date(2026, 9, 2));
+      expect(plans.budgets()[0].counting).withContext("October's window not read yet").toBeTrue();
+      answerLedger([]);
+      expect(plans.budgets()[0].counting).toBeFalse();
+    });
+
+    it("says a budget that converted a copy is still being counted until today's rates have loaded, and one that converted none is not", () => {
+      // The rate table's placeholder, which converts 1:1.
+      currency.rateSource.set(null);
+      follow();
+      answerBudgets([budget('food'), budget('travel', { categoryIds: ['transport'] })]);
+      answerLedger([
+        copy(KAI, 'ramen', { amount: 1500, currency: 'JPY' }),
+        copy(ME, 'bus', { amount: 3, bucket: 'transport_publicTransit', bucketGroup: 'transport' })
+      ]);
+
+      expect(plans.budgets().map(line => [line.budget.id, line.counting])).toEqual([['food', true], ['travel', false]]);
+
+      currency.rateSource.set('live');
+      // 1500 yen as 10 dollars.
+      expect(plans.budgets().map(line => [line.budget.id, line.counting, line.spent])).toEqual([['food', false, 10], ['travel', false, 3]]);
+    });
   });
 
   describe('its goals', () => {
@@ -478,7 +513,8 @@ describe('HouseholdPlansService', () => {
         fraction: 0.9,
         atTodaysRate: true,
         contributions: [jasmine.objectContaining({ id: 'c2' }), jasmine.objectContaining({ id: 'c1' })],
-        incomplete: false
+        incomplete: false,
+        counting: false
       });
       expect(plans.loading()).toBeFalse();
     });
@@ -491,6 +527,47 @@ describe('HouseholdPlansService', () => {
 
       expect(plans.goals()[0].incomplete).toBeTrue();
       expect(plans.goals()[0].contributed).toBe(LEDGER_VIEW_CAP);
+    });
+
+    it('says a goal is still being counted until its contributions and the linked copies have answered', () => {
+      follow();
+      answerBudgets([]);
+      answerGoals([goal('trip')]);
+      expect(plans.goals()[0].counting).toBeTrue();
+
+      answerContributions('trip', [contribution('c1', ME, 10)]);
+      expect(plans.goals()[0].counting).withContext('the linked copies not heard').toBeTrue();
+
+      answer(latest(linkListeners()), []);
+      expect(plans.goals()[0].counting).toBeFalse();
+
+      // Another goal reads the links afresh, so every goal counts them again.
+      answerGoals([goal('trip'), goal('car')]);
+      expect(plans.goals().map(line => [line.goal.id, line.counting])).toEqual([['trip', true], ['car', true]]);
+
+      answer(latest(linkListeners()), []);
+      expect(plans.goals().map(line => [line.goal.id, line.counting]))
+        .withContext("the new goal's contributions not heard")
+        .toEqual([['trip', false], ['car', true]]);
+
+      answerContributions('car', []);
+      expect(plans.goals().map(line => line.counting)).toEqual([false, false]);
+    });
+
+    it("says a goal a copy in another currency counts toward is still being counted until today's rates have loaded", () => {
+      currency.rateSource.set(null);
+      follow();
+      answerBudgets([]);
+      answerGoals([goal('trip', { currency: 'EUR' }), goal('car', { currency: 'EUR' })]);
+      answer(latest(linkListeners()), [copy(KAI, 'ramen', { goalId: 'trip', amount: 1500, currency: 'JPY' })]);
+      answerContributions('trip', [contribution('c1', ME, 10)]);
+      answerContributions('car', [contribution('c2', ME, 10)]);
+
+      expect(plans.goals().map(line => [line.goal.id, line.counting])).toEqual([['trip', true], ['car', false]]);
+
+      currency.rateSource.set('fallback');
+      // 1500 yen as 8 euros, and 10 contributed.
+      expect(plans.goals().map(line => [line.goal.id, line.counting, line.saved])).toEqual([['trip', false, 18], ['car', false, 10]]);
     });
   });
 
@@ -536,6 +613,63 @@ describe('HouseholdPlansService', () => {
   describe('its writes', () => {
     beforeEach(() => follow());
 
+    it("commits every write online, in a transaction nothing queues, but for the sweep of a gone goal's contributions", async () => {
+      answerGoals([goal('trip', { createdBy: ME })]);
+      answerContributions('trip', [contribution('mine', ME, 5)]);
+      firestore.setMockDocument(`${BUDGETS}/food`, budget('food'));
+      firestore.setMockDocument(`${GOALS}/trip`, goal('trip'));
+      firestore.setMockDocument(ledgerCopyPath('h1', ME, 'tx1'), copy(ME, 'tx1'));
+      const held = Array.from({ length: HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK + 1 }, (_, i) => contribution(`c${i}`, KAI, 1));
+      spyOn(firestore, 'getCollectionFromServer').and.returnValues(
+        Promise.resolve(held) as never,
+        Promise.resolve(held.slice(HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK)) as never
+      );
+
+      await plans.createBudget({ name: 'Food', categoryIds: ['food'], amount: 1, currency: 'USD', period: 'monthly', startDate: new Date(2026, 8, 1) });
+      await plans.updateBudget('food', { amount: 2 });
+      await plans.deleteBudget('food');
+      await plans.createGoal({ name: 'Bike', targetAmount: 1, currency: 'USD' });
+      await plans.updateGoal('trip', { name: 'Trips' });
+      await plans.addContribution('trip', 1, new Date(2026, 8, 1));
+      await plans.deleteContribution('trip', 'mine');
+      await plans.linkCopy('tx1', 'trip');
+      await plans.deleteGoal('trip');
+
+      expect(commits().map(call => call.method)).toEqual([...Array(9).fill('commitOnline'), 'commitBatch']);
+      // Deleting a contribution already gone does nothing, so the sweep may land whenever it can.
+      expect(firestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([
+        [{ op: 'delete', path: `${contributionsOf('trip')}/${held[HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK].id}` }]
+      ]);
+    });
+
+    it('says a write that lost its connection needs one, and a create that it may have landed, leaving nothing queued to land later', async () => {
+      answerGoals([goal('trip', { createdBy: ME })]);
+      answerContributions('trip', [contribution('mine', ME, 5)]);
+      spyOn(firestore, 'getCollectionFromServer').and.resolveTo([]);
+      spyOn(firestore, 'commitOnline').and.rejectWith(firebaseError('unavailable'));
+
+      const writes: [() => Promise<unknown>, string][] = [
+        [
+          () => plans.createBudget({ name: 'Food', categoryIds: ['food'], amount: 1, currency: 'USD', period: 'monthly', startDate: new Date(2026, 8, 1) }),
+          'household.errors.unconfirmed'
+        ],
+        [() => plans.updateBudget('b', { amount: 2 }), 'household.errors.offline'],
+        [() => plans.deleteBudget('b'), 'household.errors.offline'],
+        [() => plans.createGoal({ name: 'Trip', targetAmount: 1, currency: 'USD' }), 'household.errors.unconfirmed'],
+        [() => plans.updateGoal('trip', { name: 'Trips' }), 'household.errors.offline'],
+        [() => plans.deleteGoal('trip'), 'household.errors.offline'],
+        [() => plans.addContribution('trip', 1, new Date(2026, 8, 1)), 'household.errors.unconfirmed'],
+        [() => plans.deleteContribution('trip', 'mine'), 'household.errors.offline'],
+        [() => plans.linkCopy('tx1', 'trip'), 'household.errors.offline']
+      ];
+      for (const [write, message] of writes) {
+        expect((await refusal(write())).message).toBe(message);
+      }
+      expect(firestore.commitOnline).toHaveBeenCalledTimes(9);
+      expect(firestore.commitBatchSpy.calls.length).toBe(0);
+      expect(landed()).toEqual([]);
+    });
+
     it('makes a budget in one commit: its fields, the generation, its maker, and both stamps the server sets', async () => {
       const id = await plans.createBudget({
         name: '  Groceries ',
@@ -547,7 +681,7 @@ describe('HouseholdPlansService', () => {
       });
 
       expect(id).toBe('new-1');
-      expect(firestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([[{
+      expect(firestore.commitOnlineSpy.calls.map(call => call.args[0])).toEqual([[{
         op: 'set',
         path: `${BUDGETS}/new-1`,
         data: {
@@ -588,7 +722,7 @@ describe('HouseholdPlansService', () => {
 
       await plans.updateBudget('food', { name: 'Food and drink', amount: 450, endDate: null, alertThreshold: null, isActive: false });
 
-      expect(firestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([[{
+      expect(firestore.commitOnlineSpy.calls.map(call => call.args[0])).toEqual([[{
         op: 'update',
         path: `${BUDGETS}/food`,
         data: { name: 'Food and drink', amount: 450, endDate: deleteField(), alertThreshold: deleteField(), isActive: false },
@@ -596,13 +730,13 @@ describe('HouseholdPlansService', () => {
       }]]);
 
       await plans.updateBudget('food', {});
-      expect(firestore.commitBatchSpy.calls.length).withContext('nothing to change').toBe(1);
+      expect(commits().length).withContext('nothing to change').toBe(1);
     });
 
     it('deletes a budget in one commit', async () => {
       await plans.deleteBudget('food');
 
-      expect(firestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([[{ op: 'delete', path: `${BUDGETS}/food` }]]);
+      expect(firestore.commitOnlineSpy.calls.map(call => call.args[0])).toEqual([[{ op: 'delete', path: `${BUDGETS}/food` }]]);
     });
 
     it("refuses before writing to delete another member's budget, unless the viewer owns the household", async () => {
@@ -610,7 +744,7 @@ describe('HouseholdPlansService', () => {
 
       const error = await refusal(plans.deleteBudget('theirs'));
       expect(error.message).toBe('household.errors.planNotYours');
-      expect(firestore.commitBatchSpy.calls.length).toBe(0);
+      expect(commits()).toEqual([]);
 
       follow({ ...HOME, ownerId: ME });
       answerBudgets([budget('theirs', { createdBy: KAI })]);
@@ -622,7 +756,7 @@ describe('HouseholdPlansService', () => {
       const id = await plans.createGoal({ name: 'Trip', targetAmount: 1200, currency: 'JPY', targetDate: new Date(2027, 2, 1) });
       await plans.updateGoal(id, { targetAmount: 1500, targetDate: null });
 
-      expect(firestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([
+      expect(firestore.commitOnlineSpy.calls.map(call => call.args[0])).toEqual([
         [{
           op: 'set',
           path: `${GOALS}/new-1`,
@@ -737,14 +871,14 @@ describe('HouseholdPlansService', () => {
       const error = await refusal(plans.deleteGoal('theirs'));
 
       expect(error.message).toBe('household.errors.planNotYours');
-      expect(firestore.commitBatchSpy.calls.length).toBe(0);
+      expect(commits()).toEqual([]);
     });
 
     it("records a contribution in one commit: the member's own, in the goal's currency, stamped by the server", async () => {
       const id = await plans.addContribution('trip', 25.5, new Date(2026, 8, 14, 18));
 
       expect(id).toBe('new-1');
-      expect(firestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([[{
+      expect(firestore.commitOnlineSpy.calls.map(call => call.args[0])).toEqual([[{
         op: 'set',
         path: `${contributionsOf('trip')}/new-1`,
         data: { gen: GEN, memberUid: ME, amount: 25.5, date: stamp(new Date(2026, 8, 14, 18)), createdAt: serverTimestamp() },
@@ -770,10 +904,41 @@ describe('HouseholdPlansService', () => {
       await plans.linkCopy('tx1', 'trip');
       await plans.linkCopy('tx1', null);
 
-      expect(firestore.commitBatchSpy.calls.map(call => call.args[0])).toEqual([
+      expect(firestore.commitOnlineSpy.calls.map(call => call.args[0])).toEqual([
         [{ op: 'update', path: `${LEDGER}/${ME}_tx1`, data: { goalId: 'trip' }, stamp: 'server' }],
         [{ op: 'update', path: `${LEDGER}/${ME}_tx1`, data: { goalId: deleteField() }, stamp: 'server' }]
       ]);
+    });
+
+    it("links a copy only once the server has answered this device's earlier writes, among which its copy may be", async () => {
+      answerGoals([goal('trip')]);
+      firestore.setMockDocument(ledgerCopyPath('h1', ME, 'tx1'), copy(ME, 'tx1'));
+      let answered!: () => void;
+      spyOn(firestore, 'waitForPendingWrites').and.returnValue(new Promise<void>(resolve => (answered = resolve)));
+
+      const linking = plans.linkCopy('tx1', 'trip');
+      await settle();
+      expect(firestore.waitForPendingWrites).toHaveBeenCalledTimes(1);
+      expect(commits()).withContext('nothing is sent while an earlier write is unanswered').toEqual([]);
+
+      answered();
+      await linking;
+      expect(firestore.commitOnlineSpy.calls.map(call => call.args[0])).toEqual([
+        [{ op: 'update', path: `${LEDGER}/${ME}_tx1`, data: { goalId: 'trip' }, stamp: 'server' }]
+      ]);
+    });
+
+    it('refuses a link as offline when the device goes offline while it waits on earlier writes', async () => {
+      answerGoals([goal('trip')]);
+      spyOn(firestore, 'waitForPendingWrites').and.returnValue(new Promise<void>(() => undefined));
+
+      const linking = plans.linkCopy('tx1', 'trip');
+      await settle();
+      online.set(false);
+      TestBed.tick();
+
+      expect((await refusal(linking)).message).toBe('household.errors.offline');
+      expect(commits()).toEqual([]);
     });
 
     it('refuses before writing to link to a goal the household does not hold', async () => {
@@ -782,7 +947,7 @@ describe('HouseholdPlansService', () => {
       const error = await refusal(plans.linkCopy('tx1', 'gone-goal'));
 
       expect(error.message).toBe('household.errors.planGone');
-      expect(firestore.commitBatchSpy.calls.length).toBe(0);
+      expect(commits()).toEqual([]);
     });
 
     it('refuses every write offline, before anything is sent', async () => {
@@ -832,7 +997,7 @@ describe('HouseholdPlansService', () => {
         'household.errors.planAmount',
         'household.errors.planCategories:{"max":10}'
       ]);
-      expect(firestore.commitBatchSpy.calls.length).toBe(0);
+      expect(commits()).toEqual([]);
     });
 
     it('refuses a category a budget could never count, before writing: a custom one, a misspelled one or an income one', async () => {
@@ -846,17 +1011,17 @@ describe('HouseholdPlansService', () => {
       ];
 
       expect(messages).toEqual(Array(4).fill('household.errors.planCategories:{"max":10}'));
-      expect(firestore.commitBatchSpy.calls.length).toBe(0);
+      expect(commits()).toEqual([]);
 
       await plans.createBudget({ ...valid, categoryIds: ['food_restaurants', 'transport', 'other_expense'] });
-      expect(firestore.commitBatchSpy.calls.length).withContext('expense built-ins, groups and subcategories').toBe(1);
+      expect(firestore.commitOnlineSpy.calls.length).withContext('expense built-ins, groups and subcategories').toBe(1);
     });
 
     describe('sent twice', () => {
       /** Each commit lands, and its answer is lost: the resend is refused, as the rules refuse a create sent again. */
       function answerLostAfterLanding(): void {
-        const commit = firestore.commitBatch.bind(firestore);
-        spyOn(firestore, 'commitBatch').and.callFake(async (ops: readonly BatchOp[]) => {
+        const commit = firestore.commitOnline.bind(firestore);
+        spyOn(firestore, 'commitOnline').and.callFake(async (ops: readonly BatchOp[]) => {
           await commit(ops);
           throw firebaseError('permission-denied');
         });
@@ -895,6 +1060,70 @@ describe('HouseholdPlansService', () => {
         expect(error.message).toBe('household.errors.planGone');
         expect(firestore.getDocumentFromServerSpy.calls.map(call => call.args[0]))
           .toEqual([`${contributionsOf('trip')}/new-1`, `${GOALS}/trip`]);
+      });
+    });
+
+    describe('saved again from one dialog', () => {
+      const DAY = new Date(2026, 8, 1);
+      const FOOD = { name: 'Food', categoryIds: ['food'], amount: 10, currency: 'USD', period: 'monthly' as const, startDate: DAY };
+
+      /**
+       * Each of the first `lost` commits lands and its answer is lost to a
+       * dropped connection; the server refuses a set over a document it
+       * holds, as the rules refuse a create sent again.
+       */
+      function loseAnswers(lost: number): void {
+        const held = (path: string) => landed().some(batch => batch.some(op => op.path === path));
+        firestore.refuseBatch = ops =>
+          ops.some(op => op.op === 'set' && held(op.path)) ? firebaseError('permission-denied') : undefined;
+        const commit = firestore.commitOnline.bind(firestore);
+        let left = lost;
+        spyOn(firestore, 'commitOnline').and.callFake(async (ops: readonly BatchOp[]) => {
+          await commit(ops);
+          if (left === 0) return;
+          left -= 1;
+          throw firebaseError('unavailable');
+        });
+      }
+      const landedUnder = (collection: string) =>
+        landed().flat().filter(op => op.path.slice(0, op.path.lastIndexOf('/')) === collection);
+
+      it('says a create whose connection dropped may have landed, and records it once when saved again under its id', async () => {
+        loseAnswers(1);
+        const id = plans.newId();
+
+        expect((await refusal(plans.addContribution('trip', 4, DAY, id))).message).toBe('household.errors.unconfirmed');
+        expect(await plans.addContribution('trip', 4, DAY, id)).toBe(id);
+
+        expect(landedUnder(contributionsOf('trip')).map(op => op.path)).toEqual([`${contributionsOf('trip')}/${id}`]);
+      });
+
+      it('records a second contribution of the same amount from a fresh dialog, as one is meant', async () => {
+        loseAnswers(1);
+
+        await refusal(plans.addContribution('trip', 4, DAY, plans.newId()));
+        const second = plans.newId();
+        expect(await plans.addContribution('trip', 4, DAY, second)).toBe(second);
+
+        expect(landedUnder(contributionsOf('trip')).length).toBe(2);
+      });
+
+      it('takes a create saved again with its fields changed as landed, as it was first sent', async () => {
+        loseAnswers(3);
+        const contributionId = plans.newId();
+        const budgetId = plans.newId();
+        const goalId = plans.newId();
+
+        await refusal(plans.addContribution('trip', 4, DAY, contributionId));
+        await refusal(plans.createBudget(FOOD, budgetId));
+        await refusal(plans.createGoal({ name: 'Bike', targetAmount: 10, currency: 'USD' }, goalId));
+        expect(await plans.addContribution('trip', 5, DAY, contributionId)).toBe(contributionId);
+        expect(await plans.createBudget({ ...FOOD, currency: 'EUR' }, budgetId)).toBe(budgetId);
+        expect(await plans.createGoal({ name: 'Bikes', targetAmount: 12, currency: 'EUR' }, goalId)).toBe(goalId);
+
+        expect(landedUnder(contributionsOf('trip')).map(op => op.op === 'set' && op.data['amount'])).toEqual([4]);
+        expect(landedUnder(BUDGETS).map(op => op.op === 'set' && op.data['currency'])).toEqual(['USD']);
+        expect(landedUnder(GOALS).map(op => op.op === 'set' && op.data['name'])).toEqual(['Bike']);
       });
     });
 

@@ -1860,7 +1860,19 @@
     },
     "plans": {
       "title": "Budgets and goals",
-      "empty": "This household has no budgets or goals yet."
+      "empty": "This household has no budgets or goals yet.",
+      "loading": "Loading the household's budgets and goals…",
+      "listIncomplete": "Some budgets or goals couldn't be loaded, so some may be missing.",
+      "budgetsTitle": "Budgets",
+      "goalsTitle": "Goals",
+      "window": "{{start}} – {{end}}",
+      "incomplete": "Not every shared transaction it counts could be loaded, so this may be incomplete.",
+      "targetDate": "Target date: {{date}}",
+      "contributionsTitle": "Contributions",
+      "noContributions": "No contributions yet.",
+      "goalIncomplete": "Not every shared transaction or contribution it counts could be loaded, so this may be incomplete.",
+      "counting": "Counting…",
+      "notLoaded": "This household's budgets and goals haven't been loaded on this device. Connect to see them."
     },
     "members": {
       "title": "Members",

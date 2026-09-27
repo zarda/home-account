@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { Subject, Subscription } from 'rxjs';
 import { DocumentData, Timestamp, deleteField, serverTimestamp } from '@angular/fire/firestore';
-import { BatchOp, BatchStamp, CollectionWithMetadata, FirestoreService, QueryOptions } from './firestore.service';
+import { BatchOp, BatchStamp, FirestoreService, QueryOptions } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { HouseholdError } from './household.service';
@@ -23,12 +23,12 @@ import {
   HouseholdContribution,
   HouseholdGoal,
   LEDGER_QUERY_SHAPES,
-  LEDGER_VIEW_CAP,
   isBudgetPeriod,
   ledgerCopyPath
 } from '../../models';
+import { CappedFeed, UNHEARD, openCappedFeed } from '../utils/capped-feed.utils';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
-import { isStamp, sameStamp } from '../utils/household-index.utils';
+import { chunked, isStamp, sameStamp } from '../utils/household-index.utils';
 import {
   BudgetSpent,
   ConvertAtTodaysRate,
@@ -81,6 +81,12 @@ export interface HouseholdBudgetFigures extends BudgetSpent {
    * ledger's listener failed before the server answered.
    */
   incomplete: boolean;
+  /**
+   * The copies its window reads have not answered yet, so `spent` counts
+   * none of them: a figure to wait for, not a zero. Or it converted a copy
+   * before today's rates had loaded, at the placeholder's 1:1.
+   */
+  counting: boolean;
 }
 
 /** One of the household's goals with its progress. */
@@ -90,19 +96,14 @@ export interface HouseholdGoalFigures extends GoalProgress {
   contributions: readonly HouseholdContribution[];
   /** More contributions or linked copies were held than were read, or their listener failed before answering. */
   incomplete: boolean;
+  /**
+   * Its contributions or the linked copies have not answered yet, so its
+   * progress counts none of them: a figure to wait for, not a zero. Or it
+   * converted a linked copy before today's rates had loaded, at the
+   * placeholder's 1:1.
+   */
+  counting: boolean;
 }
-
-/** What one listener last said; `docs` is undefined until it answers. */
-interface Feed<T> {
-  docs?: readonly T[];
-  /** It held more than LEDGER_VIEW_CAP documents, and only the first were kept. */
-  truncated: boolean;
-  fromCache: boolean;
-  /** It failed, other than by a refusal, before the server answered. */
-  incomplete: boolean;
-}
-
-const UNHEARD: Feed<never> = { truncated: false, fromCache: false, incomplete: false };
 
 /** The most values a Firestore `in` filter takes. */
 const GOAL_IDS_PER_QUERY = 30;
@@ -173,14 +174,30 @@ function byShape(
  * A refusal of a listener is the rules saying the membership has ended;
  * HouseholdService reports that loss, and the listener stops quietly. Any
  * other failure is logged, and what was shown stays; before the server had
- * answered, the figures are marked as possibly incomplete.
+ * answered, the figures are marked as possibly incomplete. The ledger's
+ * listeners keep the same rule, from the same place (openCappedFeed), so a
+ * budget and a goal never disagree on it.
  *
- * Every write needs the network, as every other household change does: a
- * plan write queued offline and refused on landing would fail unseen. A
- * create sent again after its answer was lost is judged by the rules as a
- * change to the document its first delivery made, and refused; the document
- * is read back from the server, and one this member made under the id this
- * client generated means the write landed (ADR 0156).
+ * Every write needs the network, as every other household change does, and
+ * commits in a transaction (FirestoreService.commitOnline), never through
+ * the persistent mutation queue: a plan write kept on the device would land
+ * days later over what the household changed meanwhile, or be refused then
+ * unseen. A write whose connection drops fails, and says so; on a network
+ * that silently drops traffic it waits as long as the browser does, since
+ * nothing bounds it, but nothing is kept to be sent once the page is gone.
+ * The server may have taken a write before the connection dropped, so a
+ * create that fails that way says it may have landed. Only the sweep of a
+ * deleted goal's contributions commits through the queue: deleting a
+ * contribution already gone does nothing. A link waits first for this
+ * device's earlier writes, since the copy it changes may be among them
+ * (linkCopy).
+ *
+ * A create sent again, by the transaction's runner after its answer was
+ * lost or by another save of the same dialog under the id made for it
+ * (newId), is judged by the rules as a change to the document its first
+ * delivery made, and refused; the document is read back from the server,
+ * and one this member made in this generation means the write landed
+ * (ADR 0156).
  */
 @Injectable()
 export class HouseholdPlansService {
@@ -194,10 +211,10 @@ export class HouseholdPlansService {
   private readonly household = signal<LedgerHousehold | null>(null, { equal: sameHousehold });
   /** The moment the budgets' windows are judged at. */
   private readonly now = signal(new Date());
-  private readonly budgetFeed = signal<Feed<HouseholdBudget>>(UNHEARD);
-  private readonly goalFeed = signal<Feed<HouseholdGoal>>(UNHEARD);
-  private readonly contributionFeeds = signal<ReadonlyMap<string, Feed<HouseholdContribution>>>(new Map());
-  private readonly linkFeeds = signal<readonly Feed<StoredLedgerCopy>[]>([]);
+  private readonly budgetFeed = signal<CappedFeed<HouseholdBudget>>(UNHEARD);
+  private readonly goalFeed = signal<CappedFeed<HouseholdGoal>>(UNHEARD);
+  private readonly contributionFeeds = signal<ReadonlyMap<string, CappedFeed<HouseholdContribution>>>(new Map());
+  private readonly linkFeeds = signal<readonly CappedFeed<StoredLedgerCopy>[]>([]);
 
   private budgetsListener: Subscription | null = null;
   private goalsListener: Subscription | null = null;
@@ -215,15 +232,26 @@ export class HouseholdPlansService {
   private readonly unswept = new Map<string, { household: LedgerHousehold; goalId: string }>();
   private sweeping = false;
   private destroyed = false;
+  /** Told each time the device goes offline (earlierWritesAnswered). */
+  private readonly wentOffline = new Subject<void>();
 
   /** Converts at today's rate; reading the rates, so a rates change refolds every converted figure. */
   private readonly convert: ConvertAtTodaysRate = (amount, from, to) => this.currency.convert(amount, from, to);
+
+  /**
+   * The rate table has settled on a source. Until then it is a placeholder
+   * that converts every currency 1:1, so a figure that converted is one to
+   * wait for; read only for such a figure, so a plan in one currency never
+   * waits on the rates.
+   */
+  private readonly ratesSettled = computed(() => this.currency.rateSource() !== null);
 
   /** The active budgets in the order they were made, each with its spending in its current window. */
   readonly budgets = computed<HouseholdBudgetFigures[]>(() => {
     const copies = this.ledger.windowCopies();
     const keptFrom = this.ledger.windowKeptFrom();
     const ledgerFailed = this.ledger.windowIncomplete();
+    const unread = this.ledger.windowLoading();
     const now = this.now();
     return (this.budgetFeed().docs ?? [])
       .filter(readableBudget)
@@ -231,7 +259,12 @@ export class HouseholdPlansService {
       .map(budget => {
         const figure = budgetSpent(budget, copies, now, this.convert);
         const cut = figure.window !== null && keptFrom !== null && keptFrom >= figure.window.start.getTime();
-        return { budget, ...figure, incomplete: ledgerFailed || cut };
+        return {
+          budget,
+          ...figure,
+          incomplete: ledgerFailed || cut,
+          counting: (unread && figure.window !== null) || (figure.atTodaysRate && !this.ratesSettled())
+        };
       });
   });
 
@@ -243,6 +276,7 @@ export class HouseholdPlansService {
       .flatMap(feed => feed.docs ?? [])
       .filter(copy => members.has(copy.memberUid) && readableCopy(copy));
     const linksCut = linkFeeds.some(feed => feed.truncated || feed.incomplete);
+    const linksUnread = linkFeeds.some(feed => feed.docs === undefined);
     const contributionFeeds = this.contributionFeeds();
     return (this.goalFeed().docs ?? [])
       .filter(readableGoal)
@@ -250,11 +284,14 @@ export class HouseholdPlansService {
       .map(goal => {
         const feed = contributionFeeds.get(goal.id) ?? UNHEARD;
         const contributions = (feed.docs ?? []).filter(contribution => members.has(contribution.memberUid));
+        // Contributions are in the goal's currency: only a linked copy converts.
+        const progress = goalProgress(goal, linked, contributions, this.convert);
         return {
           goal,
-          ...goalProgress(goal, linked, contributions, this.convert),
+          ...progress,
           contributions,
-          incomplete: linksCut || feed.truncated || feed.incomplete
+          incomplete: linksCut || feed.truncated || feed.incomplete,
+          counting: linksUnread || feed.docs === undefined || (progress.atTodaysRate && !this.ratesSettled())
         };
       });
   });
@@ -287,9 +324,11 @@ export class HouseholdPlansService {
       this.closeAll();
     });
     // What a goal deleted while the connection dropped left of its
-    // contributions is removed once the device is back online.
+    // contributions is removed once the device is back online; a wait on
+    // the connection ends once it is lost.
     effect(() => {
       if (this.pwa.isOnline()) untracked(() => void this.resumeSweeps());
+      else untracked(() => this.wentOffline.next());
     });
   }
 
@@ -320,8 +359,20 @@ export class HouseholdPlansService {
 
   // ---- writes ----
 
-  /** Makes a budget for the household, answering its id. Refused offline. */
-  async createBudget(input: HouseholdBudgetInput): Promise<string> {
+  /**
+   * An id for one create, made before its first attempt. Given to every
+   * attempt at that create (each save of one dialog), it lets an attempt
+   * sent again after its answer was lost be recognised on the server as
+   * the delivery that landed, rather than made a second time. A create
+   * given no id makes its own, which serves that one call alone.
+   */
+  newId(): string {
+    // Firestore draws an id alike for every collection.
+    return this.firestore.generateId('households');
+  }
+
+  /** Makes a budget for the household under `id` (newId), answering it. Refused offline. */
+  async createBudget(input: HouseholdBudgetInput, id?: string): Promise<string> {
     const { household, uid } = this.writer();
     return this.attempt(async () => {
       const currency = this.currencyCode(input.currency);
@@ -334,9 +385,9 @@ export class HouseholdPlansService {
         createdAt: serverTimestamp()
       };
       const collection = `households/${household.id}/budgets`;
-      const path = `${collection}/${this.firestore.generateId(collection)}`;
+      const path = `${collection}/${id ?? this.firestore.generateId(collection)}`;
       await this.create<HouseholdBudget>(path, data, 'server', stored =>
-        stored.createdBy === uid && sameStamp(stored.gen, household.createdAt) && stored.currency === currency);
+        stored.createdBy === uid && sameStamp(stored.gen, household.createdAt));
       return this.idOf(path);
     });
   }
@@ -348,7 +399,7 @@ export class HouseholdPlansService {
       const data = this.budgetFields(changes, 'update');
       if (Object.keys(data).length === 0) return;
       const path = `households/${household.id}/budgets/${budgetId}`;
-      await this.firestore.commitBatch([{ op: 'update', path, data, stamp: 'server' }])
+      await this.firestore.commitOnline([{ op: 'update', path, data, stamp: 'server' }])
         .catch(async (error: unknown) => { throw await this.whyRefused(error, path); });
     });
   }
@@ -363,12 +414,12 @@ export class HouseholdPlansService {
     return this.attempt(async () => {
       const listed = this.budgetFeed().docs?.find(budget => budget.id === budgetId);
       if (listed) this.refuseUnlessMaker(listed.createdBy, household, uid, this.t('household.errors.planNotYours'));
-      await this.firestore.commitBatch([{ op: 'delete', path: `households/${household.id}/budgets/${budgetId}` }]);
+      await this.firestore.commitOnline([{ op: 'delete', path: `households/${household.id}/budgets/${budgetId}` }]);
     });
   }
 
-  /** Makes a goal for the household, answering its id. Refused offline. */
-  async createGoal(input: HouseholdGoalInput): Promise<string> {
+  /** Makes a goal for the household under `id` (newId), answering it. Refused offline. */
+  async createGoal(input: HouseholdGoalInput, id?: string): Promise<string> {
     const { household, uid } = this.writer();
     return this.attempt(async () => {
       const currency = this.currencyCode(input.currency);
@@ -381,9 +432,9 @@ export class HouseholdPlansService {
         createdAt: serverTimestamp()
       };
       const collection = `households/${household.id}/goals`;
-      const path = `${collection}/${this.firestore.generateId(collection)}`;
+      const path = `${collection}/${id ?? this.firestore.generateId(collection)}`;
       await this.create<HouseholdGoal>(path, data, 'server', stored =>
-        stored.createdBy === uid && sameStamp(stored.gen, household.createdAt) && stored.currency === currency);
+        stored.createdBy === uid && sameStamp(stored.gen, household.createdAt));
       return this.idOf(path);
     });
   }
@@ -395,7 +446,7 @@ export class HouseholdPlansService {
       const data = this.goalFields(changes, 'update');
       if (Object.keys(data).length === 0) return;
       const path = `households/${household.id}/goals/${goalId}`;
-      await this.firestore.commitBatch([{ op: 'update', path, data, stamp: 'server' }])
+      await this.firestore.commitOnline([{ op: 'update', path, data, stamp: 'server' }])
         .catch(async (error: unknown) => { throw await this.whyRefused(error, path); });
     });
   }
@@ -410,10 +461,15 @@ export class HouseholdPlansService {
    * them (no more can be), and deleted in commits of that size. Refused
    * offline; the maker, while a member, and the owner may delete a goal.
    *
-   * Once the goal's commit has landed the delete is done, and the call
-   * resolves: no listener shows a gone goal, so the page could not offer it
-   * again. Contributions the rest of the sweep did not reach are swept again
-   * later, while the page lives (resumeSweeps).
+   * The call rejects when the contributions could not be listed or the
+   * goal's own commit failed. Otherwise it resolves once the sweep of the
+   * rest has run, whether or not that sweep removed them all: the goal is
+   * gone, no listener shows it, and the page could not offer it again. A
+   * sweep that stopped part-way leaves the contributions it did not reach
+   * on the server, counted by no goal, and is run again each time the
+   * device is back online and whenever the page reads a household afresh,
+   * for as long as the page lives (resumeSweeps). One the rules refused is
+   * not run again, and is only logged.
    *
    * Copies linked to the goal keep their link, which only their authors can
    * change; a goal that is gone counts nothing.
@@ -424,7 +480,7 @@ export class HouseholdPlansService {
       const listed = this.goalFeed().docs?.find(goal => goal.id === goalId);
       if (listed) this.refuseUnlessMaker(listed.createdBy, household, uid, this.t('household.errors.planNotYours'));
       const before = await this.listContributions(household, goalId);
-      await this.firestore.commitBatch([
+      await this.firestore.commitOnline([
         { op: 'delete', path: `households/${household.id}/goals/${goalId}` },
         ...this.contributionDeletes(household, goalId, before.slice(0, HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK))
       ]);
@@ -434,17 +490,17 @@ export class HouseholdPlansService {
 
   /**
    * Records what the viewer puts toward a goal, in the goal's currency,
-   * answering the contribution's id. Refused offline, and by the rules once
-   * the goal is gone.
+   * under `id` (newId), answering it. Refused offline, and by the rules
+   * once the goal is gone.
    */
-  async addContribution(goalId: string, amount: number, date: Date): Promise<string> {
+  async addContribution(goalId: string, amount: number, date: Date, id?: string): Promise<string> {
     const { household, uid } = this.writer();
     return this.attempt(async () => {
       this.requireAmount(amount);
       if (!isDate(date)) throw new Error('A contribution needs a date');
       const goalPath = `households/${household.id}/goals/${goalId}`;
       const collection = `${goalPath}/contributions`;
-      const path = `${collection}/${this.firestore.generateId(collection)}`;
+      const path = `${collection}/${id ?? this.firestore.generateId(collection)}`;
       const data: DocumentData = {
         gen: household.createdAt,
         memberUid: uid,
@@ -454,7 +510,7 @@ export class HouseholdPlansService {
       };
       // No stamp: a contribution is never changed, and holds no updatedAt.
       await this.create<HouseholdContribution>(path, data, false, stored =>
-        stored.memberUid === uid && sameStamp(stored.gen, household.createdAt) && stored.amount === amount)
+        stored.memberUid === uid && sameStamp(stored.gen, household.createdAt))
         .catch(async (error: unknown) => { throw await this.whyRefused(error, goalPath); });
       return this.idOf(path);
     });
@@ -470,7 +526,7 @@ export class HouseholdPlansService {
     return this.attempt(async () => {
       const listed = this.contributionFeeds().get(goalId)?.docs?.find(contribution => contribution.id === contributionId);
       if (listed) this.refuseUnlessMaker(listed.memberUid, household, uid, this.t('household.errors.contributionNotYours'));
-      await this.firestore.commitBatch([
+      await this.firestore.commitOnline([
         { op: 'delete', path: `households/${household.id}/goals/${goalId}/contributions/${contributionId}` }
       ]);
     });
@@ -482,10 +538,16 @@ export class HouseholdPlansService {
    * changes, and nothing else of it. A goal the household does not hold is
    * refused before anything is sent.
    *
-   * Refused offline, as a plan write is: a link queued offline and refused
-   * on landing (its goal deleted meanwhile, say) would roll back unseen, and
-   * nothing repairs a link later, since the journal and the sweeps leave
-   * goalId alone.
+   * Refused offline, and committed online, as a plan write is: a link kept
+   * on the device and refused when it landed (its goal deleted meanwhile,
+   * say) would roll back unseen, and nothing repairs a link later, since the
+   * journal and the sweeps leave goalId alone.
+   *
+   * A row just shared has its copy written through the device's queue,
+   * which a transaction does not wait behind: the link would find no copy
+   * on the server and call it gone. So the link first waits for the server
+   * to answer this device's earlier writes, and going offline meanwhile
+   * refuses it as offline.
    */
   async linkCopy(sourceId: string, goalId: string | null): Promise<void> {
     const { household, uid } = this.writer();
@@ -495,8 +557,9 @@ export class HouseholdPlansService {
         throw new HouseholdError(this.t('household.errors.planGone'));
       }
       const path = ledgerCopyPath(household.id, uid, sourceId);
+      await this.earlierWritesAnswered();
       try {
-        await this.firestore.commitBatch([{ op: 'update', path, data: { goalId: goalId ?? deleteField() }, stamp: 'server' }]);
+        await this.firestore.commitOnline([{ op: 'update', path, data: { goalId: goalId ?? deleteField() }, stamp: 'server' }]);
       } catch (error) {
         const code = errorCode(error);
         if (code !== 'permission-denied' && code !== 'not-found') throw error;
@@ -589,8 +652,7 @@ export class HouseholdPlansService {
     if (linked === this.linkedGoals) return;
     this.closeLinks();
     this.linkedGoals = linked;
-    const chunks: string[][] = [];
-    for (let i = 0; i < ids.length; i += GOAL_IDS_PER_QUERY) chunks.push(ids.slice(i, i + GOAL_IDS_PER_QUERY));
+    const chunks = chunked(ids, GOAL_IDS_PER_QUERY);
     this.linkFeeds.set(chunks.map(() => UNHEARD));
     chunks.forEach((chunk, index) => {
       const listener = this.open<StoredLedgerCopy>(
@@ -605,39 +667,18 @@ export class HouseholdPlansService {
   }
 
   /**
-   * Opens one listener, handing each answer to `heard`. A capped list asks
-   * for one document past LEDGER_VIEW_CAP, so one that holds more is known
-   * to. Answers null when the listener failed while it was being opened.
+   * Opens one listener, handing each answer to `heard`, by the rule every
+   * capped household list keeps (openCappedFeed). Answers null when the
+   * listener failed while it was being opened.
    */
   private open<T>(
     path: string,
     query: QueryOptions,
     capped: boolean,
     what: string,
-    heard: (feed: Feed<T>) => void
+    heard: (feed: CappedFeed<T>) => void
   ): Subscription | null {
-    let last: Feed<T> = UNHEARD;
-    const answer = (feed: Feed<T>) => {
-      last = feed;
-      heard(feed);
-    };
-    const subscription = this.firestore
-      .subscribeToCollectionWithMetadata<T>(path, capped ? { ...query, limit: LEDGER_VIEW_CAP + 1 } : query)
-      .subscribe({
-        next: ({ docs, fromCache }: CollectionWithMetadata<T>) => {
-          const truncated = capped && docs.length > LEDGER_VIEW_CAP;
-          answer({ docs: truncated ? docs.slice(0, LEDGER_VIEW_CAP) : docs, truncated, fromCache, incomplete: false });
-        },
-        error: (error: unknown) => {
-          // The membership ended; HouseholdService says so.
-          if (isRefused(error)) return;
-          console.warn(`${LOG} The ${what} listener stopped:`, error);
-          // What was shown stays. One the server never answered counts as
-          // answered with what the cache held, or with nothing, and says so.
-          if (last.docs === undefined || last.fromCache) answer({ ...last, docs: last.docs ?? [], incomplete: true });
-        }
-      });
-    return subscription.closed ? null : subscription;
+    return openCappedFeed(this.firestore, path, query, { capped, what, log: LOG }, heard);
   }
 
   private closeLinks(): void {
@@ -681,26 +722,57 @@ export class HouseholdPlansService {
     if (error instanceof HouseholdError) return error;
     const code = errorCode(error);
     if (code === 'permission-denied') return new HouseholdError(this.t('household.errors.refused'), { cause: error });
-    if (!this.pwa.isOnline() || code === 'unavailable' || code === 'deadline-exceeded') {
-      return new HouseholdError(this.t('household.errors.offline'), { cause: error });
-    }
+    if (this.lostConnection(error)) return new HouseholdError(this.t('household.errors.offline'), { cause: error });
     return new HouseholdError(this.t('errors.generic'), { cause: error });
+  }
+
+  private lostConnection(error: unknown): boolean {
+    const code = errorCode(error);
+    return !this.pwa.isOnline() || code === 'unavailable' || code === 'deadline-exceeded';
   }
 
   /**
    * Sets a new document, resolving when it landed. A refusal is read back
-   * from the server: the id is this client's own, so a document there that
-   * `ours` recognises is the first delivery of a create whose answer was
-   * lost, and the write is done. Anything else passes the refusal on.
+   * from the server: the id was made for this one create (newId), so a
+   * document there that `ours` recognises (this member made it, in this
+   * generation) is an earlier delivery of it: the first, sent again after
+   * its answer was lost, or an earlier save of the same dialog, its fields
+   * perhaps changed since. The write is done, as that delivery sent it.
+   * Anything else passes the refusal on. A connection lost on the way
+   * leaves unknown whether the create landed, and the failure says it may
+   * have: saved again under the same id, it is recognised, not made twice.
    */
   private async create<T>(path: string, data: DocumentData, stamp: BatchStamp, ours: (stored: T) => boolean): Promise<void> {
     try {
-      await this.firestore.commitBatch([{ op: 'set', path, data, stamp }]);
+      await this.firestore.commitOnline([{ op: 'set', path, data, stamp }]);
     } catch (error) {
-      if (!isRefused(error)) throw error;
+      if (!isRefused(error)) {
+        throw this.lostConnection(error)
+          ? new HouseholdError(this.t('household.errors.unconfirmed'), { cause: error })
+          : error;
+      }
       const stored = await this.firestore.getDocumentFromServer<T>(path).catch(() => null);
       if (stored && ours(stored)) return;
       throw error;
+    }
+  }
+
+  /**
+   * Resolves once the server has answered every write this device issued
+   * before the call: the whole queue, as the SDK waits on no single write.
+   * Offline that wait lasts until the connection returns, so going offline
+   * meanwhile refuses, as a write asked for offline is refused.
+   */
+  private async earlierWritesAnswered(): Promise<void> {
+    let stop = (): void => undefined;
+    const cut = new Promise<never>((_, reject) => {
+      const offline = this.wentOffline.subscribe(() => reject(new HouseholdError(this.t('household.errors.offline'))));
+      stop = () => offline.unsubscribe();
+    });
+    try {
+      await Promise.race([this.firestore.waitForPendingWrites(), cut]);
+    } finally {
+      stop();
     }
   }
 
@@ -757,14 +829,13 @@ export class HouseholdPlansService {
   /**
    * Deletes what is left of a gone goal's contributions, listed afresh from
    * the server, in commits of HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK. Deleting
-   * one already gone does nothing, so a sweep may run again at any time.
+   * one already gone does nothing, so a sweep may run again at any time, and
+   * its commits may go through the queue and land whenever they can.
    */
   private async sweepContributions(household: LedgerHousehold, goalId: string): Promise<void> {
     const left = await this.listContributions(household, goalId);
-    for (let i = 0; i < left.length; i += HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK) {
-      await this.firestore.commitBatch(
-        this.contributionDeletes(household, goalId, left.slice(i, i + HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK))
-      );
+    for (const chunk of chunked(left, HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK)) {
+      await this.firestore.commitBatch(this.contributionDeletes(household, goalId, chunk));
     }
   }
 
