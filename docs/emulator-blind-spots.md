@@ -288,7 +288,7 @@ beside itself instead of passing for what the door receives today.
 ## What the axe pass can and cannot see
 
 `app.smoke.spec.ts`'s `expectPage()` runs axe-core over every page it opens,
-WCAG 2.1 A and AA, scoped to the routed element. Five properties of the
+WCAG 2.1 A and AA, scoped to the routed element. Six properties of the
 harness bound what that can honestly mean, and none of them is about axe:
 
 - **i18n is not served.** Karma's asset config does not publish the catalogs,
@@ -343,6 +343,19 @@ harness bound what that can honestly mean, and none of them is about axe:
   [ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md) came to
   record two failures in light mode. Where a finding depends on the theme,
   measure both in a browser — journeys 45 and 57 in [e2e.md](e2e.md) do.
+- **Colours are read at rest, not in motion.** `provideNoopAnimations` stops
+  Angular's animations but not plain CSS transitions, and headless Chrome need
+  not paint a frame between a class landing and the pass, so a transition can
+  sit on its first colours for the whole audit. The transactions quick
+  filters mark "This month" from a zero-delay timer after first render, and
+  their `transition: all 0.15s` carried the active button across: five
+  forced-dark runs out of five audited it still wearing the inactive
+  button's gray-400 on `#1e1e1e`, while the colours it settles on — white on
+  the dark `--color-primary`, 3.45:1 — failed the one earlier run that read
+  them. So `runAxe` finishes every running transition and
+  finite animation before it reads (an endless one, a spinner, keeps
+  running), and `expectNoAxeViolations` lets the page's zero-delay timers
+  land before that, so a class cannot start moving mid-audit.
 
 And it sweeps only the routes the walkthrough visits: `/dashboard`,
 `/transactions`, `/budgets`, `/reports`, `/settings`, `/data`, `/household`

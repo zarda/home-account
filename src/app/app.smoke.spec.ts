@@ -166,6 +166,13 @@ describe('App routes (emulator smoke test)', () => {
       throw new Error(`No routed element to audit for ${url}`);
     }
 
+    // runAxe finishes the transitions already running, but not one that has
+    // yet to start: the quick filters bind "This month" from a zero-delay
+    // timer, and a class landing during the pass would move mid-audit. Let
+    // such timers land first.
+    await new Promise(resolve => setTimeout(resolve));
+    harness.detectChanges();
+
     const results = await runAxe(element);
 
     expect(unexpectedViolations(results, url))
@@ -235,6 +242,11 @@ describe('App routes (emulator smoke test)', () => {
     }
   }
 
+  // beforeAll takes an explicit 30 s rather than Jasmine's 5000 ms default: a
+  // cold emulator's first anonymous sign-in and the seed writes can take
+  // longer than that on a loaded machine. A timed-out beforeAll is reported
+  // as a suite error, and Karma ends the run there: every smoke case not yet
+  // run is lost, not only this file's.
   beforeAll(async () => {
     app = initializeApp(
       {
@@ -312,7 +324,7 @@ describe('App routes (emulator smoke test)', () => {
       createdAt: now,
       updatedAt: now
     });
-  });
+  }, 30000);
 
   afterAll(async () => {
     // Normally already deleted at the end of the walkthrough spec; this is

@@ -100,8 +100,31 @@ export function axeOptions(): RunOptions {
   };
 }
 
-/** Runs the shared pass over one element. */
+/**
+ * Jumps every running transition and finite animation in the document to
+ * its end, so `color-contrast` scores the colours the page rests on.
+ *
+ * `provideNoopAnimations` stops Angular's animations, not plain CSS ones, and
+ * headless Chrome need not paint a frame between a class landing and the
+ * pass — so a transition can sit on its first colours for the whole run. The
+ * transactions quick filters mark "This month" after first render and carry
+ * `transition: all 0.15s`; audited mid-flight, their active button read as
+ * the inactive one, and a 3.45:1 dark pair passed every run but one.
+ *
+ * An animation with no end (a spinner, a skeleton pulse) cannot be finished —
+ * `finish()` throws on it — and is left running.
+ */
+export function settleAnimations(doc: Document): void {
+  for (const animation of doc.getAnimations()) {
+    if (Number.isFinite(Number(animation.effect?.getComputedTiming().endTime))) {
+      animation.finish();
+    }
+  }
+}
+
+/** Runs the shared pass over one element, once its motion has settled. */
 export function runAxe(element: Element): Promise<AxeResults> {
+  settleAnimations(element.ownerDocument);
   return axe.run(element, axeOptions());
 }
 
