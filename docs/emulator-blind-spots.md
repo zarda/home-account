@@ -55,6 +55,67 @@ A missing index is a deploy defect, not a transient fault, so
 the error surfaces on the first attempt instead of after three rounds of
 backoff behind the same banner.
 
+### The household's lists (#71)
+
+The household's own lists are a second, smaller contract with a check of its
+own. Every list a member makes over a household's ledger, budgets, goals or
+goal contributions leads with `gen ==` the household's live generation,
+which is what lets the rules prove the list holds only that generation's
+documents, and adds one field: the ledger's copies by date (descending), by
+goal and by member; the active budgets and goals by `isActive`; one goal's
+contributions by date (descending). (An author listing its own copies
+filters on `memberUid` alone, a member list filters on `since` alone, and an
+erasure listing the account's own contributions filters goals and
+contributions on `gen` alone, keeping its own on the client; single-field
+indexes serve all three.) Each shape is declared once, in
+`LEDGER_QUERY_SHAPES` (`src/app/models/household-ledger.model.ts`), and the
+services build their queries from it. `npm run ledger:check`
+(`scripts/check-ledger-contract.mjs`, in CI right after `indexes:check`)
+fails when a shape has no `COLLECTION`-scoped composite in
+`firestore.indexes.json` with the same fields in the same order and
+direction; the six composites the shapes need were added with them. The
+check proves that each declared shape has its entry, not that every
+household query is built from one: a list with another filter or order goes
+into `LEDGER_QUERY_SHAPES` first, or nothing local notices it before
+production answers `failed-precondition`. Beyond the check, journey 78 in
+[e2e.md](e2e.md), live after the merge, is the proof that three of the
+deployed composites serve the deployed app: the ledger's copies by date, and
+the active budgets and goals, which the household page lists even when there
+are none. The journey does not run the other three. A goal's contributions
+by date and the copies by goal are queried only once a household has an
+active goal, and the copies by member only in an owner's purge after a
+removal; journey 78 makes no goal and removes no member. (Its dissolve does
+set off the member trigger, whose server-side sweep lists a member's copies
+in the same shape, but the journey reads nothing of that sweep's outcome.)
+For those three what stands is a reasoned chain, not a run: the service
+specs pin each query to its shape, `ledger:check` pins each shape to its
+composite, and the deploy's index wait holds the run until each composite is
+built. The first production goal, or the first removal, is their first live
+use in the app.
+
+The same blind spot shaped what the copy check counts. The sweep compares
+two server counts, the account's rows naming a household against the
+account's copies in its ledger, each served by the automatic single-field
+indexes under its one filter. A sum would catch a copy behind its row in
+amount, but a sum filtered on another field needs a composite of the filter
+and the summed field in production (for the rows, one over every account's
+transactions), and the emulator would never ask for it: a sum could pass
+every smoke run and fail on its first real use. So a copy behind in a field
+alone waits for the journal or the weekly full pass
+([ADR 0159](ADR/0159-a-copy-follows-its-row-in-a-commit-of-its-own-and-a-sweep-repairs-what-the-follow-ups-miss.md)).
+
+The rules' lookup ceiling is a third thing the emulator does not hold. A
+commit may make at most 20 document lookups in production; the ledger and
+plan commits are sized to that count as the rules' own comments tally it
+(five copy writes of three lookups each; a goal delete's two with six
+contribution deletes of three each), and probes of ten and of forty
+contribution deletes in one commit were both allowed by the emulator. The
+chunk sizes are reasoned, not tested: only a goal holding more than six of
+other members' contributions, deleted on production by a member who is not
+the owner, would exercise the chunk that has no headroom, and journey 78
+makes no goal
+([ADR 0160](ADR/0160-a-households-budgets-and-goals-are-its-own-counted-from-shared-copies-and-members-contributions.md)).
+
 ## Deploying
 
 Neither file does anything until deployed. Since
@@ -170,11 +231,13 @@ actually runs.
 
 It has two venues. **Production** stays the instrument for the wire and the
 deployed rules: a real session, real rows, a real provider. **The emulator
-serve** is the second, for journeys that need two accounts signed in, which
-production cannot give without a second real person's data. The app is
+serve** is the second, for journeys that need several accounts signed in,
+which production cannot give without other real people's data. The app is
 pointed at the emulators by a committed build configuration, `emulators`,
 served with `npm run start:emulators` on port 4300, and
-`docs/ui-audit/tools/seed-household.mjs` seeds the two accounts
+`docs/ui-audit/tools/seed-household.mjs` seeds three accounts in two
+households: shared rows with their copies, private rows beside them, and the
+households' own budgets and goals with a contribution each
 ([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
 That venue shares the suite's own limits: the rules it loads are the
 repository's, not the deployed ones, and nothing in it is real mail.
@@ -183,7 +246,8 @@ repository's, not the deployed ones, and nothing in it is real mail.
 
 `npm run smoke` starts the emulators `--only auth,storage,firestore`. The
 functions emulator is not among them, so **the household invite callable,
-`inviteToHousehold`, never runs in the suite.** What covers it instead, in
+`inviteToHousehold`, never runs in the suite**, and neither do the two
+household cleanup triggers below. What covers the callable instead, in
 three pieces:
 
 - **Its decisions** — the ten-step refusal order, the counters, the seat
@@ -197,9 +261,9 @@ three pieces:
   provide a stand-in for the callable that refuses if it is ever called.
 - **The real callable against real Auth and Firestore** — the Admin SDK's
   address lookup, its transactions, its region in the URL, its secrets
-  loading — is exercised only in the emulator journeys, 58 to 66 in
+  loading — is exercised only in the emulator journeys in
   [e2e.md](e2e.md), driven by hand with the functions emulator started
-  beside the others.
+  beside the others: journey 76 sends a real invite through it.
 
 Two things about it no local run can see at all. **The public invoker**: a
 callable answers the app only while `allUsers` holds `roles/run.invoker` on
@@ -207,8 +271,35 @@ its Cloud Run service, the functions emulator has no IAM, and a deploy that
 failed to bind it leaves the function private without anything local
 noticing — [household.md](household.md#operator-runbook) has the read-only
 checks and the repair. **Real mail**: the journeys' SMTP host is a port
-nothing listens on, so a mail that arrives is proved only by journey 67 on
+nothing listens on, so a mail that arrives is proved only by journey 78 on
 production, and only when a recipient is named for it.
+
+**The cleanup triggers**, `onHouseholdMemberDeleted` and
+`onHouseholdDissolved`, fire when a member document or a household is
+deleted, and delete what that membership or household left of its
+generation: the member's copies, or the household's copies, budgets, goals,
+contributions and member documents
+([ADR 0161](ADR/0161-a-deleted-membership-or-household-is-swept-by-server-triggers-as-a-backstop.md)).
+They are a backstop: the clients delete the same documents on their own
+paths, and the smoke specs prove those paths through the rules without the
+triggers. The triggers themselves are covered in two pieces:
+
+- **Their decisions and their I/O** — the sweeps each deleted document plans
+  and their order, the generation filters, the member-back guard, paging,
+  a re-delivery that finds nothing left, and which errors are rethrown for
+  another delivery — are a pure planner, a handler over injected
+  dependencies and the Admin SDK dependencies, pinned over fakes by
+  `npm --prefix functions test`. `household-client-mirrors.test.ts` also
+  holds the member sweep's query to the app's `(gen, memberUid)` shape, whose
+  composite `ledger:check` holds to the index file.
+- **The real triggers on real deletes** run only in the emulator journeys:
+  journeys 74 and 75 read their work in the functions emulator's log and past
+  the rules, journey 75 including a copy no client could reach.
+
+What no local run sees is the deployed side: that each trigger exists in
+production, wired through Eventarc in the database's location, which
+[deploy.md](deploy.md#firestore-event-triggers) reads back after the first
+deploy.
 
 ## The state that cannot be arranged (#432, #431)
 
@@ -359,13 +450,14 @@ harness bound what that can honestly mean, and none of them is about axe:
 
 And it sweeps only the routes the walkthrough visits: `/dashboard`,
 `/transactions`, `/budgets`, `/reports`, `/settings`, `/data`, `/household`
-(its setup state, then its member view: the walkthrough's account forms a
-household through the service and is shown one pending invite, so the rows,
-the read-only cards, the members and the mail-status copy are swept too) and
-`/about`. axe leaves a disabled control's text out of `color-contrast`, so
-the read-only goal checklist, whose boxes are disabled, is not measured
-there; `goal-progress-card.component.spec.ts` holds its label to the theme's
-text colour instead.
+(its setup state, then its member view: the walkthrough's account forms two
+households through the service, shares one seeded row into the one shown
+and is shown one pending invite, so the shared row, the plans section's
+empty state, the members and the mail-status copy are swept; then again once
+the household's own budget and goal, with a contribution, are made, so the
+plans cards are swept too; and the switcher's open panel, which renders in
+the overlay container outside the routed element, is audited on its own)
+and `/about`.
 **`/ai`, `/search-history`, `/import/file` and `/import/history` are
 unswept** — no spec opens them, so nothing here says anything about their
 accessibility. `wcag22aa` is left out on purpose: its headline rule,
@@ -424,19 +516,115 @@ service-account credential is configured here, so nothing in this project can
 count such rows across every account — which is why the guarded form is load
 bearing rather than belt-and-braces.
 
+## A loaded smoke run can stop one Firestore client
+
+Every blind spot above is a green run that misses something. This one is the
+reverse: a red run that says nothing about the tree it ran.
+
+On a machine starved of CPU, a smoke run can end with one Firestore client
+stopped inside the SDK. Nothing points at the app or the rules, and
+debugging their code will not find it; the Karma log's signature is what
+tells it apart.
+
+**How to recognise it.** The log carries
+`FIRESTORE (11.10.0) INTERNAL ASSERTION FAILED: Unexpected state (ID: …)`,
+thrown from the SDK copy under `@angular/fire` (below). Two IDs have been
+seen:
+
+- **`c050`** is the assertion in `fromVersion` that a commit time is present,
+  reached from `PersistentWriteStream.onNext`: a write-stream response after
+  the handshake that carries no commit time. It is not a watch message. It is
+  thrown synchronously inside an operation of the SDK's async queue, before
+  the queue attaches the handler that records a failure, so the queue never
+  records one: no `INTERNAL UNHANDLED ERROR` line follows, and no `b815`. The
+  queue's tail stays a rejected promise, and every later operation on that
+  Firestore instance silently never runs. The SDK's logger line carries one
+  timestamp while the same Error is reported hundreds of times: one event,
+  not many. Every later case in the suite that owns the client times out at
+  5000 ms, then its `afterAll` does, then Karma disconnects the browser after
+  30 s with no message, and the several hundred cases after it never run.
+- **`ca9`**, with the context `{"ve":-1}`, is its twin on the watch stream: a
+  target response the client never asked for, which takes the target's count
+  of outstanding responses below zero. It is thrown inside an async handler,
+  so the queue does record it, and every later call on that instance fails
+  at once with `b815`, the queue's already-failed check. A run hit by it
+  fails fast rather than hanging. It has been seen once, in the
+  import-wizard smoke suite: 24 of its cases failed with `b815` in under
+  three seconds, and the run went on to its end.
+
+**When.** Only on a CPU-starved machine: four or eight busy-loop processes
+(`yes > /dev/null`) beside the run on an 8-core Mac, or other Karma builds
+running at the same time. Twelve full runs, six beside four such processes
+and six beside eight, stopped twice, once under each, both times on `c050`;
+on an idle machine it has not been seen. A count of loaded runs cannot
+compare two trees: at one stop in six runs, six loaded runs of a tree all
+come through about one time in three, so six clean runs do not clear a
+tree, and a stopped one does not implicate it.
+
+**Where.** Both times the client that stopped was the `firestore.rules`
+suite's own: `firestore-rules.smoke.spec.ts` builds its own app and Firestore
+instance in `beforeAll`, runs no app service, never toggles the network and
+never changes user after `beforeAll`. The first cases to time out were
+*constrains the receiptUrl scheme in both directions* in one run and
+*rejects a scope with no end date* in the other, far from any household. The
+suite alternates refused and allowed writes, and a refused write closes the
+write stream, so its client opens one write stream after another. The app
+itself never calls `enableNetwork` or `disableNetwork`; only
+`firestore.service.smoke.spec.ts` and `auth.service.smoke.spec.ts` do, on
+their own clients.
+
+**What the emulator can send.** `CloudFirestoreV1WriteStream` in
+`~/.cache/firebase/emulators/cloud-firestore-emulator-v1.22.0.jar`, read with
+`javap -c -p`, answers without a commit time in two places only: the
+handshake, and a later request with no writes, after which it marks the
+stream terminated and completes it. Every other answer is built from a
+commit and carries that commit's time. The client sends a request with no
+writes only while tearing a write stream down, after it has stopped hearing
+that stream's answers, and the emulator's WebChannel `ForwardChannel` drops a
+re-sent client message whose id it has already seen, so a client retry cannot
+make it answer one handshake twice. What remains is a second handshake-type
+answer reaching a live stream: either replayed by the emulator's transport
+under starvation, or a stream-restart race inside the SDK. Which one fires
+here is not known. Upstream,
+[firebase-js-sdk#10405](https://github.com/firebase/firebase-js-sdk/issues/10405)
+(open) reports `c050` from a redundant `enableNetwork()` with a write queued
+across a reload, where the client starts two write streams and takes a
+handshake reply for a commit answer; and
+[firebase-js-sdk#9267](https://github.com/firebase/firebase-js-sdk/issues/9267)
+(closed) reports `ca9` intermittently in an Angular app's end-to-end runs
+against the emulator, while listened documents gain and lose permission. The
+copy the app runs, 11.10.0, was released before that report was opened.
+
+**What to do.** Re-run the suite on an idle machine: no load processes and no
+other Karma builds. Do not debug app code for it: the signature above is
+what tells it from a defect, and a run that shows it is evidence neither for
+nor against the tree it ran.
+
+**Which SDK to read.** The app and every smoke client run
+`node_modules/@angular/fire/node_modules/@firebase/firestore` (4.8.0, which
+reports itself as `Firestore (11.10.0)`, from the `firebase` 11.10.0 nested
+under `@angular/fire`), as the stack's URLs show: `fromVersion` and
+`PersistentWriteStream.onNext` are in its `dist/index.esm2017.js`. The
+top-level `node_modules/@firebase/firestore` (4.16.0, from `firebase`
+12.15.0) is not what runs, and its line numbers do not match these stacks.
+
 ## Summary
 
 | Blind spot | What covers it | Where |
 |---|---|---|
 | Composite indexes not enforced | power-set check computed from the query builder | `npm run indexes:check`, in CI |
+| The household's composites not enforced | each declared household list shape held to its composite; the copy check counts rather than sums; the live journey after the merge, for the ledger view and the active plan lists | `npm run ledger:check`, in CI; the service specs; [e2e.md](e2e.md) journey 78 (three of the six) |
+| The 20-lookup ceiling per commit not enforced | commit chunks sized to the rules' own lookup tally, reasoned rather than tested | `household-ledger.model.ts`, `household-plans.model.ts`, [ADR 0160](ADR/0160-a-households-budgets-and-goals-are-its-own-counted-from-shared-copies-and-members-contributions.md) |
 | Index entries not deployed | the merge deploy + the CI wait that holds the run until every index is built | `deploy-web` in CI, `scripts/wait-for-indexes.mjs` |
 | Rules edits not deployed | the merge deploy + a browser pass against the live project (manual) | `deploy-web` in CI, checklist above |
 | Rules accept ≠ services send | one smoke case through the owning service per collection | `*.service.smoke.spec.ts` |
 | Storage `update` unreachable by upload | a metadata-update case, plus a named post-deploy check on the live project | `storage.service.smoke.spec.ts`, [receipt-quota.md](receipt-quota.md) |
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
 | Nothing renders, and no journey crosses a page | the driven browser journeys — a protocol, not a gate | [e2e.md](e2e.md), by hand, twice per branch |
-| A journey that needs two accounts | the same protocol on the emulator serve, with two seeded accounts | [e2e.md](e2e.md) journeys 58–66, [ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md) |
-| The invite callable is outside the smoke run | its decisions over fakes in the functions tests; its writes reproduced by the smoke specs; the real callable in the emulator journeys | `npm --prefix functions test`, `household.service.smoke.spec.ts`, [e2e.md](e2e.md) journey 60, above |
+| A journey that needs several accounts | the same protocol on the emulator serve, with three seeded accounts in two households | [e2e.md](e2e.md) journeys 68–77, [ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md) |
+| The invite callable is outside the smoke run | its decisions over fakes in the functions tests; its writes reproduced by the smoke specs; the real callable in the emulator journeys | `npm --prefix functions test`, `household.service.smoke.spec.ts`, [e2e.md](e2e.md) journey 76, above |
+| The household cleanup triggers are outside the smoke run | their plans, handler and Admin deps over fakes in the functions tests; the clients' own deletes through the rules in the smoke specs; the real triggers in the emulator journeys | `npm --prefix functions test`, [e2e.md](e2e.md) journeys 74 and 75, above |
+| A Firestore trigger's deployed wiring | a read-only Eventarc listing after the deploy that creates it | [deploy.md](deploy.md#firestore-event-triggers) |
 | A callable's public invoker binding | a read-only IAM check before the first deploy and after it | [household.md](household.md#operator-runbook), [deploy.md](deploy.md) |
 | The iOS App Group container and the widget extension | a signed simulator build, its file cross-checked against the app's own screens by hand | [widget.md](widget.md) |
 | A stored shape no client write can produce | a unit fixture standing in for the value; the emulator seeds the nearest shape it can hold | `recurring.service.spec.ts`, `recurring.service.smoke.spec.ts` |
@@ -445,6 +633,7 @@ bearing rather than belt-and-braces.
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 | A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
 | An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px and above the frame's fold, with unserved i18n, in the one theme the host resolves (light on CI) | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| An SDK assertion from a CPU-starved run | nothing: re-run on an idle machine; the signature (`c050` hanging the suite, or `ca9` then `b815`) tells it apart | above |
 
 ## When you add another one
 
@@ -473,6 +662,14 @@ unindexed. If it composes more than one equality filter with an order-by, it
 either goes through `buildTransactionWhere`'s contract or it needs its own
 hand-listed entry — and the entry is reviewed, not tested, so say so in a
 comment next to the query.
+
+**A new list under a household?** Declare it in `LEDGER_QUERY_SHAPES`, led
+by `gen ==`, build the query from that shape, and add its composite; `npm run
+ledger:check` then fails until the two agree. A query built beside the shapes
+rather than from one is invisible to the check. **A new write path for
+transactions?** The check fails until its file is on the script's `WRITERS`
+list with the reason it writes, which is where its review asks whether a
+shared row's copies follow it.
 
 **A fixture for a door someone else's code feeds?** Find the producer on that
 door's own path and copy the shape it returns, field by field, rather than

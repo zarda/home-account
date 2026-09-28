@@ -171,12 +171,15 @@ waiting message that was itself passed with `'replace'`, whichever surface
 raised it, and never one passed with `'queue'`, so a keystroke cannot cost a
 waiting alert or error its turn. The
 state messages are the command palette's result count, a dashboard card's
-position after **Move up** or **Move down**, and the transaction list's count
-and totals. The palette's count changes on every keystroke: while typing
-continues a count goes out at most once a turn — the CDK's delay and then the
-gap — each the latest count at that moment, and when typing stops the last
-count is the last count placed. A failed move's correction leads with the
-failed save, an event, and queues
+position after **Move up** or **Move down**, the transaction list's count and
+totals, the count of rows chosen in the transactions select mode (with the
+cap's note in the same message when a choice was refused, so a run of refused
+choices never piles notes up behind the count), and the household overview's
+count of rows shown after **Show more**. The palette's count changes on every
+keystroke: while typing continues a count goes out at most once a turn — the
+CDK's delay and then the gap — each the latest count at that moment, and when
+typing stops the last count is the last count placed. A failed move's
+correction leads with the failed save, an event, and queues
 ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 
 ### The import review step
@@ -427,7 +430,22 @@ ones, in both themes, and holds the composited surface to the stylesheet's
   with a 40px hit box through the `::after` overhang — and
   `budget-progress-card.component.spec.ts` reads the card's menu trigger, which
   meets the floor by its own box. See
-  [ui-overflow.md](ui-overflow.md) for the idiom.
+  [ui-overflow.md](ui-overflow.md) for the idiom. The sharing controls are
+  held to the same floor: the select mode's toggle and each row's checkbox
+  (`transaction-list.component.spec.ts`), each *Shared with* chip in the form
+  (`transaction-form.component.spec.ts`), the household overview's
+  *Count toward…* button on one's own shared rows
+  (`household-overview.component.spec.ts`) and the plans section's controls
+  (`household-plans.component.spec.ts`).
+- `switch-on-choice.directive.spec.ts` pins the household switcher's keys.
+  A closed `mat-select` takes an arrow key, Home, End, a page key or a typed
+  character as a choice, and on the switcher every choice swaps the page for
+  another household and moves focus into it, so arrowing through the closed
+  switcher would swap household after household. On the closed switcher those
+  keys open the list instead, as a native select does on macOS; an open list
+  moves through its choices without picking. `household.component.spec.ts`
+  pins where focus lands after a swap — the view that came in — and that it
+  moves only when it was on the switcher or had dropped to the document.
 
 ## Known gaps
 

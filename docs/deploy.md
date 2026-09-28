@@ -31,6 +31,12 @@ target order is fixed — storage, then firestore, then hosting — so rules lan
 before the new app does. The hosting release is stamped with the commit sha
 (`-m`), which is where to look when asking what is live.
 
+The two jobs have no order between them. A push that sets both runs them side
+by side, so for the minutes between the two releases one side is live
+without the other: new hosting beside the previous functions, or the
+reverse. A change whose app needs a function that does not exist yet meets
+that window on its merge.
+
 Runs can finish out of order, so right before deploying each job re-checks
 `main`: if the branch has moved past the run's commit with changes relevant
 to that job's target, the deploy stands down and leaves the release to the
@@ -93,10 +99,12 @@ still fails the deploy loudly, as it always did.
 
 **GCP Secret Manager** holds the five `FEEDBACK_SMTP_*` / `FEEDBACK_EMAIL_TO`
 values the Cloud Functions read: the feedback trigger binds all five, and the
-household invite callable the four `FEEDBACK_SMTP_*` ones. They are not
-GitHub secrets, they never pass through CI, and their lifecycle (set, verify,
-re-pin) is [feedback.md](feedback.md)'s runbook, not this one. A rotation
-affects both functions, and one full `--only functions` deploy re-pins both.
+household invite callable the four `FEEDBACK_SMTP_*` ones; the household
+cleanup triggers bind none. They are not GitHub secrets, they never pass
+through CI, and their lifecycle (set, verify, re-pin) is
+[feedback.md](feedback.md)'s runbook, not this one. A rotation affects the
+two functions that bind them, and one full `--only functions` deploy re-pins
+both.
 
 ## The service account
 
@@ -213,6 +221,64 @@ The read-only checks before the merge that first creates a callable, the
 grant, the log lines, the repair and the read-back after the deploy are
 [household.md](household.md#operator-runbook)'s runbook, not this one.
 
+The merge that first creates a callable is the first whose run deploys
+`functions/` with it in, not necessarily the merge that added it.
+`inviteToHousehold` arrived with #462, whose merge run failed in the ci job
+and deployed nothing, and #463's merge touched no file under `functions/`, so
+its run deployed the web target alone. It is first created by the first
+`deploy-functions` run after #463, and the runbook's checks apply to the
+merge that sets that run off. The merge that adds the cleanup triggers below
+changes `functions/`, so it sets that run off unless an earlier merge already
+has.
+
+### Firestore event triggers
+
+`deploy-functions` also ships three functions set off by Firestore writes:
+`onFeedbackCreated` ([feedback.md](feedback.md)), and the two household
+cleanups, `onHouseholdMemberDeleted` and `onHouseholdDissolved`, which
+delete what a deleted membership or household left in its generation
+([household.md](household.md),
+[ADR 0161](ADR/0161-a-deleted-membership-or-household-is-swept-by-server-triggers-as-a-backstop.md)).
+All three are 2nd gen, run in asia-east1 under the global options, and are
+delivered through Eventarc. The two cleanups bind no secret and set
+`retry: true`, so a transient failure is delivered again.
+
+**An event trigger needs no public invoker.** Eventarc calls it as the
+Compute Engine default service account, not as the app, so nothing in
+[A callable's public invoker](#a-callables-public-invoker) applies to it.
+The project-level grants that delivery needs (`roles/run.invoker` and
+`roles/eventarc.eventReceiver` for that account, and the token creator for
+the Pub/Sub service agent) are added by firebase-tools only when a project
+has no event-triggered function at all, and a Firestore trigger's service
+adds none of its own (read at 15.28.2, in
+`lib/deploy/functions/checkIam.js`). This project's first event-triggered
+function was the feedback trigger, first deployed on 2026-08-16, and its
+troubleshooting ([feedback.md](feedback.md)) records that deploy provisioning
+the Eventarc service agent, whose grants took minutes to propagate. So a new
+Firestore trigger needs no new grant. If its deploy still fails with
+*Permission denied while using the Eventarc Service Agent*, wait five minutes
+and re-run the failed job, as that first deploy did.
+
+**A first deploy creates, and creating takes longer.** Each new trigger is a
+new Cloud Run service and a new Eventarc trigger, which the CLI places in the
+database's own location, read from the live database at deploy time
+(`lib/deploy/functions/services/firestore.js`). The first `deploy-functions`
+run that carries the two cleanups creates both, so it runs longer than a run
+that only updates. A green job says they were created; that they exist and
+are wired is read after it:
+
+```bash
+gcloud firestore databases describe --database='(default)' --project home-accounter --format='value(locationId)'
+gcloud eventarc triggers list --location=asia-east1 --project home-accounter
+```
+
+The first reads where the database is: `firebase.json` names asia-east1, but
+the CLI reads that value only to create a database that does not exist, so
+it is not a check. The second, in that location, lists a trigger for each of
+the three. A trigger missing there receives nothing, and nothing in the app
+notices, because the clients delete the same documents on their own paths:
+what is lost is the backstop.
+
 ## Index deletions never happen from CI
 
 The CI deploy runs `--non-interactive` without `--force`. In that mode index
@@ -303,3 +369,7 @@ Kept here because it is also the anything-looks-wrong checklist:
    ([A callable's public invoker](#a-callables-public-invoker); the read-back
    is in [household.md](household.md#operator-runbook)). A green job is not
    that proof.
+6. After a functions deploy that created a Firestore event trigger, it is
+   listed by `gcloud eventarc triggers list` in the database's location
+   ([Firestore event triggers](#firestore-event-triggers)). A green job is
+   not that proof either.

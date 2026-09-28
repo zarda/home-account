@@ -200,8 +200,10 @@ consecutive periods cannot overlap or leave a gap.
 - `weekly-recap.smoke.spec.ts` — those bounds against stored `Timestamp`s,
   seeded on the first and last milliseconds of the recapped week and one
   millisecond outside each.
-- `household-ledger.service.smoke.spec.ts` — another household member's rows,
-  read through the rules for a whole local month, seeded on the first and last
+- `household-ledger.service.smoke.spec.ts` — the rows two members shared
+  into their household, read back as copies through each member's
+  generation-filtered query of the household's ledger, with the rules live,
+  for a whole local month. The owner's shared rows sit on the first and last
   milliseconds of that month and one millisecond outside each. Its unit spec,
   `household-ledger.service.spec.ts`, checks that a period ending mid-morning
   is still read through the last millisecond of its final local day.

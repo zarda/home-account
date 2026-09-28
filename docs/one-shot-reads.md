@@ -29,11 +29,24 @@ The first instance of the class was #160, fixed before the rule had a name.
 
 ## Deleting the account's transactions (#160)
 
-`TransactionService.deleteAllTransactions` enumerates the collection and
-deletes what it finds. Reading the in-memory signal here once deleted the
-window on screen — usually the current month — and reported the wipe complete.
-Its doc comment is the original statement of the rule: the signal only holds
-what a subscription happened to deliver.
+`TransactionService.wipeTransactions`, behind the Data page's *Delete all
+transactions* and, through `deleteAllTransactions`, the erasure's
+transactions step, enumerates the collection and deletes what it finds.
+Reading the in-memory signal here once deleted the window on screen —
+usually the current month — and reported the wipe complete. Its doc comment
+is the original statement of the rule: the signal only holds what a
+subscription happened to deliver.
+
+Once the rows are gone it reads the account's household index
+(`users/{uid}/households`) with `getCollection` and takes the account's
+copies out of every household listed, ended memberships included
+(`LedgerShareService.purgeOwn`, which lists the copies from the server).
+A purge that fails, or an index it cannot read, rejects the wipe with
+`CopiesNotPurgedError`, carrying how many rows were deleted, so the caller
+can say the rows are gone while a household still shows them. A retry finds
+no rows, deletes nothing and purges again, and answers how many copies it
+took out. The reads behind the purge are under
+[Memberships and shared rows](#memberships-and-shared-rows-71).
 
 ## The backup and CSV exports (#244)
 
@@ -248,6 +261,123 @@ Described under [#244](#the-backup-and-csv-exports-244) above: `categories`,
 `getCollectionFromServer` now, rather than resting on being sequenced after
 the transactions read.
 
+## Memberships and shared rows (#71)
+
+Ending a household membership, and repairing the copies a shared row leaves
+in a household's ledger, act once on what they read, and several of the
+acts cannot be taken back. `LedgerShareService.cleanupMembership` purges the
+account's copies and strips the household's key from its rows only when the
+server says the membership is over: a strip made while the account is a
+member again would undo its shares for good. The owner's purge of a removed
+member's copies stops once that member holds a member document of the
+household's generation again. The repair writes or deletes a copy by
+comparing it with its row. None of these may take a cached answer, and some
+may not take a listener's either
+([ADR 0159](ADR/0159-a-copy-follows-its-row-in-a-commit-of-its-own-and-a-sweep-repairs-what-the-follow-ups-miss.md)).
+
+**One document: `FirestoreService.getDocumentFromServer`.** `getDoc` and
+`getDocFromServer` both join a listener already attached to the same
+document and answer with what it last heard, without asking the server;
+`getDocFromServer` only refuses an answer the listener marks as from the
+cache. After a refused commit that answer can still show a document the
+commit found gone. `HouseholdService` keeps listeners on the account's index,
+the selected household's document and the account's own member document in
+it, so a plain get of those would answer from them. `getDocumentFromServer`
+reads inside a transaction, whose reads always go to the server, and
+abandons the transaction before it commits, so it writes nothing. It makes
+one attempt, rejects offline or when the rules refuse the read, and has no
+client timeout: on a network that silently drops traffic it waits as long as
+the browser does. The membership judgements read through it
+(`HouseholdService.membershipState`, `LedgerShareService.readMembership`, the
+owner's check before each purge commit, the page's check of a copy by an
+account the member list no longer names, and the index entry a membership
+check looks up, below), as do the repair's reads of each
+journaled row and its copy, the read-backs that decide whether a refused
+create or join had in fact landed on its first delivery, and the
+once-a-session check for a profile's left-over `householdId`.
+`HouseholdService.householdGone`, the check a dissolve makes when a step is
+refused, makes the same read inline
+([ADR 0156](ADR/0156-a-dissolve-that-finds-its-household-already-gone-finishes-instead-of-failing.md)).
+
+**Listings: `getCollectionFromServer`.** The copies purged, the rows whose
+key is stripped, the removed member's copies, both sides of a full pass, a
+dissolving household's members and plans, a deleted goal's contributions,
+an erasure's own contributions in a household it is still in (every goal of
+the generation, then each goal's contributions) and the invites to or from
+the account are all listed from the server. A query
+read is answered by a listener too, when one is attached to the same query:
+the deleted goal's contributions are listed with a different query from the
+goal's contributions listener for that reason. The index listing
+(`HouseholdService.indexEntries`) is the one read that accepts it. It is
+read by a tidy, by an erasure run, and by the limit check at ten below.
+While the index listener is attached, the listing answers from that
+listener's last synced view, so every entry listed is then judged by the
+document reads above, and an entry the view has not heard of yet waits for
+the next tidy or erasure run.
+
+**Counts: `FirestoreService.aggregateFromServer`.** The sweep's check
+compares two counts, the account's rows naming the household's key and its
+copies in the household's ledger, which no cache or listener ever answers.
+Equal counts settle the household; unequal ones, or a count the server does
+not answer, run a full pass. It counts rather than sums: a sum over a query
+filtered on another field needs a composite of the filter and the summed
+field in production (for the rows, one over every account's transactions),
+which the emulator never asks for, while a count under one filter is served
+by the automatic single-field indexes. A copy behind in its amount alone
+therefore waits for the journal or the weekly full pass. The ten-membership
+limit is counted first the same way, by two server counts, the index's
+entries and its ended ones, rather than a listing, which would open a listen
+stream only to be read once. Only an account the count puts at the limit
+pays for more: its unended entries are listed (`indexEntries`) and each is
+judged by the server document reads above, so an entry whose membership
+ended without this client is not counted, and is ended on the way. A rejoin
+of a household whose entry is still listed unended is not counted either.
+
+The repair also waits first for every write this client has issued to be
+answered (`waitForPendingWrites`), so it never judges a copy whose own
+follow-up is still on its way. The sweep runs only online.
+
+**A membership check: the index read again, then the server.** `share`,
+`reconcile` and `purgeMember` refuse (`notMember`) a household the account
+is not a live member of, and judge it from the index read again with
+`getCollection` (`LedgerShareService.membershipOf`). That read is answered by
+a listener. A `getDocs` of a query a listener already holds joins that
+listener and is handed its last synced view without asking the server, the
+query form of the `getDoc` trap
+[ADR 0156](ADR/0156-a-dissolve-that-finds-its-household-already-gone-finishes-instead-of-failing.md)
+records, and `HouseholdService` keeps a listener on the index. A household
+is formed (`create`) and joined (`accept`) in a transaction, whose writes go
+to the server alone and reach that view only when the server sends them back
+to the listener, so a call made right after an awaited `create` or `accept`
+can find the household missing from the read, or still listed as ended by an
+earlier membership of it. Online, therefore, a household the read does not list as
+live is looked up on the server before the call refuses: its one index
+document, through `getDocumentFromServer`. A server that does not answer
+rejects the call with its own failure, not `notMember`, which would tell an
+account it is no member of a household it may well belong to. A household
+listed live costs no second read, which leaves an entry still listed live
+after a removal to be taken at its word
+([household.md](household.md#known-gaps)); offline the listed answer
+stands, since nothing else can answer.
+
+**Where the cache is the right answer.** `TransactionService.deleteTransaction`
+reads the index with `getCollection` and deletes the row's copy in every
+household it lists, ended memberships included, whatever the row's
+`sharedWith` says: a plain delete works offline, and the rules pass an
+author's delete of a copy that does not exist. That read is answered by the
+index listener too, so a household formed or joined moments before can be
+missing from it, and a copy shared into it then stays for the sweep
+([household.md](household.md#known-gaps)). The restore's and the
+category service's full-pass marks read the index the same way: they only
+decide what to look at again, and the sweep behind them reads from the
+server. So do `LedgerShareService`'s other loads of the index and the
+categories, which decide what a follow or a share writes: a stale answer
+costs a copy the rules refuse, or one the sweep rewrites, and the rules admit
+no copy of a row that does not name the household. `reprojectCategory` reads
+the account's rows in the changed category and each of their copies from the
+cache when offline, so a category edit made offline still queues its copies'
+rewrites; a copy it cannot read is written.
+
 ## The deliberate live readers
 
 These are not exceptions to the rule — they are the other question. The
@@ -275,7 +405,7 @@ moving a method to the strict variant, because one of them may be painting.
 
 | Read | Feeds | Mechanism | Offline |
 |---|---|---|---|
-| `deleteAllTransactions` | the account wipe | `getCollection` | queues deletes against the cache |
+| `deleteAllTransactions` | the account wipe, then which households' copies to purge | `getCollection` (rows, then the index) | queues deletes against the cache |
 | `exportAll` (transactions) | backup + CSV files, the deletion gate | `getCollectionFromServer` | **rejects; export reports failure** |
 | sibling `exportAll()`s | the backup's other five sections | `getCollectionFromServer` | **rejects; export reports failure** |
 | `recalculateBudgetsForCategory` | the recalculation work list | `getCollection` | cache, incl. latency-compensated writes |
@@ -291,6 +421,15 @@ moving a method to the strict variant, because one of them may be painting.
 | `getTransactionsWithReceiptsOnce` | the receipt manager's list | `getCollection` | cache, incl. latency-compensated writes |
 | `getTransactionOnce` | the row a `?transactionIds=` link lands on | `getDocument` | cache |
 | `listAll` (goals) | the search dialog's chip names | `getCollection` | cache — a rendered value, deliberately |
+| membership judgements (`membershipState`, `readMembership`, the owner's per-commit check) | whether copies are purged, keys stripped, a purge stopped | `getDocumentFromServer` | **rejects; household actions are refused offline, the sweep does not start** |
+| the membership check (`membershipOf`) before `share`, `reconcile`, `purgeMember` | whether the call is refused as `notMember` | `getCollection` (the index, answered by its listener), then `getDocumentFromServer` on the household's index document when that read does not list it live | cache: the listed answer stands |
+| the repair's row and copy pairs | whether a journaled copy is written or deleted | `getDocumentFromServer` | **rejects; the sweep does not start offline** |
+| a refused create or join read back | whether its first delivery landed | `getDocumentFromServer` | **unanswered, the refusal stands** |
+| the sweep's check | whether a household's rows and copies agree | `aggregateFromServer` (counts) | **rejects; the sweep does not start offline** |
+| the full pass, `purgeOwn`, the key strip, `purgeMember` | copies written or deleted, keys removed | `getCollectionFromServer` | **rejects; left for the next sweep, tidy or retry** |
+| the household index listing (`indexEntries`) | which entries a tidy, an erasure or the limit check at ten judges | `getCollectionFromServer`, answered by the index listener while attached | **rejects** |
+| the index before a row delete (`indexedHouseholds`) | which households' copies the delete takes out | `getCollection` | cache: the delete works offline |
+| `reprojectCategory` | which copies a category change rewrites | `getCollection`, `getDocument` | cache: the rewrites queue |
 
 ## The gate
 
@@ -353,7 +492,8 @@ collection read does that — and only the server read does it offline.
 
 **Name it after its source.** A method ending `...Once` reads through
 `getCollection` (or `getDocument`); a method ending `...FromServer` reads
-through `getCollectionFromServer` and rejects offline. The name is the only
+through `getCollectionFromServer` (or, for one document,
+`getDocumentFromServer`) and rejects offline. The name is the only
 thing a call site shows a reader, so it has to be the thing that differs, and
 a pair of variants shares one private query-options builder so the two queries
 cannot drift apart.

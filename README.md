@@ -23,7 +23,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Smart Search** - Ask questions in plain language from the app header ("how much did I spend on groceries last month"); the AI only translates the question into filters or an aggregate operation — every number shown is computed locally from your transactions, and it degrades to keyword search offline
 - **Budgets** - Period-based budget limits with recurring transactions management
 - **Reports** - Financial analytics with CSV and PDF export
-- **Households** - Up to eight people who live together see each other's transactions, categories, budgets and goals on one read-only page; the owner invites by email, anyone can leave, and everyone's records stay their own — see [docs/household.md](docs/household.md)
+- **Households** - Every transaction is private until you share it into a household of up to eight people, from the form, the row menu or a select mode in Transactions. The household sees a copy of the shared row with its type, amount and currency, date, description and category — never its note, receipts, tags or place — and each member sees the rows and totals in their own base currency at today's rate. A household keeps its own budgets and goals, counted only from shared rows and the contributions members record; personal budgets and goals stay private. One account can belong to up to ten households and switches between them on the household page; the owner invites by email, a member can leave, and everyone's records stay their own — see [docs/household.md](docs/household.md)
 - **AI Import** - Import receipts, bank-statement screenshots and PDF statements. Statements become one transaction per line; receipts collapse to the purchase they add up to. Categories are validated against your catalog, corrections are remembered per merchant so the same shop is never re-asked, and amounts or dates the model was unsure it read are flagged for a second look. The review step is where you fix them — the date, amount, description, category and currency are all editable on the card, a receipt dated on any day but today has to be kept or re-dated before the import will move, and a row you correct is checked for duplicates again. PDFs work with any vision-capable provider — see [docs/prompts.md](docs/prompts.md)
 - **AI Insights** - Spending summaries and advice with selectable detail-grounding levels (Off/Light/Standard/Deep) that trade token cost and speed for detail; transaction details are only shared with your configured AI provider when enabled — see [docs/rag-insights.md](docs/rag-insights.md)
 - **Camera Capture** - Take photos directly from the app for receipt scanning
@@ -207,7 +207,7 @@ here.
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
-| `npm run ledger:check` | Verify the household ledger's contract: a copy's fields match the rules' `copyShapeValid`, every household query shape has its composite, only the listed files write transactions, the rules' share-key cap is the membership cap, the rules bound a copy's category snapshot at the lengths the projection cuts it to, each household plan kind's fields match its `household*ShapeValid`, and the rules bound a plan's name, category ids and category count as the plans model does |
+| `npm run ledger:check` | Verify the household ledger's contract: a copy's fields match the rules' `copyShapeValid`, every household query shape has its composite, only the listed files write transactions, the rules' share-key cap is the membership cap, the rules bound a copy's category snapshot at the lengths the projection cuts it to, each household plan kind's fields match its `household*ShapeValid`, the rules bound a plan's name, category ids and category count as the plans model does and hold its currency to the pattern the app tests it with, and the rules' `copyFaithful` compares every copy field its row decides |
 | `npm run firebase-tools:check` | Verify the pinned firebase-tools major has not drifted |
 | `node scripts/check-prod-env.mjs --self-test` | The digest checker's own logic, against a stub. **CI runs this half only** — the "Create local environment stubs" step overwrites the file the real digest was taken from, so the compare would fail here by construction. The real compare belongs to `deploy-web`, below |
 | `node scripts/wait-for-indexes.mjs --self-test` | The index wait's state classification, deadline math, signed assertion and token-and-poll loop, against a local stub server. The real wait reaches the Firestore Admin API and belongs to `deploy-web`, below |
@@ -238,7 +238,7 @@ Local only:
 | Command | Description |
 |---------|-------------|
 | `npm start` | Dev server at localhost:4200 |
-| `npm run start:emulators` | Dev server at localhost:4300, built with the `emulators` configuration against the local Firebase emulators and the demo project — for the two-account browser journeys ([docs/e2e.md](docs/e2e.md)); start the emulators first |
+| `npm run start:emulators` | Dev server at localhost:4300, built with the `emulators` configuration against the local Firebase emulators and the demo project — for the browser journeys that need several accounts ([docs/e2e.md](docs/e2e.md)); start the emulators first |
 | `npm run build:ios` | Build and sync to iOS |
 | `npm run cap:ios` | Open iOS project in Xcode |
 | `npm test` | Run unit tests |
@@ -277,7 +277,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |
 | [docs/widget.md](docs/widget.md) | The iOS home-screen widget: the snapshot contract, when it is written and deduplicated, the four states, the plugin and target, and verifying it on the simulator |
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
-| [docs/household.md](docs/household.md) | Households: what members can and cannot see, the flows, the invite callable's answers, the data model and rules, and the operator runbook for the callable, its invoker grant and its mail |
+| [docs/household.md](docs/household.md) | Households: what a shared row reveals and what stays private, sharing, the household's own budgets and goals, the flows, the invite callable's answers, the data model and rules, the cleanup triggers, and the operator runbook for the callable, its invoker grant and its mail |
 | [docs/forecast.md](docs/forecast.md) | The cash-flow forecast: zero-at-today baseline, the catch-up seam, horizons, and what never projects |
 | [docs/csv-format.md](docs/csv-format.md) | The CSV export and import contract: columns, escaping, and what round-trips |
 | [docs/import-fields.md](docs/import-fields.md) | What an import writes: the row shapes, the one mapper every door builds through, photo attachment, the recorded source, and where a suggestion comes from |
@@ -290,8 +290,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/splits.md](docs/splits.md) | Splitting a purchase across categories: the sibling-row model, what a part carries, the form's remainder and refusals, and what still counts a split as several rows |
 | [docs/data.md](docs/data.md) | The stored-data hub: every kind of record, where each is managed, and what the counts do and do not mean |
 | [docs/feedback.md](docs/feedback.md) | In-app feedback: the stored record, its About-page door, and the mail that leaves from a Cloud Function |
-| [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, the browser layer, the invite callable the smoke run never starts, and the checks that stand in |
-| [docs/e2e.md](docs/e2e.md) | The browser journey protocol: its two venues — production, and the emulators for journeys that need two accounts — the checks before every run, the writes a run may make and how they are put back, the journeys and their passes |
+| [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, the browser layer, the invite callable and the household cleanup triggers, which the smoke run never starts, and the checks that stand in |
+| [docs/e2e.md](docs/e2e.md) | The browser journey protocol: its two venues — production, and the emulators for journeys that need several accounts — the checks before every run, the writes a run may make and how they are put back, the journeys and their passes |
 | [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's three scans, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
 | [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the degraded fallback profile and its retry, and the identity check every write across an await makes |
@@ -300,8 +300,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/shortcuts.md](docs/shortcuts.md) | The two global keyboard shortcuts, the guards each stands down for, and the command palette they open |
 | [docs/rtl.md](docs/rtl.md) | Layout direction: where a locale's direction comes from, the ratchet that freezes the physical CSS left, and what still blocks an RTL locale |
 | [docs/locale-formatting.md](docs/locale-formatting.md) | Dates and numbers in the chosen language: the one formatting chokepoint, named styles over patterns, and what deliberately stays raw |
-| [docs/deploy.md](docs/deploy.md) | What deploys when: the change-gated CI deploys, the manual override, the service account and both secret inventories, the index-deletion policy, and the version scheme |
-| [docs/testing.md](docs/testing.md) | The three test tiers, when a spec may blank a template and what must then render it, the two house shapes, the shared stubs, and the named coverage exemption |
+| [docs/deploy.md](docs/deploy.md) | What deploys when: the change-gated CI deploys, the manual override, the service account and both secret inventories, a callable's invoker and the Firestore event triggers, the index-deletion policy, and the version scheme |
+| [docs/testing.md](docs/testing.md) | The three test tiers, how each signs in more than one account at once and what the household's functions and ledger contract are proved by instead, when a spec may blank a template and what must then render it, the two house shapes, the shared stubs, and the named coverage exemption |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 

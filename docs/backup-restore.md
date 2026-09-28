@@ -91,7 +91,7 @@ the only thing standing between you and a second copy.
 
 | Section | Verbatim from the file | Recomputed after the restore | Never sourced from a file |
 |---|---|---|---|
-| Transactions | id, amount, currency, the historical rate and base-currency figure, category, description, date, note, tags, location, period, `createdAt`, the recurring link, the goal link and its figure | — | receipt images |
+| Transactions | id, amount, currency, the historical rate and base-currency figure, category, description, date, note, tags, location, period, `createdAt`, the recurring link, the goal link and its figure | — | receipt images; the share keys (`sharedWith`), which the export leaves out |
 | Categories | id, name, icon, colour, type, parent, display order, deleted-or-not | — | the built-in categories, which are generated rather than stored |
 | Budgets | id, category, name, amount, currency, period, dates, alert threshold, active-or-not | `spent`, from the restored ledger | — |
 | Recurring rules | id, name, type, amount, currency, category, description, frequency, dates, **paused-or-not** | `nextOccurrence`, from today | `lastProcessed` |
@@ -131,6 +131,39 @@ from today, so nothing accrues for the time the backup sat on disk, and
 resuming a restored pause later behaves like a fresh resume rather than picking
 up the stored pointer. See [docs/recurring.md](recurring.md) for the catch-up
 contract itself.
+
+## A shared row comes back private
+
+A row shared into a household names it in `sharedWith`, a list of share keys
+(`households/{hid}`). The export leaves that field out of every row: each key
+names a household of the account that took the backup, meaningless in any
+other account, and together they would be a list of its memberships in a
+file meant to be kept. The CSV export writes no share key either.
+
+A restore never sources `sharedWith`, so no file shares a row into a
+household. A row the restore creates is private; a row it merges onto a live
+one keeps whatever keys that row already holds, since the merge leaves keys
+it does not mention alone. The restore's confirmation says so before
+anything is written: *A restored transaction that isn't already in this
+account comes back private; share it again from Transactions. One that is
+keeps its sharing.* Nothing else in the file depends on the keys, so a file
+without them is still a complete `1.5` file, and leaving them out needed no
+version bump.
+
+A merged row can keep its keys while the fields its copies reveal change, and
+a restored category can change what a copy shows. So before writing anything
+the restore marks every live household in the account's index
+(`users/{uid}/households`) as owed a full pass, and as it ends it waits for
+one full pass over every live membership
+(`LedgerShareService.reconcileAll('restore')`), which rewrites each copy that
+differs from its row and takes out any copy whose row no longer names the
+household. The households are marked again as each category and row write
+lands: a sweep that read the categories or listed the rows before a write
+reached the server began before that mark, and its end cannot clear it.
+Neither step can fail the restore: the mark stays in this device's ledger
+journal through a restore that stops part-way or ends offline, and the next
+sweep runs the pass
+([ADR 0159](ADR/0159-a-copy-follows-its-row-in-a-commit-of-its-own-and-a-sweep-repairs-what-the-follow-ups-miss.md)).
 
 ## Monthly insights yield to whatever is newer
 
@@ -194,6 +227,9 @@ bump is only for a field that needs something recomputed from it once it is
 back. `splitGroupId` (see [docs/splits.md](splits.md)) took the first path:
 it joined the DTO and the restore's copy so a split purchase's rows keep
 their shared id coming back in, with nothing to recompute and no bump.
+`sharedWith` took neither path: the export leaves it out and the restore
+never writes it ([above](#a-shared-row-comes-back-private)), again with no
+bump.
 
 ## Privacy
 
@@ -225,14 +261,23 @@ restoring, so a restored log would say every historical sign-in happened during
 the restore; and a file restored into a second account would furnish that
 account with sign-ins it never had.
 
-**The household membership** is not in the file either, and it is not one of
-those kinds: the Data hub names it as a membership rather than a record kind
-([data.md](data.md)), so the three above stay the whole list the dialog must
-name. The file could not carry it usefully in any case. A household belongs to
-every account in it, not to the one being backed up; the rules admit a member
-only through a live invite of the household's current generation, so a
-membership restored from a file — into this account after a dissolve, or into
-another account altogether — would be refused; and the pointer that names it
-lives on the profile, which the file has never held. Rejoining is an invite
-away ([household.md](household.md),
-[ADR 0152](ADR/0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md)).
+**Household memberships** are not in the file either, and they are not
+among those kinds: the Data hub names them, with the rows shared into them,
+as memberships rather than a record kind ([data.md](data.md)), so the three
+above stay the whole list checked against the cascade. The deletion
+dialog's backup offer names what belongs to the households all the same:
+the file carries neither which households the transactions are shared with
+nor anything that belongs to a household (its shared transactions, budgets,
+goals and contributions), and restored transactions come back private. A
+spec pins those phrases beside the three kinds. The file could not carry them
+usefully in any case. A household belongs to every account in it, not to the
+one being backed up; the rules admit a member only through a live invite of
+the household's current generation, so a membership restored from a file —
+into this account after a dissolve, or into another account altogether —
+would be refused; and the index that lists them (`users/{uid}/households`)
+is tied by the rules to those member documents, so it could not be restored
+without them. The copies of shared rows, and a household's own budgets,
+goals and contributions, live under the household and stay out for the same
+reason. Rejoining is an invite away, and sharing a row again is a choice
+made on the row ([household.md](household.md),
+[ADR 0158](ADR/0158-an-account-holds-up-to-ten-memberships-each-named-by-an-index-it-owns.md)).

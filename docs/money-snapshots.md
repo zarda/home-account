@@ -55,13 +55,33 @@ show. The same prompt's budget limits and goal amounts still convert at
 today's rate: they are a budget's and a goal's own figures, not written rows,
 and carry no snapshot to read.
 
-**Three figures cannot read it, and say so.** A scheduled occurrence is not a
-written row, so a figure over money that has not moved yet has no snapshot to
-prefer: the Upcoming card's *Scheduled net*, the weekly recap's bills due and
-the forecast's projected net. They convert at today's rate through
-`CurrencyService.convert`, and each carries **At today's rate**
-(`common.atTodaysRate`) beside the figure — the forecast's actuals, which are
-written rows, still read their snapshots.
+**Three figures over scheduled money cannot read it, and say so.** A
+scheduled occurrence is not a written row, so a figure over money that has
+not moved yet has no snapshot to prefer: the Upcoming card's *Scheduled net*,
+the weekly recap's bills due and the forecast's projected net. They convert
+at today's rate through `CurrencyService.convert`, and each carries **At
+today's rate** (`common.atTodaysRate`) beside the figure — the forecast's
+actuals, which are written rows, still read their snapshots.
+
+**The household page cannot read it either, by decision.** A row shared into
+a household reaches the other members as a copy that carries its amount and
+currency as entered and never the snapshot: the snapshot is in its author's
+base currency, which says nothing to a member with another base and would
+tell every member what the author's is, and leaving it out means a
+base-currency change never has to touch a copy
+([ADR 0157](ADR/0157-a-transaction-is-private-until-its-owner-shares-it-and-a-household-sees-a-faithful-copy.md)).
+So each viewer sees every shared row, each member's totals and the combined
+totals in their own base, converted from the copy's own amount at today's
+rate — exactly when the copy is already in that base — and every figure that
+converted something carries **At today's rate**. None of it is stored: the
+page folds the figures from the copies as it reads them, and a change of
+rates refolds them. Until the rate table has settled on a source it
+converts every currency 1:1, so the page holds a copy in another currency
+out of every figure and waits rather than count it at that placeholder
+([household.md](household.md#figures-on-the-page)). A household's own
+budgets and goals are converted the same way, into the plan's currency
+rather than the viewer's (see
+[below](#a-households-figures-are-folded-at-read)).
 
 **Repaired by** `TransactionService.resnapshotBaseCurrency`, which rewrites
 every row when the base-currency preference changes. That is why the guard
@@ -133,6 +153,42 @@ Note it sums the rows' **stored** snapshots rather than re-converting each row
 live. Budgets have to agree with the dashboard and the reports, and `spent`
 must not drift when rates move without any transaction changing.
 
+## A household's figures are folded at read
+
+A household's own budgets and goals (`households/{hid}/budgets` and
+`/goals`) each carry a `currency`, picked when the plan is made (the maker's
+base unless they choose another) and never changed afterwards: a budget's
+limit and every contribution to a goal are entered in it, so a change would
+relabel them rather than convert them. The rules hold it to three capital
+letters when the plan is made and refuse an update that touches it, and
+the edit dialog shows the control disabled. Every figure on
+the plans is folded when the page reads the shared copies, and none is
+written down
+([ADR 0160](ADR/0160-a-households-budgets-and-goals-are-its-own-counted-from-shared-copies-and-members-contributions.md)).
+
+- **A household budget's spent** is the expense copies dated in its current
+  window whose bucket, or the bucket's group, is one of its categories, each
+  in the budget's currency: exactly when the copy is already in it, at
+  today's rate otherwise. There is no stored `spent`. A stored one would be
+  written by whichever member's client wrote last, while two members write
+  at once and each reads the period in their own time zone
+  ([ADR 0154](ADR/0154-the-household-view-is-a-read-only-aggregate-on-its-own-page-and-the-road-to-shared-writes-is-written-down.md));
+  folded at read, it needs no writer, and each viewer's window is their own.
+- **A household goal's progress** is the copies linked to it, converted into
+  the goal's currency the same way, plus the contributions members recorded
+  on it. A contribution is the one stored amount here: one document per
+  contribution, entered in the goal's currency and written once, never
+  converted. Its unit cannot move, as a personal goal's counters' cannot
+  once non-zero, and the household goal's currency is fixed from its
+  creation, before any contribution can exist.
+
+Both carry **At today's rate** when any amount they include was converted,
+and one that converts reads *Counting…* until the rate table has settled on
+a source.
+The trade is the one this page's rule warns about, taken knowingly: a
+converted figure moves when rates move with no transaction changing, and the
+caption says so, because a copy holds no snapshot to prefer.
+
 ## Summary
 
 | Figure | Denominated in | Re-taken when | Repaired by |
@@ -142,6 +198,7 @@ must not drift when rates move without any transaction changing.
 | `linkedAmount` | the goal's currency — **frozen once non-zero** | in the same transaction as any linked row write | `recomputeLinkedAmount` (restore only) |
 | `contributedAmount` | the goal's currency — **frozen once non-zero** | only by the contribute dialog | nothing; no per-row provenance |
 | `spent` on a budget | the budget's currency | category, period, dates or currency changed, or a counted row moved | `recalculateBudgetSpent`, any time |
+| `amount` on a household goal's contribution | the goal's currency — **fixed from the goal's creation** | never: written once, and the rules refuse an update | nothing; a wrong one is deleted and recorded again |
 
 ## When you add another one
 
