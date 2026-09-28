@@ -26,9 +26,11 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
+import { MatSelect } from '@angular/material/select';
 import { provideAppCharts } from './core/config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
@@ -44,11 +46,12 @@ import {
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
 import { routes } from './app.routes';
-import { addDays } from './core/utils/transaction-date.utils';
+import { addDays, startOfMonth } from './core/utils/transaction-date.utils';
 import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
 import { HouseholdService } from './core/services/household.service';
+import { HouseholdPlansService } from './core/services/household-plans.service';
 import { LedgerShareService } from './core/services/ledger-share.service';
 import {
   getDocumentAsOwner,
@@ -150,11 +153,12 @@ describe('App routes (emulator smoke test)', () => {
    *
    * The routes this reaches are the walkthrough's: /dashboard,
    * /transactions, /budgets (both tabs), /reports (all five), /settings,
-   * /data, /household (its setup state, then its member view once the
-   * walkthrough's account forms a household), /about and /login. Four routes are
-   * never visited by this spec and are therefore **unswept**: /ai,
-   * /search-history, /import/file and /import/history — see
-   * docs/emulator-blind-spots.md.
+   * /data, /household (its setup state, then its member view before and
+   * after the household's own budget and goal are made, and the switcher's
+   * open panel over two memberships, once the walkthrough's account forms
+   * its households), /about and /login. Four routes are never visited by
+   * this spec and are therefore **unswept**: /ai, /search-history,
+   * /import/file and /import/history — see docs/emulator-blind-spots.md.
    */
   async function expectNoAxeViolations(url: string): Promise<void> {
     const element = harness.routeNativeElement;
@@ -474,11 +478,13 @@ describe('App routes (emulator smoke test)', () => {
       await expectPage('/household', 'household.title', 'household.setup.createTitle', 'app-household');
 
       // The member view, swept too: it holds most of the page's markup. The
-      // account forms a household through the service's own commits, which
-      // the rules check, and one invite written the way the callable writes
-      // it puts the mail-status copy on the page. One seeded row is shared
-      // into it the way the app shares one, so the view has a shared row to
-      // show; the other stays private and must not show.
+      // account forms two households through the service's own commits,
+      // which the rules check, so the header's switcher lists two
+      // memberships; the page shows the one formed last. One invite written
+      // the way the callable writes it puts the mail-status copy on the
+      // page. One seeded row is shared into the household shown the way the
+      // app shares one, so the view has a shared row to show; the other
+      // stays private and must not show.
       await setDoc(doc(firestore, `users/${uid}`), {
         email: 'test@example.com',
         displayName: 'Test User',
@@ -487,6 +493,7 @@ describe('App routes (emulator smoke test)', () => {
         preferences: { baseCurrency: 'USD', language: 'en' }
       });
       const householdService = TestBed.inject(HouseholdService);
+      await householdService.create('Away');
       const householdId = await householdService.create('Home');
       // share() resolves once the row names the household, whether or not
       // its copy was written (a refused copy is left to the sweep), so the
@@ -515,6 +522,51 @@ describe('App routes (emulator smoke test)', () => {
           'household.members.mailHeld'].every(shown => text.includes(shown));
       });
       expect(pageText()).withContext('a row not shared stays private').not.toContain('Tokyo Dinner');
+      await expectNoAxeViolations('/household');
+      // The household's own budget and goal, with a contribution, made
+      // through the plans service the page provides and feeds, so the
+      // section's cards are swept as well as its empty state.
+      const plans = harness.fixture.debugElement.query(By.css('app-household')).injector.get(HouseholdPlansService);
+      const today = new Date();
+      await plans.createBudget({
+        name: 'Walkthrough budget',
+        categoryIds: ['food'],
+        amount: 200,
+        currency: 'USD',
+        period: 'monthly',
+        startDate: startOfMonth(today)
+      });
+      const goalId = await plans.createGoal({ name: 'Walkthrough goal', targetAmount: 500, currency: 'USD' });
+      await plans.addContribution(goalId, 25, today);
+      // Counted, not counting: a card still waiting on a feed replaces its
+      // figures, progress bar and contributions list with one line.
+      await waitForDom('the plans section with its budget, its goal and its contribution', () => {
+        const text = pageText();
+        const section = harness.routeNativeElement?.querySelector('app-household-plans');
+        return ['Walkthrough budget', 'Walkthrough goal'].every(shown => text.includes(shown))
+          && !text.includes('household.plans.empty')
+          && !text.includes('household.plans.counting')
+          && section?.querySelectorAll('mat-progress-bar').length === 2
+          && !!section.querySelector('li.contribution .contribution-delete');
+      });
+      // The switcher's panel renders in the overlay container, outside the
+      // routed element the page-level pass audits, so it is swept on its own
+      // and closed before that pass.
+      const page = harness.routeNativeElement?.ownerDocument;
+      harness.routeNativeElement
+        ?.querySelector<HTMLElement>('.household-switcher-select .mat-mdc-select-trigger')
+        ?.click();
+      await waitForDom(
+        'the switcher panel over two memberships and the setup choice',
+        () => page?.querySelectorAll('.mat-mdc-select-panel .switcher-choice').length === 3
+      );
+      const switcherPanel = page?.querySelector('.mat-mdc-select-panel');
+      if (!switcherPanel) throw new Error('No switcher panel to audit on /household');
+      expect(unexpectedViolations(await runAxe(switcherPanel), '/household (switcher panel)'))
+        .withContext('axe-core (wcag2a, wcag2aa) violations on the /household switcher panel')
+        .toEqual([]);
+      harness.fixture.debugElement.query(By.css('mat-select.household-switcher-select')).injector.get(MatSelect).close();
+      await waitForDom('the switcher panel closed', () => !page?.querySelector('.mat-mdc-select-panel'));
       expectScreenName('/household', 'app-household');
       expectCurrentRouteMarked('/household');
       await expectNoAxeViolations('/household');
