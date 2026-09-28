@@ -196,7 +196,7 @@
 .quick-btn.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .filter-toggle {
@@ -236,7 +236,7 @@
   height: 18px;
   border-radius: 50%;
   background: var(--color-primary);
-  color: white;
+  color: var(--text-inverse);
   font-size: var(--text-xs);
   font-weight: 600;
   display: flex;

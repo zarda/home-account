@@ -72,7 +72,7 @@
 ::ng-deep .modern-stepper .mat-step-icon-state-done,
 ::ng-deep .modern-stepper .mat-step-icon-state-edit {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 ::ng-deep .modern-stepper .mat-step-label-selected {
