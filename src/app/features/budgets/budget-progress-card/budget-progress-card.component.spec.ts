@@ -404,56 +404,16 @@ describe('BudgetProgressCardComponent', () => {
     });
   });
 
-  // The household page shows other members' budgets, which only their owner
-  // can change: the card there offers nothing to act on.
-  describe('read-only', () => {
-    beforeEach(() => {
-      fixture.componentRef.setInput('budget', createMockBudget());
-      fixture.componentRef.setInput('category', mockCategory);
-    });
-
-    it('keeps its menu by default, as the Budgets page shows it', () => {
-      fixture.detectChanges();
-
-      expect(component.readOnly()).toBeFalse();
-      expect(fixture.nativeElement.querySelector('.menu-btn')).not.toBeNull();
-    });
-
-    it('drops the whole menu, its trigger included, and keeps the figures', () => {
-      fixture.componentRef.setInput('readOnly', true);
-      fixture.detectChanges();
-
-      const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.menu-btn')).toBeNull();
-      expect(compiled.querySelector('mat-menu')).toBeNull();
-      // The progress bar carries Material's own tabindex="-1": no tab stop.
-      expect(compiled.querySelectorAll('button, a, [tabindex]:not([tabindex="-1"])').length).toBe(0);
-      expect(compiled.textContent).toContain('Food Budget');
-      expect(compiled.querySelector('.spent')?.textContent?.trim()).toBe('$500.00');
-      expect(compiled.querySelector('mat-progress-bar')).not.toBeNull();
-    });
-  });
-
-  // The Budgets page lists the cards under the page's own heading; the
-  // household page lists them under a member's h3.
+  // The Budgets page lists the cards under the page's own heading.
   describe('its heading', () => {
     beforeEach(() => fixture.componentRef.setInput('budget', createMockBudget()));
 
-    it('names the budget in an h3 by default', () => {
+    it('names the budget in an h3', () => {
       fixture.detectChanges();
 
       const name = fixture.nativeElement.querySelector('.budget-name') as HTMLElement;
       expect(name.tagName).toBe('H3');
       expect(name.textContent?.trim()).toBe('Food Budget');
-    });
-
-    it('names it one level down when listed under a lower heading', () => {
-      fixture.componentRef.setInput('headingLevel', 4);
-      fixture.detectChanges();
-
-      const name = fixture.nativeElement.querySelector('.budget-name') as HTMLElement;
-      expect(name.tagName).toBe('H4');
-      expect(fixture.nativeElement.querySelector('h3')).toBeNull();
     });
   });
 

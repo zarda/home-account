@@ -45,13 +45,28 @@ kind of their own, so the image manager stays in the Data Management section
 below the index.
 
 The household is absent too, and named in `NOT_A_RECORD_KIND` with its reason:
-it is a membership shared with other accounts, managed on the Household page
-([household.md](household.md)), not a collection of the account's own records.
-The cascade's `household` step ends it and deletes the invites to and from the
-account; a count of one membership would tell nobody anything. The invite
-callable's `inviteQuotas` and `mailBudget` documents are operational metadata
-— counters no client can read or write, kept at the top level rather than
-under the account — so they are neither a kind here nor a step of the cascade.
+*Memberships, and the rows you shared into them, managed on the Household
+page* ([household.md](household.md)). What the cascade's `household` step
+erases is not one collection of the account's own records, so no one count
+could describe it. An account holds up to ten memberships
+(`MAX_HOUSEHOLDS_PER_ACCOUNT`), each listed in its membership index
+(`users/{uid}/households`), but the membership itself is a member document
+in a household other accounts share, and the rows it shared are copies in
+that household's ledger (`households/{hid}/ledger`), not under the account.
+The step ends every membership the index lists (an owned household is
+dissolved, a joined one left once the account's own contributions to its
+goals are deleted), takes the account's copies out of each, and deletes the
+invites to and from the account; the `transactions` step then
+takes out any copy still left ([account-deletion.md](account-deletion.md)).
+The Household page's switcher names every live membership, and a shared row
+carries its *Shared · name* chip on the Transactions page. A shared row is
+still one of the account's transactions, so the Transactions count includes
+it; its copies are not counted anywhere here.
+
+The invite callable's `inviteQuotas` and `mailBudget` documents are
+operational metadata — counters no client can read or write, kept at the top
+level rather than under the account — so they are neither a kind here nor a
+step of the cascade.
 
 ## What the numbers mean
 

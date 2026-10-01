@@ -11,6 +11,8 @@ import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService, MAX_RECEIPTS_PER_TRANSACTION } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
+import type { LedgerRowChange, LedgerShareService } from './ledger-share.service';
+import type { HouseholdIndexData } from '../utils/household-index.utils';
 
 /**
  * Thrown when storing a receipt image would exceed the user's tier limit.
@@ -58,7 +60,9 @@ import {
   SplitPart,
   receiptImageCount,
   baseCurrencyOf,
-  roundToMinorUnit
+  roundToMinorUnit,
+  householdIndexPath,
+  ledgerCopyPath
 } from '../../models';
 import { roundMoney } from '../utils/transaction-aggregation.utils';
 import { splitRemainder } from '../utils/split-purchase.utils';
@@ -69,6 +73,28 @@ import {
 import { endOfDay, monthWindow } from '../utils/transaction-date.utils';
 import { TransactionSnapshot } from '../utils/import-dto.utils';
 
+/**
+ * Whether a row holds any share key (a non-empty sharedWith). The sharing
+ * code parses and validates each key; this only decides whether to load it.
+ */
+function isShared(row: { sharedWith?: unknown } | null | undefined): boolean {
+  const shares = row?.sharedWith;
+  return Array.isArray(shares) && shares.length > 0;
+}
+
+export interface UpdateTransactionOptions {
+  /**
+   * Called once the edit's write has been issued (and a shared row's copies
+   * followed), before the server answers; never when the edit is refused
+   * before that. Offline the answer waits for the connection, and a caller
+   * can queue a write of its own right behind the edit from here: the
+   * persistent mutation queue keeps both, in order, across a restart. The
+   * edits that commit in a transaction reach it only once the commit is
+   * answered, which offline they never are. Must not throw.
+   */
+  onIssued?: () => void;
+}
+
 export interface TransactionMutation {
   kind: 'add' | 'update' | 'delete';
   id: string;
@@ -76,6 +102,28 @@ export interface TransactionMutation {
   // for updates that did not touch the date.
   date?: Timestamp;
   seq: number;
+}
+
+/** What a wipe removed: the account's rows, and their copies in the households. */
+export interface TransactionWipe {
+  deleted: number;
+  copiesPurged: number;
+}
+
+/**
+ * A wipe whose rows are all deleted while copies of them may still stand in a
+ * household: the purge failed, or the index naming the households could not
+ * be read, or the sharing code did not load. It still rejects, so an erasure
+ * step reports failure and keeps the auth user; `deleted` counts the rows
+ * this call removed, and `cause` is the first purge failure. A retry finds no
+ * rows and runs the purge again.
+ */
+export class CopiesNotPurgedError extends Error {
+  override name = 'CopiesNotPurgedError';
+
+  constructor(readonly deleted: number, options?: ErrorOptions) {
+    super(`${deleted} transactions deleted, but their household copies were not all purged`, options);
+  }
 }
 
 @Injectable({ providedIn: 'root' })
@@ -86,6 +134,8 @@ export class TransactionService {
   private storageService = inject(StorageService);
   private receiptQuota = inject(ReceiptQuotaService);
   private injector = inject(Injector);
+  /** The sharing code once loaded, so a later write does not wait on the import. */
+  private sharing: LedgerShareService | null = null;
 
   // Helper to update budgets after transaction changes
   private async updateAffectedBudgets(categoryId: string): Promise<void> {
@@ -93,6 +143,89 @@ export class TransactionService {
     const { BudgetService } = await import('./budget.service');
     const budgetService = this.injector.get(BudgetService);
     await budgetService.recalculateBudgetsForCategory(categoryId);
+  }
+
+  /**
+   * The code that keeps a shared row's household copies in step
+   * (LedgerShareService). Reached only by this dynamic import, and only for
+   * a row that names a household or a wipe of an account whose index lists
+   * one, so it stays out of the initial bundle and a private row never loads
+   * it.
+   */
+  private async ledgerShare(): Promise<LedgerShareService> {
+    const { LedgerShareService } = await import('./ledger-share.service');
+    return this.injector.get(LedgerShareService);
+  }
+
+  /**
+   * The sharing code, or null when it does not load: a personal write never
+   * fails for want of it, and the sweep repairs the copies it left behind.
+   *
+   * A plain write to a shared row resolves this before it issues the write,
+   * then issues the write, hands its change to follow and only then awaits
+   * it, all in one step: nothing the app could stop in lies between the write
+   * entering the persistent queue and its change being journaled, and the
+   * copy writes queue behind it.
+   */
+  private async sharingOrNull(): Promise<LedgerShareService | null> {
+    try {
+      return (this.sharing ??= await this.ledgerShare());
+    } catch (error) {
+      console.warn('[Transactions] The sharing code did not load; the sweep repairs the copies', error);
+      return null;
+    }
+  }
+
+  /**
+   * For changes a transaction commits: when any row is shared, journals each
+   * change (intend) before the commit, and answers the sharing code to hand
+   * them to once the commit lands. Null when every row is private, or when
+   * the code does not load.
+   */
+  private async journalShared(changes: readonly LedgerRowChange[]): Promise<LedgerShareService | null> {
+    if (!changes.some(([, before, after]) => isShared(before) || isShared(after))) return null;
+    const ledger = await this.sharingOrNull();
+    for (const change of changes) ledger?.intend(...change);
+    return ledger;
+  }
+
+  /**
+   * Hands a transaction's changes to the sharing code once its commit has
+   * landed, all together, so the copies of several rows share commits. A
+   * no-op when `ledger` is null: every row private, or the code did not load.
+   */
+  private followAll(ledger: LedgerShareService | null, changes: readonly LedgerRowChange[]): void {
+    ledger?.followMany(changes);
+  }
+
+  /**
+   * The households the account's index names, ended memberships included:
+   * a row's copy may sit in any of them. Read through getCollection, which
+   * answers from the cache offline.
+   */
+  private async indexedHouseholds(): Promise<string[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    const index = await this.firestoreService.getCollection<HouseholdIndexData>(householdIndexPath(userId));
+    return index.map(entry => entry.id);
+  }
+
+  /**
+   * Where the row's copy would sit in every household of the index. A delete
+   * takes each out in the row's own commit, whatever the row's sharedWith
+   * says, since a stale cache may not hold its latest share; the rules pass
+   * an author's delete of its own copy, one that is missing included.
+   */
+  private async copyPathsOf(txId: string): Promise<string[]> {
+    const households = await this.indexedHouseholds();
+    const userId = this.authService.userId();
+    if (households.length === 0 || !userId) return [];
+    try {
+      return households.map(hid => ledgerCopyPath(hid, userId, txId));
+    } catch {
+      // An account id no copy can be named for: none was ever written.
+      return [];
+    }
   }
 
   // Signals
@@ -322,6 +455,11 @@ export class TransactionService {
       if (options?.merge && data.goalId) {
         throw new Error('A merge write cannot be combined with a goal link');
       }
+      // A merge write is a restore's, and a restored row is private: a file
+      // never shares a row into a household.
+      if (options?.merge && isShared(data)) {
+        throw new Error('A merge write cannot carry shares');
+      }
 
       let baseCurrency: string;
       let exchangeRate: number;
@@ -388,10 +526,7 @@ export class TransactionService {
         if (data.goalId) {
           await this.createWithGoalLink(id, transaction, data.goalId);
         } else {
-          await this.firestoreService.setDocument(
-            `${this.userTransactionsPath}/${id}`,
-            transaction
-          );
+          await this.writeNewRow(id, transaction);
         }
         this.receiptQuota.noteImagesAdded(urls.length);
       } else if (options?.id) {
@@ -404,11 +539,7 @@ export class TransactionService {
         if (data.goalId) {
           await this.createWithGoalLink(id, transaction, data.goalId);
         } else {
-          await this.firestoreService.setDocument(
-            `${this.userTransactionsPath}/${id}`,
-            transaction,
-            options.merge ?? false
-          );
+          await this.writeNewRow(id, transaction, options.merge ?? false);
         }
       } else if (data.goalId) {
         // A linked create commits row and counter together, which needs a
@@ -416,6 +547,11 @@ export class TransactionService {
         // receipts branch's rather than taken from addDocument.
         id = this.firestoreService.generateId(this.userTransactionsPath);
         await this.createWithGoalLink(id, transaction, data.goalId);
+      } else if (isShared(transaction)) {
+        // addDocument names the id only once the server answers, and the
+        // row's copies are keyed by it as soon as the row is written.
+        id = this.firestoreService.generateId(this.userTransactionsPath);
+        await this.writeNewRow(id, transaction);
       } else {
         id = await this.firestoreService.addDocument(
           this.userTransactionsPath,
@@ -469,8 +605,21 @@ export class TransactionService {
       ...(data.recurringId ? { recurringId: data.recurringId } : {}),
       ...(data.splitGroupId ? { splitGroupId: data.splitGroupId } : {}),
       ...(data.period ? { period: data.period } : {}),
-      ...(data.location ? { location: data.location } : {})
+      ...(data.location ? { location: data.location } : {}),
+      ...(data.sharedWith?.length ? { sharedWith: [...new Set(data.sharedWith)] } : {})
     };
+  }
+
+  /**
+   * A new row written at a known id. A shared row's copies follow it: with
+   * the sharing code at hand, the write is issued, then followed, then
+   * awaited (sharingOrNull).
+   */
+  private async writeNewRow(id: string, row: Omit<Transaction, 'id'>, merge = false): Promise<void> {
+    const ledger = isShared(row) ? await this.sharingOrNull() : null;
+    const write = this.firestoreService.setDocument(`${this.userTransactionsPath}/${id}`, row, merge);
+    ledger?.follow(id, null, row);
+    await write;
   }
 
   /**
@@ -490,6 +639,8 @@ export class TransactionService {
     await this.currencyService.ensureRatesLoaded();
     const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
     const goalRef = this.firestoreService.getDocRef(`${this.userGoalsPath}/${goalId}`);
+    const ledger = await this.journalShared([[id, null, transaction]]);
+    let linked!: Omit<Transaction, 'id'>;
 
     await this.firestoreService.runTransaction(async tx => {
       const goalSnapshot = await tx.get(goalRef);
@@ -500,22 +651,25 @@ export class TransactionService {
       const goalAmount = roundMoney(
         this.currencyService.convert(transaction.amount, transaction.currency, goal.currency)
       );
-      tx.set(rowRef, { ...transaction, goalId, goalAmount });
+      linked = { ...transaction, goalId, goalAmount };
+      tx.set(rowRef, linked);
       tx.update(goalRef, {
         linkedAmount: roundMoney((goal.linkedAmount ?? 0) + goalAmount),
         updatedAt: this.firestoreService.getTimestamp()
       });
     });
+    this.followAll(ledger, [[id, null, linked]]);
   }
 
   /**
    * Write a purchase's remainder and its parts as sibling rows sharing the
    * first row's id, in one Firestore transaction — no reads, since every
    * part is brand new. Parts copy the purchase's identity (type, currency,
-   * rate, base currency, description, date, tags, location, period) but
-   * never its note, receipts, goal link or recurring link (splitImportRow's
-   * exclusions); each part's own amountInBaseCurrency is the purchase's own
-   * rate applied to the part, never re-resolved (docs/money-snapshots.md).
+   * rate, base currency, description, date, tags, location, period, and the
+   * households it is shared into) but never its note, receipts, goal link or
+   * recurring link (splitImportRow's exclusions); each part's own
+   * amountInBaseCurrency is the purchase's own rate applied to the part,
+   * never re-resolved (docs/money-snapshots.md).
    * Receipts stay on the first row — storage is keyed by row id, and a part
    * has no row of its own to key against until this transaction commits.
    * Returns every id this call wrote, first row first, then each part in
@@ -598,6 +752,11 @@ export class TransactionService {
         };
       });
 
+      const changes: LedgerRowChange[] = [
+        [firstId, null, firstRow],
+        ...partIds.map((id, i): LedgerRowChange => [id, null, partRows[i]])
+      ];
+      const ledger = await this.journalShared(changes);
       try {
         await this.firestoreService.runTransaction(async tx => {
           tx.set(this.firestoreService.getDocRef(`${this.userTransactionsPath}/${firstId}`), firstRow);
@@ -619,6 +778,7 @@ export class TransactionService {
         }
         throw error;
       }
+      this.followAll(ledger, changes);
 
       // The rows and their receipt objects are already committed at this
       // point, so the quota must learn of them regardless of what the
@@ -646,11 +806,13 @@ export class TransactionService {
    * rows, in one Firestore transaction that starts with its own tx.get —
    * never a pre-read — so a rival write between the caller's optimistic
    * view and this commit decides the remainder, not the other way round.
-   * No side effects inside the callback: the SDK re-runs it on contention,
-   * so budgets and the mutation note both happen after the commit.
+   * No side effects inside the callback but journaling the rows' shares,
+   * which a rerun only repeats: the SDK re-runs it on contention, so budgets,
+   * the copies and the mutation note all happen after the commit.
    * A row already in a group keeps its group id and the parts join it,
    * matching addSplitTransaction's own exclusions (note, receipts, goal
-   * link, recurring link never copy to a part).
+   * link, recurring link never copy to a part); a part is shared wherever
+   * the row is.
    * Returns only the parts' ids; the row being split keeps its own.
    */
   async splitTransaction(id: string, parts: SplitPart[]): Promise<string[]> {
@@ -668,6 +830,10 @@ export class TransactionService {
       const createdAt = this.firestoreService.getTimestamp();
 
       let row!: Transaction;
+      // Known only from the transaction's own read: the rows are journaled
+      // inside it, before its commit, and followed once it lands.
+      let ledger: LedgerShareService | null = null;
+      let changes: LedgerRowChange[] = [];
 
       await this.firestoreService.runTransaction(async tx => {
         const snapshot = await tx.get(rowRef);
@@ -683,7 +849,7 @@ export class TransactionService {
 
         const groupId = row.splitGroupId ?? id;
 
-        tx.update(rowRef, {
+        const shrunk = {
           amount: remainder,
           amountInBaseCurrency: remainder * row.exchangeRate,
           updatedAt: this.firestoreService.getTimestamp(),
@@ -691,7 +857,9 @@ export class TransactionService {
           // in a group keeps it, so the field alone still says "which
           // group", never a second one layered on top.
           ...(row.splitGroupId ? {} : { splitGroupId: id })
-        });
+        };
+        tx.update(rowRef, shrunk);
+        changes = [[id, row, { ...row, ...shrunk }]];
 
         // A row written before base-currency stamping carries no base of its
         // own; the account's current base is the only value available for
@@ -713,19 +881,22 @@ export class TransactionService {
             splitGroupId: groupId,
             ...(row.tags?.length ? { tags: row.tags } : {}),
             ...(row.location ? { location: row.location } : {}),
-            ...(row.period ? { period: row.period } : {})
+            ...(row.period ? { period: row.period } : {}),
+            // A part is shared wherever the purchase it came from is.
+            ...(isShared(row) ? { sharedWith: row.sharedWith } : {})
           };
-          tx.set(
-            this.firestoreService.getDocRef(`${this.userTransactionsPath}/${partId}`),
-            this.composeRow(
-              userId,
-              partData,
-              { baseCurrency, exchangeRate: row.exchangeRate, amountInBaseCurrency: amount * row.exchangeRate },
-              createdAt
-            )
+          const partRow = this.composeRow(
+            userId,
+            partData,
+            { baseCurrency, exchangeRate: row.exchangeRate, amountInBaseCurrency: amount * row.exchangeRate },
+            createdAt
           );
+          tx.set(this.firestoreService.getDocRef(`${this.userTransactionsPath}/${partId}`), partRow);
+          changes.push([partId, null, partRow]);
         });
+        ledger = await this.journalShared(changes);
       });
+      this.followAll(ledger, changes);
 
       if (row.type === 'expense') {
         const categoryIds = new Set([row.categoryId, ...parts.map(part => part.categoryId)]);
@@ -865,14 +1036,17 @@ export class TransactionService {
     moneyTouched: boolean
   ): Promise<void> {
     const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
+    let ledger: LedgerShareService | null = null;
+    let changes: LedgerRowChange[] = [];
 
     await this.firestoreService.runTransaction(async tx => {
       const snapshot = await tx.get(rowRef);
       if (!snapshot.exists()) throw new Error('Transaction not found');
+      const row = snapshot.data() as Transaction;
 
       const staged = await this.stageGoalTransition(
         tx,
-        snapshot.data() as Transaction,
+        row,
         data,
         updateData,
         moneyTouched
@@ -885,14 +1059,28 @@ export class TransactionService {
       for (const write of staged.goalWrites) {
         tx.update(write.ref, write.data);
       }
+      // Journaled from the transaction's own read, before its commit.
+      changes = [[id, row, { ...row, ...updateData }]];
+      ledger = await this.journalShared(changes);
     });
+    this.followAll(ledger, changes);
   }
 
   // Update an existing transaction
-  async updateTransaction(id: string, data: Partial<CreateTransactionDTO>): Promise<void> {
+  async updateTransaction(
+    id: string,
+    data: Partial<CreateTransactionDTO>,
+    options: UpdateTransactionOptions = {}
+  ): Promise<void> {
     this.isLoading.set(true);
 
     try {
+      // An edit sent from a stale read would undo a share or an unshare made
+      // since; LedgerShareService's share and unshare change them alone.
+      if (data.sharedWith !== undefined) {
+        throw new Error('An edit cannot carry shares: share and unshare change them');
+      }
+
       // Get the current transaction to track category changes
       const currentTransaction = await this.firestoreService.getDocument<Transaction>(
         `${this.userTransactionsPath}/${id}`
@@ -987,13 +1175,24 @@ export class TransactionService {
         // After the commit, not before: a placement retry or abort must not
         // bump the local quota count for images that never landed.
         this.receiptQuota.noteImagesAdded(appended);
+        options.onIssued?.();
       } else if (linkInvolved) {
         await this.updateWithGoalSync(id, data, updateData, moneyTouched);
+        options.onIssued?.();
       } else {
-        await this.firestoreService.updateDocument(
+        // Issued, followed, then awaited, with the sharing code at hand first
+        // (sharingOrNull).
+        const shared = currentTransaction && isShared(currentTransaction) ? currentTransaction : null;
+        const ledger = shared ? await this.sharingOrNull() : null;
+        const write = this.firestoreService.updateDocument(
           `${this.userTransactionsPath}/${id}`,
           updateData
         );
+        if (shared) ledger?.follow(id, shared, { ...shared, ...updateData });
+        // In the step that issued the write, so nothing a caller queues from
+        // here can land ahead of the edit or its copies.
+        options.onIssued?.();
+        await write;
       }
 
       // Update affected budgets for expense transactions
@@ -1133,6 +1332,8 @@ export class TransactionService {
 
     let firstSlot = optimisticFirstSlot;
     let uploadedSlots: number[] = [];
+    let ledger: LedgerShareService | null = null;
+    let changes: LedgerRowChange[] = [];
 
     for (let attempt = 1; attempt <= maxPlacementAttempts; attempt++) {
       const urls = await this.uploadReceiptBatch(userId, id, files, firstSlot);
@@ -1176,6 +1377,9 @@ export class TransactionService {
           for (const write of staged.goalWrites) {
             tx.update(write.ref, write.data);
           }
+          // Journaled from the transaction's own read, before its commit.
+          changes = [[id, row, { ...row, ...updateData }]];
+          ledger = await this.journalShared(changes);
           return 'committed';
         });
       } catch (error) {
@@ -1186,7 +1390,10 @@ export class TransactionService {
         throw error;
       }
 
-      if (outcome === 'committed') return urls.length;
+      if (outcome === 'committed') {
+        this.followAll(ledger, changes);
+        return urls.length;
+      }
 
       if (outcome === 'collision' && attempt < maxPlacementAttempts) {
         const fresh = await this.firestoreService.getDocument<Transaction>(path);
@@ -1329,6 +1536,7 @@ export class TransactionService {
       const transaction = await this.firestoreService.getDocument<Transaction>(
         `${this.userTransactionsPath}/${id}`
       );
+      const copies = await this.copyPathsOf(id);
 
       if (transaction?.goalId) {
         // A linked row's delete and its counter back-out commit together.
@@ -1362,9 +1570,17 @@ export class TransactionService {
               };
             }
           }
+          for (const path of copies) tx.delete(this.firestoreService.getDocRef(path));
           tx.delete(rowRef);
           if (goalWrite) tx.update(goalWrite.ref, goalWrite.data);
         });
+      } else if (copies.length > 0) {
+        // One commit, so the row never outlives a copy or the other way
+        // round; no rule refuses it, so it works offline as a plain delete does.
+        await this.firestoreService.commitBatch([
+          ...copies.map(path => ({ op: 'delete' as const, path })),
+          { op: 'delete', path: `${this.userTransactionsPath}/${id}` }
+        ]);
       } else {
         await this.firestoreService.deleteDocument(
           `${this.userTransactionsPath}/${id}`
@@ -1442,17 +1658,27 @@ export class TransactionService {
   }
 
   /**
-   * Delete every transaction in the account (danger zone). Returns how many
-   * documents were actually removed, so the caller can report a number rather
-   * than an unconditional "all deleted".
+   * Delete every transaction in the account (danger zone), answering how many
+   * rows it removed and how many of their copies it took out of the
+   * households, so the caller can report numbers rather than an unconditional
+   * "all deleted".
    *
    * Enumerates the collection, never the `transactions` signal: that signal
    * holds only whatever the last live query published — usually the current
    * month, and nothing at all if the user reached Settings without visiting
    * the dashboard first. Reading it deleted a slice of the account and called
    * it complete.
+   *
+   * Once the rows are gone, the account's copies are taken out of every
+   * household its index lists (users/{uid}/households), ended memberships
+   * included. So it can reject after every row is already deleted: when a
+   * household's copies are not purged, the index is not read, or the sharing
+   * code does not load. That rejection is a CopiesNotPurgedError carrying the
+   * count, so a caller can say the rows are gone while a household still
+   * shows them. A retry then finds no rows, deletes 0 and runs the purge
+   * again; its copies count is then the only sign of what it did.
    */
-  async deleteAllTransactions(): Promise<number> {
+  async wipeTransactions(): Promise<TransactionWipe> {
     this.isLoading.set(true);
 
     try {
@@ -1504,10 +1730,47 @@ export class TransactionService {
         this.noteMutation('delete', lastId);
       }
 
-      return deleted;
+      let copiesPurged: number;
+      try {
+        copiesPurged = await this.purgeCopies();
+      } catch (error) {
+        throw new CopiesNotPurgedError(deleted, { cause: error });
+      }
+      return { deleted, copiesPurged };
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /**
+   * The wipe, answering only how many rows it deleted: an erasure step needs
+   * no more than whether it resolved. It rejects as the wipe does.
+   */
+  async deleteAllTransactions(): Promise<number> {
+    return (await this.wipeTransactions()).deleted;
+  }
+
+  /**
+   * Takes the account's copies out of every household its index names, once
+   * its rows are gone: a copy needs its row, so none can be written again.
+   * Tries every household, then rejects with the first failure; otherwise
+   * answers how many copies went.
+   */
+  private async purgeCopies(): Promise<number> {
+    const households = await this.indexedHouseholds();
+    if (households.length === 0) return 0;
+    const ledger = (this.sharing ??= await this.ledgerShare());
+    const failures: unknown[] = [];
+    let purged = 0;
+    for (const hid of households) {
+      try {
+        purged += await ledger.purgeOwn(hid);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) throw failures[0];
+    return purged;
   }
 
   // Get transactions by date range. The ONE path that publishes the shared

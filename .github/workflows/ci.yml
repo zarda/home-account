@@ -118,6 +118,21 @@ jobs:
       - name: Check Firestore composite indexes
         run: npm run indexes:check
 
+      # A household sees a shared row only as a copy, and the copy's contract
+      # is stated twice: its fields in the model and in the rules'
+      # copyShapeValid, the household's query shapes in the model and in
+      # firestore.indexes.json (which the emulator never enforces). This fails
+      # when either pair drifts, when a file off the script's list starts
+      # writing transactions, when the rules' share-key cap leaves the
+      # membership cap, when the rules' bounds on a copy's category
+      # snapshot leave the lengths the projection cuts it to, when a
+      # household budget's, goal's or contribution's field lists leave its
+      # household*ShapeValid lists in the rules, or when the rules' bounds on
+      # a plan's name, category ids or category count leave the plans
+      # model's. Its self-test runs first.
+      - name: Check the ledger contract
+        run: npm run ledger:check
+
       # deploy-web's --non-interactive deploy (no --force) leans on firebase-tools
       # declining index deletions instead of deploying blind. This keeps a
       # Dependabot major bump from silently changing that contract underneath it.

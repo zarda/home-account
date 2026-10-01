@@ -39,7 +39,7 @@ const MAILS: Record<'en' | 'ja' | 'tc', Compose> = {
     text: [
       `${inviter} invited you to join their household on Home Account.`,
       '',
-      "Household members can see each other's transactions, categories, budgets and goals.",
+      'Household members see only the transactions each member chooses to share.',
       '',
       'To accept or decline, sign in with this email address and open:',
       HOUSEHOLD_PAGE_URL,
@@ -54,7 +54,7 @@ const MAILS: Record<'en' | 'ja' | 'tc', Compose> = {
     text: [
       `${inviter} さんが、家計簿の世帯にあなたを招待しました。`,
       '',
-      '世帯のメンバーは、お互いの取引、カテゴリ、予算、目標を閲覧できます。',
+      '世帯のメンバーが閲覧できるのは、各メンバーが共有を選んだ取引だけです。',
       '',
       '承諾または辞退するには、このメールアドレスでログインして、次のページを開いてください。',
       HOUSEHOLD_PAGE_URL,
@@ -69,7 +69,7 @@ const MAILS: Record<'en' | 'ja' | 'tc', Compose> = {
     text: [
       `${inviter} 邀請你加入他們在家庭記帳的家庭。`,
       '',
-      '家庭成員可以互相查看彼此的交易、類別、預算與目標。',
+      '家庭成員只能看到每位成員選擇共享的交易。',
       '',
       '如要接受或拒絕，請使用此電子郵件地址登入，並開啟：',
       HOUSEHOLD_PAGE_URL,

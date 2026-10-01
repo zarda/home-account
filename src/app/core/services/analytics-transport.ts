@@ -4,6 +4,7 @@ import {
   isSupported,
   logEvent,
   setAnalyticsCollectionEnabled,
+  setDefaultEventParameters,
 } from '@angular/fire/analytics';
 import { analyticsIsConfigured, pageFields } from '../config/analytics.config';
 import { ScreenView } from './analytics-screen-view';
@@ -23,6 +24,23 @@ export interface AnalyticsTransport {
   logEvent(name: string, params: AnalyticsParams): Promise<void>;
   logScreenView(screen: ScreenView): Promise<void>;
 }
+
+/**
+ * The SDK calls the web transport makes with an Analytics instance, plus the
+ * gtag `set` command. A spec swaps them to see what reaches gtag, and in what
+ * order, without the real SDK ever being handed an instance it cannot use.
+ */
+export interface WebAnalyticsSdk {
+  logEvent: typeof logEvent;
+  setAnalyticsCollectionEnabled: typeof setAnalyticsCollectionEnabled;
+  setDefaultEventParameters: typeof setDefaultEventParameters;
+}
+
+const FIREBASE_ANALYTICS_SDK: WebAnalyticsSdk = {
+  logEvent,
+  setAnalyticsCollectionEnabled,
+  setDefaultEventParameters,
+};
 
 /**
  * Web transport, backed by the Firebase JS SDK through @angular/fire.
@@ -65,7 +83,13 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
    */
   private enabled = false;
 
-  constructor(private readonly injector: EnvironmentInjector) {
+  private readonly sdk: WebAnalyticsSdk;
+
+  constructor(
+    private readonly injector: EnvironmentInjector,
+    sdk: Partial<WebAnalyticsSdk> = {}
+  ) {
+    this.sdk = { ...FIREBASE_ANALYTICS_SDK, ...sdk };
     try {
       injector.get(DestroyRef).onDestroy(() => {
         this.disposed = true;
@@ -86,14 +110,14 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
       // exists to prevent.
       if (this.analytics && !this.disposed) {
         const analytics = this.analytics;
-        this.run(() => setAnalyticsCollectionEnabled(analytics, false));
+        this.run(() => this.sdk.setAnalyticsCollectionEnabled(analytics, false));
       }
       return;
     }
 
     const analytics = await this.resolve();
     if (analytics && this.enabled && !this.disposed) {
-      this.run(() => setAnalyticsCollectionEnabled(analytics, true));
+      this.run(() => this.sdk.setAnalyticsCollectionEnabled(analytics, true));
     }
   }
 
@@ -102,10 +126,22 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
     if (!analytics || !this.enabled || this.disposed) {
       return;
     }
-    this.run(() => logEvent(analytics, name, { ...params, ...pageFields() }));
+    this.run(() => this.sdk.logEvent(analytics, name, { ...params, ...pageFields() }));
   }
 
   async logScreenView(screen: ScreenView): Promise<void> {
+    const analytics = await this.resolve();
+    if (!analytics || !this.enabled || this.disposed) {
+      return;
+    }
+    // A screen view is the one moment the path is known to have changed, so
+    // this is where gtag's defaults follow it. The hits gtag logs by itself
+    // carry this template until the next screen, except while the SDK is still
+    // initialising: the page held at the first token read is replayed behind
+    // `config` after this `set`, and wins until the next screen view (pageFields
+    // spells out that window). The screen_view below is never affected, since
+    // logEvent merges the current page into it.
+    this.setPageDefaults();
     // firebase_screen / firebase_screen_class are what GA4 keys the web
     // Screens report off; screen_name / screen_class are what the reporting UI
     // shows. @angular/fire sends both, so this does too.
@@ -147,9 +183,26 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
       return null;
     }
 
+    // Before the token is read: reading it runs provideAnalytics' factory,
+    // and the SDK only replays defaults held from before that as the `set`
+    // command right behind `config`, ahead of the first hit. That replay waits
+    // for the SDK's initialisation, so it can land behind a later screen
+    // view's `set` (see logScreenView).
+    this.setPageDefaults();
     this.analytics = this.run(() => this.injector.get(Analytics, null));
     this.resolved = true;
     return this.analytics;
+  }
+
+  /**
+   * gtag stamps the hits it logs by itself (session_start, user_engagement)
+   * with document.location, which logEvent's per-event merge never reaches.
+   * Its `set` command is the only way to put pageFields() on those too.
+   * Callers reach this only after resolve()'s enabled and disposed checks, so
+   * nothing is handed to the SDK before consent.
+   */
+  private setPageDefaults(): void {
+    this.run(() => this.sdk.setDefaultEventParameters(pageFields()));
   }
 
   /**

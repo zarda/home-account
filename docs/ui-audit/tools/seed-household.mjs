@@ -1,13 +1,39 @@
-// Seed two household-ready demo accounts into the Auth and Firestore emulators.
+// Seed three demo accounts and two households into the Auth and Firestore emulators.
 // Usage: node seed-household.mjs <sessions.json outside the repo>
 //
-// Alex Chen (base USD) and Sam Lee (base JPY): each a Google-linked, verified
-// user, each given seed.mjs's data, then one custom category, one budget, one
-// goal and two rows in the current month, so a household view of the two has
-// fresh figures in two currencies. Writes the IndexedDB session records for
-// both to the path given, as { alex, sam }; each record is what the Auth SDK
-// keeps in firebaseLocalStorageDb/firebaseLocalStorage for the demo app, so
-// putting one there and loading the app signs that user in.
+// Alex Chen (base USD), Sam Lee (base JPY) and Kai Moreau (base EUR): each a
+// Google-linked, verified user, each given seed.mjs's data (every row of it
+// private, dated May–July 2026), then their own name, address and base
+// currency, and a few rows in the current month.
+//
+// Two households, written past the rules as the app's own commits leave them:
+// Chen home (owner Alex, member Sam) and Trip fund (owner Sam, member Kai), so
+// Sam holds two memberships and the household page shows its switcher. For
+// each membership the household, the member document and the account's index
+// entry agree: the member's `since` and the entry's `since` are the
+// household's `createdAt`, and the entry carries the member's role and the
+// household's name.
+//
+// Some of this month's rows are shared (`sharedWith` on the row), one of
+// Sam's into both households, and each shared row's copy is written into its
+// household's ledger with the fields the app's projection gives it
+// (projectRow in src/app/core/utils/ledger-projection.utils.ts), computed
+// here from BUILT_INS. Every account keeps at least one private row this
+// month in a category Chen home's food budget covers, which no household
+// figure may count. Chen home has a monthly food budget and a Holiday goal
+// (both USD) with one contribution by Sam; Trip fund has a Summer trip goal
+// (JPY) with one contribution by Kai.
+//
+// Any drift between a seeded copy and its row (a catalog entry or the
+// projection version changed since this was written) is repaired by the
+// app's sweep the first time the copy's author opens the app: the device
+// holds no record of a full pass, so the sweep diffs every copy against its
+// row and rewrites each one that differs.
+//
+// Writes the IndexedDB session records for the three to the path given, as
+// { alex, sam, kai }; each record is what the Auth SDK keeps in
+// firebaseLocalStorageDb/firebaseLocalStorage for the demo app, so putting
+// one there and loading the app signs that user in.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,30 +45,85 @@ const HDRS = { 'Authorization': 'Bearer owner', 'Content-Type': 'application/jso
 const API_KEY = 'demo-api-key';
 const SESSION_KEY = `firebase:authUser:${API_KEY}:[DEFAULT]`;
 
+// LEDGER_PROJECTION_VERSION in src/app/models/household-ledger.model.ts.
+const PROJECTION_VERSION = 1;
+
+/**
+ * The built-in categories the rows use, as defaultCategories()
+ * (src/app/core/utils/category-merge.utils.ts) builds them from
+ * DEFAULT_EXPENSE_GROUPS (src/app/models/category.model.ts): a
+ * subcategory's id is `${group}_${key}`, its name the translation key, its
+ * colour its group's. A copy's category snapshot is these three strings, and
+ * bucketOf maps a built-in to itself (`bucket`) and its group (`bucketGroup`).
+ */
+const BUILT_INS = {
+  food_groceries: { group: 'food', name: 'categoryNames.groceries', icon: 'shopping_cart', color: '#FF5722' },
+  food_restaurants: { group: 'food', name: 'categoryNames.restaurants', icon: 'restaurant', color: '#FF5722' },
+  food_snacksAndConvenience: {
+    group: 'food', name: 'categoryNames.snacksAndConvenience', icon: 'local_convenience_store', color: '#FF5722',
+  },
+  bills_electricity: { group: 'bills', name: 'categoryNames.electricity', icon: 'bolt', color: '#607D8B' },
+  entertainment_moviesAndShows: {
+    group: 'entertainment', name: 'categoryNames.moviesAndShows', icon: 'theaters', color: '#E91E63',
+  },
+  shopping_homeAndGarden: { group: 'shopping', name: 'categoryNames.homeAndGarden', icon: 'home', color: '#9C27B0' },
+  education_booksAndSupplies: {
+    group: 'education', name: 'categoryNames.booksAndSupplies', icon: 'auto_stories', color: '#3F51B5',
+  },
+  transport_parking: { group: 'transport', name: 'categoryNames.parking', icon: 'local_parking', color: '#2196F3' },
+  transport_publicTransit: {
+    group: 'transport', name: 'categoryNames.publicTransit', icon: 'directions_bus', color: '#2196F3',
+  },
+  transport_taxiAndRideShare: {
+    group: 'transport', name: 'categoryNames.taxiAndRideShare', icon: 'local_taxi', color: '#2196F3',
+  },
+  travel_hotelsAndAccommodation: {
+    group: 'travel', name: 'categoryNames.hotelsAndAccommodation', icon: 'hotel', color: '#00BCD4',
+  },
+};
+
+/** The two households, by the id the seed gives them. Days are before the seed runs. */
+const HOUSEHOLDS = {
+  'chen-home': { name: 'Chen home', owner: 'alex', member: 'sam', createdDaysAgo: 21 },
+  'trip-fund': { name: 'Trip fund', owner: 'sam', member: 'kai', createdDaysAgo: 14 },
+};
+
+// Each account's rows this month, all expenses in its own base. `share`
+// names the households a row is shared into; a row without it is private.
 const USERS = {
   alex: {
     sub: 'demo-alex', email: 'alex.chen@example.com', name: 'Alex Chen', base: 'USD',
-    category: { id: 'c-board-games', name: 'Board games', icon: 'casino', color: '#7E57C2' },
     rows: [
-      // A converted row from before rows carried their base: see seedHousehold.
+      { id: 'tx-hh-1', amount: 96.3, cat: 'bills_electricity', desc: 'Electric bill', share: ['chen-home'] },
+      { id: 'tx-hh-2', amount: 28, cat: 'entertainment_moviesAndShows', desc: 'Cinema tickets', share: ['chen-home'] },
+      // Private, in the food budget's categories: no household figure counts it.
+      { id: 'tx-hh-3', amount: 64.2, cat: 'food_groceries', desc: 'Farmers market' },
+      // Private, holding what a copy never reveals, for the journey that shares it.
       {
-        amount: 3200, currency: 'JPY', inBase: 21.94, rate: 0.006855, unstamped: true,
-        cat: 'c-board-games', desc: 'Board game café (Tokyo trip)',
+        id: 'tx-hh-4', amount: 42.75, cat: 'shopping_homeAndGarden', desc: 'Hardware store',
+        note: 'Shelf brackets for the hallway', tags: ['home', 'diy'], location: 'Ace Hardware, Valencia St',
       },
-      { amount: 64.2, cat: 'food_groceries', desc: 'Farmers market' },
+      { id: 'tx-hh-5', amount: 23.99, cat: 'education_booksAndSupplies', desc: 'Bookshop' },
+      { id: 'tx-hh-6', amount: 12, cat: 'transport_parking', desc: 'Parking garage' },
     ],
-    budget: { name: 'Groceries', cat: 'food_groceries', amount: 400 },
-    goal: { kind: 'saving', name: 'Kitchen renovation', target: 5000, contributed: 1200 },
   },
   sam: {
     sub: 'demo-sam', email: 'sam.lee@example.com', name: 'Sam Lee', base: 'JPY',
-    category: { id: 'c-pottery', name: 'Pottery', icon: 'palette', color: '#26A69A' },
     rows: [
-      { amount: 4500, cat: 'c-pottery', desc: 'Pottery class' },
-      { amount: 8640, cat: 'food_groceries', desc: 'Supermarket' },
+      // Shared, in the food budget's categories: the budget counts it, converted into dollars.
+      { id: 'tx-hh-1', amount: 8640, cat: 'food_groceries', desc: 'Supermarket', share: ['chen-home'] },
+      { id: 'tx-hh-2', amount: 6200, cat: 'transport_taxiAndRideShare', desc: 'Airport taxi', share: ['chen-home', 'trip-fund'] },
+      { id: 'tx-hh-3', amount: 12800, cat: 'transport_publicTransit', desc: 'Train tickets', share: ['trip-fund'] },
+      { id: 'tx-hh-4', amount: 1480, cat: 'food_snacksAndConvenience', desc: 'Convenience store' },
     ],
-    budget: { name: 'Groceries', cat: 'food_groceries', amount: 60000 },
-    goal: { kind: 'project', name: 'Hokkaido trip', target: 300000, contributed: 45000 },
+  },
+  kai: {
+    sub: 'demo-kai', email: 'kai.moreau@example.com', name: 'Kai Moreau', base: 'EUR',
+    rows: [
+      { id: 'tx-hh-1', amount: 120, cat: 'travel_hotelsAndAccommodation', desc: 'Hostel deposit', share: ['trip-fund'] },
+      { id: 'tx-hh-2', amount: 89, cat: 'transport_publicTransit', desc: 'Rail pass', share: ['trip-fund'] },
+      { id: 'tx-hh-3', amount: 14.5, cat: 'food_restaurants', desc: 'Lunch' },
+    ],
   },
 };
 
@@ -86,18 +167,14 @@ if (holder) { console.error(`refusing to write sessions inside the repository ($
 
 // ---- Dates: the current month, computed now --------------------------------
 
-const pad = (n) => String(n).padStart(2, '0');
-// transaction-date.utils.ts dayKey: yyyy-MM-dd in local time.
-const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const now = new Date();
+// Local midnight on the 1st: a monthly budget starting here counts the
+// current calendar month, in this machine's time zone, which the browser
+// shares.
 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-// budget.service.ts stamps `spent` with dayKey(budgetPeriodWindow(period,
-// startDate, now).start). A monthly budget anchored on the 1st starts its
-// window on the 1st of the current month, so this stamp reads as current —
-// in this machine's time zone, which the browser shares.
-const spentPeriod = dayKey(monthStart);
-// Both rows fall between the month's start and now: never in the future,
+// Every row falls between the month's start and now: never in the future,
 // never in last month, whatever day the seed runs.
 const rowDate = (i, count) =>
   new Date(monthStart.getTime() + ((now.getTime() - monthStart.getTime()) * (i + 1)) / (count + 1));
@@ -108,6 +185,8 @@ const ts = (d) => ({ timestampValue: d.toISOString() });
 const str = (s) => ({ stringValue: s });
 const num = (n) => (Number.isInteger(n) ? { integerValue: String(n) } : { doubleValue: n });
 const bool = (b) => ({ booleanValue: b });
+const list = (values) => ({ arrayValue: { values } });
+const map = (fields) => ({ mapValue: { fields } });
 
 async function put(docPath, fields) {
   const res = await fetch(`${FSTORE}/${docPath}`, { method: 'PATCH', headers: HDRS, body: JSON.stringify({ fields }) });
@@ -127,6 +206,9 @@ async function signIn(user) {
   });
   const idp = await res.json();
   if (!idp.localId) { console.error('auth precreate failed', user.email, idp); process.exit(1); }
+  // A copy's id is `${uid}_${txId}`, and the rules read its author from the
+  // part before the first underscore (ledgerCopyId).
+  if (/[_/]/.test(idp.localId)) { console.error('unusable account id', user.email, idp.localId); process.exit(1); }
   return idp;
 }
 
@@ -159,9 +241,9 @@ function sessionRecord(user, idp) {
 }
 
 // seed.mjs writes Alex's identity and a USD base onto every profile it seeds,
-// which would give Sam Alex's name, address and currency. One PATCH with three
-// mask paths sets each profile's own and leaves the rest of the profile, the
-// rest of `preferences` included, as seed.mjs wrote it.
+// which would give Sam and Kai Alex's name, address and currency. One PATCH
+// with three mask paths sets each profile's own and leaves the rest of the
+// profile, the rest of `preferences` included, as seed.mjs wrote it.
 async function patchIdentity(uid, user) {
   const mask = ['email', 'displayName', 'preferences.baseCurrency']
     .map((p) => `updateMask.fieldPaths=${encodeURIComponent(p)}`).join('&');
@@ -177,49 +259,103 @@ async function patchIdentity(uid, user) {
   if (!res.ok) { console.error('profile patch failed', user.email, res.status, await res.text()); process.exit(1); }
 }
 
-async function seedHousehold(uid, user) {
-  const c = user.category;
-  await put(`users/${uid}/categories/${c.id}`, {
-    userId: str(uid), name: str(c.name), icon: str(c.icon), color: str(c.color), type: str('expense'),
-    order: num(100), isActive: bool(true), isDefault: bool(false),
-  });
+// ---- Memberships --------------------------------------------------------------
 
-  // Rows in the base are stamped with it, as the app writes rows today. Alex's
-  // JPY row is the older kind: converted, with no stamp. It is dated in the
-  // current period because that is the one the household page opens on
-  // (seed.mjs's unstamped rows are May–July). A member on another base counts
-  // it right only when the ledger makes an unstamped peer row convert live:
-  // taken as stored, Sam's JPY view would count its USD snapshot as yen. That
-  // shows in the member and combined totals, not on the row, which shows no
-  // converted figure when its currency is the viewer's base. It stays out of
-  // the budget's category, whose `spent` is in the owner's base.
-  const rows = user.rows.map((r, i) => ({ ...r, date: rowDate(i, user.rows.length) }));
-  for (const [i, r] of rows.entries()) {
+/**
+ * One membership as HouseholdService's create (the owner) or accept (a
+ * joiner) commits it: the member document and the account's index entry,
+ * both of the household's generation. A joiner names the invite it came
+ * through, which that commit consumed.
+ */
+async function seedMembership(hid, household, uid, user, role, joinedAt) {
+  const member = {
+    uid: str(uid), displayName: str(user.name), role: str(role),
+    since: ts(household.createdAt), joinedAt: ts(joinedAt),
+  };
+  if (role === 'member') member.inviteId = str(`${hid}_${uid}`);
+  await put(`households/${hid}/members/${uid}`, member);
+  await put(`users/${uid}/households/${hid}`, {
+    since: ts(household.createdAt), role: str(role), name: str(household.name), joinedAt: ts(joinedAt),
+  });
+}
+
+async function seedHouseholds(uids) {
+  for (const [hid, h] of Object.entries(HOUSEHOLDS)) {
+    h.createdAt = new Date(now.getTime() - h.createdDaysAgo * DAY_MS);
+    await put(`households/${hid}`, { name: str(h.name), ownerId: str(uids[h.owner]), createdAt: ts(h.createdAt) });
+    await seedMembership(hid, h, uids[h.owner], USERS[h.owner], 'owner', h.createdAt);
+    await seedMembership(hid, h, uids[h.member], USERS[h.member], 'member', new Date(h.createdAt.getTime() + 2 * HOUR_MS));
+  }
+}
+
+// ---- Rows and their copies ------------------------------------------------------
+
+/** projectRow's copy of a row in a built-in category, as the app writes it (the stamp aside). */
+function copyFields(uid, row, household) {
+  const category = BUILT_INS[row.cat];
+  if (!category) { console.error(`${row.id}: ${row.cat} is not in BUILT_INS`); process.exit(1); }
+  return {
+    memberUid: str(uid), sourceId: str(row.id), gen: ts(household.createdAt), pv: num(PROJECTION_VERSION),
+    type: str('expense'), amount: num(row.amount), currency: str(row.currency), date: ts(row.date),
+    description: str(row.desc), categoryId: str(row.cat),
+    category: map({ name: str(category.name), icon: str(category.icon), color: str(category.color) }),
+    bucket: str(row.cat), bucketGroup: str(category.group),
+    updatedAt: ts(now),
+  };
+}
+
+async function seedRows(uid, user) {
+  const rows = user.rows.map((r, i) => ({ ...r, currency: user.base, date: rowDate(i, user.rows.length) }));
+  for (const r of rows) {
+    // Stamped with the base, as the app writes a row today.
     const fields = {
-      userId: str(uid), type: str('expense'), amount: num(r.amount), currency: str(r.currency ?? user.base),
-      amountInBaseCurrency: num(r.inBase ?? r.amount), exchangeRate: num(r.rate ?? 1),
+      userId: str(uid), type: str('expense'), amount: num(r.amount), currency: str(r.currency),
+      amountInBaseCurrency: num(r.amount), exchangeRate: num(1), baseCurrency: str(user.base),
       categoryId: str(r.cat), description: str(r.desc),
       date: ts(r.date), createdAt: ts(r.date), updatedAt: ts(r.date), isRecurring: bool(false),
     };
-    if (!r.unstamped) fields.baseCurrency = str(user.base);
-    await put(`users/${uid}/transactions/tx-household-${i + 1}`, fields);
+    if (r.share) fields.sharedWith = list(r.share.map((hid) => str(`households/${hid}`)));
+    if (r.note) fields.note = str(r.note);
+    if (r.tags) fields.tags = list(r.tags.map(str));
+    if (r.location) fields.location = map({ name: str(r.location) });
+    await put(`users/${uid}/transactions/${r.id}`, fields);
+    for (const hid of r.share ?? []) {
+      await put(`households/${hid}/ledger/${uid}_${r.id}`, copyFields(uid, r, HOUSEHOLDS[hid]));
+    }
   }
+}
 
-  const b = user.budget;
-  const spent = rows.filter((r) => r.cat === b.cat).reduce((sum, r) => sum + (r.inBase ?? r.amount), 0);
-  await put(`users/${uid}/budgets/b-household`, {
-    userId: str(uid), categoryId: str(b.cat), name: str(b.name), amount: num(b.amount),
-    currency: str(user.base), period: str('monthly'), startDate: ts(monthStart),
-    spent: num(spent), spentPeriod: str(spentPeriod), isActive: bool(true), alertThreshold: num(80),
-    createdAt: ts(monthStart), updatedAt: ts(now),
+// ---- The households' own budgets and goals ---------------------------------------
+
+async function seedPlans(uids) {
+  const chen = HOUSEHOLDS['chen-home'];
+  const trip = HOUSEHOLDS['trip-fund'];
+  const madeAt = (h) => new Date(h.createdAt.getTime() + DAY_MS);
+
+  await put('households/chen-home/budgets/b-food', {
+    gen: ts(chen.createdAt), name: str('Food'), categoryIds: list([str('food')]), amount: num(600),
+    currency: str('USD'), period: str('monthly'), startDate: ts(monthStart), alertThreshold: num(80),
+    isActive: bool(true), createdBy: str(uids.alex), createdAt: ts(madeAt(chen)), updatedAt: ts(madeAt(chen)),
+  });
+  await put('households/chen-home/goals/g-holiday', {
+    gen: ts(chen.createdAt), name: str('Holiday'), targetAmount: num(3000), currency: str('USD'),
+    targetDate: ts(new Date(now.getFullYear() + 1, 6, 1)),
+    isActive: bool(true), createdBy: str(uids.alex), createdAt: ts(madeAt(chen)), updatedAt: ts(madeAt(chen)),
+  });
+  // In the goal's currency, whatever the contributor's base.
+  const samGave = new Date(now.getTime() - 2 * DAY_MS);
+  await put('households/chen-home/goals/g-holiday/contributions/c-sam-1', {
+    gen: ts(chen.createdAt), memberUid: str(uids.sam), amount: num(250), date: ts(samGave), createdAt: ts(samGave),
   });
 
-  const g = user.goal;
-  await put(`users/${uid}/goals/g-household`, {
-    userId: str(uid), kind: str(g.kind), name: str(g.name), targetAmount: num(g.target),
-    contributedAmount: num(g.contributed), linkedAmount: num(0), currency: str(user.base),
-    targetDate: ts(new Date(now.getFullYear() + 1, 11, 31)), isActive: bool(true),
-    createdAt: ts(monthStart), updatedAt: ts(now),
+  await put('households/trip-fund/goals/g-summer-trip', {
+    gen: ts(trip.createdAt), name: str('Summer trip'), targetAmount: num(400000), currency: str('JPY'),
+    targetDate: ts(new Date(now.getFullYear() + 1, 5, 1)),
+    isActive: bool(true), createdBy: str(uids.sam), createdAt: ts(madeAt(trip)), updatedAt: ts(madeAt(trip)),
+  });
+  const kaiGave = new Date(now.getTime() - DAY_MS);
+  await put('households/trip-fund/goals/g-summer-trip/contributions/c-kai-1', {
+    gen: ts(trip.createdAt), memberUid: str(uids.kai), amount: num(30000), date: ts(kaiGave), createdAt: ts(kaiGave),
   });
 }
 
@@ -227,15 +363,19 @@ async function seedHousehold(uid, user) {
 
 const seedScript = fileURLToPath(new URL('./seed.mjs', import.meta.url));
 const sessions = {};
+const uids = {};
 for (const [key, user] of Object.entries(USERS)) {
   const idp = await signIn(user);
   const uid = idp.localId;
   execFileSync(process.execPath, [seedScript, uid], { stdio: 'inherit' });
   await patchIdentity(uid, user);
-  await seedHousehold(uid, user);
+  uids[key] = uid;
   sessions[key] = sessionRecord(user, idp);
   console.log(`${key}: ${user.name} <${user.email}> ${user.base} uid=${uid}`);
 }
+await seedHouseholds(uids);
+for (const [key, user] of Object.entries(USERS)) await seedRows(uids[key], user);
+await seedPlans(uids);
 
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 // The mode applies only when the write creates the file, so an earlier run's
@@ -243,4 +383,12 @@ fs.mkdirSync(path.dirname(outPath), { recursive: true });
 // fails rather than reuse a file something recreated in between.
 fs.rmSync(outPath, { force: true });
 fs.writeFileSync(outPath, JSON.stringify(sessions, null, 2), { mode: 0o600, flag: 'wx' });
-console.log(`period ${spentPeriod}; session records for ${Object.keys(sessions).join(', ')} -> ${outPath}`);
+for (const [hid, h] of Object.entries(HOUSEHOLDS)) {
+  console.log(`${hid}: ${h.name}, owner ${h.owner}, member ${h.member}, created ${h.createdAt.toISOString()}`);
+}
+for (const [key, user] of Object.entries(USERS)) {
+  const shared = user.rows.filter((r) => r.share).map((r) => `${r.desc} -> ${r.share.join(' + ')}`);
+  const kept = user.rows.filter((r) => !r.share).map((r) => r.desc);
+  console.log(`${key} shares ${shared.join('; ')}; keeps private ${kept.join(', ')}`);
+}
+console.log(`session records for ${Object.keys(sessions).join(', ')} -> ${outPath}`);

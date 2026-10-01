@@ -2,8 +2,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter, Router } from '@angular/router';
+import { By } from '@angular/platform-browser';
 import { Timestamp } from '@angular/fire/firestore';
+import { BehaviorSubject } from 'rxjs';
 import { RecentTransactionsComponent } from './recent-transactions.component';
+import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
+import { FirestoreService } from '../../../core/services/firestore.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
@@ -19,8 +23,11 @@ describe('RecentTransactionsComponent', () => {
   let categoryHelper: jasmine.SpyObj<CategoryHelperService>;
   let dateFormat: jasmine.SpyObj<DateFormatService>;
   let router: Router;
+  // The account's household index, as the share chips read it.
+  let households: BehaviorSubject<Record<string, unknown>[]>;
 
   beforeEach(async () => {
+    households = new BehaviorSubject<Record<string, unknown>[]>([]);
     const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
     currency.amountInBase.and.callFake(
       (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
@@ -49,6 +56,7 @@ describe('RecentTransactionsComponent', () => {
         { provide: DateFormatService, useValue: dateFormat },
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
+        { provide: FirestoreService, useValue: { subscribeToCollection: () => households } },
       ],
     }).compileComponents();
 
@@ -60,6 +68,25 @@ describe('RecentTransactionsComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it("marks a shared row with the account's live households, as the transactions list does", () => {
+    const joined = Timestamp.fromMillis(1_000);
+    households.next([
+      { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined },
+      { id: 'h2', name: 'Old flat', role: 'member', since: joined, joinedAt: joined, endedAt: joined },
+    ]);
+    fixture.componentRef.setInput('transactions', [
+      { id: 't1', description: 'Dinner', amount: 5, currency: 'USD', type: 'expense', categoryId: 'c1', date: Timestamp.now(),
+        sharedWith: ['households/h1'] } as Transaction,
+      { id: 't2', description: 'Coffee', amount: 3, currency: 'USD', type: 'expense', categoryId: 'c1', date: Timestamp.now() } as Transaction,
+    ]);
+    fixture.detectChanges();
+
+    const rows = fixture.debugElement.queryAll(By.directive(TransactionRowComponent));
+    expect([...(rows[0].componentInstance as TransactionRowComponent).householdNames()]).toEqual([['h1', 'Home']]);
+    expect(rows[0].nativeElement.querySelector('.row-shared')).withContext('the shared row').not.toBeNull();
+    expect(rows[1].nativeElement.querySelector('.row-shared')).withContext('a private row').toBeNull();
   });
 
   // Row anatomy (category chip, amounts, converted line, dates) is covered

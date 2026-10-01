@@ -36,7 +36,8 @@ const ANALYTICS_IMPORT_PATTERNS = [
 // listener's first emission, which under the persistent cache is whatever
 // window the session happened to browse before — a plausible-looking
 // subset, not the collection. The names are TransactionService's Observable
-// methods, FirestoreService's (subscribeToCollection, subscribeToDocument,
+// methods, FirestoreService's (subscribeToCollection,
+// subscribeToCollectionWithMetadata, subscribeToDocument,
 // subscribeToDocumentWithMetadata — every household listener goes through
 // one of them), and watch — this selector flags them wherever they are
 // called, not just on those services. The names are anchored, so a longer
@@ -50,7 +51,7 @@ const LISTENER_METHOD_ALTERNATION =
   "getTransactions|getTransactionById|getTransactionsInRange|getTransactionsWithReceipts|" +
   "getRecentTransactions|getExpensesInRange|getPeriodTotals|getPeriodCategoryTotals|" +
   "getTransactionDatesForMonth|getByDateRange|getByCategory|getMonthlyTotals|" +
-  "subscribeToCollection|subscribeToDocument|subscribeToDocumentWithMetadata|watch";
+  "subscribeToCollection|subscribeToCollectionWithMetadata|subscribeToDocument|subscribeToDocumentWithMetadata|watch";
 const FIRST_VALUE_FROM_LISTENER_MESSAGE =
   "firstValueFrom takes a listener's first emission, which the persistent " +
   "cache can answer from a stale subset (docs/one-shot-reads.md). Use the " +

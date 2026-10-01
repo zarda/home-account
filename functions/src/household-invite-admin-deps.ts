@@ -2,6 +2,7 @@ import type { Auth } from 'firebase-admin/auth';
 import { Firestore, QuerySnapshot, Timestamp } from 'firebase-admin/firestore';
 
 import {
+  MEMBERSHIP_READ_BOUND,
   PendingInvite,
   Stamp,
   hasSeat,
@@ -31,8 +32,9 @@ export interface HouseholdInviteAdminWiring {
  * The Admin SDK behind the invite handler. Every decision is made in
  * ./household-invite; each dep here reads or writes, and holds only the
  * shape guards a stored value needs before a decision may trust it: a
- * household's createdAt must be a real Timestamp, and a profile's pointer a
- * possible household id. The handles come in as arguments so a test can
+ * household's createdAt must be a real Timestamp, and an index entry's id a
+ * possible household id. It reads no further than the bounds set there
+ * (MEMBERSHIP_READ_BOUND). The handles come in as arguments so a test can
  * record how each write is made, which the handler's own fakes never see.
  */
 export function householdInviteAdminDeps({
@@ -88,19 +90,40 @@ export function householdInviteAdminDeps({
       }
     },
 
-    membershipOf: async uid => {
-      const householdId: unknown = (await firestore.doc(`users/${uid}`).get()).get('householdId');
-      // The pointer is client-written; one that could not be a household id
-      // names no household this function will read through.
-      if (!isHouseholdId(householdId)) return null;
-      const [member, household] = await Promise.all([
-        firestore.doc(`households/${householdId}/members/${uid}`).get(),
-        firestore.doc(`households/${householdId}`).get(),
-      ]);
+    memberSince: async (householdId, uid) =>
+      stampOf((await firestore.doc(`households/${householdId}/members/${uid}`).get()).get('since')),
+
+    membershipsOf: async uid => {
+      // One past the bound, which is how an index longer than it shows.
+      const listed = await firestore
+        .collection(`users/${uid}/households`)
+        .limit(MEMBERSHIP_READ_BOUND + 1)
+        .get();
+      const overflow = listed.docs.length > MEMBERSHIP_READ_BOUND;
+      // The index is client-written; an entry whose id could not be a
+      // household id names no household this function will read through.
+      const named = listed.docs
+        .slice(0, MEMBERSHIP_READ_BOUND)
+        .filter(entry => isHouseholdId(entry.id));
+      // getAll refuses an empty call.
+      if (named.length === 0) return { entries: [], overflow };
+      // One batched read, answered in the order asked: each entry's member
+      // doc, then its household.
+      const read = await firestore.getAll(
+        ...named.flatMap(entry => [
+          firestore.doc(`households/${entry.id}/members/${uid}`),
+          firestore.doc(`households/${entry.id}`),
+        ])
+      );
       return {
-        householdId,
-        since: stampOf(member.get('since')),
-        householdCreatedAt: stampOf(household.get('createdAt')),
+        entries: named.map((entry, i) => ({
+          householdId: entry.id,
+          since: stampOf(entry.get('since')),
+          ended: entry.get('endedAt') !== undefined,
+          memberSince: stampOf(read[2 * i].get('since')),
+          householdCreatedAt: stampOf(read[2 * i + 1].get('createdAt')),
+        })),
+        overflow,
       };
     },
 

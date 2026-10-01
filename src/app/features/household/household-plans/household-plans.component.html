@@ -1,77 +1,269 @@
 <section class="plans" aria-labelledby="household-plans-title">
-  <h2 id="household-plans-title" class="plans-title">
+  <!-- Script focuses it once a plan deleted from here has gone; Tab passes it by. -->
+  <h2 id="household-plans-title" class="plans-title" tabindex="-1">
     <mat-icon>savings</mat-icon>
     <span>{{ 'household.plans.title' | translate }}</span>
   </h2>
 
-  @for (notice of notices(); track notice.kind + '/' + notice.member.uid) {
-    <p class="plans-note" role="status">
-      <mat-icon>warning</mat-icon>
-      @switch (notice.kind) {
-        @case ('budgetsIncomplete') {
-          <span>{{ 'household.plans.budgetsIncomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
-        }
-        @case ('goalsIncomplete') {
-          <span>{{ 'household.plans.goalsIncomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
-        }
-      }
-    </p>
+  @if (canWrite()) {
+    <div class="plans-actions">
+      <button
+        mat-stroked-button
+        type="button"
+        class="plans-new-budget"
+        (click)="newBudget($event)"
+        [disabled]="pending()"
+        disabledInteractive
+      >
+        <mat-icon>add</mat-icon>
+        <span>{{ 'household.plans.newBudget' | translate }}</span>
+      </button>
+      <button
+        mat-stroked-button
+        type="button"
+        class="plans-new-goal"
+        (click)="newGoal($event)"
+        [disabled]="pending()"
+        disabledInteractive
+      >
+        <mat-icon>add</mat-icon>
+        <span>{{ 'household.plans.newGoal' | translate }}</span>
+      </button>
+    </div>
   }
 
-  @if (loading()) {
+  @if (state() === 'loading') {
     <app-loading-spinner [message]="'household.plans.loading' | translate" />
+  } @else if (state() === 'offline') {
+    <p class="plans-offline">
+      <mat-icon>cloud_off</mat-icon>
+      <span>{{ 'household.plans.notLoaded' | translate }}</span>
+    </p>
   } @else {
-    @for (group of groups(); track group.member.uid; let g = $index) {
-      <div class="plans-member">
-        <h3 class="plans-member-head">
-          <app-member-chip [member]="group.member" />
-        </h3>
+    @if (incomplete()) {
+      <p class="plans-note" role="status">
+        <mat-icon>warning</mat-icon>
+        <span>{{ 'household.plans.listIncomplete' | translate }}</span>
+      </p>
+    } @else if (empty()) {
+      <p class="plans-empty">{{ 'household.plans.empty' | translate }}</p>
+    }
 
-        @if (group.notLoaded) {
-          <p class="plans-not-loaded">{{ 'household.plans.notLoaded' | translate }}</p>
-        } @else if (group.readFailed) {
-          <p class="plans-read-failed">{{ 'household.plans.readFailed' | translate }}</p>
-        } @else if (group.budgets.length === 0 && group.goals.length === 0) {
-          <p class="plans-empty">{{ 'household.plans.empty' | translate }}</p>
-        } @else {
-          <!-- Each card names itself with a heading one level below the
-               member's, so the lists are labelled rather than headed: a
-               "Budgets" heading at that level would put the goals under the
-               last budget. -->
-          @if (group.budgets.length > 0) {
-            <p class="plans-subtitle" [id]="'household-plans-' + g + '-budgets'">{{ 'budget.budgets' | translate }}</p>
-            <ul class="plans-cards" [attr.aria-labelledby]="'household-plans-' + g + '-budgets'">
-              @for (view of group.budgets; track view.budget.id) {
-                <li class="plans-card">
-                  <app-budget-progress-card
-                    [budget]="view.budget"
-                    [category]="view.category"
-                    [readOnly]="true"
-                    [headingLevel]="4"
-                  />
-                  @if (view.budget.stale) {
-                    <p class="plans-stale">
-                      <mat-icon>info</mat-icon>
-                      <span>{{ 'household.plans.stale' | translate: { name: group.name || ('household.unnamedMember' | translate) } }}</span>
-                    </p>
+    @if (budgets().length > 0) {
+      <section class="plans-group plans-budgets" aria-labelledby="household-budgets-title">
+        <h3 id="household-budgets-title" class="plans-subtitle">{{ 'household.plans.budgetsTitle' | translate }}</h3>
+        <ul class="plan-list">
+          @for (view of budgets(); track view.id) {
+            <li class="plan-card">
+              <div class="plan-head">
+                <!-- Script focuses it once the budget made from here has come; Tab passes it by. -->
+                <h4 class="plan-name" [id]="view.headingId" tabindex="-1">{{ view.name }}</h4>
+                @if (canWrite()) {
+                  <div class="plan-actions">
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="plan-edit"
+                      (click)="editBudget(view.id)"
+                      [disabled]="pending()"
+                      disabledInteractive
+                      [attr.aria-label]="'household.plans.edit' | translate: { name: view.name }"
+                    >
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    @if (view.deletable) {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        class="plan-delete"
+                        (click)="deleteBudget(view)"
+                        [disabled]="pending()"
+                        disabledInteractive
+                        [attr.aria-label]="'household.plans.delete' | translate: { name: view.name }"
+                      >
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+              <p class="plan-meta">
+                <span class="plan-period">
+                  @switch (view.period) {
+                    @case ('weekly') { {{ 'transactions.weekly' | translate }} }
+                    @case ('yearly') { {{ 'transactions.yearly' | translate }} }
+                    @default { {{ 'transactions.monthly' | translate }} }
                   }
-                </li>
+                </span>
+                @if (view.window; as window) {
+                  <span class="plan-window">{{ 'household.plans.window' | translate: { start: window.start, end: window.end } }}</span>
+                }
+              </p>
+              @if (view.counting) {
+                <p class="plan-counting">{{ 'household.plans.counting' | translate }}</p>
+              } @else {
+                <p class="plan-figures">
+                  <span class="plan-amount" [class.over]="view.severity === 'exceeded'" appFitText>{{ view.spent }}</span>&ngsp;
+                  <span class="plan-of" appFitText>/ {{ view.amount }}</span>&ngsp;
+                  <span
+                    class="plan-percent"
+                    [class.over]="view.severity === 'exceeded'"
+                    [class.near]="view.severity === 'warning' || view.severity === 'critical'"
+                  >{{ view.percent }}%</span>
+                </p>
+                <mat-progress-bar
+                  mode="determinate"
+                  [value]="view.bar"
+                  [color]="view.severity === 'exceeded' ? 'warn' : view.severity ? 'accent' : 'primary'"
+                  [attr.aria-label]="'budgets.progressLabel' | translate: { name: view.name, percent: view.percent }"
+                />
+                @if (view.severity; as severity) {
+                  <!-- In words as well as in the bar's colour. -->
+                  <p class="plan-alert" [class.over]="severity === 'exceeded'">
+                    @if (severity === 'exceeded') {
+                      <mat-icon>error</mat-icon>
+                      <span>{{ 'budget.budgetExceeded' | translate }}</span>
+                    } @else if (severity === 'critical') {
+                      <mat-icon>warning</mat-icon>
+                      <span>{{ 'budget.almostAtLimit' | translate }}</span>
+                    } @else {
+                      <mat-icon>warning</mat-icon>
+                      <span>{{ 'budget.approachingLimit' | translate }}</span>
+                    }
+                  </p>
+                }
+                @if (view.atTodaysRate) {
+                  <p class="rate-caption">{{ 'common.atTodaysRate' | translate }}</p>
+                }
+                @if (view.incomplete) {
+                  <p class="plan-incomplete">
+                    <mat-icon>info</mat-icon>
+                    <span>{{ 'household.plans.incomplete' | translate }}</span>
+                  </p>
+                }
               }
-            </ul>
+            </li>
           }
+        </ul>
+      </section>
+    }
 
-          @if (group.goals.length > 0) {
-            <p class="plans-subtitle" [id]="'household-plans-' + g + '-goals'">{{ 'budget.goals' | translate }}</p>
-            <ul class="plans-cards" [attr.aria-labelledby]="'household-plans-' + g + '-goals'">
-              @for (goal of group.goals; track goal.id) {
-                <li class="plans-card">
-                  <app-goal-progress-card [goal]="goal" [readOnly]="true" [headingLevel]="4" />
-                </li>
+    @if (goals().length > 0) {
+      <section class="plans-group plans-goals" aria-labelledby="household-goals-title">
+        <h3 id="household-goals-title" class="plans-subtitle">{{ 'household.plans.goalsTitle' | translate }}</h3>
+        <ul class="plan-list">
+          @for (view of goals(); track view.id) {
+            <li class="plan-card">
+              <div class="plan-head">
+                <!-- Script focuses it once the goal made from here has come, or a
+                     contribution deleted from it has gone; Tab passes it by. -->
+                <h4 class="plan-name" [id]="view.headingId" tabindex="-1">{{ view.name }}</h4>
+                @if (canWrite()) {
+                  <div class="plan-actions">
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="plan-edit"
+                      (click)="editGoal(view.id)"
+                      [disabled]="pending()"
+                      disabledInteractive
+                      [attr.aria-label]="'household.plans.edit' | translate: { name: view.name }"
+                    >
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    @if (view.deletable) {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        class="plan-delete"
+                        (click)="deleteGoal(view)"
+                        [disabled]="pending()"
+                        disabledInteractive
+                        [attr.aria-label]="'household.plans.delete' | translate: { name: view.name }"
+                      >
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+              @if (view.targetDate; as date) {
+                <p class="plan-meta">
+                  <span class="plan-target-date">{{ 'household.plans.targetDate' | translate: { date: date } }}</span>
+                </p>
               }
-            </ul>
+              @if (view.counting) {
+                <p class="plan-counting">{{ 'household.plans.counting' | translate }}</p>
+              } @else {
+                <p class="plan-figures">
+                  <span class="plan-amount" appFitText>{{ view.saved }}</span>&ngsp;
+                  <span class="plan-of" appFitText>/ {{ view.target }}</span>&ngsp;
+                  <span class="plan-percent">{{ view.percent }}%</span>
+                </p>
+                <mat-progress-bar
+                  mode="determinate"
+                  [value]="view.bar"
+                  [attr.aria-label]="'goals.progressLabel' | translate: { name: view.name, percent: view.percent }"
+                />
+                @if (view.atTodaysRate) {
+                  <p class="rate-caption">{{ 'common.atTodaysRate' | translate }}</p>
+                }
+                @if (view.incomplete) {
+                  <p class="plan-incomplete">
+                    <mat-icon>info</mat-icon>
+                    <span>{{ 'household.plans.goalIncomplete' | translate }}</span>
+                  </p>
+                }
+
+                <p class="contributions-title" [id]="view.contributionsId">
+                  {{ 'household.plans.contributionsTitle' | translate }}
+                </p>
+                @if (view.contributions.length > 0) {
+                  <ul class="contributions" [attr.aria-labelledby]="view.contributionsId">
+                    @for (entry of view.contributions; track entry.id) {
+                      <li class="contribution">
+                        <app-member-chip class="contribution-who" [member]="entry.member" />
+                        <span class="contribution-amount" appFitText>{{ entry.amount }}</span>
+                        <span class="contribution-date">{{ entry.date }}</span>
+                        @if (canWrite() && entry.deletable) {
+                          <button
+                            mat-icon-button
+                            type="button"
+                            class="contribution-delete"
+                            (click)="deleteContribution(view, entry)"
+                            [disabled]="pending()"
+                            disabledInteractive
+                            [attr.aria-label]="'household.plans.deleteContribution' | translate: { amount: entry.amount, date: entry.date }"
+                          >
+                            <mat-icon>delete</mat-icon>
+                          </button>
+                        }
+                      </li>
+                    }
+                  </ul>
+                } @else {
+                  <p class="contributions-empty">{{ 'household.plans.noContributions' | translate }}</p>
+                }
+              }
+              @if (canWrite()) {
+                <!-- Named by what it does, and described by the goal it is for. -->
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="plan-contribute"
+                  (click)="addContribution(view)"
+                  [disabled]="pending()"
+                  disabledInteractive
+                  [attr.aria-describedby]="view.headingId"
+                >
+                  <mat-icon>add</mat-icon>
+                  <span>{{ 'household.plans.addContribution' | translate }}</span>
+                </button>
+              }
+            </li>
           }
-        }
-      </div>
+        </ul>
+      </section>
     }
   }
 </section>

@@ -100,7 +100,14 @@
         "leave",
         "remove",
         "dissolve",
-        "rename"
+        "rename",
+        "share",
+        "unshare",
+        "switch",
+        "plan_create",
+        "plan_delete",
+        "goal_link",
+        "contribute"
       ]
     }
   }

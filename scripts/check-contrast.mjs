@@ -110,7 +110,13 @@ const PAIRS = [
   { fg: '--text-muted', bg: '--surface-card', why: 'captions and hints on a card' },
   { fg: '--text-muted', bg: '--surface-muted', why: 'captions inside a nested chip or stat tile' },
   { fg: '--text-muted', bg: '--surface-background', why: 'captions on the page' },
-  { fg: '--text-inverse', bg: '--color-primary', why: 'bottom-nav and period-selector labels on the primary fill' },
+  {
+    fg: '--text-inverse',
+    bg: '--color-primary',
+    why: "the transactions quick filters' active button and filter count, the import stepper's current step, " +
+      "the dropzone's image number, the import preview's selection badge, the snapshot timeline's chosen month",
+  },
+  { fg: '--text-inverse', bg: '--color-accent', why: "the bottom-nav add button and the period selector's custom-range button" },
   { fg: '--color-primary', bg: '--surface-card', why: 'links and active labels on a card' },
   { fg: '--color-accent', bg: '--surface-card', why: 'accent labels on a card' },
   {
@@ -147,7 +153,7 @@ const EXEMPT = [
   {
     fg: '--text-inverse',
     bg: '--color-error',
-    why: 'nothing paints it — the two inverse-text sites (bottom-nav, period-selector) both sit on --color-primary, which is scored above',
+    why: 'nothing paints it — every inverse-text site sits on --color-primary or --color-accent, both scored above',
   },
   {
     fg: '--text-inverse',

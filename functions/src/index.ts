@@ -1,5 +1,5 @@
 import { setGlobalOptions } from 'firebase-functions';
-import { onDocumentCreated } from 'firebase-functions/firestore';
+import { onDocumentCreated, onDocumentDeleted } from 'firebase-functions/firestore';
 import { onCall } from 'firebase-functions/https';
 import { onObjectDeleted, onObjectFinalized } from 'firebase-functions/storage';
 import { defineSecret } from 'firebase-functions/params';
@@ -17,6 +17,12 @@ import {
   INVITE_MAIL_DEADLINE_MS,
   handleHouseholdInvite,
 } from './household-invite-handler';
+import { householdLedgerCleanupAdminDeps } from './household-ledger-cleanup-admin-deps';
+import { deletedHousehold, deletedMember } from './household-ledger-cleanup-events';
+import {
+  HouseholdLedgerCleanupDeps,
+  handleHouseholdLedgerCleanup,
+} from './household-ledger-cleanup-handler';
 import { sendMail } from './mailer';
 import {
   FALLBACK_FREE_LIMIT,
@@ -30,11 +36,13 @@ import {
 
 // Firestore lives in asia-east1 (firebase.json), so every function runs beside
 // it; only the storage triggers override the region, as they must.
-// maxInstances bounds cost: feedback and invites are human-scale by
-// definition, and the one instance serves requests concurrently (the Cloud Run
-// default), so an invite a user waits on does not queue behind another's mail
-// send. For the same reason it serializes nothing: the storage triggers add
-// concurrency: 1, and the invite takes its seat inside a transaction.
+// maxInstances bounds cost: feedback, invites and a household's endings are
+// human-scale by definition, and the one instance serves requests concurrently
+// (the Cloud Run default), so an invite a user waits on does not queue behind
+// another's mail send. For the same reason it serializes nothing: the storage
+// triggers add concurrency: 1, the invite takes its seat inside a transaction,
+// and the household cleanups delete only what each lists, which two running
+// at once can both do.
 setGlobalOptions({ region: 'asia-east1', maxInstances: 1 });
 
 initializeApp();
@@ -146,6 +154,56 @@ function householdInviteDeps(): HouseholdInviteDeps {
 export const inviteToHousehold = onCall(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass] },
   request => handleHouseholdInvite(householdInviteDeps(), request)
+);
+
+/**
+ * The cleanup handler's Admin SDK deps, wired to this project's Firestore and
+ * logger. What each dep does is in ./household-ledger-cleanup-admin-deps.
+ */
+function householdLedgerCleanupDeps(): HouseholdLedgerCleanupDeps {
+  return householdLedgerCleanupAdminDeps({
+    firestore: getFirestore(),
+    log: {
+      info: (message, context) => logger.info(message, context),
+      warn: (message, context) => logger.warn(message, context),
+      // The error goes positionally, for the reason recountReceiptQuota gives.
+      error: (message, error, context) => logger.error(message, error, context),
+    },
+  });
+}
+
+/**
+ * A member document deleted (a leave, a removal, a dissolve's sweep of its
+ * members) has that member's copies of its generation deleted from the
+ * household's ledger. A backstop: after a leave or a removal the leaving
+ * member's app, or the owner's, deletes them first, and this finishes a purge
+ * cut off part-way, while the copies can still be listed by any member; in a
+ * dissolve it takes each other member's copies out ahead of that member's own
+ * app, which does so only when it next tidies. It never writes the member's
+ * own rows.
+ *
+ * retry: true, so a transient failure is delivered again; every sweep deletes
+ * only what is left and stops if the member is back in the same generation.
+ * No secrets: it writes only Firestore.
+ */
+export const onHouseholdMemberDeleted = onDocumentDeleted(
+  { document: 'households/{householdId}/members/{uid}', retry: true },
+  event => handleHouseholdLedgerCleanup(householdLedgerCleanupDeps(), deletedMember(event))
+);
+
+/**
+ * A household deleted (dissolved) has what is left of its generation deleted:
+ * the ledger's copies, its budgets, its goals and each goal's contributions,
+ * and its member documents. A backstop: the owner's dissolve deletes the
+ * plans and members first, and each member-document delete in that sweep
+ * sets off onHouseholdMemberDeleted, which takes that member's copies out;
+ * this reaches anything a cut-off sweep or trigger left behind. Scoped to the
+ * deleted household's createdAt rather than a recursive delete of its path,
+ * so no other generation under the same id is touched.
+ */
+export const onHouseholdDissolved = onDocumentDeleted(
+  { document: 'households/{householdId}', retry: true },
+  event => handleHouseholdLedgerCleanup(householdLedgerCleanupDeps(), deletedHousehold(event))
 );
 
 /**

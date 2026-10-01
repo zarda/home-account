@@ -34,11 +34,20 @@ screen, not to be searched for.
 ## What a part carries, and what it does not
 
 A part copies the purchase's identity: type, currency, exchange rate, base
-currency, description, date, tags, location and budget period. Its own
+currency, description, date, tags, location and budget period, and the
+households the purchase is shared into (`sharedWith`), whether it is split
+as it is added or as an existing row is edited. Its own
 `amountInBaseCurrency` is the purchase's own exchange rate applied to the
 part's amount — never re-resolved against a live rate, the same rule every
 other stored money figure in this app follows
 (see [docs/money-snapshots.md](money-snapshots.md)).
+
+A part of a shared purchase is therefore shared wherever the purchase is, as
+a row of its own with a copy of its own in each household. A copy reveals no
+`splitGroupId`, so the other members see the parts as separate rows, not as
+a group. From then on each part is shared and unshared on its own, like any
+other row (see [docs/household.md](household.md) and
+[ADR 0157](ADR/0157-a-transaction-is-private-until-its-owner-shares-it-and-a-household-sees-a-faithful-copy.md)).
 
 A part never carries the purchase's **note**, its **receipts**, its **goal
 link**, or its **recurring link**. Receipts stay on the first row, because

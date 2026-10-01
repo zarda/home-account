@@ -2,45 +2,46 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { WritableSignal, computed, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { Timestamp } from '@angular/fire/firestore';
 
 import { HOUSEHOLD_OVERVIEW_ROW_PAGE, HouseholdOverviewComponent } from './household-overview.component';
 import {
-  HOUSEHOLD_LEDGER_ROW_CAP,
   HouseholdLedgerService,
-  LedgerKind,
   LedgerRow,
+  LedgerTotals,
   MemberTotals
 } from '../../../core/services/household-ledger.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { HouseholdError } from '../../../core/services/household.service';
+import { HouseholdGoalFigures, HouseholdPlansService } from '../../../core/services/household-plans.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
-  createCategory,
   createLocaleFormatStub,
-  createTransaction,
   createTranslationStub,
   createUser,
   TranslationStub
 } from '../../../core/services/testing';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
-import { Category, HouseholdMemberIdentity, User } from '../../../models';
-import { TypeTotals } from '../../../core/utils/transaction-aggregation.utils';
+import { HouseholdMemberIdentity, LEDGER_VIEW_CAP, User } from '../../../models';
 import { clampWindowToNow, periodWindow } from '../../../core/utils/transaction-date.utils';
 import en from '../../../../assets/i18n/en.json';
 
 interface FakeLedger {
   rows: WritableSignal<LedgerRow[]>;
   totalsByMember: WritableSignal<MemberTotals[]>;
-  combined: WritableSignal<TypeTotals>;
-  categoriesByMember: WritableSignal<ReadonlyMap<string, Map<string, Category>>>;
-  unavailable: WritableSignal<HouseholdMemberIdentity[]>;
-  truncated: WritableSignal<HouseholdMemberIdentity[]>;
-  incomplete: WritableSignal<Record<LedgerKind, HouseholdMemberIdentity[]>>;
+  combined: WritableSignal<LedgerTotals>;
+  truncated: WritableSignal<boolean>;
+  incomplete: WritableSignal<boolean>;
   loading: WritableSignal<boolean>;
+  fromCache: WritableSignal<boolean>;
+  ratesPending: WritableSignal<boolean>;
   setPeriod: jasmine.Spy;
 }
 
@@ -49,19 +50,13 @@ const alex: HouseholdMemberIdentity = { uid: 'alex', displayName: 'Alex' };
 const sam: HouseholdMemberIdentity = { uid: 'sam', displayName: 'Sam Ito' };
 const kai: HouseholdMemberIdentity = { uid: 'kai', displayName: 'Kai' };
 
-const NOTHING_FAILED: Record<LedgerKind, HouseholdMemberIdentity[]> =
-  { transactions: [], categories: [], budgets: [], goals: [] };
+const totals = (income: number, expense: number, count = 1, atTodaysRate = false): LedgerTotals =>
+  ({ income, expense, balance: income - expense, count, atTodaysRate });
 
-const totals = (income: number, expense: number, count = 1): TypeTotals =>
-  ({ income, expense, balance: income - expense, count });
-
-/** Each member's own categories: the same id means a different thing to each. */
-const alexCategories = new Map<string, Category>([
-  ['custom-1', createCategory({ id: 'custom-1', name: 'Climbing gym', icon: 'fitness_center' })]
-]);
-const samCategories = new Map<string, Category>([
-  ['custom-1', createCategory({ id: 'custom-1', name: 'Tea shop', icon: 'local_cafe' })]
-]);
+/** A built-in's snapshot holds its translation key, which the viewer's language names. */
+const GROCERIES = { name: 'categoryNames.groceries', icon: 'local_grocery_store', color: '#4CAF50' };
+/** A custom category's snapshot holds its member's own text. */
+const TEA_SHOP = { name: 'Tea shop', icon: 'local_cafe', color: '#795548' };
 
 /**
  * en.json's period labels below the tablet breakpoint. The Karma window is
@@ -76,10 +71,23 @@ const PHONE_PERIOD_LABELS: Record<string, string> = Object.fromEntries(
   })
 );
 
+/** A shared row in the viewer's USD base, unless told otherwise. */
 function row(memberUid: string, id: string, overrides: Partial<LedgerRow> = {}): LedgerRow {
+  const amount = overrides.amount ?? 10;
   return {
-    ...createTransaction({ id, categoryId: 'custom-1', currency: 'USD', ...overrides }),
-    memberUid
+    id: `${memberUid}_${id}`,
+    memberUid,
+    sourceId: id,
+    type: 'expense',
+    amount,
+    currency: 'USD',
+    date: Timestamp.fromDate(new Date()),
+    description: id,
+    categoryId: 'food_groceries',
+    category: GROCERIES,
+    inBase: amount,
+    atTodaysRate: false,
+    ...overrides
   };
 }
 
@@ -91,6 +99,11 @@ describe('HouseholdOverviewComponent', () => {
   let online: WritableSignal<boolean>;
   let viewer: WritableSignal<User | null>;
   let announce: jasmine.Spy;
+  /** The household's active goals, as the page's plans service lists them. */
+  let goals: WritableSignal<HouseholdGoalFigures[]>;
+  let linkCopy: jasmine.Spy;
+  let notification: jasmine.SpyObj<Pick<NotificationService, 'success' | 'error'>>;
+  let analytics: jasmine.SpyObj<Pick<AnalyticsService, 'trackHouseholdAction'>>;
 
   const element = (): HTMLElement => fixture.nativeElement as HTMLElement;
   const text = (): string => element().textContent ?? '';
@@ -104,20 +117,20 @@ describe('HouseholdOverviewComponent', () => {
     fixture.detectChanges();
   }
 
-  /** Two members with a row each, every listener answered. */
+  /** Two members who each shared a row, the server's answer in. */
   function answered(): void {
     ledger.totalsByMember.set([
       { member: alex, totals: totals(1000, 250.5, 2) },
       { member: sam, totals: totals(0, 1200, 1) }
     ]);
     ledger.combined.set(totals(1000, 1450.5, 3));
-    ledger.categoriesByMember.set(new Map([['alex', alexCategories], ['sam', samCategories]]));
     ledger.rows.set([
-      row('sam', 'tx-s1', { description: 'Matcha', type: 'expense', amount: 1200 }),
+      row('sam', 'tx-s1', { description: 'Matcha', type: 'expense', amount: 1200, category: TEA_SHOP, categoryId: 'sam-tea' }),
       row('alex', 'tx-a1', { description: 'Pay', type: 'income', amount: 1000 }),
       row('alex', 'tx-a2', { description: 'Bouldering', type: 'expense', amount: 250.5 })
     ]);
     ledger.loading.set(false);
+    ledger.fromCache.set(false);
   }
 
   beforeEach(async () => {
@@ -125,11 +138,11 @@ describe('HouseholdOverviewComponent', () => {
       rows: signal([]),
       totalsByMember: signal([]),
       combined: signal(totals(0, 0, 0)),
-      categoriesByMember: signal(new Map()),
-      unavailable: signal([]),
-      truncated: signal([]),
-      incomplete: signal(NOTHING_FAILED),
+      truncated: signal(false),
+      incomplete: signal(false),
       loading: signal(true),
+      fromCache: signal(false),
+      ratesPending: signal(false),
       setPeriod: jasmine.createSpy('setPeriod')
     };
     online = signal(true);
@@ -142,8 +155,14 @@ describe('HouseholdOverviewComponent', () => {
     currency.formatCurrency.and.callFake(
       (amount: number, code: string) => `${amount < 0 ? '-' : ''}${code} ${Math.abs(amount).toFixed(2)}`
     );
-    currency.amountInBase.and.callFake((t: { amount: number }) => t.amount);
+    // What a row counts as in the base: the figure it was handed.
+    currency.amountInBase.and.callFake((t: { amount: number; amountInBaseCurrency?: number }) =>
+      t.amountInBaseCurrency ?? t.amount);
     announce = jasmine.createSpy('announce');
+    goals = signal([]);
+    linkCopy = jasmine.createSpy('linkCopy').and.resolveTo(undefined);
+    notification = jasmine.createSpyObj('NotificationService', ['success', 'error']);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackHouseholdAction']);
 
     await TestBed.configureTestingModule({
       imports: [HouseholdOverviewComponent],
@@ -156,9 +175,19 @@ describe('HouseholdOverviewComponent', () => {
           useValue: { currentUser: viewer, userId: computed(() => viewer()?.id ?? null) }
         },
         { provide: PwaService, useValue: { isOnline: online } },
-        { provide: TranslationService, useValue: createTranslationStub() },
+        {
+          provide: TranslationService,
+          // One built-in's key in the viewer's language; every other key echoed.
+          useValue: createTranslationStub({
+            t: (key, params) =>
+              key === GROCERIES.name ? 'Groceries' : params ? `${key}:${JSON.stringify(params)}` : key
+          })
+        },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
-        { provide: AnnouncerService, useValue: { announce } }
+        { provide: AnnouncerService, useValue: { announce } },
+        { provide: HouseholdPlansService, useValue: { goals, linkCopy } },
+        { provide: NotificationService, useValue: notification },
+        { provide: AnalyticsService, useValue: analytics }
       ]
     }).compileComponents();
 
@@ -236,6 +265,28 @@ describe('HouseholdOverviewComponent', () => {
       expect(net.textContent?.trim()).toBe('JPY 0.00');
       expect(net.classList).not.toContain('negative');
     });
+
+    it("says nothing of today's rate while every figure is exact", () => {
+      expect(element().querySelector('.rate-caption')).toBeNull();
+    });
+
+    it("says at today's rate beside each figure that converted a row, and only there", () => {
+      ledger.totalsByMember.set([
+        { member: alex, totals: totals(1000, 250.5, 2) },
+        { member: sam, totals: totals(0, 1200, 1, true) }
+      ]);
+      ledger.combined.set(totals(1000, 1450.5, 3, true));
+      render();
+
+      const household = element().querySelector('.overview-rate');
+      expect(household?.textContent?.trim()).toBe('common.atTodaysRate');
+      expect(household?.previousElementSibling?.tagName.toLowerCase())
+        .withContext("under the household's figures")
+        .toBe('app-financial-summary');
+      expect(memberLine('Sam Ito')?.querySelector('.rate-caption')?.textContent?.trim()).toBe('common.atTodaysRate');
+      expect(memberLine('Alex')?.querySelector('.rate-caption')).withContext('Alex shared only in the base').toBeNull();
+      expect(element().querySelectorAll('.rate-caption').length).toBe(2);
+    });
   });
 
   describe('its rows', () => {
@@ -252,23 +303,56 @@ describe('HouseholdOverviewComponent', () => {
       expect(described).toEqual(['Matcha', 'Pay', 'Bouldering']);
     });
 
-    it('shows them read-only: no row opens, and nothing in the list is a control', () => {
+    // The one control a row can carry, its goal menu, has its own cases below.
+    it('shows them read-only: no row opens or swipes', () => {
       for (const debug of rowsShown()) {
         const shown = debug.componentInstance as TransactionRowComponent;
         expect(shown.interactive()).toBeFalse();
         expect(shown.swipeActions()).toBeFalse();
       }
-      const list = element().querySelector('.overview-rows') as HTMLElement;
-      expect(list.querySelectorAll('button, a, [tabindex]').length).toBe(0);
     });
 
-    it("resolves each row's category through its own member's categories", () => {
+    it("names each row's category from its snapshot: a built-in in the viewer's language, a custom one as typed", () => {
       const [matcha, pay] = rowsShown();
 
-      expect((matcha.componentInstance as TransactionRowComponent).categories()).toBe(samCategories);
-      expect((pay.componentInstance as TransactionRowComponent).categories()).toBe(alexCategories);
-      expect(matcha.nativeElement.querySelector('.row-category')?.textContent).toContain('Tea shop');
-      expect(pay.nativeElement.querySelector('.row-category')?.textContent).toContain('Climbing gym');
+      expect(pay.nativeElement.querySelector('.row-category')?.textContent?.trim()).toBe('Groceries');
+      expect(matcha.nativeElement.querySelector('.row-category')?.textContent?.trim()).toBe('Tea shop');
+      // The snapshot's icon and colour, with no category of the viewer's read.
+      expect(pay.nativeElement.querySelector('app-category-chip mat-icon')?.textContent?.trim())
+        .toBe(GROCERIES.icon);
+      expect(matcha.nativeElement.querySelector('app-category-chip mat-icon')?.textContent?.trim())
+        .toBe(TEA_SHOP.icon);
+    });
+
+    it("shows each row in its own amount, with what it counts as in the viewer's base when that differs", () => {
+      ledger.rows.set([
+        row('sam', 'tx-e', { description: 'Cafe', amount: 10, currency: 'EUR', inBase: 12.5, atTodaysRate: true }),
+        row('alex', 'tx-u', { description: 'Lunch', amount: 8 })
+      ]);
+      render();
+
+      const [cafe, lunch] = rowsShown().map(debug => debug.nativeElement as HTMLElement);
+      expect(cafe.querySelector('.row-amount')?.textContent).toContain('EUR 10.00');
+      expect(cafe.querySelector('.amount-converted')?.textContent?.trim()).toBe('≈ USD 12.50');
+      expect(lunch.querySelector('.row-amount')?.textContent).toContain('USD 8.00');
+      expect(lunch.querySelector('.amount-converted')).toBeNull();
+    });
+
+    it("says at today's rate under each row it converted, and only there", () => {
+      ledger.rows.set([
+        row('sam', 'tx-e', { description: 'Cafe', amount: 10, currency: 'EUR', inBase: 12.5, atTodaysRate: true }),
+        row('alex', 'tx-u', { description: 'Lunch', amount: 8 })
+      ]);
+      render();
+
+      const [cafe, lunch] = rowsShown().map(debug => (debug.nativeElement as HTMLElement).closest('li') as HTMLElement);
+      const caption = cafe.querySelector('.rate-caption');
+      expect(caption?.textContent?.trim()).toBe('common.atTodaysRate');
+      expect(caption?.previousElementSibling?.tagName.toLowerCase())
+        .withContext('under the row whose figure it qualifies')
+        .toBe('app-transaction-row');
+      expect(lunch.querySelector('.rate-caption')).withContext('a row in the base is exact').toBeNull();
+      expect(element().querySelectorAll('.overview-rows .rate-caption').length).toBe(1);
     });
 
     it('names whose each row is', () => {
@@ -323,7 +407,6 @@ describe('HouseholdOverviewComponent', () => {
         { member: sam, totals: totals(0, SAMS, SAMS) }
       ]);
       ledger.combined.set(totals(0, TOTAL, TOTAL));
-      ledger.categoriesByMember.set(new Map([['alex', alexCategories], ['sam', samCategories]]));
       ledger.rows.set(many(TOTAL));
       ledger.loading.set(false);
       render();
@@ -576,72 +659,41 @@ describe('HouseholdOverviewComponent', () => {
     });
   });
 
-  describe('its notes about members', () => {
+  describe('its notes', () => {
     beforeEach(() => {
       answered();
       render();
     });
 
-    it('names a member whose records the rules no longer share', () => {
-      ledger.unavailable.set([kai]);
+    it('says the household shared more than the cap in the period', () => {
+      ledger.truncated.set(true);
       render();
 
-      expect(text()).toContain('household.overview.unavailable:{"name":"Kai"}');
+      const note = element().querySelector('.overview-note');
+      expect(note?.textContent).toContain(`household.overview.truncated:{"cap":${LEDGER_VIEW_CAP}}`);
+      expect(note?.classList).toContain('is-info');
+      expect(note?.getAttribute('role')).toBe('status');
     });
 
-    it('names a member cut at the cap', () => {
-      ledger.truncated.set([sam]);
+    it("says the figures may be incomplete when the listener failed with only the cache's rows, and stops waiting", () => {
+      ledger.fromCache.set(true);
+      ledger.incomplete.set(true);
+      ledger.totalsByMember.update(lines => [...lines, { member: kai, totals: totals(0, 0, 0) }]);
       render();
 
-      expect(text()).toContain(
-        `household.overview.truncated:{"name":"Sam Ito","cap":${HOUSEHOLD_LEDGER_ROW_CAP}}`
-      );
+      expect(text()).toContain('household.overview.incomplete');
+      expect(element().querySelector('.overview-note')?.classList).not.toContain('is-info');
+      expect(element().querySelector('mat-spinner')).toBeNull();
+      expect(rowsShown().length).toBe(3);
+      expect(element().querySelectorAll('app-stat-card').length).toBe(3);
+      // Online, and nothing more is coming: no call to connect, and no zeros.
+      const kaiLine = memberLine('Kai');
+      expect(kaiLine?.querySelector('.member-figures')).toBeNull();
+      expect(kaiLine?.textContent).toContain('household.overview.memberFailed');
+      expect(kaiLine?.textContent).not.toContain('household.overview.notLoaded');
     });
 
-    it('names a member whose transactions may not all have been read', () => {
-      ledger.incomplete.set({ ...NOTHING_FAILED, transactions: [alex] });
-      render();
-
-      expect(text()).toContain('household.overview.incomplete:{"name":"Alex"}');
-      expect(text()).not.toContain('household.overview.categoriesIncomplete');
-    });
-
-    it('says a member\'s categories may not all have been read, apart from their figures', () => {
-      ledger.incomplete.set({ ...NOTHING_FAILED, categories: [sam] });
-      render();
-
-      expect(text()).toContain('household.overview.categoriesIncomplete:{"name":"Sam Ito"}');
-      expect(text()).not.toContain('household.overview.incomplete:');
-    });
-
-    it('leaves a member\'s unread budgets and goals to the section that shows them', () => {
-      ledger.incomplete.set({ ...NOTHING_FAILED, budgets: [alex], goals: [sam] });
-      render();
-
-      expect(element().querySelector('.overview-note')).toBeNull();
-    });
-
-    it('names an unnamed member all the same', () => {
-      ledger.unavailable.set([{ uid: 'anon', displayName: '' }]);
-      render();
-
-      expect(text()).toContain('household.overview.unavailable:{"name":"household.unnamedMember"}');
-    });
-
-    it('names an unnamed member in the middle of a sentence in its own form', () => {
-      const anon: HouseholdMemberIdentity = { uid: 'anon', displayName: '' };
-      ledger.incomplete.set({ ...NOTHING_FAILED, transactions: [anon], categories: [anon] });
-      ledger.truncated.set([anon]);
-      render();
-
-      expect(text()).toContain('household.overview.incomplete:{"name":"household.unnamedMemberInline"}');
-      expect(text()).toContain('household.overview.categoriesIncomplete:{"name":"household.unnamedMemberInline"}');
-      expect(text())
-        .withContext('a sentence the name begins keeps the capitalised form')
-        .toContain(`household.overview.truncated:{"name":"household.unnamedMember","cap":${HOUSEHOLD_LEDGER_ROW_CAP}}`);
-    });
-
-    it('says nothing while every member reads in full', () => {
+    it('says nothing while the rows read in full', () => {
       expect(element().querySelector('.overview-note')).toBeNull();
     });
   });
@@ -653,6 +705,15 @@ describe('HouseholdOverviewComponent', () => {
       host = fixture.nativeElement as HTMLElement;
       // 375px less the app shell's 16px gutters and the page's 16px gutters.
       host.style.width = '311px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels. Material's buttons and toggles take their face
+      // from the --mat-sys tokens rather than from the host.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
       document.body.appendChild(host);
     });
 
@@ -677,15 +738,18 @@ describe('HouseholdOverviewComponent', () => {
       expect(strip.offsetHeight).withContext('the strip draws a horizontal scrollbar').toBe(strip.clientHeight);
     });
 
-    it('keeps the heading, the period, every member line and every row inside the section', () => {
+    it('keeps the heading, the period, every member line, every caption and every row inside the section', () => {
       answered();
       const long: HouseholdMemberIdentity = { uid: 'long', displayName: 'W'.repeat(100) };
       ledger.totalsByMember.set([
-        { member: long, totals: totals(123456.78, 98765.43) },
+        { member: long, totals: totals(123456.78, 98765.43, 1, true) },
         { member: alex, totals: totals(0, 1200) }
       ]);
+      ledger.combined.set(totals(123456.78, 99965.43, 2, true));
       ledger.rows.update(rows => [
-        row('long', 'tx-l1', { description: 'Rent', type: 'expense', amount: 98765.43 }),
+        row('long', 'tx-l1', {
+          description: 'Rent', type: 'expense', amount: 98765.43, currency: 'EUR', inBase: 123456.79, atTodaysRate: true
+        }),
         ...rows
       ]);
       render();
@@ -696,9 +760,11 @@ describe('HouseholdOverviewComponent', () => {
       // them naming the long-named member. A row clips its own content, so
       // its line 3, where the name sits, is measured as well as its box.
       const parts = Array.from(element().querySelectorAll<HTMLElement>(
-        '.overview-head, .member-line, .overview-row, .overview-row .row-meta'
+        '.overview-head, .member-line, .rate-caption, .overview-row, .overview-row .row-meta'
       ));
-      expect(parts.length).toBe(11);
+      // The head; two member lines and their one caption; the household's
+      // caption; four rows, each with its line 3; the converted row's caption.
+      expect(parts.length).toBe(1 + 2 + 1 + 1 + 4 * 2 + 1);
       for (const part of parts) {
         const label = part.className;
         expect(part.scrollWidth).withContext(`nothing overflows ${label}`).toBeLessThanOrEqual(part.clientWidth);
@@ -735,28 +801,41 @@ describe('HouseholdOverviewComponent', () => {
   });
 
   describe('its empty and waiting states', () => {
-    it('shows progress, not an empty period, while a member has not answered', () => {
+    it('shows progress, not an empty period, while the ledger has not answered', () => {
       expect(element().querySelector('app-loading-spinner mat-spinner')?.getAttribute('aria-label'))
         .toBe('household.overview.loading');
       expect(element().querySelector('app-empty-state')).toBeNull();
       expect(element().querySelector('app-stat-card')).toBeNull();
     });
 
-    it('says the period is empty once every member answered with nothing', () => {
+    it('says nobody has shared anything once the server answered with nothing', () => {
       ledger.totalsByMember.set([{ member: alex, totals: totals(0, 0, 0) }]);
       ledger.loading.set(false);
       render();
 
       expect(emptyState()).toContain('household.overview.emptyTitle');
+      expect(emptyState()).toContain('household.overview.nothingShared');
       expect(emptyState()).not.toContain('household.overview.offlineTitle');
       expect(element().querySelector('mat-spinner')).toBeNull();
       expect(element().querySelectorAll('.member-line').length).withContext('a member line at zero').toBe(1);
     });
 
-    it('offline with nothing cached, a household of one, says so rather than calling the period empty', () => {
+    it("online, waits for the server rather than call the cache's empty period empty", () => {
+      ledger.totalsByMember.set([{ member: alex, totals: totals(0, 0, 0) }]);
+      ledger.loading.set(false);
+      ledger.fromCache.set(true);
+      render();
+
+      expect(element().querySelector('mat-spinner')).not.toBeNull();
+      expect(element().querySelector('app-empty-state')).toBeNull();
+      expect(element().querySelector('app-stat-card')).toBeNull();
+    });
+
+    it('offline with nothing cached, says so rather than calling the period empty', () => {
       online.set(false);
       ledger.totalsByMember.set([{ member: alex, totals: totals(0, 0, 0) }]);
       ledger.loading.set(false);
+      ledger.fromCache.set(true);
       render();
 
       expect(emptyState()).toContain('household.overview.offlineTitle');
@@ -773,48 +852,22 @@ describe('HouseholdOverviewComponent', () => {
       expect(element().querySelector('mat-spinner')).toBeNull();
     });
 
-    it('offline with rows cached, shows them', () => {
-      online.set(false);
+    it('shows the rows the cache holds, offline or not', () => {
       answered();
+      ledger.fromCache.set(true);
       render();
+      expect(rowsShown().length).toBe(3);
 
+      online.set(false);
+      render();
       expect(rowsShown().length).toBe(3);
       expect(element().querySelector('app-empty-state')).toBeNull();
     });
 
-    it("offline with only the viewer's own rows cached, says nothing is known rather than show the others at zero", () => {
-      online.set(false);
-      ledger.totalsByMember.set([
-        { member: alex, totals: totals(1000, 250.5, 2) },
-        { member: sam, totals: totals(0, 0, 0) }
-      ]);
-      ledger.combined.set(totals(1000, 250.5, 2));
-      ledger.rows.set([row('alex', 'tx-a1', { type: 'income', amount: 1000 })]);
-      ledger.loading.set(false);
-      render();
-
-      expect(emptyState()).toContain('household.overview.offlineTitle');
-      expect(element().querySelector('app-stat-card')).withContext('no household total').toBeNull();
-      expect(element().querySelectorAll('.member-line').length).withContext('no line at zero').toBe(0);
-      expect(rowsShown().length).toBe(0);
-    });
-
-    it('offline in a household of one, shows what the viewer has cached', () => {
-      online.set(false);
-      ledger.totalsByMember.set([{ member: alex, totals: totals(1000, 0, 1) }]);
-      ledger.combined.set(totals(1000, 0, 1));
-      ledger.rows.set([row('alex', 'tx-a1', { type: 'income', amount: 1000 })]);
-      ledger.loading.set(false);
-      render();
-
-      expect(rowsShown().length).toBe(1);
-      expect(element().querySelectorAll('.member-line').length).toBe(1);
-      expect(element().querySelector('app-empty-state')).toBeNull();
-    });
-
-    it('offline, puts a note in place of the figures of another member with nothing cached', () => {
+    it('from the cache, puts a note in place of the figures of a member with nothing in it', () => {
       online.set(false);
       answered();
+      ledger.fromCache.set(true);
       ledger.totalsByMember.update(lines => [...lines, { member: kai, totals: totals(0, 0, 0) }]);
       render();
 
@@ -826,13 +879,255 @@ describe('HouseholdOverviewComponent', () => {
       expect(memberLine('Alex')?.querySelector('.member-figures')).not.toBeNull();
     });
 
-    it('online, shows another member with nothing in the period at zero', () => {
+    it('online, from the cache, says a member with nothing in it is loading rather than asking to connect', () => {
+      answered();
+      ledger.fromCache.set(true);
+      ledger.totalsByMember.update(lines => [...lines, { member: kai, totals: totals(0, 0, 0) }]);
+      render();
+
+      const kaiLine = memberLine('Kai');
+      expect(kaiLine?.querySelector('.member-figures')).withContext('no zeros').toBeNull();
+      expect(kaiLine?.textContent).toContain('household.overview.memberLoading');
+      expect(kaiLine?.textContent).not.toContain('household.overview.notLoaded');
+      expect(memberLine('Sam Ito')?.querySelector('.member-figures')).not.toBeNull();
+    });
+
+    for (const [when, fromCache] of [['before any answer', false], ['after the cache held nothing', true]] as const) {
+      it(`says the shared rows could not be read when the listener failed ${when}, showing no figures`, () => {
+        ledger.totalsByMember.set([{ member: alex, totals: totals(0, 0, 0) }, { member: sam, totals: totals(0, 0, 0) }]);
+        ledger.combined.set(totals(0, 0, 0));
+        ledger.rows.set([]);
+        ledger.loading.set(false);
+        ledger.fromCache.set(fromCache);
+        ledger.incomplete.set(true);
+        render();
+
+        expect(emptyState()).toContain('household.overview.failedTitle');
+        expect(emptyState()).toContain('household.overview.failedDescription');
+        expect(text()).not.toContain('household.overview.nothingShared');
+        expect(element().querySelector('app-financial-summary')).withContext('no zeros that are not known').toBeNull();
+        expect(element().querySelectorAll('.member-line').length).toBe(0);
+        expect(element().querySelector('mat-spinner')).toBeNull();
+        expect(element().querySelector('.overview-note'))
+          .withContext('the card says it; no note about figures that are not shown')
+          .toBeNull();
+      });
+    }
+
+    it("waits, rows or not, while a row in another currency waits for today's rates, and formats no figure it holds back", () => {
+      answered();
+      ledger.ratesPending.set(true);
+      render();
+
+      expect(element().querySelector('app-loading-spinner mat-spinner')?.getAttribute('aria-label'))
+        .toBe('household.overview.loading');
+      expect(element().querySelector('app-financial-summary')).toBeNull();
+      expect(element().querySelectorAll('.member-line').length).toBe(0);
+      expect(rowsShown().length).toBe(0);
+      expect(fixture.componentInstance.memberLines().map(line => [line.member.uid, line.pending, line.income, line.expense, line.balance]))
+        .withContext('no line formats a total the ledger holds back')
+        .toEqual([['alex', 'loading', '', '', ''], ['sam', 'loading', '', '', '']]);
+
+      ledger.ratesPending.set(false);
+      render();
+
+      expect(element().querySelector('mat-spinner')).toBeNull();
+      expect(element().querySelector('app-financial-summary')).not.toBeNull();
+      expect(rowsShown().length).toBe(3);
+      expect(fixture.componentInstance.memberLines().map(line => line.pending)).toEqual([null, null]);
+    });
+
+    it('from the server, shows a member who shared nothing in the period at zero', () => {
       answered();
       ledger.totalsByMember.update(lines => [...lines, { member: kai, totals: totals(0, 0, 0) }]);
       render();
 
       expect(memberLine('Kai')?.querySelector('.member-figures')).not.toBeNull();
       expect(memberLine('Kai')?.textContent).not.toContain('household.overview.notLoaded');
+    });
+  });
+
+  describe("counting the viewer's own rows toward a goal", () => {
+    const GEN = Timestamp.fromMillis(1_700_000_000_000);
+    const goal = (id: string, name: string): HouseholdGoalFigures => ({
+      goal: {
+        id,
+        gen: GEN,
+        name,
+        targetAmount: 1000,
+        currency: 'USD',
+        isActive: true,
+        createdBy: 'sam',
+        createdAt: GEN,
+        updatedAt: GEN
+      },
+      saved: 0,
+      linked: 0,
+      contributed: 0,
+      fraction: 0,
+      contributions: [],
+      atTodaysRate: false,
+      incomplete: false,
+      counting: false
+    });
+    const linkButtons = (): HTMLButtonElement[] =>
+      Array.from(element().querySelectorAll<HTMLButtonElement>('.overview-row .row-goal-btn'));
+    const rowOf = (description: string): HTMLElement =>
+      Array.from(element().querySelectorAll<HTMLElement>('.overview-row'))
+        .find(each => each.querySelector('app-transaction-row')?.textContent?.includes(description)) as HTMLElement;
+    /** The menu's choices once it opens from `trigger`: name and whether checked. */
+    function openMenu(trigger: HTMLButtonElement): HTMLButtonElement[] {
+      trigger.click();
+      render();
+      return Array.from(document.querySelectorAll<HTMLButtonElement>('.goal-link-menu [role="menuitemradio"]'));
+    }
+    const choices = (items: HTMLButtonElement[]) =>
+      items.map(item => [item.textContent?.replace(/\s+/g, ' ').replace('check', '').trim(), item.getAttribute('aria-checked')]);
+
+    beforeEach(() => {
+      answered();
+      // Bouldering, the viewer's, already counts toward the holiday.
+      ledger.rows.update(rows => rows.map(each => (each.sourceId === 'tx-a2' ? { ...each, goalId: 'g1' } : each)));
+      goals.set([goal('g1', 'Holiday'), goal('g2', 'Sofa')]);
+      render();
+    });
+
+    afterEach(() => {
+      for (const backdrop of Array.from(document.querySelectorAll<HTMLElement>('.cdk-overlay-backdrop'))) backdrop.click();
+    });
+
+    it("offers it only on the viewer's own rows, each named by its row", () => {
+      expect(linkButtons().map(each => each.getAttribute('aria-label'))).toEqual([
+        'household.overview.countToward:{"name":"Pay"}',
+        'household.overview.countToward:{"name":"Bouldering"}'
+      ]);
+      expect(rowOf('Matcha').querySelector('button, a, [tabindex]')).toBeNull();
+    });
+
+    it('offers nothing while the household has no active goal', () => {
+      goals.set([]);
+      render();
+
+      expect(linkButtons()).toEqual([]);
+      expect(element().querySelector('.overview-rows')?.querySelectorAll('button, a, [tabindex]').length).toBe(0);
+    });
+
+    it("lists the household's active goals and None, the row's own choice checked", () => {
+      expect(choices(openMenu(linkButtons()[1]))).toEqual([
+        ['Holiday', 'true'],
+        ['Sofa', 'false'],
+        ['household.overview.countTowardNone', 'false']
+      ]);
+    });
+
+    it('checks None for a row that counts toward no goal', () => {
+      expect(choices(openMenu(linkButtons()[0]))).toEqual([
+        ['Holiday', 'false'],
+        ['Sofa', 'false'],
+        ['household.overview.countTowardNone', 'true']
+      ]);
+    });
+
+    it("counts the row toward the goal chosen, by the row's own id, and says so", async () => {
+      openMenu(linkButtons()[1])[1].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).toHaveBeenCalledOnceWith('tx-a2', 'g2');
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'goal_link' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.overview.linked:{"name":"Sofa"}');
+    });
+
+    it('stops counting it toward any goal with None', async () => {
+      openMenu(linkButtons()[1])[2].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).toHaveBeenCalledOnceWith('tx-a2', null);
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'goal_link' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.overview.unlinked');
+    });
+
+    it('sends nothing for the choice the row already has', async () => {
+      openMenu(linkButtons()[1])[0].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing for None on a row that counts toward no goal', async () => {
+      openMenu(linkButtons()[0])[2].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('shows None for a row linked to a goal no longer active, and clears that link with None', async () => {
+      ledger.rows.update(rows => rows.map(each => (each.sourceId === 'tx-a2' ? { ...each, goalId: 'gone' } : each)));
+      render();
+
+      const items = openMenu(linkButtons()[1]);
+      expect(choices(items)).toEqual([
+        ['Holiday', 'false'],
+        ['Sofa', 'false'],
+        ['household.overview.countTowardNone', 'true']
+      ]);
+      items[2].click();
+      await fixture.whenStable();
+
+      expect(linkCopy).toHaveBeenCalledOnceWith('tx-a2', null);
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'goal_link' });
+      expect(notification.success).toHaveBeenCalledOnceWith('household.overview.unlinked');
+    });
+
+    it("says a refusal in the service's own words, and counts nothing", async () => {
+      linkCopy.and.rejectWith(new HouseholdError('household.errors.copyGone'));
+      openMenu(linkButtons()[0])[0].click();
+      await fixture.whenStable();
+
+      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.copyGone');
+      expect(notification.success).not.toHaveBeenCalled();
+      expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
+    });
+
+    it('says which active goal a row of the viewer counts toward', () => {
+      expect(rowOf('Bouldering').querySelector('.row-goal')?.textContent?.trim())
+        .toBe('household.overview.countsToward:{"name":"Holiday"}');
+      expect(rowOf('Pay').querySelector('.row-goal')).toBeNull();
+      // A goal no longer active counts nothing, and is not named.
+      goals.set([goal('g2', 'Sofa')]);
+      render();
+      expect(rowOf('Bouldering').querySelector('.row-goal')).toBeNull();
+    });
+
+    it("keeps each row and its 40px button inside the section at a phone's width", () => {
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.width = '311px';
+      host.style.fontFamily = "Verdana, 'DejaVu Sans', sans-serif";
+      document.body.appendChild(host);
+      try {
+        ledger.rows.update(rows => rows.map(each =>
+          each.sourceId === 'tx-a1' ? { ...each, description: 'W'.repeat(80), amount: 98765432.1, inBase: 98765432.1 } : each));
+        render();
+        TestBed.inject(FitTextRegistry).flush();
+
+        const section = (element().querySelector('.overview') as HTMLElement).getBoundingClientRect();
+        for (const button of linkButtons()) {
+          const box = button.getBoundingClientRect();
+          expect(box.width).toBeGreaterThanOrEqual(40);
+          expect(box.height).toBeGreaterThanOrEqual(40);
+          expect(box.left).toBeGreaterThanOrEqual(section.left - 0.5);
+          expect(box.right).toBeLessThanOrEqual(section.right + 0.5);
+        }
+        for (const part of Array.from(element().querySelectorAll<HTMLElement>('.overview-row, .overview-row .row-meta, .row-goal'))) {
+          expect(part.scrollWidth).withContext(`nothing overflows ${part.className}`).toBeLessThanOrEqual(part.clientWidth);
+          const rect = part.getBoundingClientRect();
+          expect(rect.left).withContext(`${part.className} starts inside`).toBeGreaterThanOrEqual(section.left - 0.5);
+          expect(rect.right).withContext(`${part.className} ends inside`).toBeLessThanOrEqual(section.right + 0.5);
+        }
+      } finally {
+        host.remove();
+      }
     });
   });
 });

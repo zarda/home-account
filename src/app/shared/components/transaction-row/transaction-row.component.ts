@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  computed,
   inject,
   input,
   output,
@@ -12,11 +13,21 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category, HouseholdMemberIdentity, receiptImageCount, baseCurrencyOf} from '../../../models';
+import {
+  Transaction,
+  Category,
+  HouseholdMemberIdentity,
+  receiptImageCount,
+  baseCurrencyOf,
+  sharedChipLabel,
+  sharedHouseholdNames,
+  signedAmountText,
+} from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { CategoryChipComponent } from '../category-chip/category-chip.component';
 import { MemberChipComponent } from '../member-chip/member-chip.component';
 import { FitTextDirective } from '../../directives/fit-text.directive';
@@ -80,6 +91,13 @@ export class TransactionRowComponent {
   member = input<HouseholdMemberIdentity | null>(null);
 
   /**
+   * The account's live households, id to name, from the list that shows the
+   * row. Line 3 names the ones the row is shared with; the row reads nothing
+   * itself, and a caller that passes nothing shows no share at all.
+   */
+  householdNames = input<ReadonlyMap<string, string>>(new Map());
+
+  /**
    * Emitted on a click anywhere on the row outside its own controls, and on
    * Enter / Space on the row button — which reach the host as that button's
    * click. Not emitted while the swipe drawer is open: the swipe directive
@@ -106,6 +124,15 @@ export class TransactionRowComponent {
   private authService = inject(AuthService);
   private dateFormatService = inject(DateFormatService);
   private categoryHelperService = inject(CategoryHelperService);
+  private translationService = inject(TranslationService);
+
+  /** The live households the row is shared with, by name; null for a private row. */
+  readonly sharedNames = computed(() => sharedHouseholdNames(this.transaction().sharedWith, this.householdNames()));
+
+  /** The share chip's name: every household, where the chip shows only the first. */
+  sharedLabel(names: readonly string[]): string {
+    return sharedChipLabel(names, (key, params) => this.translationService.t(key, params));
+  }
 
   categoryName(): string {
     return this.categoryHelperService.getCategoryName(
@@ -158,15 +185,11 @@ export class TransactionRowComponent {
     return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
   }
 
-  formatAmount(): string {
-    const transaction = this.transaction();
-    return this.currencyService.formatCurrency(transaction.amount, transaction.currency);
-  }
-
   // One string for the amount on screen and the amount in the row button's
-  // name, so the two cannot disagree.
+  // name, so the two cannot disagree; the transactions list's select
+  // checkbox builds its name from the same helper.
   signedAmount(): string {
-    return `${this.transaction().type === 'income' ? '+' : '-'}${this.formatAmount()}`;
+    return signedAmountText(this.transaction(), (amount, currency) => this.currencyService.formatCurrency(amount, currency));
   }
 
   // Unique per page: a transaction appears in at most one list on a route.

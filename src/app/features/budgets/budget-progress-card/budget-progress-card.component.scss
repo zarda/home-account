@@ -5,8 +5,7 @@
   .card-header {
     @apply flex items-center gap-2 sm:gap-3 mb-3;
 
-    // Nothing here is cut (G3, docs/ui-overflow.md): where the card is
-    // read-only there is no dialog in which to read the rest.
+    // Nothing here is cut (G3, docs/ui-overflow.md).
     .header-content {
       @apply flex-1 min-w-0;
 

@@ -16,7 +16,7 @@ replaced by a placeholder and rendered by nothing else.
 |---|---|---|---|
 | Unit | `npm run test:ci` | Class behaviour, signals, computeds, guards | Anything a template decides, and anything Firestore rules decide |
 | Smoke | `npm run smoke` | The same services against the real emulators, including rules | Anything CI measures — `test:ci` **excludes** `*.smoke.spec.ts`, so smoke coverage never counts |
-| Driven browser | `docs/e2e.md` | The app as shipped, signed in, at a real viewport — against production, or against the emulators where a journey needs two accounts | Nothing automatic; it is a written protocol, not a suite |
+| Driven browser | `docs/e2e.md` | The app as shipped, signed in, at a real viewport — against production, or against the emulators where a journey needs several accounts | Nothing automatic; it is a written protocol, not a suite |
 
 A file is in exactly one tier. A `*.smoke.spec.ts` needs the emulators and is
 excluded from `test:ci`, so **a line covered only by a smoke spec reads as
@@ -38,18 +38,65 @@ three signed in at the same time, and each tier has its own shape for that.
   listen and a write stream open, Chrome allows six connections per host, and
   three full clients leave the admin REST calls waiting tens of seconds for a
   free one. The rules judge a Lite request exactly as they judge a full
-  client's. Every case starts from pointer-free profiles and fresh household
-  ids, because specs run in random order.
+  client's. Every case starts from fresh household ids, because specs run in
+  random order, so nothing an earlier case left, index entries included, is
+  in the way.
 - **Services: two full stacks.** A service smoke spec builds the second
   account's services in a child `EnvironmentInjector`, as
   `transaction-receipts.smoke.spec.ts` does. Two full clients is the most one
-  file holds, for the same connection reason.
+  file holds, for the same connection reason. The household plans and ledger
+  smokes (`household-plans.service.smoke.spec.ts`,
+  `household-ledger.service.smoke.spec.ts`) run two stacks, one member
+  viewing in dollars and the other in euros, and each shares rows through
+  `TransactionService`'s own write path before reading the household's
+  figures; both run in the zoned `smoke:dates` pass too.
+  `ledger-share.smoke.spec.ts` needs a third client, a stale second device
+  of the owner's, so it keeps one full client (the owner's real service) and
+  makes the peer and that device Lite clients.
+- **No household smoke case goes offline.** A full client that disables its
+  network with a write queued stalls every other client's emulator traffic
+  for tens of seconds, and the whole run with it. That a copy's commit is
+  issued behind its row's is pinned from the mock's call-order log in
+  `ledger-share.service.spec.ts` and `transaction.service.spec.ts` ('issue,
+  then follow, then await'); that the commits then land in that order after
+  an offline stretch rests on the SDK's persistent mutation queue, which no
+  suite or journey proves. The driven journey 71 checks only which path the
+  app takes offline and what it says: the pane cannot take Firestore itself
+  offline, so nothing queues there.
 - **The browser: the emulator serve.** `npm run start:emulators` serves the
   app's committed `emulators` configuration on port 4300 against the local
   emulators, and `node docs/ui-audit/tools/seed-household.mjs <file outside the
-  repo>` seeds two accounts and writes their session records. The driven
-  journeys that need both are [e2e.md](e2e.md)'s 58 to 66
+  repo>` seeds three accounts in two households and writes their three
+  session records. The driven journeys that need them are [e2e.md](e2e.md)'s
+  68 to 77; 58 to 66 drove the design of ADRs 0152 to 0156 (PRs #462 and
+  #463) and are superseded
   ([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
+
+Two household proofs sit outside all three tiers. **The functions**: `npm run
+smoke` starts only the auth, storage and firestore emulators, so the invite
+callable and the two cleanup triggers, `onHouseholdMemberDeleted` and
+`onHouseholdDissolved`, never run in it. Their pure planners, their handlers,
+their Admin SDK dependencies and the mapping from a delete event to the
+cleanup's input are pinned over fakes by `npm --prefix functions test`
+(`tsc`, then `node --test` over `functions/lib/*.test.js`), the first step
+in CI. `index-wiring.test.ts` there loads `index.ts` itself, which reaches
+no network at load, and reads each trigger's endpoint as the Firebase CLI
+deploys it: the delete event type, the exact document path and
+`retry: true`, on which the handler's "rethrown, so delivered again"
+depends. Its type assertions make `tsc` refuse either trigger handing its
+event to the other's mapper. `household-client-mirrors.test.ts` reads the
+app's source and fails when a constant or query shape the two sides share
+drifts. The real functions run only in the driven journeys: 74 to 76 on the
+emulators, and 78 on production after the merge. **The ledger contract**:
+the facts the copy and the household's plans state twice — their fields in
+the models and in the rules, each household query shape and its composite,
+the files that write transactions, the share-key cap, the snapshot's and
+the plans' bounds, the plans' currency pattern against the one the app
+tests with, and the copy fields `copyFaithful` holds equal to the row's —
+are compared by `npm run ledger:check`, a script with a `--self-test`
+rather than a spec, because the emulator enforces no composite and nothing
+at run time compares the pairs
+([emulator-blind-spots.md](emulator-blind-spots.md)).
 
 ## The stub-template rule
 

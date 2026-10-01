@@ -83,6 +83,32 @@ export interface Transaction {
    * of a split"; nothing ever queries it.
    */
   splitGroupId?: string;
+  /**
+   * The households this row is shared into, as share keys
+   * (`households/{householdId}`, see shareKey in household-ledger.model.ts),
+   * at most MAX_HOUSEHOLDS_PER_ACCOUNT of them. Absent or empty: private.
+   *
+   * Written whole only when the row is created (a split part carries its
+   * purchase's). After that it changes only through arrayUnion/arrayRemove
+   * and is never sent whole on an ordinary edit, so an edit made from a stale
+   * read cannot undo a share or an unshare made elsewhere.
+   *
+   * A household sees a shared row only as its copy, which holds
+   * LEDGER_COPY_FIELDS and nothing else of the row.
+   */
+  sharedWith?: string[];
+}
+
+/**
+ * A row's amount with its sign: + for income, - otherwise. The row's amount
+ * on screen, its button's name and the transactions list's select checkbox
+ * all read it from here, so none of them can disagree with another.
+ */
+export function signedAmountText(
+  transaction: Pick<Transaction, 'type' | 'amount' | 'currency'>,
+  format: (amount: number, currency: string) => string
+): string {
+  return `${transaction.type === 'income' ? '+' : '-'}${format(transaction.amount, transaction.currency)}`;
 }
 
 type ReceiptFields = Pick<Transaction, 'receiptUrl' | 'receiptUrls' | 'receiptCount'>;
@@ -259,6 +285,12 @@ export interface CreateTransactionDTO {
    * rebuilding a stored row — the form never sets it.
    */
   splitGroupId?: string;
+  /**
+   * Share keys the new row is created with (see Transaction.sharedWith).
+   * Once the row exists it changes only through arrayUnion/arrayRemove, so
+   * an update never sends it whole; copies reveal only LEDGER_COPY_FIELDS.
+   */
+  sharedWith?: string[];
 }
 
 /** One category and amount taken off a purchase to form a split part. */

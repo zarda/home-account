@@ -17,3 +17,5 @@ export * from './tag-memory.model';
 export * from './search-answer.model';
 export * from './widget-snapshot.model';
 export * from './household.model';
+export * from './household-ledger.model';
+export * from './household-plans.model';

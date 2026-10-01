@@ -45,10 +45,11 @@ out). The write is a Firestore transaction: two devices contributing at
 once both land, a withdrawal sees the balance it is shrinking, and one
 that would drive the counter below zero aborts with
 `GOAL_CONTRIBUTION_BELOW_ZERO`. Checking off a project item commits the
-same way. There is no per-contribution ledger — one counter, corrected by
-withdrawing (a known gap in the ADR). Withdrawing floors on the manual
-counter alone; money that arrived through links leaves by unlinking, which
-is why the card breaks the total down once links exist.
+same way. A personal goal keeps no per-contribution ledger — one counter,
+corrected by withdrawing (a known gap in the ADR); a household goal keeps
+one document per contribution ([below](#household-goals)). Withdrawing
+floors on the manual counter alone; money that arrived through links leaves
+by unlinking, which is why the card breaks the total down once links exist.
 
 ## Linked transactions
 
@@ -119,6 +120,53 @@ goal-scoped smart-search answer's "view transactions" — see
 - **The transaction form** carries the goal picker (add and edit) — see
   "Linked transactions" above.
 
+None of these reaches a household: a personal goal is private to its
+account, and no household the account belongs to sees it.
+
+## Household goals
+
+A household keeps goals of its own, apart from these:
+`households/{hid}/goals`, shown in the plans on the Household page, and
+counted only from what its members choose to share ([household.md](household.md),
+[ADR 0160](ADR/0160-a-households-budgets-and-goals-are-its-own-counted-from-shared-copies-and-members-contributions.md)).
+Any live member makes or edits one; its maker, while still a member, or the
+household's owner deletes it. The two kinds never mix.
+
+- **Progress** is the shared rows linked to the goal, of either type, plus
+  the contributions members recorded on it, folded on each viewer's device
+  as the page reads them; nothing is stored on the goal. The goal's currency
+  is picked when it is made (the maker's base unless they choose another)
+  and never changes. A linked row counts in it exactly when it is already in
+  that currency and at today's rate otherwise, and the card then says
+  **At today's rate** ([money-snapshots.md](money-snapshots.md)).
+- **Contributions** are one document each
+  (`households/{hid}/goals/{gid}/contributions/{cid}`: the member, an amount
+  above zero in the goal's currency, a date), written once. A contribution is
+  never edited or withdrawn; its member or the owner deletes it instead.
+  Only the contributions of members still listed count and are shown. A
+  member who leaves or is removed leaves theirs with the goal, counted by
+  nobody, and a rejoin of the same generation counts them again; an
+  account's erasure deletes its own from every household it is still in.
+  Deleting the goal deletes its contributions with it.
+- **Count toward a goal** links one of the viewer's own shared rows to a
+  household goal, from the flag button on that row in the household's list
+  of shared transactions. It sets `goalId` on the row's copy in that
+  household, which only the row's author may change, so nobody counts
+  another member's row. It commits online in a transaction, as every plan
+  write does, never through the device's queue: a link queued offline and
+  refused on landing would roll back unseen, and nothing repairs a link
+  afterwards. A row shared a moment before still has its copy in that queue,
+  so the link first waits for the server to answer this device's earlier
+  writes.
+- **A personal link never travels.** A row's `goalId` and `goalAmount` are
+  not among the fields a shared row's copy reveals
+  ([ADR 0157](ADR/0157-a-transaction-is-private-until-its-owner-shares-it-and-a-household-sees-a-faithful-copy.md)),
+  so a row linked to a personal goal and shared into a household shows the
+  household neither the goal nor the figure, and a household goal link lives
+  on the copy alone, never on the row. Linking, unlinking or deleting a
+  personal goal touches no copy. Stopping sharing a row with a household
+  deletes its copy there, and the household goal link with it.
+
 ## Rules, backup, deletion
 
 - `firestore.rules` validates kind, positive target, non-negative
@@ -141,3 +189,9 @@ goal-scoped smart-search answer's "view transactions" — see
   one either; see [backup-restore.md](backup-restore.md).
 - Account deletion sweeps `users/{uid}/goals` like every other
   subcollection (see [account-deletion.md](account-deletion.md)).
+- A household's goals and their contributions are the household's records,
+  not an account's: no backup carries them and a dissolve deletes them. An
+  account's erasure deletes the contributions it recorded in a household it
+  joined and is still in; those it recorded in one it had already left or
+  been removed from stay there, no longer counted (see *Known gaps* in
+  [account-deletion.md](account-deletion.md)).

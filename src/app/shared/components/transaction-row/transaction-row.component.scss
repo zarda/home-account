@@ -332,12 +332,14 @@ app-category-chip {
   touch-action: pan-y;
 }
 
-/* With a member on it, line 3 leads with who and when side by side, and the
-   converted amount keeps the trailing edge through its auto margin. A name
-   runs to 100 characters, so this line may wrap: the converted amount drops
-   to a line of its own, still flush to the end, before anything is
-   squeezed. Rows without a member keep the one-line rule above. */
-.row-meta.has-member {
+/* With a member or a share on it, line 3 leads with who, when and where it
+   is shared, side by side, and the converted amount keeps the trailing edge
+   through its auto margin. A member's name and a household's name each run
+   to 100 characters, so this line may wrap: the converted amount drops to a
+   line of its own, still flush to the end, before anything is squeezed.
+   Rows with neither keep the one-line rule above. */
+.row-meta.has-member,
+.row-meta.has-share {
   justify-content: flex-start;
   flex-wrap: wrap;
   row-gap: 2px;
@@ -350,6 +352,34 @@ app-category-chip {
 .row-member {
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* The tag chip's pill, so a share reads as a mark on the row rather than as
+   more of its date. The name wraps anywhere rather than being cut (G3). */
+.row-shared {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding-inline: 6px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.row-shared-icon {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  width: 1em;
+  height: 1em;
+  line-height: 1em;
+}
+
+.row-shared-text {
+  min-width: 0;
 }
 
 .row-date {

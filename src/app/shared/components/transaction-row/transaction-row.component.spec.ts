@@ -585,6 +585,138 @@ describe('TransactionRowComponent, read-only', () => {
   });
 });
 
+describe('TransactionRowComponent, shared into households', () => {
+  let fixture: ComponentFixture<TransactionRowComponent>;
+  const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+  const chip = (): HTMLElement | null => root().querySelector('.row-meta .row-shared');
+  const chipText = (): string | undefined => chip()?.querySelector('.row-shared-text')?.textContent?.trim();
+
+  const categories = new Map<string, Category>([
+    ['food', createCategory({ id: 'food', name: 'Groceries', icon: 'shopping_cart', color: '#ff5722' })],
+  ]);
+  const names = new Map([['h1', 'Home'], ['h2', 'Office'], ['h3', 'Studio']]);
+
+  function render(overrides: Partial<Transaction> = {}, options: { names?: ReadonlyMap<string, string> } = {}): void {
+    fixture.componentRef.setInput(
+      'transaction',
+      createTransaction({ id: 'tx-1', categoryId: 'food', description: 'Weekly shop', currency: 'USD', ...overrides })
+    );
+    fixture.componentRef.setInput('categories', categories);
+    fixture.componentRef.setInput('householdNames', options.names ?? names);
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount.toFixed(2)}`);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    const stub = createTranslationStub();
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionRowComponent],
+      providers: [
+        { provide: CurrencyService, useValue: currency },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal(createUser({ preferences: { baseCurrency: 'USD' } as User['preferences'] })),
+          },
+        },
+        {
+          provide: TranslationService,
+          useValue: createTranslationStub({
+            t: (key, params) => key === 'transactions.share.separator' ? ', ' : stub.t(key, params),
+          }),
+        },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionRowComponent);
+  });
+
+  // A household member's row on the household page is a copy, and a copy
+  // carries no sharedWith: it is a private row as far as this chip goes.
+  it('shows no chip for a private row', () => {
+    render({});
+
+    expect(chip()).toBeNull();
+  });
+
+  it('names the one household a row is shared with, on line 3', () => {
+    render({ sharedWith: ['households/h1'] });
+
+    expect(chipText()).toBe('transactions.share.chip:{"name":"Home"}');
+    // Read as one thing, named for every household it stands for.
+    expect(chip()?.getAttribute('role')).toBe('img');
+    expect(chip()?.getAttribute('aria-label')).toBe('transactions.share.chipLabel:{"names":"Home"}');
+  });
+
+  it('names the first household and counts the rest, and lists them all in its name', () => {
+    render({ sharedWith: ['households/h2', 'households/h1', 'households/h3'] });
+
+    expect(chipText()).toBe('transactions.share.chipMore:{"name":"Office","count":2}');
+    expect(chip()?.getAttribute('aria-label'))
+      .toBe('transactions.share.chipLabel:{"names":"Office, Home, Studio"}');
+  });
+
+  it('names only the households the account is still a member of', () => {
+    render({ sharedWith: ['households/gone', 'households/h2'] });
+    expect(chipText()).toBe('transactions.share.chip:{"name":"Office"}');
+
+    render({ sharedWith: ['households/gone'] });
+    expect(chip()).withContext('no live membership named').toBeNull();
+  });
+
+  it('shows no chip when the list passes no names', () => {
+    render({ sharedWith: ['households/h1'] }, { names: new Map() });
+
+    expect(chip()).toBeNull();
+  });
+
+  describe('at a phone width', () => {
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      host = root();
+      // The width a transactions row gets on a 320px phone: less the app
+      // shell's 16px gutters on each side.
+      host.style.width = '288px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      document.body.appendChild(host);
+    });
+
+    afterEach(() => host.remove());
+
+    it('keeps a long household name whole and inside the row, beside the date and the converted amount', () => {
+      const longName = 'W'.repeat(100);
+      render(
+        { sharedWith: ['households/h1', 'households/h2'], currency: 'JPY', amount: 4200, amountInBaseCurrency: 28.4 } as Partial<Transaction>,
+        { names: new Map([['h1', longName], ['h2', 'Office']]) }
+      );
+
+      const meta = root().querySelector('.row-meta') as HTMLElement;
+      const row = (root().querySelector('.transaction-row') as HTMLElement).getBoundingClientRect();
+      expect(chip()?.textContent).withContext('the whole name is shown').toContain(longName);
+      expect(getComputedStyle(chip()!).textOverflow).not.toBe('ellipsis');
+      expect(meta.scrollWidth).withContext('nothing overflows line 3').toBeLessThanOrEqual(meta.clientWidth);
+      for (const selector of ['.row-shared', '.row-date', '.amount-converted']) {
+        const part = (meta.querySelector(selector) as HTMLElement).getBoundingClientRect();
+        expect(part.left).withContext(`${selector} starts inside the row`).toBeGreaterThanOrEqual(row.left - 0.5);
+        expect(part.right).withContext(`${selector} ends inside the row`).toBeLessThanOrEqual(row.right + 0.5);
+      }
+    });
+  });
+});
+
 /**
  * The swipe drawer needs a real host: projection cannot be exercised by
  * instantiating the row directly, and the gesture needs the row's own

@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -19,7 +19,7 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { createTranslationStub } from '../../../core/services/testing';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
-import { HouseholdInvite } from '../../../models';
+import { HouseholdInvite, HouseholdMembership, LEDGER_COPY_FIELDS, MAX_HOUSEHOLDS_PER_ACCOUNT } from '../../../models';
 import { HouseholdPageFocus } from '../household-focus';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -49,6 +49,7 @@ function invite(overrides: Partial<HouseholdInvite> = {}): HouseholdInvite {
 describe('HouseholdSetupComponent', () => {
   let fixture: ComponentFixture<HouseholdSetupComponent>;
   let receivedInvites: ReturnType<typeof signal<HouseholdInvite[]>>;
+  let memberships: ReturnType<typeof signal<HouseholdMembership[]>>;
   let household: jasmine.SpyObj<Pick<HouseholdService, 'create' | 'accept' | 'decline'>>;
   let notification: jasmine.SpyObj<Pick<NotificationService, 'success' | 'error'>>;
   let analytics: jasmine.SpyObj<Pick<AnalyticsService, 'trackHouseholdAction'>>;
@@ -97,6 +98,7 @@ describe('HouseholdSetupComponent', () => {
 
   beforeEach(async () => {
     receivedInvites = signal<HouseholdInvite[]>([]);
+    memberships = signal<HouseholdMembership[]>([]);
     household = jasmine.createSpyObj('HouseholdService', ['create', 'accept', 'decline']);
     household.create.and.resolveTo('h-new');
     household.accept.and.resolveTo('The Lins');
@@ -111,7 +113,16 @@ describe('HouseholdSetupComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HouseholdSetupComponent, NoopAnimationsModule],
       providers: [
-        { provide: HouseholdService, useValue: { ...household, receivedInvites } },
+        {
+          provide: HouseholdService,
+          useValue: {
+            ...household,
+            receivedInvites,
+            memberships,
+            // As the service derives it.
+            liveMemberships: computed(() => memberships().filter(membership => !membership.ended))
+          }
+        },
         { provide: NotificationService, useValue: notification },
         { provide: AnalyticsService, useValue: analytics },
         { provide: MatDialog, useValue: dialog },
@@ -204,11 +215,11 @@ describe('HouseholdSetupComponent', () => {
     });
 
     it('shows a refusal in the words the service gave it', async () => {
-      household.create.and.rejectWith(new HouseholdError('household.errors.alreadyMember'));
+      household.create.and.rejectWith(new HouseholdError('household.errors.tooMany'));
       typeName('The Lins');
       await submit();
 
-      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.alreadyMember');
+      expect(notification.error).toHaveBeenCalledOnceWith('household.errors.tooMany');
       expect(analytics.trackHouseholdAction).withContext('only a success is counted').not.toHaveBeenCalled();
       expect(nameInput().value).withContext('the name survives a refusal').toBe('The Lins');
     });
@@ -248,6 +259,63 @@ describe('HouseholdSetupComponent', () => {
       await settle();
 
       expect(held(createButton())).toBe(false);
+    });
+  });
+
+  describe('at the most households one account can hold', () => {
+    const note = (): HTMLElement | null => element().querySelector<HTMLElement>('.setup-limit');
+    const tooMany = `household.errors.tooMany:${JSON.stringify({ max: MAX_HOUSEHOLDS_PER_ACCOUNT })}`;
+
+    function holding(live: number, ended = 0): void {
+      const entry = (n: number, isEnded: boolean): HouseholdMembership => ({
+        householdId: `h${n}`,
+        name: `Home ${n}`,
+        role: 'member',
+        since: Timestamp.fromMillis(1_700_000_000_000 + n),
+        joinedAt: Timestamp.fromMillis(1_700_000_000_000 + n),
+        ended: isEnded
+      });
+      memberships.set([
+        ...Array.from({ length: live }, (_, n) => entry(n, false)),
+        ...Array.from({ length: ended }, (_, n) => entry(live + n, true))
+      ]);
+      render();
+    }
+
+    it('says so before anything is tried, in the words a refusal would use', () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT);
+
+      expect(note()?.textContent?.trim()).toBe(tooMany);
+    });
+
+    it('says nothing one below it, nor for memberships that have ended', () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT - 1, 3);
+
+      expect(note()).toBeNull();
+    });
+
+    it('still leaves the create to the service, which counts on the server, and shows its refusal', async () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT);
+      household.create.and.rejectWith(new HouseholdError(tooMany));
+      typeName('One more');
+      await submit();
+
+      expect(household.create).toHaveBeenCalledOnceWith('One more');
+      expect(notification.error).toHaveBeenCalledOnceWith(tooMany);
+      expect(afterSwapTo).not.toHaveBeenCalled();
+    });
+
+    it('still leaves a join to the service, and shows its refusal', async () => {
+      holding(MAX_HOUSEHOLDS_PER_ACCOUNT);
+      receivedInvites.set([invite()]);
+      household.accept.and.rejectWith(new HouseholdError(tooMany));
+      render();
+      inviteRows()[0].querySelector<HTMLButtonElement>('button.invite-accept')!.click();
+      render();
+      await settle();
+
+      expect(household.accept).toHaveBeenCalledOnceWith('h1');
+      expect(notification.error).toHaveBeenCalledOnceWith(tooMany);
     });
   });
 
@@ -369,24 +437,78 @@ describe('HouseholdSetupComponent', () => {
       });
 
       /**
-       * The disclosure is the one place a joiner learns that the receipt
-       * photos open through their stored links, which no rule governs. The
-       * key is asserted above; the copy under it is asserted here, in the
-       * catalog every other locale is kept at parity with.
+       * The disclosure is the one place a joiner learns what the others will
+       * read: only the rows they share, and of each only the fields a ledger
+       * copy carries. The key is asserted above; the copy under it is
+       * asserted here, in the catalog every other locale is kept at parity
+       * with.
        */
-      it('names every kind the others will read, the receipt links, and who can change them', () => {
+      describe('the disclosure copy', () => {
         const copy = en.household.setup.acceptDisclosure;
 
-        expect(copy).toContain('{{name}}');
-        expect(copy).toMatch(/^\{\{from\}\} /);
-        for (const phrase of [
-          'transactions', 'past and future', 'notes', 'places', 'receipt photos', 'links',
-          'after you leave', 'until you delete the receipt', 'categories', 'budgets', 'goals',
-          'anyone who joins it later'
-        ]) {
-          expect(copy).withContext(phrase).toContain(phrase);
-        }
-        expect(copy).toMatch(/nobody can change/i);
+        it('keeps the sender line first and names the household', () => {
+          expect(copy).toContain('{{name}}');
+          expect(copy).toMatch(/^\{\{from\}\} /);
+        });
+
+        it('says only the rows the joiner chooses to share are seen', () => {
+          expect(copy).toContain('only the transactions you choose to share');
+        });
+
+        /**
+         * Every field a copy carries is either named here by the word the
+         * disclosure uses for it, or null for why it shows nothing of the
+         * row: who wrote the copy and when (memberUid, sourceId, gen, pv,
+         * updatedAt), and goalId, which ties the copy to one of the
+         * household's own goals. bucket and bucketGroup are the category's
+         * nearest built-in ancestor and its top-level group, so they reveal
+         * the category. Keyed by the field list itself, a field added to a
+         * copy does not compile here until it is classified.
+         */
+        const WORD: Record<(typeof LEDGER_COPY_FIELDS)[number], string | null> = {
+          memberUid: null,
+          sourceId: null,
+          gen: null,
+          pv: null,
+          updatedAt: null,
+          goalId: null,
+          type: 'type',
+          amount: 'amount',
+          currency: 'currency',
+          date: 'date',
+          description: 'description',
+          categoryId: 'category',
+          category: 'category',
+          bucket: 'category',
+          bucketGroup: 'category'
+        };
+
+        it('names every field a copy reveals', () => {
+          for (const field of LEDGER_COPY_FIELDS) {
+            const word = WORD[field];
+            if (word) expect(copy).withContext(field).toContain(word);
+          }
+        });
+
+        it('names what a copy never reveals', () => {
+          const never = copy.slice(copy.indexOf('never'));
+          for (const word of ['note', 'receipts', 'tags', 'place']) {
+            expect(never).withContext(word).toContain(word);
+          }
+        });
+
+        it('says a later joiner sees what was already shared, and unsharing takes a row out', () => {
+          expect(copy).toContain('Anyone who joins later');
+          expect(copy).toContain('already shared');
+          expect(copy).toMatch(/stop sharing a transaction and it leaves the household/i);
+          expect(copy).toMatch(/nobody can change/i);
+        });
+
+        it('does not promise every row, the receipt links or the personal plans', () => {
+          for (const phrase of ['all your transactions', 'past and future', 'receipt photos', 'budgets and goals']) {
+            expect(copy).withContext(phrase).not.toContain(phrase);
+          }
+        });
       });
 
       it('does not join when the disclosure is dismissed', async () => {
@@ -428,7 +550,7 @@ describe('HouseholdSetupComponent', () => {
       for (const key of [
         'household.errors.expired',
         'household.errors.inviteGone',
-        'household.errors.alreadyMember',
+        'household.errors.tooMany',
         'household.errors.offline'
       ]) {
         it(`shows ${key} when the service refuses with it`, async () => {

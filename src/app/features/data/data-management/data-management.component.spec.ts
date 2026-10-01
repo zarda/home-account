@@ -10,7 +10,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { DataManagementComponent } from './data-management.component';
 import { ExportService } from '../../../core/services/export.service';
-import { TransactionService } from '../../../core/services/transaction.service';
+import { CopiesNotPurgedError, TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { BudgetService } from '../../../core/services/budget.service';
@@ -75,11 +75,11 @@ describe('DataManagementComponent', () => {
     mockExportService.importFromCSV.and.returnValue(Promise.resolve([]));
     mockExportService.parseImportedData.and.returnValue([]);
 
-    mockTransactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'deleteAllTransactions', 'exportAll'], {
+    mockTransactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'wipeTransactions', 'exportAll'], {
       transactions: signal([])
     });
     mockTransactionService.addTransaction.and.returnValue(Promise.resolve('new-id'));
-    mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve(0));
+    mockTransactionService.wipeTransactions.and.resolveTo({ deleted: 0, copiesPurged: 0 });
     mockTransactionService.exportAll.and.resolveTo([]);
 
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['exportAll'], {
@@ -547,13 +547,37 @@ describe('DataManagementComponent', () => {
         expect(offer).not.toContain('full backup');
       });
 
+      // A restore writes every row private: the backup carries neither the
+      // shares nor anything a household holds, so sharing has to be redone.
+      it('says the backup carries neither the shares nor what belongs to a household', () => {
+        const offer = en.settings.deleteAccountBackupMessage.toLowerCase();
+
+        const missing = [
+          'which households your transactions are shared with',
+          'anything that belongs to a household',
+          'come back private',
+        ].filter(phrase => !offer.includes(phrase));
+
+        expect(missing).toEqual([]);
+      });
+
       it('warns about the kinds the cascade removes that the old wording left out', () => {
         const warning = en.settings.deleteAccountWarning.toLowerCase();
 
-        // The household step dissolves an owner's household for every other
-        // member too, which nothing of the account's own records says.
-        const missing = ['goals', 'stored answers', 'merchant', 'import history', 'feedback', 'household', 'every member']
-          .filter(word => !warning.includes(word));
+        // The household step ends every membership, takes the transactions
+        // this account shared out of each household, and dissolves an owner's
+        // household for every other member too, which nothing of the
+        // account's own records says. The budgets and goals it made in a
+        // household it does not own belong to that household and stay. Its
+        // contributions go from every household it is still in; those in a
+        // household it has left or been removed from stay there.
+        const missing = [
+          'goals', 'stored answers', 'merchant', 'import history', 'feedback',
+          'household memberships', 'the transactions you shared into them', 'every member',
+          "the household budgets and goals you made in a household you don't own stay with that household",
+          "the contributions you recorded on the goals of a household you're still in",
+          "as do the contributions you recorded in a household you've left or been removed from",
+        ].filter(word => !warning.includes(word));
 
         expect(missing).toEqual([]);
       });
@@ -655,7 +679,7 @@ describe('DataManagementComponent', () => {
     // The old message claimed everything was gone regardless of what the
     // service managed to remove.
     it('reports the number of transactions actually deleted', fakeAsync(() => {
-      mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve(488));
+      mockTransactionService.wipeTransactions.and.resolveTo({ deleted: 488, copiesPurged: 0 });
       mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
 
       component.deleteAllTransactions();
@@ -665,6 +689,75 @@ describe('DataManagementComponent', () => {
         'settings.allTransactionsDeleted', { count: 488 }
       );
       expect(notifications.success).toHaveBeenCalled();
+    }));
+
+    // The rows are gone while a household may still show copies of them:
+    // "failed" would contradict the empty list, and a retry would then report
+    // 0 deleted with nothing said about the households.
+    it('says the rows are deleted and that households still show them when the copies were not purged', fakeAsync(() => {
+      mockTransactionService.wipeTransactions.and.rejectWith(
+        new CopiesNotPurgedError(40, { cause: new Error('unavailable') }));
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteAllTransactions();
+      tick();
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.transactionsDeletedCopiesKept', { count: 40 }
+      );
+      expect(notifications.error).toHaveBeenCalledOnceWith('settings.transactionsDeletedCopiesKept');
+      expect(notifications.error).not.toHaveBeenCalledWith('settings.deleteTransactionsFailed');
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
+
+    // A retry after a failed purge finds no rows: a count of 0 would have
+    // "them" name nothing.
+    it('says households still show deleted transactions when a run with no rows left fails to purge', fakeAsync(() => {
+      mockTransactionService.wipeTransactions.and.rejectWith(
+        new CopiesNotPurgedError(0, { cause: new Error('unavailable') }));
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteAllTransactions();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('settings.householdCopiesNotPurged');
+      expect(mockTranslationService.t).not.toHaveBeenCalledWith(
+        'settings.transactionsDeletedCopiesKept', jasmine.anything());
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
+
+    it('says the households no longer show the rows when a run with no rows left purges their copies', fakeAsync(() => {
+      mockTransactionService.wipeTransactions.and.resolveTo({ deleted: 0, copiesPurged: 40 });
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteAllTransactions();
+      tick();
+
+      expect(notifications.success).toHaveBeenCalledOnceWith('settings.householdCopiesRemoved');
+      expect(mockTranslationService.t).not.toHaveBeenCalledWith(
+        'settings.allTransactionsDeleted', jasmine.anything());
+    }));
+
+    it('reports 0 deleted for an account that had nothing to delete', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteAllTransactions();
+      tick();
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith('settings.allTransactionsDeleted', { count: 0 });
+      expect(notifications.success).toHaveBeenCalledOnceWith('settings.allTransactionsDeleted');
+    }));
+
+    it('keeps saying the delete failed for any other rejection', fakeAsync(() => {
+      mockTransactionService.wipeTransactions.and.rejectWith(new Error('unavailable'));
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteAllTransactions();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('settings.deleteTransactionsFailed');
+      expect(mockTranslationService.t).not.toHaveBeenCalledWith(
+        'settings.transactionsDeletedCopiesKept', jasmine.anything());
     }));
   });
 
@@ -888,7 +981,7 @@ describe('DataManagementComponent, through its own template', () => {
         provideRouter([]),
         { provide: NotificationService, useValue: spy('NotificationService', ['success', 'error', 'info']) },
         { provide: ExportService, useValue: spy('ExportService', ['exportToJSON', 'exportTransactionsToCSV', 'downloadFile', 'parseImportFile']) },
-        { provide: TransactionService, useValue: spy('TransactionService', ['exportAll', 'addTransaction', 'deleteAllTransactions']) },
+        { provide: TransactionService, useValue: spy('TransactionService', ['exportAll', 'addTransaction', 'wipeTransactions']) },
         { provide: CategoryService, useValue: spy('CategoryService', ['exportAll']) },
         { provide: BudgetService, useValue: spy('BudgetService', ['exportAll']) },
         { provide: RecurringService, useValue: spy('RecurringService', ['exportAll']) },

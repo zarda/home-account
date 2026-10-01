@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   DISABLED_RULES,
@@ -48,6 +48,38 @@ class BrokenFixtureComponent {}
 })
 class SoundFixtureComponent {}
 
+/**
+ * A button that starts on a pair clearing AA and moves, slowly, to one that
+ * fails it — the shape of the transactions quick filters, whose "This month"
+ * class lands after first render and whose `transition: all` then carries
+ * the colours across.
+ */
+@Component({
+  selector: 'app-axe-moving-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<button type="button" class="swatch" [class.late]="late()">Pay</button>',
+  styles: `
+    .swatch { color: #000000; background: #ffffff; transition: all 60s linear; }
+    .swatch.late { color: #777777; background: #888888; }
+  `,
+})
+class MovingFixtureComponent {
+  readonly late = signal(false);
+}
+
+@Component({
+  selector: 'app-axe-spinner-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<span class="spinner" aria-hidden="true"></span>',
+  styles: `
+    .spinner { display: inline-block; width: 8px; height: 8px; animation: axe-spin 1s linear infinite; }
+    @keyframes axe-spin { to { transform: rotate(360deg); } }
+  `,
+})
+class SpinnerFixtureComponent {}
+
 describe('the axe harness', () => {
   async function violationsOf(component: typeof BrokenFixtureComponent): Promise<string[]> {
     TestBed.configureTestingModule({ imports: [component] });
@@ -93,6 +125,45 @@ describe('the axe harness', () => {
 
   it('leaves colour contrast on — it is the rule with the most to say', () => {
     expect(axeOptions().rules?.['color-contrast']).toBeUndefined();
+  });
+
+  describe('motion', () => {
+    // Headless Chrome need not paint a frame between a class landing and the
+    // pass, so a transition can still sit on its first colours for the whole
+    // run. Scored there, a pair the page never rests on passes — which is how
+    // the quick filters' 3.45:1 dark pair passed runs it should have failed.
+    it('scores the colours a transition is heading for, not the ones it is passing through', async () => {
+      TestBed.configureTestingModule({ imports: [MovingFixtureComponent] });
+      const fixture = TestBed.createComponent(MovingFixtureComponent);
+      fixture.detectChanges();
+      const button = (fixture.nativeElement as Element).querySelector('button') as HTMLElement;
+      expect(getComputedStyle(button).backgroundColor).toBe('rgb(255, 255, 255)');
+
+      fixture.componentInstance.late.set(true);
+      fixture.detectChanges();
+      expect(getComputedStyle(button).backgroundColor)
+        .withContext('the transition has only just started')
+        .toBe('rgb(255, 255, 255)');
+
+      const results = await runAxe(fixture.nativeElement as Element);
+
+      expect(summarizeViolations(results).map(line => line.split(' ')[0])).toContain('color-contrast');
+      expect(getComputedStyle(button).backgroundColor).toBe('rgb(136, 136, 136)');
+    });
+
+    // finish() throws on an animation with no end, and a spinner or a
+    // skeleton pulse is on most pages while they load.
+    it('leaves an animation with no end running rather than throwing on it', async () => {
+      TestBed.configureTestingModule({ imports: [SpinnerFixtureComponent] });
+      const fixture = TestBed.createComponent(SpinnerFixtureComponent);
+      fixture.detectChanges();
+      const spinner = (fixture.nativeElement as Element).querySelector('.spinner') as HTMLElement;
+      expect(spinner.getAnimations().length).toBe(1);
+
+      await expectAsync(runAxe(fixture.nativeElement as Element)).toBeResolved();
+
+      expect(spinner.getAnimations().map(animation => animation.playState)).toEqual(['running']);
+    });
   });
 
   describe('the frozen violations', () => {

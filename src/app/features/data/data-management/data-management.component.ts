@@ -28,7 +28,7 @@ import { SearchAnswerHistoryService } from '../../../core/services/search-answer
 import { CategoryMemoryService } from '../../../core/services/category-memory.service';
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ImportHistoryService } from '../../../core/services/import-history.service';
-import { TransactionService } from '../../../core/services/transaction.service';
+import { CopiesNotPurgedError, TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -469,17 +469,34 @@ export class DataManagementComponent {
         secondConfirm.afterClosed().subscribe(async (finalConfirm) => {
           if (finalConfirm) {
             try {
-              const deleted = await this.transactionService.deleteAllTransactions();
-              const message = this.t('settings.allTransactionsDeleted', { count: deleted });
+              const { deleted, copiesPurged } = await this.transactionService.wipeTransactions();
+              // A run that found no rows yet took copies out is finishing
+              // what a failed purge left: "0 deleted" would not say the
+              // households are clear.
+              const message = deleted === 0 && copiesPurged > 0
+                ? this.t('settings.householdCopiesRemoved')
+                : this.t('settings.allTransactionsDeleted', { count: deleted });
               this.notifications.success(message);
-            } catch {
-              const message = this.t('settings.deleteTransactionsFailed');
-              this.notifications.error(message);
+            } catch (error) {
+              this.notifications.error(this.wipeFailure(error));
             }
           }
         });
       }
     });
+  }
+
+  /**
+   * After a CopiesNotPurgedError the rows are gone and the list is empty, so
+   * "failed" would contradict the screen: what failed is taking their copies
+   * out of the households, which another run finishes. That run finds no
+   * rows, so its count of 0 is not named.
+   */
+  private wipeFailure(error: unknown): string {
+    if (!(error instanceof CopiesNotPurgedError)) return this.t('settings.deleteTransactionsFailed');
+    return error.deleted > 0
+      ? this.t('settings.transactionsDeletedCopiesKept', { count: error.deleted })
+      : this.t('settings.householdCopiesNotPurged');
   }
 
   /**

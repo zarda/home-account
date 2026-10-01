@@ -1,4 +1,4 @@
-import { ApplicationConfig, EnvironmentProviders, ErrorHandler, LOCALE_ID, makeEnvironmentProviders, provideBrowserGlobalErrorListeners, provideZoneChangeDetection, provideAppInitializer, inject } from '@angular/core';
+import { ApplicationConfig, EnvironmentProviders, ErrorHandler, Injector, LOCALE_ID, effect, makeEnvironmentProviders, provideBrowserGlobalErrorListeners, provideZoneChangeDetection, provideAppInitializer, inject, untracked } from '@angular/core';
 import { registerLocaleData } from '@angular/common';
 import localeJa from '@angular/common/locales/ja';
 import localeZhHant from '@angular/common/locales/zh-Hant';
@@ -45,6 +45,8 @@ import { ReminderService } from './core/services/reminder.service';
 import { WidgetSnapshotService } from './core/services/widget-snapshot.service';
 import { ShareIntakeService } from './core/services/share-intake.service';
 import { AnalyticsService } from './core/services/analytics.service';
+import { AuthService } from './core/services/auth.service';
+import { PwaService } from './core/services/pwa.service';
 import { GlobalErrorHandler } from './core/services/global-error-handler';
 import {
   ANALYTICS_CONSENT_DEFAULTS,
@@ -235,6 +237,117 @@ export function provideAppRemoteConfig(
 }
 
 /**
+ * The household ledger's sweep, as the arming below sees it: LedgerShareService
+ * (core/services/ledger-share.service.ts) by shape, so nothing in this file
+ * names the service's module outside a dynamic import.
+ */
+export interface LedgerSweeper {
+  reconcileAll(reason: 'start' | 'reconnect'): Promise<void>;
+}
+
+/** What the arming reads and calls; ledgerSweepHooks gives the app's. */
+export interface LedgerSweepHooks {
+  /** The signed-in account, or null: read as a signal, so the arming follows it. */
+  userId: () => string | null;
+  /** Read as a signal, so the arming hears the device come back online. */
+  isOnline: () => boolean;
+  /** Runs a task once the browser has nothing more pressing to do. */
+  whenIdle: (task: () => void) => void;
+  /** The sweep, reached through the only reference to its module: a dynamic import. */
+  load: () => Promise<LedgerSweeper>;
+}
+
+/** The longest an idle callback may wait before it runs anyway. */
+export const LEDGER_SWEEP_IDLE_TIMEOUT_MS = 10_000;
+
+/** Where there is no idle callback (Safari, the iOS web view): a delay past the first paint instead. */
+export const LEDGER_SWEEP_IDLE_FALLBACK_MS = 3_000;
+
+const LEDGER_SWEEP_LOG = '[LedgerShareService]';
+
+/** The scheduling a whenBrowserIdle host offers: an idle callback where the browser has one. */
+export interface IdleHost {
+  requestIdleCallback?: (callback: () => void, options: { timeout: number }) => unknown;
+  setTimeout: (callback: () => void, ms: number) => unknown;
+}
+
+/** Runs `task` once the browser is idle, or after a fixed delay where it cannot say. */
+export function whenBrowserIdle(task: () => void, host: IdleHost = globalThis as unknown as IdleHost): void {
+  if (typeof host.requestIdleCallback === 'function') {
+    host.requestIdleCallback(() => task(), { timeout: LEDGER_SWEEP_IDLE_TIMEOUT_MS });
+  } else {
+    host.setTimeout(() => task(), LEDGER_SWEEP_IDLE_FALLBACK_MS);
+  }
+}
+
+/**
+ * The app's collaborators for armLedgerSweep. `load` is the one place the
+ * sweep's module is named, and only as a dynamic import: the service, and the
+ * journal and projection code only it uses, stay in a lazy chunk (the initial
+ * bundle sits at its budget, docs/performance.md).
+ */
+export function ledgerSweepHooks(injector: Injector = inject(Injector)): LedgerSweepHooks {
+  const auth = injector.get(AuthService);
+  const pwa = injector.get(PwaService);
+  return {
+    userId: () => auth.userId(),
+    isOnline: () => pwa.isOnline(),
+    whenIdle: task => whenBrowserIdle(task),
+    load: () => import('./core/services/ledger-share.service')
+      .then(({ LedgerShareService }) => injector.get(LedgerShareService)),
+  };
+}
+
+/**
+ * Arms the household ledger's sweep (LedgerShareService.reconcileAll), which
+ * repairs any shared row's copy a follow-up left behind: once per account in
+ * a session when it is signed in and online ('start'), and again each time
+ * the device comes back online ('reconnect'). Each run waits for the browser
+ * to be idle, and only then loads the service. A signed-out account arms
+ * nothing. Nothing here throws, and a sweep that fails to load or run is
+ * logged, never handed to the ErrorHandler: the sweep is maintenance, and
+ * the next one starts over.
+ */
+export function armLedgerSweep(
+  hooks: LedgerSweepHooks = ledgerSweepHooks(),
+  injector: Injector = inject(Injector),
+): void {
+  const started = new Set<string>();
+  let wasOnline: boolean | null = null;
+  effect(() => {
+    try {
+      const uid = hooks.userId();
+      const online = hooks.isOnline();
+      const reconnected = wasOnline === false && online;
+      wasOnline = online;
+      if (!uid || !online) return;
+      if (!started.has(uid)) {
+        started.add(uid);
+        untracked(() => scheduleLedgerSweep(hooks, uid, 'start'));
+      } else if (reconnected) {
+        untracked(() => scheduleLedgerSweep(hooks, uid, 'reconnect'));
+      }
+    } catch (error) {
+      console.warn(`${LEDGER_SWEEP_LOG} The sweep was not armed`, error);
+    }
+  }, { injector });
+}
+
+function scheduleLedgerSweep(hooks: LedgerSweepHooks, uid: string, reason: 'start' | 'reconnect'): void {
+  hooks.whenIdle(() => {
+    try {
+      // The account or the connection may have changed while the task waited.
+      if (hooks.userId() !== uid || !hooks.isOnline()) return;
+      hooks.load()
+        .then(sweeper => sweeper.reconcileAll(reason))
+        .catch(error => console.warn(`${LEDGER_SWEEP_LOG} The sweep did not run`, error));
+    } catch (error) {
+      console.warn(`${LEDGER_SWEEP_LOG} The sweep did not run`, error);
+    }
+  });
+}
+
+/**
  * Locale data for the two non-English languages. Angular ships only `en` in
  * the bundle; without these, anything reading LOCALE_ID for `ja` or
  * `zh-Hant` throws "Missing locale data" at runtime rather than degrading.
@@ -352,6 +465,11 @@ export const appConfig: ApplicationConfig = {
       // happens not to reach it would otherwise report nothing at all.
       // Construction alone contacts nothing.
       inject(AnalyticsService);
+    }),
+    provideAppInitializer(() => {
+      // Repairs household copies a follow-up left behind, from an idle task
+      // that loads the service only then (armLedgerSweep).
+      armLedgerSweep();
     })
   ]
 };

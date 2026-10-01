@@ -1,5 +1,5 @@
 <mat-card class="budget-card">
-  <!-- Header: icon, name, and the menu unless read-only -->
+  <!-- Header: icon, name, menu -->
   <div class="card-header">
     <app-category-chip
       appearance="tile"
@@ -8,29 +8,23 @@
     />
 
     <div class="header-content">
-      @if (headingLevel() === 4) {
-        <h4 class="budget-name">{{ budget().name }}</h4>
-      } @else {
-        <h3 class="budget-name">{{ budget().name }}</h3>
-      }
+      <h3 class="budget-name">{{ budget().name }}</h3>
       <span class="budget-meta">{{ getPeriodLabel(budget().period) }}</span>
     </div>
 
-    @if (!readOnly()) {
-      <button mat-icon-button [matMenuTriggerFor]="menu" class="menu-btn" [attr.aria-label]="'common.moreActions' | translate">
-        <mat-icon>more_vert</mat-icon>
+    <button mat-icon-button [matMenuTriggerFor]="menu" class="menu-btn" [attr.aria-label]="'common.moreActions' | translate">
+      <mat-icon>more_vert</mat-icon>
+    </button>
+    <mat-menu #menu="matMenu">
+      <button mat-menu-item (click)="edit.emit()">
+        <mat-icon>edit</mat-icon>
+        <span>{{ 'common.edit' | translate }}</span>
       </button>
-      <mat-menu #menu="matMenu">
-        <button mat-menu-item (click)="edit.emit()">
-          <mat-icon>edit</mat-icon>
-          <span>{{ 'common.edit' | translate }}</span>
-        </button>
-        <button mat-menu-item (click)="delete.emit()" class="delete-item">
-          <mat-icon>delete</mat-icon>
-          <span>{{ 'common.delete' | translate }}</span>
-        </button>
-      </mat-menu>
-    }
+      <button mat-menu-item (click)="delete.emit()" class="delete-item">
+        <mat-icon>delete</mat-icon>
+        <span>{{ 'common.delete' | translate }}</span>
+      </button>
+    </mat-menu>
   </div>
 
   <!-- Progress section -->

@@ -12,7 +12,7 @@ import {
   InviteNeed,
   InviteTarget,
   InviteeAccount,
-  MembershipRecord,
+  MembershipIndex,
   PendingInvite,
   Refusal,
   Stamp,
@@ -96,8 +96,13 @@ export interface HouseholdInviteDeps {
   bumpInviterQuota(inviterUid: string, now: number): Promise<boolean>;
   /** null when no account uses the address. */
   getUserByEmail(email: string): Promise<InviteeAccount | null>;
-  /** Where the uid's profile pointer leads, raw; null when it has none. */
-  membershipOf(uid: string): Promise<MembershipRecord | null>;
+  /** The `since` of the uid's member doc in the household, raw; null when there is none. */
+  memberSince(householdId: string, uid: string): Promise<Stamp | null>;
+  /**
+   * The uid's membership index, listed no further than MEMBERSHIP_READ_BOUND,
+   * each entry with its member doc and household, raw.
+   */
+  membershipsOf(uid: string): Promise<MembershipIndex>;
   /** Member docs of the household carrying the given generation. */
   countMembers(householdId: string, createdAt: Stamp): Promise<number>;
   pendingInvites(householdId: string): Promise<PendingInvite[]>;
@@ -159,12 +164,13 @@ async function gather(
       facts.invitee = await deps.getUserByEmail(need.email);
       return;
     case 'standing': {
-      const [membership, liveMembers, invites] = await Promise.all([
-        deps.membershipOf(need.inviteeUid),
+      const [memberSince, memberships, liveMembers, invites] = await Promise.all([
+        deps.memberSince(need.householdId, need.inviteeUid),
+        deps.membershipsOf(need.inviteeUid),
         deps.countMembers(need.householdId, need.household.createdAt),
         deps.pendingInvites(need.householdId),
       ]);
-      facts.standing = { membership, liveMembers, invites };
+      facts.standing = { memberSince, memberships, liveMembers, invites };
       return;
     }
   }

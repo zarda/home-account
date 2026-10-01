@@ -71,7 +71,8 @@ app-period-selector {
   > span {
     flex: 1 1 0;
     min-width: 0;
-    // A member's name may be one long word.
+    // A translated sentence in this narrow column may still hold an
+    // unbroken run.
     overflow-wrap: anywhere;
   }
 }
@@ -176,8 +177,58 @@ app-period-selector {
   }
 }
 
+// Beside a figure that includes a row in another currency: that row was
+// converted at today's rate, not the rate of its day.
+.rate-caption {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+// Under the three figures, on a line of its own.
+.member-rate {
+  flex: 1 0 100%;
+}
+
+// Under the row, at its trailing edge where the converted figure ends line
+// 3, within the row's own 8px padding: pulled up into the padding below that
+// line, so it reads as that figure's and not as the next row's.
+.row-rate {
+  margin-block-start: -8px;
+  padding: 0 8px 8px;
+  text-align: end;
+}
+
 .overview-row + .overview-row {
   border-block-start: 1px solid var(--surface-muted);
+}
+
+/* The goal menu's button, projected into the row's menu corner. Sized here
+   because projected content carries this component's encapsulation, as the
+   transactions list sizes its own: 40px, the touch target included, so it
+   reaches no further than the corner the row reserves for it. */
+.row-goal-btn {
+  --mat-icon-button-touch-target-size: 40px;
+  width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  flex-shrink: 0;
+}
+
+// The goal the viewer's row counts toward, under the row at its start.
+.row-goal {
+  margin: 0;
+  margin-block-start: -8px;
+  padding: 0 8px 8px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+// The menu's choices line up whichever is checked.
+.goal-unchecked {
+  visibility: hidden;
 }
 
 // Its label counts what is left, which outgrows a phone's width: the button

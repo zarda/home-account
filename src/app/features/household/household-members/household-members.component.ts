@@ -24,19 +24,22 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Observable, firstValueFrom } from 'rxjs';
 
 import {
   HOUSEHOLD_NAME_MAX_LENGTH,
-  HouseholdError,
+  HouseholdCleanupError,
+  HouseholdPurgeError,
   HouseholdService,
   householdNameValidator,
   inviteEmailValid
 } from '../../../core/services/household.service';
+import type { LedgerShareProgress } from '../../../core/services/ledger-share.service';
 import { INVITE_MAIL_DEADLINE_MS } from '../../../core/services/household-invite-callable';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
-import { NotificationService } from '../../../core/services/notification.service';
+import { NOTIFICATION_DURATION_MS, NotificationService } from '../../../core/services/notification.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnalyticsEventParams } from '../../../core/config/analytics-events';
@@ -46,8 +49,16 @@ import {
 } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { MemberChipComponent } from '../../../shared/components/member-chip/member-chip.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { HouseholdInvite, HouseholdInviteMail, HouseholdMember } from '../../../models';
-import { FocusContext, HouseholdPageFocus, focusWhenRendered } from '../household-focus';
+import { Household, HouseholdInvite, HouseholdInviteMail, HouseholdMember } from '../../../models';
+import { writeFailureMessage } from '../household-failure';
+import {
+  FocusContext,
+  HouseholdPageFocus,
+  OpenDialog,
+  closeDialogsOnSwitch,
+  focusWhenRendered,
+  sameShownHousehold
+} from '../household-focus';
 
 /**
  * What an invite's age is allowed beyond the callable's mail deadline
@@ -74,6 +85,40 @@ function inviteEmail(control: AbstractControl<string>): ValidationErrors | null 
 }
 
 type HouseholdAction = AnalyticsEventParams<'household_action'>['action'];
+
+/**
+ * A leave or dissolve done bar its shared rows says so in two sentences, up
+ * as long as an error so the second is still there to be read.
+ */
+const LONGER_NOTICE = { durationMs: NOTIFICATION_DURATION_MS.error };
+
+/**
+ * The purge of the rows a removed member shared into the household
+ * (HouseholdService.remove), as the section shows it: running with the
+ * removal, failed, or running again at the owner's asking.
+ */
+interface Removal {
+  /** The household the member was removed from. */
+  household: Household;
+  uid: string;
+  name: string;
+  state: 'running' | 'failed' | 'retrying';
+  /** Copies purged, of those listed; 0 of 0 until they are. */
+  done: number;
+  total: number;
+}
+
+interface RemovalView extends Removal {
+  /** The removal's key among those the section holds (removalKey). */
+  key: string;
+  /** The line that says how the purge stands, which Try again is described by. */
+  statusId: string;
+  /** How far the purge has got, 0–100; null until its copies are listed. */
+  percent: number | null;
+}
+
+/** One removal per member of one household: removed again, a member was a member again. */
+const removalKey = (household: Household, uid: string): string => `${household.id}|${uid}`;
 
 /** What became of an invite's mail, as the pending list says it. */
 type InviteMailView = 'sent' | 'sending' | 'failed' | 'held';
@@ -141,6 +186,21 @@ interface MailAnswer {
  * once the row has gone: to a neighbouring member's Remove, or to the
  * heading of what is left. Leave and Dissolve take the whole view away; the
  * page moves focus into the setup that replaces it.
+ *
+ * Remove, Revoke, Rename, Leave and Dissolve act on the household the page
+ * showed when they began, handed to the service by id and generation; an
+ * invite, sent as it is asked for, goes to the one shown. A confirm belongs
+ * to the household it was opened for: it closes, unanswered, once the page
+ * shows another household, another generation of it, or none, and when the
+ * section goes. A loss that moves the page on while a Dissolve is being
+ * confirmed so never dissolves another household.
+ *
+ * A removal takes the rows the member shared out of the household after
+ * them. The section says so while it runs, and when it fails, with the
+ * member already out, offers to try the purge again; either is shown only
+ * while the household it was for is, one line for each removal. A leave or
+ * dissolve that ended the membership with the account's shared rows still
+ * to be taken out is done all the same, and says what is left.
  */
 @Component({
   selector: 'app-household-members',
@@ -150,6 +210,7 @@ interface MailAnswer {
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatProgressBarModule,
     MemberChipComponent,
     ReactiveFormsModule,
     TranslatePipe
@@ -173,6 +234,15 @@ export class HouseholdMembersComponent {
     destroyRef: inject(DestroyRef)
   };
   private readonly departing = signal<Departure | null>(null);
+  /**
+   * Each removal whose purge is running or failed, by removalKey, in the
+   * order they began: one failed stays, with its Try again, while others
+   * start, fail or finish.
+   */
+  private readonly removals = signal<ReadonlyMap<string, Removal>>(new Map());
+
+  /** The confirms open from here, each with the household it was opened for. */
+  private readonly confirmsOpen = new Map<OpenDialog, Household | null>();
 
   readonly isOwner = this.household.isOwner;
   readonly maxLength = HOUSEHOLD_NAME_MAX_LENGTH;
@@ -193,6 +263,7 @@ export class HouseholdMembersComponent {
    */
   private readonly inviteDirective = viewChild<FormGroupDirective>('inviteDirective');
   private readonly renameDirective = viewChild<FormGroupDirective>('renameDirective');
+  private readonly inviteInput = viewChild<ElementRef<HTMLInputElement>>('inviteInput');
 
   /**
    * Bumped when a `sending` invite's window closes or the callable answers,
@@ -209,6 +280,19 @@ export class HouseholdMembersComponent {
 
   /** The callable's answers this session, by invite id. */
   private readonly answers = new Map<string, MailAnswer>();
+
+  /** The purges of the removals from the household shown. */
+  readonly purges = computed<RemovalView[]>(() => {
+    const shown = this.household.household();
+    return [...this.removals()]
+      .filter(([, removal]) => sameShownHousehold(removal.household, shown))
+      .map(([key, removal]) => ({
+        ...removal,
+        key,
+        statusId: `household-member-purge-${removal.uid}`,
+        percent: removal.total > 0 ? Math.round((100 * removal.done) / removal.total) : null
+      }));
+  });
 
   readonly memberViews = computed<MemberView[]>(() => {
     const me = this.household.ownMember()?.uid;
@@ -307,6 +391,8 @@ export class HouseholdMembersComponent {
         if (!control.dirty) control.setValue(name);
       });
     });
+
+    closeDialogsOnSwitch(() => this.household.household(), this.confirmsOpen, this.focus.destroyRef);
   }
 
   async invite(): Promise<void> {
@@ -325,7 +411,7 @@ export class HouseholdMembersComponent {
       this.reread.update(n => n + 1);
       // The field stays open while the call is out: whatever was typed since
       // is kept.
-      if (email.value.trim() === address) this.inviteDirective()?.resetForm();
+      if (email.value.trim() === address) this.clearInvite();
       this.notification.success(
         mail === 'sent'
           ? this.t('household.members.inviteSent', { email: address })
@@ -335,12 +421,41 @@ export class HouseholdMembersComponent {
   }
 
   /**
+   * Empties the invite form and leaves it neutral. An Enter sends with focus
+   * still in the field, and the blur that ends that focus marks the emptied
+   * field touched, which would refuse it. Moving focus out of the field
+   * instead would drop it on the document, so the touch is undone each time
+   * the field is blurred, until focus moves elsewhere on the page or the owner
+   * types in it.
+   */
+  private clearInvite(): void {
+    this.inviteDirective()?.resetForm();
+    const input = this.inviteInput()?.nativeElement;
+    if (!input || input !== input.ownerDocument.activeElement) return;
+    const email = this.inviteForm.controls.email;
+    // Registered after the value accessor's own blur listener, so it runs
+    // after that touch and before the error state is read again.
+    const settle = (): void => {
+      if (email.pristine) email.markAsUntouched();
+      // A window or tab switch blurs the field yet leaves it the document's
+      // focused element, and focus comes back to it on return. A move within
+      // the page has already let go of it by the time blur fires. A typed
+      // field stays dirty until the next reset, which leaves nothing to undo.
+      if (email.dirty || input.ownerDocument.activeElement !== input) {
+        input.removeEventListener('blur', settle);
+      }
+    };
+    input.addEventListener('blur', settle);
+  }
+
+  /**
    * Focus goes to the list's heading, never to another Revoke: nothing asks
    * before a revoke, so a repeated Enter would withdraw a second invite.
    */
   async revoke(invite: HouseholdInvite): Promise<void> {
+    const opened = this.shownHousehold();
     await this.run('revoke', async () => {
-      await this.household.revoke(invite.id);
+      await this.household.revoke(invite.id, opened);
       this.departing.set({ key: `invite:${invite.id}`, landings: ['#household-pending-title'] });
       this.notification.success(this.t('household.members.revoked'));
     });
@@ -357,8 +472,9 @@ export class HouseholdMembersComponent {
       this.renameDirective()?.resetForm({ name });
       return;
     }
+    const opened = this.shownHousehold();
     await this.run('rename', async () => {
-      await this.household.rename(name);
+      await this.household.rename(name, opened);
       // Pristine again, so the field follows the name the listener brings,
       // unless the owner typed on while the rename was out.
       if (control.value.trim() === name) this.renameDirective()?.resetForm({ name });
@@ -366,8 +482,17 @@ export class HouseholdMembersComponent {
     });
   }
 
+  /**
+   * The member goes, then the rows they shared (HouseholdService.remove).
+   * Their row goes with the first step, so focus moves on then; the purge's
+   * line stays until the second is done. A purge that fails leaves the
+   * removal done, and counted, with the offer to try the purge again. A
+   * removal refused before the member went leaves no line of its own, and
+   * any earlier one for the same member as it was.
+   */
   async remove(view: MemberView): Promise<void> {
     if (this.pending() || this.refusedOffline()) return;
+    const opened = this.household.household();
     const given = view.member.displayName.trim();
     // The title asks about the member mid-sentence; the rest begin with them.
     const name = given || this.t('household.unnamedMember');
@@ -377,26 +502,66 @@ export class HouseholdMembersComponent {
       confirmLabel: this.t('household.members.removeConfirm'),
       confirmColor: 'warn',
       icon: 'group_remove'
-    });
-    if (!confirmed) return;
+    }, opened);
+    if (!confirmed || !opened) return;
 
     // A confirm stands in front of every Remove, so focus may go on to the
     // next one: pressing it asks again.
+    const uid = view.member.uid;
     const removable = this.memberViews().filter(each => each.removable);
-    const at = removable.findIndex(each => each.member.uid === view.member.uid);
+    const at = removable.findIndex(each => each.member.uid === uid);
     const landings = [removable[at + 1], removable[at - 1]]
       .filter((each): each is MemberView => each !== undefined)
       .map(each => `#${each.removeId}`);
 
+    const key = removalKey(opened, uid);
     await this.run('remove', async () => {
-      await this.household.remove(view.member.uid);
-      this.departing.set({ key: `member:${view.member.uid}`, landings: [...landings, '#household-members-title'] });
+      this.departing.set({ key: `member:${uid}`, landings: [...landings, '#household-members-title'] });
+      const earlier = this.removals().get(key);
+      this.setRemoval(key, { household: opened, uid, name, state: 'running', done: 0, total: 0 });
+      try {
+        await this.household.remove(uid, opened, this.purgeProgress(key));
+      } catch (error) {
+        if (!(error instanceof HouseholdPurgeError)) {
+          this.departing.set(null);
+          this.setRemoval(key, earlier);
+          throw error;
+        }
+        this.purgeFailed(key, error);
+        return;
+      }
+      this.setRemoval(key, undefined);
       this.notification.success(this.t('household.members.removed', { name }));
+    });
+  }
+
+  /**
+   * One removal's failed purge, tried again. Its Try again stays, held,
+   * while it runs, so focus stays on it; once the purge is done and the
+   * line gone, focus lands on the section's heading.
+   */
+  async retryPurge(key: string): Promise<void> {
+    const removal = this.removals().get(key);
+    const shown = this.purges().some(view => view.key === key);
+    if (!removal || !shown || removal.state !== 'failed' || this.pending() || this.refusedOffline()) return;
+    const { household, uid, name } = removal;
+    await this.hold(async () => {
+      this.setRemoval(key, { ...removal, state: 'retrying', done: 0, total: 0 });
+      try {
+        await this.household.purgeRemoved(uid, household, this.purgeProgress(key));
+      } catch (error) {
+        this.purgeFailed(key, error);
+        return;
+      }
+      this.setRemoval(key, undefined);
+      this.notification.success(this.t('household.members.purged', { name }));
+      focusWhenRendered(this.focus, ['#household-members-title']);
     });
   }
 
   async leave(): Promise<void> {
     if (this.pending() || this.refusedOffline()) return;
+    const opened = this.household.household();
     const name = this.currentHouseholdName();
     const confirmed = await this.confirm({
       title: this.t('household.members.leaveTitle', { name }),
@@ -404,13 +569,14 @@ export class HouseholdMembersComponent {
       confirmLabel: this.t('household.members.leaveConfirm'),
       confirmColor: 'warn',
       icon: 'logout'
-    });
-    if (!confirmed) return;
+    }, opened);
+    if (!confirmed || !opened) return;
 
     await this.run('leave', async () => {
-      await this.household.leave();
+      const finished = await this.ended(this.household.leave(opened));
       this.pageFocus.afterSwapTo('none');
-      this.notification.success(this.t('household.members.left', { name }));
+      if (finished) this.notification.success(this.t('household.members.left', { name }));
+      else this.notification.info(this.t('household.members.leftPending', { name }), LONGER_NOTICE);
     });
   }
 
@@ -421,6 +587,7 @@ export class HouseholdMembersComponent {
    */
   async dissolve(): Promise<void> {
     if (this.pending() || this.refusedOffline()) return;
+    const opened = this.household.household();
     const name = this.currentHouseholdName();
     const warned = await this.confirm({
       title: this.t('household.members.dissolveTitle', { name }),
@@ -428,7 +595,7 @@ export class HouseholdMembersComponent {
       confirmLabel: this.t('household.members.dissolveContinue'),
       confirmColor: 'warn',
       icon: 'warning'
-    });
+    }, opened);
     if (!warned) return;
     const typed = await this.confirm({
       title: this.t('household.members.finalTitle'),
@@ -436,28 +603,87 @@ export class HouseholdMembersComponent {
       confirmLabel: this.t('household.members.dissolveConfirm'),
       confirmColor: 'warn',
       requireText: DISSOLVE_CONFIRM_TEXT
-    });
-    if (!typed) return;
+    }, opened);
+    if (!typed || !opened) return;
 
     await this.run('dissolve', async () => {
-      await this.household.dissolve();
+      const finished = await this.ended(this.household.dissolve(opened));
       this.pageFocus.afterSwapTo('none');
-      this.notification.success(this.t('household.members.dissolved'));
+      if (finished) this.notification.success(this.t('household.members.dissolved'));
+      else this.notification.info(this.t('household.members.dissolvedPending'), LONGER_NOTICE);
     });
   }
 
   /** Runs one action, counting it only once it succeeded. */
   private async run(action: HouseholdAction, work: () => Promise<void>): Promise<void> {
+    await this.hold(async () => {
+      await work();
+      this.analytics.trackHouseholdAction({ action });
+    });
+  }
+
+  /** Holds every control while work runs, and shows what stopped it. */
+  private async hold(work: () => Promise<void>): Promise<void> {
     if (this.pending()) return;
     this.pending.set(true);
     try {
       await work();
-      this.analytics.trackHouseholdAction({ action });
     } catch (error) {
-      this.notification.error(this.messageOf(error));
+      this.notification.error(writeFailureMessage(error, key => this.t(key)));
     } finally {
       this.pending.set(false);
     }
+  }
+
+  /**
+   * Whether an ending of the account's own membership (a leave, a
+   * dissolve) finished in full. False when the membership is over with the
+   * rows it shared still to be taken out (HouseholdCleanupError): the action
+   * is done all the same, and the next tidy finishes it. Anything else is
+   * the action failing.
+   */
+  private async ended(ending: Promise<void>): Promise<boolean> {
+    try {
+      await ending;
+      return true;
+    } catch (error) {
+      if (error instanceof HouseholdCleanupError) return false;
+      throw error;
+    }
+  }
+
+  /** Sets one removal, or with undefined forgets it. */
+  private setRemoval(key: string, removal: Removal | undefined): void {
+    this.removals.update(removals => {
+      const next = new Map(removals);
+      if (removal) next.set(key, removal);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  /** Hands a purge's progress to the removal it belongs to, while the section holds it. */
+  private purgeProgress(key: string): LedgerShareProgress {
+    return (done, total) => {
+      const removal = this.removals().get(key);
+      if (removal) this.setRemoval(key, { ...removal, done, total });
+    };
+  }
+
+  /**
+   * A purge that stopped. Its own failure is said with the member's name;
+   * anything that refused the retry before it started, in the service's
+   * words.
+   */
+  private purgeFailed(key: string, error: unknown): void {
+    const removal = this.removals().get(key);
+    if (!removal) return;
+    this.setRemoval(key, { ...removal, state: 'failed' });
+    this.notification.error(
+      error instanceof HouseholdPurgeError
+        ? this.t('household.members.purgeFailed', { name: removal.name })
+        : writeFailureMessage(error, key => this.t(key))
+    );
   }
 
   /**
@@ -483,18 +709,30 @@ export class HouseholdMembersComponent {
     return answer.createdAt === createdAt ? answer.mail : null;
   }
 
-  private confirm(data: ConfirmDialogData): Promise<boolean> {
-    const closed: Observable<unknown> = this.dialog.open(ConfirmDialogComponent, { data }).afterClosed();
-    return firstValueFrom(closed, { defaultValue: undefined }).then(answer => answer === true);
+  /**
+   * Asks, for the household `opened`, answering false without asking once
+   * the page shows another. The confirm is held among those open from here
+   * until it closes.
+   */
+  private async confirm(data: ConfirmDialogData, opened: Household | null): Promise<boolean> {
+    if (!sameShownHousehold(opened, this.household.household())) return false;
+    const ref = this.dialog.open(ConfirmDialogComponent, { data });
+    this.confirmsOpen.set(ref, opened);
+    try {
+      const closed: Observable<unknown> = ref.afterClosed();
+      return (await firstValueFrom(closed, { defaultValue: undefined })) === true;
+    } finally {
+      this.confirmsOpen.delete(ref);
+    }
   }
 
   private currentHouseholdName(): string {
     return this.household.household()?.name ?? '';
   }
 
-  /** The service words every refusal in the reader's language already. */
-  private messageOf(error: unknown): string {
-    return error instanceof HouseholdError ? error.message : this.t('errors.generic');
+  /** The household shown, for an action that starts at once. */
+  private shownHousehold(): Household | undefined {
+    return this.household.household() ?? undefined;
   }
 
   private t(key: string, params?: Record<string, string | number>): string {

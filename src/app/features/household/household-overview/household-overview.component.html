@@ -9,26 +9,17 @@
     <app-period-selector (selectionChange)="onPeriodSelection($event)" />
   </div>
 
-  @for (notice of notices(); track notice.kind + '/' + notice.member.uid) {
-    <p class="overview-note" [class.is-info]="notice.kind === 'truncated'" role="status">
-      @switch (notice.kind) {
-        @case ('unavailable') {
-          <mat-icon>block</mat-icon>
-          <span>{{ 'household.overview.unavailable' | translate: { name: notice.name || ('household.unnamedMember' | translate) } }}</span>
-        }
-        @case ('incomplete') {
-          <mat-icon>warning</mat-icon>
-          <span>{{ 'household.overview.incomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
-        }
-        @case ('categoriesIncomplete') {
-          <mat-icon>warning</mat-icon>
-          <span>{{ 'household.overview.categoriesIncomplete' | translate: { name: notice.name || ('household.unnamedMemberInline' | translate) } }}</span>
-        }
-        @case ('truncated') {
-          <mat-icon>info</mat-icon>
-          <span>{{ 'household.overview.truncated' | translate: { name: notice.name || ('household.unnamedMember' | translate), cap: rowCap } }}</span>
-        }
-      }
+  <!-- Only beside figures: the card that takes their place says it. -->
+  @if (incomplete() && state() === 'ready') {
+    <p class="overview-note" role="status">
+      <mat-icon>warning</mat-icon>
+      <span>{{ 'household.overview.incomplete' | translate }}</span>
+    </p>
+  }
+  @if (truncated()) {
+    <p class="overview-note is-info" role="status">
+      <mat-icon>info</mat-icon>
+      <span>{{ 'household.overview.truncated' | translate: { cap: rowCap } }}</span>
     </p>
   }
 
@@ -45,6 +36,15 @@
     @case ('loading') {
       <app-loading-spinner [message]="'household.overview.loading' | translate" />
     }
+    @case ('failed') {
+      <div class="overview-card">
+        <app-empty-state
+          icon="error_outline"
+          [title]="'household.overview.failedTitle' | translate"
+          [description]="'household.overview.failedDescription' | translate"
+        />
+      </div>
+    }
     @default {
       <app-financial-summary
         [income]="combined().income"
@@ -52,6 +52,9 @@
         [balance]="combined().balance"
         [currency]="baseCurrency()"
       />
+      @if (combined().atTodaysRate) {
+        <p class="rate-caption overview-rate">{{ 'common.atTodaysRate' | translate }}</p>
+      }
 
       <section class="overview-card" aria-labelledby="household-by-member-title">
         <h3 id="household-by-member-title" class="overview-subtitle">
@@ -61,8 +64,12 @@
           @for (line of memberLines(); track line.member.uid) {
             <li class="member-line">
               <app-member-chip class="member-line-who" [member]="line.member" />
-              @if (line.notLoaded) {
+              @if (line.pending === 'offline') {
                 <p class="member-not-loaded">{{ 'household.overview.notLoaded' | translate }}</p>
+              } @else if (line.pending === 'loading') {
+                <p class="member-not-loaded">{{ 'household.overview.memberLoading' | translate }}</p>
+              } @else if (line.pending === 'failed') {
+                <p class="member-not-loaded">{{ 'household.overview.memberFailed' | translate }}</p>
               } @else {
                 <dl class="member-figures">
                   <div class="member-figure">
@@ -78,6 +85,9 @@
                     <dd class="figure-value" [class.negative]="line.negative" appFitText>{{ line.balance }}</dd>
                   </div>
                 </dl>
+                @if (line.atTodaysRate) {
+                  <p class="rate-caption member-rate">{{ 'common.atTodaysRate' | translate }}</p>
+                }
               }
             </li>
           }
@@ -96,24 +106,72 @@
             icon="receipt_long"
             [headingLevel]="4"
             [title]="'household.overview.emptyTitle' | translate"
-            [description]="'household.overview.emptyDescription' | translate"
+            [description]="'household.overview.nothingShared' | translate"
           />
         } @else {
           <!-- A list, so its length is read out: the rows themselves are
-               text, with no control to count them by. -->
+               text, and only the viewer's own carry a control. -->
           <ul class="overview-rows">
             @for (view of rows(); track view.key) {
               <li class="overview-row" [attr.tabindex]="view.key === focusRowKey() ? -1 : null">
                 <app-transaction-row
-                  [transaction]="view.row"
+                  [transaction]="view.transaction"
                   [categories]="view.categories"
                   [member]="view.member"
                   [interactive]="false"
                   [swipeActions]="false"
-                />
+                >
+                  @if (view.own && goalChoices().length > 0) {
+                    <!-- In the row's menu corner. Every row has one, so its
+                         name says which row it counts. -->
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="row-goal-btn"
+                      [matMenuTriggerFor]="goalMenu"
+                      [matMenuTriggerData]="{ view }"
+                      [attr.aria-label]="'household.overview.countToward' | translate: { name: view.transaction.description }"
+                    >
+                      <mat-icon>flag</mat-icon>
+                    </button>
+                  }
+                </app-transaction-row>
+                @if (view.own && view.goal; as goal) {
+                  <p class="row-goal">{{ 'household.overview.countsToward' | translate: { name: goal.name } }}</p>
+                }
+                @if (view.atTodaysRate) {
+                  <p class="rate-caption row-rate">{{ 'common.atTodaysRate' | translate }}</p>
+                }
               </li>
             }
           </ul>
+          <!-- One menu for every row, handed the row it opened from. -->
+          <mat-menu #goalMenu="matMenu" class="goal-link-menu">
+            <ng-template matMenuContent let-view="view">
+              @for (goal of goalChoices(); track goal.id) {
+                <button
+                  mat-menu-item
+                  type="button"
+                  role="menuitemradio"
+                  [attr.aria-checked]="view.goal?.id === goal.id"
+                  (click)="countToward(view, goal)"
+                >
+                  <mat-icon [class.goal-unchecked]="view.goal?.id !== goal.id">check</mat-icon>
+                  <span>{{ goal.name }}</span>
+                </button>
+              }
+              <button
+                mat-menu-item
+                type="button"
+                role="menuitemradio"
+                [attr.aria-checked]="!view.goal"
+                (click)="countToward(view, null)"
+              >
+                <mat-icon [class.goal-unchecked]="!!view.goal">check</mat-icon>
+                <span>{{ 'household.overview.countTowardNone' | translate }}</span>
+              </button>
+            </ng-template>
+          </mat-menu>
           @if (hiddenCount() > 0) {
             <button
               mat-stroked-button

@@ -147,10 +147,19 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.45 MB | 2.7 MB |
+| Initial bundle | 2.47 MB | 2.7 MB |
 
-Against an achieved 2.31 MB. To re-measure after a change that could move
-it:
+Against 2.46 MB, measured from a clean production build on 2026-09-28. The
+warning stood at 2.45 MB until household sharing (#465) put the initial
+bundle 12.85 kB over it, and moved by that much and no more. What bought the
+space is code the first screen reaches without a route change:
+`FirestoreService`'s batch commit and server aggregate, the Firestore SDK's
+`arrayUnion`/`arrayRemove` in the shared chunk, the transaction service's
+follow-up that carries a shared row's edit to its copies, and the
+transaction form's *Shared with* chips, which QuickAdd loads eagerly. The
+service that shares and sweeps is reached by dynamic import, and the ones that
+fold household figures load with the household page's own route, so neither
+is in it. To re-measure after a change that could move it:
 
 ```bash
 rm -rf dist && npm run build:prod

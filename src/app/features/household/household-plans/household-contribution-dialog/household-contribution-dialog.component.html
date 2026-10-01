@@ -1,0 +1,39 @@
+<app-dialog-header titleKey="household.planForm.contributionTitle" icon="savings" (closed)="cancel()" />
+
+<form [formGroup]="form" (ngSubmit)="submit()" class="plan-dialog-form">
+  <mat-dialog-content class="plan-dialog-content">
+    <p class="plan-dialog-lead">{{ 'household.planForm.contributionToward' | translate: { name: data.goalName } }}</p>
+
+    <mat-form-field appearance="outline" class="plan-dialog-field">
+      <mat-label>{{ 'household.planForm.amount' | translate }}</mat-label>
+      <input matInput type="number" formControlName="amount" min="0" step="0.01" inputmode="decimal" />
+      <span matTextSuffix>{{ data.currency }}</span>
+      @if (form.controls.amount.invalid) {
+        <mat-error>{{ 'household.errors.planAmount' | translate }}</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="plan-dialog-field">
+      <mat-label>{{ 'household.planForm.date' | translate }}</mat-label>
+      <input matInput [matDatepicker]="datePicker" formControlName="date" />
+      <mat-datepicker-toggle matIconSuffix [for]="datePicker" />
+      <mat-datepicker #datePicker />
+      @if (form.controls.date.invalid) {
+        <mat-error>{{ 'household.planForm.dateRequired' | translate }}</mat-error>
+      }
+    </mat-form-field>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" class="plan-dialog-cancel" (click)="cancel()" [disabled]="saving()" disabledInteractive>
+      {{ 'common.cancel' | translate }}
+    </button>
+    <button mat-flat-button type="submit" class="plan-dialog-save" [disabled]="saving()" disabledInteractive>
+      @if (saving()) {
+        <!-- The button's own label says what it does. -->
+        <mat-spinner diameter="20" class="plan-dialog-spinner" aria-hidden="true" />
+      }
+      {{ 'household.planForm.addContribution' | translate }}
+    </button>
+  </mat-dialog-actions>
+</form>

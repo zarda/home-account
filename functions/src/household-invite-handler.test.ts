@@ -6,7 +6,10 @@ import { composeHouseholdInviteEmail } from './compose-household-invite-email';
 import {
   DAY_MS,
   HouseholdRecord,
+  IndexedMembership,
   InviteeAccount,
+  MAX_HOUSEHOLDS_PER_ACCOUNT,
+  MEMBERSHIP_READ_BOUND,
   PendingInvite,
   Stamp,
   hasSeat,
@@ -31,6 +34,9 @@ const SAM = 'sam-uid';
 const INVITE_ID = `${HID}_${SAM}`;
 const CREATED: Stamp = { seconds: 1_790_000_000, nanoseconds: 123_456_000 };
 const OLDER: Stamp = { seconds: 1_780_000_000, nanoseconds: 0 };
+
+/** The account's own entry for one membership, as the fake index holds it. */
+type IndexEntry = { since: Stamp; ended?: boolean };
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -57,8 +63,8 @@ class World {
   households = new Map<string, HouseholdRecord>();
   /** householdId → uid → since */
   members = new Map<string, Map<string, Stamp>>();
-  /** uid → the profile's householdId */
-  pointers = new Map<string, string>();
+  /** uid → householdId → the account's index entry for it */
+  index = new Map<string, Map<string, IndexEntry>>();
   /** normalised email → account */
   accounts = new Map<string, InviteeAccount>();
   invites = new Map<string, HouseholdInviteRecord>();
@@ -115,14 +121,25 @@ class World {
         called('getUserByEmail');
         return this.accounts.get(email) ?? null;
       },
-      membershipOf: async uid => {
-        called('membershipOf');
-        const householdId = this.pointers.get(uid);
-        if (!householdId) return null;
+      memberSince: async (householdId, uid) => {
+        called('memberSince');
+        return this.members.get(householdId)?.get(uid) ?? null;
+      },
+      membershipsOf: async uid => {
+        called('membershipsOf');
+        // Listed no further than the bound, as the Admin deps list it.
+        const entries = [...(this.index.get(uid)?.entries() ?? [])];
         return {
-          householdId,
-          since: this.members.get(householdId)?.get(uid) ?? null,
-          householdCreatedAt: this.households.get(householdId)?.createdAt ?? null,
+          entries: entries.slice(0, MEMBERSHIP_READ_BOUND).map(
+            ([householdId, entry]): IndexedMembership => ({
+              householdId,
+              since: entry.since,
+              ended: entry.ended === true,
+              memberSince: this.members.get(householdId)?.get(uid) ?? null,
+              householdCreatedAt: this.households.get(householdId)?.createdAt ?? null,
+            })
+          ),
+          overflow: entries.length > MEMBERSHIP_READ_BOUND,
         };
       },
       countMembers: async (householdId, createdAt) => {
@@ -201,9 +218,21 @@ function world(): World {
   const w = new World();
   w.households.set(HID, { ownerId: OWNER, name: 'Our home', createdAt: CREATED });
   w.members.set(HID, new Map([[OWNER, CREATED]]));
-  w.pointers.set(OWNER, HID);
+  w.index.set(OWNER, new Map([[HID, { since: CREATED }]]));
   w.accounts.set('sam@example.com', { uid: SAM, disabled: false });
   return w;
+}
+
+/** Makes `uid` a live member of `count` households other than HID. */
+function joinOthers(w: World, uid: string, count: number): void {
+  const index = w.index.get(uid) ?? new Map<string, IndexEntry>();
+  for (let i = 0; i < count; i++) {
+    const householdId = `other-${i}`;
+    w.households.set(householdId, { ownerId: `owner-${i}`, name: `Theirs ${i}`, createdAt: OLDER });
+    w.members.set(householdId, new Map([[uid, OLDER]]));
+    index.set(householdId, { since: OLDER });
+  }
+  w.index.set(uid, index);
 }
 
 const ownerAuth = {
@@ -309,13 +338,60 @@ void test('a refresh rewrites the generation, the creation time and the expiry',
   assert.deepEqual(invite?.expiresAt, new Date(NOW + 7 * DAY_MS));
 });
 
-void test('an invitee with a stale pointer to another household is invited', async () => {
+void test('an invitee in nine other households is invited', async () => {
   const w = world();
-  w.households.set('other', { ownerId: 'someone', name: 'Theirs', createdAt: CREATED });
-  // Removed from 'other': the member doc is gone and the pointer outlived it.
-  w.pointers.set(SAM, 'other');
+  joinOthers(w, SAM, MAX_HOUSEHOLDS_PER_ACCOUNT - 1);
   const result = await handleHouseholdInvite(w.deps(), request());
   assert.equal(result.mail, 'sent');
+});
+
+void test('an index entry the server no longer backs is not counted', async () => {
+  const w = world();
+  joinOthers(w, SAM, MAX_HOUSEHOLDS_PER_ACCOUNT);
+  // Removed from one: the member doc is gone and the entry outlived it.
+  w.members.get('other-0')?.delete(SAM);
+  const result = await handleHouseholdInvite(w.deps(), request());
+  assert.equal(result.mail, 'sent');
+});
+
+void test('an index entry marked ended is not counted', async () => {
+  const w = world();
+  joinOthers(w, SAM, MAX_HOUSEHOLDS_PER_ACCOUNT);
+  await assert.rejects(
+    handleHouseholdInvite(w.deps(), request()),
+    refusal('failed-precondition', 'too-many')
+  );
+
+  // Its member doc and household are still there: the mark alone decides.
+  w.index.get(SAM)?.set('other-0', { since: OLDER, ended: true });
+  const result = await handleHouseholdInvite(w.deps(), request());
+  assert.equal(result.mail, 'sent');
+});
+
+void test('an index longer than the read bound is refused as too-many', async () => {
+  const w = world();
+  const index = new Map<string, IndexEntry>();
+  for (let i = 0; i < MEMBERSHIP_READ_BOUND; i++) index.set(`gone-${i}`, { since: OLDER, ended: true });
+  w.index.set(SAM, index);
+  assert.equal((await handleHouseholdInvite(w.deps(), request())).mail, 'sent');
+
+  const longer = world();
+  longer.index.set(SAM, new Map([...index, ['gone-last', { since: OLDER, ended: true }]]));
+  await assert.rejects(
+    handleHouseholdInvite(longer.deps(), request()),
+    refusal('failed-precondition', 'too-many')
+  );
+});
+
+void test("the member step asks this household's member document, not the index", async () => {
+  const w = world();
+  // A member here with no index entry at all: the index does not decide it.
+  w.members.get(HID)?.set(SAM, CREATED);
+  await assert.rejects(
+    handleHouseholdInvite(w.deps(), request()),
+    refusal('already-exists', 'member')
+  );
+  assert.ok(w.calls.includes('memberSince'));
 });
 
 // --- the mail -------------------------------------------------------------------
@@ -590,7 +666,7 @@ void test('every refusal is an HttpsError carrying its reason, and writes nothin
       'member',
       w => {
         w.members.get(HID)?.set(SAM, CREATED);
-        w.pointers.set(SAM, HID);
+        w.index.set(SAM, new Map([[HID, { since: CREATED }]]));
         return request();
       },
       'already-exists',
@@ -606,15 +682,13 @@ void test('every refusal is an HttpsError carrying its reason, and writes nothin
       'full',
     ],
     [
-      'elsewhere',
+      'too many',
       w => {
-        w.households.set('other', { ownerId: 'someone', name: 'Theirs', createdAt: OLDER });
-        w.members.set('other', new Map([[SAM, OLDER]]));
-        w.pointers.set(SAM, 'other');
+        joinOthers(w, SAM, MAX_HOUSEHOLDS_PER_ACCOUNT);
         return request();
       },
       'failed-precondition',
-      'elsewhere',
+      'too-many',
     ],
   ];
 

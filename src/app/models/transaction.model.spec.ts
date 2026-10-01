@@ -3,6 +3,7 @@ import {
   receiptImageCount,
   receiptImageSlots,
   receiptImageUrls,
+  signedAmountText,
 } from './transaction.model';
 
 describe('receiptImageCount', () => {
@@ -92,5 +93,14 @@ describe('firstReceiptSlot', () => {
     expect(firstReceiptSlot({ receiptUrl: 'u' })).toBe(0);
     expect(firstReceiptSlot(null)).toBe(0);
     expect(firstReceiptSlot({ receiptUrls: [] })).toBe(0);
+  });
+});
+
+describe('signedAmountText', () => {
+  const format = (amount: number, currency: string) => `${currency} ${amount.toFixed(2)}`;
+
+  it('signs an income with a plus and anything else with a minus, around the formatted amount', () => {
+    expect(signedAmountText({ type: 'income', amount: 5, currency: 'EUR' }, format)).toBe('+EUR 5.00');
+    expect(signedAmountText({ type: 'expense', amount: 7.5, currency: 'USD' }, format)).toBe('-USD 7.50');
   });
 });

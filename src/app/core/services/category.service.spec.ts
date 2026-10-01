@@ -1,12 +1,16 @@
 import { TestBed } from '@angular/core/testing';
+import { Timestamp } from '@angular/fire/firestore';
 import { CategoryService } from './category.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
+import { PwaService } from './pwa.service';
+import { LedgerShareService } from './ledger-share.service';
+import { clearLedgerDeviceState, readLedgerJournal } from './ledger-journal';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { createCategory, createCategoryHierarchy } from './testing/test-data';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
-import { DEFAULT_EXPENSE_GROUPS, DEFAULT_INCOME_GROUPS } from '../../models';
+import { Category, DEFAULT_EXPENSE_GROUPS, DEFAULT_INCOME_GROUPS } from '../../models';
 
 describe('CategoryService', () => {
   let service: CategoryService;
@@ -635,6 +639,425 @@ describe('CategoryService', () => {
 
       expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
       expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
+    });
+  });
+});
+
+/**
+ * A shared row's household copy shows its category's name, icon and colour,
+ * and the category's parent decides the built-in the copy counts under in a
+ * household budget. A category write that sets any of those is followed the
+ * way a row's write is: issued, then the copies owed, then awaited. Each live
+ * household in the account's index is marked for a full pass
+ * (ledger-journal.ts), and the category is handed to
+ * LedgerShareService.reprojectCategory, which rewrites each copy that
+ * differs; its reads see the pending write, offline included. The sharing
+ * code is reached only by a dynamic import, and only for an account whose
+ * index names a live household.
+ */
+describe('CategoryService and the household copies', () => {
+  const UID = 'test-user-123';
+  const INDEX = `users/${UID}/households`;
+  const CATEGORIES = `users/${UID}/categories`;
+  const G1 = new Timestamp(1_790_000_000, 123_456_000);
+
+  /** The service's one way to the sharing code, a dynamic import. */
+  interface SharingLoader { ledgerShare: () => Promise<LedgerShareService> }
+
+  /** A category write the spec lands or refuses by hand. */
+  interface HeldWrite {
+    /** The path of each write issued, in order. */
+    issued: string[];
+    land: () => void;
+    refuse: (error: Error) => void;
+  }
+
+  let service: CategoryService;
+  let mockFirestore: MockFirestoreService;
+  let mockAuth: MockAuthService;
+  let ledger: LedgerShareService;
+  let load: jasmine.Spy;
+  let reproject: jasmine.Spy;
+  let warn: jasmine.Spy;
+  let online: boolean;
+  /** Each category id handed to reprojectCategory, in order. */
+  let reprojected: string[];
+  /** The households marked for a full pass as each reprojection started. */
+  let markedAtEachPass: string[][];
+
+  const mine = (overrides: Partial<Category> = {}): Category =>
+    createCategory({ id: 'custom1', userId: UID, name: 'Bouldering', isDefault: false, order: 90, ...overrides });
+
+  /** The account's index: one live membership, and one that has ended. */
+  function seedIndex(): void {
+    mockFirestore.setMockCollection(INDEX, [
+      { id: 'h1', since: G1, role: 'member', name: 'Home', joinedAt: G1 },
+      { id: 'h2', since: G1, role: 'member', name: 'Old flat', joinedAt: G1, endedAt: G1 }
+    ]);
+  }
+
+  /** The households this device owes a full pass. */
+  const marked = () => Object.keys(readLedgerJournal(UID).full);
+
+  /** Holds every write of one kind pending until the spec settles it. */
+  function hold(method: 'updateDocument' | 'setDocument'): HeldWrite {
+    const held: HeldWrite = { issued: [], land: () => undefined, refuse: () => undefined };
+    const writes = mockFirestore as unknown as Record<typeof method, (path: string) => Promise<void>>;
+    spyOn(writes, method).and.callFake((path: string) => {
+      held.issued.push(path);
+      return new Promise<void>((resolve, reject) => {
+        held.land = resolve;
+        held.refuse = reject;
+      });
+    });
+    return held;
+  }
+
+  /** Lets the work a write leaves running reach its next step. */
+  const settle = () => new Promise<void>(resolve => setTimeout(resolve));
+
+  /** Waits for a condition the unawaited work meets, failing after a bound. */
+  async function until(condition: () => boolean, what: string): Promise<void> {
+    for (let i = 0; i < 50 && !condition(); i++) await settle();
+    if (!condition()) fail(`timed out waiting for ${what}`);
+  }
+
+  /** Waits long enough for any work a write left running to have loaded the sharing code. */
+  async function drained(): Promise<void> {
+    for (let i = 0; i < 5; i++) await settle();
+  }
+
+  beforeEach(() => {
+    online = true;
+    TestBed.configureTestingModule({
+      providers: [
+        CategoryService,
+        { provide: FirestoreService, useClass: MockFirestoreService },
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: PwaService, useValue: { isOnline: () => online } }
+      ]
+    });
+
+    mockFirestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
+    mockAuth = TestBed.inject(AuthService) as unknown as MockAuthService;
+    service = TestBed.inject(CategoryService);
+    ledger = TestBed.inject(LedgerShareService);
+    load = spyOn(service as unknown as SharingLoader, 'ledgerShare').and.callThrough();
+    reprojected = [];
+    markedAtEachPass = [];
+    reproject = spyOn(ledger, 'reprojectCategory').and.callFake(async (id: string) => {
+      reprojected.push(id);
+      markedAtEachPass.push(marked());
+    });
+    warn = spyOn(console, 'warn');
+    clearLedgerDeviceState(UID);
+    mockAuth.setAuthenticated(true);
+    service.categories.set([...service.getDefaultCategories(), mine()]);
+  });
+
+  afterEach(() => {
+    clearLedgerDeviceState(UID);
+    mockFirestore.clearMocks();
+    mockAuth.clearMocks();
+  });
+
+  describe('with a household membership', () => {
+    beforeEach(() => seedIndex());
+
+    it('reprojects a custom category from the edit it has issued', async () => {
+      await service.updateCategory('custom1', { name: 'Climbing', icon: 'terrain', color: '#00aa88' });
+      await until(() => reprojected.length > 0, 'the reprojection');
+
+      expect(reprojected).toEqual(['custom1']);
+      // The write first, then the index, then the code: the reads the
+      // reprojection makes see the write, landed or pending.
+      const order = mockFirestore.callLog.map(call => `${call.method} ${call.path}`);
+      expect(order.indexOf(`updateDocument ${CATEGORIES}/custom1`))
+        .toBeLessThan(order.indexOf(`getCollection ${INDEX}`));
+      expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('reprojects a built-in from the override its first edit issues', async () => {
+      await service.updateCategory('food_groceries', { name: 'Fancy Groceries' });
+      await until(() => reprojected.length > 0, 'the reprojection');
+
+      expect(mockFirestore.setDocumentSpy.calls.map(call => call.args[0])).toEqual([`${CATEGORIES}/food_groceries`]);
+      expect(reprojected).toEqual(['food_groceries']);
+    });
+
+    for (const field of ['name', 'icon', 'color'] as const) {
+      it(`reprojects when the edit sets the ${field} alone`, async () => {
+        await service.updateCategory('custom1', { [field]: 'changed' });
+        await until(() => reprojected.length > 0, 'the reprojection');
+
+        expect(reprojected).toEqual(['custom1']);
+      });
+    }
+
+    it('marks each live household for a full pass before the copies are rewritten', async () => {
+      await service.updateCategory('custom1', { name: 'Climbing' });
+      await until(() => reprojected.length > 0, 'the reprojection');
+
+      // The mark outlives the page: the next sweep diffs the household in
+      // full and clears it, whatever became of the rewrite. An ended
+      // membership is owed nothing.
+      expect(markedAtEachPass).toEqual([['h1']]);
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('marks each live household again once the edit lands, for a full pass begun before it that did not see it', async () => {
+      const write = hold('updateDocument');
+      const markOf = () => readLedgerJournal(UID).full['h1'];
+
+      const updating = service.updateCategory('custom1', { name: 'Climbing' });
+      await until(() => reprojected.length > 0, 'the reprojection');
+      const first = markOf();
+      expect(first).toEqual(jasmine.any(Number));
+      write.land();
+      await updating;
+      await until(() => (markOf() ?? 0) > first, 'the mark made once the edit landed');
+
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('does not mark again for an edit that is refused', async () => {
+      const write = hold('updateDocument');
+      const markOf = () => readLedgerJournal(UID).full['h1'];
+      let finishFirst!: () => void;
+      reproject.and.callFake((id: string) => {
+        reprojected.push(id);
+        return reprojected.length === 1
+          ? new Promise<void>(resolve => { finishFirst = resolve; })
+          : Promise.resolve();
+      });
+
+      const updating = service.updateCategory('custom1', { name: 'Climbing' });
+      await until(() => reprojected.length === 1, 'the first pass');
+      const first = markOf();
+      write.refuse(new Error('permission-denied'));
+      await expectAsync(updating).toBeRejectedWithError('permission-denied');
+      await drained();
+
+      // The first pass is still running, so the second has not marked yet either.
+      expect(markOf()).toBe(first);
+      finishFirst();
+      await until(() => reprojected.length === 2, 'the second pass');
+    });
+
+    it('reprojects the category when its parent changes, and owes the categories below it a full pass', async () => {
+      // A new parent moves the rows of the categories below it to another
+      // built-in too. reprojectCategory rewrites the category's own; the
+      // full pass the mark owes rewrites theirs (no form edits a parent: it
+      // sets the name, icon and colour).
+      service.categories.set([
+        ...service.getDefaultCategories(),
+        mine(),
+        mine({ id: 'custom2', name: 'Indoor', parentId: 'custom1' })
+      ]);
+
+      await service.updateCategory('custom1', { parentId: 'entertainment' });
+      await until(() => reprojected.length > 0, 'the reprojection');
+      await drained();
+
+      expect(reprojected).toEqual(['custom1']);
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('leaves the copies alone for an edit that sets nothing a copy shows', async () => {
+      await service.updateCategory('custom1', { order: 3 });
+      await service.updateCategory('custom1', { isActive: true });
+      await drained();
+
+      expect(load).not.toHaveBeenCalled();
+      expect(mockFirestore.getCollectionSpy.calls.map(call => call.args[0])).not.toContain(INDEX);
+      expect(marked()).toEqual([]);
+    });
+
+    it('leaves the copies alone on a soft delete, which a copy does not show', async () => {
+      // The projection reads a category whatever its active flag (the merged
+      // list keeps a soft-deleted one), so every copy stays equal.
+      await service.deleteCategory('custom1');
+      await drained();
+
+      expect(mockFirestore.updateDocumentSpy.calls.map(call => call.args[1])).toEqual([{ isActive: false }]);
+      expect(load).not.toHaveBeenCalled();
+      expect(reproject).not.toHaveBeenCalled();
+      expect(marked()).toEqual([]);
+    });
+
+    it('leaves the copies as they are on a permanent delete', async () => {
+      // No cascade: each copy keeps the snapshot it holds until its row is
+      // next projected (an edit of the row, the journal's repair or the
+      // weekly full pass), which shows it under the built-in it counts under.
+      await service.permanentlyDeleteCategory('custom1');
+      await drained();
+
+      expect(load).not.toHaveBeenCalled();
+      expect(reproject).not.toHaveBeenCalled();
+      expect(marked()).toEqual([]);
+    });
+
+    it('leaves the copies alone on a reorder, built-ins materialized included', async () => {
+      await service.reorderCategories(['food_groceries', 'custom1']);
+      await drained();
+
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(1);
+      expect(load).not.toHaveBeenCalled();
+      expect(marked()).toEqual([]);
+    });
+
+    it('resolves the edit without waiting on the copies', async () => {
+      let finish!: () => void;
+      reproject.and.callFake((id: string) => {
+        reprojected.push(id);
+        return new Promise<void>(resolve => { finish = resolve; });
+      });
+
+      await service.updateCategory('custom1', { name: 'Climbing' });
+      await until(() => reprojected.length > 0, 'the reprojection');
+
+      expect(service.isLoading()).toBeFalse();
+      finish();
+    });
+
+    it('rewrites the copies while the edit waits to land, and resolves once it lands', async () => {
+      const write = hold('updateDocument');
+      const issuedAtPass: string[][] = [];
+      reproject.and.callFake(async (id: string) => {
+        reprojected.push(id);
+        issuedAtPass.push([...write.issued]);
+      });
+      let resolved = false;
+
+      const updating = service.updateCategory('custom1', { name: 'Climbing' }).then(() => { resolved = true; });
+      await until(() => reprojected.length > 0, 'the reprojection');
+
+      // Issue, follow, await: the copy writes queue behind the category's.
+      expect(issuedAtPass).toEqual([[`${CATEGORIES}/custom1`]]);
+      expect(resolved).toBeFalse();
+      expect(service.isLoading()).toBeTrue();
+      write.land();
+      await updating;
+      expect(resolved).toBeTrue();
+      expect(service.isLoading()).toBeFalse();
+    });
+
+    it('owes and rewrites the copies offline, for a custom category and a built-in, before either edit lands', async () => {
+      online = false;
+      const update = hold('updateDocument');
+      const set = hold('setDocument');
+
+      void service.updateCategory('custom1', { name: 'Climbing' });
+      void service.updateCategory('food_groceries', { color: '#123456' });
+      await until(() => reprojected.length === 2, 'both reprojections');
+
+      // Neither write has landed. A page closed at this point leaves the
+      // full pass owed, and the copy writes already issued sit in the
+      // persistent queue behind the category writes.
+      expect(update.issued).toEqual([`${CATEGORIES}/custom1`]);
+      expect(set.issued).toEqual([`${CATEGORIES}/food_groceries`]);
+      expect([...reprojected].sort()).toEqual(['custom1', 'food_groceries']);
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('rewrites the copies again, once the first pass is done, when the edit is refused', async () => {
+      const write = hold('updateDocument');
+      let finishFirst!: () => void;
+      reproject.and.callFake((id: string) => {
+        reprojected.push(id);
+        return reprojected.length === 1
+          ? new Promise<void>(resolve => { finishFirst = resolve; })
+          : Promise.resolve();
+      });
+
+      const updating = service.updateCategory('custom1', { name: 'Climbing' });
+      await until(() => reprojected.length === 1, 'the first pass');
+      write.refuse(new Error('permission-denied'));
+      await expectAsync(updating).toBeRejectedWithError('permission-denied');
+      await drained();
+
+      // A refused edit is rolled back in the cache, and the first pass may
+      // have rewritten copies from it: the second waits for it, then
+      // projects them from the category as it stands.
+      expect(reprojected).toEqual(['custom1']);
+      finishFirst();
+      await until(() => reprojected.length === 2, 'the second pass');
+      expect(reprojected).toEqual(['custom1', 'custom1']);
+      expect(marked()).toEqual(['h1']);
+      expect(service.isLoading()).toBeFalse();
+    });
+
+    it('keeps the edit and the mark when the copies are not rewritten, and says so', async () => {
+      reproject.and.rejectWith(new Error('unavailable'));
+
+      await expectAsync(service.updateCategory('custom1', { name: 'Climbing' })).toBeResolved();
+      await until(() => warn.calls.count() > 0, 'the warning');
+
+      expect(warn.calls.mostRecent().args[0]).toMatch(/^\[Categories\] /);
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('keeps the edit and the mark when the sharing code does not load', async () => {
+      load.and.rejectWith(new Error('chunk load failed'));
+
+      await expectAsync(service.updateCategory('custom1', { name: 'Climbing' })).toBeResolved();
+      await until(() => warn.calls.count() > 0, 'the warning');
+      await until(() => marked().length > 0, 'the mark');
+
+      expect(warn.calls.mostRecent().args[0]).toMatch(/^\[Categories\] /);
+      expect(reproject).not.toHaveBeenCalled();
+      expect(marked()).toEqual(['h1']);
+    });
+
+    it('keeps the edit when the index cannot be read', async () => {
+      const read = mockFirestore.getCollection.bind(mockFirestore);
+      spyOn(mockFirestore, 'getCollection').and.callFake(<T>(path: string, options?: unknown) =>
+        path === INDEX ? Promise.reject(new Error('unavailable')) : read<T>(path, options));
+
+      await expectAsync(service.updateCategory('custom1', { name: 'Climbing' })).toBeResolved();
+      await until(() => warn.calls.count() > 0, 'the warning');
+
+      expect(warn.calls.mostRecent().args[0]).toMatch(/^\[Categories\] /);
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('reprojects on each edit that sets something a copy shows', async () => {
+      await service.updateCategory('custom1', { name: 'Climbing' });
+      await until(() => reprojected.length === 1, 'the first reprojection');
+      await service.updateCategory('food_groceries', { color: '#123456' });
+      await until(() => reprojected.length === 2, 'the second reprojection');
+
+      expect(reprojected).toEqual(['custom1', 'food_groceries']);
+    });
+  });
+
+  describe('without a live household membership', () => {
+    it('never loads the sharing code for an account whose index is empty', async () => {
+      mockFirestore.setMockCollection(INDEX, []);
+
+      await service.updateCategory('custom1', { name: 'Climbing' });
+      await service.updateCategory('food_groceries', { name: 'Fancy Groceries' });
+      await drained();
+
+      expect(mockFirestore.getCollectionSpy.calls.map(call => call.args[0])).toContain(INDEX);
+      expect(load).not.toHaveBeenCalled();
+      expect(reproject).not.toHaveBeenCalled();
+      expect(marked()).toEqual([]);
+    });
+
+    it('neither loads it nor marks a household for an account whose memberships have all ended', async () => {
+      // An ended membership's copies go with it (cleanupMembership), so none
+      // is rewritten and no sweep is owed one.
+      mockFirestore.setMockCollection(INDEX, [
+        { id: 'h2', since: G1, role: 'member', name: 'Old flat', joinedAt: G1, endedAt: G1 }
+      ]);
+
+      await service.updateCategory('custom1', { name: 'Climbing' });
+      await drained();
+
+      expect(load).not.toHaveBeenCalled();
+      expect(reproject).not.toHaveBeenCalled();
+      expect(marked()).toEqual([]);
     });
   });
 });

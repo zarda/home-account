@@ -1,3 +1,7 @@
+@if (atLimit()) {
+  <p class="setup-limit">{{ 'household.errors.tooMany' | translate: { max: maxHouseholds } }}</p>
+}
+
 <section class="setup-card" aria-labelledby="household-invites-title">
   <!-- Script focuses it when a declined invite, or a member view this setup
        replaced, took focus with it; Tab passes it by. -->

@@ -3,12 +3,15 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 
+import en from '../../../../assets/i18n/en.json';
 import { HouseholdMembersComponent, INVITE_MAIL_MARGIN_MS } from './household-members.component';
 import {
   HOUSEHOLD_NAME_MAX_LENGTH,
+  HouseholdCleanupError,
   HouseholdError,
+  HouseholdPurgeError,
   HouseholdService
 } from '../../../core/services/household.service';
 import {
@@ -58,7 +61,7 @@ function sentInvite(overrides: Partial<HouseholdInvite> = {}): HouseholdInvite {
   };
 }
 
-type Actions = Pick<HouseholdService, 'invite' | 'revoke' | 'rename' | 'remove' | 'leave' | 'dissolve'>;
+type Actions = Pick<HouseholdService, 'invite' | 'revoke' | 'rename' | 'remove' | 'purgeRemoved' | 'leave' | 'dissolve'>;
 
 // Rendered throughout (ADR 0144): who sees which control, what each invite
 // line says and which dialogs stand between a click and the service are all
@@ -97,7 +100,19 @@ describe('HouseholdMembersComponent', () => {
   /** Each dialog in turn answers with the next of these. */
   function answerDialogs(...answers: unknown[]): void {
     const queue = [...answers];
-    dialog.open.and.callFake((() => ({ afterClosed: () => of(queue.shift()) })) as never);
+    dialog.open.and.callFake((() => ({ afterClosed: () => of(queue.shift()), close: () => undefined })) as never);
+  }
+
+  /** The next dialog, left open until the spec answers it or the component closes it. */
+  function holdDialog(): { answer: (value: unknown) => void; close: jasmine.Spy } {
+    const closed = new Subject<unknown>();
+    const settle = (value?: unknown) => {
+      closed.next(value);
+      closed.complete();
+    };
+    const close = jasmine.createSpy('close').and.callFake(settle);
+    dialog.open.and.returnValue({ afterClosed: () => closed.asObservable(), close } as never);
+    return { answer: settle, close };
   }
 
   function render(): void {
@@ -156,11 +171,12 @@ describe('HouseholdMembersComponent', () => {
     ownMember = signal<HouseholdMember | null>(alex);
     sentInvites = signal<HouseholdInvite[]>([]);
     online = signal(true);
-    service = jasmine.createSpyObj('HouseholdService', ['invite', 'revoke', 'rename', 'remove', 'leave', 'dissolve']);
+    service = jasmine.createSpyObj('HouseholdService', ['invite', 'revoke', 'rename', 'remove', 'purgeRemoved', 'leave', 'dissolve']);
     service.invite.and.resolveTo({ inviteId: 'h1_robin', mail: 'sent' });
     service.revoke.and.resolveTo();
     service.rename.and.resolveTo();
     service.remove.and.resolveTo();
+    service.purgeRemoved.and.resolveTo();
     service.leave.and.resolveTo();
     service.dissolve.and.resolveTo();
     notification = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
@@ -263,7 +279,7 @@ describe('HouseholdMembersComponent', () => {
       it('removes that member on a confirm, says so, and counts it once', async () => {
         await remove();
 
-        expect(service.remove).toHaveBeenCalledOnceWith('sam');
+        expect(service.remove).toHaveBeenCalledOnceWith('sam', HOUSEHOLD, jasmine.any(Function));
         expect(notification.success).toHaveBeenCalledOnceWith(
           `household.members.removed:${JSON.stringify({ name: 'Sam Ito' })}`
         );
@@ -374,6 +390,240 @@ describe('HouseholdMembersComponent', () => {
         expect(notification.success).not.toHaveBeenCalled();
         expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
       });
+
+      describe('the rows they shared', () => {
+        const purge = (): HTMLElement | null => element().querySelector<HTMLElement>('.member-purge');
+        const bar = (): HTMLElement | null => purge()?.querySelector<HTMLElement>('mat-progress-bar') ?? null;
+        const retry = (): HTMLButtonElement | null => button('button.member-purge-retry');
+        const PURGING = `household.members.purging:${JSON.stringify({ name: 'Sam Ito' })}`;
+        const PURGE_FAILED = `household.members.purgeFailed:${JSON.stringify({ name: 'Sam Ito' })}`;
+
+        it('shows the purge while it runs, and how far it has got', async () => {
+          let finish!: () => void;
+          service.remove.and.callFake(((_uid: string, _household: unknown, progress: (done: number, total: number) => void) => {
+            progress(0, 4);
+            progress(2, 4);
+            return new Promise<void>(resolve => (finish = resolve));
+          }) as never);
+          await remove();
+
+          expect(purge()?.textContent).toContain(PURGING);
+          expect(bar()?.getAttribute('aria-valuenow')).toBe('50');
+          expect(bar()?.getAttribute('aria-labelledby')).toBe(purge()?.querySelector('p')?.id ?? 'none');
+
+          finish();
+          await drain();
+
+          expect(purge()).toBeNull();
+          expect(notification.success).toHaveBeenCalledOnceWith(
+            `household.members.removed:${JSON.stringify({ name: 'Sam Ito' })}`
+          );
+        });
+
+        it('says so when the member is out but their rows are not, counts the removal, and offers to try the purge again', async () => {
+          service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          await remove();
+          await drain();
+
+          expect(notification.error).toHaveBeenCalledOnceWith(PURGE_FAILED);
+          expect(notification.success).not.toHaveBeenCalled();
+          expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'remove' });
+          expect(purge()?.textContent).toContain(PURGE_FAILED);
+          expect(retry()?.textContent).toContain('household.members.purgeRetry');
+        });
+
+        it('tries the purge alone again, in the household it was for, and lands focus on the heading once it is done', async () => {
+          service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          await remove();
+          await drain();
+          retry()!.focus();
+
+          await click(retry());
+          await settleFocus();
+
+          expect(service.remove).toHaveBeenCalledTimes(1);
+          expect(service.purgeRemoved).toHaveBeenCalledOnceWith('sam', HOUSEHOLD, jasmine.any(Function));
+          expect(purge()).toBeNull();
+          expect(notification.success).toHaveBeenCalledOnceWith(
+            `household.members.purged:${JSON.stringify({ name: 'Sam Ito' })}`
+          );
+          expect(document.activeElement).toBe(element().querySelector<HTMLElement>('#household-members-title'));
+          expect(analytics.trackHouseholdAction).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps the offer, and focus on it, when the purge fails again', async () => {
+          service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          service.purgeRemoved.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          await remove();
+          await drain();
+          const target = retry()!;
+          target.focus();
+
+          await click(target);
+          await drain();
+
+          expect(notification.error.calls.allArgs()).toEqual([[PURGE_FAILED], [PURGE_FAILED]]);
+          expect(retry()).toBe(target);
+          expect(document.activeElement).toBe(target);
+        });
+
+        it('ties Try again to the line that says what it retries, failed and held', async () => {
+          service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          service.purgeRemoved.and.returnValue(new Promise<void>(() => undefined));
+          await remove();
+          await drain();
+          const status = purge()?.querySelector('p')?.id;
+          expect(status).toBeTruthy();
+          expect(retry()?.getAttribute('aria-describedby')).toBe(status!);
+
+          await click(retry());
+
+          expect(held(retry())).toBeTrue();
+          expect(retry()?.getAttribute('aria-describedby')).toBe(status!);
+        });
+
+        it("keeps each failed purge's own Try again when another removal starts, fails before its member is out, or fails its purge too", async () => {
+          const purges = (): HTMLElement[] => Array.from(element().querySelectorAll<HTMLElement>('.member-purge'));
+          const removeKai = () => click(memberRow('Kai')?.querySelector<HTMLButtonElement>('button.member-remove'));
+          const KAI_FAILED = `household.members.purgeFailed:${JSON.stringify({ name: 'Kai' })}`;
+          answerDialogs(true, true, true);
+          service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          await remove();
+          await drain();
+
+          service.remove.and.rejectWith(new HouseholdError('household.errors.offline'));
+          await removeKai();
+          await drain();
+
+          expect(purges().map(line => line.textContent)).toEqual([jasmine.stringContaining(PURGE_FAILED)]);
+
+          service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          await removeKai();
+          await drain();
+
+          expect(purges().map(line => line.textContent)).toEqual([
+            jasmine.stringContaining(PURGE_FAILED),
+            jasmine.stringContaining(KAI_FAILED)
+          ]);
+          const ids = purges().map(line => line.querySelector('p')?.id);
+          expect(new Set(ids).size).withContext('each line has its own id').toBe(2);
+
+          await click(purges()[1].querySelector<HTMLButtonElement>('button.member-purge-retry'));
+          await drain();
+
+          expect(service.purgeRemoved).toHaveBeenCalledOnceWith('kai', HOUSEHOLD, jasmine.any(Function));
+          expect(purges().map(line => line.textContent)).toEqual([jasmine.stringContaining(PURGE_FAILED)]);
+          expect(retry()).not.toBeNull();
+        });
+
+        it('shows the purge only while the household it was for is shown', async () => {
+          service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+          await remove();
+          await drain();
+
+          household.set({ ...HOUSEHOLD, id: 'h2', name: 'Flat' });
+          render();
+          expect(purge()).toBeNull();
+
+          household.set(HOUSEHOLD);
+          render();
+          expect(retry()).not.toBeNull();
+        });
+      });
+    });
+  });
+
+  describe('a confirm and the household it was opened for', () => {
+    const OTHER: Household = { ...HOUSEHOLD, id: 'h2', name: 'Flat' };
+
+    it('closes an open confirm once the page shows another household, and asks nothing of the service', async () => {
+      viewAs(sam);
+      const confirm = holdDialog();
+      button('button.household-leave')!.click();
+      render();
+
+      household.set(OTHER);
+      render();
+      await drain();
+
+      expect(confirm.close).toHaveBeenCalled();
+      expect(service.leave).not.toHaveBeenCalled();
+      expect(notification.success).not.toHaveBeenCalled();
+    });
+
+    it('never dissolves another household when a loss moves the page on while a dissolve is being confirmed', async () => {
+      const warning = holdDialog();
+      button('button.household-dissolve')!.click();
+      render();
+
+      household.set(OTHER);
+      render();
+      await drain();
+
+      expect(warning.close).toHaveBeenCalled();
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+      expect(service.dissolve).not.toHaveBeenCalled();
+    });
+
+    it('closes the typed confirmation too, and for another generation of the same household', async () => {
+      const typed = new Subject<unknown>();
+      const close = jasmine.createSpy('close').and.callFake((value?: unknown) => {
+        typed.next(value);
+        typed.complete();
+      });
+      dialog.open.and.returnValues(
+        { afterClosed: () => of(true), close: () => undefined } as never,
+        { afterClosed: () => typed.asObservable(), close } as never
+      );
+      button('button.household-dissolve')!.click();
+      await drain();
+      expect(dialog.open).toHaveBeenCalledTimes(2);
+
+      household.set({ ...HOUSEHOLD, createdAt: Timestamp.fromMillis(1_800_000_000_000) });
+      render();
+      await drain();
+
+      expect(close).toHaveBeenCalled();
+      expect(service.dissolve).not.toHaveBeenCalled();
+    });
+
+    it('closes an open remove confirm on a switch, and removes no one', async () => {
+      const confirm = holdDialog();
+      memberRow('Sam Ito')!.querySelector<HTMLButtonElement>('button.member-remove')!.click();
+      render();
+
+      household.set(OTHER);
+      render();
+      await drain();
+
+      expect(confirm.close).toHaveBeenCalled();
+      expect(service.remove).not.toHaveBeenCalled();
+    });
+
+    it('hands the service the household it was opened for, even when the page moves on as the confirm is answered', async () => {
+      viewAs(sam);
+      const confirm = holdDialog();
+      button('button.household-leave')!.click();
+      render();
+
+      confirm.answer(true);
+      household.set(OTHER);
+      await drain();
+
+      expect(service.leave).toHaveBeenCalledOnceWith(HOUSEHOLD);
+    });
+
+    it('closes an open confirm when the section goes', async () => {
+      viewAs(sam);
+      const confirm = holdDialog();
+      button('button.household-leave')!.click();
+      render();
+
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve));
+
+      expect(confirm.close).toHaveBeenCalled();
+      expect(service.leave).not.toHaveBeenCalled();
     });
   });
 
@@ -420,6 +670,111 @@ describe('HouseholdMembersComponent', () => {
       expect(emailInput()!.value).toBe('');
       expect(element().querySelector('mat-error')).withContext('the cleared field is not refused').toBeNull();
       expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'invite' });
+    });
+
+    describe('sent with focus still in the field', () => {
+      /** Enter's implicit submission: the form submits and focus stays in the field. */
+      async function sendByEnter(input: HTMLInputElement, address: string): Promise<void> {
+        input.focus();
+        type(input, address);
+        element().querySelector('form.invite-form')!.dispatchEvent(new Event('submit'));
+        render();
+        await settle();
+      }
+
+      /**
+       * Focus moves to another control on the page, the send button standing in
+       * for it. Whether that move fires a real blur depends on the headless
+       * window having focus, so one is dispatched only when it did not.
+       */
+      function leave(input: HTMLInputElement): void {
+        let blurred = false;
+        input.addEventListener('blur', () => (blurred = true), { once: true });
+        sendButton().focus();
+        expect(document.activeElement).withContext('focus has left the field').toBe(sendButton());
+        if (!blurred) input.dispatchEvent(new FocusEvent('blur'));
+        render();
+      }
+
+      /** A window or tab switch blurs the field while it stays the document's focused element. */
+      function switchAway(input: HTMLInputElement): void {
+        input.dispatchEvent(new FocusEvent('blur'));
+        render();
+        expect(document.activeElement).withContext('the field keeps the document focus').toBe(input);
+      }
+
+      /** Coming back to the window hands focus back to the field. */
+      function switchBack(input: HTMLInputElement): void {
+        input.dispatchEvent(new FocusEvent('focus'));
+        render();
+      }
+
+      it('leaves the cleared field neutral once focus leaves it', async () => {
+        const input = emailInput()!;
+        await sendByEnter(input, 'robin@example.com');
+
+        expect(service.invite).toHaveBeenCalledOnceWith('robin@example.com');
+        expect(input.value).toBe('');
+        expect(document.activeElement).toBe(input);
+
+        leave(input);
+
+        expect(element().querySelector('mat-error')).withContext('the emptied field is not refused on leaving it').toBeNull();
+        expect(input.closest('mat-form-field')!.classList).not.toContain('mat-form-field-invalid');
+      });
+
+      it('stays neutral through a window or tab switch, and when focus leaves it after the return', async () => {
+        const input = emailInput()!;
+        await sendByEnter(input, 'robin@example.com');
+
+        switchAway(input);
+
+        expect(element().querySelector('mat-error')).withContext('the switch away does not refuse the emptied field').toBeNull();
+
+        switchBack(input);
+        leave(input);
+
+        expect(element().querySelector('mat-error')).withContext('leaving it after the return does not refuse it either').toBeNull();
+        expect(input.closest('mat-form-field')!.classList).not.toContain('mat-form-field-invalid');
+      });
+
+      it('keeps nothing for a later visit once focus has left the field', async () => {
+        const input = emailInput()!;
+        await sendByEnter(input, 'robin@example.com');
+        leave(input);
+
+        input.focus();
+        leave(input);
+
+        expect(element().querySelector('mat-error')?.textContent)
+          .withContext('an empty field visited and left asks for an address, as on the first visit')
+          .toContain('household.members.emailRequired');
+      });
+
+      it('still refuses what the owner typed after the send, once they leave it', async () => {
+        const input = emailInput()!;
+        await sendByEnter(input, 'robin@example.com');
+
+        type(input, 'x');
+        leave(input);
+
+        expect(element().querySelector('mat-error')?.textContent).toContain('household.errors.email');
+      });
+
+      it('keeps nothing for a later visit when the send moved focus away first', async () => {
+        type(emailInput(), 'robin@example.com');
+        sendButton().focus();
+        await click(sendButton());
+        expect(emailInput()!.value).toBe('');
+
+        const input = emailInput()!;
+        input.focus();
+        leave(input);
+
+        expect(element().querySelector('mat-error')?.textContent)
+          .withContext('an empty field visited and left asks for an address, as on the first visit')
+          .toContain('household.members.emailRequired');
+      });
     });
 
     it('says the invite was emailed when it was', async () => {
@@ -721,7 +1076,7 @@ describe('HouseholdMembersComponent', () => {
       it('withdraws it, says so, and counts it once', async () => {
         await revoke();
 
-        expect(service.revoke).toHaveBeenCalledOnceWith('h1_robin');
+        expect(service.revoke).toHaveBeenCalledOnceWith('h1_robin', HOUSEHOLD);
         expect(notification.success).toHaveBeenCalledOnceWith('household.members.revoked');
         expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'revoke' });
       });
@@ -785,7 +1140,7 @@ describe('HouseholdMembersComponent', () => {
       type(renameInput(), '  Our flat  ');
       await click(renameButton());
 
-      expect(service.rename).toHaveBeenCalledOnceWith('Our flat');
+      expect(service.rename).toHaveBeenCalledOnceWith('Our flat', HOUSEHOLD);
       expect(notification.success).toHaveBeenCalledOnceWith('household.members.renamed');
       expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'rename' });
       expect(element().querySelector('mat-error')).toBeNull();
@@ -802,7 +1157,7 @@ describe('HouseholdMembersComponent', () => {
       finish();
       await settle();
 
-      expect(service.rename).toHaveBeenCalledOnceWith('Our flat');
+      expect(service.rename).toHaveBeenCalledOnceWith('Our flat', HOUSEHOLD);
       expect(renameInput()!.value).toBe('Our flat, 4B');
       expect(notification.success).toHaveBeenCalledOnceWith('household.members.renamed');
     });
@@ -878,9 +1233,23 @@ describe('HouseholdMembersComponent', () => {
     it('leaves on a confirm, says so, and counts it once', async () => {
       await leave();
 
-      expect(service.leave).toHaveBeenCalledTimes(1);
+      expect(service.leave).toHaveBeenCalledOnceWith(HOUSEHOLD);
       expect(notification.success).toHaveBeenCalledOnceWith(`household.members.left:${JSON.stringify({ name: 'The Lins' })}`);
       expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'leave' });
+    });
+
+    it('counts a leave whose shared rows are still to be taken out as done, hands focus on, and says what is left', async () => {
+      service.leave.and.rejectWith(new HouseholdCleanupError('household.errors.cleanup'));
+      await leave();
+
+      expect(afterSwapTo).toHaveBeenCalledOnceWith('none');
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'leave' });
+      expect(notification.info).toHaveBeenCalledOnceWith(
+        `household.members.leftPending:${JSON.stringify({ name: 'The Lins' })}`,
+        jasmine.objectContaining({ durationMs: jasmine.any(Number) })
+      );
+      expect(notification.error).not.toHaveBeenCalled();
+      expect(notification.success).not.toHaveBeenCalled();
     });
 
     it("shows a refusal in the service's words, and nothing else", async () => {
@@ -955,9 +1324,23 @@ describe('HouseholdMembersComponent', () => {
     it('dissolves after both, says so, and counts it once', async () => {
       await dissolve();
 
-      expect(service.dissolve).toHaveBeenCalledTimes(1);
+      expect(service.dissolve).toHaveBeenCalledOnceWith(HOUSEHOLD);
       expect(notification.success).toHaveBeenCalledOnceWith('household.members.dissolved');
       expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'dissolve' });
+    });
+
+    it('counts a dissolve whose shared rows are still to be taken out as done, hands focus on, and says what is left', async () => {
+      service.dissolve.and.rejectWith(new HouseholdCleanupError('household.errors.cleanup'));
+      await dissolve();
+
+      expect(afterSwapTo).toHaveBeenCalledOnceWith('none');
+      expect(analytics.trackHouseholdAction).toHaveBeenCalledOnceWith({ action: 'dissolve' });
+      expect(notification.info).toHaveBeenCalledOnceWith(
+        'household.members.dissolvedPending',
+        jasmine.objectContaining({ durationMs: jasmine.any(Number) })
+      );
+      expect(notification.error).not.toHaveBeenCalled();
+      expect(notification.success).not.toHaveBeenCalled();
     });
 
     it('cannot start offline: the offline refusal comes before either question', async () => {
@@ -1110,5 +1493,62 @@ describe('HouseholdMembersComponent', () => {
           .toBeLessThanOrEqual(field.getBoundingClientRect().right + 0.5);
       }
     });
+  });
+});
+
+/**
+ * The keys are asserted above; the English copy under them is asserted here,
+ * in the catalog every other locale is kept at parity with. A member sees
+ * only the transactions others share, so an ending takes shared transactions
+ * out and never promises to hide anyone's whole record.
+ */
+describe('the copy an ending shows', () => {
+  const copy = en.household.members;
+  const endings = {
+    removeMessage: copy.removeMessage,
+    leaveDescription: copy.leaveDescription,
+    leaveMessage: copy.leaveMessage,
+    dissolveDescription: copy.dissolveDescription,
+    dissolveMessage: copy.dissolveMessage
+  };
+
+  it("says each ending takes shared transactions out, not everyone's records", () => {
+    for (const [key, text] of Object.entries(endings)) {
+      expect(text).withContext(key).toMatch(/shared transactions/);
+      expect(text).withContext(key).not.toMatch(/everyone's records|anyone else's/);
+    }
+  });
+
+  it("keeps everyone's own records theirs", () => {
+    for (const [key, text] of Object.entries(endings)) {
+      expect(text).withContext(key).toMatch(/own records/);
+    }
+  });
+
+  it("says dissolving deletes the household's own budgets and goals", () => {
+    expect(copy.dissolveDescription).toContain('budgets and goals');
+    expect(copy.dissolveMessage).toContain('budgets and goals');
+  });
+
+  // A leave or a removal deletes nothing on the household's goals: the
+  // contributions the member recorded stay under them. A goal's figures and
+  // its list of contributions hold only a live member's, so theirs drop out
+  // of both, and come back if the member rejoins the same household.
+  it('says a leave or a removal leaves the contributions on the goals, left out of them unless the member rejoins', () => {
+    const departures = {
+      removeMessage: copy.removeMessage,
+      leaveDescription: copy.leaveDescription,
+      leaveMessage: copy.leaveMessage
+    };
+
+    for (const [key, text] of Object.entries(departures)) {
+      expect(text).withContext(key).toMatch(/contributions (you|they) recorded on its goals stay with those goals/);
+      expect(text).withContext(key).toMatch(/left out of the goals' totals and lists unless (you rejoin|\{\{name\}\} rejoins)/);
+      expect(text).withContext(key).not.toMatch(/contributions[^.]*\b(deleted|erased|removed)\b/);
+    }
+  });
+
+  it("keeps the removed member's name", () => {
+    expect(copy.removeMessage).toContain('{{name}}');
   });
 });

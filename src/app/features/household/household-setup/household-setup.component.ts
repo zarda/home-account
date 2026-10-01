@@ -20,7 +20,6 @@ import { MatInputModule } from '@angular/material/input';
 
 import {
   HOUSEHOLD_NAME_MAX_LENGTH,
-  HouseholdError,
   HouseholdService,
   householdNameValidator
 } from '../../../core/services/household.service';
@@ -34,7 +33,8 @@ import {
   ConfirmDialogData
 } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { HouseholdInvite } from '../../../models';
+import { HouseholdInvite, MAX_HOUSEHOLDS_PER_ACCOUNT } from '../../../models';
+import { writeFailureMessage } from '../household-failure';
 import { FocusContext, HouseholdPageFocus, focusWhenRendered } from '../household-focus';
 
 interface InviteView {
@@ -48,14 +48,24 @@ interface InviteView {
 }
 
 /**
- * What an account without a live membership can do: start a household, or
- * answer an invite addressed to it.
+ * How an account comes to belong to a household: it starts one, or answers
+ * an invite addressed to it. The page shows this while the account has no
+ * live membership, and beside one when the viewer asks for it in the
+ * switcher.
  *
- * Joining discloses first, in a confirm: from the moment it commits, every
- * member reads the joiner's records, and the receipt photos go with them
- * through links no rule governs. The confirm names the inviter by the address
- * their provider verified, or says there is none: the name on the invite is
- * one the inviter chose.
+ * At the most households one account can hold, it says so before anything is
+ * tried, in the words a refusal would use. It still leaves each create and
+ * join to the service, which counts on the server and ends, on the way, an
+ * entry whose membership is already over, which this client's list may still
+ * show as live.
+ *
+ * Joining discloses first, in a confirm: the other members see only the rows
+ * the joiner chooses to share, as copies holding their type, amount,
+ * currency, date, description and category, never a note, receipt, tag or
+ * place. Anyone who joins later sees what is already shared, and a row the
+ * joiner stops sharing leaves the household. The confirm names the inviter by
+ * the address their provider verified, or says there is none: the name on the
+ * invite is one the inviter chose.
  *
  * Each button stays focusable while an answer is on its way, so focus is not
  * dropped on the document; the answer in flight is what refuses a second
@@ -88,6 +98,8 @@ export class HouseholdSetupComponent {
   private readonly declined = signal<string | null>(null);
 
   readonly maxLength = HOUSEHOLD_NAME_MAX_LENGTH;
+  readonly maxHouseholds = MAX_HOUSEHOLDS_PER_ACCOUNT;
+  readonly atLimit = computed(() => this.household.liveMemberships().length >= MAX_HOUSEHOLDS_PER_ACCOUNT);
   readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: [householdNameValidator] })
   });
@@ -142,7 +154,7 @@ export class HouseholdSetupComponent {
       this.notification.success(this.translation.t('household.setup.created'));
       this.analytics.trackHouseholdAction({ action: 'create' });
     } catch (error) {
-      this.notification.error(this.messageOf(error));
+      this.notification.error(writeFailureMessage(error, key => this.translation.t(key)));
     } finally {
       this.creating.set(false);
     }
@@ -199,14 +211,9 @@ export class HouseholdSetupComponent {
     try {
       await work();
     } catch (error) {
-      this.notification.error(this.messageOf(error));
+      this.notification.error(writeFailureMessage(error, key => this.translation.t(key)));
     } finally {
       this.answering.set(null);
     }
-  }
-
-  /** The service words every refusal in the reader's language already. */
-  private messageOf(error: unknown): string {
-    return error instanceof HouseholdError ? error.message : this.translation.t('errors.generic');
   }
 }
