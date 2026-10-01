@@ -381,9 +381,14 @@ describe('TransactionListComponent', () => {
         .not.toThrow();
     });
 
+    // The correction is an afterNextRender hook, and render hooks run on an
+    // application tick. Under zone change detection fixture.detectChanges()
+    // checks the view without one; the tick that zone stability would bring
+    // lands after a synchronous assertion whenever a microtask is still
+    // pending, as it is on CI. TestBed.tick() runs it here.
     it('still runs the scroll-into-view correction while the view is alive', () => {
       internals(component).scrollToTarget(txns[0].id);
-      fixture.detectChanges();
+      TestBed.tick();
 
       expect(windowSource.clearScrollTarget)
         .withContext('the guard must not short-circuit the live path')
@@ -396,7 +401,7 @@ describe('TransactionListComponent', () => {
       // but the target still has to be cleared, or every later page keeps
       // trying to reach a row that will never arrive.
       internals(component).scrollToTarget('not-in-the-dom');
-      fixture.detectChanges();
+      TestBed.tick();
 
       expect(fixture.nativeElement.querySelector('[data-tx-id="not-in-the-dom"]'))
         .withContext('the premise: that row really is not rendered')
