@@ -8,6 +8,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
+import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -1403,6 +1404,32 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(toggle().querySelector('.verify-flag')).toBeNull();
     expect(toggle().querySelector('mat-icon')?.textContent?.trim()).toBe('trending_up');
     expect(toggle().getAttribute('aria-label')).toBe('common.income');
+  });
+
+  it('hands each card\'s category menu its row\'s side, and moves it with a flip', () => {
+    // The menu is the picker's own; what the card owes it is the row's type.
+    // The @for tracks rows by id, so the flipped row keeps its picker and the
+    // side has to follow on that same instance.
+    component.transactions = [
+      makeRow({ id: 'salary', type: 'income', suggestedCategoryId: 'salary' }),
+      makeRow({ id: 'purchase' }),
+    ];
+    component.categories = flipCatalogue();
+    fixture.detectChanges();
+    const offered = () => fixture.debugElement.queryAll(By.directive(CategorySuggestionComponent))
+      .map(picker => (picker.componentInstance as CategorySuggestionComponent).sortedCategories().map(c => c.id).sort());
+
+    expect(offered()).toEqual([
+      ['other_income', 'salary', 'shared'],
+      ['food', 'other_expense', 'shared'],
+    ]);
+
+    (fixture.nativeElement.querySelectorAll('.type-toggle')[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(offered()[1])
+      .withContext('the flipped purchase is offered the income side')
+      .toEqual(['other_income', 'salary', 'shared']);
   });
 
   /**

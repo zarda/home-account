@@ -89,6 +89,7 @@ import {
   UNRESOLVED_CATEGORY_CONFIDENCE
 } from '../../../../core/utils/categorization.utils';
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
+import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
 jasmine.getEnv().configure({ random: false });
@@ -1555,6 +1556,16 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           .toBeTrue();
       }
 
+      // The purchase's category menu, over the merged catalogue the account
+      // actually holds: the defaults beside the Groceries this suite seeded.
+      const menu = (index: number) =>
+        (fixture.debugElement.queryAll(By.css('.transaction-card'))[index]
+          .query(By.directive(CategorySuggestionComponent)).componentInstance as CategorySuggestionComponent)
+          .sortedCategories();
+      const offeredBefore = menu(1).map(c => c.id);
+      expect(offeredBefore).withContext('an expense row is offered food').toContain('food');
+      expect(offeredBefore).withContext('and not the income side').not.toContain('other_income');
+
       // The reviewer answers the purchase's flag by flipping it. The food the
       // model named cannot ride onto an income row, so it moves to the income
       // side's catch-all, graded as an answer that resolved to nothing.
@@ -1565,6 +1576,14 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .withContext('the flipped purchase is filed on the income side')
         .toEqual({ type: 'income', category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
       expect(toggle(1).querySelector('.verify-flag')).withContext('the flip answers the flag').toBeNull();
+
+      // And its menu follows it there, so food cannot be picked straight back
+      // onto an income row.
+      const offeredAfter = menu(1);
+      expect(offeredAfter.filter(c => c.type === 'expense').map(c => c.id))
+        .withContext('the flipped purchase is offered no expense category')
+        .toEqual([]);
+      expect(offeredAfter.map(c => c.id)).withContext('the catch-all it was filed on').toContain('other_income');
 
       // A type change re-runs the duplicate check, and Import does not wait
       // for it.
