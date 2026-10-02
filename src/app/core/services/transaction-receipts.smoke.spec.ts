@@ -34,6 +34,7 @@ import { BudgetService } from './budget.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { TransactionService, RECEIPT_ATTACH_FAILED } from './transaction.service';
 import { Transaction } from '../../models';
+import { emulatorCustomToken } from './testing/emulator-custom-token';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -148,24 +149,8 @@ describe('TransactionService receipts (emulator smoke test)', () => {
     connectStorageEmulator(rivalStorage, STORAGE_HOST, STORAGE_PORT);
 
     // The auth emulator accepts unsigned custom tokens, which is what lets a
-    // second client authenticate as the uid the first one was granted. JWT
-    // segments are base64url without padding — plain btoa is not enough.
-    const base64url = (value: unknown): string =>
-      btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    const now = Math.floor(Date.now() / 1000);
-    const unsignedToken = [
-      base64url({ alg: 'none', typ: 'JWT' }),
-      base64url({
-        iss: 'firebase-auth-emulator@example.com',
-        sub: 'firebase-auth-emulator@example.com',
-        aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
-        iat: now,
-        exp: now + 3600,
-        uid
-      }),
-      ''
-    ].join('.');
-    await signInWithCustomToken(rivalAuth, unsignedToken);
+    // second client authenticate as the uid the first one was granted.
+    await signInWithCustomToken(rivalAuth, emulatorCustomToken(uid));
   });
 
   afterAll(async () => {
