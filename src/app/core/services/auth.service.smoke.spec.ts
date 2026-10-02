@@ -295,12 +295,26 @@ describe('AuthService (emulator smoke test)', () => {
     });
 
     it('clearStoredProviderApiKeys deletes the legacy fields without clobbering the map', async () => {
+      // A self-contained existing document first, as the heal case writes:
+      // this block runs in random order, and when this case comes first
+      // nothing has created the profile yet, so the update below would be
+      // refused by the rules (an update with no document to compare against).
+      await setDoc(userRef(), {
+        email: 'legacy@example.com',
+        displayName: 'Legacy Keys',
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        preferences: DEFAULT_USER_PREFERENCES
+      });
       await updateDoc(userRef(), {
         'preferences.geminiApiKey': 'legacy-g',
         'preferences.openaiApiKey': 'legacy-o',
         'preferences.claudeApiKey': 'legacy-c'
       });
       const service = await authedService();
+      // Anti-vacuity: the session loaded the keys it is about to clear, so the
+      // local assertion below cannot pass on a profile that never held them.
+      expect('geminiApiKey' in service.currentUser()!.preferences).toBeTrue();
 
       await service.clearStoredProviderApiKeys();
 
