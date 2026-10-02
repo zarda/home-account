@@ -25,6 +25,7 @@ import { AccessibilityService } from './accessibility.service';
 import { SecurityLogService } from './security-log.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
+import { PAGE_RELOAD } from './page-reload';
 import { DEFAULT_USER_PREFERENCES, DashboardLayout } from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
@@ -80,7 +81,10 @@ describe('AuthService (emulator smoke test)', () => {
       },
       // Offline by default so the profile-retry effect only runs when a
       // spec flips it deliberately.
-      { provide: PwaService, useValue: { isOnline: signal(false) } }
+      { provide: PwaService, useValue: { isOnline: signal(false) } },
+      // A real reload would abort the whole Karma run. Every block spreads
+      // these providers, so none falls back to the real token.
+      { provide: PAGE_RELOAD, useValue: jasmine.createSpy('reload') }
     ];
   }
 

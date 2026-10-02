@@ -14,6 +14,7 @@ import { ThemeService } from './theme.service';
 import { AccessibilityService } from './accessibility.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
+import { PAGE_RELOAD } from './page-reload';
 
 describe('buildNewUserProfile', () => {
   const firebaseUser = (overrides: Partial<FirebaseUser>): FirebaseUser =>
@@ -79,6 +80,7 @@ describe('AuthService', () => {
     currentLocale: WritableSignal<SupportedLocale>;
     detectedBrowserLocale: SupportedLocale | null;
   };
+  let reload: jasmine.Spy;
 
   beforeEach(() => {
     mockAuth = jasmine.createSpyObj('Auth', ['onAuthStateChanged'], {
@@ -96,6 +98,7 @@ describe('AuthService', () => {
       // Detected by default; the heal specs below turn it off deliberately.
       detectedBrowserLocale: 'en' as SupportedLocale | null
     };
+    reload = jasmine.createSpy('reload');
 
     TestBed.configureTestingModule({
       providers: [
@@ -116,7 +119,10 @@ describe('AuthService', () => {
           useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
         },
         // Offline by default so the profile-retry effect stays dormant.
-        { provide: PwaService, useValue: { isOnline: signal(false) } }
+        { provide: PwaService, useValue: { isOnline: signal(false) } },
+        // A real reload would abort the whole Karma run. The disposal case's
+        // child injector resolves the token from here as well.
+        { provide: PAGE_RELOAD, useValue: reload }
       ]
     });
 
