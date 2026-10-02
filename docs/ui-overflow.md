@@ -483,6 +483,19 @@ smoke spec through `npm run smoke`, and the source checks through
 so it is a before/after instrument for UI pull requests, like
 `capture-dialogs.mjs`.
 
+**The import review at phone width has no row here.** Below 600px the wizard
+trims the 24px a side Material pads each step's content with
+(`import-wizard.component.scss`), which on top of the wizard's own 16px had
+left a review card at 375px a 141px column, every chip on a line of its own.
+It keeps 5px, the room a focus ring needs inside the step's clip, and takes
+those back out of its own gutter with a negative margin, so the card is 273px
+and its content 189px. That rule is a viewport query and Karma's window is
+756px, so no spec can apply it — the review card's 288px probe above clips
+the card itself and never goes through the stepper.
+Journey 79's 375px step in [e2e.md](e2e.md) is what measures it
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
+where the browser run found it).
+
 ## Using `appFitText`
 
 Put `white-space: nowrap` on the host in the component's stylesheet — the

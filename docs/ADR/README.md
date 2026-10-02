@@ -151,7 +151,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0144](0144-a-blanked-template-is-paired-with-a-describe-that-renders-it.md) | A blanked template is paired with a describe that renders it | Accepted; states a convention 0128 named as a limitation | 2026-09-21 |
 | [0145](0145-a-class-found-by-reading-becomes-a-gate.md) | A class found by reading becomes a gate | Accepted; extends 0032; closes gaps of 0058, 0123 and 0139; closes three gaps of accessibility.md | 2026-09-21 |
 | [0146](0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) | An icon that carries a label is not hidden, and a stored category id is never empty | Accepted | 2026-09-21 |
-| [0147](0147-a-row-is-graded-by-what-its-door-can-vouch-for.md) | A row is graded by what its door can vouch for | Accepted; closes gaps of 0045, 0046, 0049, 0053, 0079, 0111, 0113 and 0116; narrows gaps of 0013, 0063 and 0113 | 2026-09-24 |
+| [0147](0147-a-row-is-graded-by-what-its-door-can-vouch-for.md) | A row is graded by what its door can vouch for | Accepted; closes gaps of 0045, 0046, 0049, 0053, 0079, 0111, 0113 and 0116; narrows gaps of 0013, 0063 and 0113; amended by 0162 | 2026-09-24 |
 | [0148](0148-every-figure-names-its-rate.md) | Every figure names its rate | Accepted; extends 0093; closes gaps of 0037, 0042, 0068, 0091, 0093 and 0127 | 2026-09-24 |
 | [0149](0149-the-review-step-says-what-it-changed.md) | The review step says what it changed | Accepted; amends 0073; narrows 0108's decision; closes gaps of 0062, 0101, 0102, 0103, 0107, 0108, 0120 and 0121; narrows a gap of 0062 | 2026-09-24 |
 | [0150](0150-the-csv-reads-back-what-it-writes.md) | The CSV reads back what it writes | Accepted; closes the non-round-trip of 0011; closes gaps of 0045 and 0059 | 2026-09-24 |
@@ -166,6 +166,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0159](0159-a-copy-follows-its-row-in-a-commit-of-its-own-and-a-sweep-repairs-what-the-follow-ups-miss.md) | A copy follows its row in a commit of its own, and a sweep repairs what the follow-ups miss | Accepted; extends 0157; keeps 0027's offline promise; applies 0009 and 0156 | 2026-09-28 |
 | [0160](0160-a-households-budgets-and-goals-are-its-own-counted-from-shared-copies-and-members-contributions.md) | A household's budgets and goals are its own, counted from shared copies and members' contributions | Accepted; supersedes 0154's road step 3 and stale-spent display; closes 0154's uncaptioned-rate gap; applies 0009, 0026 and 0148; extends 0018 | 2026-09-28 |
 | [0161](0161-a-deleted-membership-or-household-is-swept-by-server-triggers-as-a-backstop.md) | A deleted membership or household is swept by server triggers, as a backstop | Accepted; narrowly revisits 0154's rejection of merging on the server; keeps 0155's smoke decision | 2026-09-28 |
+| [0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md) | A refund read on the device is filed as income, and the review asks about it | Accepted; amends 0147; applies 0008, 0146 and 0149 | 2026-10-02 |
 
 ## What belongs here
 
