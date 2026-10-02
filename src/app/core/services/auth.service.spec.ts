@@ -83,7 +83,7 @@ describe('AuthService', () => {
   let reload: jasmine.Spy;
 
   beforeEach(() => {
-    mockAuth = jasmine.createSpyObj('Auth', ['onAuthStateChanged'], {
+    mockAuth = jasmine.createSpyObj('Auth', ['onAuthStateChanged', 'signOut'], {
       currentUser: null
     });
     // The real SDK hands back the unsubscribe function, and the service holds
@@ -656,6 +656,302 @@ describe('AuthService', () => {
       // ended and the console spy has been restored, so the failure surfaces
       // in whichever case runs next.
       await settle();
+    });
+  });
+
+  /**
+   * Another tab on the origin can move the session straight from one account
+   * to another, sign it out or sign it in, and the SDK hands every one of
+   * those to this page's listener like a change of its own. Once its first
+   * state has been delivered, a page reloads on any account change it did not
+   * start (ADR 0163), writing nothing of the incoming account first.
+   *
+   * Driven through the captured listener, a delivery at a time; the reload is
+   * the PAGE_RELOAD spy this suite provides, so nothing really reloads. The
+   * baseline is the uid the listener was last handed, never the firebaseUser
+   * signal, which other cases in this suite write by hand.
+   */
+  describe('an account change this page did not start', () => {
+    let liveSession: jasmine.Spy;
+    let readStarted: jasmine.Spy;
+
+    /** The uid the SDK reports as signed in right now; null once signed out. */
+    const signedInAs = (uid: string | null) =>
+      liveSession.and.returnValue(uid ? ({ uid } as FirebaseUser) : null);
+
+    /** The auth-state callback the listener registered, whatever slot it took. */
+    const listenerCallback = () =>
+      mockAuth.onAuthStateChanged.calls.mostRecent().args
+        .find(arg => typeof arg === 'function') as (user: FirebaseUser | null) => Promise<void>;
+
+    /** The SDK moves to `uid` (null: signed out) and hands that to the listener. */
+    const deliver = (uid: string | null) => {
+      signedInAs(uid);
+      return listenerCallback()(uid ? ({ uid } as FirebaseUser) : null);
+    };
+
+    /**
+     * One of the page's own SDK calls, run inside the marker the service runs
+     * them in. The SDK hands the change to the listener before the call
+     * resolves, which is what `deliver` inside it stands for.
+     */
+    const own = <T>(change: () => Promise<T>): Promise<T> =>
+      (
+        service as unknown as { ownAccountChange: (change: () => Promise<T>) => Promise<T> }
+      ).ownAccountChange(change);
+
+    beforeEach(() => {
+      liveSession = Object.getOwnPropertyDescriptor(mockAuth, 'currentUser')!.get as jasmine.Spy;
+      readStarted = spyOn(
+        service as unknown as { getOrCreateUser: (u: FirebaseUser) => Promise<unknown> },
+        'getOrCreateUser'
+      ).and.callFake((u: FirebaseUser) => Promise.resolve({ id: u.uid }));
+      // An @angular/fire call made from a spec body is outside any injection
+      // context, which the library warns about once per run.
+      spyOn(console, 'warn');
+    });
+
+    it('reloads nothing for the first state it is handed, signed out', async () => {
+      await deliver(null);
+
+      expect(reload).not.toHaveBeenCalled();
+      // A pin: the callback ran to its end; a first delivery never returns early.
+      expect(service.isLoading()).toBeFalse();
+    });
+
+    it('reloads nothing for the first state it is handed, signed in', async () => {
+      await deliver('alex');
+
+      // A pin: the first state, signed in, is installed as it always was.
+      expect(reload).not.toHaveBeenCalled();
+      expect(service.currentUser()?.id).toBe('alex');
+    });
+
+    it('reloads once when the account moves to another with no sign-out between', async () => {
+      await deliver('alex');
+      await deliver('sam');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('installs nothing of the incoming account on a page it is about to replace', async () => {
+      await deliver('alex');
+      await deliver('sam');
+
+      // No profile read for sam, so no lastLoginAt bump for an account this
+      // page never showed, and every signal stays on the account being left.
+      expect(readStarted).toHaveBeenCalledTimes(1);
+      expect(readStarted.calls.mostRecent().args[0].uid).toBe('alex');
+      expect(service.firebaseUser()?.uid).toBe('alex');
+      expect(service.currentUser()?.id).toBe('alex');
+    });
+
+    it('reloads once when another tab signs the account out', async () => {
+      await deliver('alex');
+      await deliver(null);
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(service.currentUser()?.id).toBe('alex');
+    });
+
+    it('reloads once when another tab signs in on a page that started signed out', async () => {
+      await deliver(null);
+      await deliver('sam');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(readStarted).not.toHaveBeenCalled();
+    });
+
+    it("reloads at most once in a page's life", async () => {
+      await deliver('alex');
+      await deliver('sam');
+      await deliver('kai');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(service.firebaseUser()?.uid).toBe('alex');
+    });
+
+    it('does not reload when the same account is handed over again', async () => {
+      // A pin: the SDK's registration emit reads its current user a
+      // microtask late, so a change landing just after start-up can hand the
+      // listener the same account twice.
+      await deliver('alex');
+      await deliver('alex');
+
+      expect(reload).not.toHaveBeenCalled();
+      expect(readStarted).toHaveBeenCalledTimes(2);
+    });
+
+    it('where the platform has no reload, a foreign sign-out still runs the null branch', async () => {
+      // A pin: on a device, where the token is null (page-reload.ts), a
+      // session the SDK ends itself must still reach the signed-out edge the
+      // per-account services reset on. A child injector, so the null seam is
+      // this instance's alone; its listener is the one registered most
+      // recently.
+      const injector = createEnvironmentInjector(
+        [AuthService, { provide: PAGE_RELOAD, useValue: null }],
+        TestBed.inject(EnvironmentInjector)
+      );
+      try {
+        const device = injector.get(AuthService);
+        // The child's own read: the mock Firestore would otherwise throw into
+        // the listener's catch and log a degraded profile.
+        spyOn(
+          device as unknown as { getOrCreateUser: (u: FirebaseUser) => Promise<unknown> },
+          'getOrCreateUser'
+        ).and.callFake((u: FirebaseUser) => Promise.resolve({ id: u.uid }));
+
+        await deliver('alex');
+        expect(device.currentUser()?.id)
+          .withContext("the child's listener was handed the first state")
+          .toBe('alex');
+        await deliver(null);
+
+        expect(device.firebaseUser()).toBeNull();
+        expect(device.currentUser()).toBeNull();
+        expect(reload).not.toHaveBeenCalled();
+      } finally {
+        injector.destroy();
+      }
+    });
+
+    it("settles isLoading when the account changes while the first state's profile read is still out", async () => {
+      let resolveRead!: (user: unknown) => void;
+      readStarted.and.returnValue(new Promise(resolve => (resolveRead = resolve)));
+
+      const first = deliver('alex');
+      const second = deliver('sam');
+      expect(reload).toHaveBeenCalledTimes(1);
+
+      resolveRead({ id: 'alex' });
+      await Promise.all([first, second]);
+
+      // The change returned before writing anything, so the flag publicGuard
+      // waits on is settled by the first delivery's own tail; the
+      // session-identity guard there refuses alex's answer, the SDK being on
+      // sam by then.
+      expect(service.isLoading()).toBeFalse();
+      expect(service.currentUser()).toBeNull();
+      expect(readStarted).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not reload for its own sign-out', async () => {
+      await deliver('alex');
+      mockAuth.signOut.and.callFake(() => deliver(null));
+
+      await service.signOut();
+
+      expect(reload).not.toHaveBeenCalled();
+      expect(service.firebaseUser()).toBeNull();
+    });
+
+    it('does not reload for its own account deletion', async () => {
+      await deliver('alex');
+      // The SDK's delete ends in its own sign-out, handed to the listener
+      // before the delete resolves.
+      const remove = jasmine.createSpy('delete').and.callFake(() => deliver(null));
+      liveSession.and.returnValue({ uid: 'alex', delete: remove } as unknown as FirebaseUser);
+
+      await service.deleteFirebaseUser();
+
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(reload).not.toHaveBeenCalled();
+      expect(service.firebaseUser()).toBeNull();
+    });
+
+    it('does not reload for the sign-out a refused deletion ends in', async () => {
+      // A pin: a deletion the SDK refuses because the session is no longer
+      // valid signs the session out first and only then rejects, and that
+      // sign-out is still under the marker.
+      await deliver('alex');
+      const remove = jasmine.createSpy('delete').and.callFake(async () => {
+        await deliver(null);
+        throw new Error('auth/user-token-expired');
+      });
+      liveSession.and.returnValue({ uid: 'alex', delete: remove } as unknown as FirebaseUser);
+
+      await expectAsync(service.deleteFirebaseUser()).toBeRejectedWithError(
+        'auth/user-token-expired'
+      );
+
+      expect(reload).not.toHaveBeenCalled();
+      expect(service.firebaseUser()).toBeNull();
+    });
+
+    it('does not reload for its own sign-in', async () => {
+      await deliver(null);
+
+      await own(() => deliver('sam'));
+
+      expect(reload).not.toHaveBeenCalled();
+      expect(service.currentUser()?.id).toBe('sam');
+    });
+
+    it('leaves nothing armed after its own sign-in fails', async () => {
+      await deliver(null);
+
+      await expectAsync(own(() => Promise.reject(new Error('auth/popup-closed-by-user'))))
+        .toBeRejectedWithError('auth/popup-closed-by-user');
+      await deliver('sam');
+
+      // Anti-vacuity, the partner of 'does not reload for its own sign-in': a
+      // sign-in that never happened is no cover for one from elsewhere.
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('hands the popup sign-in to the same marker', async () => {
+      // A pin: the marker's stand-in runs the change it is handed, as the
+      // marker does. Against this Auth double the real popup call rejects
+      // before any window opens, and the failure has to arrive inside the
+      // change: a popup call made after the marker came down would leave the
+      // change resolved and fail outside it. Nothing is read when the sign-in
+      // fails.
+      let failedInside: unknown;
+      const marker = spyOn(
+        service as unknown as {
+          ownAccountChange: (change: () => Promise<unknown>) => Promise<unknown>;
+        },
+        'ownAccountChange'
+      ).and.callFake(async change => {
+        try {
+          return await change();
+        } catch (error) {
+          failedInside = error;
+          throw error;
+        }
+      });
+
+      await expectAsync(service.signInWithGoogle()).toBeRejected();
+
+      expect(marker).toHaveBeenCalledOnceWith(jasmine.any(Function));
+      expect(failedInside).withContext('the popup call failed inside the marker').toBeDefined();
+      expect(readStarted).not.toHaveBeenCalled();
+    });
+
+    it('leaves nothing armed after its own sign-out fails', async () => {
+      spyOn(console, 'error');
+      await deliver('alex');
+      mockAuth.signOut.and.rejectWith(new Error('network'));
+
+      await expectAsync(service.signOut()).toBeRejectedWithError('network');
+      await deliver(null);
+
+      // Anti-vacuity, the partner of 'does not reload for its own sign-out': a
+      // sign-out that never happened is no cover for one from elsewhere.
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('its own sign-out and sign-in to another account reload nothing', async () => {
+      // The switch a person makes in one tab: out of one account, then into
+      // another, both started here.
+      await deliver('alex');
+      mockAuth.signOut.and.callFake(() => deliver(null));
+
+      await service.signOut();
+      await own(() => deliver('sam'));
+
+      expect(reload).not.toHaveBeenCalled();
+      expect(service.currentUser()?.id).toBe('sam');
     });
   });
 

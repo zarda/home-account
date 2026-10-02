@@ -68,9 +68,11 @@ export class RowSharingService {
    * last account's listener is closed and the next account's index is read
    * in its place, with none of the last one's households offered meanwhile.
    * Another tab's sign-in makes that change with no signed-out state
-   * between, and Firestore may refuse the last account's index under the
-   * new session before the change reaches here, so an index that could not
-   * be read ends only that account's listing, never the next one's.
+   * between. On the web the page now reloads for it instead (ADR 0163), and
+   * this handling stays as a defence: Firestore hears the new session before
+   * the app does and may refuse the last account's index under it, so an
+   * index that could not be read ends only that account's listing, never the
+   * next one's.
    */
   targets(): Observable<ShareTarget[]> {
     return this.accountIds().pipe(

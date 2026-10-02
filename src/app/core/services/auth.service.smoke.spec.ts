@@ -2,7 +2,14 @@
 // packages) for the same compatibility reason as the FirestoreService suite.
 import { TestBed } from '@angular/core/testing';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
-import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
+import {
+  getAuth,
+  connectAuthEmulator,
+  signInAnonymously,
+  signInWithCustomToken,
+  signOut,
+  Auth
+} from '@angular/fire/auth';
 import {
   getFirestore,
   connectFirestoreEmulator,
@@ -27,6 +34,7 @@ import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
 import { PAGE_RELOAD } from './page-reload';
 import { DEFAULT_USER_PREFERENCES, DashboardLayout } from '../../models';
+import { emulatorCustomToken } from './testing/emulator-custom-token';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -450,13 +458,113 @@ describe('AuthService (emulator smoke test)', () => {
 
       expect(service.currentUser()).toBeNull();
       expect(service.isAuthenticated()).toBeFalse();
-      // The SDK's own state is already null here, before the listener has
-      // observed anything. That ordering is what the session-identity guard
-      // rests on: auth.currentUser leads the firebaseUser signal, which is
-      // written from the listener a beat later, so only the SDK can answer
-      // "is this still the session that started the read" in time.
+      // The SDK's own state is null here, and the listener has already been
+      // handed the sign-out: the SDK notifies its listeners before signOut
+      // resolves. What the session-identity guard rests on is the window
+      // across a profile read's await: auth.currentUser moves the moment the
+      // session does, while the firebaseUser signal is written only once the
+      // listener runs, so only the SDK can answer "is this still the session
+      // that started the read" in time.
       expect(auth.currentUser).toBeNull();
-      await waitFor(() => service.firebaseUser() === null, 'the listener to observe the sign-out');
+      expect(service.firebaseUser()).toBeNull();
+    });
+  });
+
+  /**
+   * The SDK transitions another tab makes, driven on this page's own Auth
+   * instance: a suite cannot open a second tab, and the cross-tab poll that
+   * carries a change between tabs is the SDK's own. Once its first state has
+   * been delivered, a page reloads on any account change it did not start
+   * (ADR 0163). The reload is the stubProviders() spy, so nothing really
+   * reloads.
+   *
+   * Each case reads the spy as soon as the SDK call resolves, with no wait:
+   * the SDK hands a change to its listeners before the call's own promise
+   * settles, and that ordering is pinned here too.
+   */
+  describe('an account change this page did not start', () => {
+    let app: FirebaseApp;
+    let auth: Auth;
+    let firestore: ReturnType<typeof getFirestore>;
+    let reload: jasmine.Spy;
+
+    beforeAll(async () => {
+      app = initializeApp(
+        { apiKey: 'fake-api-key', projectId: 'demo-home-account' },
+        `auth-smoke-switch-${Date.now()}`
+      );
+      auth = getAuth(app);
+      connectAuthEmulator(auth, AUTH_URL, { disableWarnings: true });
+      firestore = getFirestore(app);
+      connectFirestoreEmulator(firestore, FIRESTORE_HOST, FIRESTORE_PORT);
+      await signInAnonymously(auth);
+    });
+
+    afterAll(async () => {
+      await deleteApp(app).catch(() => undefined);
+    });
+
+    beforeEach(async () => {
+      TestBed.configureTestingModule({
+        providers: [
+          AuthService,
+          { provide: Auth, useValue: auth },
+          { provide: Firestore, useValue: firestore },
+          ...stubProviders()
+        ]
+      });
+      // The cases run in random order, and some of them end signed out.
+      if (!auth.currentUser) await signInAnonymously(auth);
+      reload = TestBed.inject(PAGE_RELOAD) as jasmine.Spy;
+    });
+
+    it('reloads once when the account moves to another with no sign-out between, the signals staying on the first', async () => {
+      const service = TestBed.inject(AuthService);
+      await waitFor(() => service.isAuthenticated(), 'the profile load');
+      const first = auth.currentUser!.uid;
+
+      // Another tab's sign-in reaches this page with no signed-out state
+      // between; the emulator takes an unsigned custom token for any uid.
+      await signInWithCustomToken(auth, emulatorCustomToken(`switch-${Date.now()}`));
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(auth.currentUser!.uid).not.toBe(first);
+      expect(service.firebaseUser()!.uid).toBe(first);
+      expect(service.currentUser()!.id).toBe(first);
+    });
+
+    it('reloads nothing for its own sign-out', async () => {
+      const service = TestBed.inject(AuthService);
+      await waitFor(() => service.isAuthenticated(), 'the profile load');
+
+      await service.signOut();
+
+      // No wait: the listener has already run its null branch by now.
+      expect(service.firebaseUser()).toBeNull();
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it('reloads once on a sign-out it did not start', async () => {
+      const service = TestBed.inject(AuthService);
+      await waitFor(() => service.isAuthenticated(), 'the profile load');
+
+      // A raw SDK sign-out stands for another tab's, or for a session the SDK
+      // ended itself (a revoked token).
+      await signOut(auth);
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(service.currentUser()).not.toBeNull();
+    });
+
+    it('reloads once on a sign-in it did not start, onto a page that started signed out', async () => {
+      await signOut(auth);
+      const service = TestBed.inject(AuthService);
+      await waitFor(() => !service.isLoading(), 'the signed-out first state');
+
+      await signInAnonymously(auth);
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(service.isAuthenticated()).toBeFalse();
     });
   });
 
@@ -535,7 +643,13 @@ describe('AuthService (emulator smoke test)', () => {
       await service.signOut();
       await waitFor(() => service.firebaseUser() === null, 'the listener to observe the sign-out');
 
-      await signInAnonymously(auth);
+      // Signing back in on this page is its own change: signInWithGoogle runs
+      // its SDK call inside the same marker, and the popup it stands for
+      // cannot complete in Karma. A raw sign-in here would be one from
+      // elsewhere, which reloads the page instead (ADR 0163).
+      await (
+        service as unknown as { ownAccountChange: <T>(change: () => Promise<T>) => Promise<T> }
+      ).ownAccountChange(() => signInAnonymously(auth));
       await waitFor(() => service.isAuthenticated(), 'the new session to load its profile');
 
       expect(service.profileDegraded()).toBeFalse();

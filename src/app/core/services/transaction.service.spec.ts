@@ -2326,16 +2326,18 @@ describe('TransactionService', () => {
       });
     });
 
-    it('resets on the signed-out edge only, not on every account change', (done) => {
+    it('resets on the signed-out edge only, never on a signed-in value', (done) => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', createMixedTransactions());
 
       service.getByDateRange(new Date(2020, 0, 1), new Date(2030, 11, 31)).subscribe(() => {
         const published = service.transactions();
         expect(published.length).toBeGreaterThan(0);
 
-        // A direct non-null change (sign-in) must not blank a freshly
-        // published window; Firebase always passes through null on the way
-        // to a different account.
+        // A signed-in value must not blank a freshly published window: a
+        // reset on sign-in could land after a fresh load's first snapshot,
+        // with nothing to re-emit. A change straight from one account to
+        // another no longer reaches a page at all, because the page reloads
+        // first (ADR 0163); this stands for any signed-in value arriving.
         mockAuth.setAuthenticated(true, 'another-user');
         TestBed.tick();
 
