@@ -618,6 +618,16 @@ describe('import-review.utils', () => {
       expect(part.fieldConfidence).toEqual({ date: 0.5 });
     });
 
+    it('keeps the type grade on both halves, since a split does not touch the type', () => {
+      // A pin: both halves stay on the side the reader doubted, so the
+      // question its flag asks is still open on each of them.
+      const [kept, part] = splitImportRow(
+        row({ type: 'income', fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }), 1.2, 'split_1'
+      )!;
+      expect(kept.fieldConfidence).toEqual({ date: 0.9, type: 0.5 });
+      expect(part.fieldConfidence).toEqual({ date: 0.9, type: 0.5 });
+    });
+
     it('gives the part its own date object, equal to the original\'s but not shared', () => {
       const original = row();
       const [, part] = splitImportRow(original, 1.2, 'split_1')!;
