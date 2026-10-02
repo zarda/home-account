@@ -68,8 +68,8 @@ three signed in at the same time, and each tier has its own shape for that.
   emulators, and `node docs/ui-audit/tools/seed-household.mjs <file outside the
   repo>` seeds three accounts in two households and writes their three
   session records. The driven journeys that need them are [e2e.md](e2e.md)'s
-  68 to 77; 58 to 66 drove the design of ADRs 0152 to 0156 (PRs #462 and
-  #463) and are superseded
+  68 to 77, 79 and 80; 58 to 66 drove the design of ADRs 0152 to 0156 (PRs
+  #462 and #463) and are superseded
   ([ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md)).
 
 Two household proofs sit outside all three tiers. **The functions**: `npm run
@@ -231,7 +231,7 @@ rendered template needs them:
 A service whose template reads it as a **signal** must be stubbed as a signal,
 not as a method returning a fixed value — see the next section.
 
-## Three traps that cost a day each
+## Four traps that cost a day each
 
 ### Angular 22: an undeclared change-detection strategy is OnPush
 
@@ -275,6 +275,30 @@ un-blanks a template or adds a binding.**
 Un-blanking also has a second gate: dropping `NO_ERRORS_SCHEMA` can surface a
 `Mat*Module` in an `imports:` array whose selector the template never uses,
 which `npm run material:check` fails (ADR 0128). Run it too.
+
+### A real reload aborts the whole run
+
+Karma ends the run the moment a spec reloads the page — "Some of your tests
+did a full page reload!" — and every result after it is lost. The app reloads
+on an account change it did not start ([auth.md](auth.md#an-account-change-this-page-did-not-start),
+ADR 0163), from inside the auth-state listener, which fires whenever the SDK
+calls back, not when a spec chooses. So the reload sits behind a root token,
+`PAGE_RELOAD` (`core/services/page-reload.ts`), and **every TestBed that
+builds the real `AuthService` provides a double for it**. Three suites do
+today:
+
+- `auth.service.spec.ts`: a `reload` spy in the outer providers, and `null`
+  in the one child injector that stands for a device;
+- `auth.service.smoke.spec.ts`: a spy in `stubProviders()`, which every block
+  spreads. A block that lists its providers inline falls back to the real
+  factory, and its first account change reloads the run away;
+- `analytics.service.smoke.spec.ts`: an inert function, since it signs in
+  once and never switches.
+
+Every other suite provides an `AuthService` double and never builds the
+listener. A fourth that builds the real one must provide the token too.
+`page-reload.spec.ts` hands the factory a fake location, and never calls the
+function the root injector resolves.
 
 ## Karma's window is 756 px
 
@@ -335,19 +359,22 @@ target is therefore a number someone committed to in a record, not a gate.
 The fresh report is written under `coverage/home-account/**app**/…`. A stale
 pre-`app/` tree may still be sitting beside it from an older run; reading that
 one gives figures like 1.33 % for a file the suite covers well. **Check the
-path.**
+path.** A run narrowed with `--include` roots its report at the files it
+loaded instead — `coverage/home-account/core/services/…` for
+`auth.service.spec.ts` alone — and leaves the last full run's `app/` tree
+beside it, older and still readable.
 
-### `auth.service.ts` — exempt, at 54.04 % statements
+### `auth.service.ts` — exempt, at 66.21 % statements
 
 `FirebaseAuthentication` is a `registerPlugin` **Proxy over an empty target**
 (`@capacitor/core` `dist/index.cjs.js:161`). `spyOn` reads an `undefined`
 property descriptor and throws, so three call sites are **unreachable in
-Karma**: `signInWithGoogleNative` (`:361`), the native `reauthenticate` arm
-(`:468`), and `deleteFirebaseUser`'s plugin sign-out (`:495`) — about 21
+Karma**: `signInWithGoogleNative` (`:449`), the native `reauthenticate` arm
+(`:562`), and `deleteFirebaseUser`'s plugin sign-out (`:589`) — about 20
 statements. The `signInWithPopup` / `reauthenticateWithPopup` ESM call sites
-(`:347`, `:481`) are unspyable for the same reason.
+(`:440`, `:574`) are unspyable for the same reason.
 
-What covers them instead is `auth.service.smoke.spec.ts`, 622 lines against the
+What covers them instead is `auth.service.smoke.spec.ts`, 755 lines against the
 real emulator — and `test:ci` excludes smoke, so none of it counts toward the
 figure. This is the same situation the suite already excuses for
 `firestore.service.ts`.
@@ -356,10 +383,14 @@ Retrofitting an injectable seam onto the sign-in path — the cure
 `NativeAnalyticsTransport` already uses for its dynamic import — is production
 surgery, and was deliberately not done for a coverage number.
 
-The reachable half **is** covered: `getOrCreateUser` on both arms including ADR
-0052's `stillSignedInAs` guard, `updateUserPreferences`' dotted-path loop,
-`clearUserPreferences`' `deleteField()` loop, `clearStoredProviderApiKeys`,
-`updateUserProfile`, and `signOut`'s catch.
+The reachable half **is** covered, by one tier or the other. Karma runs the
+auth-state listener's branches with ADR 0052's guards, the reload on an
+account change the page did not start and its own-change marker (ADR 0163),
+`signOut` with its catch, and account deletion's web arm. The emulator suite
+runs `getOrCreateUser` on both arms including its `stillSignedInAs` guard,
+`updateUserPreferences`' dotted-path loop, `clearUserPreferences`'
+`deleteField()` loop, `clearStoredProviderApiKeys` and `updateUserProfile`,
+which the unit spec reaches only as far as their early guards.
 
 ### The other four
 

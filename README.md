@@ -294,7 +294,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/e2e.md](docs/e2e.md) | The browser journey protocol: its two venues — production, and the emulators for journeys that need several accounts — the checks before every run, the writes a run may make and how they are put back, the journeys and their passes |
 | [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's three scans, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
-| [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the degraded fallback profile and its retry, and the identity check every write across an await makes |
+| [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the reload on an account change the page did not start, where the web keeps the session, the degraded fallback profile and its retry, and the identity check every write across an await makes |
 | [docs/accessibility.md](docs/accessibility.md) | What the app guarantees to assistive technology, where each guarantee is enforced, and the gaps that remain |
 | [docs/onboarding.md](docs/onboarding.md) | The first-run welcome: what decides a launch is a first run, the three panes, what a skip records, and the About-page card that replays it |
 | [docs/shortcuts.md](docs/shortcuts.md) | The two global keyboard shortcuts, the guards each stands down for, and the command palette they open |

@@ -13,7 +13,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0006](0006-multi-image-receipt-storage.md) | Receipt images are addressed by slot; removal tombstones, never renames | Accepted | 2026-07-29 |
 | [0007](0007-transactional-receipt-edits.md) | Receipt slot edits commit through Firestore transactions; storage deletes stay first | Accepted | 2026-07-30 |
 | [0008](0008-universal-receipt-language-support.md) | The app never narrows what the model can read | Accepted | 2026-07-31 |
-| [0009](0009-shared-state-publishing-and-lifecycle.md) | One publisher for shared account state; owners reset it, holders release it | Accepted | 2026-08-02 |
+| [0009](0009-shared-state-publishing-and-lifecycle.md) | One publisher for shared account state; owners reset it, holders release it | Accepted; amended by 0163 | 2026-08-02 |
 | [0010](0010-nothing-truncates.md) | Nothing truncates: text reflows, values scale | Accepted; amended by 0012 | 2026-08-03 |
 | [0011](0011-the-csv-file-is-a-contract.md) | The CSV file is a contract, and every cell in it is untrusted | Accepted; amended by 0059 | 2026-08-03 |
 | [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted; row anatomy revised by 0017 | 2026-08-03 |
@@ -56,7 +56,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0049](0049-the-model-never-sees-an-i18n-key.md) | The model never sees an i18n key | Accepted | 2026-08-16 |
 | [0050](0050-a-spec-that-claims-a-zone-runs-under-it.md) | A spec that claims a zone runs under it | Accepted | 2026-08-16 |
 | [0051](0051-an-uncategorized-row-is-graded-where-it-is-coerced.md) | An uncategorized row is graded where it is coerced | Accepted | 2026-08-17 |
-| [0052](0052-a-profile-read-may-only-write-to-the-session-that-started-it.md) | A profile read may only write to the session that started it | Accepted | 2026-08-17 |
+| [0052](0052-a-profile-read-may-only-write-to-the-session-that-started-it.md) | A profile read may only write to the session that started it | Accepted; amended by 0163 | 2026-08-17 |
 | [0053](0053-a-resolver-answers-with-a-category-that-still-exists.md) | A resolver answers with a category that still exists | Accepted | 2026-08-17 |
 | [0054](0054-a-forecast-tick-spans-a-fixed-duration.md) | A forecast tick spans a fixed duration | Accepted | 2026-08-17 |
 | [0055](0055-the-active-route-is-announced-not-only-coloured.md) | The active route is announced, not only coloured | Accepted | 2026-08-17 |
@@ -167,6 +167,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0160](0160-a-households-budgets-and-goals-are-its-own-counted-from-shared-copies-and-members-contributions.md) | A household's budgets and goals are its own, counted from shared copies and members' contributions | Accepted; supersedes 0154's road step 3 and stale-spent display; closes 0154's uncaptioned-rate gap; applies 0009, 0026 and 0148; extends 0018 | 2026-09-28 |
 | [0161](0161-a-deleted-membership-or-household-is-swept-by-server-triggers-as-a-backstop.md) | A deleted membership or household is swept by server triggers, as a backstop | Accepted; narrowly revisits 0154's rejection of merging on the server; keeps 0155's smoke decision | 2026-09-28 |
 | [0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md) | A refund read on the device is filed as income, and the review asks about it | Accepted; amends 0147; applies 0008, 0146 and 0149 | 2026-10-02 |
+| [0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md) | A page reloads on an account change it did not start, and the web keeps the session in local storage | Accepted; amends 0009 and 0052; leaves 0089 standing | 2026-10-02 |
 
 ## What belongs here
 

@@ -1,6 +1,23 @@
 # 9. One publisher for shared account state; owners reset it, holders release it
 
-**Status:** Accepted, implemented · **Date:** 2026-08-02 · **Issues:** #202, #178, #179
+**Status:** Accepted, implemented; amended by
+[0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md)
+· **Date:** 2026-08-02 · **Issues:** #202, #178, #179
+
+**Amended by
+[0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md).**
+The three conventions below stand — one publisher, owners resetting on the
+signed-out edge, every listener with one holder and an exit plan — but one
+premise and one contrast do not. *"Firebase always passes through null on the
+way to a different user"* is true of a page's own sign-out and sign-in, not of
+another tab's: the SDK moves a page straight from one account to the next
+when another tab of the origin does, so these resets never ran, and the
+listeners a page holds itself never reset at all. 0163 reloads a page on any
+account change it did not start, so on the web *"sign-out is a router
+navigation, not a reload"* now holds only for the page's own sign-out, and
+the effect's cover for sign-outs the app never initiated is a device's alone,
+where a revoked token still ends the session in the page. The null-edge
+resets below serve those two.
 
 ## Context
 
