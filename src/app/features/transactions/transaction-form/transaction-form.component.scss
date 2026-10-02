@@ -264,9 +264,12 @@
   overflow-y: auto !important;
 }
 
+// Holds the scan's type flag beside the toggle when the reader doubted it.
 .type-toggle-container {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 24px;
 }
 
