@@ -25,23 +25,44 @@ import { VERIFY_FIELD_THRESHOLD, roundToMinorUnit } from '../../models';
  */
 const MODEL_READ_GRADE = 0.8;
 
+/** The model read a refund, and the same total prints as a negative. */
+const AGREED_INCOME_GRADE = 0.6;
+
+/** The model read a refund, and the print neither backs nor contradicts it. */
+const MODEL_INCOME_GRADE = 0.5;
+
+/** The model read a purchase, and the same total prints as a negative. */
+const DISPUTED_TYPE_GRADE = 0.3;
+
 /**
- * Which way the money moved, and the grade the row carries for it (ADR 0162),
- * read from the marks the receipt prints on its total as the text parser
- * reports them — passed only when they are the marks on the row's own total.
- * The parser grades every reading under VERIFY_FIELD_THRESHOLD: a mark on the
- * total is not a measurement, so every income row a device reads is flagged
- * for a look wherever it is reviewed, and so is an expense something on the
- * receipt argued with. A purchase nothing contradicts carries no grade at
- * all. The sign of a figure is never a witness (ADR 0147). `kind` is not read
- * yet: the on-device model is not asked which way the money moved.
+ * Which way the money moved, and the grade the row carries for it (ADR 0162).
+ * Two witnesses speak to it: the on-device model's `kind`, read from the
+ * receipt's words, and the marks the receipt prints on its total as the text
+ * parser reports them — passed only when they are the marks on the row's own
+ * total. Neither is a measurement, so every grade sits under
+ * VERIFY_FIELD_THRESHOLD: every income row a device reads is flagged for a
+ * look wherever it is reviewed, and so is an expense the receipt argued with.
+ * A refund the print backs grades higher than one it is silent on, and a
+ * purchase the model read stays an expense when its total prints as a
+ * negative, flagged. A purchase nothing contradicts carries no grade at all.
+ *
+ * `kind` is compared strictly: anything but the two values the model is
+ * offered counts as no verdict, as on the regex lane, where no model answers,
+ * and leaves the print to decide alone. The sign of a figure is never a
+ * witness (ADR 0147).
  */
 function typeVerdict(
   kind: unknown,
   printed?: Pick<ParsedReceiptText, 'direction' | 'directionConfidence'>
 ): { type: 'income' | 'expense'; grade?: number } {
-  if (printed?.direction === 'credit') {
-    return { type: 'income', grade: printed.directionConfidence };
+  const marked = printed?.direction === 'credit';
+  if (kind === 'refund') {
+    return { type: 'income', grade: marked ? AGREED_INCOME_GRADE : MODEL_INCOME_GRADE };
+  }
+  if (printed && marked) {
+    return kind === 'purchase'
+      ? { type: 'expense', grade: DISPUTED_TYPE_GRADE }
+      : { type: 'income', grade: printed.directionConfidence };
   }
   // The same figure printed both marked and unmarked: a purchase still, but
   // one the print argued with.
@@ -175,8 +196,10 @@ export class NativeReceiptService {
     // day-key shape and returns null rather than an Invalid Date, so the
     // fallback covers an unreadable string too.
     const parsedDate = parseDateInput(extraction.date);
-    // A magnitude whichever way the money moved. A minus the model left on it
-    // is not a verdict on the type (ADR 0147), so it is dropped here.
+    // A magnitude whichever way the money moved. The schema bounds the model's
+    // total at zero, so this should change nothing, but that bound is
+    // compile-checked only (ADR 0040), and a minus is not a verdict on the type
+    // (ADR 0147) — the model's `kind` is — so one is dropped here.
     const amount = Math.abs(extraction.amount) || 0;
     // Report what was read, empty when nothing was. The consumer knows the
     // account's base currency; this service does not.
@@ -191,10 +214,10 @@ export class NativeReceiptService {
     const amountCurrency = currency || text.currency;
     const sameTotal = amount > 0 &&
       roundToMinorUnit(amount, amountCurrency) === roundToMinorUnit(text.amount, amountCurrency);
-    // The model is not asked which way the money moved, so the print is the
-    // only witness — and only when it is the print of this total: a mark the
-    // parser found on a figure the model did not answer says nothing about it.
-    const verdict = typeVerdict(undefined, sameTotal ? text : undefined);
+    // The model says which way the money moved, and the print is the second
+    // witness — but only when it is the print of this total: a mark the parser
+    // found on a figure the model did not answer says nothing about it.
+    const verdict = typeVerdict(extraction.kind, sameTotal ? text : undefined);
 
     return {
       date: parsedDate ?? new Date(),

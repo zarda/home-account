@@ -4,6 +4,14 @@ export interface AppleReceiptExtraction {
   merchant: string;
   /** Purchase date as YYYY-MM-DD, or '' when not found on the receipt */
   date: string;
+  /**
+   * 'refund' when the receipt records money the merchant gave back, 'purchase' otherwise. Optional only so
+   * a literal or an answer without the key still types: the app ships its web assets inside the native
+   * build, so both halves always arrive together. The model's verdict alone: NativeReceiptService weighs it
+   * against the mark printed on the same total (ADR 0162), and reads any other value as no verdict at all.
+   */
+  kind?: 'purchase' | 'refund';
+  /** The final total as a positive number: what was paid, or on a refund what was given back */
   amount: number;
   /** ISO 4217 currency code */
   currency: string;

@@ -14,7 +14,10 @@ struct ReceiptExtraction {
     @Guide(description: "Purchase date as YYYY-MM-DD on the Gregorian calendar, converted if the receipt prints another calendar or era, or an empty string if not present")
     var date: String
 
-    @Guide(description: "Final total amount paid as a decimal number, using a dot for the decimal mark and no digit grouping")
+    @Guide(description: "Whether the receipt records a purchase, money paid to the merchant, or a refund, money the merchant gave back for a return, a cancelled sale or a credit", .anyOf(["purchase", "refund"]))
+    var kind: String
+
+    @Guide(description: "Final total as a positive decimal number — what was paid, or on a refund what was given back — using a dot for the decimal mark and no digit grouping", .minimum(0))
     var amount: Double
 
     @Guide(description: "ISO 4217 alphabetic currency code for that total, taken from the currency sign or wording the receipt uses, or an empty string if the receipt does not say")
@@ -87,7 +90,8 @@ public class AppleIntelligencePlugin: CAPPlugin, CAPBridgedPlugin {
             var instructions = """
             You extract structured transaction data from receipt text produced by OCR. \
             The text may contain recognition errors. \
-            The amount must be the final total that was paid. \
+            The amount must be the receipt's final total as a positive number: what was paid \
+            for a purchase, or what was given back on a refund, and the kind says which. \
             Keep the merchant name and the item text exactly as printed, in the script they \
             were printed in — never translate or transliterate them. \
             The location is only what the receipt prints; never infer it from the merchant name.
@@ -108,6 +112,7 @@ public class AppleIntelligencePlugin: CAPPlugin, CAPBridgedPlugin {
                     call.resolve([
                         "merchant": receipt.merchant,
                         "date": receipt.date,
+                        "kind": receipt.kind,
                         "amount": receipt.amount,
                         "currency": receipt.currency,
                         "category": receipt.category,
