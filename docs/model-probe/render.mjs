@@ -8,6 +8,10 @@
 //
 // Chromium comes from the ui-audit harness's install so this folder needs no
 // dependencies of its own. Usage: node render.mjs
+//
+// It draws every fixture, the device-only ones included. probe.mjs reads
+// CASE_IDS alone, so a device fixture costs no model request and has no
+// baseline entry; it is a picture to push into the iOS simulator.
 import { chromium } from '../ui-audit/tools/node_modules/playwright/index.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,6 +20,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'receipts');
 export const CASE_IDS = ['jp', 'kr', 'none', 'long', 'cropped'];
+/** Fixtures for the on-device reader, which no cloud probe sends. */
+export const DEVICE_CASE_IDS = ['refund', 'refund-tender'];
 
 /** Playwright's bundled Chromium, or an override for a machine whose cache differs. */
 function chromiumPath() {
@@ -41,7 +47,7 @@ export async function render({ quiet = false } = {}) {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await page.goto(`file://${path.join(HERE, 'receipts.html')}`);
     await page.waitForTimeout(600);
-    for (const id of CASE_IDS) {
+    for (const id of [...CASE_IDS, ...DEVICE_CASE_IDS]) {
       const el = page.locator(`#${id}`);
       const box = await el.boundingBox();
       if (!box) throw new Error(`fixture #${id} did not render — receipts.html may have drifted`);

@@ -154,3 +154,43 @@
   <div class="row"><span>サラダ油</span><span>¥368</span></div>
   <div class="row"><span>米 5kg</span><span>¥1,980</span></div>
 </div></div>
+
+<!-- Device only: render.mjs draws these, probe.mjs never sends them.
+     A refund slip, for the on-device reading of which way the money moved.
+     Its lines are the ones receipt-text-parser.spec.ts pins for "the refund
+     slip as the device returns it", so the regex lane's answer is known: the
+     total prints with a minus and nothing prints it without one, so it reads
+     as a credit. REFUND and "Returned to card" are there for the model, which
+     reads words; the parser reads only the marks on the figures. -->
+<div class="wrap"><div class="r" id="refund">
+  <div class="c b">HARBOUR SUPPLIES</div>
+  <div class="sm">2026-09-28 14:32</div>
+  <div class="line"></div>
+  <div class="c b">REFUND</div>
+  <div class="row"><span>Mooring rope 10m</span><span>-$12.99</span></div>
+  <div class="line"></div>
+  <div class="row"><span>Subtotal</span><span>-$12.99</span></div>
+  <div class="row"><span>Tax 8%</span><span>-$1.04</span></div>
+  <div class="row big"><span>TOTAL</span><span>-$14.03</span></div>
+  <div class="line"></div>
+  <div class="sm">Returned to card ending 4242</div>
+</div></div>
+
+<!-- Device only. The same slip with the card line printing the total again,
+     unmarked: one figure printed both ways, which the parser cannot call a
+     credit. The regex lane reads a purchase flagged for a look; the model's
+     own verdict decides the AI lane. -->
+<div class="wrap"><div class="r" id="refund-tender">
+  <div class="c b">HARBOUR SUPPLIES</div>
+  <div class="sm">2026-09-28 14:32</div>
+  <div class="line"></div>
+  <div class="c b">REFUND</div>
+  <div class="row"><span>Mooring rope 10m</span><span>-$12.99</span></div>
+  <div class="line"></div>
+  <div class="row"><span>Subtotal</span><span>-$12.99</span></div>
+  <div class="row"><span>Tax 8%</span><span>-$1.04</span></div>
+  <div class="row big"><span>TOTAL</span><span>-$14.03</span></div>
+  <div class="line"></div>
+  <div class="sm">Returned to card ending 4242</div>
+  <div class="sm">VISA $14.03</div>
+</div></div>

@@ -17,6 +17,7 @@ node docs/model-probe/probe.mjs              # compare against baseline.json
 node docs/model-probe/probe.mjs --model <id> # probe a different model
 node docs/model-probe/probe.mjs --raw        # dump each full model response
 node docs/model-probe/probe.mjs --update     # rewrite baseline.json from this run
+node docs/model-probe/render.mjs             # draw every fixture's PNG, and nothing else
 ```
 
 Needs `geminiApiKey` in `.vscode/environment.ts` (the same local file the app
@@ -60,6 +61,7 @@ image, and a diff shows what changed.
 | `none` | **No country cues anywhere.** The prompt says answer `""` when it cannot tell. A model that guesses instead would confidently mislabel receipts, so this case is the guard on the whole country feature. |
 | `long` | 34 items, and a printed total (¥12,723) that differs from the item sum (¥12,281). Pins [ADR 0013](../ADR/0013-the-printed-total-is-the-amount-not-the-item-sum.md) at the model. |
 | `cropped` | The same long receipt, physically cut off mid-item. The header survives; no printed total does. |
+| `refund`, `refund-tender` | **Device only** — `render.mjs` draws them, but they are not in `CASE_IDS`, so `probe.mjs` never sends them and `baseline.json` has no entry for them. A refund slip whose `TOTAL -$14.03` prints with a minus, plus the words a model reads (*REFUND*, *Returned to card ending 4242*); `refund-tender` adds an unmarked `VISA $14.03`, the same figure printed both ways. They are pictures for the on-device reader, pushed into the iOS simulator with `xcrun simctl addmedia`. Their lines are the ones `receipt-text-parser.spec.ts` pins, so the regex lane's answer is known: a credit for `refund`, an ambiguous purchase for `refund-tender`. |
 
 ## Confidence is not stable — read this before trusting a green run
 
