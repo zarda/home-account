@@ -224,6 +224,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    */
   private scanCountry: string | null = null;
 
+  /**
+   * True while the type standing in the form is one a scan filed and the
+   * user has not changed since. Only then may a later expense reading move
+   * it back: an income reading always files its type, but an expense reading
+   * never overrides a type the user picked, the one the form opened with
+   * included. Any type change clears it; discarding the photo does not, since
+   * the type the scan filed is still standing in the field.
+   */
+  private typeFromScan = false;
+
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
   // re-reading the document.
@@ -684,6 +694,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.form.get('type')?.valueChanges
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((type) => {
+        // Any type change ends a scan's hold on the type: from here on it is
+        // the user's, and an expense reading leaves it alone. A scan's own
+        // type patch passes through here too; scanReceipt sets the hold again
+        // right after it.
+        this.typeFromScan = false;
         this.transactionType.set(type);
         // Reset category if it doesn't match the type
         const currentCategoryId = this.form.get('categoryId')?.value;
@@ -1153,6 +1168,19 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         this.form.patchValue({ note: primary.notes });
       }
 
+      // The type before the category, so the category is looked up on the
+      // side the row now sits on. An income reading always files its type. An
+      // expense reading files only over an income an earlier scan filed and
+      // the user has left alone, which is how a purchase scanned after a
+      // discarded refund takes that income back; it never overrides a type
+      // the user picked.
+      const standingType = this.form.get('type')?.value;
+      const typeWasFromScan = this.typeFromScan;
+      if ((primary.type === 'income' || typeWasFromScan) && primary.type !== standingType) {
+        this.form.patchValue({ type: primary.type });
+      }
+      this.typeFromScan = primary.type === 'income' && (standingType !== 'income' || typeWasFromScan);
+
       // Set category if suggested
       if (primary.suggestedCategoryId) {
         const category = this.filteredCategories().find(c => c.id === primary.suggestedCategoryId);
@@ -1214,6 +1242,10 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.suggestedCoordinates.set(null);
       this.scanCurrencyFellBack = false;
       this.scanCountry = null;
+      // typeFromScan is left as it was. The catch does not touch the type
+      // field, so the flag still says whose the standing type is: an income a
+      // scan filed may still be taken back by the next scan, and a type the
+      // user picked still may not.
     } finally {
       this.isScanning.set(false);
     }
@@ -1531,6 +1563,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // country claim dies with it for the same reason.
       this.printedLocationCountry = null;
       this.scanCountry = null;
+      // typeFromScan stays. The type the scan filed is still standing in the
+      // field, beside the amount and description it read, and only the
+      // user's own type change makes it theirs. Cleared here, a purchase
+      // scanned next could never take a discarded refund's income back, and
+      // would be saved as income.
     }
   }
 

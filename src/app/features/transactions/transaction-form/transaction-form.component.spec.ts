@@ -2261,6 +2261,163 @@ describe('TransactionFormComponent', () => {
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
       expect(dto.location).toEqual({ name: 'Bakery St' });
     });
+
+    describe('the type a scan read', () => {
+      const scan = (component: TransactionFormComponent) =>
+        (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+      /**
+       * Picks one photo into the empty strip, which starts a scan the pick
+       * does not wait for, and waits that scan out.
+       */
+      async function pickAndScan(component: TransactionFormComponent, name: string): Promise<void> {
+        const file = new File([name], `${name}.jpg`, { type: 'image/jpeg' });
+        await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
+        await until(() => !component.isScanning());
+      }
+
+      /** A refund as the on-device reader hands it back: income, its type graded, naming the goods' category. */
+      const refund = () =>
+        scanResult({ type: 'income', source: 'native', description: 'Refund', fieldConfidence: { type: 0.5 } });
+
+      it('scanReceipt files an income reading as income before the category, so the income category it named is applied', async () => {
+        strategy.processReceipt.and.resolveTo(scanResult({ type: 'income', suggestedCategoryId: 'salary' }));
+        const component = build().componentInstance;
+
+        await scan(component);
+
+        expect(component.form.get('type')?.value).toBe('income');
+        expect(component.transactionType()).toBe('income');
+        // Looked for among the expense categories, salary would not be found
+        // and the field would stay blank.
+        expect(component.form.get('categoryId')?.value).toBe('salary');
+      });
+
+      it('scanReceipt leaves the category empty when an income reading named one from the other side', async () => {
+        // The device's model is offered the expense catalogue alone, so a
+        // refund comes back naming the category of the goods going back. The
+        // required field asks instead; nothing is prefilled on the income side.
+        strategy.processReceipt.and.resolveTo(refund());
+        const component = build().componentInstance;
+
+        await scan(component);
+
+        expect(component.form.get('type')?.value).toBe('income');
+        expect(component.form.get('categoryId')?.value).toBe('');
+      });
+
+      it('a purchase scanned after a discarded refund takes back the income the refund filed', async () => {
+        // Discarding the photo leaves the refund's amount and description in
+        // the fields, and its type with them. Left there, the purchase scanned
+        // next would be saved as income.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        expect(component.form.get('type')?.value).withContext('the refund').toBe('income');
+
+        component.removePendingReceipt(0);
+        expect(component.form.get('type')?.value).withContext('after the discard').toBe('income');
+
+        await pickAndScan(component, 'purchase');
+        expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+        expect(component.form.get('categoryId')?.value).toBe('food');
+      });
+
+      it('a purchase scanned after two discarded refunds still takes back the income they filed', async () => {
+        // The second refund finds income already standing, filed by the first.
+        // It agrees with the field but the income is still a scan's, so the
+        // purchase after it may take it back.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        component.removePendingReceipt(0);
+        await pickAndScan(component, 'second-refund');
+        expect(component.form.get('type')?.value).withContext('the second refund').toBe('income');
+
+        component.removePendingReceipt(0);
+        expect(component.form.get('type')?.value).withContext('after the second discard').toBe('income');
+
+        await pickAndScan(component, 'purchase');
+        expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+        expect(component.form.get('categoryId')?.value).toBe('food');
+      });
+
+      it('a scan that fails between a discarded refund and a purchase leaves the refund\'s income for the purchase to take back', async () => {
+        // A pin: the failed scan never wrote the type, so the income standing
+        // after it is still the refund's.
+        spyOn(console, 'error');
+        strategy.processReceipt.and.resolveTo(refund());
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        component.removePendingReceipt(0);
+        strategy.processReceipt.and.rejectWith(new Error('unreadable'));
+        await pickAndScan(component, 'unreadable');
+        component.removePendingReceipt(0);
+        strategy.processReceipt.and.resolveTo(scanResult({ source: 'native' }));
+        await pickAndScan(component, 'purchase');
+
+        expect(component.form.get('type')?.value).toBe('expense');
+        expect(component.form.get('categoryId')?.value).toBe('food');
+      });
+
+      it('scanReceipt never lets an expense reading override a type the user picked', async () => {
+        // A pin: the form has never moved the type on a scan, and an expense
+        // reading still leaves a chosen income where it is.
+        const component = build().componentInstance;
+        component.form.get('type')!.setValue('income');
+
+        await scan(component);
+
+        expect(component.form.get('type')?.value).toBe('income');
+        // The purchase's category is not on the income side; the field asks.
+        expect(component.form.get('categoryId')?.value).toBe('');
+      });
+
+      it('a refund read over an income the user picked leaves the type theirs, so a purchase scanned next does not move it', async () => {
+        // A pin: the refund agreed with the user and changed nothing, so the
+        // scan has no income of its own to take back.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+        component.form.get('type')!.setValue('income');
+
+        await pickAndScan(component, 'refund');
+        component.removePendingReceipt(0);
+        await pickAndScan(component, 'purchase');
+
+        expect(component.form.get('type')?.value).toBe('income');
+      });
+
+      it('a type the user sets after a scan is theirs, so a purchase scanned after the refund is discarded does not move it', async () => {
+        // A pin: the user went to expense and back, which makes the income
+        // their answer rather than the refund's.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        component.form.get('type')!.setValue('expense');
+        component.form.get('type')!.setValue('income');
+        component.removePendingReceipt(0);
+        await pickAndScan(component, 'purchase');
+
+        expect(component.form.get('type')?.value).toBe('income');
+      });
+    });
   });
 
   describe('tags offered by the scan', () => {
