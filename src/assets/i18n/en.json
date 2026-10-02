@@ -1390,6 +1390,7 @@
     "removeTag": "Remove tag {{tag}}",
     "announceTagAdded": "Tag {{tag}} added to {{description}}",
     "announceTagRemoved": "Tag {{tag}} removed from {{description}}",
+    "announceCategoryRefiled": "Category for {{description}} changed to {{category}}",
     "addTag": "Add tag",
     "newTag": "New tag",
     "addRow": "Add a row",

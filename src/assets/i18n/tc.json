@@ -1258,6 +1258,7 @@
     "removeTag": "移除標籤 {{tag}}",
     "announceTagAdded": "已在「{{description}}」新增標籤 {{tag}}",
     "announceTagRemoved": "已從「{{description}}」移除標籤 {{tag}}",
+    "announceCategoryRefiled": "已將「{{description}}」的類別改為{{category}}",
     "addTag": "新增標籤",
     "newTag": "新標籤",
     "addRow": "新增一列",

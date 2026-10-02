@@ -40,6 +40,12 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { countryOptions } from '../../../../core/utils/country-options.utils';
 import {
+  CategoryRowType,
+  fallbackCategoryFor,
+  gradeCategorySuggestion,
+  UNRESOLVED_CATEGORY_CONFIDENCE,
+} from '../../../../core/utils/categorization.utils';
+import {
   amountIsUnfilled,
   blankImportRow,
   datedToday,
@@ -277,11 +283,64 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(transaction, { selected: checked });
   }
 
+  /**
+   * A flip is the reviewer's answer to the question the type's flag asked,
+   * so the type grade goes with it, the way a date answer takes the date's.
+   * The rest of the grade stays: the flip says nothing about the figure or
+   * the day.
+   *
+   * The category is held to the new side (`categoryOnSide`); left where it
+   * was, an expense category would be written onto an income row. A move is
+   * announced, because the chip it changed sits elsewhere on the row from
+   * the toggle that was pressed (ADR 0149). The catalogue entry's own name
+   * is what the chip shows, and the id stands in only if the catalogue does
+   * not hold the catch-all at all.
+   */
   toggleType(transaction: CategorizedImportTransaction): void {
+    const type = transaction.type === 'income' ? 'expense' : 'income';
+    const filed = this.categoryOnSide(transaction, type);
     this.replaceRow(transaction, {
-      type: transaction.type === 'income' ? 'expense' : 'income',
+      type,
+      fieldConfidence: withoutFieldConfidence(transaction.fieldConfidence, 'type'),
+      ...filed,
       ...EDITED_ON_CARD,
     });
+    if (filed.suggestedCategoryId !== transaction.suggestedCategoryId) {
+      const name = this.categories.find(c => c.id === filed.suggestedCategoryId)?.name;
+      this.announcer.announce(
+        this.translationService.t('import.announceCategoryRefiled', {
+          description: this.announceDescription(transaction),
+          category: name ? this.translationService.t(name) : filed.suggestedCategoryId,
+        })
+      );
+    }
+  }
+
+  /**
+   * The row's category, held to one side. One the side cannot hold moves to
+   * that side's catch-all, graded as an answer that resolved to nothing, and
+   * never above what the row had: a catch-all nobody categorized stays at
+   * its floor, and a hand-added row at 0. A category that serves both sides
+   * stays with its grade, and so does one the catalogue does not hold,
+   * since nothing shows it is on the wrong side. The doors file a row with
+   * the same grader, so the card cannot disagree with them about which side
+   * an id sits on.
+   */
+  private categoryOnSide(
+    row: CategorizedImportTransaction,
+    type: CategoryRowType
+  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
+    const graded = gradeCategorySuggestion(
+      { suggestedCategoryId: row.suggestedCategoryId, confidence: row.categoryConfidence },
+      type,
+      this.categories
+    );
+    return graded.suggestedCategoryId === row.suggestedCategoryId
+      ? { suggestedCategoryId: row.suggestedCategoryId, categoryConfidence: row.categoryConfidence }
+      : {
+          suggestedCategoryId: fallbackCategoryFor(type),
+          categoryConfidence: Math.min(row.categoryConfidence, UNRESOLVED_CATEGORY_CONFIDENCE),
+        };
   }
 
   /**

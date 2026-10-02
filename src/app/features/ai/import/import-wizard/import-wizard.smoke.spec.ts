@@ -32,7 +32,7 @@
 // way the money moved is followed from the OCR text to the document. The case
 // after it hands the card rows whose type the device doubted, built the way
 // the capture dialog builds them, so the flag on the type toggle is seen on
-// the real card.
+// the real card, and a flip there is followed into the documents it writes.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -1465,8 +1465,13 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // categorizes. The other is a purchase the model named a category for
       // over a total that printed as a credit, so its type is doubted too.
       // The card's suite renders the flag against a stubbed parent; only here
-      // does a graded row travel the camera's own hand-off onto the card.
+      // does a graded row travel the camera's own hand-off onto the card, and
+      // only here is a flip on it followed into the document it writes.
       stubReceiptSeams();
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
 
       // Dated today, so neither row asks about its date.
       const today = new Date();
@@ -1549,6 +1554,38 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           .withContext(`card ${index + 1}'s toggle is named by the flag first`)
           .toBeTrue();
       }
+
+      // The reviewer answers the purchase's flag by flipping it. The food the
+      // model named cannot ride onto an income row, so it moves to the income
+      // side's catch-all, graded as an answer that resolved to nothing.
+      toggle(1).click();
+      fixture.detectChanges();
+      const flipped = card().transactions[1];
+      expect({ type: flipped.type, category: flipped.suggestedCategoryId, grade: flipped.categoryConfidence })
+        .withContext('the flipped purchase is filed on the income side')
+        .toEqual({ type: 'income', category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+      expect(toggle(1).querySelector('.verify-flag')).withContext('the flip answers the flag').toBeNull();
+
+      // A type change re-runs the duplicate check, and Import does not wait
+      // for it.
+      await until(fixture, () => component.rechecksInFlight() === 0);
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs
+        .filter(d => !before.has(d.id))
+        .map(d => d.data())
+        .map(stored => ({
+          description: stored['description'],
+          type: stored['type'],
+          categoryId: stored['categoryId'],
+          graded: 'fieldConfidence' in stored
+        }))
+        .sort((a, b) => String(a.description).localeCompare(String(b.description)));
+      expect(landed).toEqual([
+        { description: 'Smoke doubted purchase', type: 'income', categoryId: 'other_income', graded: false },
+        { description: 'Smoke refund slip', type: 'income', categoryId: 'other_income', graded: false }
+      ]);
 
       history.replaceState({}, '');
       fixture.destroy();
