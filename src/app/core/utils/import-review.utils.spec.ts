@@ -618,6 +618,16 @@ describe('import-review.utils', () => {
       expect(part.fieldConfidence).toEqual({ date: 0.5 });
     });
 
+    it('keeps the type grade on both halves, since a split does not touch the type', () => {
+      // A pin: both halves stay on the side the reader doubted, so the
+      // question its flag asks is still open on each of them.
+      const [kept, part] = splitImportRow(
+        row({ type: 'income', fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }), 1.2, 'split_1'
+      )!;
+      expect(kept.fieldConfidence).toEqual({ date: 0.9, type: 0.5 });
+      expect(part.fieldConfidence).toEqual({ date: 0.9, type: 0.5 });
+    });
+
     it('gives the part its own date object, equal to the original\'s but not shared', () => {
       const original = row();
       const [, part] = splitImportRow(original, 1.2, 'split_1')!;
@@ -948,6 +958,44 @@ describe('import-review.utils', () => {
         source()
       )!;
       expect(merged.fieldConfidence).toEqual({ date: 0.5 });
+    });
+
+    it('drops the type grade when the two rows sit on opposite sides, since the net decides the type', () => {
+      // A refund folded into its purchase: whichever way the net points, it
+      // is the arithmetic that decided the side, not the reader's doubt.
+      const purchase = (amount: number) =>
+        target({ type: 'expense', amount, fieldConfidence: { amount: 0.8, date: 0.5, type: 0.3 } });
+      const refund = (amount: number) =>
+        source({ type: 'income', amount, fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } });
+
+      const stays = mergeImportRows(purchase(100), refund(30))!;
+      expect({ type: stays.type, grade: stays.fieldConfidence })
+        .withContext('the net stays on the purchase\'s side')
+        .toEqual({ type: 'expense', grade: { date: 0.5 } });
+
+      const turns = mergeImportRows(purchase(30), refund(100))!;
+      expect({ type: turns.type, grade: turns.fieldConfidence })
+        .withContext('the net turns to the refund\'s side')
+        .toEqual({ type: 'income', grade: { date: 0.5 } });
+
+      const intoRefund = mergeImportRows(
+        target({ type: 'income', amount: 100, fieldConfidence: { type: 0.5 } }),
+        source({ type: 'expense', amount: 30 })
+      )!;
+      expect(intoRefund.fieldConfidence)
+        .withContext('nothing left is the ungraded shape, not an empty grade')
+        .toBeUndefined();
+    });
+
+    it('keeps the target\'s type grade when both rows sit on one side, since the net decided nothing about the type', () => {
+      // A pin: two refunds net to income whatever their figures, so the
+      // reader's doubt about the target's side still stands, as its date
+      // grade does.
+      const merged = mergeImportRows(
+        target({ type: 'income', fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }),
+        source({ type: 'income', fieldConfidence: { type: 0.6 } })
+      )!;
+      expect(merged.fieldConfidence).toEqual({ date: 0.9, type: 0.5 });
     });
 
     it('refuses to merge rows in different currencies', () => {

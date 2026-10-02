@@ -22,6 +22,7 @@ import { AnalyticsEventName } from '../config/analytics-events';
 import { AnalyticsParams, AnalyticsTransport } from './analytics-transport';
 import { ScreenView } from './analytics-screen-view';
 import { AuthService } from './auth.service';
+import { PAGE_RELOAD } from './page-reload';
 import { SecurityLogService } from './security-log.service';
 import { ThemeService } from './theme.service';
 import { TranslationService } from './translation.service';
@@ -148,6 +149,9 @@ describe('Analytics opt-in (emulator smoke test)', () => {
         { provide: TranslationService, useValue: { syncFromDatabase: () => undefined } },
         { provide: ThemeService, useValue: { init: () => undefined } },
         { provide: SecurityLogService, useValue: { record: () => Promise.resolve() } },
+        // The real AuthService is built here, and a real reload would abort
+        // the whole Karma run. This suite signs in once and never switches.
+        { provide: PAGE_RELOAD, useValue: () => undefined },
         {
           provide: Router,
           useValue: {

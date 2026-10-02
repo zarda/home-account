@@ -8,6 +8,9 @@ session it belonged to has ended.
 
 The decision behind the identity rule below is
 [ADR 0052](ADR/0052-a-profile-read-may-only-write-to-the-session-that-started-it.md).
+The one behind reloading a page on an account change it did not start, and
+behind where the web keeps the session, is
+[ADR 0163](ADR/0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md).
 
 ## Three signals, three different claims
 
@@ -16,7 +19,7 @@ same thing or change at the same time.
 
 | Signal | Means | Written by |
 |---|---|---|
-| `firebaseUser` | the auth-state listener's most recent view of the session | the listener, and only the listener |
+| `firebaseUser` | the session the auth-state listener last installed; once the page has asked to reload, it stops moving | the listener, and only the listener |
 | `currentUser` | the profile the app is running on — stored, or an in-memory fallback | the listener, the retry effect, and the profile writers |
 | `profileDegraded` | that profile is the fallback, not the stored document | the listener and the retry effect |
 
@@ -33,14 +36,105 @@ identity rule below.
 
 ## The listener
 
-`setupAuthStateListener` registers one `onAuthStateChanged` callback and takes
+`setupAuthStateListener` registers one `onAuthStateChanged` callback. It
+first asks whether it has been handed an account change this page did not
+start ([below](#an-account-change-this-page-did-not-start)); if so, the page
+reloads and the callback returns having written nothing. Otherwise it takes
 three branches. With a user, it reads the profile document and installs it,
 clearing `profileDegraded`. If that read throws, it installs a fallback
 profile built from the Firebase user and raises `profileDegraded` with a
-notification. With no user, it clears both. Every branch ends by settling
-`isLoading`, which `waitForAuthLoading` in the route guards waits on for up to
-ten seconds. The listener is released when the injector that registered it is
-destroyed, as [ADR 0089](ADR/0089-the-auth-listener-dies-with-the-injector-that-registered-it.md) records.
+notification. With no user, it clears both. Every branch it runs ends by
+settling `isLoading`, which `waitForAuthLoading` in the route guards waits on
+for up to ten seconds. The one early return never strands the flag: a first
+delivery never takes it, and the first delivery's own callback is the one
+that settles `isLoading`, even when a change overtakes its profile read. The
+listener is released when the injector that registered it is destroyed, as
+[ADR 0089](ADR/0089-the-auth-listener-dies-with-the-injector-that-registered-it.md) records.
+
+## An account change this page did not start
+
+Every tab of an origin shares one stored session. When another tab signs in,
+signs out or moves to another account, the SDK hands that change to this
+page's listener like a change of its own, straight from one account to the
+next when the other tab moved that way. Nothing on the page would follow it:
+the per-account services reset only on the signed-out edge
+([ADR 0009](ADR/0009-shared-state-publishing-and-lifecycle.md)), the
+listeners a page holds itself never reset at all, and the guards only run on
+a navigation. So **once the listener has delivered its first state, a page
+reloads on any account change it did not start**:
+
+| Change | Where the reloaded page lands |
+|---|---|
+| another account (A→B) | the address it was on, as B |
+| a sign-out from elsewhere (A→null) | `/login`, through `authGuard` |
+| a sign-in from elsewhere (null→B) | the dashboard, through `publicGuard` |
+
+A real switch in another tab usually reloads this one twice, because the
+other tab signs out before its sign-in screen will open: to `/login` at the
+sign-out, then onto B's dashboard at the sign-in.
+
+**What never reloads:** the page's own sign-in (the popup on the web, the
+plugin's credential on a device), its own sign-out and its own account
+deletion; the first state the listener is handed; and the same uid arriving
+again, which only the registration's first emit can do, repeating a change
+that landed before it.
+
+**The baseline is private.** `reloadsForForeignChange` compares the incoming
+uid with `deliveredUid`, the last uid the listener was handed, undefined until
+the first delivery. Not with the `firebaseUser` signal, which specs write by
+hand and which stops moving once a reload has been asked for, and not with
+`isLoading`, which stays true across the first callback's read.
+
+**The page's own changes are marked.** `ownAccountChange` counts the page's
+SDK calls that move its account while they are in flight, around the SDK call
+alone: `signInWithPopup`, `signInWithCredential`, `firebaseSignOut` and
+`deleteUser`. Each of them hands its change to the listener before its own
+promise settles, so the marker is up when the listener asks; one that fails
+never reaches the listener, and a deletion the SDK refuses because the
+session is no longer valid signs out first, still under the marker. A count
+rather than a flag, so two sign-outs in flight cannot lower it for each
+other. `reauthenticate` is not marked: it cannot move the session to another
+account, and a session the SDK finds no longer valid there is ended by the
+SDK, which reloads the page to `/login` before anything has been deleted. A
+new SDK call that signs in, signs out or deletes the account goes through
+`ownAccountChange`, or the page will reload on its own change.
+
+**Once, and nothing after.** The page asks to reload at most once. From then
+on every delivery is refused: no `firebaseUser` write, no profile read for the
+incoming account, no `lastLoginAt` bump aimed at it. The signals stay as
+they stood, naming the account the page is leaving, or nobody, until it
+unloads.
+
+**Never on a device.** `PAGE_RELOAD` (`core/services/page-reload.ts`) is null
+there. A native app has no other tabs, so its only change from elsewhere is
+the SDK ending a session, on a disabled account or a revoked or expired
+token, and that runs the null branch as before, so `ReminderService` still
+sees the account leave and cancels its OS-booked reminders.
+
+**Specs provide the reload.** A real reload aborts a whole Karma run, so every
+TestBed that builds the real `AuthService` provides a `PAGE_RELOAD` double
+([testing.md](testing.md#a-real-reload-aborts-the-whole-run)).
+
+### Where the web keeps the session
+
+`appAuthFactory` (`app.config.ts`) keeps the web's session in local storage,
+with IndexedDB second: `[browserLocalPersistence, indexedDBLocalPersistence]`,
+and the popup resolver passed by hand, since `initializeAuth` adds none. The
+order is about timing. Another tab's change reaches this one by a storage
+event, the channel Firestore's multi-tab cache uses to report the refusals
+that change causes, so the page hears it is leaving the account ahead of
+them. IndexedDB raises no event and is polled every 800 ms, and with the
+session there a sign-out from another tab put three `[GlobalErrorHandler]`
+refusals, and the *Error* snackbar, on the departing page about 550 ms before
+its reload; with local storage first the same sign-out logged none. IndexedDB
+stays in the list because the SDK carries a session it finds there into local
+storage and removes the IndexedDB key, so the first load of this build keeps
+whoever was signed in. The device keeps local storage alone, as it always
+has.
+
+The browser check is [e2e.md](e2e.md)'s journey 80: two tabs of one origin
+on `/transactions`, another tab's swap, sign-out and sign-in, and nothing
+reported on the way out.
 
 ## The degraded profile
 
@@ -149,11 +243,14 @@ happened.
 
 The listener's two guards are written as `if`s rather than early returns on
 purpose: `isLoading` must still settle, or the route guards poll for their
-full ten seconds.
+full ten seconds. The callback's one early return comes before either of
+them, for an account change the page did not start, and a first delivery
+never takes it ([above](#an-account-change-this-page-did-not-start)).
 
 ## Sign-out
 
-`signOut()` awaits `firebaseSignOut` and clears `currentUser`. It does **not**
+`signOut()` awaits `firebaseSignOut`, inside the own-change marker so the
+page does not reload for it, and clears `currentUser`. It does **not**
 clear `firebaseUser` or `profileDegraded` — the listener's null branch owns
 those, so that one transition has one owner. This follows the convention
 [ADR 0039](ADR/0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md)
@@ -164,7 +261,9 @@ state is cleared from the service that owns it, on the null edge, not from
 It also means tightening `signOut()` would not have been a fix. Sign-out is
 not the only way a session ends — a revoked token and another tab's sign-out
 both arrive through the listener — and none of them help a read that is
-already in flight.
+already in flight. On the web neither runs the null branch any more: each is
+an account change the page did not start, and the page reloads instead. On a
+device a revoked token still runs it.
 
 ## What this does not cover
 
@@ -179,6 +278,27 @@ read was still in flight gets its own read straight away. What is left
 uncovered is the plain failure. A retry whose read rejects arms nothing and
 waits for the next connectivity flip — the deliberate price of not looping
 against a failure that has not changed, and still a wait.
+
+The reload on an account change the page did not start leaves these open
+([ADR 0163](ADR/0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md)):
+
+- **Nothing orders a departing page's refusals after its reload.** Firestore
+  hears a new token one notification before `AuthService`; the browser run
+  logged no departing error once the session moved to local storage, but no
+  code guarantees the order.
+- **A phone's browser polls.** On iOS and Android the SDK reads local storage
+  once a second instead of listening for the event, so a phone's tab can
+  still hear another tab's change after the refusals it causes.
+- **A tab still on the previous build** watches IndexedDB, hears the carried
+  session's key go, and shows nobody signed in until it reloads.
+- **A change that lands during the page's own sign-in, sign-out or deletion**
+  counts as the page's own.
+- **An account deleted elsewhere** reaches a page only at its next token
+  refresh, when the SDK ends the session.
+- **On a device, a session the SDK ends leaves the page mounted**, as it
+  always has, for the reminders' sake.
+- **A `beforeunload` prompt** that cancelled the reload would leave the page
+  refusing every later change. None exists today.
 
 ## When you write another write that crosses an await
 

@@ -197,6 +197,7 @@ the set-aside notice, an error, is assertive.
 | A tag removed | *Tag {tag} removed from {description}* | the card |
 | A country withdrawn | *Country removed from {description}* | the card |
 | A location removed | *Location removed from {description}* | the card |
+| A category moved to the other side's catch-all — by a flip of the row's type, or by a merge whose net turns the survivor to the other side ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)) | *Category for {description} changed to {category}* | the card |
 | A row removed — after *Remove this row?* when it carries work made on the card | *{description} removed* | the card |
 | A re-check flipping verdicts, the edited row's or any other's | *{count} duplicate verdicts updated* | the wizard |
 | A currency change that rounds amounts to nothing, one row or the selection | *{count} amounts round to nothing in {currency} — add them again* | the snackbar |

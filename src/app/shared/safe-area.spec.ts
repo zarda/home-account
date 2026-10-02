@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Component } from '@angular/core';
+import capacitorConfig from '../../../capacitor.config';
 
 /**
  * The shell keeps content clear of the notch, the home indicator and the
@@ -111,5 +112,14 @@ describe('safe-area insets', () => {
     // was edited without the other.
     expect(padding('.main-container:not(.with-bottom-nav)', 'Bottom')).toBeCloseTo(34, 0);
     expect(padding('.main-container.with-bottom-nav', 'Bottom')).toBeCloseTo(0, 0);
+  });
+
+  it('leaves the iOS web view no inset of its own to add', () => {
+    // With 'automatic' WKWebView kept the home-indicator inset out of the page
+    // while env() still reported it, so the nav's container painted its 34px
+    // above the 34px the web view had already taken and the bar floated a band
+    // above the screen's edge. 'never' hands the page the whole screen and
+    // leaves the variables as each inset's one owner.
+    expect(capacitorConfig.ios?.contentInset).toBe('never');
   });
 });

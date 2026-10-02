@@ -116,6 +116,67 @@ describe('CategorySuggestionComponent', () => {
     });
   });
 
+  describe('the row\'s side', () => {
+    // A category the user made can serve either side; no default does.
+    const sides: Category[] = [
+      ...mockCategories,
+      {
+        id: 'shared',
+        name: 'Shared',
+        icon: 'swap_horiz',
+        color: '#607D8B',
+        type: 'both',
+        isActive: true,
+        isDefault: false,
+        userId: 'user1',
+        order: 5
+      }
+    ];
+    const offered = () => component.sortedCategories().map(c => c.id);
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('categories', sides);
+      fixture.componentRef.setInput('suggestedCategoryId', 'food');
+    });
+
+    it('offers only the categories that fit an income row, and those that fit both', () => {
+      // The card's flip moves a category that no longer fits to the income
+      // side's catch-all; a menu that still listed food would let the
+      // reviewer pick it straight back.
+      fixture.componentRef.setInput('rowType', 'income');
+      TestBed.tick();
+
+      expect(offered()).toEqual(['salary', 'shared']);
+    });
+
+    it('offers only the categories that fit an expense row', () => {
+      fixture.componentRef.setInput('rowType', 'expense');
+      TestBed.tick();
+
+      expect(offered()).toEqual(['food', 'shared', 'transport']);
+    });
+
+    it('offers every side when the row\'s type is not given', () => {
+      // A pin: a host that never says which side its row is on gets the menu
+      // it always had.
+      TestBed.tick();
+
+      expect(offered()).toEqual(['food', 'salary', 'shared', 'transport']);
+    });
+
+    it('still names a held category that does not fit, rather than calling it Unknown', () => {
+      // A pin: only the menu is narrowed. A category the row already holds is
+      // looked up in the whole list, so one from the other side is still
+      // named on the chip, never "Unknown", until the reviewer picks another.
+      fixture.componentRef.setInput('rowType', 'income');
+      TestBed.tick();
+
+      expect(component.categoryName()).toBe('Food & Dining');
+      expect(component.categoryIcon()).toBe('restaurant');
+      expect(component.categoryColor()).toBe('#FF5722');
+    });
+  });
+
   describe('categoryName', () => {
     it('should return category name when found', () => {
       fixture.componentRef.setInput('categories', mockCategories);

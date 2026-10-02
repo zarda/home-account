@@ -1,4 +1,5 @@
 import { Injectable, signal, computed } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 
 /** A connection that cannot answer within this counts as unusable. */
 const REACHABILITY_TIMEOUT_MS = 4000;
@@ -96,6 +97,12 @@ export class PwaService {
   }
 
   private checkStandaloneMode(): boolean {
+    // The native app is installed by definition, and its WKWebView fails
+    // every check below: the standalone display-mode query does not match
+    // there and navigator.standalone is false. Read from those alone, the
+    // camera told people already in the app to add it to their Home Screen.
+    if (Capacitor.isNativePlatform()) return true;
+
     // Check various ways an app might be in standalone mode
     return (
       window.matchMedia('(display-mode: standalone)').matches ||

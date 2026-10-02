@@ -16,8 +16,11 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
 import { AuthService } from './auth.service';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
+import { AppleReceiptExtraction } from '../plugins/apple-intelligence.plugin';
+import { VERIFY_FIELD_THRESHOLD } from '../../models';
 import {
   gradeCategorySuggestion,
+  fallbackCategoryFor,
   FALLBACK_CATEGORY_ID,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
@@ -65,8 +68,9 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
   // resolving an answer onto it, would resurrect a category the user removed.
   const DELETED_ID = 'food_restaurants';
   const DELETED_NAME = 'Restaurants';
-  // An income default, beside the expense-only custom and deleted ones: every
-  // scan this pipeline reads is a purchase, never a deposit.
+  // An income default, beside the expense-only custom and deleted ones: the
+  // model is offered the expense side alone, even for a refund, whose slip
+  // lists the goods going back.
   const INCOME_ID = 'employment_salary';
   const INCOME_NAME = 'Salary';
 
@@ -88,11 +92,11 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
 
   const imageFile = () => new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
 
-  /** Run a scan whose foundation-model answer names `category`. */
-  const scanAnswering = async (category: string) => {
+  /** Run a scan whose foundation-model answer names `category`, and `kind` when it gives a verdict. */
+  const scanAnswering = async (category: string, kind?: AppleReceiptExtraction['kind']) => {
     appleMock.isModelAvailable.and.returnValue(true);
     appleMock.parseReceiptText.and.resolveTo({
-      merchant: 'Harbour Supplies', date: '2026-01-15',
+      kind, merchant: 'Harbour Supplies', date: '2026-01-15',
       amount: 120.5, currency: 'USD', category, details: '',
     });
     return (await service.processImage(imageFile())).transactions[0];
@@ -236,6 +240,29 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     const transaction = await scanAnswering(INCOME_NAME);
 
     expect(transaction.suggestedCategoryId).toBeUndefined();
+  });
+
+  /**
+   * A refund slip lists the goods going back, so the model names an expense
+   * entry even when it reads a refund — here one only this account knows. The
+   * row is income, and the grade the camera's converter and the offline drain
+   * apply refuses the expense entry against the live catalog and files the
+   * row on the income side's catch-all, at the grade that asks for a second
+   * look.
+   */
+  it('files a refund the model read under other_income for review, refusing the category it named', async () => {
+    // The OCR text prints the total plain: the model's verdict alone decides.
+    const transaction = await scanAnswering(CUSTOM_NAME, 'refund');
+    const categories = TestBed.inject(CategoryService).categories();
+
+    expect(transaction.type).toBe('income');
+    expect(transaction.fieldConfidence?.type).toBe(0.5);
+    expect(transaction.fieldConfidence!.type!).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+    expect(transaction.suggestedCategoryId).toBe(CUSTOM_ID);
+    expect(gradeCategorySuggestion(transaction, transaction.type, categories)).toEqual({
+      suggestedCategoryId: fallbackCategoryFor('income'),
+      categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE,
+    });
   });
 
   it('grades an answer the live catalog cannot place for review, not by how well Vision read', async () => {

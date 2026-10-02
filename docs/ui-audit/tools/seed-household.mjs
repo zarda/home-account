@@ -33,7 +33,11 @@
 // Writes the IndexedDB session records for the three to the path given, as
 // { alex, sam, kai }; each record is what the Auth SDK keeps in
 // firebaseLocalStorageDb/firebaseLocalStorage for the demo app, so putting
-// one there and loading the app signs that user in.
+// one there and loading the app signs that user in. The web app keeps its
+// session in local storage first (ADR 0163): that load carries the record
+// across, and the same record goes into local storage directly as its value,
+// stringified, under its fbase_key, which is how the e2e protocol swaps the
+// account on a page that is already open.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

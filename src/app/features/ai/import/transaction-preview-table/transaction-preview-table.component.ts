@@ -26,6 +26,7 @@ import {
   currencyDecimalPlaces,
   CurrencyInfo,
   CurrencySuggestionReason,
+  FieldConfidence,
   roundToMinorUnit,
   VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
@@ -38,6 +39,12 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { countryOptions } from '../../../../core/utils/country-options.utils';
+import {
+  CategoryRowType,
+  fallbackCategoryFor,
+  gradeCategorySuggestion,
+  UNRESOLVED_CATEGORY_CONFIDENCE,
+} from '../../../../core/utils/categorization.utils';
 import {
   amountIsUnfilled,
   blankImportRow,
@@ -276,11 +283,84 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(transaction, { selected: checked });
   }
 
+  /**
+   * A flip is the reviewer's answer to the question the type's flag asked,
+   * so the type grade goes with it, the way a date answer takes the date's.
+   * The rest of the grade stays: the flip says nothing about the figure or
+   * the day.
+   *
+   * The category is held to the new side (`categoryOnSide`); left where it
+   * was, an expense category would be written onto an income row. A move is
+   * announced, because the chip it changed sits elsewhere on the row from
+   * the toggle that was pressed (ADR 0149).
+   */
   toggleType(transaction: CategorizedImportTransaction): void {
+    const type = transaction.type === 'income' ? 'expense' : 'income';
+    const filed = this.categoryOnSide(transaction, type);
     this.replaceRow(transaction, {
-      type: transaction.type === 'income' ? 'expense' : 'income',
+      type,
+      fieldConfidence: withoutFieldConfidence(transaction.fieldConfidence, 'type'),
+      ...filed,
       ...EDITED_ON_CARD,
     });
+    if (filed.suggestedCategoryId !== transaction.suggestedCategoryId) {
+      this.announceCategoryRefiled(transaction, filed.suggestedCategoryId);
+    }
+  }
+
+  /**
+   * Says that a row's category moved to the other side's catch-all, for the
+   * two edits that can move it: a flip on the toggle and a merge whose net
+   * points the other way. The catalogue entry's own name is what the chip
+   * shows, and the id stands in only if the catalogue does not hold the
+   * catch-all at all.
+   */
+  private announceCategoryRefiled(row: CategorizedImportTransaction, categoryId: string): void {
+    const name = this.categories.find(c => c.id === categoryId)?.name;
+    this.announcer.announce(
+      this.translationService.t('import.announceCategoryRefiled', {
+        description: this.announceDescription(row),
+        category: name ? this.translationService.t(name) : categoryId,
+      })
+    );
+  }
+
+  /**
+   * The row's category, held to one side. One the side cannot hold moves to
+   * that side's catch-all, graded as an answer that resolved to nothing, and
+   * never above what the row had: a catch-all nobody categorized stays at
+   * its floor, and a hand-added row at 0. A category that serves both sides
+   * stays with its grade, and so does one the catalogue does not hold,
+   * since nothing shows it is on the wrong side. The doors file a row with
+   * the same grader, so the card cannot disagree with them about which side
+   * an id sits on.
+   */
+  private categoryOnSide(
+    row: CategorizedImportTransaction,
+    type: CategoryRowType
+  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
+    const graded = gradeCategorySuggestion(
+      { suggestedCategoryId: row.suggestedCategoryId, confidence: row.categoryConfidence },
+      type,
+      this.categories
+    );
+    return graded.suggestedCategoryId === row.suggestedCategoryId
+      ? { suggestedCategoryId: row.suggestedCategoryId, categoryConfidence: row.categoryConfidence }
+      : {
+          suggestedCategoryId: fallbackCategoryFor(type),
+          categoryConfidence: Math.min(row.categoryConfidence, UNRESOLVED_CATEGORY_CONFIDENCE),
+        };
+  }
+
+  /**
+   * The type toggle's name: the type it shows, led by the flag's sentence
+   * when the reader doubted it. The mark rides on the button's own name, as
+   * it does on the date and currency chips, because that name replaces the
+   * one the flag icon inside would otherwise contribute.
+   */
+  typeToggleLabel(row: CategorizedImportTransaction): string {
+    const label = this.translationService.t(row.type === 'income' ? 'common.income' : 'common.expense');
+    return joinSentences(this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '', label);
   }
 
   updateCategory(transaction: CategorizedImportTransaction, categoryId: string): void {
@@ -726,7 +806,7 @@ export class TransactionPreviewTableComponent {
    * model to ask, and flagging every one of their rows would train the user to
    * ignore the marker.
    */
-  needsVerification(transaction: CategorizedImportTransaction, field: 'amount' | 'date'): boolean {
+  needsVerification(transaction: CategorizedImportTransaction, field: keyof FieldConfidence): boolean {
     const confidence = transaction.fieldConfidence?.[field];
     return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
   }
@@ -747,11 +827,19 @@ export class TransactionPreviewTableComponent {
    * except a date whose row already carries `dateAssumed`: the shown value
    * is "now", not a reading, so a confidence percentage would describe a
    * date that isn't there anymore. The assumed wording takes over instead.
+   *
+   * The type has a sentence of its own and no percentage. Its grade is the
+   * device reader's policy rather than a measurement — every income verdict
+   * it reaches is graded under the bar so that the reviewer is asked (ADR
+   * 0162) — and a percentage would report a reading nothing took.
    */
   verificationTooltip(
     transaction: CategorizedImportTransaction,
-    field: 'amount' | 'date'
+    field: keyof FieldConfidence
   ): string {
+    if (field === 'type') {
+      return this.translationService.t('import.verifyType');
+    }
     if (field === 'date' && transaction.dateAssumed) {
       return this.dateAssumedTooltip(transaction);
     }
@@ -1391,6 +1479,15 @@ export class TransactionPreviewTableComponent {
    * from the batch by then is the stale-commit no-op commitSplit models
    * with its indexOf guard.
    *
+   * A net that points the other way puts the survivor on the other side,
+   * and its category is held there as a flip holds it (`categoryOnSide`);
+   * mergeImportRows keeps the target's category, having no catalogue to
+   * judge it by. A move is announced, as a flip's is, because the chip it
+   * changed sits on the survivor while the menu was opened from the row
+   * that left. A net that stays on the target's side leaves the category
+   * as it was: the merge did not move the row, so the category is no more
+   * the merge's to judge than it was before.
+   *
    * row's own trigger leaves with it, so focus has nowhere on row to return
    * to; it goes to the survivor instead — its own merge trigger when a third
    * row still shares its currency, its description trigger when this merge
@@ -1404,15 +1501,19 @@ export class TransactionPreviewTableComponent {
     if (!source || !dest || source === dest) return;
     const folded = mergeImportRows(dest, source);
     if (!folded) return;
+    const filed = folded.type === dest.type ? undefined : this.categoryOnSide(folded, folded.type);
     // mergedReceiptIds records a merge only between two receipts' rows; the
     // mark records every one. The survivor is not the row that was refused,
     // so it keeps neither the reason nor the count of failed attempts —
     // carried, the count would set it aside on its own first failure.
-    const merged: CategorizedImportTransaction = { ...folded, ...EDITED_ON_CARD, importAttempts: undefined };
+    const merged: CategorizedImportTransaction = { ...folded, ...filed, ...EDITED_ON_CARD, importAttempts: undefined };
     this.forgetRow(source.id);
     this.transactions = this.transactions.filter(t => t !== source).map(t => t === dest ? merged : t);
     this.emitChanges();
     this.cdr.markForCheck();
+    if (filed && filed.suggestedCategoryId !== folded.suggestedCategoryId) {
+      this.announceCategoryRefiled(merged, filed.suggestedCategoryId);
+    }
     this.focusWhenRendered(this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit'));
   }
 

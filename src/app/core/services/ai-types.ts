@@ -16,15 +16,18 @@ export interface ProcessedTransaction {
   suggestedCategoryId?: string;
   receiptId?: number;
   /**
-   * How sure the reader was that it read the amount and the date correctly.
+   * How sure the reader was that it read the amount and the date correctly,
+   * and, where the receipt spoke to it, the type.
    *
    * Distinct from `confidence`, which is a coarse "did this look like a
    * receipt at all" score. The regex parser reports both: the amount's
    * evidence tier — cut further when the winning figure was a tendered-cash
    * figure demoted to the printed total — and the date's, zero when nothing
-   * matched (including a match the future-date guard rejected). Absent
-   * entirely when the source has no reading to grade at all, as a CSV row
-   * does not.
+   * matched (including a match the future-date guard rejected). The
+   * on-device readers also grade the type wherever something on the receipt
+   * spoke to which way the money moved, and leave it out for a purchase
+   * nothing contradicts; the cloud readers never grade it. Absent entirely
+   * when the source has no reading to grade at all, as a CSV row does not.
    */
   fieldConfidence?: FieldConfidence;
   /**

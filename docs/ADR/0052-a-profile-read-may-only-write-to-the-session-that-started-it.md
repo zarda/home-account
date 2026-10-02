@@ -1,6 +1,23 @@
 # 52. A profile read may only write to the session that started it
 
-**Status:** Accepted, implemented · **Date:** 2026-08-17 · **Issues:** #264
+**Status:** Accepted, implemented; amended by
+[0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md)
+· **Date:** 2026-08-17 · **Issues:** #264
+
+**Amended by
+[0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md).**
+The identity rule below stands — every write across an await names its
+session, asked of the SDK and compared by uid — but two of its sentences do
+not. *"The listener's guards are `if`s, not early returns"* gains one
+exception: the callback now opens by returning early for an account change
+the page did not start, once it has asked to reload. A first delivery never
+takes that return, and the first delivery's own callback is the one that
+settles `isLoading`, on its `if`-guarded tail, even when a change overtakes
+its read, so the route guards still never wait out their ten seconds. And
+*"a revoked token and another tab's sign-out arrive only through the
+listener's null branch"* now holds only on a device: on the web either one
+reloads the page instead. Neither helps a read already in flight, which is
+still why tightening `signOut()` was no fix.
 
 See [0009](0009-shared-state-publishing-and-lifecycle.md) for the per-account
 state lifecycle this sits underneath and

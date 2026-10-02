@@ -691,6 +691,24 @@ describe('AIImportService', () => {
         ['other_expense', UNRESOLVED_CATEGORY_CONFIDENCE],
       ]);
     });
+
+    it('carries an on-device type grade to the review card beside the other grades', () => {
+      // A pin: the converter builds the row field by field and already copies
+      // the grades whole, and this keeps the type grade the card flags among
+      // them. An on-device read, one receipt per photo: a refund slip the
+      // regex lane filed as income, nothing categorized.
+      const [row] = service.convertStrategyResultToCategories(processed([
+        {
+          source: 'native', type: 'income', categoryAttempted: false,
+          fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 },
+        },
+      ]));
+
+      expect(row.type).toBe('income');
+      expect(row.fieldConfidence).toEqual({ amount: 0.8, date: 0.9, type: 0.5 });
+      expect([row.suggestedCategoryId, row.categoryConfidence])
+        .toEqual(['other_income', UNCATEGORIZED_CATEGORY_CONFIDENCE]);
+    });
   });
 
   describe('remembered categories', () => {

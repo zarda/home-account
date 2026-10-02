@@ -35,6 +35,7 @@ import { AccessibilityService } from './accessibility.service';
 import { SecurityLogService } from './security-log.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
+import { PAGE_RELOAD } from './page-reload';
 
 /**
  * First-sign-in user document built from the Firebase auth profile.
@@ -78,6 +79,7 @@ export class AuthService {
   private securityLog = inject(SecurityLogService);
   private notifications = inject(NotificationService);
   private pwa = inject(PwaService);
+  private reloadPage = inject(PAGE_RELOAD);
 
   // Signals for reactive state
   currentUser = signal<User | null>(null);
@@ -98,6 +100,21 @@ export class AuthService {
    * the new session its own read without waiting on a connectivity flip.
    */
   private retryArm = signal(0);
+
+  /**
+   * The uid the auth-state listener was last handed, null for a signed-out
+   * state; undefined until its first delivery. A private baseline rather than
+   * the firebaseUser signal, which stops moving once a reload has been asked
+   * for and which specs write by hand.
+   */
+  private deliveredUid: string | null | undefined = undefined;
+  /** Set once the page has asked to reload; it asks at most once. */
+  private reloadRequested = false;
+  /**
+   * This page's own account changes still in flight (ownAccountChange). A
+   * change the listener is handed while one is out is the page's own.
+   */
+  private ownChangesInFlight = 0;
 
   // Computed signals
   isAuthenticated = computed(() => !!this.currentUser());
@@ -205,6 +222,13 @@ export class AuthService {
     // Run within injection context to prevent AngularFire warnings
     runInInjectionContext(this.injector, () => {
       const unsubscribe = onAuthStateChanged(this.auth, async (firebaseUser) => {
+        // The one early return in this callback (ADR 0163 amends ADR 0052's
+        // "ifs, not early returns"). A first delivery never takes it, and the
+        // first delivery's own callback is the one that settles isLoading, on
+        // its if-guarded tail below, even when a change overtakes its profile
+        // read.
+        if (this.reloadsForForeignChange(firebaseUser)) return;
+
         this.firebaseUser.set(firebaseUser);
 
         if (firebaseUser) {
@@ -292,6 +316,70 @@ export class AuthService {
     return this.auth.currentUser?.uid === uid;
   }
 
+  /**
+   * Reload the page for an account change it did not start, and say whether
+   * it did (ADR 0163).
+   *
+   * Another tab on the origin moves the shared session straight from one
+   * account to another, or signs it out or in, and the SDK hands that change
+   * to this listener like any other. The per-account services reset only on
+   * the signed-out edge, and the listeners a page holds itself never reset at
+   * all, so the page would keep serving the account it was opened for under
+   * the next one's session. A sign-out or sign-in from elsewhere leaves the
+   * page where it stands too, because the guards only run on a navigation.
+   * A reload rebuilds every service and listener for whoever is signed in
+   * now, and lets the guards place the page.
+   *
+   * Nothing reloads for the page's own sign-in, sign-out or deletion (each
+   * runs inside ownAccountChange), for the first state the listener is
+   * handed, for the same uid arriving again, or on a device, where the token
+   * is null (page-reload.ts). Compared by uid against the last delivered one,
+   * so a fresh FirebaseUser for the same person is the session continuing.
+   * Once the reload has been asked for, every later delivery is refused too:
+   * nothing of the incoming account is written on a page about to be
+   * replaced, not the signal, not a profile read, not a lastLoginAt bump.
+   */
+  private reloadsForForeignChange(next: FirebaseUser | null): boolean {
+    if (this.reloadRequested) return true;
+    const uid = next?.uid ?? null;
+    const previous = this.deliveredUid;
+    this.deliveredUid = uid;
+    if (
+      !this.reloadPage ||
+      previous === undefined ||
+      previous === uid ||
+      this.ownChangesInFlight > 0
+    ) {
+      return false;
+    }
+    this.reloadRequested = true;
+    this.reloadPage();
+    return true;
+  }
+
+  /**
+   * Run one of this page's own SDK calls that moves its account: a sign-in, a
+   * sign-out, the account's deletion. Marked around the SDK call alone.
+   *
+   * Every one of those calls hands the change to the auth-state listener
+   * before its own promise settles, so the marker is always up when the
+   * listener asks. A sign-in or sign-out that fails never reaches the
+   * listener. A deletion the SDK refuses because the session is no longer
+   * valid (a disabled account, a revoked token) signs the session out first
+   * and only then rejects, and that sign-out is still under the marker. The
+   * marker comes down either way. A count rather than a flag, so two
+   * sign-outs in flight at once (the header's and the settings page's)
+   * cannot lower it for each other.
+   */
+  private async ownAccountChange<T>(change: () => Promise<T>): Promise<T> {
+    this.ownChangesInFlight++;
+    try {
+      return await change();
+    } finally {
+      this.ownChangesInFlight--;
+    }
+  }
+
   private async getOrCreateUser(firebaseUser: FirebaseUser): Promise<User> {
     const userRef = doc(this.firestore, 'users', firebaseUser.uid);
     const userSnap = await getDoc(userRef);
@@ -349,7 +437,7 @@ export class AuthService {
     provider.addScope('email');
     provider.addScope('profile');
 
-    const result = await signInWithPopup(this.auth, provider);
+    const result = await this.ownAccountChange(() => signInWithPopup(this.auth, provider));
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
     this.recordSignIn(user.id);
@@ -368,7 +456,7 @@ export class AuthService {
 
     // Create Firebase credential and sign in
     const credential = GoogleAuthProvider.credential(idToken);
-    const result = await signInWithCredential(this.auth, credential);
+    const result = await this.ownAccountChange(() => signInWithCredential(this.auth, credential));
 
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
@@ -442,7 +530,7 @@ export class AuthService {
 
   async signOut(): Promise<void> {
     try {
-      await firebaseSignOut(this.auth);
+      await this.ownAccountChange(() => firebaseSignOut(this.auth));
       this.currentUser.set(null);
     } catch (error) {
       console.error('Sign out error:', error);
@@ -457,6 +545,12 @@ export class AuthService {
    * destructive, so a failure leaves the account untouched. Reauthenticating
    * with a different Google account than the session's rejects with
    * auth/user-mismatch, again before anything is deleted.
+   *
+   * Not run inside ownAccountChange: a reauthentication cannot move the
+   * session to another account. When the SDK finds the session itself no
+   * longer valid (a disabled account, a revoked token) it ends it, and on the
+   * web that sign-out reloads the page like any other it did not start —
+   * still before anything is deleted, because this runs first.
    */
   async reauthenticate(): Promise<void> {
     const firebaseUser = this.auth.currentUser;
@@ -490,7 +584,7 @@ export class AuthService {
     const firebaseUser = this.auth.currentUser;
     if (!firebaseUser) throw new Error('No authenticated user');
 
-    await deleteUser(firebaseUser);
+    await this.ownAccountChange(() => deleteUser(firebaseUser));
     if (Capacitor.isNativePlatform()) {
       await FirebaseAuthentication.signOut();
     }

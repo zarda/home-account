@@ -319,6 +319,14 @@ indirection is what makes the behaviour testable: `env()` cannot be overridden
 from a stylesheet, a custom property can, and these insets are 0px on every
 machine CI runs on. `safe-area.spec.ts` depends on it.
 
+On iOS the web view adds no inset of its own: `capacitor.config.ts` sets
+`ios.contentInset: 'never'`. With `'automatic'` WKWebView also kept the
+home-indicator inset out of the page while `env()` still reported it, so the
+bottom nav's container painted its 34 pt above 34 pt the web view had already
+taken, and the bar floated a blank band above the screen's edge. Karma has no
+notch, so `safe-area.spec.ts` pins the setting itself; the geometry was read on
+the iPhone 17 simulator.
+
 **Check:** every `[0-9]vh` is immediately followed by a `dvh` line; every
 `position: fixed` block references a `--safe-*` or is nested inside one that
 does.
@@ -462,7 +470,7 @@ swipe keeps a non-gesture route — the pinned menu.
 | `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px, bounded hard at 88px. Also positional, since containment was not enough: the menu pins to the row's top-right corner, the tile stays on the body's line, the strip stays one line and ends left of the menu, the dashboard shape reclaims the reserved corner, and the insight drill-down row does not truncate |
 | `features/ai/import/transaction-preview-table/transaction-preview-table.overflow.spec.ts` | the import review card at 288px with everything a receipt can put on it: the amount stays whole beside the currency menu, the fallen-back marker, the suggestion chips and their remove buttons stay reachable, and the bulk currency button wraps rather than shoving the count badge off the header. Also every control the review step added — the date button and the currency chip keep their 6px gap along whichever axis the meta row wrapped onto, and the picker they open has no box in that row at all; the inline amount and description editors stay inside the clip with their triggers' width; the question chip's Keep and calendar halves are 40px controls that never reach into the row of chips below; and the duplicate badge's overrule is a 40px control on the badge that stays clear of the description. Also the controls that add rather than correct — the **Add tag** trigger, which is on every row, and its editor stay inside the clip (both probe rows carry a location, so **Add location**, which stands only where nothing was suggested, is not measured here), the **Add a row** control sits under the list and outside the rows' own scroller, the location chip's name and country reach 40px through an overhang the way its removal does, and (the file's one measurement taken at a desktop width, because at 288px the chips never stand beside it) the add trigger does not carry the chips sharing its line up to its own height. Also the two controls that change how many rows there are — **Split**, whose trigger stands on a filled row worth at least two of its currency's minor units and whose open editor is measured on the widest row the way the amount and description editors are, and **Merge into…**, whose trigger renders only once two rows share a currency, so its case first overrules the second fixture row's flag through the badge's own control and re-denominates the row through its own currency menu (real edits, leaving the standing fixture and the offer chips it pins untouched) and then measures both triggers inside the clip, at 40px, and clear of the chips' hit boxes below them — by their own boxes, since an add trigger has no `::after` overhang for the chips' pass to read. Also the two things the 288px fixture cannot see on its own — the category suggestion chip measured on the 240px card journey 10 recorded (a 262px clip less the container's border and the list's padding), carrying a long real category name rather than the fixture's *Unknown* fallback, with the chip inside the clip, the card's `scrollWidth` inside its `clientWidth`, and the label's own `scrollWidth` inside its box at a font size no smaller than the 12px floor — and, at that width, the caret's computed `display` reading `none` while the desktop case reads it standing, with the label's own text measured at no more than three lines (five with the caret) by `Range.getClientRects()`. That pair is readable in a probe only because the rule is a container query on the card: a viewport query reads Karma's window, never a card clipped narrower than it, so the probe could neither see it nor be trusted when it did; and every chip hit box and add trigger measured a second time under `dir="rtl"` on the clip, each inset checked finite before it is compared, with the location chip's name trigger and country button read directly — the pair whose overhangs would meet if the insets were still physical |
 | `shared/directives/swipe-reveal.directive.spec.ts` | the gesture: axis lock, strip exclusion, click suppression — the click after a drag a key was held down through included — one open row app-wide, snap and fling, pointercancel recovery, a disabled directive doing nothing, and the sticky `+N` staying pinned on a translated surface. Also the ways out of an open drawer, none of which activates the row: a tap on the surface, Escape from the row button, a pointerdown outside, and Enter on the row button, which puts the drawer back and leaves the next Enter to activate. `transaction-row.component.spec.ts` pins the same Enter stand-down on the real row, and Escape from any control in it |
-| `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset |
+| `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset, and the iOS web view never a second one |
 | `features/transactions/add-affordance.spec.ts` | the transactions header's add FAB keeps its 48px while the period totals sharing its row yield — and, at every width, exactly one add affordance is on screen |
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |
 | `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
@@ -482,6 +490,19 @@ smoke spec through `npm run smoke`, and the source checks through
 `npm run truncation:check` and `npm run grid:check`. The harness needs a dev server and the emulators,
 so it is a before/after instrument for UI pull requests, like
 `capture-dialogs.mjs`.
+
+**The import review at phone width has no row here.** Below 600px the wizard
+trims the 24px a side Material pads each step's content with
+(`import-wizard.component.scss`), which on top of the wizard's own 16px had
+left a review card at 375px a 141px column, every chip on a line of its own.
+It keeps 5px, the room a focus ring needs inside the step's clip, and takes
+those back out of its own gutter with a negative margin, so the card is 273px
+and its content 189px. That rule is a viewport query and Karma's window is
+756px, so no spec can apply it — the review card's 288px probe above clips
+the card itself and never goes through the stepper.
+Journey 79's 375px step in [e2e.md](e2e.md) is what measures it
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
+where the browser run found it).
 
 ## Using `appFitText`
 

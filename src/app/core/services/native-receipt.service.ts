@@ -4,7 +4,7 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
-import { parseReceiptOcrText } from './receipt-text-parser';
+import { ParsedReceiptText, parseReceiptOcrText } from './receipt-text-parser';
 import { buildCategoryPromptCatalog, categoryFitsType, matchCategoryName } from '../utils/categorization.utils';
 import {
   printedLocationSlot,
@@ -24,6 +24,53 @@ import { VERIFY_FIELD_THRESHOLD, roundToMinorUnit } from '../../models';
  * accepted, and no second source to weigh against it.
  */
 const MODEL_READ_GRADE = 0.8;
+
+/** The model read a refund, and the same total prints as a negative. */
+const AGREED_INCOME_GRADE = 0.6;
+
+/** The model read a refund, and the print neither backs nor contradicts it. */
+const MODEL_INCOME_GRADE = 0.5;
+
+/** The model read a purchase, and the same total prints as a negative. */
+const DISPUTED_TYPE_GRADE = 0.3;
+
+/**
+ * Which way the money moved, and the grade the row carries for it (ADR 0162).
+ * Two witnesses speak to it: the on-device model's `kind`, read from the
+ * receipt's words, and the marks the receipt prints on its total as the text
+ * parser reports them — passed only when they are the marks on the row's own
+ * total. Neither is a measurement, so every grade sits under
+ * VERIFY_FIELD_THRESHOLD: every income row a device reads is flagged for a
+ * look wherever it is reviewed, and so is an expense the receipt argued with.
+ * A refund the print backs grades higher than one it is silent on, and a
+ * purchase the model read stays an expense when its total prints as a
+ * negative, flagged. A purchase nothing contradicts carries no grade at all.
+ *
+ * `kind` is compared strictly: anything but the two values the model is
+ * offered counts as no verdict, as on the regex lane, where no model answers,
+ * and leaves the print to decide alone. The sign of a figure is never a
+ * witness (ADR 0147).
+ */
+function typeVerdict(
+  kind: unknown,
+  printed?: Pick<ParsedReceiptText, 'direction' | 'directionConfidence'>
+): { type: 'income' | 'expense'; grade?: number } {
+  const marked = printed?.direction === 'credit';
+  if (kind === 'refund') {
+    return { type: 'income', grade: marked ? AGREED_INCOME_GRADE : MODEL_INCOME_GRADE };
+  }
+  if (printed && marked) {
+    return kind === 'purchase'
+      ? { type: 'expense', grade: DISPUTED_TYPE_GRADE }
+      : { type: 'income', grade: printed.directionConfidence };
+  }
+  // The same figure printed both marked and unmarked: a purchase still, but
+  // one the print argued with.
+  if (printed && printed.directionConfidence > 0) {
+    return { type: 'expense', grade: printed.directionConfidence };
+  }
+  return { type: 'expense' };
+}
 
 /**
  * On-device receipt pipeline: Vision OCR recognizes the text, then Apple's
@@ -121,9 +168,11 @@ export class NativeReceiptService {
     // The same two chokepoints as the cloud providers (ADR 0046): the stored
     // name of every default category is an i18n key, so the model's vocabulary
     // is the shared catalog rendering — active entries only, translated
-    // `id: Name` lines — and never the keys themselves. Every scan this
-    // pipeline reads is a purchase, never a deposit, so the catalog and the
-    // resolver both stay on the expense side of the account.
+    // `id: Name` lines — and never the keys themselves. The catalog and the
+    // resolver both stay on the expense side even for a refund: its slip
+    // lists the goods going back, which only expense entries name. The row's
+    // type is decided below, and the import doors move an expense category
+    // off an income row onto the income side's catch-all.
     const catalog = buildCategoryPromptCatalog(categories, translate, 'expense');
     const expenseCategories = categories.filter(c => categoryFitsType(c, 'expense'));
     const extraction = await this.appleIntelligence.parseReceiptText({
@@ -147,6 +196,10 @@ export class NativeReceiptService {
     // day-key shape and returns null rather than an Invalid Date, so the
     // fallback covers an unreadable string too.
     const parsedDate = parseDateInput(extraction.date);
+    // A magnitude whichever way the money moved. The schema bounds the model's
+    // total at zero, so this should change nothing, but that bound is
+    // compile-checked only (ADR 0040), and a minus is not a verdict on the type
+    // (ADR 0147) — the model's `kind` is — so one is dropped here.
     const amount = Math.abs(extraction.amount) || 0;
     // Report what was read, empty when nothing was. The consumer knows the
     // account's base currency; this service does not.
@@ -161,12 +214,16 @@ export class NativeReceiptService {
     const amountCurrency = currency || text.currency;
     const sameTotal = amount > 0 &&
       roundToMinorUnit(amount, amountCurrency) === roundToMinorUnit(text.amount, amountCurrency);
+    // The model says which way the money moved, and the print is the second
+    // witness — but only when it is the print of this total: a mark the parser
+    // found on a figure the model did not answer says nothing about it.
+    const verdict = typeVerdict(extraction.kind, sameTotal ? text : undefined);
 
     return {
       date: parsedDate ?? new Date(),
       description: extraction.merchant || 'Unknown Merchant',
       amount,
-      type: 'expense',
+      type: verdict.type,
       currency,
       confidence: ocrResult.confidence,
       source: 'native',
@@ -185,17 +242,21 @@ export class NativeReceiptService {
               ? REVIEW_AMOUNT_CONFIDENCE
               : MODEL_READ_GRADE,
         date: parsedDate === null ? 0 : MODEL_READ_GRADE,
+        ...(verdict.grade !== undefined ? { type: verdict.grade } : {}),
       },
     };
   }
 
   private parseWithRegex(ocrResult: VisionOCRResult): ProcessedTransaction {
     const parsed = parseReceiptOcrText(ocrResult.text);
+    // No model here, so the marks on the total are the only witness to which
+    // way the money moved.
+    const verdict = typeVerdict(undefined, parsed);
     return {
       date: parsed.date,
       description: parsed.merchant,
       amount: parsed.amount,
-      type: 'expense',
+      type: verdict.type,
       // The parser reports no currency rather than inventing one, and neither
       // does this service — AIStrategyService substitutes the account's base
       // currency and flags the row for review.
@@ -211,7 +272,11 @@ export class NativeReceiptService {
       // receipt's line-by-line content — record it so item details reach
       // the transaction note
       notes: ocrResult.text?.trim() || undefined,
-      fieldConfidence: { amount: parsed.amountConfidence, date: parsed.dateConfidence },
+      fieldConfidence: {
+        amount: parsed.amountConfidence,
+        date: parsed.dateConfidence,
+        ...(verdict.grade !== undefined ? { type: verdict.grade } : {}),
+      },
       // This parser reads figures and evidence tiers; it never looks at what
       // was bought. Saying so keeps the import from grading a row nobody
       // categorized as one whose category answer we failed to understand.

@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { Category } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
+import { CategoryRowType, categoryFitsType } from '../../../../core/utils/categorization.utils';
 
 @Component({
   selector: 'app-category-suggestion',
@@ -34,11 +35,20 @@ export class CategorySuggestionComponent {
   suggestedCategoryId = input.required<string>();
   confidence = input(0);
   categories = input<Category[]>([]);
+  // The side the row sits on. The card files a flipped row's category on its
+  // new side, so a menu still listing the other side would let the reviewer
+  // pick an expense category straight back onto an income row. Left unset,
+  // the menu offers every side, as it did for a host that never says.
+  rowType = input<CategoryRowType | undefined>(undefined);
   @Output() categoryChanged = new EventEmitter<string>();
 
+  // Only the menu is narrowed. The name, icon and colour below look the held
+  // id up in the whole list, so a category from the other side is still named
+  // on the chip until the reviewer picks another, never "Unknown".
   sortedCategories = computed(() => {
+    const type = this.rowType();
     return [...this.categories()]
-      .filter(c => c.isActive && !c.parentId)
+      .filter(c => c.isActive && !c.parentId && (!type || categoryFitsType(c, type)))
       .sort((a, b) => this.translateName(a.name).localeCompare(this.translateName(b.name)));
   });
 

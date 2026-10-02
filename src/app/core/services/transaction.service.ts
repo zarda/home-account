@@ -248,8 +248,10 @@ export class TransactionService {
     // previous account's totals until its first snapshot lands. Driven from
     // here rather than AuthService.signOut() because this service injects
     // AuthService — calling back the other way would close a dependency
-    // cycle — and an effect also covers sign-outs the app never initiated
-    // (token revocation, another tab). Reset only on the signed-out edge:
+    // cycle — and an effect also covers a session the SDK ends itself on a
+    // device (a revoked token). On the web a sign-out from another tab or a
+    // revoked token reloads the page instead, as does every account change
+    // the page did not start (ADR 0163). Reset only on the signed-out edge:
     // resetting on sign-in as well could race the first snapshot of a fresh
     // load and blank it with nothing to re-emit.
     effect(() => {

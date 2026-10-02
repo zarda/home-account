@@ -151,6 +151,16 @@
             <span>{{ 'common.income' | translate }}</span>
           </mat-button-toggle>
         </mat-button-toggle-group>
+        @if (shouldVerifyField('type')) {
+          <mat-icon
+            class="verify-flag"
+            [matTooltip]="verifyFieldTooltip('type')"
+            matTooltipPosition="above"
+            role="img"
+            aria-hidden="false"
+            [attr.aria-label]="verifyFieldTooltip('type')"
+          >error_outline</mat-icon>
+        }
       </div>
 
       <!-- Amount Section -->

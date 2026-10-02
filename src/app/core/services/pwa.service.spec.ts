@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Capacitor } from '@capacitor/core';
 import { PwaService } from './pwa.service';
 
 describe('PwaService', () => {
@@ -201,6 +202,28 @@ describe('PwaService', () => {
       const s = make();
       expect(s.isStandalone()).toBeTrue();
       window.matchMedia = original;
+    });
+
+    it('counts the native app as installed, so it never asks to be added to the Home Screen', () => {
+      // The iOS app's WKWebView does not match the standalone display-mode
+      // query and reports navigator.standalone as false, so only the shell
+      // itself can say the app is installed. The camera dialog read the web
+      // checks alone and told people already in the app to add it to their
+      // Home Screen.
+      spyOn(window, 'matchMedia').and.returnValue({ matches: false } as MediaQueryList);
+      spyOn(Capacitor, 'isNativePlatform').and.returnValue(true);
+
+      expect(make().isStandalone()).toBeTrue();
+    });
+
+    it('still finds a plain browser tab not installed', () => {
+      // A pin: the native answer must not leak into a browser tab. In Safari
+      // the camera dialog's hint is what points to Add to Home Screen, which
+      // is the only way iOS installs the web app.
+      spyOn(window, 'matchMedia').and.returnValue({ matches: false } as MediaQueryList);
+      spyOn(Capacitor, 'isNativePlatform').and.returnValue(false);
+
+      expect(make().isStandalone()).toBeFalse();
     });
   });
 

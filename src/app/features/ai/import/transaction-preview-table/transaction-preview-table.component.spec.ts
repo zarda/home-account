@@ -8,6 +8,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
+import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -16,9 +17,24 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
-import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { blankImportRow, needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
+import { createCategory } from '../../../../core/services/testing/test-data';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyCodeDialogComponent } from '../../../../shared/components/currency-code-dialog/currency-code-dialog.component';
+
+/**
+ * The catalogue a flipped row's category is judged against: an entry on each
+ * side, each side's catch-all under its shipped name, and one entry serving
+ * both sides — no default does, but a category the user made can.
+ */
+const flipCatalogue = () => [
+  createCategory({ id: 'food', name: 'categoryNames.food', type: 'expense' }),
+  createCategory({ id: 'salary', name: 'categoryNames.salary', type: 'income' }),
+  createCategory({ id: 'shared', name: 'Shared', type: 'both', isDefault: false }),
+  createCategory({ id: 'other_expense', name: 'categoryNames.otherExpense', type: 'expense' }),
+  createCategory({ id: 'other_income', name: 'categoryNames.otherIncome', type: 'income' }),
+];
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -322,6 +338,54 @@ describe('TransactionPreviewTableComponent', () => {
 
       expect(component.transactionsUpdated.emit).toHaveBeenCalled();
     });
+
+    // Flips the first mock row, reshaped, against the catalogue, and hands
+    // back the row that replaced it.
+    const flip = (overrides: Partial<CategorizedImportTransaction>): CategorizedImportTransaction => {
+      component.categories = flipCatalogue();
+      component.transactions = [{ ...createMockTransactions()[0], ...overrides }];
+      component.toggleType(component.transactions[0]);
+      return component.transactions[0];
+    };
+    const filed = (row: CategorizedImportTransaction) =>
+      ({ type: row.type, category: row.suggestedCategoryId, grade: row.categoryConfidence });
+
+    it('drops the type grade and keeps the others', () => {
+      // The flip answers the question the type's flag asked, and nothing
+      // else: the amount and the date are still as doubted as they were.
+      expect(flip({ fieldConfidence: { amount: 0.4, date: 0.9, type: 0.5 } }).fieldConfidence)
+        .toEqual({ amount: 0.4, date: 0.9 });
+      expect(flip({ fieldConfidence: { type: 0.5 } }).fieldConfidence)
+        .withContext('nothing left is the ungraded shape, not an empty grade')
+        .toBeUndefined();
+    });
+
+    it('moves a category the new side cannot hold to that side\'s catch-all, graded as an answer that resolved to nothing', () => {
+      // Left where it was, the expense category would be written onto an
+      // income row by confirm.
+      expect(filed(flip({ suggestedCategoryId: 'food', categoryConfidence: 0.9 })))
+        .toEqual({ type: 'income', category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+    });
+
+    it('never grades a moved category above what it had', () => {
+      // A catch-all nobody categorized is no better known on the other side.
+      expect(filed(flip({ type: 'income', suggestedCategoryId: 'other_income', categoryConfidence: 0.1 })))
+        .toEqual({ type: 'expense', category: 'other_expense', grade: 0.1 });
+    });
+
+    it('keeps a category that fits both sides, and its grade', () => {
+      // A pin: a category the new side can also hold has nothing to be moved
+      // from, so it stays with its grade.
+      expect(filed(flip({ suggestedCategoryId: 'shared', categoryConfidence: 0.9 })))
+        .toEqual({ type: 'income', category: 'shared', grade: 0.9 });
+    });
+
+    it('keeps a category the catalogue does not hold, since nothing can show it is on the wrong side', () => {
+      // A pin: an id the catalogue does not hold cannot be shown to sit on the
+      // wrong side, so the flip leaves it alone.
+      expect(filed(flip({ suggestedCategoryId: 'retired', categoryConfidence: 0.7 })))
+        .toEqual({ type: 'income', category: 'retired', grade: 0.7 });
+    });
   });
 
   describe('updateCategory', () => {
@@ -392,6 +456,25 @@ describe('TransactionPreviewTableComponent', () => {
     it('reports the confidence as a percentage in the tooltip', () => {
       const t = row({ fieldConfidence: { amount: 0.42 } });
       expect(component.verificationTooltip(t, 'amount')).toContain('42');
+    });
+
+    it('flags a type the reader doubted, and leaves an ungraded type alone', () => {
+      // A missing type grade says more than a missing amount grade: the
+      // device leaves it out for a purchase nothing on the receipt
+      // contradicted, so a row doubted on its other fields is still not asked
+      // about its type.
+      expect(component.needsVerification(row({ fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }), 'type'))
+        .toBeTrue();
+      expect(component.needsVerification(row({ fieldConfidence: { amount: 0.4, date: 0.3 } }), 'type')).toBeFalse();
+      expect(component.needsVerification(row(), 'type')).toBeFalse();
+    });
+
+    it('names the type flag with its own sentence and no percentage, since the grade is the reader\'s policy rather than a reading', () => {
+      // Every income verdict the device reaches is graded under the bar so
+      // that the reviewer is asked; the grade is policy, not a reading, so a
+      // percentage would report a reading nothing took.
+      const t = row({ fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } });
+      expect(component.verificationTooltip(t, 'type')).toBe('import.verifyType');
     });
   });
 
@@ -1259,6 +1342,94 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(flag).withContext('the flag should render for a doubted amount').not.toBeNull();
     expect(flag.getAttribute('aria-hidden')).toBe('false');
     expect(flag.getAttribute('aria-label')).toBeTruthy();
+  });
+
+  it('marks a doubted type on its toggle, the mark leading the toggle\'s name and the icon decorative', () => {
+    // The date chip's shape (ADR 0146): a button's aria-label replaces the
+    // name its content would compute, so the flag's sentence rides on the
+    // toggle's own name and the icon is hidden rather than said twice. A
+    // refund the device read, and a purchase whose total printed as a credit.
+    component.transactions = [
+      makeRow({ id: 'refund', type: 'income', fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }),
+      makeRow({ id: 'purchase', fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 } }),
+    ];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const toggles = Array.from(fixture.nativeElement.querySelectorAll('.type-toggle')) as HTMLButtonElement[];
+    expect(toggles.map(toggle => toggle.getAttribute('aria-label'))).toEqual([
+      'import.verifyType. common.income',
+      'import.verifyType. common.expense',
+    ]);
+    for (const toggle of toggles) {
+      const flag = toggle.querySelector('.verify-flag');
+      expect(flag).withContext('a doubted type wears the flag').not.toBeNull();
+      expect(flag?.getAttribute('aria-hidden')).withContext('but it is decorative').toBe('true');
+      // mat-icon's content is the ligature name, with no font here to draw it.
+      expect(Array.from(toggle.querySelectorAll('mat-icon')).map(icon => icon.textContent?.trim()))
+        .withContext('in the trend icon\'s place, not beside it')
+        .toEqual(['error_outline']);
+    }
+  });
+
+  it('names an unflagged toggle by what it shows alone', () => {
+    // The second row's amount and date are doubted, its type is not: the
+    // other fields' flags are not the toggle's business.
+    component.transactions = [
+      makeRow({ id: 'salary', type: 'income', suggestedCategoryId: 'salary' }),
+      makeRow({ id: 'purchase', fieldConfidence: { amount: 0.4, date: 0.3 } }),
+    ];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const toggles = Array.from(fixture.nativeElement.querySelectorAll('.type-toggle')) as HTMLButtonElement[];
+    expect(toggles.map(toggle => toggle.getAttribute('aria-label'))).toEqual(['common.income', 'common.expense']);
+    expect(toggles.map(toggle => toggle.querySelector('.verify-flag'))).toEqual([null, null]);
+    expect(toggles.map(toggle => toggle.querySelector('mat-icon')?.textContent?.trim()))
+      .toEqual(['trending_up', 'trending_down']);
+  });
+
+  it('drops the toggle\'s flag once the reviewer flips the type', () => {
+    // The flip is the reviewer's answer to the question the flag asked, so
+    // the toggle goes back to naming the type it now shows.
+    component.transactions = [makeRow({ fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 } })];
+    component.categories = [];
+    fixture.detectChanges();
+    const toggle = () => fixture.nativeElement.querySelector('.type-toggle') as HTMLButtonElement;
+    expect(toggle().querySelector('.verify-flag')).withContext('flagged before the flip').not.toBeNull();
+
+    toggle().click();
+    fixture.detectChanges();
+
+    expect(toggle().querySelector('.verify-flag')).toBeNull();
+    expect(toggle().querySelector('mat-icon')?.textContent?.trim()).toBe('trending_up');
+    expect(toggle().getAttribute('aria-label')).toBe('common.income');
+  });
+
+  it('hands each card\'s category menu its row\'s side, and moves it with a flip', () => {
+    // The menu is the picker's own; what the card owes it is the row's type.
+    // The @for tracks rows by id, so the flipped row keeps its picker and the
+    // side has to follow on that same instance.
+    component.transactions = [
+      makeRow({ id: 'salary', type: 'income', suggestedCategoryId: 'salary' }),
+      makeRow({ id: 'purchase' }),
+    ];
+    component.categories = flipCatalogue();
+    fixture.detectChanges();
+    const offered = () => fixture.debugElement.queryAll(By.directive(CategorySuggestionComponent))
+      .map(picker => (picker.componentInstance as CategorySuggestionComponent).sortedCategories().map(c => c.id).sort());
+
+    expect(offered()).toEqual([
+      ['other_income', 'salary', 'shared'],
+      ['food', 'other_expense', 'shared'],
+    ]);
+
+    (fixture.nativeElement.querySelectorAll('.type-toggle')[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(offered()[1])
+      .withContext('the flipped purchase is offered the income side')
+      .toEqual(['other_income', 'salary', 'shared']);
   });
 
   /**
@@ -3844,6 +4015,44 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted[0].map(t => [t.id, t.importAttempts])).toEqual([['b', undefined]]);
     });
 
+    // A purchase on food with a refund for it, against the catalogue a
+    // flipped row's category is judged by; the refund is merged into the
+    // purchase, and the survivor is read back as the batch now holds it.
+    // The refund sits on a named income entry, not the catch-all, so a
+    // survivor on the catch-all can only have been re-filed there.
+    function mergeRefundIntoPurchase(purchaseAmount: number, refundAmount: number): CategorizedImportTransaction {
+      const purchase = makeRow({ id: 'purchase', description: 'Coffee Shop', amount: purchaseAmount });
+      const refund = makeRow({
+        id: 'refund', description: 'Coffee Shop refund', amount: refundAmount,
+        type: 'income', suggestedCategoryId: 'salary', categoryConfidence: 0.8,
+      });
+      component.transactions = [purchase, refund];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+
+      component.mergeInto(refund, purchase);
+      fixture.detectChanges();
+      return component.transactions.find(t => t.id === 'purchase')!;
+    }
+    const filed = (row: CategorizedImportTransaction) =>
+      ({ type: row.type, amount: row.amount, category: row.suggestedCategoryId, grade: row.categoryConfidence });
+
+    it('re-files the survivor\'s category when the net turns it to the other side', () => {
+      // A refund larger than its purchase leaves money coming in. Left where
+      // it was, the purchase's food would be written onto an income row, as
+      // a flip on the toggle would have written it before it moved.
+      expect(filed(mergeRefundIntoPurchase(5, 20)))
+        .toEqual({ type: 'income', amount: 15, category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+    });
+
+    it('keeps the survivor\'s category when the net stays on its side', () => {
+      // A pin: a refund smaller than its purchase leaves the row an expense,
+      // and its food still fits, so nothing moves and nothing is said.
+      expect(filed(mergeRefundIntoPurchase(20, 5)))
+        .toEqual({ type: 'expense', amount: 15, category: 'food', grade: 0.9 });
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
     it('does nothing when the source or the target has left the batch by the time the click lands', () => {
       const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
       const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
@@ -4426,6 +4635,66 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
         'import.announceTagRemoved:{"description":"import.untitledRow","tag":"lunch"}'
+      );
+    });
+
+    it('announces a category the type flip moved', () => {
+      // The toggle is pressed on one row of the card, while the category it
+      // moved is a chip further along the same row.
+      const row = makeRow();
+      component.transactions = [row];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+
+      component.toggleType(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCategoryRefiled:{"description":"Coffee Shop","category":"categoryNames.otherIncome"}'
+      );
+    });
+
+    it('announces a category moved on a blank row by its placeholder, not an empty description', () => {
+      // A hand-added row is born on the expense catch-all, so its first flip
+      // always moves the category.
+      const row = blankImportRow('blank', undefined, 'USD');
+      component.transactions = [row];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+
+      component.toggleType(row);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCategoryRefiled:{"description":"import.untitledRow","category":"categoryNames.otherIncome"}'
+      );
+    });
+
+    it('says nothing when the flipped row\'s category still fits', () => {
+      // A pin: only a move is announced; a flip that leaves the category where
+      // it was has nothing to say.
+      const row = makeRow({ suggestedCategoryId: 'shared' });
+      component.transactions = [row];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+
+      component.toggleType(row);
+
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    it('announces a category a merge moved to the other side', () => {
+      // The merge is chosen from the refund's own menu, while the category it
+      // moved is a chip on the purchase that survives it. The refund's own
+      // salary is not what is named: the survivor is re-filed, not handed it.
+      const purchase = makeRow({ id: 'purchase', amount: 5 });
+      const refund = makeRow({ id: 'refund', description: 'Coffee Shop refund', amount: 20, type: 'income', suggestedCategoryId: 'salary' });
+      component.transactions = [purchase, refund];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+
+      component.mergeInto(refund, purchase);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCategoryRefiled:{"description":"Coffee Shop","category":"categoryNames.otherIncome"}'
       );
     });
 

@@ -8,7 +8,14 @@ import {
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FirebaseApp } from '@angular/fire/app';
-import { Auth, browserLocalPersistence, connectAuthEmulator, getAuth, initializeAuth } from '@angular/fire/auth';
+import {
+  Auth,
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  connectAuthEmulator,
+  indexedDBLocalPersistence,
+  initializeAuth,
+} from '@angular/fire/auth';
 import { FirestoreSettings, connectFirestoreEmulator, initializeFirestore } from '@angular/fire/firestore';
 import { FirebaseStorage, connectStorageEmulator, getStorage } from '@angular/fire/storage';
 import { Analytics, AnalyticsSettings, initializeAnalytics, setConsent } from '@angular/fire/analytics';
@@ -172,7 +179,6 @@ describe('appAuthFactory', () => {
   let order: string[];
   let auth: Auth;
   let initialize: jasmine.Spy;
-  let get: jasmine.Spy;
   let connect: jasmine.Spy;
 
   beforeEach(() => {
@@ -182,10 +188,6 @@ describe('appAuthFactory', () => {
       order.push('initializeAuth');
       return auth;
     });
-    get = jasmine.createSpy('getAuth').and.callFake(() => {
-      order.push('getAuth');
-      return auth;
-    });
     connect = jasmine.createSpy('connectAuthEmulator').and.callFake(() => void order.push('connect'));
   });
 
@@ -193,25 +195,33 @@ describe('appAuthFactory', () => {
     return appAuthFactory(
       () => isNative,
       initialize as unknown as typeof initializeAuth,
-      get as unknown as typeof getAuth,
       () => app,
       hosts,
       connect as unknown as typeof connectAuthEmulator,
     );
   }
 
-  it('should keep the default (IndexedDB) persistence on the web', () => {
+  it('should keep the web session in local storage first, where another tab\'s change arrives at once', () => {
     expect(build(false, null)).toBe(auth);
-    expect(get).toHaveBeenCalledOnceWith(app);
-    expect(initialize).not.toHaveBeenCalled();
+
+    // Another tab's sign-in or sign-out reaches this one by a storage event,
+    // the channel Firestore's multi-tab cache reports that change's refusals
+    // on; IndexedDB, getAuth()'s first choice, is polled every 800 ms. Second
+    // in the list, IndexedDB is where the SDK looks for a session to carry
+    // across, so the first load after the switch keeps whoever was signed in
+    // there. The order is the contract: the first available persistence is
+    // the one written.
+    expect(initialize).toHaveBeenCalledOnceWith(app, {
+      persistence: [browserLocalPersistence, indexedDBLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
   });
 
   it('should use local-storage persistence on Capacitor', () => {
     // IndexedDB under the capacitor:// scheme leaves onAuthStateChanged
-    // hanging, so the native shell must never get the default persistence.
+    // hanging, so the native shell must never be handed it.
     expect(build(true, null)).toBe(auth);
     expect(initialize).toHaveBeenCalledOnceWith(app, { persistence: browserLocalPersistence });
-    expect(get).not.toHaveBeenCalled();
   });
 
   it('should connect the Auth emulator on http://127.0.0.1:9099 right after creating the instance', () => {
@@ -220,7 +230,7 @@ describe('appAuthFactory', () => {
     // Before the connect, a restored session would be refreshed against the
     // real project; after the first use the SDK refuses to connect at all.
     expect(connect).toHaveBeenCalledOnceWith(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-    expect(order).toEqual(['getAuth', 'connect']);
+    expect(order).toEqual(['initializeAuth', 'connect']);
   });
 
   it('should connect the Auth emulator on the Capacitor path too', () => {

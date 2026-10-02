@@ -9,11 +9,19 @@
  * the caller exactly like a successful parse. What it cannot find now shows up
  * in `confidence` instead, so the caller can send the receipt to an engine that
  * can actually read it.
+ *
+ * Which way the money moved is read the same way: from the marks a receipt
+ * prints on its total — a minus, an accounting triangle, accounting
+ * parentheses — and never from a word such as "refund" in any language.
  */
 import { localDateFromParts } from '../utils/transaction-date.utils';
 
 export interface ParsedReceiptText {
   date: Date;
+  /**
+   * Never negative, whichever way the money moved (`direction` says which),
+   * and 0 when no total was read.
+   */
   amount: number;
   currency: string;
   merchant: string;
@@ -25,6 +33,24 @@ export interface ParsedReceiptText {
    * looks fine.
    */
   amountConfidence: number;
+  /**
+   * Which way the winning total moved, read from typography alone: 'credit'
+   * when every copy of that figure carries a negative mark, 'debit'
+   * otherwise. The copies are the figures of its value the receipt prints as
+   * money when the total was read as money, and every figure of its value
+   * when it was read from the plain numbers. A mark on any other figure — a
+   * discount, a coupon, the change — says nothing about the total.
+   */
+  direction: 'credit' | 'debit';
+  /**
+   * 0–1, and always under the bar that sends a field for review, because a
+   * mark is typography rather than a word saying so: 0.5 for a credit; 0.3
+   * when the same figure is printed both marked and unmarked, where `direction`
+   * stays 'debit'; 0 when nothing marks it, the purchase every receipt is by
+   * default. It is not folded into the combined `confidence`, so it moves no
+   * routing decision.
+   */
+  directionConfidence: number;
   /**
    * 0–1: how clearly the date was read — 0.9 for an unambiguous match, scaled
    * down further for an ambiguous day/month order or a two-digit year, 0 when
@@ -76,17 +102,62 @@ const ISO_CODE_BESIDE_AMOUNT = [
 ];
 
 // Digits held together by the marks used for grouping and decimals. Plain
-// spaces are deliberately left out: "2 12 25" is three numbers, not one.
+// spaces are deliberately left out: "2 12 25" is three numbers, not one. No
+// sign either: a minus is read as a mark beside the figure, never as part of
+// it, so a refund's total stays a positive candidate instead of being skipped
+// as a negative number.
 const NUMBER_TOKEN = /\d+(?:[.,'’\u00A0\u202F\u2009]\d+)*/gu;
 const GROUPING_MARKS = /['’\u00A0\u202F\u2009]/g;
 
 /** Longer runs of digits are phone numbers, receipt numbers and card fragments. */
 const MAX_PLAIN_DIGITS = 6;
 
+// The marks a receipt prints to negate a figure: a minus in each form OCR hands
+// it back as (hyphen-minus, minus sign, en dash, small and fullwidth
+// hyphen-minus), and the triangles East Asian accounting prints for a negative.
+const MINUS = '[\\-\\u2212\\u2013\\uFE63\\uFF0D]';
+const TRIANGLE = '[\\u25B2\\u25B3]';
+// A currency sign, after up to three capitals (HK$, NT$, US$). Capitals only:
+// a CJK or lowercase letter there is a word (税込¥1,280), not part of the sign.
+const SIGN = '\\p{Lu}{0,3}\\p{Sc}';
+// What must sit right before the figure for it to be negative. A minus counts
+// after the start of the line, a space or a colon, so one glued to a reference
+// (SKU-1234, 03-3461-8901, a row of dashes) does not; nor does a minus with a
+// gap before the price, which is a description's dash (Latte - $4.50). A minus
+// straight after the sign ($-12.50, US$-5.00) is the sign-first way of printing
+// the same negative. A triangle counts even glued to a label (合計▲1,280),
+// because that is how East Asian receipts print it, and a space may follow it,
+// since a triangle is never a description's dash; but not straight after a
+// digit, where a mark between two runs of digits joins them, as the dashes in
+// 03-3461-8901 do. A dash after the figure is the stop a Japanese receipt
+// prints against alteration (¥10,000-), so nothing after it is read.
+const NEGATIVE_BEFORE = new RegExp(
+  `(?:(?:^|[\\s:\\uFF1A])${MINUS}(?:${SIGN}\\s?)?` +
+    `|(?:^|[^\\p{N}])${TRIANGLE}\\s?(?:${SIGN}\\s?)?` +
+    `|\\p{Sc}${MINUS})$`,
+  'u',
+);
+const OPENS_BEFORE = new RegExp(`[(\\uFF08](${SIGN})?$`, 'u');
+const CLOSES_AFTER = /^(\p{Sc})?[)\uFF09]/u;
+
+/** What a credit mark on the total is worth: typography, never a word. */
+const CREDIT_MARK_GRADE = 0.5;
+/** The total printed both marked and unmarked, which leaves it a purchase. */
+const TWINNED_MARK_GRADE = 0.3;
+
 interface AmountCandidate {
   value: number;
   token: string;
   besideCurrency: boolean;
+  /** Printed with a negative mark on this figure itself. */
+  credit: boolean;
+}
+
+interface AmountReading {
+  amount: number;
+  confidence: number;
+  direction: 'credit' | 'debit';
+  directionConfidence: number;
 }
 
 export function parseReceiptOcrText(text: string): ParsedReceiptText {
@@ -98,7 +169,12 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
   const lines = withoutDate.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
   const { currency, confidence: currencyConfidence, marker } = readCurrency(text);
-  const { amount, confidence: amountConfidence } = readAmount(lines, marker);
+  const {
+    amount,
+    confidence: amountConfidence,
+    direction,
+    directionConfidence,
+  } = readAmount(lines, marker);
 
   // Merchant names sit at the top of receipts everywhere; read it from the
   // original text so a date on the first line cannot take the name with it.
@@ -116,6 +192,8 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
     currency,
     merchant,
     amountConfidence: Math.round(amountConfidence * 100) / 100,
+    direction,
+    directionConfidence: Math.round(directionConfidence * 100) / 100,
     dateConfidence: Math.round(dateConfidence * 100) / 100,
     confidence: Math.round(confidence * 100) / 100,
   };
@@ -337,16 +415,22 @@ function tenderedDemotion(
   return bestX && !isTenderShaped(bestX.value) ? bestX : undefined;
 }
 
-function readAmount(lines: string[], marker: string): { amount: number; confidence: number } {
+function readAmount(lines: string[], marker: string): AmountReading {
   const candidates: AmountCandidate[] = [];
   for (const line of lines) {
     const besideCurrency = CURRENCY_SIGN.test(line) || (marker !== '' && line.includes(marker));
     for (const match of line.matchAll(NUMBER_TOKEN)) {
       const value = toAmount(match[0]);
+      // A zero is never a candidate, which also keeps a "-0.00" change line
+      // from ever reading as a credit.
       if (value === undefined || value <= 0) {
         continue;
       }
-      candidates.push({ value, token: match[0], besideCurrency });
+      const token = match[0];
+      const before = line.slice(0, match.index);
+      const after = line.slice(match.index + token.length);
+      const credit = isCreditMarked(before, token, after);
+      candidates.push({ value, token, besideCurrency, credit });
     }
   }
 
@@ -367,13 +451,65 @@ function readAmount(lines: string[], marker: string): { amount: number; confiden
     );
     if (best) {
       const demoted = tenderedDemotion(best, tier.of);
-      return demoted
-        ? { amount: demoted.value, confidence: tier.confidence * TENDER_DEMOTION_FACTOR }
-        : { amount: best.value, confidence: tier.confidence };
+      const winner = demoted ?? best;
+      return {
+        amount: winner.value,
+        confidence: demoted ? tier.confidence * TENDER_DEMOTION_FACTOR : tier.confidence,
+        ...readDirection(winner, candidates),
+      };
     }
   }
 
-  return { amount: 0, confidence: 0 };
+  return { amount: 0, confidence: 0, direction: 'debit', directionConfidence: 0 };
+}
+
+/**
+ * Whether this figure itself is printed as a negative: a minus or a triangle
+ * right before it, or accounting parentheses around it. The mark is read
+ * against the figure, never the line, so `Item-7 Total $12.50` and a
+ * `(-$1.00 saved)` beside the total say nothing about the total.
+ */
+function isCreditMarked(before: string, token: string, after: string): boolean {
+  if (NEGATIVE_BEFORE.test(before)) {
+    return true;
+  }
+  const opens = OPENS_BEFORE.exec(before);
+  const closes = CLOSES_AFTER.exec(after);
+  // A bare (2) or (100) is a quantity or a count; parentheses negate money only.
+  return !!opens && !!closes && (!!opens[1] || !!closes[1] || isMoneyShaped(token));
+}
+
+/**
+ * Which way the winning total moved, from every copy of it the receipt prints
+ * as money, within the same half cent the tendered sum allows. A refund slip
+ * can repeat its total unmarked on the card line, and a sale can print its
+ * tender line as a negative, so the copies have to agree: all marked is a
+ * credit, a disagreement stays a purchase graded for a second look, and
+ * nothing marked is the plain purchase. An ambiguous total never becomes a
+ * credit.
+ *
+ * A time that shares the total's value (the 14 of 14:32 on a $14.00 refund)
+ * is not printed as money, so it is no copy. "As money" means what the first
+ * two tiers read, beside a currency or written like money, so a size on a
+ * priced line (10m -$10.00) still counts as one. A total read from the plain
+ * numbers has no money to compare with, so every figure of its value is a
+ * copy.
+ */
+function readDirection(
+  winner: AmountCandidate,
+  candidates: AmountCandidate[],
+): Pick<AmountReading, 'direction' | 'directionConfidence'> {
+  const winnerIsMoney = isPrintedAsMoney(winner);
+  const copies = candidates.filter(
+    c =>
+      Math.abs(c.value - winner.value) <= TENDER_SUM_TOLERANCE &&
+      (!winnerIsMoney || isPrintedAsMoney(c)),
+  );
+  const marked = copies.filter(c => c.credit).length;
+  if (marked === copies.length) {
+    return { direction: 'credit', directionConfidence: CREDIT_MARK_GRADE };
+  }
+  return { direction: 'debit', directionConfidence: marked > 0 ? TWINNED_MARK_GRADE : 0 };
 }
 
 /**
@@ -397,6 +533,11 @@ function toAmount(token: string): number | undefined {
 
 function isMoneyShaped(token: string): boolean {
   return /[.,]\d{1,2}$/.test(token) || /[.,'’\u00A0\u202F\u2009]\d{3}\b/.test(token);
+}
+
+/** A figure the first two tiers would read: beside a currency, or written like money. */
+function isPrintedAsMoney(candidate: AmountCandidate): boolean {
+  return candidate.besideCurrency || isMoneyShaped(candidate.token);
 }
 
 /**

@@ -34,6 +34,10 @@ import { AIStrategyService } from '../../core/services/ai-strategy.service';
 import { AIImportService } from '../../core/services/ai-import.service';
 import { ReceiptToNoteService } from '../../core/services/receipt-to-note.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { CategoryService } from '../../core/services/category.service';
+import { ReceiptAttemptService } from '../../core/services/receipt-attempt.service';
+import { TagSuggestionService } from '../../core/services/tag-suggestion.service';
+import { GroundingHistoryService } from '../../core/services/grounding-history.service';
 import { Transaction } from '../../models';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
@@ -46,6 +50,9 @@ import { stripProviderKeys } from '../../core/services/testing/provider-keys';
  * The unit spec mocks TransactionService, so nothing there proves the
  * form → DTO → Firestore → rules chain actually accepts tags and location —
  * which is the whole point of surfacing fields that were persisted-only.
+ * It also carries the one in-form scan that has to reach Firestore: a scanned
+ * on-device refund is filed as income and stored on the income category the
+ * user picks, with the reader's grades left out of the document.
  *
  * The component renders headlessly (template overridden), as its unit spec
  * does: the chip input and the geolocation button are unit-tested; what only
@@ -161,7 +168,8 @@ describe('TransactionFormComponent tags and location (emulator smoke test)', () 
         // AI stays inert: this suite is about what the form persists. The real
         // AIStrategyService would pull in the provider-key read, the native
         // plugins and a constructor effect over the stubbed AuthService, none
-        // of which this suite has any use for.
+        // of which this suite has any use for. The one case that scans wakes
+        // what it needs of this double itself.
         {
           provide: AIStrategyService,
           useValue: {
@@ -239,6 +247,77 @@ describe('TransactionFormComponent tags and location (emulator smoke test)', () 
 
     fixture.destroy();
   }, 20000);
+
+  it('files a scanned on-device refund as income, and saves it once the user picks an income category', async () => {
+    const description = `smoke-scanned-refund-${Date.now()}`;
+    createdDescriptions.push(description);
+
+    // The suite's AI double, woken for this one scan: the live state of a
+    // phone that can scan (the direct scanReceipt call below does not ask),
+    // and a refund as the on-device reader hands it back. No device lane can
+    // name an income category, because the model is offered the expense side
+    // alone, so the refund names the category of the goods going back.
+    const strategy = TestBed.inject(AIStrategyService);
+    spyOn(strategy, 'canProcessNow').and.returnValue(true);
+    spyOn(strategy, 'processReceipt').and.resolveTo({
+      transactions: [{
+        date: new Date(),
+        description,
+        amount: 12.8,
+        type: 'income',
+        currency: 'USD',
+        confidence: 0.8,
+        source: 'native',
+        suggestedCategoryId: 'food',
+        fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 },
+      }],
+      source: 'native',
+      confidence: 0.8,
+      processingTimeMs: 1,
+    });
+    // What else a scan reaches: the attempt's event and failure record, and
+    // the tag offer's round-trip. None of it is what this case is about.
+    spyOn(TestBed.inject(ReceiptAttemptService), 'begin').and.returnValue({
+      succeeded: () => undefined,
+      failed: () => undefined,
+      queued: () => undefined,
+    });
+    spyOn(TestBed.inject(TagSuggestionService), 'suggest').and.resolveTo([[]]);
+    spyOn(TestBed.inject(GroundingHistoryService), 'recent').and.resolveTo([]);
+
+    const fixture = TestBed.createComponent(TransactionFormComponent);
+    const component = fixture.componentInstance;
+    component.ngOnInit();
+
+    // The form asked for the live catalogue in its constructor; the scan's
+    // category is looked up in it, so it has to have arrived.
+    const categories = TestBed.inject(CategoryService);
+    const deadline = Date.now() + 10000;
+    while (categories.incomeCategories().length === 0 && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    expect(categories.incomeCategories().length).toBeGreaterThan(0);
+
+    // Straight to the scan, as the unit spec does: a queued photo would be
+    // uploaded with the save, and the receipt path is another suite's.
+    await (component as unknown as { scanReceipt: (file: File) => Promise<void> })
+      .scanReceipt(new File(['x'], 'refund.jpg', { type: 'image/jpeg' }));
+
+    expect(component.form.get('type')?.value).toBe('income');
+    // food is not on the income side, so the required field asks.
+    expect(component.form.get('categoryId')?.value).toBe('');
+
+    component.form.patchValue({ categoryId: 'other_income' });
+    await component.onSubmit();
+
+    const row = await readBack(description);
+    expect(row['type']).toBe('income');
+    expect(row['categoryId']).toBe('other_income');
+    // The reader's grades were the form's to show, never the ledger's to keep.
+    expect('fieldConfidence' in row).toBeFalse();
+
+    fixture.destroy();
+  }, 30000);
 
   it('degrades to a name-only location when geolocation is denied', async () => {
     const description = `smoke-location-denied-${Date.now()}`;

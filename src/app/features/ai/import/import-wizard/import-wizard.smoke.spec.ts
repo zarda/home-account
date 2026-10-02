@@ -26,6 +26,18 @@
 // through the wizard's own confirmImport into the document the rules accepted,
 // or a re-check watched against a ledger that actually holds the row it finds.
 //
+// One case reads its receipt on the device instead: the Vision and Apple
+// Intelligence bridges stand in for the iPhone, the strategy's
+// processMultipleImages is stepped over to the device reader it routes to on
+// iOS, and the rows are handed over as the capture dialog hands them, so the
+// on-device reader's verdict on which way the money moved is followed from
+// the OCR text to the document. The case after it hands the card rows whose
+// type the device doubted, built the same way, so the flag on the type toggle
+// is seen on the real card, and a flip there is followed into the documents
+// it writes. The next folds such a refund into its purchase on the card, so
+// the side the net points, and the doubt it settles, are followed the same
+// way.
+//
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
 //
@@ -58,6 +70,10 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { MockAuthService, createMockUser } from '../../../../core/services/testing';
 import { AIImportService } from '../../../../core/services/ai-import.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
+import { AIStrategyService } from '../../../../core/services/ai-strategy.service';
+import { NativeReceiptService } from '../../../../core/services/native-receipt.service';
+import { VisionOcrService } from '../../../../core/services/vision-ocr.service';
+import { AppleIntelligenceService } from '../../../../core/services/apple-intelligence.service';
 import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -71,8 +87,13 @@ import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/
 import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
 import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
-import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
+import {
+  fallbackCategoryFor,
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
+  UNRESOLVED_CATEGORY_CONFIDENCE
+} from '../../../../core/utils/categorization.utils';
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
+import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
 jasmine.getEnv().configure({ random: false });
@@ -1330,6 +1351,459 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       await new Promise(resolve => setTimeout(resolve, 300));
     },
     30000
+  );
+
+  it(
+    'an on-device scan of a refund slip reaches the review card as income under other_income, and is written so',
+    async () => {
+      // The camera's door on an iPhone with no Apple Intelligence, which
+      // hands every scan to the regex lane. On top of the shared receipt
+      // seams, the two Capacitor bridges stand in for the iPhone. The capture
+      // dialog sends any number of photos to the strategy's
+      // processMultipleImages, which is stepped over to the device reader it
+      // routes to on iOS: its routing (iOS only, unit-tested), the engine
+      // diagnostics and timing it stamps for the Import History record, and
+      // the base-currency fallback at its exit, which does nothing for a
+      // receipt that prints its currency. What the dialog then does with the
+      // answer is done here as it does it: its converter, its duplicate check
+      // against the real ledger, its router state. The photo is left out of
+      // the hand-off, as the next two cases leave it, so Import attaches
+      // nothing, and so are the engine diagnostics, so its history record
+      // names only the door. The rest is real: the minus read on the total,
+      // the type grade carried to the card, the category held to the income
+      // side, and the document the rules accept.
+      stubReceiptSeams();
+      const vision = jasmine.createSpyObj<VisionOcrService>('VisionOcrService', [
+        'detectEnvironment',
+        'isAvailable',
+        'recognizeText',
+        'isMacEnvironment'
+      ]);
+      vision.isAvailable.and.resolveTo({ available: true });
+      vision.recognizeText.and.resolveTo({
+        text: 'Harbour Supplies\n2026-01-15\nTotal: -$120.50',
+        blocks: [],
+        confidence: 0.9,
+        blockCount: 3
+      });
+      const apple = jasmine.createSpyObj<AppleIntelligenceService>('AppleIntelligenceService', [
+        'detectAvailability',
+        'isModelAvailable',
+        'parseReceiptText'
+      ]);
+      apple.isModelAvailable.and.returnValue(false);
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: VisionOcrService, useValue: vision },
+          { provide: AppleIntelligenceService, useValue: apple }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const native = TestBed.inject(NativeReceiptService);
+      const strategy = TestBed.inject(AIStrategyService);
+      spyOn(strategy, 'processMultipleImages').and.callFake(files => native.processImages(files));
+      const importService = TestBed.inject(AIImportService);
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const photo = new File([new Uint8Array([1])], 'refund.jpg', { type: 'image/jpeg' });
+      const read = await strategy.processMultipleImages([photo]);
+      const rows = importService.convertStrategyResultToCategories(read);
+
+      expect(rows.length).toBe(1);
+      const [row] = rows;
+      expect(row.type).toBe('income');
+      expect(row.fieldConfidence).toEqual({ amount: 0.8, date: 0.9, type: 0.5 });
+      // Nothing on this lane categorizes, so the row lands on the floor of
+      // the side its type puts it on.
+      expect({
+        suggestedCategoryId: row.suggestedCategoryId,
+        categoryConfidence: row.categoryConfidence
+      }).toEqual({
+        suggestedCategoryId: fallbackCategoryFor('income'),
+        categoryConfidence: UNCATEGORIZED_CATEGORY_CONFIDENCE
+      });
+
+      const duplicates = await duplicateService.checkDuplicates(rows);
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: photo.name,
+        fileSize: photo.size,
+        confidence: read.confidence,
+        warnings: [],
+        duplicates,
+        transactions: duplicateService.markDuplicates(rows, duplicates)
+      };
+
+      history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(component.extractedTransactions()[0].type).toBe('income');
+
+      // Printed in January, so the row asks about its date before Import.
+      const keep = host.querySelector<HTMLButtonElement>('.extra-chip.date-check .extra-accept');
+      expect(keep).not.toBeNull();
+      keep!.click();
+      fixture.detectChanges();
+      expect(component.unansweredDates()).toBe(0);
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect(stored['type']).toBe('income');
+      expect(stored['categoryId']).toBe('other_income');
+      expect(stored['amount']).toBe(120.5);
+      expect(stored['currency']).toBe('USD');
+      expect('fieldConfidence' in stored).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'an on-device refund and a doubted purchase reach review flagged on the toggle, and a flip files the category on the new side',
+    async () => {
+      // Two photos the camera read on the device, handed over the way the
+      // capture dialog hands them: its converter, its duplicate check against
+      // the real ledger, its router state. One is a refund the regex lane
+      // read off a total printed as a negative; nothing on that lane
+      // categorizes. The other is a purchase the model named a category for
+      // over a total that printed as a credit, so its type is doubted too.
+      // The card's suite renders the flag against a stubbed parent; only here
+      // does a graded row travel the camera's own hand-off onto the card, and
+      // only here is a flip on it followed into the document it writes.
+      stubReceiptSeams();
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      // Dated today, so neither row asks about its date.
+      const today = new Date();
+      const rows = TestBed.inject(AIImportService).convertStrategyResultToCategories({
+        source: 'native',
+        confidence: 0.9,
+        processingTimeMs: 0,
+        transactions: [
+          {
+            date: today,
+            description: 'Smoke refund slip',
+            amount: 1280,
+            type: 'income',
+            currency: 'JPY',
+            confidence: 0.9,
+            source: 'native',
+            categoryAttempted: false,
+            fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 }
+          },
+          {
+            date: today,
+            description: 'Smoke doubted purchase',
+            amount: 640,
+            type: 'expense',
+            currency: 'JPY',
+            confidence: 0.9,
+            source: 'native',
+            suggestedCategoryId: 'food',
+            fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 }
+          }
+        ]
+      });
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
+      const duplicates = await duplicateService.checkDuplicates(rows);
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: '2 images',
+        fileSize: 2,
+        confidence: 0.9,
+        warnings: [],
+        duplicates,
+        transactions: duplicateService.markDuplicates(rows, duplicates)
+      };
+
+      history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: true }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      const toggle = (index: number) => cards()[index].querySelector<HTMLButtonElement>('.type-toggle')!;
+      const card = () => fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      // The hand-off lands a macrotask after the view, and the catalogue the
+      // card's category menu offers arrives on its own Firestore round trip.
+      await until(
+        fixture,
+        () => TestBed.inject(CategoryService).categories().length > 0 && cards().length === 2
+      );
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      const [refund, purchase] = card().transactions;
+      expect({ type: refund.type, category: refund.suggestedCategoryId, grade: refund.fieldConfidence?.type })
+        .withContext('the refund lands on the income side\'s floor, its type doubted')
+        .toEqual({ type: 'income', category: fallbackCategoryFor('income'), grade: 0.5 });
+      expect({ type: purchase.type, category: purchase.suggestedCategoryId, grade: purchase.fieldConfidence?.type })
+        .withContext('the purchase keeps the category the model named, its type doubted')
+        .toEqual({ type: 'expense', category: 'food', grade: 0.3 });
+
+      // The flag sits on the toggle a reviewer answers it with, and its
+      // sentence leads the toggle's name in the reviewer's own language.
+      const sentence = TestBed.inject(TranslationService).t('import.verifyType');
+      for (const index of [0, 1]) {
+        expect(toggle(index).querySelector('.verify-flag'))
+          .withContext(`card ${index + 1}'s toggle is flagged`)
+          .not.toBeNull();
+        expect(toggle(index).getAttribute('aria-label')?.startsWith(sentence))
+          .withContext(`card ${index + 1}'s toggle is named by the flag first`)
+          .toBeTrue();
+      }
+
+      // The purchase's category menu, over the merged catalogue the account
+      // actually holds: the defaults beside the Groceries this suite seeded.
+      const menu = (index: number) =>
+        (fixture.debugElement.queryAll(By.css('.transaction-card'))[index]
+          .query(By.directive(CategorySuggestionComponent)).componentInstance as CategorySuggestionComponent)
+          .sortedCategories();
+      const offeredBefore = menu(1).map(c => c.id);
+      expect(offeredBefore).withContext('an expense row is offered food').toContain('food');
+      expect(offeredBefore).withContext('and not the income side').not.toContain('other_income');
+
+      // The reviewer answers the purchase's flag by flipping it. The food the
+      // model named cannot ride onto an income row, so it moves to the income
+      // side's catch-all, graded as an answer that resolved to nothing.
+      toggle(1).click();
+      fixture.detectChanges();
+      const flipped = card().transactions[1];
+      expect({ type: flipped.type, category: flipped.suggestedCategoryId, grade: flipped.categoryConfidence })
+        .withContext('the flipped purchase is filed on the income side')
+        .toEqual({ type: 'income', category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+      expect(toggle(1).querySelector('.verify-flag')).withContext('the flip answers the flag').toBeNull();
+
+      // And its menu follows it there, so food cannot be picked straight back
+      // onto an income row.
+      const offeredAfter = menu(1);
+      expect(offeredAfter.filter(c => c.type === 'expense').map(c => c.id))
+        .withContext('the flipped purchase is offered no expense category')
+        .toEqual([]);
+      expect(offeredAfter.map(c => c.id)).withContext('the catch-all it was filed on').toContain('other_income');
+
+      // A type change re-runs the duplicate check. Import waits on it; so does
+      // this, because confirmImport() called directly would not.
+      await until(fixture, () => component.rechecksInFlight() === 0);
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs
+        .filter(d => !before.has(d.id))
+        .map(d => d.data())
+        .map(stored => ({
+          description: stored['description'],
+          type: stored['type'],
+          categoryId: stored['categoryId'],
+          graded: 'fieldConfidence' in stored
+        }))
+        .sort((a, b) => String(a.description).localeCompare(String(b.description)));
+      expect(landed).toEqual([
+        { description: 'Smoke doubted purchase', type: 'income', categoryId: 'other_income', graded: false },
+        { description: 'Smoke refund slip', type: 'income', categoryId: 'other_income', graded: false }
+      ]);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a refund merged into its purchase writes the net on the side it points, without the reader\'s doubt about the type',
+    async () => {
+      // Two pairs of photos the camera read on the device, each a purchase
+      // the model named food for and a refund against it, both doubted on
+      // their type, handed over the way the capture dialog hands them. The
+      // reviewer folds each refund into its purchase from the refund's own
+      // merge menu. The two sat on opposite sides, so the net decides the
+      // type and the reader's doubt goes with it: the first nets to an
+      // expense that keeps its food, the second to income, where food cannot
+      // follow. The card's suite and the pure merge say what the survivor
+      // carries; only here is it followed through the wizard's re-check and
+      // confirm into the document it writes. The second pair is imported
+      // after the first is written, at figures the first's stored row cannot
+      // match as a duplicate.
+      stubReceiptSeams();
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
+
+      const mergeAndImport = async (
+        purchase: { description: string; amount: number },
+        refund: { description: string; amount: number }
+      ) => {
+        const before = new Set(
+          (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+        );
+        // Dated today, so neither row asks about its date.
+        const today = new Date();
+        const rows = TestBed.inject(AIImportService).convertStrategyResultToCategories({
+          source: 'native',
+          confidence: 0.9,
+          processingTimeMs: 0,
+          transactions: [
+            {
+              date: today,
+              description: purchase.description,
+              amount: purchase.amount,
+              type: 'expense',
+              currency: 'JPY',
+              confidence: 0.9,
+              source: 'native',
+              suggestedCategoryId: 'food',
+              fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 }
+            },
+            {
+              date: today,
+              description: refund.description,
+              amount: refund.amount,
+              type: 'income',
+              currency: 'JPY',
+              confidence: 0.9,
+              source: 'native',
+              categoryAttempted: false,
+              fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 }
+            }
+          ]
+        });
+        const duplicates = await duplicateService.checkDuplicates(rows);
+        const transactions = duplicateService.markDuplicates(rows, duplicates);
+        expect(transactions.map(t => t.isDuplicate))
+          .withContext('neither row matches anything the ledger holds, so both can merge')
+          .toEqual([false, false]);
+        const importResult: ImportResult = {
+          source: 'image',
+          fileType: 'receipt_image',
+          fileName: '2 images',
+          fileSize: 2,
+          confidence: 0.9,
+          warnings: [],
+          duplicates,
+          transactions
+        };
+
+        history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: true }, '');
+        const fixture = TestBed.createComponent(ImportWizardComponent);
+        fixture.detectChanges();
+
+        const host = fixture.nativeElement as HTMLElement;
+        const component = fixture.componentInstance;
+        const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+        const flagged = (card: HTMLElement) => card.querySelector('.type-toggle .verify-flag') !== null;
+        await until(
+          fixture,
+          () => TestBed.inject(CategoryService).categories().length > 0 && cards().length === 2
+        );
+        expect(cards().map(flagged)).withContext('both rows reach review with their type doubted').toEqual([true, true]);
+
+        cards()[1].querySelector<HTMLButtonElement>('.merge-trigger')!.click();
+        fixture.detectChanges();
+        const items = Array.from(
+          document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item')
+        );
+        expect(items.length).withContext('the purchase is the only other JPY row on offer').toBe(1);
+        items[0].click();
+        fixture.detectChanges();
+
+        expect(cards().length).toBe(1);
+        const survivor = component.extractedTransactions()[0];
+        const reviewed = {
+          description: survivor.description,
+          type: survivor.type,
+          amount: survivor.amount,
+          category: survivor.suggestedCategoryId,
+          grade: survivor.fieldConfidence?.type,
+          flagged: flagged(cards()[0])
+        };
+
+        // The survivor's amount changed, which is a detection input, so a
+        // re-check is in flight behind the merge. Import waits on it; so does
+        // this, because confirmImport() called directly would not.
+        await until(fixture, () => component.rechecksInFlight() === 0);
+        await component.confirmImport();
+
+        const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+        const landed = after.docs
+          .filter(d => !before.has(d.id))
+          .map(d => d.data())
+          .map(stored => ({
+            description: stored['description'],
+            type: stored['type'],
+            amount: stored['amount'],
+            categoryId: stored['categoryId'],
+            graded: 'fieldConfidence' in stored
+          }));
+
+        history.replaceState({}, '');
+        fixture.destroy();
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return { reviewed, landed };
+      };
+
+      const partly = await mergeAndImport(
+        { description: 'Smoke partly refunded purchase', amount: 2000 },
+        { description: 'Smoke partial refund', amount: 500 }
+      );
+      expect(partly.reviewed)
+        .withContext('the purchase survives as the net expense, its food kept and its type no longer doubted')
+        .toEqual({
+          description: 'Smoke partly refunded purchase',
+          type: 'expense',
+          amount: 1500,
+          category: 'food',
+          grade: undefined,
+          flagged: false
+        });
+      expect(partly.landed).toEqual([
+        { description: 'Smoke partly refunded purchase', type: 'expense', amount: 1500, categoryId: 'food', graded: false }
+      ]);
+
+      const over = await mergeAndImport(
+        { description: 'Smoke overrefunded purchase', amount: 400 },
+        { description: 'Smoke larger refund', amount: 2000 }
+      );
+      expect(over.reviewed)
+        .withContext('the purchase survives as the net income, filed on the income side\'s catch-all')
+        .toEqual({
+          description: 'Smoke overrefunded purchase',
+          type: 'income',
+          amount: 1600,
+          category: 'other_income',
+          grade: undefined,
+          flagged: false
+        });
+      expect(over.landed).toEqual([
+        { description: 'Smoke overrefunded purchase', type: 'income', amount: 1600, categoryId: 'other_income', graded: false }
+      ]);
+    },
+    60000
   );
 
   it(

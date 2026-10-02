@@ -1,6 +1,8 @@
 # 147. A row is graded by what its door can vouch for
 
-**Status:** Accepted, implemented · **Date:** 2026-09-24 · **Issues:** #428, #429
+**Status:** Accepted, implemented; amended by
+[0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)
+· **Date:** 2026-09-24 · **Issues:** #428, #429
 
 Reference documentation lives in [../import-fields.md](../import-fields.md) and
 [../receipt-import.md](../receipt-import.md).
@@ -9,6 +11,21 @@ This record takes #428 whole and the third part of #429, the merged count,
 because it is the same path: the row a reader produces, the category it is
 filed under, the grades it carries onto the review card, and the marks the
 card counts.
+
+**Amended by
+[0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md).**
+The rules below stand — the type is explicit and never read from a sign, a
+row is offered and filed on its own side, and every grade is one its door can
+defend — but one premise does not. *"Every scan it reads is a purchase"* was
+the on-device path's gap, not its nature: 0162 has the device read a refund
+as income, from the model's verdict, or on the regex lane a negative mark
+printed on the total. The on-device model is still shown the expense side, now because a refund
+slip lists the goods going back; the doors move the expense category it names
+off an income row onto `other_income`, as they already moved a cloud row's.
+An on-device row also carries a third grade, for its type, set as policy under
+the 0.7 bar so that every income verdict is reviewed; and the review card now
+holds a row's category to its side when the reviewer flips the type, where
+the checks this record added held only what the import suggested.
 
 ## Context
 

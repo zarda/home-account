@@ -596,4 +596,28 @@ describe('CameraCaptureComponent processing overlay', () => {
     expect(processButton().getAttribute('aria-busy')).not.toBe('true');
     expect(processButton().hasAttribute('aria-label')).toBeFalse();
   });
+
+  // The hint sits on the empty capture area, so these start with no image,
+  // and on an iPhone, since nothing else shows it.
+  function installHintOnIPhone(standalone: boolean): HTMLElement | null {
+    const pwaService = TestBed.inject(PwaService) as jasmine.SpyObj<PwaService>;
+    pwaService.isIOS.and.returnValue(true);
+    pwaService.isStandalone.and.returnValue(standalone);
+    component.capturedImages.set([]);
+    fixture.detectChanges();
+    return fixture.nativeElement.querySelector('.ios-hint');
+  }
+
+  it('asks an iPhone browser tab to add the app to the Home Screen', () => {
+    // A pin, and the partner that keeps the next case from passing on a
+    // selector that matches nothing.
+    expect(installHintOnIPhone(false)?.textContent).toContain('import.iosInstallHint');
+  });
+
+  it('asks nothing of an app that is already installed', () => {
+    // A pin: the template already hides the hint once PwaService says the
+    // app is installed. The defect was PwaService never saying so inside the
+    // native app, which its own spec now covers.
+    expect(installHintOnIPhone(true)).toBeNull();
+  });
 });

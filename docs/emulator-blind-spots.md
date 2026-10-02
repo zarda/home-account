@@ -242,6 +242,38 @@ households' own budgets and goals with a contribution each
 That venue shares the suite's own limits: the rules it loads are the
 repository's, not the deployed ones, and nothing in it is real mail.
 
+## Another tab is not something a suite can open (#469)
+
+A page reloads on an account change it did not start
+([ADR 0163](ADR/0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md)),
+and in a browser that change comes from another tab of the origin: its
+sign-in, sign-out or switch, written into the session the tabs share, carried
+to this page by a storage event, and answered with a real reload. Karma runs
+one page, and a real reload aborts the whole run
+([testing.md](testing.md#a-real-reload-aborts-the-whole-run)). So the proof
+is split three ways, and only the last of them has two tabs:
+
+- **The transitions, on one Auth instance.** `auth.service.smoke.spec.ts`
+  ("an account change this page did not start") drives what another tab's
+  change hands the listener — a direct switch through an unsigned emulator
+  token, a raw sign-out, a raw sign-in onto a signed-out page — against the
+  real SDK and the emulator, with the reload stood in for by a spy, and
+  checks that the page's own sign-out reloads nothing.
+- **The channel, with a frame for the other tab.**
+  `app.config.smoke.spec.ts` shows the app's Auth hearing a change another
+  document writes. A same-origin iframe stands for the other tab: its own
+  `localStorage.removeItem` of the session's key is what another tab's SDK
+  writes on a sign-out, and the browser announces it to every other document
+  on the origin and never to the writer. The same file shows a session the
+  former IndexedDB persistence kept being carried into local storage.
+- **The real thing, driven.** Two tabs of the emulator serve on
+  `/transactions`, a swap, a sign-out and a sign-in made in one of them, the
+  other reloading each time, and what the departing page reports on its way
+  out: [e2e.md](e2e.md) journey 80. Nothing else can show that last part,
+  because it is a race between two channels in a real browser — the run that
+  found the departing refusals outrunning the reload is why the session now
+  lives in local storage.
+
 ## The callable the smoke run never starts (#71)
 
 `npm run smoke` starts the emulators `--only auth,storage,firestore`. The
@@ -621,7 +653,8 @@ top-level `node_modules/@firebase/firestore` (4.16.0, from `firebase`
 | Storage `update` unreachable by upload | a metadata-update case, plus a named post-deploy check on the live project | `storage.service.smoke.spec.ts`, [receipt-quota.md](receipt-quota.md) |
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
 | Nothing renders, and no journey crosses a page | the driven browser journeys — a protocol, not a gate | [e2e.md](e2e.md), by hand, twice per branch |
-| A journey that needs several accounts | the same protocol on the emulator serve, with three seeded accounts in two households | [e2e.md](e2e.md) journeys 68–77, [ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md) |
+| A journey that needs several accounts | the same protocol on the emulator serve, with three seeded accounts in two households | [e2e.md](e2e.md) journeys 68–77 and 80, [ADR 0155](ADR/0155-journeys-that-need-two-accounts-run-against-the-emulators.md) |
+| Another tab of the origin, and a real reload | the SDK's transitions on one Auth instance with the reload as a spy; a same-origin frame writing the other tab's change; the two real tabs in a driven journey | `auth.service.smoke.spec.ts`, `app.config.smoke.spec.ts`, [e2e.md](e2e.md) journey 80, above |
 | The invite callable is outside the smoke run | its decisions over fakes in the functions tests; its writes reproduced by the smoke specs; the real callable in the emulator journeys | `npm --prefix functions test`, `household.service.smoke.spec.ts`, [e2e.md](e2e.md) journey 76, above |
 | The household cleanup triggers are outside the smoke run | their plans, handler and Admin deps over fakes in the functions tests; the clients' own deletes through the rules in the smoke specs; the real triggers in the emulator journeys | `npm --prefix functions test`, [e2e.md](e2e.md) journeys 74 and 75, above |
 | A Firestore trigger's deployed wiring | a read-only Eventarc listing after the deploy that creates it | [deploy.md](deploy.md#firestore-event-triggers) |

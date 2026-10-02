@@ -60,6 +60,8 @@ class PreviewOverflowProbeComponent {
       date: new Date('2026-06-01'),
       dateAssumed: true,
       type: 'expense',
+      // A type the reader doubted, so the toggle wears its flag at this width.
+      fieldConfidence: { type: 0.5 },
       suggestedCategoryId: 'food',
       categoryConfidence: 0.8,
       isDuplicate: false,
@@ -288,6 +290,31 @@ describe('overflow guard: the import review card', () => {
     expect(chip.querySelector('.verify-flag')?.getAttribute('aria-hidden'))
       .withContext('the marker icon is decorative')
       .toBe('true');
+  });
+
+  it('says the type was doubted in the toggle\'s own accessible name, inside the 288px', () => {
+    // The currency chip's shape again: the sentence leads the toggle's name
+    // and the icon adds nothing twice. The flag takes the trend icon's place
+    // rather than a place beside it, so r1's toggle is no wider than r2's,
+    // which shows the same type unflagged.
+    const [flagged, plain] = Array.from(host.querySelectorAll<HTMLElement>('.type-toggle'));
+    expect(flagged.getAttribute('aria-label'))
+      .withContext('the flag leads the toggle name')
+      .toMatch(/^import\.verifyType\. /);
+    expect(flagged.getAttribute('aria-label'))
+      .withContext('and the toggle still says what it shows')
+      .toContain('common.expense');
+    expect(flagged.querySelector('.verify-flag')?.getAttribute('aria-hidden'))
+      .withContext('the flag icon is decorative')
+      .toBe('true');
+    expect(withinWidthOf(clip, flagged)).withContext('type toggle inside the clip').toBeTrue();
+    expect(flagged.getBoundingClientRect().height)
+      .withContext('type toggle tap target')
+      .toBeGreaterThanOrEqual(40);
+    expect(plain.querySelector('.verify-flag')).withContext('r2\'s type is not doubted').toBeNull();
+    expect(flagged.getBoundingClientRect().width)
+      .withContext('the flag costs the toggle no width')
+      .toBeCloseTo(plain.getBoundingClientRect().width, 0);
   });
 
   it('keeps every suggestion chip, and its remove button, inside the card', () => {

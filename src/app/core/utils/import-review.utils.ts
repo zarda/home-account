@@ -228,9 +228,9 @@ export function sumByCurrency(
  *
  * Shared rather than repeated, since the first two spellings of the join had
  * already drifted apart. The callers:
- * - the review card's accessible names for four controls: the currency chip,
- *   the offered currency's accept button, the date chip and the keep-date
- *   button;
+ * - the review card's accessible names for five controls: the currency chip,
+ *   the offered currency's accept button, the date chip, the keep-date button
+ *   and the type toggle;
  * - the transaction form's verify-field text, one string that is both the
  *   flag's tooltip and its accessible name;
  * - the import wizard's notice for a confirm round, visible text as well as
@@ -486,7 +486,14 @@ export function mergeableRow(row: CategorizedImportTransaction): boolean {
  * amount's grade drops from the result the way a hand correction clears it
  * (`commitAmount`): the figure is now arithmetic the reviewer asked for, not
  * a reading. The date's grade is not this function's business and rides the
- * target's `fieldConfidence` through untouched.
+ * target's `fieldConfidence` through untouched. The type's grade drops too,
+ * but only when the two rows sat on opposite sides: then the net decides
+ * the direction, and the reader's doubt about which way the target's own
+ * figure went no longer bears on it. Two rows on one side net to that side
+ * whatever their figures, so there the target's grade rides through as the
+ * date's does. The category stays the target's even when the net turns the
+ * row to the other side; holding it to that side needs the catalogue, which
+ * the card has and this function does not (`mergeInto`).
  *
  * `imageMetadata` unions through `imageSources` rather than reading the two
  * `imageIndex`/`mergedFromImages` pairs directly, because a row already
@@ -521,6 +528,7 @@ export function mergeImportRows(
 
   const signed = (row: CategorizedImportTransaction) => (row.type === 'income' ? -row.amount : row.amount);
   const net = roundToMinorUnit(signed(target) + signed(source), target.currency);
+  const graded = withoutFieldConfidence(target.fieldConfidence, 'amount');
 
   const single = target.imageMetadata ?? source.imageMetadata;
   // The source's own receipt group has no other record once the spread has
@@ -558,7 +566,7 @@ export function mergeImportRows(
     receiptCountry: target.receiptCountry ?? source.receiptCountry,
     isDuplicate: false,
     selected: true,
-    fieldConfidence: withoutFieldConfidence(target.fieldConfidence, 'amount'),
+    fieldConfidence: target.type === source.type ? graded : withoutFieldConfidence(graded, 'type'),
   };
   // Absent, not undefined, the way splitImportRow leaves what it drops: the
   // spread carries every key the target had, a stale duplicateOf included.

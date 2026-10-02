@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -2015,6 +2015,18 @@ describe('TransactionFormComponent', () => {
       expect(component.verifyFieldTooltip('date')).toBe('import.verifyDate. import.dateNotTodayTooltip');
     });
 
+    it('names a doubted type with its own sentence and no percentage', () => {
+      // The type's grade is the device reader's policy, not a measurement, so
+      // a percentage would report a reading nothing took — as on the review
+      // card.
+      const component = build().componentInstance;
+      component.scanFieldConfidence.set({ type: 0.5 });
+      translation.t.calls.reset();
+
+      expect(component.verifyFieldTooltip('type')).toBe('import.verifyType');
+      expect(translation.t.calls.mostRecent().args).toEqual(['import.verifyType']);
+    });
+
     it('scanReceipt leaves a date read as today unflagged', async () => {
       strategy.processReceipt.and.resolveTo(
         scanResult({ date: new Date(), fieldConfidence: { date: 0.9 } }),
@@ -2261,6 +2273,188 @@ describe('TransactionFormComponent', () => {
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
       expect(dto.location).toEqual({ name: 'Bakery St' });
     });
+
+    describe('the type a scan read', () => {
+      const scan = (component: TransactionFormComponent) =>
+        (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+      /**
+       * Picks one photo into the empty strip, which starts a scan the pick
+       * does not wait for, and waits that scan out.
+       */
+      async function pickAndScan(component: TransactionFormComponent, name: string): Promise<void> {
+        const file = new File([name], `${name}.jpg`, { type: 'image/jpeg' });
+        await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
+        await until(() => !component.isScanning());
+      }
+
+      /** A refund as the on-device reader hands it back: income, its type graded, naming the goods' category. */
+      const refund = () =>
+        scanResult({ type: 'income', source: 'native', description: 'Refund', fieldConfidence: { type: 0.5 } });
+
+      it('scanReceipt files an income reading as income before the category, so the income category it named is applied', async () => {
+        strategy.processReceipt.and.resolveTo(scanResult({ type: 'income', suggestedCategoryId: 'salary' }));
+        const component = build().componentInstance;
+
+        await scan(component);
+
+        expect(component.form.get('type')?.value).toBe('income');
+        expect(component.transactionType()).toBe('income');
+        // Looked for among the expense categories, salary would not be found
+        // and the field would stay blank.
+        expect(component.form.get('categoryId')?.value).toBe('salary');
+      });
+
+      it('scanReceipt leaves the category empty when an income reading named one from the other side', async () => {
+        // The device's model is offered the expense catalogue alone, so a
+        // refund comes back naming the category of the goods going back. The
+        // required field asks instead; nothing is prefilled on the income side.
+        strategy.processReceipt.and.resolveTo(refund());
+        const component = build().componentInstance;
+
+        await scan(component);
+
+        expect(component.form.get('type')?.value).toBe('income');
+        expect(component.form.get('categoryId')?.value).toBe('');
+      });
+
+      it('scanReceipt flags a type the reader doubted, and stops once the user changes the type, the amount\'s flag staying', async () => {
+        // A purchase the device could not tell from a refund, its amount
+        // doubted too. Dated today, so no flag is the date's.
+        strategy.processReceipt.and.resolveTo(
+          scanResult({ source: 'native', date: new Date(), fieldConfidence: { amount: 0.4, type: 0.3 } }),
+        );
+        const component = build().componentInstance;
+
+        await scan(component);
+        expect(component.form.get('type')?.value).toBe('expense');
+        expect(component.shouldVerifyField('type')).withContext('the scan').toBeTrue();
+        expect(component.shouldVerifyField('amount')).withContext('the scan').toBeTrue();
+
+        // Any type change is the user's answer about the type, as a flip is on
+        // the review card. The amount is still the scan's reading.
+        component.form.get('type')!.setValue('income');
+
+        expect(component.shouldVerifyField('type')).withContext('after the change').toBeFalse();
+        expect(component.shouldVerifyField('amount')).withContext('after the change').toBeTrue();
+        expect(component.scanFieldConfidence()).toEqual({ amount: 0.4 });
+      });
+
+      it('a purchase scanned after a discarded refund takes back the income the refund filed', async () => {
+        // Discarding the photo leaves the refund's amount and description in
+        // the fields, and its type with them. Left there, the purchase scanned
+        // next would be saved as income. The discard withdraws the flag alone.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        expect(component.form.get('type')?.value).withContext('the refund').toBe('income');
+        expect(component.shouldVerifyField('type')).withContext('the refund').toBeTrue();
+
+        component.removePendingReceipt(0);
+        expect(component.form.get('type')?.value).withContext('after the discard').toBe('income');
+        expect(component.shouldVerifyField('type')).withContext('after the discard').toBeFalse();
+
+        await pickAndScan(component, 'purchase');
+        expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+        expect(component.shouldVerifyField('type')).withContext('the purchase').toBeFalse();
+        expect(component.form.get('categoryId')?.value).toBe('food');
+      });
+
+      it('a purchase scanned after two discarded refunds still takes back the income they filed', async () => {
+        // The second refund finds income already standing, filed by the first.
+        // It agrees with the field but the income is still a scan's, so the
+        // purchase after it may take it back.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        component.removePendingReceipt(0);
+        await pickAndScan(component, 'second-refund');
+        expect(component.form.get('type')?.value).withContext('the second refund').toBe('income');
+
+        component.removePendingReceipt(0);
+        expect(component.form.get('type')?.value).withContext('after the second discard').toBe('income');
+
+        await pickAndScan(component, 'purchase');
+        expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+        expect(component.form.get('categoryId')?.value).toBe('food');
+      });
+
+      it('a scan that fails between a discarded refund and a purchase leaves the refund\'s income for the purchase to take back', async () => {
+        // A pin: the failed scan never wrote the type, so the income standing
+        // after it is still the refund's.
+        spyOn(console, 'error');
+        strategy.processReceipt.and.resolveTo(refund());
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        component.removePendingReceipt(0);
+        strategy.processReceipt.and.rejectWith(new Error('unreadable'));
+        await pickAndScan(component, 'unreadable');
+        component.removePendingReceipt(0);
+        strategy.processReceipt.and.resolveTo(scanResult({ source: 'native' }));
+        await pickAndScan(component, 'purchase');
+
+        expect(component.form.get('type')?.value).toBe('expense');
+        expect(component.form.get('categoryId')?.value).toBe('food');
+      });
+
+      it('scanReceipt never lets an expense reading override a type the user picked', async () => {
+        // A pin: the form has never moved the type on a scan, and an expense
+        // reading still leaves a chosen income where it is.
+        const component = build().componentInstance;
+        component.form.get('type')!.setValue('income');
+
+        await scan(component);
+
+        expect(component.form.get('type')?.value).toBe('income');
+        // The purchase's category is not on the income side; the field asks.
+        expect(component.form.get('categoryId')?.value).toBe('');
+      });
+
+      it('a refund read over an income the user picked leaves the type theirs, so a purchase scanned next does not move it', async () => {
+        // A pin: the refund agreed with the user and changed nothing, so the
+        // scan has no income of its own to take back.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+        component.form.get('type')!.setValue('income');
+
+        await pickAndScan(component, 'refund');
+        component.removePendingReceipt(0);
+        await pickAndScan(component, 'purchase');
+
+        expect(component.form.get('type')?.value).toBe('income');
+      });
+
+      it('a type the user sets after a scan is theirs, so a purchase scanned after the refund is discarded does not move it', async () => {
+        // A pin: the user went to expense and back, which makes the income
+        // their answer rather than the refund's.
+        strategy.processReceipt.and.returnValues(
+          Promise.resolve(refund()),
+          Promise.resolve(scanResult({ source: 'native' })),
+        );
+        const component = build().componentInstance;
+
+        await pickAndScan(component, 'refund');
+        component.form.get('type')!.setValue('expense');
+        component.form.get('type')!.setValue('income');
+        component.removePendingReceipt(0);
+        await pickAndScan(component, 'purchase');
+
+        expect(component.form.get('type')?.value).toBe('income');
+      });
+    });
   });
 
   describe('tags offered by the scan', () => {
@@ -2363,6 +2557,58 @@ describe('TransactionFormComponent', () => {
       const component = build().componentInstance;
       component.acceptSuggestion();
       expect(component.form.get('categoryId')?.value).toBe('');
+    });
+
+    describe('after the type moves', () => {
+      const scan = (component: TransactionFormComponent) =>
+        (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+      /**
+       * A refund as the on-device reader hands it back: income, its type
+       * doubted, naming the goods' category, which the income side cannot
+       * hold. The field stays blank, and the description the scan fills asks
+       * for a suggestion on the income side.
+       */
+      const refund = () =>
+        scanResult({ type: 'income', source: 'native', description: 'Refund', fieldConfidence: { type: 0.5 } });
+
+      it('withdraws a suggestion the new side cannot hold', fakeAsync(() => {
+        strategy.processReceipt.and.resolveTo(refund());
+        strategy.suggestCategory.and.resolveTo('salary');
+        const component = build().componentInstance;
+
+        void scan(component);
+        flushMicrotasks();
+        tick(500);
+        flushMicrotasks();
+        expect(component.form.get('type')?.value).withContext('the refund').toBe('income');
+        expect(component.suggestedCategory()).withContext('offered on the income side').toEqual(income);
+
+        // The user answers the type flag by moving the row to expense. Taken
+        // there, the income category would be written on an expense.
+        component.form.get('type')!.setValue('expense');
+
+        expect(component.suggestedCategory()).toBeNull();
+      }));
+
+      it('does not offer a suggestion that answers for the side the form has left', fakeAsync(() => {
+        strategy.processReceipt.and.resolveTo(refund());
+        let answer!: (id: string) => void;
+        strategy.suggestCategory.and.returnValue(new Promise(resolve => (answer = resolve)));
+        const component = build().componentInstance;
+
+        void scan(component);
+        flushMicrotasks();
+        tick(500);
+        expect(strategy.suggestCategory).withContext('asked on the income side').toHaveBeenCalledOnceWith('Refund', [income]);
+
+        // The type moves while the request is out; the answer is for income.
+        component.form.get('type')!.setValue('expense');
+        answer('salary');
+        flushMicrotasks();
+
+        expect(component.suggestedCategory()).toBeNull();
+      }));
     });
   });
 
@@ -2736,6 +2982,53 @@ describe('TransactionFormComponent, through its own template', () => {
     expect(el().querySelector('.verify-flag')).toBeNull();
   });
 
+  it('flags a doubted type beside the type toggle, where a screen reader reads it', async () => {
+    // A purchase the device could not tell from a refund: the form stays on
+    // its default expense, and the type is graded under the bar.
+    strategySpy.processReceipt.and.resolveTo({
+      transactions: [{
+        date: new Date(),
+        description: 'Harbour Supplies',
+        amount: 14.03,
+        type: 'expense',
+        currency: 'USD',
+        confidence: 0.8,
+        source: 'native',
+        fieldConfidence: { type: 0.3 },
+      }],
+      source: 'native',
+      confidence: 0.8,
+      processingTimeMs: 1,
+    });
+    render();
+    const typeFlag = () => el().querySelector('.type-toggle-container .verify-flag') as HTMLElement | null;
+    expect(typeFlag()).toBeNull();
+
+    const photo = new File(['refund?'], 'slip.jpg', { type: 'image/jpeg' });
+    await component.onReceiptSelected({ target: { files: [photo], value: '' } } as unknown as Event);
+    await until(() => !component.isScanning());
+    fixture.detectChanges();
+
+    const flag = typeFlag();
+    expect(flag).not.toBeNull();
+    expect(component.form.get('type')?.value).toBe('expense');
+    // Beside the toggle rather than inside a button, so the icon carries the
+    // sentence itself.
+    expect(flag!.closest('mat-button-toggle-group'))
+      .withContext('beside the toggle group, not inside one of its buttons')
+      .toBeNull();
+    expect(flag!.getAttribute('role')).toBe('img');
+    expect(flag!.getAttribute('aria-hidden')).toBe('false');
+    expect(flag!.getAttribute('aria-label')).toBe('import.verifyType');
+    expect(flag!.getAttribute('aria-label')).toBe(component.verifyFieldTooltip('type'));
+
+    toggle('income').click();
+    fixture.detectChanges();
+
+    expect(component.form.get('type')?.value).toBe('income');
+    expect(typeFlag()).toBeNull();
+  });
+
   it('tells a part it is one', () => {
     render({
       mode: 'edit',
@@ -2807,6 +3100,19 @@ describe('TransactionFormComponent, through its own template', () => {
     component.suggestedCurrency.set({ code: 'EUR', reason: 'receipt' } as never);
     fixture.detectChanges();
     (el().querySelector('.suggestion-dismiss') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('.suggestion-chip')).toBeNull();
+  });
+
+  it('withdraws the category chip when the type moves to a side its category does not fit', () => {
+    render();
+    toggle('income').click();
+    component.suggestedCategory.set(renderIncomeCategory);
+    fixture.detectChanges();
+    expect(text('.suggestion-chip')).withContext('offered on the income side').toContain('salary');
+
+    toggle('expense').click();
     fixture.detectChanges();
 
     expect(el().querySelector('.suggestion-chip')).toBeNull();

@@ -74,7 +74,7 @@ import { countryForCoordinates, currencyForCountry } from '../../../core/utils/c
 import { locationSlot } from '../../../core/utils/import-dto.utils';
 import { countryDisplayName, currencyReasonKey, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
 import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
-import { datedToday, joinSentences } from '../../../core/utils/import-review.utils';
+import { datedToday, joinSentences, withoutFieldConfidence } from '../../../core/utils/import-review.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
@@ -224,6 +224,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    */
   private scanCountry: string | null = null;
 
+  /**
+   * True while the type standing in the form is one a scan filed and the
+   * user has not changed since. Only then may a later expense reading move
+   * it back: an income reading always files its type, but an expense reading
+   * never overrides a type the user picked, the one the form opened with
+   * included. Any type change clears it; discarding the photo does not, since
+   * the type the scan filed is still standing in the field.
+   */
+  private typeFromScan = false;
+
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
   // re-reading the document.
@@ -269,7 +279,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    */
   isAiAvailable = computed(() => this.strategyService.hasAnyEngine());
 
-  /** How clearly the scan read the amount and date, when it could say. */
+  /**
+   * How clearly the scan read the amount and date, when it could say, and the
+   * type where the receipt spoke to it. Any type change drops the type's
+   * grade: the type standing after it is the user's answer.
+   */
   scanFieldConfidence = signal<FieldConfidence | null>(null);
 
   /**
@@ -684,6 +698,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.form.get('type')?.valueChanges
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((type) => {
+        // Any type change ends a scan's hold on the type: from here on it is
+        // the user's, and an expense reading leaves it alone. It is the
+        // user's answer about the type, too, so the reader's doubt about it
+        // goes, as a flip drops it on the review card; the other fields'
+        // flags stay. A scan's own type patch passes through here as well;
+        // scanReceipt sets the hold and its own grades again right after it.
+        this.typeFromScan = false;
+        this.scanFieldConfidence.update(fc => withoutFieldConfidence(fc ?? undefined, 'type') ?? null);
         this.transactionType.set(type);
         // Reset category if it doesn't match the type
         const currentCategoryId = this.form.get('categoryId')?.value;
@@ -692,6 +714,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           if (!validCategories.some(c => c.id === currentCategoryId)) {
             this.form.patchValue({ categoryId: '' });
           }
+        }
+        // The suggestion chip too: it was asked for on the side the form has
+        // left, and one tap on it would write that side's category onto this
+        // one. A scan moves the type now, and its flag asks the user to move
+        // it back, so the chip can easily outlive the side it answered for.
+        const suggestion = this.suggestedCategory();
+        if (suggestion && !validCategories.some(c => c.id === suggestion.id)) {
+          this.suggestedCategory.set(null);
         }
         // Same for the split's own rows, which the picker no longer offers: a
         // part naming a category of the other type renders as a blank select
@@ -1153,6 +1183,19 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         this.form.patchValue({ note: primary.notes });
       }
 
+      // The type before the category, so the category is looked up on the
+      // side the row now sits on. An income reading always files its type. An
+      // expense reading files only over an income an earlier scan filed and
+      // the user has left alone, which is how a purchase scanned after a
+      // discarded refund takes that income back; it never overrides a type
+      // the user picked.
+      const standingType = this.form.get('type')?.value;
+      const typeWasFromScan = this.typeFromScan;
+      if ((primary.type === 'income' || typeWasFromScan) && primary.type !== standingType) {
+        this.form.patchValue({ type: primary.type });
+      }
+      this.typeFromScan = primary.type === 'income' && (standingType !== 'income' || typeWasFromScan);
+
       // Set category if suggested
       if (primary.suggestedCategoryId) {
         const category = this.filteredCategories().find(c => c.id === primary.suggestedCategoryId);
@@ -1214,6 +1257,10 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.suggestedCoordinates.set(null);
       this.scanCurrencyFellBack = false;
       this.scanCountry = null;
+      // typeFromScan is left as it was. The catch does not touch the type
+      // field, so the flag still says whose the standing type is: an income a
+      // scan filed may still be taken back by the next scan, and a type the
+      // user picked still may not.
     } finally {
       this.isScanning.set(false);
     }
@@ -1412,11 +1459,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * the user is about to submit — so the flag has to live beside the input
    * itself, the way the import preview flags its own rows.
    */
-  shouldVerifyField(field: 'amount' | 'date'): boolean {
+  shouldVerifyField(field: keyof FieldConfidence): boolean {
     return this.readerDoubts(field) || (field === 'date' && this.scanDateOnAnotherDay() !== null);
   }
 
-  private readerDoubts(field: 'amount' | 'date'): boolean {
+  private readerDoubts(field: keyof FieldConfidence): boolean {
     const confidence = this.scanFieldConfidence()?.[field];
     return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
   }
@@ -1432,8 +1479,15 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * the date, the reader's own doubt is the stronger claim and leads; the
    * not-today sentence follows it, or stands alone when the reading was
    * clear.
+   *
+   * The type has a sentence of its own and no percentage, as on the review
+   * card: its grade is the device reader's policy rather than a measurement
+   * (ADR 0162), and a percentage would report a reading nothing took.
    */
-  verifyFieldTooltip(field: 'amount' | 'date'): string {
+  verifyFieldTooltip(field: keyof FieldConfidence): string {
+    if (field === 'type') {
+      return this.translationService.t('import.verifyType');
+    }
     const percent = Math.round((this.scanFieldConfidence()?.[field] ?? 0) * 100);
     const doubt = this.translationService.t(
       field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
@@ -1531,6 +1585,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // country claim dies with it for the same reason.
       this.printedLocationCountry = null;
       this.scanCountry = null;
+      // typeFromScan stays. The type the scan filed is still standing in the
+      // field, beside the amount and description it read, and only the
+      // user's own type change makes it theirs. Cleared here, a purchase
+      // scanned next could never take a discarded refund's income back, and
+      // would be saved as income.
     }
   }
 
@@ -1640,11 +1699,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.suggestedCategory.set(null);
 
     try {
-      const categories = this.filteredCategories();
-      const suggestedId = await this.strategyService.suggestCategory(description, categories);
+      const suggestedId = await this.strategyService.suggestCategory(description, this.filteredCategories());
 
       if (suggestedId) {
-        const category = categories.find(c => c.id === suggestedId);
+        // Looked up on the side the form is on when the answer arrives, not
+        // the one it was asked on: a type changed while the request was out
+        // leaves an answer for the other side, which is not offered.
+        const category = this.filteredCategories().find(c => c.id === suggestedId);
         if (category) {
           this.suggestedCategory.set(category);
         }
