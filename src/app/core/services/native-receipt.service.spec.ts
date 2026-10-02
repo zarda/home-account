@@ -25,9 +25,10 @@ describe('NativeReceiptService', () => {
     { id: 'food_groceries', name: 'categoryNames.groceries', type: 'expense', parentId: 'food', isActive: true },
     { id: 'food_coffeeAndDrinks', name: 'categoryNames.coffeeAndDrinks', type: 'expense', parentId: 'food', isActive: true },
     { id: 'food_restaurants', name: 'categoryNames.restaurants', type: 'expense', parentId: 'food', isActive: false },
-    // Every scan this service reads is a purchase, never a deposit — this
-    // entry exists only to prove the model is never offered it, and that an
-    // answer naming it does not resolve.
+    // The model is offered the expense side alone, even for a refund, whose
+    // slip lists the goods going back — this entry exists only to prove the
+    // model is never offered it, and that an answer naming it does not
+    // resolve.
     { id: 'employment_salary', name: 'categoryNames.salary', type: 'income', isActive: true },
   ] as Category[];
 
@@ -50,6 +51,11 @@ describe('NativeReceiptService', () => {
   };
 
   const imageFile = () => new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
+
+  // A refund slip's total printed as a negative, and a purchase whose total
+  // is printed again, marked, on the card line beneath it.
+  const REFUND_TEXT = 'Harbour Supplies\n2026-01-15\nTotal -$14.03';
+  const TWIN_TEXT = 'Shop\n2026-01-15\nTotal $14.03\nVISA -$14.03';
 
   beforeEach(() => {
     visionMock = jasmine.createSpyObj('VisionOcrService', [
@@ -112,6 +118,9 @@ describe('NativeReceiptService', () => {
       expect(transaction.amount).toBe(12.5);
       expect(transaction.currency).toBe('USD');
       expect(transaction.type).toBe('expense');
+      // Nothing on this receipt prints its total as a negative, so it is the
+      // purchase every receipt is by default, with no type grade to flag.
+      expect(transaction.fieldConfidence?.type).toBeUndefined();
       expect(transaction.source).toBe('native');
       // The recognized receipt text is recorded as the note so item details survive
       expect(transaction.notes).toBe(ocrResult.text);
@@ -187,6 +196,50 @@ describe('NativeReceiptService', () => {
 
       expect(result.transactions[0].fieldConfidence!.amount).toBe(0.6);
       expect(result.transactions[0].fieldConfidence!.amount).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+    });
+
+    /**
+     * A refund slip prints its total as a negative, and this lane has no
+     * model to read the words around it, so the mark on the total is all it
+     * can go on (ADR 0008: marks, never words). A mark is typography, not a
+     * measurement, so whatever it decides is flagged for review: income
+     * always, and an expense the print argued with.
+     */
+    describe('which way the money moved', () => {
+      it('files a total printed as a negative as income, graded for review', async () => {
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: REFUND_TEXT });
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.type).toBe('income');
+        expect(transaction.amount).toBe(14.03);
+        expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.9, type: 0.5 });
+        expect(transaction.fieldConfidence!.type).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+      });
+
+      it('keeps a total printed both marked and unmarked an expense, graded for review', async () => {
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: TWIN_TEXT });
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.type).toBe('expense');
+        expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.9, type: 0.3 });
+      });
+
+      it('keeps a purchase whose coupon prints a minus an expense with no type grade', async () => {
+        // Guard: the mark sits on the coupon, not the total, so it says
+        // nothing about which way the money moved.
+        visionMock.recognizeText.and.resolveTo({
+          ...ocrResult,
+          text: 'Shop\nCoffee $3.20\nCake $2.30\nCoupon -$1.00\nTotal $4.50',
+        });
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.type).toBe('expense');
+        expect(transaction.amount).toBe(4.5);
+        expect('type' in transaction.fieldConfidence!).toBeFalse();
+      });
     });
   });
 
@@ -279,6 +332,66 @@ describe('NativeReceiptService', () => {
       });
     });
 
+    /**
+     * The model answers a magnitude, so the type comes from the print: the
+     * same OCR text runs through the text reader, and its reading of the
+     * marks counts only when it read the same total the model did. A mark on
+     * some other figure says nothing about this one.
+     */
+    describe('which way the money moved', () => {
+      const answering = (amount: number) =>
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Harbour Supplies', date: '2026-01-15', amount, currency: 'USD',
+          category: '', details: '',
+        });
+
+      it('files the same total printed as a negative as income, graded for review', async () => {
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: REFUND_TEXT });
+        answering(14.03);
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.type).toBe('income');
+        expect(transaction.amount).toBe(14.03);
+        expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.8, type: 0.5 });
+        expect(transaction.fieldConfidence!.type).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+      });
+
+      it('keeps the same total printed both marked and unmarked an expense, graded for review', async () => {
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: TWIN_TEXT });
+        answering(14.03);
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.type).toBe('expense');
+        expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.8, type: 0.3 });
+      });
+
+      it('reads nothing from a mark printed on a total other than the one the model read', async () => {
+        // Guard: the print speaks of another figure, so the row is the
+        // purchase it would be anyway, and only its amount is flagged.
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: REFUND_TEXT });
+        answering(99);
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.type).toBe('expense');
+        expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
+      });
+
+      it('reads no verdict from a minus the model left on its amount', async () => {
+        // Guard: a stray sign is not a verdict (ADR 0147). The default OCR
+        // text prints the same 12.50 unmarked.
+        answering(-12.5);
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.amount).toBe(12.5);
+        expect(transaction.type).toBe('expense');
+        expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.8 });
+      });
+    });
+
     it('carries a printed location as the row slot, and nothing without one', async () => {
       const extraction = {
         merchant: 'Cafe Tokyo', date: '2026-01-15', amount: 1200, currency: 'JPY',
@@ -326,7 +439,8 @@ describe('NativeReceiptService', () => {
     });
 
     it('sends the on-device model no income category', async () => {
-      // Every scan this pipeline reads is a purchase, never a deposit.
+      // Even a refund is read against the expense side alone: its slip lists
+      // the goods going back, which only expense entries name.
       await service.processImage(imageFile());
 
       const sent = appleMock.parseReceiptText.calls.mostRecent().args[0].categories!;
@@ -418,6 +532,11 @@ describe('NativeReceiptService', () => {
 
       expect(transaction.description).toBe('Unknown Merchant');
       expect(transaction.amount).toBe(42);
+      // A stray sign is not a verdict (ADR 0147): the model's -42 is read as
+      // a magnitude, nothing prints the total as a negative, and the row stays
+      // an expense with no type grade.
+      expect(transaction.type).toBe('expense');
+      expect(transaction.fieldConfidence?.type).toBeUndefined();
       // This service reports what it read, not a guess. AIStrategyService
       // knows the account's base currency and substitutes it; inventing one
       // here is what made an unreadable currency land as USD regardless of

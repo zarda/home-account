@@ -26,6 +26,11 @@
 // through the wizard's own confirmImport into the document the rules accepted,
 // or a re-check watched against a ledger that actually holds the row it finds.
 //
+// One case reads its receipt on the device instead: the Vision and Apple
+// Intelligence bridges stand in for the iPhone and the strategy's
+// processReceipt is stepped over, so the on-device reader's verdict on which
+// way the money moved is followed from the OCR text to the document.
+//
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
 //
@@ -58,6 +63,10 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { MockAuthService, createMockUser } from '../../../../core/services/testing';
 import { AIImportService } from '../../../../core/services/ai-import.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
+import { AIStrategyService } from '../../../../core/services/ai-strategy.service';
+import { NativeReceiptService } from '../../../../core/services/native-receipt.service';
+import { VisionOcrService } from '../../../../core/services/vision-ocr.service';
+import { AppleIntelligenceService } from '../../../../core/services/apple-intelligence.service';
 import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -71,7 +80,11 @@ import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/
 import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
 import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
-import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
+import {
+  fallbackCategoryFor,
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
+  UNRESOLVED_CATEGORY_CONFIDENCE
+} from '../../../../core/utils/categorization.utils';
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
@@ -1323,6 +1336,113 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // The review's own bookkeeping stays on the review step.
       expect('dateReviewed' in stored).toBeFalse();
       expect('dateAssumed' in stored).toBeFalse();
+      expect('fieldConfidence' in stored).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'an on-device scan of a refund slip reaches the review card as income under other_income, and is written so',
+    async () => {
+      // The camera's door on an iPhone with no Apple Intelligence, which
+      // hands every scan to the regex lane. On top of the shared receipt
+      // seams, the two Capacitor bridges stand in for the iPhone. The
+      // strategy's processReceipt is stepped over whole: its routing (iOS
+      // only, unit-tested) and the base-currency fallback at its exit, which
+      // does nothing for a receipt that prints its currency. The rest is
+      // real: the minus read on the total, the converter that carries the
+      // type grade to the card, the category held to the income side, and
+      // the document the rules accept.
+      stubReceiptSeams();
+      const vision = jasmine.createSpyObj<VisionOcrService>('VisionOcrService', [
+        'detectEnvironment',
+        'isAvailable',
+        'recognizeText',
+        'isMacEnvironment'
+      ]);
+      vision.isAvailable.and.resolveTo({ available: true });
+      vision.recognizeText.and.resolveTo({
+        text: 'Harbour Supplies\n2026-01-15\nTotal: -$120.50',
+        blocks: [],
+        confidence: 0.9,
+        blockCount: 3
+      });
+      const apple = jasmine.createSpyObj<AppleIntelligenceService>('AppleIntelligenceService', [
+        'detectAvailability',
+        'isModelAvailable',
+        'parseReceiptText'
+      ]);
+      apple.isModelAvailable.and.returnValue(false);
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: VisionOcrService, useValue: vision },
+          { provide: AppleIntelligenceService, useValue: apple }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const native = TestBed.inject(NativeReceiptService);
+      spyOn(TestBed.inject(AIStrategyService), 'processReceipt').and.callFake(file =>
+        native.processImage(file)
+      );
+      const importService = TestBed.inject(AIImportService);
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const result = await importService.importFromImage(
+        new File([new Uint8Array([1])], 'refund.jpg', { type: 'image/jpeg' })
+      );
+
+      expect(result.transactions.length).toBe(1);
+      const [row] = result.transactions;
+      expect(row.type).toBe('income');
+      expect(row.fieldConfidence).toEqual({ amount: 0.8, date: 0.9, type: 0.5 });
+      // Nothing on this lane categorizes, so the row lands on the floor of
+      // the side its type puts it on.
+      expect({
+        suggestedCategoryId: row.suggestedCategoryId,
+        categoryConfidence: row.categoryConfidence
+      }).toEqual({
+        suggestedCategoryId: fallbackCategoryFor('income'),
+        categoryConfidence: UNCATEGORIZED_CATEGORY_CONFIDENCE
+      });
+
+      history.replaceState({ importResult: result, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(component.extractedTransactions()[0].type).toBe('income');
+
+      // Printed in January, so the row asks about its date before Import.
+      const keep = host.querySelector<HTMLButtonElement>('.extra-chip.date-check .extra-accept');
+      expect(keep).not.toBeNull();
+      keep!.click();
+      fixture.detectChanges();
+      expect(component.unansweredDates()).toBe(0);
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect(stored['type']).toBe('income');
+      expect(stored['categoryId']).toBe('other_income');
+      expect(stored['amount']).toBe(120.5);
+      expect(stored['currency']).toBe('USD');
       expect('fieldConfidence' in stored).toBeFalse();
 
       history.replaceState({}, '');

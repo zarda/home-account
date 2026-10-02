@@ -65,8 +65,9 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
   // resolving an answer onto it, would resurrect a category the user removed.
   const DELETED_ID = 'food_restaurants';
   const DELETED_NAME = 'Restaurants';
-  // An income default, beside the expense-only custom and deleted ones: every
-  // scan this pipeline reads is a purchase, never a deposit.
+  // An income default, beside the expense-only custom and deleted ones: the
+  // model is offered the expense side alone, even for a refund, whose slip
+  // lists the goods going back.
   const INCOME_ID = 'employment_salary';
   const INCOME_NAME = 'Salary';
 

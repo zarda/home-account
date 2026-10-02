@@ -4,7 +4,7 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
-import { parseReceiptOcrText } from './receipt-text-parser';
+import { ParsedReceiptText, parseReceiptOcrText } from './receipt-text-parser';
 import { buildCategoryPromptCatalog, categoryFitsType, matchCategoryName } from '../utils/categorization.utils';
 import {
   printedLocationSlot,
@@ -24,6 +24,32 @@ import { VERIFY_FIELD_THRESHOLD, roundToMinorUnit } from '../../models';
  * accepted, and no second source to weigh against it.
  */
 const MODEL_READ_GRADE = 0.8;
+
+/**
+ * Which way the money moved, and the grade the row carries for it (ADR 0162),
+ * read from the marks the receipt prints on its total as the text parser
+ * reports them — passed only when they are the marks on the row's own total.
+ * The parser grades every reading under VERIFY_FIELD_THRESHOLD: a mark on the
+ * total is not a measurement, so every income row a device reads is flagged
+ * for a look wherever it is reviewed, and so is an expense something on the
+ * receipt argued with. A purchase nothing contradicts carries no grade at
+ * all. The sign of a figure is never a witness (ADR 0147). `kind` is not read
+ * yet: the on-device model is not asked which way the money moved.
+ */
+function typeVerdict(
+  kind: unknown,
+  printed?: Pick<ParsedReceiptText, 'direction' | 'directionConfidence'>
+): { type: 'income' | 'expense'; grade?: number } {
+  if (printed?.direction === 'credit') {
+    return { type: 'income', grade: printed.directionConfidence };
+  }
+  // The same figure printed both marked and unmarked: a purchase still, but
+  // one the print argued with.
+  if (printed && printed.directionConfidence > 0) {
+    return { type: 'expense', grade: printed.directionConfidence };
+  }
+  return { type: 'expense' };
+}
 
 /**
  * On-device receipt pipeline: Vision OCR recognizes the text, then Apple's
@@ -121,9 +147,11 @@ export class NativeReceiptService {
     // The same two chokepoints as the cloud providers (ADR 0046): the stored
     // name of every default category is an i18n key, so the model's vocabulary
     // is the shared catalog rendering — active entries only, translated
-    // `id: Name` lines — and never the keys themselves. Every scan this
-    // pipeline reads is a purchase, never a deposit, so the catalog and the
-    // resolver both stay on the expense side of the account.
+    // `id: Name` lines — and never the keys themselves. The catalog and the
+    // resolver both stay on the expense side even for a refund: its slip
+    // lists the goods going back, which only expense entries name. The row's
+    // type is decided below, and the import doors move an expense category
+    // off an income row onto the income side's catch-all.
     const catalog = buildCategoryPromptCatalog(categories, translate, 'expense');
     const expenseCategories = categories.filter(c => categoryFitsType(c, 'expense'));
     const extraction = await this.appleIntelligence.parseReceiptText({
@@ -147,6 +175,8 @@ export class NativeReceiptService {
     // day-key shape and returns null rather than an Invalid Date, so the
     // fallback covers an unreadable string too.
     const parsedDate = parseDateInput(extraction.date);
+    // A magnitude whichever way the money moved. A minus the model left on it
+    // is not a verdict on the type (ADR 0147), so it is dropped here.
     const amount = Math.abs(extraction.amount) || 0;
     // Report what was read, empty when nothing was. The consumer knows the
     // account's base currency; this service does not.
@@ -161,12 +191,16 @@ export class NativeReceiptService {
     const amountCurrency = currency || text.currency;
     const sameTotal = amount > 0 &&
       roundToMinorUnit(amount, amountCurrency) === roundToMinorUnit(text.amount, amountCurrency);
+    // The model is not asked which way the money moved, so the print is the
+    // only witness — and only when it is the print of this total: a mark the
+    // parser found on a figure the model did not answer says nothing about it.
+    const verdict = typeVerdict(undefined, sameTotal ? text : undefined);
 
     return {
       date: parsedDate ?? new Date(),
       description: extraction.merchant || 'Unknown Merchant',
       amount,
-      type: 'expense',
+      type: verdict.type,
       currency,
       confidence: ocrResult.confidence,
       source: 'native',
@@ -185,17 +219,21 @@ export class NativeReceiptService {
               ? REVIEW_AMOUNT_CONFIDENCE
               : MODEL_READ_GRADE,
         date: parsedDate === null ? 0 : MODEL_READ_GRADE,
+        ...(verdict.grade !== undefined ? { type: verdict.grade } : {}),
       },
     };
   }
 
   private parseWithRegex(ocrResult: VisionOCRResult): ProcessedTransaction {
     const parsed = parseReceiptOcrText(ocrResult.text);
+    // No model here, so the marks on the total are the only witness to which
+    // way the money moved.
+    const verdict = typeVerdict(undefined, parsed);
     return {
       date: parsed.date,
       description: parsed.merchant,
       amount: parsed.amount,
-      type: 'expense',
+      type: verdict.type,
       // The parser reports no currency rather than inventing one, and neither
       // does this service — AIStrategyService substitutes the account's base
       // currency and flags the row for review.
@@ -211,7 +249,11 @@ export class NativeReceiptService {
       // receipt's line-by-line content — record it so item details reach
       // the transaction note
       notes: ocrResult.text?.trim() || undefined,
-      fieldConfidence: { amount: parsed.amountConfidence, date: parsed.dateConfidence },
+      fieldConfidence: {
+        amount: parsed.amountConfidence,
+        date: parsed.dateConfidence,
+        ...(verdict.grade !== undefined ? { type: verdict.grade } : {}),
+      },
       // This parser reads figures and evidence tiers; it never looks at what
       // was bought. Saying so keeps the import from grading a row nobody
       // categorized as one whose category answer we failed to understand.

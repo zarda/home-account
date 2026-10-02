@@ -135,14 +135,23 @@ export interface ImagePositionMetadata {
 /**
  * Per-field extraction confidence, 0–1.
  *
- * Only the two fields a misread actually costs something: an amount that is
- * wrong is money recorded wrong, and a date that is wrong lands the
- * transaction in the wrong period. A misread description is visible at a
- * glance and harmless.
+ * Only the fields a misread actually costs something: an amount that is
+ * wrong is money recorded wrong, a date that is wrong lands the transaction
+ * in the wrong period, and a type that is wrong books money that came back
+ * as money spent, off by twice the amount. A misread description is visible
+ * at a glance and harmless.
  */
 export interface FieldConfidence {
   amount?: number;
   date?: number;
+  /**
+   * Graded only where something on the receipt spoke to which way the money
+   * moved (ADR 0162): every income verdict an on-device reader reaches, and
+   * an expense whose reading was ambiguous. A purchase nothing contradicts
+   * carries no `type` at all, so absence means "nothing said otherwise", not
+   * "unread". The cloud readers never set it.
+   */
+  type?: number;
 }
 
 /** Below this, a field is worth the reviewer's attention before importing. */
@@ -177,7 +186,8 @@ export interface CategorizedImportTransaction {
   suggestedCategoryId: string;
   categoryConfidence: number;
   /**
-   * How sure the model was that it read the amount and the date correctly.
+   * How sure the model was that it read the amount and the date correctly,
+   * and — where something on the receipt spoke to it — the type.
    *
    * Separate from categoryConfidence, which is about where the transaction
    * belongs rather than whether it was read right. The extraction confidence
@@ -186,6 +196,8 @@ export interface CategorizedImportTransaction {
    * field a misread costs the most.
    *
    * Absent means the source could not report it (CSV, JSON, a manual row).
+   * A `type` missing from it means something else: nothing on the receipt
+   * said the row was other than the type it shows.
    */
   fieldConfidence?: FieldConfidence;
   /**
