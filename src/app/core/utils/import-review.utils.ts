@@ -228,9 +228,9 @@ export function sumByCurrency(
  *
  * Shared rather than repeated, since the first two spellings of the join had
  * already drifted apart. The callers:
- * - the review card's accessible names for four controls: the currency chip,
- *   the offered currency's accept button, the date chip and the keep-date
- *   button;
+ * - the review card's accessible names for five controls: the currency chip,
+ *   the offered currency's accept button, the date chip, the keep-date button
+ *   and the type toggle;
  * - the transaction form's verify-field text, one string that is both the
  *   flag's tooltip and its accessible name;
  * - the import wizard's notice for a confirm round, visible text as well as

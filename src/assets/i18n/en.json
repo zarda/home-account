@@ -1351,6 +1351,7 @@
     "imageKindStatementHint": "Each line on the statement becomes its own transaction.",
     "verifyAmount": "Double-check this amount — the AI was only {{percent}}% sure it read it correctly",
     "verifyDate": "Double-check this date — the AI was only {{percent}}% sure it read it correctly",
+    "verifyType": "Double-check income or expense — the scan could not tell a purchase from a refund for certain",
     "currencyFellBack": "Currency not read from the source — showing your base currency",
     "dateAssumedTooltip": "The scanned date couldn't be read reliably, so this row is dated today — keep it or change it here.",
     "dateImplausibleTooltip": "The scanned date is too far in the past or future to be right, so this row is dated today — keep it or change it here.",

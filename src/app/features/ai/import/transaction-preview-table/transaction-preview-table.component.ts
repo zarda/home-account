@@ -26,6 +26,7 @@ import {
   currencyDecimalPlaces,
   CurrencyInfo,
   CurrencySuggestionReason,
+  FieldConfidence,
   roundToMinorUnit,
   VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
@@ -281,6 +282,17 @@ export class TransactionPreviewTableComponent {
       type: transaction.type === 'income' ? 'expense' : 'income',
       ...EDITED_ON_CARD,
     });
+  }
+
+  /**
+   * The type toggle's name: the type it shows, led by the flag's sentence
+   * when the reader doubted it. The mark rides on the button's own name, as
+   * it does on the date and currency chips, because that name replaces the
+   * one the flag icon inside would otherwise contribute.
+   */
+  typeToggleLabel(row: CategorizedImportTransaction): string {
+    const label = this.translationService.t(row.type === 'income' ? 'common.income' : 'common.expense');
+    return joinSentences(this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '', label);
   }
 
   updateCategory(transaction: CategorizedImportTransaction, categoryId: string): void {
@@ -726,7 +738,7 @@ export class TransactionPreviewTableComponent {
    * model to ask, and flagging every one of their rows would train the user to
    * ignore the marker.
    */
-  needsVerification(transaction: CategorizedImportTransaction, field: 'amount' | 'date'): boolean {
+  needsVerification(transaction: CategorizedImportTransaction, field: keyof FieldConfidence): boolean {
     const confidence = transaction.fieldConfidence?.[field];
     return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
   }
@@ -747,11 +759,19 @@ export class TransactionPreviewTableComponent {
    * except a date whose row already carries `dateAssumed`: the shown value
    * is "now", not a reading, so a confidence percentage would describe a
    * date that isn't there anymore. The assumed wording takes over instead.
+   *
+   * The type has a sentence of its own and no percentage. Its grade is the
+   * device reader's policy rather than a measurement — every income verdict
+   * it reaches is graded under the bar so that the reviewer is asked (ADR
+   * 0162) — and a percentage would report a reading nothing took.
    */
   verificationTooltip(
     transaction: CategorizedImportTransaction,
-    field: 'amount' | 'date'
+    field: keyof FieldConfidence
   ): string {
+    if (field === 'type') {
+      return this.translationService.t('import.verifyType');
+    }
     if (field === 'date' && transaction.dateAssumed) {
       return this.dateAssumedTooltip(transaction);
     }

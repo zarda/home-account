@@ -239,14 +239,27 @@
                   </button>
                 </ng-template>
               </mat-menu>
+              <!-- A doubted type swaps the trend icon for the flag, as the
+                   date chip swaps its calendar: the toggle is where the
+                   question is answered, and its name carries the sentence. -->
               <button
                 mat-stroked-button
                 class="type-toggle"
                 [class.income]="row.type === 'income'"
                 [class.expense]="row.type === 'expense'"
+                [attr.aria-label]="typeToggleLabel(row)"
                 (click)="toggleType(row)"
               >
-                <mat-icon>{{ row.type === 'income' ? 'trending_up' : 'trending_down' }}</mat-icon>
+                @if (needsVerification(row, 'type')) {
+                  <mat-icon
+                    class="verify-flag"
+                    [matTooltip]="verificationTooltip(row, 'type')"
+                    matTooltipPosition="above"
+                    aria-hidden="true"
+                  >error_outline</mat-icon>
+                } @else {
+                  <mat-icon aria-hidden="true">{{ row.type === 'income' ? 'trending_up' : 'trending_down' }}</mat-icon>
+                }
                 {{ row.type === 'income' ? ('common.income' | translate) : ('common.expense' | translate) }}
               </button>
             </div>

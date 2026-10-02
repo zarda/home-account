@@ -29,7 +29,10 @@
 // One case reads its receipt on the device instead: the Vision and Apple
 // Intelligence bridges stand in for the iPhone and the strategy's
 // processReceipt is stepped over, so the on-device reader's verdict on which
-// way the money moved is followed from the OCR text to the document.
+// way the money moved is followed from the OCR text to the document. The case
+// after it hands the card rows whose type the device doubted, built the way
+// the capture dialog builds them, so the flag on the type toggle is seen on
+// the real card.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -1444,6 +1447,108 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(stored['amount']).toBe(120.5);
       expect(stored['currency']).toBe('USD');
       expect('fieldConfidence' in stored).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'an on-device refund and a doubted purchase reach review flagged on the toggle, and a flip files the category on the new side',
+    async () => {
+      // Two photos the camera read on the device, handed over the way the
+      // capture dialog hands them: its converter, its duplicate check against
+      // the real ledger, its router state. One is a refund the regex lane
+      // read off a total printed as a negative; nothing on that lane
+      // categorizes. The other is a purchase the model named a category for
+      // over a total that printed as a credit, so its type is doubted too.
+      // The card's suite renders the flag against a stubbed parent; only here
+      // does a graded row travel the camera's own hand-off onto the card.
+      stubReceiptSeams();
+
+      // Dated today, so neither row asks about its date.
+      const today = new Date();
+      const rows = TestBed.inject(AIImportService).convertStrategyResultToCategories({
+        source: 'native',
+        confidence: 0.9,
+        processingTimeMs: 0,
+        transactions: [
+          {
+            date: today,
+            description: 'Smoke refund slip',
+            amount: 1280,
+            type: 'income',
+            currency: 'JPY',
+            confidence: 0.9,
+            source: 'native',
+            categoryAttempted: false,
+            fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 }
+          },
+          {
+            date: today,
+            description: 'Smoke doubted purchase',
+            amount: 640,
+            type: 'expense',
+            currency: 'JPY',
+            confidence: 0.9,
+            source: 'native',
+            suggestedCategoryId: 'food',
+            fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 }
+          }
+        ]
+      });
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
+      const duplicates = await duplicateService.checkDuplicates(rows);
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: '2 images',
+        fileSize: 2,
+        confidence: 0.9,
+        warnings: [],
+        duplicates,
+        transactions: duplicateService.markDuplicates(rows, duplicates)
+      };
+
+      history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: true }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      const toggle = (index: number) => cards()[index].querySelector<HTMLButtonElement>('.type-toggle')!;
+      const card = () => fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      // The hand-off lands a macrotask after the view, and the catalogue the
+      // card's category menu offers arrives on its own Firestore round trip.
+      await until(
+        fixture,
+        () => TestBed.inject(CategoryService).categories().length > 0 && cards().length === 2
+      );
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      const [refund, purchase] = card().transactions;
+      expect({ type: refund.type, category: refund.suggestedCategoryId, grade: refund.fieldConfidence?.type })
+        .withContext('the refund lands on the income side\'s floor, its type doubted')
+        .toEqual({ type: 'income', category: fallbackCategoryFor('income'), grade: 0.5 });
+      expect({ type: purchase.type, category: purchase.suggestedCategoryId, grade: purchase.fieldConfidence?.type })
+        .withContext('the purchase keeps the category the model named, its type doubted')
+        .toEqual({ type: 'expense', category: 'food', grade: 0.3 });
+
+      // The flag sits on the toggle a reviewer answers it with, and its
+      // sentence leads the toggle's name in the reviewer's own language.
+      const sentence = TestBed.inject(TranslationService).t('import.verifyType');
+      for (const index of [0, 1]) {
+        expect(toggle(index).querySelector('.verify-flag'))
+          .withContext(`card ${index + 1}'s toggle is flagged`)
+          .not.toBeNull();
+        expect(toggle(index).getAttribute('aria-label')?.startsWith(sentence))
+          .withContext(`card ${index + 1}'s toggle is named by the flag first`)
+          .toBeTrue();
+      }
 
       history.replaceState({}, '');
       fixture.destroy();

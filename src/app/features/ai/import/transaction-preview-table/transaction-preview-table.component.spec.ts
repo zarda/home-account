@@ -393,6 +393,25 @@ describe('TransactionPreviewTableComponent', () => {
       const t = row({ fieldConfidence: { amount: 0.42 } });
       expect(component.verificationTooltip(t, 'amount')).toContain('42');
     });
+
+    it('flags a type the reader doubted, and leaves an ungraded type alone', () => {
+      // A missing type grade says more than a missing amount grade: the
+      // device leaves it out for a purchase nothing on the receipt
+      // contradicted, so a row doubted on its other fields is still not asked
+      // about its type.
+      expect(component.needsVerification(row({ fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }), 'type'))
+        .toBeTrue();
+      expect(component.needsVerification(row({ fieldConfidence: { amount: 0.4, date: 0.3 } }), 'type')).toBeFalse();
+      expect(component.needsVerification(row(), 'type')).toBeFalse();
+    });
+
+    it('names the type flag with its own sentence and no percentage, since the grade is the reader\'s policy rather than a reading', () => {
+      // Every income verdict the device reaches is graded under the bar so
+      // that the reviewer is asked; the grade is policy, not a reading, so a
+      // percentage would report a reading nothing took.
+      const t = row({ fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } });
+      expect(component.verificationTooltip(t, 'type')).toBe('import.verifyType');
+    });
   });
 
   describe('the date button\'s name', () => {
@@ -1259,6 +1278,51 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(flag).withContext('the flag should render for a doubted amount').not.toBeNull();
     expect(flag.getAttribute('aria-hidden')).toBe('false');
     expect(flag.getAttribute('aria-label')).toBeTruthy();
+  });
+
+  it('marks a doubted type on its toggle, the mark leading the toggle\'s name and the icon decorative', () => {
+    // The date chip's shape (ADR 0146): a button's aria-label replaces the
+    // name its content would compute, so the flag's sentence rides on the
+    // toggle's own name and the icon is hidden rather than said twice. A
+    // refund the device read, and a purchase whose total printed as a credit.
+    component.transactions = [
+      makeRow({ id: 'refund', type: 'income', fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }),
+      makeRow({ id: 'purchase', fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 } }),
+    ];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const toggles = Array.from(fixture.nativeElement.querySelectorAll('.type-toggle')) as HTMLButtonElement[];
+    expect(toggles.map(toggle => toggle.getAttribute('aria-label'))).toEqual([
+      'import.verifyType. common.income',
+      'import.verifyType. common.expense',
+    ]);
+    for (const toggle of toggles) {
+      const flag = toggle.querySelector('.verify-flag');
+      expect(flag).withContext('a doubted type wears the flag').not.toBeNull();
+      expect(flag?.getAttribute('aria-hidden')).withContext('but it is decorative').toBe('true');
+      // mat-icon's content is the ligature name, with no font here to draw it.
+      expect(Array.from(toggle.querySelectorAll('mat-icon')).map(icon => icon.textContent?.trim()))
+        .withContext('in the trend icon\'s place, not beside it')
+        .toEqual(['error_outline']);
+    }
+  });
+
+  it('names an unflagged toggle by what it shows alone', () => {
+    // The second row's amount and date are doubted, its type is not: the
+    // other fields' flags are not the toggle's business.
+    component.transactions = [
+      makeRow({ id: 'salary', type: 'income', suggestedCategoryId: 'salary' }),
+      makeRow({ id: 'purchase', fieldConfidence: { amount: 0.4, date: 0.3 } }),
+    ];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const toggles = Array.from(fixture.nativeElement.querySelectorAll('.type-toggle')) as HTMLButtonElement[];
+    expect(toggles.map(toggle => toggle.getAttribute('aria-label'))).toEqual(['common.income', 'common.expense']);
+    expect(toggles.map(toggle => toggle.querySelector('.verify-flag'))).toEqual([null, null]);
+    expect(toggles.map(toggle => toggle.querySelector('mat-icon')?.textContent?.trim()))
+      .toEqual(['trending_up', 'trending_down']);
   });
 
   /**
