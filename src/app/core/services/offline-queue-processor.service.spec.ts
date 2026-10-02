@@ -284,6 +284,37 @@ describe('OfflineQueueProcessorService', () => {
       ]);
     });
 
+    it('drains an on-device refund as income on the income catch-all, whatever its type grade', async () => {
+      // A pin: the drain writes the row as read, through the same grader and
+      // mapper as above, and holds nothing back for a type the reader doubted
+      // — this door has no review to ask the question on, and the grade is not
+      // a stored field. A refund slip the regex lane filed as income, nothing
+      // categorized: the lane names no category and says it tried none.
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([
+          extracted({
+            description: 'Harbour Supplies', amount: 120.5, currency: 'USD', type: 'income',
+            source: 'native', categoryAttempted: false,
+            fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 },
+          }),
+        ]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledOnceWith(
+        jasmine.objectContaining({
+          type: 'income', amount: 120.5, currency: 'USD', categoryId: 'other_income',
+        }),
+        { id: 'img_1-0' },
+      );
+      const [dto] = transactions.addTransaction.calls.mostRecent().args;
+      expect('fieldConfidence' in dto).toBeFalse();
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
+    });
+
     it('marks the image failed when the AI read nothing off it', async () => {
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([]));

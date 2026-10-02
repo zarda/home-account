@@ -388,6 +388,38 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     expect(row && 'period' in row).toBeFalse();
   }, 20000);
 
+  // #464 through the queue door, under real rules. A refund read on the
+  // device drains with no review, so what the reader filed is what lands.
+  it('stores a queued on-device refund as income on the income catch-all, its grades unwritten', async () => {
+    // A pin: the drain already writes the row's own type, files an unnamed
+    // income row under the income catch-all, and stores no grade, and this
+    // keeps all three true for a refund the device doubted. The row is
+    // unnamed on purpose: this run loads no catalogue, and with none loaded
+    // a named id is kept whichever side it sits on, so only an unnamed row
+    // says which catch-all the drain picks. The regex lane's shape — no
+    // category tried, a type grade under the verify threshold.
+    ai.processReceipt.and.resolveTo({
+      transactions: [{
+        date: new Date(2026, 5, 15), description: 'Smoke on-device refund', amount: 14.03, type: 'income',
+        currency: 'USD', confidence: 0.9, source: 'native', categoryAttempted: false,
+        fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 },
+      }],
+      source: 'native', confidence: 0.9, processingTimeMs: 1,
+    });
+    const id = await queue.queueImage(receiptFile());
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    const stored = await firestoreService.getCollection<{
+      description: string; amount: number; type: string; categoryId: string;
+    }>(`users/${uid}/transactions`);
+    const row = stored.find((t) => t.description === 'Smoke on-device refund');
+    expect(row).toBeDefined();
+    expect(row && [row.type, row.categoryId, row.amount]).toEqual(['income', 'other_income', 14.03]);
+    expect(row && 'fieldConfidence' in row).toBeFalse();
+  }, 20000);
+
   // This task: resolveImportDate now runs ahead of toCreateTransactionDTO on
   // this door, so a doubted reading has to be proved against a real write —
   // the unit suite mocks the clock and asserts instant equality, which this
