@@ -30,22 +30,24 @@ the account's own key.
 
 That is the point of them — nothing else in the repo exercises the wire or the
 deployed rules — and it is the reason for every constraint below. Read the
-whole thing as one rule: **the run is a reader with eleven permitted writes,
+whole thing as one rule: **the run is a reader with twelve permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77.** A journey that needs
-several accounts signed in — one sharing rows into a household, another
-reading them there as copies, members counting them toward the household's
-own budgets and goals, and memberships removed, left, dissolved and erased —
+**The emulators, on port 4300: journeys 68 to 77, 79 and 80.** A journey that
+needs several accounts signed in — one sharing rows into a household, another
+reading them there as copies, members counting them toward the household's own
+budgets and goals, and memberships removed, left, dissolved and erased —
 cannot run on production without other real people's records and a real mail
 for every invite. `npm run start:emulators` serves the committed `emulators`
 build configuration against the local Firebase emulators, with three seeded
 demo accounts in two households, and the real invite callable and the
-household backstop triggers in the functions emulator; nothing real is read
-or written there ([Emulator journeys](#emulator-journeys)). What that venue
+household backstop triggers in the functions emulator; nothing real is read or
+written there ([Emulator journeys](#emulator-journeys)). What that venue
 cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
-merge.
+merge. Journey 79 needs one account, but it imports into it, and journey 80
+moves one origin's session between accounts under two open tabs, so both run
+there too; neither touches a household or calls a function.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -129,7 +131,14 @@ those it is
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).household.switcher`,
 defined on this branch and `undefined` on `d0a44a51`, and on `/transactions`
 the **Select** toggle above the list, shown while the account holds a
-membership and the list has rows. For another branch it is
+membership and the list has rows. For the review card's type flag and the
+reload on another tab's account change it is the served catalog and the
+store the session sits in:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).import.verifyType`
+is defined on this branch and `undefined` on `e92c4df7`, and on a page that
+has loaded signed in,
+`Object.keys(localStorage).some(k => k.startsWith('firebase:authUser:'))` is
+`true`, where `e92c4df7` kept the session in IndexedDB. For another branch it is
 whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
@@ -322,15 +331,17 @@ only the difference counts.
 
 ## What a run may touch
 
-Eleven writes are authorised — ten in the live project, one on the device only.
-Each is put back before the run ends — where part of one cannot be, its row
-says what stays — and the restore is *confirmed* — on screen, or by a server
-read where nothing on screen shows it — not assumed. Three of the eleven are
-journey 78's, and one of those, the invite, is made **only on the user's
-explicit word**, like journey 19's cache writes. Journey 67's two, which
-formed a household of the design merged in PRs #462 and #463 (ADRs
-0152–0156), are withdrawn with that journey. The other nine rows write
-nothing at all and are listed with them anyway: four
+Twelve writes are authorised — eleven in the live project, one on the device
+only. Each is put back before the run ends — where part of one cannot be, its
+row says what stays — and the restore is *confirmed* — on screen, or by a
+server read where nothing on screen shows it — not assumed. Three of the
+twelve are journey 78's, and one of those, the invite, is made **only on the
+user's explicit word**, like journey 19's cache writes. One is made from the
+iOS simulator rather than a tab, by the on-device receipt check of #464, which
+is no numbered journey: the failed-scan record it can leave is deleted by the
+user, not the run. Journey 67's two, which formed a household of the design
+merged in PRs #462 and #463 (ADRs 0152–0156), are withdrawn with that journey.
+The other nine rows write nothing at all and are listed with them anyway: four
 still cost the account a real provider call, two not even that, one leaves a
 notification standing in the operating system rather than anything on the
 account, and two leave a file on disk — what an import journey, a raised
@@ -353,6 +364,7 @@ to be inferred.
 | Resuming a rule whose end date has passed (journey 35) | Nothing. The service refuses before any write; the rule's own fields are read back unchanged | Nothing to undo |
 | Exporting a backup (journey 39) | Nothing on the account. Eleven server-only collection reads, and one JSON file in this browser profile's download folder holding the account's full ledger in clear text | The file is deleted at the end of the run. The restore picker is handed the same file and **cancelled** at the preview, so nothing is written back |
 | Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, one queue record that reaches `completed`, and — for an expense row — the `spent` of any budget on its category: the drain's `addTransaction` recomputes `spent` and `spentPeriod` on every active budget on the row's category and stamps its `updatedAt` | The row deleted through the list, which removes its receipt object with it and recomputes the budget; the list count read back; the completed queue entry cleared from the AI settings page. The delete's recompute writes `spent` and `spentPeriod` afresh and stamps `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
+| Scanning the device-only refund slips in the iOS simulator, signed in to production (#464's on-device check, [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)) | No document while a scan reads something: `refund.png`, `refund-tender.png` and `jp.png` ([model-probe/README.md](model-probe/README.md)) each go through the camera dialog's library picker and stop on the review card. When analytics consent is on, one `receipt_import` event per scan. A scan that reads nothing writes one failed Import History record, door `camera`. A native read under the strategy's usable floor (`USABLE_CONFIDENCE`, 0.4, `ai-strategy.service.ts`) may make one cloud request under the account's own key. The form's Scan Receipt is not driven: its only file input carries `capture="environment"`, which on the simulator opens a camera with no scene to shoot, so no fixture reaches it and the run takes no shot there. The in-form refund is covered by `transaction-form.component.spec.ts`, `transaction-form.smoke.spec.ts` and journey 79's step 7 | Nothing is confirmed or saved: each review card is left by **Cancel**. `/import/history` is read before the first scan and after the last, and any new failed record is reported: the user deletes it by its own **Delete** — the run does not — and the list is read back without it. The events and the provider requests cannot be recalled |
 | Importing a scanned receipt (journeys 46 and 50) | Everything *Scanning a receipt* writes, then at **Import**: one transaction document, one storage object under its id, one import-history record naming it, the `spent` of any budget on its category, and the category memory's entry for the receipt's merchant — with the tag memory's beside it where the row was offered a tag | Three restores, each confirmed by a read: the row deleted through the list, which removes its receipt object with it and recomputes the budget, and a search for its description read back empty; the import-history record the Import wrote deleted on `/import/history` by its own **Delete**, and the list read back without it; and every memory entry the Import added or changed — the category memory's for the merchant, and the tag memory's where one was written — through the two memory services, reached from the wizard before the Import. An entry the Import added is removed with `forget(merchantKey)`, and a server read (`exportAll()`) finds the key gone. An entry the merchant already had is put back with `restore(entry)` from a server read taken before the Import — the category memory's `categoryId`, `sampleDescription` and `count`, the tag memory's `tags`, `suppressed`, `sampleDescription` and `count` — and a second server read finds each of those fields as it was first read. Its `updatedAt` is not put back: the write stamps it with the time of the restore. Nor are a budget's fields: the delete's recompute writes `spent` and `spentPeriod` afresh on every active budget on the row's category and stamps its `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run. Those stamps, and such a refreshed figure, are what a run leaves changed. Journey 46 has both scripts |
 | Importing the two-row CSV on `/data` (journey 53) | Two transaction documents, and the `spent` of any budget on the expense row's category: the door writes the rows without a recompute each, then recomputes `spent` and `spentPeriod` once on every active budget on that category and stamps its `updatedAt`; the income row moves no budget. No provider call, no import record and no memory | Both deleted through the list, and a search for `e2e-53` read back empty. Deleting the expense row recomputes the same budgets, writing `spent` and `spentPeriod` afresh and stamping `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
 | Exporting the transactions CSV (journey 53) | Nothing on the account. One server-only read of every transaction, and one CSV file in this browser profile's download folder holding them all in clear text | The file is deleted at the end of the run |
@@ -384,8 +396,9 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 are not in this table: they write freely, but only into the
-local emulators, and the [teardown](#teardown) takes all of it with them.
+Journeys 68 to 77, 79 and 80 are not in this table: they write freely, but
+only into the local emulators, and the [teardown](#teardown) takes all of it
+with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
 
 **Clear the recap's device state at the end**, from the page console:
@@ -628,6 +641,11 @@ Nothing they write leaves this machine, so none of it is in *What a run may
 touch*: the writes are the journeys' to make, and they go with the emulators
 at the end. [household.md](household.md) describes what they drive.
 
+Journeys 79 and 80 use the same seed and touch no household. Journey 79 needs
+Alex alone, and imports three rows into his account; journey 80 needs Alex
+and Sam, in two tabs of one origin, and moves the session between them
+([auth.md](auth.md) describes what it drives).
+
 The seed writes the households, their members and every shared row's copy
 past the rules, as the app's own commits leave them; nothing in this venue
 proves those commits pass the rules, which the rules smoke does. A seeded copy
@@ -636,6 +654,12 @@ since the seed was written — is rewritten by the app's sweep the first time
 its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
+
+Journeys 79 and 80 call no function, and neither do 72 and 73. A run of only
+those skips checks 2 and 3 and starts the emulators without the functions
+emulator, `--only auth,firestore,storage` in check 4 — which is also how they
+start in a checkout without `functions/.secret.local`, whose functions that
+emulator would not load (check 2).
 
 1. **The ports are free.** `npm run smoke` takes the same ports, and a
    standing `emulators:start` is invisible to `pgrep -f emulators:exec`, so
@@ -685,7 +709,8 @@ its author opens the app, since a fresh origin holds no record of a full pass.
      --project demo-home-account > <scratch>/emulators.log 2>&1 &
    ```
 
-   Wait for the log to say every emulator is ready.
+   Wait for the log to say every emulator is ready. For a run that calls no
+   function (above), the same command with `--only auth,firestore,storage`.
 
 5. **The app is served from the checkout under test.** `npm run
    start:emulators`, which serves on port 4300 — in a second terminal, or as a
@@ -721,10 +746,13 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 8. **The origin starts clean.** At `http://localhost:4300`, unregister the
    service worker, delete the caches and every IndexedDB database, and clear
-   `localStorage`, which holds each account's household selection and the
-   ledger sweep's journal and stamps. Then reload, before any session record
-   is written: a delete waits while the page holds its database open, and a
-   record written meanwhile waits behind it.
+   `localStorage`, which holds the session once a page has loaded it
+   ([Signing in a seeded account](#signing-in-a-seeded-account)), each
+   account's household selection and the ledger sweep's journal and stamps.
+   Clearing it signs out every other page open on the origin, and each
+   reloads onto `/login`. Then reload, before any session record is written:
+   a delete waits while the page holds its database open, and a record
+   written meanwhile waits behind it.
 
    ```js
    for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
@@ -750,44 +778,76 @@ Auth SDK keeps it, at the page's **exact** origin: `http://localhost:4300`.
 `http://127.0.0.1:4300` is another origin with its own storage and Firestore
 cache, so a record written at one is never read at the other; journey 74 uses
 that on purpose, to keep a second account signed in beside the first. Paste
-the record inline from the seed's file, start the write, and read its flag in
-a **second** call — a pane script that awaits the IndexedDB transaction can
-hang:
+the record inline from the seed's file.
+
+On the web the SDK keeps the session in local storage, with IndexedDB second
+([ADR 0163](ADR/0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md)).
+A page that loads looks in both, and a session it finds in IndexedDB it
+writes to local storage and removes from IndexedDB. A seed record is an
+IndexedDB record, `{ fbase_key, value }`, so it can go into either store.
+
+**The first sign-in, on a clean origin,** can still put the record into
+IndexedDB and load the app: that load carries it across. Start the write,
+and read its flag in a **second** call — a pane script that awaits the
+IndexedDB transaction can hang:
 
 ```js
 const record = /* sessions.json's "alex", "sam" or "kai" object, pasted whole */;
-window.__session = 'writing';
+sessionStorage.setItem('e2e.session', 'writing');
 const open = indexedDB.open('firebaseLocalStorageDb', 1);
 open.onupgradeneeded = () =>
   open.result.createObjectStore('firebaseLocalStorage', { keyPath: 'fbase_key' });
 open.onsuccess = () => {
   const tx = open.result.transaction('firebaseLocalStorage', 'readwrite');
   tx.objectStore('firebaseLocalStorage').put(record);
-  tx.oncomplete = () => { window.__session = 'written'; };
-  tx.onerror = () => { window.__session = 'failed'; };
+  tx.oncomplete = () => { sessionStorage.setItem('e2e.session', 'written'); };
+  tx.onerror = () => { sessionStorage.setItem('e2e.session', 'failed'); };
 };
 'started';
 ```
 
-Then `window.__session` reads `'written'`. Navigate to `/household`
-**twice**: the Auth SDK's first read can race the write, and the second full
-load picks the record up. Swapping accounts is the same write with another
-record, made from `/household`. The Auth SDK polls the store the record goes
-into and takes a new one up by itself, within a second and before either
-navigation, so the page on screen meets the new account while it is still
-open. `/household` follows the change. `/transactions` does not: the goals,
-categories and saved searches it listens to stay keyed to the account being
-left, so a swap made there puts three `[GlobalErrorHandler]` permission
-errors in the console, one for each — with a `[RowSharing] The account's
-households were not read…` warning beside them when the old account's
-households are refused before the page hears of the change — and the list
-goes on showing the old account's rows until a full load. Console entries
-persist across reloads, so every later count would carry them as a
-journey's own. Where a journey swaps from another page, open `/household`
-first. The accounts share this origin's Firestore cache and its
-`localStorage`, whose household entries are keyed by account. A seeded account
-has not finished the welcome, so its first boot opens it: **Skip** it, a write
-to the emulators only.
+Then `sessionStorage.getItem('e2e.session')` reads `'written'`. Navigate to
+the page the journey starts on: the open page is signed out, so it watches
+local storage alone and never sees a record put into IndexedDB, and only a
+full load reads it. A load that still opens on the sign-in screen raced the
+write; the next one picks the record up.
+
+**A swap, on a page that is open,** writes the record into local storage,
+the way the SDK itself keeps it:
+
+```js
+const record = /* sessions.json's "alex", "sam" or "kai" object, pasted whole */;
+localStorage.setItem(record.fbase_key, JSON.stringify(record.value));
+'written';
+```
+
+The browser announces that write to every other page of the origin, and
+each one that has finished booting reloads at once, as the account the
+record names, where it stood: a page that was signed in keeps its address,
+and the guards move one that was signed out off `/login` onto the dashboard
+([auth.md](auth.md#an-account-change-this-page-did-not-start)). Wait for
+each to reload itself onto the account rather than navigating it there. The
+page that made the write is told nothing — a browser raises no storage event
+in the document that changed the store — and goes on as the account it was
+until the run reloads it: straight after the write, in a call of its own or
+with the browser's reload. The same write signs in a page that is signed
+out, and the run reloads that one the same way.
+
+A value the run needs after a reload goes in `sessionStorage`, which a
+reload of the same tab keeps; a `window` flag dies with the page it was set
+on. Front a tab before reading it: a background tab paints nothing and runs
+its timers late, so a page that has reloaded can hold its new account with
+none of it on screen ([In a hidden pane](#in-a-hidden-pane)). The console
+keeps its entries across reloads, and a swap reloads every page of the
+origin, so judge each tab's console by the difference, as check 3 of
+[Before every run](#before-every-run) says.
+
+The accounts share this origin's Firestore cache and its `localStorage`,
+whose household entries are keyed by account. A seeded account has not
+finished the welcome, so its first boot opens it, and every tab that loads
+as that account before it is skipped shows its own — the guard against a
+second welcome is per page (`onboarding.service.ts:38-47`): **Skip** it in
+each, a write to the emulators only.
 
 ### In a hidden pane
 
@@ -796,12 +856,14 @@ journeys are the likeliest to be driven with the pane out of view. Angular
 does not paint there, so after each action drain the microtasks and render
 what the model holds before reading the page. The selector is the routed
 page's own root component — `app-household` on `/household`,
-`app-transactions` on `/transactions`, `app-data-hub` on `/data` — as in
+`app-transactions` on `/transactions`, `app-data-hub` on `/data`,
+`app-import-wizard` on `/import/file`, and `app-dashboard` where a guard has
+landed the page on `/dashboard` — as in
 [Panes and viewports](#panes-and-viewports):
 
 ```js
 for (let i = 0; i < 20; i++) await Promise.resolve();
-ng.applyChanges(ng.getComponent(document.querySelector('app-household, app-transactions, app-data-hub')));
+ng.applyChanges(ng.getComponent(document.querySelector('app-household, app-transactions, app-data-hub, app-import-wizard, app-dashboard')));
 document.querySelectorAll('.mat-mdc-dialog-component-host')
   .forEach(host => ng.applyChanges(ng.getComponent(host)));
 ```
@@ -940,6 +1002,8 @@ file and the emulator log, and run the ports check again: it prints nothing.
 | 76 | Erasure (emulators) | An account in two households erased from Your Data (`/data`), and nothing of it left in either | `76-before-erase.png`, `76-after-erase.png` |
 | 77 | Widths, themes and axe (emulators) | The switcher, the bulk bar and the plans dialogs at 320px, 375px and desktop in both themes, and axe over each | `77-switcher-320-light.png`, `77-bulk-bar-320-dark.png`, `77-budget-dialog-375-dark.png` |
 | 78 | Two households live (production, after the merge) | The deployed rules and indexes admitting households, a copy and its removal, the deployed callable answering in its region, and the account left as it was | `78-switcher.png`, `78-shared-row.png`, `78-setup.png` |
+| 79 | Review: a refund's type flag and the category that follows the toggle (emulators) | The flag on a real review card's type toggle and the name it gives the button, a flip filing the category on the new side with the live region saying so, the card at a real 375px phone width, what the import writes past the rules, and the form's own flag beside its type | `79-type-flags.png`, `79-category-followed.png`, `79-review-375.png`, `79-form-flag.png` |
+| 80 | Another tab changes the account (emulators) | Two tabs of one origin sharing a session on `/transactions`: another tab's swap, sign-out and sign-in each reloading this one onto the new account with nothing reported on the way out, and a tab's own sign-out reloading nothing | `80-reloaded-as-sam.png`, `80-signed-out.png`, `80-dashboard-as-alex.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1183,11 +1247,18 @@ stands in the extras row beside the chips already on it.
 document.documentElement.scrollWidth === document.documentElement.clientWidth;
 ```
 
-`true`. At phone width the date and currency chips do not share a line — they
-stack one per line, as observed at 375px, and the type toggle wraps with them.
-That is the meta row wrapping as it is built to, not a failure; no threshold
-for it is pinned anywhere, so do not read one off a single run. The chips and
-the editors keep their 40px tap targets at every width.
+`true`. At phone width the meta row wraps: the date chip, the currency chip
+and the type toggle take as many lines as the card's width leaves them.
+Below 600px the wizard trims the 24px a side Material pads each step's
+content with to the 5px a focus ring needs, and takes those back out of its
+own gutter (`import-wizard.component.scss`), so at 375px the card is about
+273px wide and its content column (`.card-main`) about 189px; before that
+rule the column was 141px, and every chip stood on a line of its own
+([ui-overflow.md](ui-overflow.md), where journey 79's 375px step measures
+it). How the row wraps is the meta row doing what it is built to, not a
+failure; no threshold for it is pinned anywhere, so do not read one off a
+single run. The chips and the editors keep their 40px tap targets at every
+width.
 
 Two more readings, in journey 15's order: with the split field open on the
 card, and — once the split has made two — with the merge menu open over
@@ -1250,10 +1321,14 @@ r.getClientRects().length;
 reading, taken here at a real phone's width. Three is what the caret's
 width bought: the probe measured five lines with the caret standing and
 three without it, and two lines would need the chip on a line of its own, a
-layout this wave did not take. A run at a real 375px phone viewport saw the
-pass criterion met exactly, not just under it: the card **225px**, the
-label's box **68px** at the 12px floor, and the account's longest category
-name, *Hotels & Accommodation* (22 rendered characters), at **3** lines.
+layout this wave did not take. A run at a real 375px phone viewport, made
+while Material's step padding still stood at that width, saw the pass
+criterion met exactly, not just under it: the card **225px**, the label's
+box **68px** at the 12px floor, and the account's longest category name,
+*Hotels & Accommodation* (22 rendered characters), at **3** lines. The card
+is about 273px there now, its content column about 189px, so the column the
+label sits in is wider than that run's: record the label's box and line
+count afresh, against the same bound, rather than against those figures.
 
 Take that reading with the card on screen. A card read before it scrolls
 into view answers a collapsed **34px**, with a **0px** label, under
@@ -3663,12 +3738,12 @@ is private, and holds a note, the tags *home* and *diy*, and a place.
 
    No `note`, `tags`, `location`, receipt field, `goalId` or base-currency
    snapshot. The row itself names `households/chen-home` in `sharedWith`.
-2. **Sam sees it.** Open `/household` and swap to Sam there, as
-   [Signing in a seeded account](#signing-in-a-seeded-account) says, then
-   `/household/chen-home`. **Pass:** *Hardware
-   store* is listed with Alex's chip, in dollars with *≈ ¥…* and the caption,
-   under *Home & Garden*, with no receipt icon — and none of what stayed with
-   Alex:
+2. **Sam sees it.** Swap to Sam, as
+   [Signing in a seeded account](#signing-in-a-seeded-account) says, and
+   reload the page: it comes back as him where it stood. Then open
+   `/household/chen-home`. **Pass:** *Hardware store* is listed with Alex's
+   chip, in dollars with *≈ ¥…* and the caption, under *Home & Garden*, with
+   no receipt icon — and none of what stayed with Alex:
 
    ```js
    const row = [...document.querySelectorAll('app-household-overview .overview-row')]
@@ -3679,8 +3754,8 @@ is private, and holds a note, the tags *home* and *diy*, and a place.
 3. **Stop sharing it from its menu.** Back as Alex: the row's menu → *Stop
    sharing* → *Stop sharing with Chen home?*, *They'll no longer see "Hardware
    store", and none of their goals will count it.* Confirm. **Pass:** the chip
-   is gone, the copy answers 404, and swapped to Sam from `/household`, the
-   row has left Chen home's list.
+   is gone, the copy answers 404, and swapped to Sam again, the row has left
+   Chen home's list.
 4. **Share from the form.** Edit *Bookshop*. The form shows *Shared with*,
    one chip, *Chen home*, and the same line about what members see. Select the
    chip and **Save**. **Pass:** the row wears the chip, and
@@ -4204,6 +4279,431 @@ read back.
 Three shots: the switcher over both households, the shared row in
 `E2E one`, and the setup after the reload.
 
+### 79. Review: a refund's type flag and the category that follows the toggle
+
+**Emulators**, as Alex: [pre-flight](#pre-flight) done, signed in as
+[Signing in a seeded account](#signing-in-a-seeded-account) says, the
+welcome skipped, on `/import/file` at a desktop width. No device reads a
+receipt in a browser, so the rows a device would hand over are built from
+the page through the camera's own converter and duplicate check, and reach
+the review card by the camera's hand-off — the substitute journey 8 uses
+when the provider is down. There are three, one per verdict of
+[ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md):
+a refund the regex lane read off a total printed as a negative (income,
+nothing categorized, its type graded 0.5), a purchase the model named a
+category for over a total printed both ways (expense, Groceries, graded
+0.3), and a plain purchase nothing spoke against (expense, Groceries, no
+type grade).
+
+1. **Hand the rows over.** Wait until the wizard holds its catalogue —
+   `ng.getComponent(document.querySelector('app-import-wizard')).categories().length`
+   above 0 — since the converter grades each category against it. Then, in
+   one call:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   const today = new Date();
+   const row = (description, amount, extra) => ({
+     date: today, description, amount, currency: 'USD', confidence: 0.9, source: 'native', ...extra,
+   });
+   const rows = w.importService.convertStrategyResultToCategories({
+     source: 'native', confidence: 0.9, processingTimeMs: 0,
+     transactions: [
+       row('e2e-79 refund', 14.03, { type: 'income', categoryAttempted: false,
+         fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }),
+       row('e2e-79 doubted purchase', 6.4, { type: 'expense', suggestedCategoryId: 'food_groceries',
+         fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 } }),
+       row('e2e-79 plain purchase', 5.4, { type: 'expense', suggestedCategoryId: 'food_groceries',
+         fieldConfidence: { amount: 0.8, date: 0.8 } }),
+     ],
+   });
+   const duplicates = await w.duplicateService.checkDuplicates(rows);
+   history.replaceState({
+     importResult: {
+       source: 'image', fileType: 'receipt_image', fileName: '3 images', fileSize: 3, confidence: 0.9,
+       warnings: [], duplicates, transactions: w.duplicateService.markDuplicates(rows, duplicates),
+     },
+     fromCamera: true, door: 'camera', multiImage: true,
+   }, '');
+   'handed';
+   ```
+
+   Then reload the page. **Pass:** the wizard opens on Review with the three
+   cards in that order, each selected. `importService` and
+   `duplicateService` are private — TypeScript's word, which the running page
+   does not enforce, as journey 14 says. The rows are dated today, so none
+   asks about its date, and their descriptions are things the account calls
+   nothing, so the duplicate check, which reads the account's real history,
+   matches none of them.
+
+   The wizard reads that state once, while it is built, and writes nothing
+   of the card back into it: whatever is done on the card is gone with the
+   next reload, the one the dev server makes after a rebuild included, so
+   leave the checkout alone while the journey runs. A reload that lands on
+   the dropzone rather than the review has lost the hand-off; write it
+   again.
+2. **The flags.**
+
+   ```js
+   [...document.querySelectorAll('.transaction-card .type-toggle')].map(toggle => ({
+     flag: toggle.querySelector('.verify-flag')?.getAttribute('aria-hidden') ?? null,
+     name: toggle.getAttribute('aria-label'),
+   }));
+   ```
+
+   **Pass:** the refund's toggle and the doubted purchase's each carry the
+   amber flag in place of the trend icon, decorative — `aria-hidden`
+   `'true'`, because the button's own name carries the sentence, the
+   pattern of ADR 0146 — and each toggle is named by the sentence first and
+   the type it shows after it: *Double-check income or expense — the scan
+   could not tell a purchase from a refund for certain. Income* for the
+   refund, the same ending *Expense* for the purchase. The plain purchase
+   has no flag, and its toggle is named *Expense* alone. A hover on a flag
+   shows the same sentence, with no percentage: the grade is the reader's
+   policy, not a measurement. The refund's chip reads *Other Income* with
+   the red dot, the income side's catch-all for a row nothing categorized;
+   both purchases read *Groceries*. Shot: `79-type-flags.png`.
+3. **The picker's side.**
+
+   ```js
+   const offers = (card, type) => ng.getComponent(card.querySelector('app-category-suggestion'))
+     .sortedCategories().some(category => category.type === type);
+   [...document.querySelectorAll('.transaction-card')].map(card => [offers(card, 'income'), offers(card, 'expense')]);
+   // [[true, false], [false, true], [false, true]]
+   ```
+
+   **Pass:** each card's menu offers its own row's side alone, the income
+   side to the refund and the expense side to each purchase. A category
+   that fits both sides would be offered to every row; the seed holds none.
+4. **The flip.** Click the doubted purchase's toggle. Then read the live
+   region in a call of its own — the announcer writes on a timer of its
+   own, as journey 48 says:
+
+   ```js
+   document.querySelector('.cdk-live-announcer-element').textContent;
+   ```
+
+   **Pass:** the toggle reads *Income*, named *Income* alone, its flag gone
+   and the trend icon back. The chip reads *Other Income* with the red dot:
+   Groceries cannot ride onto an income row, so the category moved to the
+   new side's catch-all, graded no higher than an answer that resolved to
+   nothing. The live element reads *Category for e2e-79 doubted purchase
+   changed to Other Income*. Step 3's read now gives `[true, false]` for
+   that card, and the other two cards are as they were. Shot:
+   `79-category-followed.png`.
+
+   A type change sends the row back through the duplicate check, and the
+   confirm step's Import stays disabled while a re-check runs.
+5. **At 375px.** Set the pane's width to 375px, read, and clear the width
+   again, clicking nothing under it: pointer input can stall under viewport
+   emulation ([Panes and viewports](#panes-and-viewports)), and a reload to
+   free it starts the review over from the rows as handed, the flip
+   undone.
+
+   ```js
+   const card = document.querySelector('.transaction-card');
+   card.scrollIntoView({ block: 'center' });
+   ({
+     fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+     card: Math.round(card.getBoundingClientRect().width),
+     content: Math.round(card.querySelector('.card-main').getBoundingClientRect().width),
+   });
+   ```
+
+   **Pass:** `fits` is `true`, the card about **273px** wide and its content
+   column about **189px**, the first run's figures. A pixel or two either
+   way is rounding; a **141px** column is the failure. Below 600px the
+   wizard pads each step's content 5px a side where Material pads it 24px,
+   and a margin of −5px takes those 5px back out of its own 16px gutter, so
+   the content keeps the width the first run measured with no padding at
+   all (`import-wizard.component.scss`) — a viewport query no Karma window
+   can apply ([ui-overflow.md](ui-overflow.md)). Shot: `79-review-375.png`.
+
+   Still at 375px, the dropzone's focus ring, which those 5px make room
+   for: the step's content container clips at its own box
+   (`overflow: hidden`), and the ring is drawn outside the dropzone. The
+   dropzone is the Upload step's, and a camera hand-off leaves the stepper
+   free to move in any order. Move there and focus its header from the
+   console:
+
+   ```js
+   ng.getComponent(document.querySelector('app-import-wizard')).stepper.selectedIndex = 0;
+   document.querySelector('.mat-step-header').focus();
+   'upload';
+   ```
+
+   Then press **Tab** once — a real key, so the browser takes the focus that
+   follows as keyboard focus — and read:
+
+   ```js
+   const zone = document.querySelector('.dropzone');
+   const clip = zone.closest('.mat-horizontal-content-container').getBoundingClientRect();
+   const box = zone.getBoundingClientRect();
+   const style = getComputedStyle(zone);
+   ({
+     focused: document.activeElement === zone && zone.matches(':focus-visible'),
+     ring: parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset),
+     room: [box.top - clip.top, clip.right - box.right, clip.bottom - box.bottom, box.left - clip.left]
+       .map(Math.round),
+   });
+   ```
+
+   **Pass — the ring shows on all four sides.** `focused` is `true`; `ring`
+   is 4, the 2px outline and its 2px offset (5 with high contrast on); and
+   every `room` figure — top, right, bottom, left — is at least `ring`, the
+   right and left **5**. A side with less room than the ring is cut off at
+   the clip: with no inline padding, as the rule first had it, the right
+   and left read 0. A zoom on the dropzone shows the ring whole. Then back
+   to the review, `…stepper.selectedIndex = 2`, before the width is
+   cleared, so step 6 starts from the cards.
+6. **Import.** At the pane's own width again: **Continue** → the confirm
+   step → **Import 3 Transactions**. Then read the three back past the rules
+   ([Reading past the rules](#reading-past-the-rules)):
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/transactions?pageSize=300" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).documents??[]).map(d=>d.fields).filter(f=>f.description?.stringValue?.startsWith("e2e-79")).map(f=>[f.description.stringValue,f.type.stringValue,f.categoryId.stringValue,"fieldConfidence" in f].join(" ")).sort().join("\n")))'
+   # e2e-79 doubted purchase income other_income false
+   # e2e-79 plain purchase expense food_groceries false
+   # e2e-79 refund income other_income false
+   ```
+
+   **Pass:** the refund and the flipped purchase are income on
+   `other_income`, the plain purchase an expense on `food_groceries`, and
+   none of the three carries `fieldConfidence`: the grades are the review's,
+   and never written.
+7. **The form, diagnostic-grade like journey 41.** On `/transactions`,
+   where the import lands, the add button (named *Add Transaction*) opens a
+   menu, and its **Add Transaction** item opens the form. Its receipt
+   strip is not rendered: it stands only while the account has an engine to
+   scan with (`isAiAvailable`), and this venue has neither a provider key
+   nor a device. So the scan goes through the form's own handler, with the
+   strategy service answering from the page — state only, which journey 41
+   accepts for a flag whose attributes do not care how it was raised. In
+   one call:
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   const answers = [
+     { description: 'e2e-79 form refund', type: 'income', suggestedCategoryId: 'food_groceries',
+       fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } },
+     { description: 'e2e-79 form purchase', type: 'expense', suggestedCategoryId: 'food_groceries',
+       fieldConfidence: { amount: 0.8, date: 0.9 } },
+   ];
+   f.strategyService.canProcessNow = () => true;
+   f.strategyService.processReceipt = async () => ({
+     source: 'native', confidence: 0.9, processingTimeMs: 0,
+     transactions: [{ date: new Date(), amount: 14.03, currency: 'USD', confidence: 0.9, source: 'native',
+       ...answers.shift() }],
+   });
+   const canvas = document.createElement('canvas');
+   canvas.width = canvas.height = 16;
+   const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+   await f.onReceiptSelected({ target: { files: [new File([png], 'e2e-79-refund.png', { type: 'image/png' })], value: '' } });
+   'scanned';
+   ```
+
+   `strategyService` is private, as above, and the app's root one: the two
+   overrides stand for the whole page until it reloads. Flush the dialog if
+   the pane is hidden ([In a hidden pane](#in-a-hidden-pane)), then read:
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   const flag = document.querySelector('.type-toggle-container .verify-flag');
+   ({
+     type: f.form.get('type').value,
+     category: f.form.get('categoryId').value,
+     flag: flag && [flag.getAttribute('role'), flag.getAttribute('aria-hidden'), flag.getAttribute('aria-label')],
+   });
+   ```
+
+   **Pass — a refund fills the form as income.** `type` is `'income'`, and
+   **Income** is the checked segment. The category is blank: the reading
+   named a Groceries id the income side cannot hold, and the required field
+   asks rather than anything being filled in for it. The flag beside the
+   toggle reads `role` `'img'`, `aria-hidden` `'false'`, and step 2's
+   sentence as its label. The centred toggle group moves over by about
+   16px while the flag stands beside it, which the first run judged
+   acceptable. Shot: `79-form-flag.png`.
+
+   Discard the photo through the form, `f.removePendingReceipt(0)` with `f`
+   bound as above — the strip's remove button calls the same, and it is not
+   rendered. **Pass — the flag goes with the photo, and the type stays.**
+   No flag, and `type` still `'income'`: only the user's own change makes a
+   scanned type theirs.
+
+   Then a purchase into the emptied strip, which the override answers from
+   the queue it still holds:
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   const canvas = document.createElement('canvas');
+   canvas.width = canvas.height = 16;
+   const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+   await f.onReceiptSelected({ target: { files: [new File([png], 'e2e-79-purchase.png', { type: 'image/png' })], value: '' } });
+   'scanned';
+   ```
+
+   Read it as before. **Pass — the purchase takes the refund's income
+   back.** `type` is `'expense'`, the category `food_groceries`, and no
+   flag: a purchase reading moves only a type a scan filed and the user has
+   left alone.
+
+   **Cancel** the form — nothing is saved — then reload the page to drop the
+   overrides.
+
+Four shots: the two flags, the category after the flip, the review at 375px,
+and the form's flag.
+
+### 80. Another tab changes the account
+
+**Emulators**, as Alex and then Sam, in two tabs of one origin: a swap, a
+sign-out and a sign-in made in one tab, the other reloading each time onto
+the account it now holds, with nothing reported on the way out
+([auth.md](auth.md#an-account-change-this-page-did-not-start)).
+[Pre-flight](#pre-flight) done.
+
+- **Tab 1:** `http://localhost:4300`. Sign Alex in, as
+  [Signing in a seeded account](#signing-in-a-seeded-account) says,
+  **Skip** the welcome, and open `/transactions` for this month.
+- **Tab 2:** `http://localhost:4300/transactions` in a second tab. The same
+  origin, so Alex there too, with no welcome: it was skipped.
+- Both list Alex's *Electric bill* and *Hardware store*.
+- Front each tab before reading it.
+
+**The probe**, run in **both** tabs before every step, one call each:
+
+```js
+window.__j80 = 'armed';
+sessionStorage.setItem('j80.t0', String(performance.timeOrigin));
+sessionStorage.setItem('j80.errors', '[]');
+if (!console.error.j80) {
+  const error = console.error;
+  console.error = Object.assign((...args) => {
+    if (args[0] === '[GlobalErrorHandler]') {
+      const at = JSON.parse(sessionStorage.getItem('j80.errors') ?? '[]');
+      sessionStorage.setItem('j80.errors', JSON.stringify([...at, Date.now()]));
+    }
+    error.apply(console, args);
+  }, { j80: true });
+}
+'armed';
+```
+
+The marker on `window` dies with the document, so it tells a page that
+reloaded from one that did not. The two `sessionStorage` values survive a
+reload of the same tab. The wrapper goes on once per document — a page
+armed again without reloading keeps the one it has — and stamps the time of
+every report the app's error handler logs (`global-error-handler.ts:39`).
+
+**The read**, in each tab after each step, again until it stops changing:
+
+```js
+({
+  marker: window.__j80,
+  fresh: performance.timeOrigin > Number(sessionStorage.getItem('j80.t0')),
+  departing: JSON.parse(sessionStorage.getItem('j80.errors') ?? '[]')
+    .map(at => Math.round(performance.timeOrigin - at)),
+  path: location.pathname,
+});
+```
+
+- `fresh` tells a new document from the one that was armed:
+  `performance.timeOrigin` is the moment a document began, and a reload
+  begins a new one. The navigation type cannot tell them apart after step
+  1, when both tabs read `'reload'` whatever happens next.
+- `departing` lists, for each report the armed page logged, how many
+  milliseconds before the current document began it came. On a page that
+  reloaded, those are what the page it left said on its way out; on a page
+  that did not, any entry is an error of its own and reads negative. A page
+  that reloaded by itself passes with it empty, as *Judging a step* below
+  says.
+- The new document's own reports are not in it — the wrapper went with the
+  old one — so read them from the console by the difference: note each
+  tab's count of `[GlobalErrorHandler]` and `[Auth] Profile` entries before
+  arming, and again a few seconds after the step.
+
+1. **Sam, written from tab 2.** Arm both tabs. In tab 2, write Sam's record
+   into local storage — the swap in
+   [Signing in a seeded account](#signing-in-a-seeded-account) — and reload
+   tab 2 straight after, in a call of its own. Front tab 1 and read, then
+   tab 2.
+   - **Pass, tab 1:** `{ marker: undefined, fresh: true, departing: [],
+     path: '/transactions' }` — it reloaded by itself, where it stood, and
+     the page it left reported nothing.
+   - **Pass, tab 2:** `fresh: true` on `/transactions`, by the run's
+     reload. Its `departing` is recorded, not judged: between the write and
+     the reload it ran as Alex over a store naming Sam, a state the protocol
+     makes and no tab does, since a tab that changes its own account does
+     it through its own SDK.
+   - **Pass, both lists:** *Supermarket*, *Airport taxi*, *Train tickets*
+     and *Convenience store*, and none of *Electric bill*, *Hardware store*
+     or *Bookshop* (`seed-household.mjs:98-122`).
+   - **Pass, the console:** tab 1's counts where they stood. Tab 2's
+     `[GlobalErrorHandler]` count is up by no more than its `departing`
+     entries — the page the run reloaded reported nothing of its own — and
+     the rest of its difference is recorded with them.
+   - **Skip Sam's welcome in each tab that shows one.** Each page opens its
+     own, and tab 2's would cover the user menu step 2 needs. Then the
+     user menu names *Sam Lee* in both.
+   - Shot: `80-reloaded-as-sam.png`, tab 1.
+2. **A sign-out from tab 2.** Arm both. In tab 2, the header's user menu →
+   **Sign Out** (`header.component.ts:153-156`).
+   - **Pass, tab 2:** `{ marker: 'armed', fresh: false, path: '/login' }` —
+     its own sign-out took it to the sign-in page and reloaded nothing. Its
+     `departing` is recorded as a diagnostic: its own sign-out is not the
+     change under test.
+   - **Pass, tab 1:** `{ marker: undefined, fresh: true, departing: [],
+     path: '/login' }`, the sign-in screen showing, and its console count
+     where it stood: it heard the other tab's sign-out, reloaded, and
+     `authGuard` placed it on `/login`.
+   - Shot: `80-signed-out.png`, tab 1.
+3. **Alex, written from tab 2, on `/login`.** Arm both. In tab 2, write
+   Alex's record into local storage, and reload tab 2 straight after.
+   - **Pass, tab 1:** `{ marker: undefined, fresh: true, departing: [],
+     path: '/dashboard' }` — the signed-out page heard the sign-in,
+     reloaded, and `publicGuard` sent it to `/`, which redirects to the
+     dashboard (`auth.guard.ts:94`, `app.routes.ts:23`). The user menu names
+     *Alex Chen*, no welcome opens — Alex skipped it in the setup — and the
+     console count is where it stood.
+   - **Pass, tab 2:** on `/dashboard` as Alex too, by the run's reload.
+   - Shot: `80-dashboard-as-alex.png`, tab 1.
+
+**Judging a step.** A step passes only with `departing` empty on every page
+that reloaded by itself and that page's console count unchanged. A report
+on the way out fails the step: record what it was and how far ahead of the
+reload it came, and read [ADR 0163](ADR/0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md)'s
+Known gaps, where suppressing reports once a reload has been asked for is
+held back for a refusal that ever arrives after the request.
+`[RowSharing]` warnings and `@firebase/firestore` lines are recorded as
+diagnostics, not judged.
+
+**What the first run found.** It drove these steps with the web's session
+still in IndexedDB. The swap passed, but on the sign-out tab 1's departing
+page logged three `[GlobalErrorHandler]` `'list'` refusals — goals,
+categories and saved searches — which raise the *Error* snackbar, about
+550ms *before* its reload began. Firestore's multi-tab cache tells every
+tab of the origin that its queries were refused through local-storage
+events, as it happens, while the Auth SDK reads IndexedDB on an 800ms poll,
+and less often in a background tab, so the refusals outran the news that
+the page was leaving the account. With the session in local storage the
+same sign-out logged none, twice, and the swap none
+([auth.md](auth.md#where-the-web-keeps-the-session)).
+
+**What it cannot show.** The page's own Google sign-in: a pane opens no
+popup ([Panes and viewports](#panes-and-viewports)), and no tier completes
+one. The unit spec runs the popup call inside the own-change marker, where
+it rejects against the Auth double before any window opens, and fails if
+the call ever leaves the marker; the smoke stands an anonymous sign-in under
+the same marker in for the popup's. The page's own sign-out runs through
+the real service in both, and its deletion in the unit spec. A phone's
+browser, which reads local storage once a second rather than listening for
+the event, and a tab still on the previous build: both are in ADR 0163's
+Known gaps.
+
+Three shots: Sam's rows in the reloaded tab, the sign-in screen it reloaded
+onto, and Alex's dashboard after the sign-in from the other tab.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -4233,7 +4733,11 @@ data:
 On the emulators it keeps what needs several accounts at once: rows one
 member shares and another reads as copies, the household's own budgets and
 goals counted from them, and memberships removed, left, dissolved and erased,
-with the real invite callable and the backstop triggers between them.
+with the real invite callable and the backstop triggers between them. It
+keeps two tabs of one origin sharing one session as well, which no suite can
+open, and what one tab's page says on its way out when another changes the
+account (journey 80); and a review card at a real phone's width, a viewport
+query Karma's fixed 756px window cannot apply (journey 79).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -4252,6 +4756,12 @@ left in.
 
 The emulator journeys, 68 to 77, follow the same rule on a branch that touches
 a household surface, each run from freshly seeded emulators and ending with
-the [teardown](#teardown). **Journey 78 runs once**, on production, after the
-merge — when the deploys it checks have finished — because what it proves is
-the deployed rules, indexes and callable, which exist only then.
+the [teardown](#teardown). So does journey 79 on a branch that touches the
+review card's type or category, the camera's converter, or the form's scanned
+type, and journey 80 on one that touches the session: the auth listener and
+its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
+session (`appAuthFactory` in `app.config.ts`), the route guards
+(`auth.guard.ts`), or this protocol's session writes. **Journey 78 runs
+once**, on production, after the merge — when the deploys it checks have
+finished — because what it proves is the deployed rules, indexes and callable,
+which exist only then.
