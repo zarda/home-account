@@ -27,12 +27,16 @@
 // or a re-check watched against a ledger that actually holds the row it finds.
 //
 // One case reads its receipt on the device instead: the Vision and Apple
-// Intelligence bridges stand in for the iPhone and the strategy's
-// processReceipt is stepped over, so the on-device reader's verdict on which
-// way the money moved is followed from the OCR text to the document. The case
-// after it hands the card rows whose type the device doubted, built the way
-// the capture dialog builds them, so the flag on the type toggle is seen on
-// the real card, and a flip there is followed into the documents it writes.
+// Intelligence bridges stand in for the iPhone, the strategy's
+// processMultipleImages is stepped over to the device reader it routes to on
+// iOS, and the rows are handed over as the capture dialog hands them, so the
+// on-device reader's verdict on which way the money moved is followed from
+// the OCR text to the document. The case after it hands the card rows whose
+// type the device doubted, built the same way, so the flag on the type toggle
+// is seen on the real card, and a flip there is followed into the documents
+// it writes. The next folds such a refund into its purchase on the card, so
+// the side the net points, and the doubt it settles, are followed the same
+// way.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -1354,13 +1358,20 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     async () => {
       // The camera's door on an iPhone with no Apple Intelligence, which
       // hands every scan to the regex lane. On top of the shared receipt
-      // seams, the two Capacitor bridges stand in for the iPhone. The
-      // strategy's processReceipt is stepped over whole: its routing (iOS
-      // only, unit-tested) and the base-currency fallback at its exit, which
-      // does nothing for a receipt that prints its currency. The rest is
-      // real: the minus read on the total, the converter that carries the
-      // type grade to the card, the category held to the income side, and
-      // the document the rules accept.
+      // seams, the two Capacitor bridges stand in for the iPhone. The capture
+      // dialog sends any number of photos to the strategy's
+      // processMultipleImages, which is stepped over to the device reader it
+      // routes to on iOS: its routing (iOS only, unit-tested), the engine
+      // diagnostics and timing it stamps for the Import History record, and
+      // the base-currency fallback at its exit, which does nothing for a
+      // receipt that prints its currency. What the dialog then does with the
+      // answer is done here as it does it: its converter, its duplicate check
+      // against the real ledger, its router state. The photo is left out of
+      // the hand-off, as the next two cases leave it, so Import attaches
+      // nothing, and so are the engine diagnostics, so its history record
+      // names only the door. The rest is real: the minus read on the total,
+      // the type grade carried to the card, the category held to the income
+      // side, and the document the rules accept.
       stubReceiptSeams();
       const vision = jasmine.createSpyObj<VisionOcrService>('VisionOcrService', [
         'detectEnvironment',
@@ -1390,22 +1401,22 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
 
       const native = TestBed.inject(NativeReceiptService);
-      spyOn(TestBed.inject(AIStrategyService), 'processReceipt').and.callFake(file =>
-        native.processImage(file)
-      );
+      const strategy = TestBed.inject(AIStrategyService);
+      spyOn(strategy, 'processMultipleImages').and.callFake(files => native.processImages(files));
       const importService = TestBed.inject(AIImportService);
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
       spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
 
       const before = new Set(
         (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
       );
 
-      const result = await importService.importFromImage(
-        new File([new Uint8Array([1])], 'refund.jpg', { type: 'image/jpeg' })
-      );
+      const photo = new File([new Uint8Array([1])], 'refund.jpg', { type: 'image/jpeg' });
+      const read = await strategy.processMultipleImages([photo]);
+      const rows = importService.convertStrategyResultToCategories(read);
 
-      expect(result.transactions.length).toBe(1);
-      const [row] = result.transactions;
+      expect(rows.length).toBe(1);
+      const [row] = rows;
       expect(row.type).toBe('income');
       expect(row.fieldConfidence).toEqual({ amount: 0.8, date: 0.9, type: 0.5 });
       // Nothing on this lane categorizes, so the row lands on the floor of
@@ -1418,7 +1429,19 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         categoryConfidence: UNCATEGORIZED_CATEGORY_CONFIDENCE
       });
 
-      history.replaceState({ importResult: result, fromCamera: true, multiImage: false }, '');
+      const duplicates = await duplicateService.checkDuplicates(rows);
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: photo.name,
+        fileSize: photo.size,
+        confidence: read.confidence,
+        warnings: [],
+        duplicates,
+        transactions: duplicateService.markDuplicates(rows, duplicates)
+      };
+
+      history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: false }, '');
       const fixture = TestBed.createComponent(ImportWizardComponent);
       fixture.detectChanges();
 
@@ -1585,8 +1608,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .toEqual([]);
       expect(offeredAfter.map(c => c.id)).withContext('the catch-all it was filed on').toContain('other_income');
 
-      // A type change re-runs the duplicate check, and Import does not wait
-      // for it.
+      // A type change re-runs the duplicate check. Import waits on it; so does
+      // this, because confirmImport() called directly would not.
       await until(fixture, () => component.rechecksInFlight() === 0);
       await component.confirmImport();
 
@@ -1611,6 +1634,176 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       await new Promise(resolve => setTimeout(resolve, 300));
     },
     30000
+  );
+
+  it(
+    'a refund merged into its purchase writes the net on the side it points, without the reader\'s doubt about the type',
+    async () => {
+      // Two pairs of photos the camera read on the device, each a purchase
+      // the model named food for and a refund against it, both doubted on
+      // their type, handed over the way the capture dialog hands them. The
+      // reviewer folds each refund into its purchase from the refund's own
+      // merge menu. The two sat on opposite sides, so the net decides the
+      // type and the reader's doubt goes with it: the first nets to an
+      // expense that keeps its food, the second to income, where food cannot
+      // follow. The card's suite and the pure merge say what the survivor
+      // carries; only here is it followed through the wizard's re-check and
+      // confirm into the document it writes. The second pair is imported
+      // after the first is written, at figures the first's stored row cannot
+      // match as a duplicate.
+      stubReceiptSeams();
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
+
+      const mergeAndImport = async (
+        purchase: { description: string; amount: number },
+        refund: { description: string; amount: number }
+      ) => {
+        const before = new Set(
+          (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+        );
+        // Dated today, so neither row asks about its date.
+        const today = new Date();
+        const rows = TestBed.inject(AIImportService).convertStrategyResultToCategories({
+          source: 'native',
+          confidence: 0.9,
+          processingTimeMs: 0,
+          transactions: [
+            {
+              date: today,
+              description: purchase.description,
+              amount: purchase.amount,
+              type: 'expense',
+              currency: 'JPY',
+              confidence: 0.9,
+              source: 'native',
+              suggestedCategoryId: 'food',
+              fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 }
+            },
+            {
+              date: today,
+              description: refund.description,
+              amount: refund.amount,
+              type: 'income',
+              currency: 'JPY',
+              confidence: 0.9,
+              source: 'native',
+              categoryAttempted: false,
+              fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 }
+            }
+          ]
+        });
+        const duplicates = await duplicateService.checkDuplicates(rows);
+        const transactions = duplicateService.markDuplicates(rows, duplicates);
+        expect(transactions.map(t => t.isDuplicate))
+          .withContext('neither row matches anything the ledger holds, so both can merge')
+          .toEqual([false, false]);
+        const importResult: ImportResult = {
+          source: 'image',
+          fileType: 'receipt_image',
+          fileName: '2 images',
+          fileSize: 2,
+          confidence: 0.9,
+          warnings: [],
+          duplicates,
+          transactions
+        };
+
+        history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: true }, '');
+        const fixture = TestBed.createComponent(ImportWizardComponent);
+        fixture.detectChanges();
+
+        const host = fixture.nativeElement as HTMLElement;
+        const component = fixture.componentInstance;
+        const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+        const flagged = (card: HTMLElement) => card.querySelector('.type-toggle .verify-flag') !== null;
+        await until(
+          fixture,
+          () => TestBed.inject(CategoryService).categories().length > 0 && cards().length === 2
+        );
+        expect(cards().map(flagged)).withContext('both rows reach review with their type doubted').toEqual([true, true]);
+
+        cards()[1].querySelector<HTMLButtonElement>('.merge-trigger')!.click();
+        fixture.detectChanges();
+        const items = Array.from(
+          document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item')
+        );
+        expect(items.length).withContext('the purchase is the only other JPY row on offer').toBe(1);
+        items[0].click();
+        fixture.detectChanges();
+
+        expect(cards().length).toBe(1);
+        const survivor = component.extractedTransactions()[0];
+        const reviewed = {
+          description: survivor.description,
+          type: survivor.type,
+          amount: survivor.amount,
+          category: survivor.suggestedCategoryId,
+          grade: survivor.fieldConfidence?.type,
+          flagged: flagged(cards()[0])
+        };
+
+        // The survivor's amount changed, which is a detection input, so a
+        // re-check is in flight behind the merge. Import waits on it; so does
+        // this, because confirmImport() called directly would not.
+        await until(fixture, () => component.rechecksInFlight() === 0);
+        await component.confirmImport();
+
+        const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+        const landed = after.docs
+          .filter(d => !before.has(d.id))
+          .map(d => d.data())
+          .map(stored => ({
+            description: stored['description'],
+            type: stored['type'],
+            amount: stored['amount'],
+            categoryId: stored['categoryId'],
+            graded: 'fieldConfidence' in stored
+          }));
+
+        history.replaceState({}, '');
+        fixture.destroy();
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return { reviewed, landed };
+      };
+
+      const partly = await mergeAndImport(
+        { description: 'Smoke partly refunded purchase', amount: 2000 },
+        { description: 'Smoke partial refund', amount: 500 }
+      );
+      expect(partly.reviewed)
+        .withContext('the purchase survives as the net expense, its food kept and its type no longer doubted')
+        .toEqual({
+          description: 'Smoke partly refunded purchase',
+          type: 'expense',
+          amount: 1500,
+          category: 'food',
+          grade: undefined,
+          flagged: false
+        });
+      expect(partly.landed).toEqual([
+        { description: 'Smoke partly refunded purchase', type: 'expense', amount: 1500, categoryId: 'food', graded: false }
+      ]);
+
+      const over = await mergeAndImport(
+        { description: 'Smoke overrefunded purchase', amount: 400 },
+        { description: 'Smoke larger refund', amount: 2000 }
+      );
+      expect(over.reviewed)
+        .withContext('the purchase survives as the net income, filed on the income side\'s catch-all')
+        .toEqual({
+          description: 'Smoke overrefunded purchase',
+          type: 'income',
+          amount: 1600,
+          category: 'other_income',
+          grade: undefined,
+          flagged: false
+        });
+      expect(over.landed).toEqual([
+        { description: 'Smoke overrefunded purchase', type: 'income', amount: 1600, categoryId: 'other_income', graded: false }
+      ]);
+    },
+    60000
   );
 
   it(

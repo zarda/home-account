@@ -4015,6 +4015,44 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted[0].map(t => [t.id, t.importAttempts])).toEqual([['b', undefined]]);
     });
 
+    // A purchase on food with a refund for it, against the catalogue a
+    // flipped row's category is judged by; the refund is merged into the
+    // purchase, and the survivor is read back as the batch now holds it.
+    // The refund sits on a named income entry, not the catch-all, so a
+    // survivor on the catch-all can only have been re-filed there.
+    function mergeRefundIntoPurchase(purchaseAmount: number, refundAmount: number): CategorizedImportTransaction {
+      const purchase = makeRow({ id: 'purchase', description: 'Coffee Shop', amount: purchaseAmount });
+      const refund = makeRow({
+        id: 'refund', description: 'Coffee Shop refund', amount: refundAmount,
+        type: 'income', suggestedCategoryId: 'salary', categoryConfidence: 0.8,
+      });
+      component.transactions = [purchase, refund];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+
+      component.mergeInto(refund, purchase);
+      fixture.detectChanges();
+      return component.transactions.find(t => t.id === 'purchase')!;
+    }
+    const filed = (row: CategorizedImportTransaction) =>
+      ({ type: row.type, amount: row.amount, category: row.suggestedCategoryId, grade: row.categoryConfidence });
+
+    it('re-files the survivor\'s category when the net turns it to the other side', () => {
+      // A refund larger than its purchase leaves money coming in. Left where
+      // it was, the purchase's food would be written onto an income row, as
+      // a flip on the toggle would have written it before it moved.
+      expect(filed(mergeRefundIntoPurchase(5, 20)))
+        .toEqual({ type: 'income', amount: 15, category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+    });
+
+    it('keeps the survivor\'s category when the net stays on its side', () => {
+      // A pin: a refund smaller than its purchase leaves the row an expense,
+      // and its food still fits, so nothing moves and nothing is said.
+      expect(filed(mergeRefundIntoPurchase(20, 5)))
+        .toEqual({ type: 'expense', amount: 15, category: 'food', grade: 0.9 });
+      expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
     it('does nothing when the source or the target has left the batch by the time the click lands', () => {
       const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
       const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
@@ -4641,6 +4679,23 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       component.toggleType(row);
 
       expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+    });
+
+    it('announces a category a merge moved to the other side', () => {
+      // The merge is chosen from the refund's own menu, while the category it
+      // moved is a chip on the purchase that survives it. The refund's own
+      // salary is not what is named: the survivor is re-filed, not handed it.
+      const purchase = makeRow({ id: 'purchase', amount: 5 });
+      const refund = makeRow({ id: 'refund', description: 'Coffee Shop refund', amount: 20, type: 'income', suggestedCategoryId: 'salary' });
+      component.transactions = [purchase, refund];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+
+      component.mergeInto(refund, purchase);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCategoryRefiled:{"description":"Coffee Shop","category":"categoryNames.otherIncome"}'
+      );
     });
 
     it('leaves the bulk currency switch\'s own notice as the one voice for a row it blanks', () => {

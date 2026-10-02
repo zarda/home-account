@@ -292,9 +292,7 @@ export class TransactionPreviewTableComponent {
    * The category is held to the new side (`categoryOnSide`); left where it
    * was, an expense category would be written onto an income row. A move is
    * announced, because the chip it changed sits elsewhere on the row from
-   * the toggle that was pressed (ADR 0149). The catalogue entry's own name
-   * is what the chip shows, and the id stands in only if the catalogue does
-   * not hold the catch-all at all.
+   * the toggle that was pressed (ADR 0149).
    */
   toggleType(transaction: CategorizedImportTransaction): void {
     const type = transaction.type === 'income' ? 'expense' : 'income';
@@ -306,14 +304,25 @@ export class TransactionPreviewTableComponent {
       ...EDITED_ON_CARD,
     });
     if (filed.suggestedCategoryId !== transaction.suggestedCategoryId) {
-      const name = this.categories.find(c => c.id === filed.suggestedCategoryId)?.name;
-      this.announcer.announce(
-        this.translationService.t('import.announceCategoryRefiled', {
-          description: this.announceDescription(transaction),
-          category: name ? this.translationService.t(name) : filed.suggestedCategoryId,
-        })
-      );
+      this.announceCategoryRefiled(transaction, filed.suggestedCategoryId);
     }
+  }
+
+  /**
+   * Says that a row's category moved to the other side's catch-all, for the
+   * two edits that can move it: a flip on the toggle and a merge whose net
+   * points the other way. The catalogue entry's own name is what the chip
+   * shows, and the id stands in only if the catalogue does not hold the
+   * catch-all at all.
+   */
+  private announceCategoryRefiled(row: CategorizedImportTransaction, categoryId: string): void {
+    const name = this.categories.find(c => c.id === categoryId)?.name;
+    this.announcer.announce(
+      this.translationService.t('import.announceCategoryRefiled', {
+        description: this.announceDescription(row),
+        category: name ? this.translationService.t(name) : categoryId,
+      })
+    );
   }
 
   /**
@@ -1470,6 +1479,15 @@ export class TransactionPreviewTableComponent {
    * from the batch by then is the stale-commit no-op commitSplit models
    * with its indexOf guard.
    *
+   * A net that points the other way puts the survivor on the other side,
+   * and its category is held there as a flip holds it (`categoryOnSide`);
+   * mergeImportRows keeps the target's category, having no catalogue to
+   * judge it by. A move is announced, as a flip's is, because the chip it
+   * changed sits on the survivor while the menu was opened from the row
+   * that left. A net that stays on the target's side leaves the category
+   * as it was: the merge did not move the row, so the category is no more
+   * the merge's to judge than it was before.
+   *
    * row's own trigger leaves with it, so focus has nowhere on row to return
    * to; it goes to the survivor instead — its own merge trigger when a third
    * row still shares its currency, its description trigger when this merge
@@ -1483,15 +1501,19 @@ export class TransactionPreviewTableComponent {
     if (!source || !dest || source === dest) return;
     const folded = mergeImportRows(dest, source);
     if (!folded) return;
+    const filed = folded.type === dest.type ? undefined : this.categoryOnSide(folded, folded.type);
     // mergedReceiptIds records a merge only between two receipts' rows; the
     // mark records every one. The survivor is not the row that was refused,
     // so it keeps neither the reason nor the count of failed attempts —
     // carried, the count would set it aside on its own first failure.
-    const merged: CategorizedImportTransaction = { ...folded, ...EDITED_ON_CARD, importAttempts: undefined };
+    const merged: CategorizedImportTransaction = { ...folded, ...filed, ...EDITED_ON_CARD, importAttempts: undefined };
     this.forgetRow(source.id);
     this.transactions = this.transactions.filter(t => t !== source).map(t => t === dest ? merged : t);
     this.emitChanges();
     this.cdr.markForCheck();
+    if (filed && filed.suggestedCategoryId !== folded.suggestedCategoryId) {
+      this.announceCategoryRefiled(merged, filed.suggestedCategoryId);
+    }
     this.focusWhenRendered(this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit'));
   }
 
