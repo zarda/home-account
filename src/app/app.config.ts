@@ -11,7 +11,8 @@ import {
   provideAuth,
   initializeAuth,
   browserLocalPersistence,
-  getAuth,
+  browserPopupRedirectResolver,
+  indexedDBLocalPersistence,
   connectAuthEmulator,
 } from '@angular/fire/auth';
 import {
@@ -114,29 +115,50 @@ export function appFirestoreFactory(
 }
 
 /**
- * Factory behind provideAuth.
+ * Factory behind provideAuth. Both platforms keep the session in local
+ * storage, as the device always has.
  *
- * Capacitor gets local-storage persistence: IndexedDB under the capacitor://
- * scheme leaves onAuthStateChanged hanging. The web keeps getAuth()'s default
- * (IndexedDB) persistence and popup resolver.
+ * Capacitor gets local storage alone: IndexedDB under the capacitor:// scheme
+ * leaves onAuthStateChanged hanging.
+ *
+ * The web prefers it to getAuth()'s first choice, IndexedDB, for timing.
+ * Another tab's sign-in or sign-out reaches this one by a storage event, the
+ * same channel Firestore's multi-tab cache uses to report the refusals that
+ * change causes, so the page hears it is leaving the account ahead of them.
+ * IndexedDB raises no event and is polled every 800 ms, so the refusals used
+ * to land first, on a page still showing the departing account (ADR 0163).
+ * A phone's browser is the exception: there the SDK polls local storage
+ * instead, once a second, because a backgrounded tab can miss the events, so
+ * a phone's tab can still hear another tab's change after the refusals it
+ * causes.
+ * IndexedDB stays second in the list because the SDK looks there for a
+ * session to carry across: one it finds is written to local storage and its
+ * IndexedDB key removed, so the first load after the switch keeps whoever was
+ * signed in. A tab still running the previous bundle watches IndexedDB, hears
+ * that key go at its next poll, and shows nobody signed in until it reloads.
+ * The popup resolver getAuth() would add is passed by hand, since
+ * initializeAuth adds none.
  *
  * With emulator hosts the connect runs straight after the instance exists,
  * before a restored session's token refresh can go to the live Auth service;
  * the SDK refuses a connect once the instance has been used. The
  * collaborators are default parameters for app.config.spec.ts, as
- * appFirestoreFactory's are.
+ * appFirestoreFactory's are; app.config.smoke.spec.ts shows the session
+ * carried across and another tab's sign-out heard.
  */
 export function appAuthFactory(
   isNative: () => boolean = () => Capacitor.isNativePlatform(),
   initialize: typeof initializeAuth = initializeAuth,
-  get: typeof getAuth = getAuth,
   app: typeof getApp = getApp,
   hosts: EmulatorHosts | null = EMULATOR_HOSTS,
   connect: typeof connectAuthEmulator = connectAuthEmulator,
 ): Auth {
   const auth = isNative()
     ? initialize(app(), { persistence: browserLocalPersistence })
-    : get(app());
+    : initialize(app(), {
+        persistence: [browserLocalPersistence, indexedDBLocalPersistence],
+        popupRedirectResolver: browserPopupRedirectResolver,
+      });
   if (hosts) {
     connect(auth, hosts.auth.url, { disableWarnings: true });
   }

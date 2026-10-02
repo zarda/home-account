@@ -472,11 +472,12 @@ describe('AuthService (emulator smoke test)', () => {
 
   /**
    * The SDK transitions another tab makes, driven on this page's own Auth
-   * instance: a suite cannot open a second tab, and the cross-tab poll that
-   * carries a change between tabs is the SDK's own. Once its first state has
-   * been delivered, a page reloads on any account change it did not start
-   * (ADR 0163). The reload is the stubProviders() spy, so nothing really
-   * reloads.
+   * instance: a suite cannot open a second tab, and the storage event that
+   * carries a change between tabs is handled by the SDK itself
+   * (app.config.smoke.spec.ts shows the app's Auth hearing one). Once its
+   * first state has been delivered, a page reloads on any account change it
+   * did not start (ADR 0163). The reload is the stubProviders() spy, so
+   * nothing really reloads.
    *
    * Each case reads the spy as soon as the SDK call resolves, with no wait:
    * the SDK hands a change to its listeners before the call's own promise
