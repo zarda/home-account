@@ -361,11 +361,17 @@
 }
 
 // Donate Card
+// Each end is mixed into the card fill it replaces, so the copy is measured
+// against opaque colours from one end to the other.
 .donate-card {
-  background: linear-gradient(135deg, rgba(var(--color-accent-rgb, 63, 81, 181), 0.1), rgba(var(--color-primary-rgb, 25, 118, 210), 0.1));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent) 10%, var(--surface-card)),
+    color-mix(in srgb, var(--color-primary) 10%, var(--surface-card))
+  );
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  border: 1px solid rgba(var(--color-accent-rgb, 63, 81, 181), 0.2);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
 
   ::ng-deep .mat-mdc-card-content {
     padding: 24px;
@@ -394,7 +400,7 @@
     width: var(--text-3xl);
     height: var(--text-3xl);
     line-height: 1;
-    color: white;
+    color: var(--text-inverse);
   }
 }
 

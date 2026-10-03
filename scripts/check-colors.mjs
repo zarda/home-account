@@ -132,42 +132,8 @@ const CHIP_FILE = 'src/app/shared/components/category-chip/category-chip.compone
  * theme, and the only legal edits are downward.
  */
 const BASELINE = {
-  'src/app/features/about/about.component.scss': {
-    'rgba(var(--color-accent-rgb, 63, 81, 181), 0.1)': 1,
-    'rgba(var(--color-accent-rgb, 63, 81, 181), 0.2)': 1,
-    'rgba(var(--color-primary-rgb, 25, 118, 210), 0.1)': 1,
-    'white': 1,
-  },
   'src/app/features/dashboard/spending-chart/spending-chart.component.scss': {
     'white': 1,
-  },
-  'src/app/features/data/data-management/data-management.component.scss': {
-    '#8b5cf6': 2,
-    'bg-indigo-50': 2,
-    'bg-red-50': 1,
-    'bg-white': 1,
-    'border-gray-200': 3,
-    'border-indigo-200': 3,
-    'border-red-200': 1,
-    'dark:bg-indigo-900/30': 2,
-    'dark:bg-red-900/40': 1,
-    'dark:bg-red-950': 1,
-    'dark:border-gray-700': 3,
-    'dark:border-indigo-600': 2,
-    'dark:border-indigo-800': 1,
-    'dark:border-red-900': 2,
-    'dark:from-indigo-950': 1,
-    'dark:text-gray-100': 3,
-    'dark:text-gray-300': 4,
-    'dark:text-gray-400': 6,
-    'dark:text-gray-500': 1,
-    'dark:to-purple-950': 1,
-    'from-indigo-50': 1,
-    'text-gray-400': 1,
-    'text-gray-500': 6,
-    'text-gray-700': 4,
-    'text-gray-800': 3,
-    'to-purple-50': 1,
   },
   'src/app/features/settings/category-manager/category-form-dialog/category-form-dialog.component.scss': {
     'white': 1,

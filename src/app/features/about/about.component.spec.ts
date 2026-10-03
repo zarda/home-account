@@ -12,6 +12,13 @@ import { FeedbackService } from '../../core/services/feedback.service';
 import { OnboardingService } from '../../core/services/onboarding.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackEntry } from '../../models';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../core/services/testing';
 import packageJson from '../../../../package.json';
 
 describe('AboutComponent', () => {
@@ -233,6 +240,98 @@ describe('AboutComponent', () => {
 
       const data = mockDialog.open.calls.mostRecent().args[1]?.data as { message: string };
       expect(data.message).toBe('about.feedback.deleteMessage');
+    });
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `<property>: <value>` computes to under the theme on <html> now. */
+    function computedAs(value: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, value);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    const tokenValue = (token: string, property = 'color') => computedAs(`var(${token})`, property);
+
+    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      settleAnimations(document);
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    function renderDonateCard(): HTMLElement {
+      spyOn(Capacitor, 'isNativePlatform').and.returnValue(false);
+      fixture = TestBed.createComponent(AboutComponent);
+      fixture.detectChanges();
+      const card = (fixture.nativeElement as HTMLElement).querySelector('.donate-card') as HTMLElement;
+      expect(card).withContext('the donate card').toBeTruthy();
+      return card;
+    }
+
+    // The badge's glyph is held to text's 4.5 rather than a graphic's 3:1:
+    // it is the card's one visual mark.
+    it('paints the donate badge glyph in --text-inverse, at AA on its accent bubble, in both themes', () => {
+      const card = renderDonateCard();
+      const bubble = card.querySelector('.donate-icon') as HTMLElement;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(getComputedStyle(bubble).backgroundColor)
+            .withContext(`${theme} bubble`)
+            .toBe(tokenValue('--color-accent', 'background-color'));
+          expectPainted(bubble.querySelector('mat-icon'), '--text-inverse', `${theme} donate glyph`);
+        });
+      }
+    });
+
+    /**
+     * The painted helpers do not see a gradient, so each end of it is laid
+     * under the card in turn as a flat fill, and the copy is measured on both.
+     */
+    it('tints the donate card from accent to primary over the card, edged in the accent, its copy at AA at both ends, in both themes', () => {
+      const card = renderDonateCard();
+      const ends = {
+        start: 'color-mix(in srgb, var(--color-accent) 10%, var(--surface-card))',
+        end: 'color-mix(in srgb, var(--color-primary) 10%, var(--surface-card))',
+      };
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          const style = getComputedStyle(card);
+          expect(style.backgroundImage)
+            .withContext(`${theme} tint`)
+            .toBe(computedAs(`linear-gradient(135deg, ${ends.start}, ${ends.end})`, 'background-image'));
+          expect(style.borderTopColor)
+            .withContext(`${theme} edge`)
+            .toBe(computedAs('color-mix(in srgb, var(--color-accent) 20%, transparent)', 'border-top-color'));
+
+          for (const [name, end] of Object.entries(ends)) {
+            card.style.setProperty('background', end);
+            try {
+              const at = `${theme}, at the ${name}`;
+              expectPainted(card.querySelector('.donate-title'), '--text-primary', `${at}: title`);
+              expectPainted(card.querySelector('.donate-description'), '--text-secondary', `${at}: description`);
+            } finally {
+              card.style.removeProperty('background');
+            }
+          }
+        });
+      }
     });
   });
 });

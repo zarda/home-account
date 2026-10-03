@@ -117,7 +117,11 @@ const PAIRS = [
     why: "the transactions quick filters' active button and filter count, the import stepper's current step, " +
       "the dropzone's image number, the import preview's selection badge, the snapshot timeline's chosen month",
   },
-  { fg: '--text-inverse', bg: '--color-accent', why: "the bottom-nav add button and the period selector's custom-range button" },
+  {
+    fg: '--text-inverse',
+    bg: '--color-accent',
+    why: "the bottom-nav add button, the period selector's custom-range button and the About page's donate badge",
+  },
   { fg: '--text-inverse', bg: '--color-error-strong', why: "the transaction row's swipe-to-delete action" },
   { fg: '--color-primary', bg: '--surface-card', why: 'links and active labels on a card' },
   { fg: '--color-accent', bg: '--surface-card', why: 'accent labels on a card' },
