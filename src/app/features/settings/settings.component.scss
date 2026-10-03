@@ -161,6 +161,7 @@
     transform: translateY(0);
   }
 
+  // colors:allow-start(brand) each settings area's own colour tile, with a white glyph on it
   .link-card-icon {
     width: 48px;
     height: 48px;
@@ -189,6 +190,7 @@
       background: linear-gradient(135deg, #2e7d32, #1b5e20);
     }
   }
+  // colors:allow-end
 
   .link-card-content {
     flex: 1;

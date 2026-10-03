@@ -71,6 +71,7 @@
     color: var(--mat-sys-on-error-container);
   }
 
+  // colors:allow-start(brand) the scan-mode badges' own marks, a gradient each, the same in every theme
   &.native {
     background: linear-gradient(135deg, #34c759, #30d158);
     color: white;
@@ -80,6 +81,7 @@
     background: linear-gradient(135deg, #4285f4, #34a853);
     color: white;
   }
+  // colors:allow-end
 }
 
 // iOS install hint
@@ -190,6 +192,7 @@
   }
 }
 
+// colors:allow-start(scrim) a dark veil and a white glyph over a receipt photo, which has no theme
 .drag-handle {
   position: absolute;
   top: 8px;
@@ -212,6 +215,7 @@
     height: 1em;
   }
 }
+// colors:allow-end
 
 .add-more-area {
   display: flex;

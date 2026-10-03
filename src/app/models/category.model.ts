@@ -37,6 +37,7 @@ export interface CreateCategoryDTO {
   parentId?: string;
 }
 
+// colors:allow-start(category-data) a seeded category's colour is data: its own colour, the same in every theme
 // Default Expense Category Groups
 export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [
   {
@@ -345,3 +346,4 @@ export const DEFAULT_INCOME_GROUPS: CategoryGroup[] = [
     ]
   },
 ];
+// colors:allow-end

@@ -165,6 +165,7 @@
 // own thumbnail rather than losing its tail. Covering part of a picture the
 // reader just chose is recoverable; not being able to tell two receipts apart
 // is not.
+// colors:allow-start(scrim) a dark veil and white text over the receipt photo it names, which has no theme
 .preview-name {
   position: absolute;
   bottom: 0;
@@ -176,6 +177,7 @@
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
+// colors:allow-end
 
 /* Processing Step */
 .processing-step {

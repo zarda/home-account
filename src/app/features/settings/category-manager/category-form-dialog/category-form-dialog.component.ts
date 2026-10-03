@@ -25,11 +25,13 @@ const CATEGORY_ICONS = [
   'sports_esports', 'pets', 'child_care', 'card_giftcard', 'celebration',
 ];
 
+// colors:allow-start(category-data) the colours a category can be given are data, the same in every theme
 const CATEGORY_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
   '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
   '#ec4899', '#f43f5e', '#64748b', '#71717a', '#78716c',
 ];
+// colors:allow-end
 
 @Component({
   selector: 'app-category-form-dialog',
@@ -58,7 +60,7 @@ export class CategoryFormDialogComponent {
 
   name = this.data.category?.name || '';
   selectedIcon = this.data.category?.icon || 'category';
-  selectedColor = this.data.category?.color || '#3b82f6';
+  selectedColor = this.data.category?.color || '#3b82f6'; // colors:allow(category-data) a new category's colour until one is picked
 
   get isEdit(): boolean {
     return !!this.data.category;

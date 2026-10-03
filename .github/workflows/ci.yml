@@ -211,6 +211,18 @@ jobs:
       - name: Check colour contrast
         run: npm run contrast:check
 
+      # The other half of contrast: contrast:check scores the token pairs it
+      # lists, and a colour written outside the tokens is in none of them. A
+      # hex in a component stylesheet, a gray-400 utility or a chart literal
+      # paints the same in light, dark and high contrast; it renders, the
+      # build says nothing, and a screenshot taken in the author's theme looks
+      # right — hundreds of them shipped that way, many under AA in one theme.
+      # Nothing is frozen: every colour is a token, or sits in a colors:allow
+      # marker that gives its reason and that the script's ALLOWED table
+      # counts, so a new colour fails, and so does a marker that widens.
+      - name: Check colours come from the theme
+        run: npm run colors:check
+
       # A mat-icon that carries role="img" or an aria-label and no *literal*
       # aria-hidden. MatIcon hides itself at construction unless the template
       # carries the static attribute, so a bound [attr.aria-hidden] does not

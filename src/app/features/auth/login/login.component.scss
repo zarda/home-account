@@ -2,6 +2,7 @@
   display: block;
 }
 
+// colors:allow-start(brand) the sign-in backdrop is the product's own gradient, not a theme surface
 // Gradient background container
 .login-container {
   // iOS resolves vh against the largest viewport — the one with Safari's
@@ -36,6 +37,7 @@
     background: rgba(255, 255, 255, 0.05);
   }
 }
+// colors:allow-end
 
 .bg-shape-1 {
   width: 300px;
@@ -70,6 +72,7 @@
   }
 }
 
+// colors:allow-start(brand) the glass card's edge and glow, drawn for the brand gradient behind it
 // Glass-morphism card
 .login-card {
   width: 100%;
@@ -93,6 +96,7 @@
       0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   }
 }
+// colors:allow-end
 
 @keyframes slideUp {
   from {
@@ -120,6 +124,7 @@ mat-card-header {
   }
 }
 
+// colors:allow-start(brand) the app's mark: its gradient tile, glow and the white glyph on it
 // Icon with gradient background
 .icon-wrapper {
   width: 80px;
@@ -147,6 +152,7 @@ mat-card-header {
   height: 40px;
   color: white;
 }
+// colors:allow-end
 
 // Error message styling
 .error-message {

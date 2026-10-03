@@ -59,6 +59,7 @@
     }
   }
 
+  // colors:allow-start(scrim) a dark veil and a white label over the receipt photo while it scans, which has no theme
   .scanning-overlay {
     position: absolute;
     inset: 0;
@@ -74,6 +75,7 @@
       font-weight: 500;
     }
   }
+  // colors:allow-end
 }
 
 // Several receipts side by side: queued additions or the stored strip.
