@@ -343,11 +343,12 @@ dark + high contrast. Three things about that are worth knowing:
   fails 14 of 20 in light, and nearly all of those are false positives: a
   chart bar owes nothing to a card it never sits on.
 
-Rows come in three kinds: **required** (must clear 4.5:1 in every mode),
-**exempt** (recorded with the reason it is not a rule — a disabled control,
-a divider, a combination nothing paints), and **frozen** (fails today, pinned
-at the ratio it measures, may only improve; when one reaches its threshold the
-script asks to have it promoted). `--self-test` asserts that every `--color-*`
+Rows come in three kinds: **required** (must clear its threshold in every
+mode — 4.5:1 for text, 3:1 for a graphic under WCAG 1.4.11, as the
+`--color-ai` icons are), **exempt** (recorded with the reason it is not a
+rule — a disabled control, a divider, a combination nothing paints), and
+**frozen** (fails today, pinned at the ratio it measures, may only improve;
+when one reaches its threshold the script asks to have it promoted). `--self-test` asserts that every `--color-*`
 token the light palette declares appears in one of those tables or in a named
 `NOT_PAINTED` list, so a new token cannot be added unaudited, and runs the
 frozen-row ratchet, `frozenRowFinding`, over a synthetic row — at its floor,

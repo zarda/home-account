@@ -117,8 +117,15 @@ const PAIRS = [
       "the dropzone's image number, the import preview's selection badge, the snapshot timeline's chosen month",
   },
   { fg: '--text-inverse', bg: '--color-accent', why: "the bottom-nav add button and the period selector's custom-range button" },
+  { fg: '--text-inverse', bg: '--color-error-strong', why: "the transaction row's swipe-to-delete action" },
   { fg: '--color-primary', bg: '--surface-card', why: 'links and active labels on a card' },
   { fg: '--color-accent', bg: '--surface-card', why: 'accent labels on a card' },
+  {
+    fg: '--color-ai',
+    bg: '--surface-card',
+    threshold: 3,
+    why: "the AI features' icons on a card: graphics, so WCAG 1.4.11's 3:1 rather than text's 4.5:1",
+  },
   {
     fg: '--color-primary-text',
     bg: '--color-primary-light',
@@ -136,6 +143,23 @@ const PAIRS = [
     bg: '--color-error-light',
     why: "the login page's error banner and the transaction filters' clear-button hover",
   },
+  { fg: '--color-success-text', bg: '--color-success-light', why: "the import history's completed chip" },
+  { fg: '--color-success-text', bg: '--surface-card', why: 'a success state as running text' },
+  {
+    fg: '--color-success-text',
+    bg: '--surface-subtle',
+    why: "the dashboard budget widget's percentage while a budget is under its limit",
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-subtle',
+    why: "the dashboard budget widget's percentage while a budget nears its limit",
+  },
+  {
+    fg: '--color-error-text',
+    bg: '--surface-subtle',
+    why: "the dashboard budget widget's percentage once a budget is over its limit",
+  },
 ];
 
 /** Pairs recorded and not scored, each with the reason it is not a rule. */
@@ -151,19 +175,24 @@ const EXEMPT = [
     why: 'a divider, not a component boundary: 1.4.11 asks for 3:1 on what identifies a control, and a hairline between two rows identifies nothing',
   },
   {
+    fg: '--border-strong',
+    bg: '--surface-card',
+    why: 'the hover outline and the dashed edge of controls that carry their own label: 1.4.11 asks 3:1 of a boundary only where the boundary is what identifies the control',
+  },
+  {
     fg: '--text-inverse',
     bg: '--color-error',
-    why: 'nothing paints it — every inverse-text site sits on --color-primary or --color-accent, both scored above',
+    why: 'a fill too light to carry text (white on it is 3.76:1 in light), so a label on solid red sits on --color-error-strong, scored above',
   },
   {
     fg: '--text-inverse',
     bg: '--color-info',
-    why: 'nothing paints it, as above',
+    why: 'nothing paints it — every inverse-text site sits on --color-primary, --color-accent or --color-error-strong, all scored above',
   },
   {
     fg: '--text-inverse',
     bg: '--color-success',
-    why: 'nothing paints it, as above',
+    why: 'nothing paints it, as the --color-info row above',
   },
 ];
 
@@ -197,7 +226,6 @@ const NOT_PAINTED = {
   '--color-income': "a fill — bars, dots, toggles' tints; never text",
   '--color-expense': "a fill — bars, dots, toggles' tints; never text",
   '--color-success': 'an icon colour beside its own label (the import wizard\'s success states)',
-  '--color-success-light': 'declared and unused',
   '--color-warning': 'an icon and a border colour beside their own labels; the readable warning token is --color-warning-text',
   '--color-info': 'an icon and a left border on a callout that carries its own text in --text-primary',
   '--color-info-light': 'declared and unused',
