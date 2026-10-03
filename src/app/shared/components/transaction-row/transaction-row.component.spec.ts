@@ -11,6 +11,10 @@ import {
   createCategory,
   createUser,
   createTranslationStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
 } from '../../../core/services/testing';
 
 describe('TransactionRowComponent', () => {
@@ -891,6 +895,29 @@ describe('TransactionRowComponent with swipe actions', () => {
 
     enter();
     expect(component.activated).withContext('the second Enter opens it').toEqual([component.transaction]);
+  });
+
+  it('paints each swipe label at AA or better on its fill at a phone width, in both themes', () => {
+    // The row a 375px phone renders, opened the way a thumb opens it.
+    host.style.width = '375px';
+    const surface = host.querySelector('.row-surface') as HTMLElement;
+    const row = host.querySelector('.transaction-row') as HTMLElement;
+    pointer(host.querySelector('.row-description') as HTMLElement, 'pointerdown', 300, 20);
+    pointer(surface, 'pointermove', 288, 21);
+    pointer(surface, 'pointermove', 140, 22);
+    pointer(surface, 'pointerup', 140, 22);
+    expect(row.classList).withContext('swipe opened the drawer').toContain('swipe-open');
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        for (const action of ['edit', 'delete']) {
+          const label = host.querySelector(`.swipe-action-${action} span`) as HTMLElement;
+          expect(ratio(paintedColor(label), paintedBackground(label)))
+            .withContext(`${theme} ${action} label on its fill`)
+            .toBeGreaterThanOrEqual(4.5);
+        }
+      });
+    }
   });
 
   it('opens on a left swipe and closes on Escape', () => {

@@ -6,6 +6,7 @@ import { BottomNavComponent } from './bottom-nav.component';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { navItemFor } from '../nav-items';
+import { channels, withTheme } from '../../../core/services/testing';
 
 const LABELS: Record<string, string> = {
   'nav.dashboard': 'Dashboard',
@@ -151,6 +152,23 @@ describe('BottomNavComponent', () => {
       ) as HTMLElement;
       expect(active.getAttribute('aria-label')).toBe('Budgets');
     });
+  });
+
+  it('glows the Add button in the accent it is filled with, in both themes', () => {
+    const button = fixture.nativeElement.querySelector('button.action-button') as HTMLElement;
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const style = getComputedStyle(button);
+        const glow = /^(?:rgba?|color)\([^)]*\)/.exec(style.boxShadow);
+        expect(glow).withContext(`${theme} shadow ${style.boxShadow}`).not.toBeNull();
+        const shadow = channels(glow![0]);
+        const fill = channels(style.backgroundColor);
+        expect(shadow.rgb.map(Math.round))
+          .withContext(`${theme} glow hue`)
+          .toEqual(fill.rgb.map(Math.round));
+        expect(shadow.alpha).withContext(`${theme} glow alpha`).toBeCloseTo(0.4, 2);
+      });
+    }
   });
 
   it('delegates add-transaction to the quick-add service', () => {

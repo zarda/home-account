@@ -102,7 +102,7 @@
   background: var(--color-accent);
   color: var(--text-inverse);
   border: none;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 40%, transparent);
   cursor: pointer;
 }
 

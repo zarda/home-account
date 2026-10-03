@@ -474,7 +474,9 @@ app-category-chip {
   color: var(--text-primary);
 }
 
+// --color-error is too light for a label in light (white on #ef4444 is
+// 3.76:1); --color-error-strong carries --text-inverse in both themes.
 .swipe-action-delete {
-  background: var(--color-error);
-  color: #fff;
+  background: var(--color-error-strong);
+  color: var(--text-inverse);
 }

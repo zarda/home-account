@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { AmountDisplayComponent } from './amount-display.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { withTheme } from '../../../core/services/testing';
 
 describe('AmountDisplayComponent', () => {
   let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
@@ -102,7 +103,56 @@ describe('AmountDisplayComponent', () => {
 
     it('returns the neutral colour by default', () => {
       const component = createComponent({ amount: 1 }).componentInstance;
-      expect(component.colorClass()).toContain('gray');
+      expect(component.colorClass()).toBe('text-fg');
+    });
+  });
+
+  describe('the painted colour', () => {
+    /**
+     * A colour no token holds. A utility Tailwind never generated leaves the
+     * amount inheriting it, rather than the body's own --text-primary, which
+     * would otherwise pass the neutral row.
+     */
+    const SENTINEL = 'rgb(1, 2, 3)';
+
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    const TYPES = [
+      { type: 'neutral', token: '--text-primary' },
+      { type: 'income', token: '--color-income-text' },
+      { type: 'expense', token: '--color-expense-text' },
+    ] as const;
+
+    it('paints each type in its text token, in both themes', () => {
+      for (const { type, token } of TYPES) {
+        const fixture = createComponent({ amount: 12, type });
+        const host = fixture.nativeElement as HTMLElement;
+        host.style.color = SENTINEL;
+        document.body.appendChild(host);
+        try {
+          const amount = host.querySelector('span') as HTMLElement;
+          for (const theme of ['light', 'dark'] as const) {
+            withTheme(theme, () => {
+              expect(getComputedStyle(amount).color)
+                .withContext(`${theme} ${type} amount`)
+                .toBe(tokenColour(token));
+            });
+          }
+        } finally {
+          host.remove();
+          fixture.destroy();
+        }
+      }
     });
   });
 });

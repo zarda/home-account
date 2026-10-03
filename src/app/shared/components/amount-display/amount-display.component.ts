@@ -51,7 +51,7 @@ export class AmountDisplayComponent {
       case 'expense':
         return 'text-expense-text';
       default:
-        return 'text-gray-900 dark:text-gray-100';
+        return 'text-fg';
     }
   });
 }

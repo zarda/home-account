@@ -19,7 +19,7 @@ import { MatButtonModule } from '@angular/material/button';
       aria-live="polite"
     >
       <div
-        class="rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center"
+        class="rounded-full bg-surface-muted flex items-center justify-center"
         [class.w-16]="size === 'md'"
         [class.h-16]="size === 'md'"
         [class.mb-4]="size === 'md'"
@@ -28,7 +28,7 @@ import { MatButtonModule } from '@angular/material/button';
         [class.mb-3]="size === 'sm'"
       >
         <mat-icon
-          class="text-gray-400 dark:text-gray-500"
+          class="text-fg-muted"
           [class.!text-4xl]="size === 'md'"
           [class.!w-10]="size === 'md'"
           [class.!h-10]="size === 'md'"
@@ -53,7 +53,7 @@ import { MatButtonModule } from '@angular/material/button';
 
       @if (description) {
         <p
-          class="text-gray-500 dark:text-gray-400 max-w-sm"
+          class="text-fg-muted max-w-sm"
           [class.text-sm]="size === 'md'"
           [class.text-xs]="size === 'sm'"
           [class.mb-6]="size === 'md' && actionLabel"
@@ -90,6 +90,6 @@ export class EmptyStateComponent {
   @Output() action = new EventEmitter<void>();
 
   get headingClass(): string {
-    return `font-medium text-gray-900 dark:text-gray-100 mb-1 ${this.size === 'md' ? 'text-lg' : 'text-base'}`;
+    return `font-medium text-fg mb-1 ${this.size === 'md' ? 'text-lg' : 'text-base'}`;
   }
 }

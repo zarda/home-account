@@ -597,10 +597,6 @@ const BASELINE = {
     'dark:text-gray-400': 6,
     'text-gray-500': 6,
   },
-  'src/app/shared/components/amount-display/amount-display.component.ts': {
-    'dark:text-gray-100': 1,
-    'text-gray-900': 1,
-  },
   'src/app/shared/components/confirm-dialog/confirm-dialog.component.html': {
     'bg-primary-100': 1,
     'bg-red-100': 1,
@@ -621,25 +617,9 @@ const BASELINE = {
     'dark:text-gray-100': 1,
     'text-gray-900': 1,
   },
-  'src/app/shared/components/empty-state/empty-state.component.ts': {
-    'bg-gray-100': 1,
-    'dark:bg-gray-800': 1,
-    'dark:text-gray-100': 1,
-    'dark:text-gray-400': 1,
-    'dark:text-gray-500': 1,
-    'text-gray-400': 1,
-    'text-gray-500': 1,
-    'text-gray-900': 1,
-  },
   'src/app/shared/components/nl-answer-card/nl-answer-card.component.scss': {
     'dark:text-gray-400': 2,
     'text-gray-500': 2,
-  },
-  'src/app/shared/components/transaction-row/transaction-row.component.scss': {
-    '#fff': 1,
-  },
-  'src/app/shared/layout/bottom-nav/bottom-nav.component.scss': {
-    'rgba(79, 70, 229, 0.4)': 1,
   },
 };
 
