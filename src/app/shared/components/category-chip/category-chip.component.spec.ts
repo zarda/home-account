@@ -3,6 +3,13 @@ import { CHIP_SURFACE, CategoryChipComponent } from './category-chip.component';
 import { WCAG_AA_TEXT, contrastRatio, parseHexColor } from '../../../core/utils/color-contrast.utils';
 import { ThemeService } from '../../../core/services/theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import {
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
+} from '../../../core/services/testing';
 import { Category, DEFAULT_EXPENSE_GROUPS, DEFAULT_INCOME_GROUPS } from '../../../models';
 
 describe('CategoryChipComponent', () => {
@@ -125,32 +132,15 @@ describe('CategoryChipComponent', () => {
   });
 
   /**
-   * What is measured is what the browser painted: the computed colour of the
-   * glyph (and the pill's label) against the computed background of the box
-   * it sits in, with the ratio worked out here by the WCAG formula rather
-   * than by the utility under test.
+   * What is measured is what the browser painted: the glyph's (and the pill
+   * label's) painted colour against the painted background of the box it
+   * sits in, with the ratio worked out by the harness's own WCAG formula
+   * rather than by the utility under test.
    */
   describe('contrast on the painted tint', () => {
     const CATALOGUE = [...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color);
     const HOSTILE = ['#FFFF00', '#FFFFFF', '#000000', '#777777'];
     const COLOURS = [...new Set([...CATALOGUE, ...HOSTILE])];
-
-    function channels(computed: string): { rgb: [number, number, number]; alpha: number } {
-      const parts = computed.match(/[\d.]+/g)!.map(Number);
-      return { rgb: [parts[0], parts[1], parts[2]], alpha: parts.length > 3 ? parts[3] : 1 };
-    }
-
-    function wcagRatio(a: [number, number, number], b: [number, number, number]): number {
-      const lum = (rgb: [number, number, number]) => {
-        const [r, g, bl] = rgb.map(value => {
-          const c = value / 255;
-          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-        });
-        return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
-      };
-      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
-      return (hi + 0.05) / (lo + 0.05);
-    }
 
     function render(theme: 'light' | 'dark', color: string, appearance: 'tile' | 'pill') {
       mockThemeService.effectiveTheme.and.returnValue(theme);
@@ -171,11 +161,11 @@ describe('CategoryChipComponent', () => {
           const host = render(theme, color, 'tile');
           const tile = host.nativeElement.querySelector('.tile') as HTMLElement;
           const icon = tile.querySelector('mat-icon') as HTMLElement;
-          const background = channels(getComputedStyle(tile).backgroundColor);
-          const glyph = channels(getComputedStyle(icon).color);
 
-          expect(background.alpha).withContext(`${theme} ${color} tile is opaque`).toBe(1);
-          expect(wcagRatio(glyph.rgb, background.rgb))
+          expect(channels(getComputedStyle(tile).backgroundColor).alpha)
+            .withContext(`${theme} ${color} tile is opaque`)
+            .toBe(1);
+          expect(ratio(paintedColor(icon), paintedBackground(tile)))
             .withContext(`${theme} ${color} icon on its tile`)
             .toBeGreaterThanOrEqual(4.5);
           host.destroy();
@@ -189,11 +179,11 @@ describe('CategoryChipComponent', () => {
           const host = render(theme, color, 'pill');
           const label = host.nativeElement.querySelector('span.font-medium') as HTMLElement;
           const pill = label.parentElement as HTMLElement;
-          const background = channels(getComputedStyle(pill).backgroundColor);
-          const text = channels(getComputedStyle(label).color);
 
-          expect(background.alpha).withContext(`${theme} ${color} pill is opaque`).toBe(1);
-          expect(wcagRatio(text.rgb, background.rgb))
+          expect(channels(getComputedStyle(pill).backgroundColor).alpha)
+            .withContext(`${theme} ${color} pill is opaque`)
+            .toBe(1);
+          expect(ratio(paintedColor(label), paintedBackground(pill)))
             .withContext(`${theme} ${color} label on its pill`)
             .toBeGreaterThanOrEqual(4.5);
           host.destroy();
@@ -203,7 +193,7 @@ describe('CategoryChipComponent', () => {
 
     it('keeps the category\'s hue: a darkened orange is still orange', () => {
       const host = render('light', '#FF9800', 'tile');
-      const [r, g, b] = channels(getComputedStyle(host.nativeElement.querySelector('.tile mat-icon')).color).rgb;
+      const [r, g, b] = paintedColor(host.nativeElement.querySelector('.tile mat-icon'));
       expect(r).toBeGreaterThan(g);
       expect(g).toBeGreaterThan(b);
       expect(g / r).toBeCloseTo(152 / 255, 1);
@@ -217,21 +207,16 @@ describe('CategoryChipComponent', () => {
    */
   describe('CHIP_SURFACE', () => {
     it('matches the stylesheet\'s --surface-card in both themes', () => {
-      const root = document.documentElement;
-      const hadDark = root.classList.contains('dark-theme');
-      root.classList.remove('dark-theme');
       const probe = document.createElement('div');
       document.body.appendChild(probe);
       try {
-        const light = getComputedStyle(probe).getPropertyValue('--surface-card').trim();
-        probe.classList.add('dark-theme');
-        const dark = getComputedStyle(probe).getPropertyValue('--surface-card').trim();
+        const surface = () =>
+          getComputedStyle(probe).getPropertyValue('--surface-card').trim().toLowerCase();
 
-        expect(light.toLowerCase()).toBe(CHIP_SURFACE.light);
-        expect(dark.toLowerCase()).toBe(CHIP_SURFACE.dark);
+        expect(withTheme('light', surface)).toBe(CHIP_SURFACE.light);
+        expect(withTheme('dark', surface)).toBe(CHIP_SURFACE.dark);
       } finally {
         probe.remove();
-        if (hadDark) root.classList.add('dark-theme');
       }
     });
   });

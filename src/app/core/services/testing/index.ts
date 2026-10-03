@@ -6,3 +6,4 @@ export * from './translation-stub';
 export * from './emulator-admin';
 export * from './axe';
 export * from './emulator-custom-token';
+export * from './painted-contrast';
