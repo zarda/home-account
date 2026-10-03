@@ -8,13 +8,22 @@ import { SpendingChartComponent } from './spending-chart.component';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { Category } from '../../../models';
+import { ThemeService } from '../../../core/services/theme.service';
 import {
+  CATEGORY_FALLBACK_COLOR,
+  CATEGORY_PALETTE,
+  Category,
+  DEFAULT_EXPENSE_GROUPS,
+  DEFAULT_INCOME_GROUPS,
+} from '../../../models';
+import {
+  AUDIT_SCHEMES,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -425,8 +434,8 @@ describe('SpendingChartComponent', () => {
       expect(activated).toEqual(['cat2']);
     });
 
-    // Not the legend glyph or the progress bar: those paint the category's
-    // own colour.
+    // The progress bar is not measured: it is a graphic filled with the
+    // category's own colour, beside the share printed as text.
     describe('colours', () => {
       /** What `color: var(token)` computes to under the palette on <html> now. */
       function tokenColour(token: string): string {
@@ -440,6 +449,87 @@ describe('SpendingChartComponent', () => {
           probe.remove();
         }
       }
+
+      /** `value` as the browser computes a background colour. */
+      function computedBackground(value: string): string {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = value;
+        document.body.appendChild(probe);
+        try {
+          return getComputedStyle(probe).backgroundColor;
+        } finally {
+          probe.remove();
+        }
+      }
+
+      /**
+       * Every colour a legend tile can be filled with: the seeded categories',
+       * the fifteen a category can be given and the grey a missing one falls
+       * back to.
+       */
+      const everyCategoryColour = (): string[] => [
+        ...new Set(
+          [
+            ...[...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color),
+            ...CATEGORY_PALETTE,
+            CATEGORY_FALLBACK_COLOR,
+          ].map(color => color.toLowerCase())
+        ),
+      ];
+
+      it('fills each legend tile as its slice is and draws its glyph at AA or better on it, for every colour a category can carry, in both themes', () => {
+        const colours = everyCategoryColour();
+        expect(colours.length).toBe(31);
+        const categories: Category[] = colours.map((color, i) => ({
+          ...mockCategories[0],
+          id: `c${i}`,
+          name: `category ${i}`,
+          color,
+        }));
+        // A total whose category is gone reaches the fallback the way the app does.
+        const totals = [
+          ...categories.map((category, i) => ({ categoryId: category.id, total: 100 - i, count: 1 })),
+          { categoryId: 'gone', total: 1, count: 1 },
+        ];
+        realFixture.componentRef.setInput('categories', categories);
+
+        const filled: string[] = [];
+        let measured = 0;
+        // topCategories() shows six, so the rows are fed six at a time.
+        for (let start = 0; start < totals.length; start += 6) {
+          const batch = totals.slice(start, start + 6);
+          realFixture.componentRef.setInput('categoryTotals', batch);
+          realFixture.detectChanges();
+          const fills = realFixture.componentInstance.chartData().datasets[0].backgroundColor as string[];
+          expect(fills.length).withContext(`rows from ${start}`).toBe(batch.length);
+          filled.push(...fills);
+
+          for (const scheme of AUDIT_SCHEMES) {
+            withScheme(TestBed.inject(ThemeService), scheme, () => {
+              realFixture.detectChanges();
+              const tiles = Array.from(realFixture.nativeElement.querySelectorAll('.legend-icon')) as HTMLElement[];
+              expect(tiles.length).withContext(`${scheme} rows from ${start}`).toBe(batch.length);
+              tiles.forEach((tile, i) => {
+                const label = `${scheme} ${fills[i]}`;
+                expect(getComputedStyle(tile).backgroundColor)
+                  .withContext(`${label} tile filled as its slice`)
+                  .toBe(computedBackground(fills[i]));
+                const glyph = tile.querySelector('mat-icon') as HTMLElement;
+                expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                  .withContext(`${label} glyph on its tile`)
+                  .toBeGreaterThanOrEqual(4.5);
+                measured += 1;
+              });
+            });
+          }
+        }
+
+        expect(new Set(filled.map(color => color.toLowerCase())))
+          .withContext('every colour reached a tile')
+          .toEqual(new Set(colours));
+        expect(filled[filled.length - 1]).withContext('the missing category').toBe(CATEGORY_FALLBACK_COLOR);
+        expect(measured).withContext('every row, in both schemes').toBe(totals.length * AUDIT_SCHEMES.length);
+      });
 
       it('paints the title in the primary text token, at AA or better on the card, in both themes', () => {
         const title = realFixture.nativeElement.querySelector('.card-title') as HTMLElement;

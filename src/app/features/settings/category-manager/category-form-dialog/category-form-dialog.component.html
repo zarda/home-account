@@ -47,6 +47,7 @@
         [attr.aria-label]="'settings.colorSelection' | translate"
       >
         @for (color of colors; track color) {
+          <!-- colors:allow-start(category-data) each swatch is filled with the colour it offers -->
           <button
             type="button"
             class="color-btn"
@@ -55,9 +56,10 @@
             (click)="selectColor(color)"
           >
             @if (selectedColor === color) {
-              <mat-icon>check</mat-icon>
+              <mat-icon [style.color]="color | readableOn">check</mat-icon>
             }
           </button>
+          <!-- colors:allow-end -->
         }
       </div>
     </div>

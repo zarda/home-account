@@ -34,12 +34,16 @@
                   [attr.aria-label]="legendAriaLabel(item)"
                   (click)="onLegendActivate(item.categoryId)"
                 >
+                  <!-- colors:allow-start(category-data) the tile is filled with the category's own colour, as its slice is -->
                   <span
                     class="legend-icon"
                     [style.background-color]="getCategoryColor(item.categoryId)"
                   >
-                    <mat-icon>{{ getCategoryIcon(item.categoryId) }}</mat-icon>
+                    <mat-icon [style.color]="getCategoryColor(item.categoryId) | readableOn">{{
+                      getCategoryIcon(item.categoryId)
+                    }}</mat-icon>
                   </span>
+                  <!-- colors:allow-end -->
                   <div class="legend-content">
                     <div class="legend-row">
                       <span class="legend-name">{{ getCategoryName(item.categoryId) }}</span>

@@ -338,6 +338,45 @@ describe('CategoryFormDialogComponent', () => {
       }
     });
 
+    /** `color` as the browser computes a background in it. */
+    function computedFill(color: string): string {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = color;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).backgroundColor;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    // The check sits on the colour its swatch offers, which no theme changes.
+    it('draws the check on each chosen swatch at AA or better on the colour it offers, in both themes', () => {
+      const swatches = Array.from(el().querySelectorAll('.color-btn')) as HTMLElement[];
+      expect(swatches.length).withContext('one swatch per palette colour').toBe(CATEGORY_PALETTE.length);
+
+      swatches.forEach((swatch, i) => {
+        const color = CATEGORY_PALETTE[i];
+        swatch.click();
+        fixture.detectChanges();
+        expect(component.selectedColor).withContext(`${color} chosen`).toBe(color);
+        const check = swatch.querySelector('mat-icon') as HTMLElement;
+        expect(check?.textContent?.trim()).withContext(`${color} check`).toBe('check');
+
+        for (const scheme of AUDIT_SCHEMES) {
+          withScheme(TestBed.inject(ThemeService), scheme, () => {
+            fixture.detectChanges();
+            expect(paintedBackground(check))
+              .withContext(`${scheme} ${color} swatch fill`)
+              .toEqual(rounded(computedFill(color)));
+            expect(ratio(paintedColor(check), paintedBackground(check)))
+              .withContext(`${scheme} ${color} check on its swatch`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        }
+      });
+    });
+
     /**
      * The chosen swatch is marked by an edge, a gap and an outer halo. The
      * halo and the edge are what tell the chosen colour from the others, so

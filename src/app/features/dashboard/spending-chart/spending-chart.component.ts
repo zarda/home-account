@@ -11,6 +11,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { ReadableOnPipe } from '../../../shared/pipes/readable-on.pipe';
 
 interface CategoryTotal {
   categoryId: string;
@@ -21,7 +22,7 @@ interface CategoryTotal {
 @Component({
   selector: 'app-spending-chart',
   standalone: true,
-  imports: [MatCardModule, MatIconModule, BaseChartDirective, EmptyStateComponent, TranslatePipe],
+  imports: [MatCardModule, MatIconModule, BaseChartDirective, EmptyStateComponent, TranslatePipe, ReadableOnPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './spending-chart.component.html',
   styleUrl: './spending-chart.component.scss',

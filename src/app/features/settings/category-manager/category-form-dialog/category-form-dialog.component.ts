@@ -13,6 +13,7 @@ import { CategoryChipComponent } from '../../../../shared/components/category-ch
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
+import { ReadableOnPipe } from '../../../../shared/pipes/readable-on.pipe';
 
 interface DialogData {
   category?: Category;
@@ -42,6 +43,7 @@ const CATEGORY_ICONS = [
     MatIconModule,
     TranslatePipe,
     CategoryGlyphPipe,
+    ReadableOnPipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './category-form-dialog.component.html',
