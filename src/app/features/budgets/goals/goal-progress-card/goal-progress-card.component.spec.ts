@@ -8,7 +8,15 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { Goal } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
-import { createTranslationStub, createLocaleFormatStub } from '../../../../core/services/testing';
+import {
+  createLocaleFormatStub,
+  createTranslationStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
 
 function goalOf(overrides: Partial<Goal> = {}): Goal {
   return {
@@ -316,5 +324,27 @@ describe('GoalProgressCardComponent, through its own template', () => {
     const done = el().querySelector<HTMLElement>('.item-label.done')!;
     expect(getComputedStyle(done).textDecorationLine).toBe('line-through');
     expect(getComputedStyle(done).opacity).toBe('1');
+  });
+
+  // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
+  it("paints the kind icon in the theme's primary, at 3:1 or better on the card, in both themes", () => {
+    card();
+    const icon = el().querySelector<HTMLElement>('.kind-icon')!;
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mat-sys-primary)';
+        document.body.appendChild(probe);
+        try {
+          settleAnimations(document);
+          expect(getComputedStyle(icon).color).withContext(theme).toBe(getComputedStyle(probe).color);
+        } finally {
+          probe.remove();
+        }
+        expect(ratio(paintedColor(icon), paintedBackground(icon)))
+          .withContext(`${theme} on the card`)
+          .toBeGreaterThanOrEqual(3);
+      });
+    }
   });
 });

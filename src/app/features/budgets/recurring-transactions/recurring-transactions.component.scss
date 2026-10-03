@@ -21,7 +21,7 @@
 
 .section-description {
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -38,7 +38,8 @@
 
 // Card styles
 .recurring-card {
-  @apply rounded-lg shadow-sm border border-gray-100 dark:border-gray-700;
+  @apply rounded-lg shadow-sm;
+  border: 1px solid var(--border-primary);
   background: var(--surface-card);
   padding: 16px;
   transition: all 0.2s;
@@ -86,23 +87,23 @@
 .recurring-name {
   font-weight: 500;
   font-size: var(--text-base);
-  @apply text-gray-800 dark:text-gray-100;
+  color: var(--text-primary);
   overflow-wrap: anywhere;
 }
 
 .recurring-category {
   font-size: var(--text-xs);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .action-btn {
   flex-shrink: 0;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
   width: 32px !important;
   height: 32px !important;
 
   &:hover {
-    @apply text-gray-600 dark:text-gray-400;
+    color: var(--text-secondary);
   }
 }
 
@@ -123,7 +124,7 @@
   gap: 8px;
   flex-wrap: wrap;
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .recurring-frequency {
@@ -154,13 +155,5 @@
     font-size: var(--text-xs);
     min-height: 24px;
     padding: 0 8px;
-  }
-}
-
-.delete-action {
-  color: var(--color-error);
-
-  mat-icon {
-    color: var(--color-error);
   }
 }

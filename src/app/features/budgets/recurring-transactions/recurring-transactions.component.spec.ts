@@ -15,6 +15,16 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RecurringTransaction, Category } from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
+import type { Rgb } from '../../../core/utils/color-contrast.utils';
+import {
+  channels,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('RecurringTransactionsComponent', () => {
   let component: RecurringTransactionsComponent;
@@ -545,5 +555,139 @@ describe('RecurringTransactionsComponent', () => {
         data: { recurring: mockRecurring[0] }
       });
     }));
+
+    describe('colours, as painted', () => {
+      const THEMES = ['light', 'dark'] as const;
+      const el = () => fixture.nativeElement as HTMLElement;
+      const part = (selector: string) => el().querySelector(selector) as HTMLElement;
+
+      /** What `<property>: var(token)` computes to under the theme on <html> now. */
+      function tokenValue(token: string, property = 'color'): string {
+        const probe = document.createElement('span');
+        probe.style.setProperty(property, `var(${token})`);
+        document.body.appendChild(probe);
+        try {
+          settleAnimations(document);
+          return getComputedStyle(probe).getPropertyValue(property);
+        } finally {
+          probe.remove();
+        }
+      }
+
+      /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+      function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
+        expect(node).withContext(label).toBeTruthy();
+        expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+        expect(ratio(paintedColor(node), paintedBackground(node)))
+          .withContext(`${label} on what it sits on`)
+          .toBeGreaterThanOrEqual(floor);
+      }
+
+      /** `fill` with the icon button's hover state layer (its `::before`) laid over it. */
+      function underHoverLayer(button: HTMLElement, fill: Rgb): Rgb {
+        const layer = button.querySelector('.mat-mdc-button-persistent-ripple') as HTMLElement;
+        const { rgb } = channels(getComputedStyle(layer, '::before').backgroundColor);
+        const probe = document.createElement('span');
+        probe.style.opacity = hoverValue(layer, '.mat-mdc-icon-button', 'opacity', '::before');
+        layer.appendChild(probe);
+        const alpha = Number(getComputedStyle(probe).opacity);
+        probe.remove();
+        const mix = (i: 0 | 1 | 2) => Math.round(rgb[i] * alpha + fill[i] * (1 - alpha));
+        return [mix(0), mix(1), mix(2)];
+      }
+
+      // The list sits on the page itself, under the budgets tab.
+      beforeEach(() => {
+        el().style.backgroundColor = 'var(--surface-background)';
+      });
+
+      // The card menu renders in the CDK overlay, outside the fixture.
+      afterEach(() => {
+        document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+      });
+
+      it('reads the description on the page and the meta line on its card and pill at AA or better, in both themes', () => {
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expect(paintedBackground(part('.section-description')))
+              .withContext(`${theme} the page`)
+              .toEqual(channels(tokenValue('--surface-background', 'background-color')).rgb);
+            expectPainted(part('.section-description'), '--text-muted', `${theme} description`);
+            expectPainted(part('.recurring-meta'), '--text-muted', `${theme} meta`);
+            // The frequency carries the meta colour onto its own pill.
+            expectPainted(part('.recurring-frequency'), '--text-muted', `${theme} frequency`);
+          });
+        }
+      });
+
+      it('sits each rule on --surface-card behind an edge in --border-primary, its name and category in the text tokens, in both themes', () => {
+        const card = getComputedStyle(part('.recurring-card'));
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expect(paintedBackground(part('.recurring-card')))
+              .withContext(`${theme} card`)
+              .toEqual(channels(tokenValue('--surface-card', 'background-color')).rgb);
+            expect(card.borderTopStyle).withContext(`${theme} the edge is drawn`).toBe('solid');
+            expect(card.borderTopColor).withContext(`${theme} edge`).toBe(tokenValue('--border-primary'));
+            expectPainted(part('.recurring-name'), '--text-primary', `${theme} name`);
+            expectPainted(part('.recurring-category'), '--text-muted', `${theme} category`);
+            expectPainted(part('.recurring-next'), '--color-primary', `${theme} next date`);
+          });
+        }
+      });
+
+      // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
+      it('paints the menu button in --text-muted at rest and --text-secondary hovered, its glyph at 3:1 or better, in both themes', () => {
+        const button = part('.action-btn');
+        const glyph = button.querySelector('mat-icon') as HTMLElement;
+        const hovered = hoverValue(button, '.action-btn', 'color');
+        expect(hovered).withContext('the hover rule').toBe('var(--text-secondary)');
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expectPainted(glyph, '--text-muted', `${theme} menu glyph at rest`, 3);
+
+            button.style.color = hovered;
+            try {
+              expect(getComputedStyle(glyph).color)
+                .withContext(`${theme} menu glyph hovered`)
+                .toBe(tokenValue('--text-secondary'));
+              expect(ratio(paintedColor(glyph), underHoverLayer(button, paintedBackground(button))))
+                .withContext(`${theme} menu glyph hovered, under the state layer`)
+                .toBeGreaterThanOrEqual(3);
+            } finally {
+              button.style.color = '';
+            }
+          });
+        }
+      });
+
+      /**
+       * Material paints a menu item's label and icon from its own tokens, so
+       * both are read where they are painted, in the overlay.
+       */
+      it('paints the delete item of the card menu red, label and icon, at AA or better on the menu, in both themes', fakeAsync(() => {
+        const items = openCardMenu();
+        expect(items.length).withContext('edit, pause and delete').toBe(3);
+        const remove = items[2];
+        // The TranslationService mock reads 'common.delete' as 'Delete'.
+        expect(remove.querySelector('.mat-mdc-menu-item-text')?.textContent?.trim())
+          .withContext('the last item deletes')
+          .toBe('Delete');
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expectPainted(remove.querySelector('.mat-mdc-menu-item-text') as HTMLElement, '--color-error-text', `${theme} delete label`);
+            expectPainted(remove.querySelector('mat-icon') as HTMLElement, '--color-error-text', `${theme} delete icon`);
+            for (const other of items.slice(0, 2)) {
+              expect(getComputedStyle(other.querySelector('.mat-mdc-menu-item-text') as HTMLElement).color)
+                .withContext(`${theme} ${other.textContent?.trim()} stays as Material paints it`)
+                .not.toBe(tokenValue('--color-error-text'));
+            }
+          });
+        }
+        flush();
+      }));
+    });
   });
 });

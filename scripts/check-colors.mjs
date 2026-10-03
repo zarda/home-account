@@ -213,20 +213,6 @@ const BASELINE = {
     'dark:text-gray-400': 1,
     'text-gray-500': 1,
   },
-  'src/app/features/budgets/goals/goal-progress-card/goal-progress-card.component.scss': {
-    'var(--mat-sys-primary, #1976d2)': 1,
-  },
-  'src/app/features/budgets/recurring-transactions/recurring-transactions.component.scss': {
-    'border-gray-100': 1,
-    'dark:border-gray-700': 1,
-    'dark:text-gray-100': 1,
-    'dark:text-gray-400': 4,
-    'dark:text-gray-500': 1,
-    'text-gray-400': 1,
-    'text-gray-500': 3,
-    'text-gray-600': 1,
-    'text-gray-800': 1,
-  },
   'src/app/features/dashboard/spending-chart/spending-chart.component.scss': {
     'white': 1,
   },
