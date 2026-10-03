@@ -109,6 +109,7 @@ const PAIRS = [
   { fg: '--text-secondary', bg: '--surface-background', why: 'secondary copy on the page' },
   { fg: '--text-muted', bg: '--surface-card', why: 'captions and hints on a card' },
   { fg: '--text-muted', bg: '--surface-muted', why: 'captions inside a nested chip or stat tile' },
+  { fg: '--text-muted', bg: '--surface-strong', why: "the category manager's Default badge" },
   { fg: '--text-muted', bg: '--surface-background', why: 'captions on the page' },
   {
     fg: '--text-inverse',

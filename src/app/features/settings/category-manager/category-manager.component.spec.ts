@@ -11,7 +11,15 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
-import { createTranslationStub } from '../../../core/services/testing';
+import {
+  createTranslationStub,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 const mockCategoryList: Category[] = [
   {
@@ -550,5 +558,85 @@ describe('CategoryManagerComponent, through its own template', () => {
 
     expect(el().querySelectorAll('.drag-handle').length).toBe(2);
     expect(el().querySelector('.categories-list')).not.toBeNull();
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    // A glyph is a graphic, so the drag handle's floor is 3:1 (WCAG 1.4.11).
+    it('paints a row\'s name, its Default badge and its drag handle in the text tokens, at rest and hovered, in both themes', () => {
+      setUp([
+        mockCategoryList[0],
+        { ...mockCategoryList[1], id: 'built-in', name: 'Groceries', isDefault: true },
+      ]);
+      const row = rows()[1];
+      const name = row.querySelector('.category-name') as HTMLElement;
+      const badge = row.querySelector('.default-badge') as HTMLElement;
+      const handle = row.querySelector('.drag-handle mat-icon') as HTMLElement;
+      const hovered = hoverValue(row, '.category-item', 'background');
+      expect(hovered).withContext('the hover rule').toBe('var(--surface-muted)');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(name, '--text-primary', `${theme} name`);
+          expectPainted(badge, '--text-muted', `${theme} Default badge`);
+          expectPainted(handle, '--text-muted', `${theme} drag handle`, 3);
+
+          row.style.background = hovered;
+          try {
+            expectPainted(name, '--text-primary', `${theme} name, row hovered`);
+            expectPainted(handle, '--text-muted', `${theme} drag handle, row hovered`, 3);
+          } finally {
+            row.style.background = '';
+          }
+        });
+      }
+    });
+
+    /**
+     * Material paints a menu item's label and icon from its own tokens, so
+     * both are read where they are painted, in the overlay.
+     */
+    it('paints the delete item of a row menu red, label and icon, at AA or better on the menu, in both themes', () => {
+      setUp(mockCategoryList);
+      const panel = openMenu(0);
+      const remove = menuItem(panel, 'common.delete') as HTMLElement;
+      const edit = menuItem(panel, 'common.edit') as HTMLElement;
+      expect(remove).withContext('the delete item').toBeTruthy();
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(remove.querySelector('.mat-mdc-menu-item-text') as HTMLElement, '--color-error-text', `${theme} delete label`);
+          expectPainted(remove.querySelector('mat-icon') as HTMLElement, '--color-error-text', `${theme} delete icon`);
+          expect(getComputedStyle(edit.querySelector('.mat-mdc-menu-item-text') as HTMLElement).color)
+            .withContext(`${theme} edit stays as Material paints it`)
+            .not.toBe(tokenValue('--color-error-text'));
+        });
+      }
+    });
   });
 });

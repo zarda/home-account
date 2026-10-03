@@ -54,7 +54,7 @@
             <span>{{ 'common.edit' | translate }}</span>
           </button>
           @if (!category.isDefault) {
-            <button mat-menu-item (click)="deleteCategory(category)" class="delete-option">
+            <button mat-menu-item (click)="deleteCategory(category)" class="menu-item-destructive">
               <mat-icon>delete</mat-icon>
               <span>{{ 'common.delete' | translate }}</span>
             </button>

@@ -496,8 +496,7 @@
 }
 
 // Dark mode specific adjustments using Angular Material's theme
-:host-context(.dark-theme),
-:host-context([data-theme="dark"]) {
+:host-context(.dark-theme) {
   // colors:allow-start(brand) the providers' colours, a step lighter for the dark card
   .provider-avatar {
     &.gemini {
@@ -515,7 +514,7 @@
   // colors:allow-end
 
   .provider-card.configured {
-    box-shadow: 0 0 0 1px var(--mat-sys-primary), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 0 1px var(--mat-sys-primary), var(--shadow-md);
   }
 }
 

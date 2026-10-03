@@ -15,7 +15,7 @@
   display: block;
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-gray-700 dark:text-gray-300;
+  color: var(--text-secondary);
   margin-bottom: 12px;
 }
 
@@ -38,7 +38,7 @@
 .icon-btn {
   width: 44px;
   height: 44px;
-  @apply border border-gray-200 dark:border-gray-700;
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);
   background: var(--surface-card);
   cursor: pointer;
@@ -46,16 +46,16 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 
   &:hover {
-    @apply border-indigo-200 dark:border-indigo-600;
-    @apply bg-indigo-50 dark:bg-indigo-900/30;
+    border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+    background-color: var(--surface-icon-selected);
   }
 
   &.selected {
     border-color: currentColor;
-    @apply bg-indigo-50 dark:bg-indigo-900/30;
+    background-color: var(--surface-icon-selected);
   }
 
   mat-icon {
@@ -96,9 +96,11 @@
     transform: scale(1.1);
   }
 
+  // The gap is the colour Material gives the dialog container, so it reads
+  // as space between the swatch and its ring in either theme.
   &.selected {
-    border-color: #1f2937;
-    box-shadow: 0 0 0 2px white, 0 0 0 4px currentColor;
+    border-color: var(--text-primary);
+    box-shadow: 0 0 0 2px var(--mat-sys-surface), 0 0 0 4px var(--text-primary);
   }
 
   mat-icon {
@@ -112,7 +114,7 @@
 // Preview
 .preview-section {
   padding-top: 8px;
-  @apply border-t border-gray-200 dark:border-gray-700;
+  border-block-start: 1px solid var(--border-primary);
 }
 
 .preview-item {
@@ -141,7 +143,7 @@
 
 .preview-name {
   font-weight: 500;
-  @apply text-gray-800 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 mat-dialog-actions {

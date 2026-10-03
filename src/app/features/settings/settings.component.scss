@@ -32,7 +32,8 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: var(--surface-hover);
+  // The empty states' circle and glyph, the pair held to 4.5:1 in both themes.
+  background: var(--surface-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -41,7 +42,7 @@
     font-size: var(--text-3xl);
     width: 1em;
     height: 1em;
-    color: var(--text-disabled);
+    color: var(--text-muted);
   }
 }
 
