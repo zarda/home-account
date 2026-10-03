@@ -244,22 +244,6 @@ const BASELINE = {
     'text-gray-800': 3,
     'to-purple-50': 1,
   },
-  'src/app/features/reports/category-breakdown/category-breakdown.component.scss': {
-    'dark:text-gray-100': 5,
-    'dark:text-gray-400': 4,
-    'dark:text-gray-500': 2,
-    'text-gray-400': 2,
-    'text-gray-500': 4,
-    'text-gray-800': 5,
-  },
-  'src/app/features/reports/country-breakdown/country-breakdown.component.scss': {
-    'dark:text-gray-100': 2,
-    'dark:text-gray-400': 2,
-    'dark:text-gray-500': 2,
-    'text-gray-400': 2,
-    'text-gray-500': 2,
-    'text-gray-800': 2,
-  },
   'src/app/features/reports/export-dialog/export-dialog.component.scss': {
     'white': 1,
   },
@@ -289,12 +273,6 @@ const BASELINE = {
     'dark:text-amber-400': 1,
     'text-amber-600': 1,
   },
-  'src/app/features/reports/monthly-comparison/monthly-comparison.component.scss': {
-    'dark:text-gray-400': 1,
-    'dark:text-gray-500': 1,
-    'text-gray-400': 1,
-    'text-gray-500': 1,
-  },
   'src/app/features/reports/monthly-comparison/monthly-comparison.component.ts': {
     '#22c55e': 1,
     '#ef4444': 1,
@@ -304,20 +282,6 @@ const BASELINE = {
     'rgba(34, 197, 94, 0.35)': 1,
     'rgba(34, 197, 94, 0.5)': 1,
     'rgba(34, 197, 94, 0.8)': 1,
-  },
-  'src/app/features/reports/recurring-breakdown/recurring-breakdown.component.scss': {
-    'dark:text-gray-100': 2,
-    'dark:text-gray-400': 1,
-    'dark:text-gray-500': 2,
-    'text-gray-400': 2,
-    'text-gray-500': 1,
-    'text-gray-800': 2,
-  },
-  'src/app/features/reports/spending-analysis/spending-analysis.component.scss': {
-    'dark:text-gray-100': 1,
-    'dark:text-gray-400': 3,
-    'text-gray-500': 3,
-    'text-gray-800': 1,
   },
   'src/app/features/reports/spending-analysis/spending-analysis.component.ts': {
     '#22c55e': 1,

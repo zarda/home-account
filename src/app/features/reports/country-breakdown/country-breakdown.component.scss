@@ -23,7 +23,7 @@
 
 .row-icon {
   flex: 0 0 auto;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
 }
 
 // No fixed width and no truncation: a country name is as long as the active
@@ -33,19 +33,19 @@
   min-width: 0;
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-gray-800 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 .row-count {
   font-weight: 400;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
 }
 
 .row-amount {
   flex: 0 0 auto;
   font-weight: 600;
   font-size: var(--text-sm);
-  @apply text-gray-800 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 .row-percentage {
@@ -56,13 +56,13 @@
   font-weight: 500;
   min-width: 36px;
   text-align: center;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .breakdown-note {
   margin: 8px 0 0;
   font-size: var(--text-xs);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 
   &.coverage {
     padding-top: 8px;

@@ -7,6 +7,13 @@ import { CountryBreakdownComponent } from './country-breakdown.component';
 import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
   // The snapshot tracks an overridden `amount` by default — a fixture that
@@ -213,5 +220,58 @@ describe('CountryBreakdownComponent, through its own template', () => {
     const coverage = fixture.nativeElement.querySelector('.coverage') as HTMLElement;
     expect(coverage.textContent).toContain('"placed":1');
     expect(coverage.textContent).toContain('"count":3');
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+    const part = (selector: string) =>
+      (fixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement, token: string, label: string): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    beforeEach(() => {
+      component.transactions = [inCountry(30, 'KR'), inCountry(10, 'JP'), inCountry(5)];
+      fixture.detectChanges();
+    });
+
+    it('paints the country icon and the count in --text-muted at AA or better on the card, in both themes', () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.row-icon'), '--text-muted', `${theme} icon`);
+          expectPainted(part('.row-count'), '--text-muted', `${theme} count`);
+        });
+      }
+    });
+
+    it('paints the name and amount in --text-primary, and the share on its pill and the coverage note in --text-muted, in both themes', () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.row-label'), '--text-primary', `${theme} name`);
+          expectPainted(part('.row-amount'), '--text-primary', `${theme} amount`);
+          expectPainted(part('.row-percentage'), '--text-muted', `${theme} share`);
+          expectPainted(part('.breakdown-note.coverage'), '--text-muted', `${theme} coverage note`);
+        });
+      }
+    });
   });
 });

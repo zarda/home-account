@@ -12,6 +12,13 @@ import { SpendingChartComponent } from '../../dashboard/spending-chart/spending-
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 // Stands in for the reused donut when the real breakdown template is
 // rendered, so the drill-down wiring can be exercised without a live chart.
@@ -292,46 +299,52 @@ describe('CategoryBreakdownComponent', () => {
   });
 
   // The shared TestBed above blanks the template, so it cannot catch the
-  // donut's drill-down being left unwired. Re-configure to render the REAL
-  // breakdown template with the chart swapped for a stub.
+  // donut's drill-down being left unwired, nor read what the stylesheet
+  // paints. Re-configure to render the REAL breakdown template with the
+  // chart swapped for a stub.
+  async function renderRealTemplate(): Promise<ComponentFixture<CategoryBreakdownComponent>> {
+    TestBed.resetTestingModule();
+    const mockTranslationService = { t: (key: string) => key, currentLocale: signal('en') };
+    await TestBed.configureTestingModule({
+      imports: [CategoryBreakdownComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: CurrencyService,
+          useValue: {
+            currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
+            getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+            convert: (amount: number) => amount,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency
+          }
+        },
+        { provide: TranslationService, useValue: mockTranslationService }
+      ]
+    })
+      .overrideComponent(CategoryBreakdownComponent, {
+        remove: {
+          imports: [
+            SpendingChartComponent,
+            AmountDisplayComponent,
+            CategoryChipComponent,
+            EmptyStateComponent
+          ]
+        },
+        add: { imports: [SpendingChartStubComponent], schemas: [NO_ERRORS_SCHEMA] }
+      })
+      .compileComponents();
+
+    const rendered = TestBed.createComponent(CategoryBreakdownComponent);
+    rendered.componentInstance.transactions = mockTransactions;
+    rendered.componentInstance.categories = mockCategories;
+    rendered.detectChanges();
+    return rendered;
+  }
+
   describe('chart drill-down (real template)', () => {
     let realFixture: ComponentFixture<CategoryBreakdownComponent>;
 
     beforeEach(async () => {
-      TestBed.resetTestingModule();
-      const mockTranslationService = { t: (key: string) => key, currentLocale: signal('en') };
-      await TestBed.configureTestingModule({
-        imports: [CategoryBreakdownComponent, NoopAnimationsModule],
-        providers: [
-          {
-            provide: CurrencyService,
-            useValue: {
-              currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
-              getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
-              convert: (amount: number) => amount,
-              amountInBase: (t: Transaction) => t.amountInBaseCurrency
-            }
-          },
-          { provide: TranslationService, useValue: mockTranslationService }
-        ]
-      })
-        .overrideComponent(CategoryBreakdownComponent, {
-          remove: {
-            imports: [
-              SpendingChartComponent,
-              AmountDisplayComponent,
-              CategoryChipComponent,
-              EmptyStateComponent
-            ]
-          },
-          add: { imports: [SpendingChartStubComponent], schemas: [NO_ERRORS_SCHEMA] }
-        })
-        .compileComponents();
-
-      realFixture = TestBed.createComponent(CategoryBreakdownComponent);
-      realFixture.componentInstance.transactions = mockTransactions;
-      realFixture.componentInstance.categories = mockCategories;
-      realFixture.detectChanges();
+      realFixture = await renderRealTemplate();
     });
 
     function innerChart(): SpendingChartStubComponent {
@@ -399,6 +412,79 @@ describe('CategoryBreakdownComponent', () => {
         .toBeLessThanOrEqual(item.getBoundingClientRect().right + 1);
 
       host.remove();
+    });
+  });
+
+  describe('colours, as painted (real template)', () => {
+    const THEMES = ['light', 'dark'] as const;
+    let realFixture: ComponentFixture<CategoryBreakdownComponent>;
+    const part = (selector: string) =>
+      (realFixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement, token: string, label: string): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    beforeEach(async () => {
+      realFixture = await renderRealTemplate();
+      // The breakdown sits on the reports tab group's card surface (reports.component.scss).
+      (realFixture.nativeElement as HTMLElement).style.backgroundColor = 'var(--surface-card)';
+    });
+
+    it('paints the count beside a category name in --text-muted at AA or better on its panel, in both themes', () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.category-count'), '--text-muted', `${theme} count`);
+        });
+      }
+    });
+
+    it('paints the total label on the page, and the name and share on each panel, in the text tokens, in both themes', () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.total-label'), '--text-muted', `${theme} total label`);
+          expectPainted(part('.category-name'), '--text-primary', `${theme} name`);
+          expectPainted(part('.category-percentage'), '--text-muted', `${theme} share`);
+          // Shown from 768 px, wider than the Karma window, so only its colour is read.
+          expect(getComputedStyle(part('.category-amount')).color)
+            .withContext(`${theme} amount`)
+            .toBe(tokenValue('--text-primary'));
+        });
+      }
+    });
+
+    it('paints the stats and recent transactions of an open panel in the text tokens on their tiles, in both themes', () => {
+      realFixture.debugElement.query(By.css('mat-expansion-panel')).componentInstance.open();
+      realFixture.detectChanges();
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.stat-label'), '--text-muted', `${theme} stat label`);
+          expectPainted(part('.stat-value'), '--text-primary', `${theme} stat value`);
+          expectPainted(part('.section-title'), '--text-muted', `${theme} section title`);
+          expectPainted(part('.transaction-description'), '--text-primary', `${theme} description`);
+          expectPainted(part('.transaction-date'), '--text-muted', `${theme} date`);
+          expectPainted(part('.transaction-amount'), '--text-primary', `${theme} amount`);
+        });
+      }
     });
   });
 });

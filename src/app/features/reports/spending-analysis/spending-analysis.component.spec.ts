@@ -9,6 +9,13 @@ import { provideAppCharts } from '../../../core/config/chart.config';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('SpendingAnalysisComponent', () => {
   let component: SpendingAnalysisComponent;
@@ -586,6 +593,81 @@ describe('SpendingAnalysisComponent', () => {
       for (const index of [0, 1]) {
         const meta = chart.getDatasetMeta(index) as unknown as { $filler?: unknown };
         expect(meta.$filler).withContext(`dataset ${index}`).toBeDefined();
+      }
+    });
+  });
+
+  describe('colours, as painted (real template)', () => {
+    const THEMES = ['light', 'dark'] as const;
+    let renderFixture: ComponentFixture<SpendingAnalysisComponent>;
+    const part = (selector: string) =>
+      (renderFixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement, token: string, label: string): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SpendingAnalysisComponent, NoopAnimationsModule],
+        providers: [
+          provideAppCharts(),
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ]
+      }).compileComponents();
+
+      renderFixture = TestBed.createComponent(SpendingAnalysisComponent);
+      const instance = renderFixture.componentInstance;
+      // A flat savings rate over three months, so the badge reads steady.
+      instance.transactions = [
+        makeTransaction('income', 1000, new Date(2024, 0, 5)),
+        makeTransaction('expense', 850, new Date(2024, 0, 20)),
+        makeTransaction('income', 1000, new Date(2024, 1, 5)),
+        makeTransaction('expense', 850, new Date(2024, 1, 20)),
+        makeTransaction('income', 1000, new Date(2024, 2, 5)),
+        makeTransaction('expense', 850, new Date(2024, 2, 20))
+      ];
+      instance.categories = mockCategories;
+      instance.dateRange = { start: new Date(2024, 0, 1), end: new Date(2024, 2, 31) };
+      renderFixture.detectChanges();
+    });
+
+    it('paints a steady savings badge in --text-muted at AA or better on the chart card, in both themes', () => {
+      expect(part('.trend-badge').classList).toContain('steady');
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.trend-badge.steady'), '--text-muted', `${theme} steady badge`);
+        });
+      }
+    });
+
+    it('paints the name of a top category in --text-primary and its amount and share in --text-muted, in both themes', () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.category-details .category-name'), '--text-primary', `${theme} name`);
+          expectPainted(part('.category-details .category-amount'), '--text-muted', `${theme} amount`);
+          expectPainted(part('.percentage-text'), '--text-muted', `${theme} share`);
+        });
       }
     });
   });

@@ -12,7 +12,15 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { provideAppCharts } from '../../../core/config/chart.config';
-import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
+import {
+  createTranslationStub,
+  createLocaleFormatStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 function breakpointState(matches: boolean): BreakpointState {
   return { matches, breakpoints: { [APP_BREAKPOINTS.mobile]: matches } };
@@ -646,5 +654,46 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     const balance = bodyRows()[0].querySelectorAll('td[mat-cell]')[3] as HTMLElement;
     expect(balance.textContent?.trim().startsWith('+')).toBeTrue();
     expect(balance.classList).toContain('positive');
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement | null, token: string, label: string): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node!).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node!), paintedBackground(node!)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    it('paints the column headers and the dash of the first month in --text-muted at AA or better on the table, in both themes', () => {
+      render(mockTransactionSet);
+      const columns = Array.from(el().querySelectorAll('th[mat-header-cell]')) as HTMLElement[];
+      expect(columns.length).withContext('the header cells').toBe(5);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          columns.forEach(th =>
+            expectPainted(th, '--text-muted', `${theme} ${th.textContent?.trim()} header`)
+          );
+          expectPainted(bodyRows()[0].querySelector('.no-data'), '--text-muted', `${theme} dash`);
+        });
+      }
+    });
   });
 });

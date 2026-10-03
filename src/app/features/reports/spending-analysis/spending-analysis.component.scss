@@ -55,7 +55,7 @@
   }
 
   &.steady {
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
   }
 }
 
@@ -104,12 +104,12 @@
 
   .category-name {
     font-weight: 500;
-    @apply text-gray-800 dark:text-gray-100;
+    color: var(--text-primary);
   }
 
   .category-amount {
     font-size: var(--text-sm);
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
   }
 }
 
@@ -139,7 +139,7 @@
   text-align: right;
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 @media (min-width: 768px) {
