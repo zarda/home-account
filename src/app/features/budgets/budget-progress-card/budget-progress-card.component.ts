@@ -84,16 +84,17 @@ export class BudgetProgressCardComponent {
     }
   });
 
+  // Critical shares the warning colour, as the bar does: the theme has no
+  // orange text token, and the alert's own words name the severity.
   statusClass = computed(() => {
     switch (this.alertSeverity()) {
       case 'exceeded':
-        return 'text-red-600 font-semibold';
+        return 'text-error-text font-semibold';
       case 'critical':
-        return 'text-orange-500';
       case 'warning':
-        return 'text-yellow-600';
+        return 'text-warning-text';
       default:
-        return 'text-green-600';
+        return 'text-success-text';
     }
   });
 
@@ -109,32 +110,6 @@ export class BudgetProgressCardComponent {
         return this.translationService.t('budget.approachingLimit');
       default:
         return this.translationService.t('budget.approachingLimit');
-    }
-  });
-
-  alertChipClass = computed(() => {
-    switch (this.alertSeverity()) {
-      case 'exceeded':
-        return 'bg-red-100 text-red-700';
-      case 'critical':
-        return 'bg-orange-100 text-orange-700';
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-700';
-      default:
-        return 'bg-yellow-100 text-yellow-700';
-    }
-  });
-
-  alertTextClass = computed(() => {
-    switch (this.alertSeverity()) {
-      case 'exceeded':
-        return 'text-red-600';
-      case 'critical':
-        return 'text-orange-500';
-      case 'warning':
-        return 'text-yellow-600';
-      default:
-        return 'text-yellow-600';
     }
   });
 

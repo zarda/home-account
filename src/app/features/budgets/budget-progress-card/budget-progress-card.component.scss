@@ -1,5 +1,6 @@
 .budget-card {
-  @apply rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 p-3 sm:p-4 overflow-hidden;
+  @apply rounded-lg shadow-sm p-3 sm:p-4 overflow-hidden;
+  border: 1px solid var(--border-primary);
   min-width: 240px;
 
   .card-header {
@@ -11,17 +12,20 @@
 
       // The name is its owner's own words and may be one unbreakable run.
       .budget-name {
-        @apply text-sm sm:text-base font-medium text-gray-800 dark:text-gray-100 m-0 leading-tight;
+        @apply text-sm sm:text-base font-medium m-0 leading-tight;
+        color: var(--text-primary);
         overflow-wrap: anywhere;
       }
 
       .budget-meta {
-        @apply text-xs text-gray-400 dark:text-gray-500 block;
+        @apply text-xs block;
+        color: var(--text-muted);
       }
     }
 
     .menu-btn {
-      @apply w-10 h-10 text-gray-400 dark:text-gray-500 flex-shrink-0;
+      @apply w-10 h-10 flex-shrink-0;
+      color: var(--text-muted);
 
       mat-icon {
         @apply text-base sm:text-lg;
@@ -42,16 +46,18 @@
         column-gap: 0.25rem;
 
         .spent {
-          @apply text-base sm:text-xl font-semibold text-gray-800 dark:text-gray-100;
+          @apply text-base sm:text-xl font-semibold;
+          color: var(--text-primary);
           white-space: nowrap;
 
           &.over-budget {
-            @apply text-red-600 dark:text-red-400;
+            color: var(--color-error-text);
           }
         }
 
         .limit {
-          @apply text-xs sm:text-sm text-gray-400 dark:text-gray-500;
+          @apply text-xs sm:text-sm;
+          color: var(--text-muted);
           white-space: nowrap;
         }
       }
@@ -77,11 +83,13 @@
       // A sentence around a figure: it breaks between words, and inside one
       // only when that word alone is wider than the line (G3's prose case).
       .remaining {
-        @apply text-gray-500 dark:text-gray-400 min-w-0;
+        @apply min-w-0;
+        color: var(--text-muted);
         overflow-wrap: break-word;
 
         &.over-budget {
-          @apply text-red-500 dark:text-red-400 font-medium;
+          @apply font-medium;
+          color: var(--color-error-text);
         }
       }
 
@@ -96,26 +104,18 @@
           @apply hidden sm:inline;
         }
 
-        &.alert-warning {
-          @apply text-yellow-600 dark:text-yellow-400;
-        }
-
+        // Critical shares the warning colour, as the percentage and the bar
+        // do: the theme has no orange text token, and the alert's own words
+        // name the severity.
+        &.alert-warning,
         &.alert-critical {
-          @apply text-orange-600 dark:text-orange-400;
+          color: var(--color-warning-text);
         }
 
         &.alert-exceeded {
-          @apply text-red-600 dark:text-red-400;
+          color: var(--color-error-text);
         }
       }
-    }
-  }
-
-  .delete-item {
-    @apply text-red-600 dark:text-red-400;
-
-    mat-icon {
-      @apply text-red-600 dark:text-red-400;
     }
   }
 }

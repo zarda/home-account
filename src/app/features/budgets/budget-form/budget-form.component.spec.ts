@@ -12,6 +12,13 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { Budget, Category, User } from '../../../models';
 import { of } from 'rxjs';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('BudgetFormComponent', () => {
   let component: BudgetFormComponent;
@@ -547,6 +554,70 @@ describe('BudgetFormComponent', () => {
 
       const spinner = fixture.nativeElement.querySelector('mat-spinner');
       expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+    });
+  });
+
+  describe('colours (real template)', () => {
+    const THEMES = ['light', 'dark'] as const;
+    const el = () => fixture.nativeElement as HTMLElement;
+
+    /**
+     * The form, painted with the surface Material gives the dialog container
+     * (`dialog-container-color` is `surface` in M3), which is what it sits on
+     * in the app.
+     */
+    beforeEach(async () => {
+      await setupTestBed({ mode: 'add' });
+      fixture = TestBed.createComponent(BudgetFormComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+      el().style.display = 'block';
+      el().style.background = 'var(--mat-sys-surface)';
+    });
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    it('paints the threshold label, its value and the scale ends in the theme text tokens at AA, in both themes', () => {
+      const label = el().querySelector('#threshold-label') as HTMLElement;
+      const ends = Array.from(el().querySelectorAll('.slider-container > div > span')) as HTMLElement[];
+      expect(ends.map(end => end.textContent?.trim())).toEqual(['50%', '100%']);
+      const lines = [
+        ['label', label, '--text-muted'],
+        ['value', label.querySelector('strong') as HTMLElement, '--text-secondary'],
+        ['scale start', ends[0], '--text-muted'],
+        ['scale end', ends[1], '--text-muted'],
+      ] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [name, node, token] of lines) {
+            expect(getComputedStyle(node).color).withContext(`${theme} ${name}`).toBe(tokenValue(token));
+            expect(ratio(paintedColor(node), paintedBackground(node)))
+              .withContext(`${theme} ${name} on the dialog`)
+              .toBeGreaterThanOrEqual(4.5);
+          }
+        });
+      }
+    });
+
+    it('colours the actions rule with --border-primary, in both themes', () => {
+      const actions = getComputedStyle(el().querySelector('mat-dialog-actions') as HTMLElement);
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expect(actions.borderTopColor).withContext(`${theme} actions rule`).toBe(tokenValue('--border-primary'));
+        });
+      }
     });
   });
 });

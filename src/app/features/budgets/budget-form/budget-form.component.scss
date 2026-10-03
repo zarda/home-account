@@ -1,8 +1,12 @@
 // Header chrome lives in app-dialog-header; no fixed min-width here so the
 // dialog respects the global maxWidth on narrow phones.
 
+// Material's dialog container draws the actions row's top border in
+// transparent, from a stylesheet that lands after styles.scss; this rule
+// outranks it, so it is the one that colours that edge.
 mat-dialog-actions {
-  @apply flex justify-end gap-2 border-gray-200 dark:border-gray-700;
+  @apply flex justify-end gap-2;
+  border-color: var(--border-primary);
 }
 
 .threshold-section {

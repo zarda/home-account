@@ -9,7 +9,14 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CreateGoalDTO, Goal } from '../../../../models';
-import { createTranslationStub } from '../../../../core/services/testing';
+import {
+  createTranslationStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
 
 const savedGoalFixture: Goal = {
   id: 'g1',
@@ -371,6 +378,35 @@ describe('GoalFormComponent, through its own template', () => {
 
     expect(component.currencyLocked()).toBeTrue();
     expect(el().textContent).toContain('goal.currencyLocked');
+  });
+
+  // On the surface Material gives the dialog container (`dialog-container-color`
+  // is `surface` in M3), which is what the form sits on in the app.
+  it('paints the locked-currency note in --text-muted at AA on the dialog, in both themes', async () => {
+    await render({ mode: 'edit', goal: savedGoalFixture });
+    el().style.display = 'block';
+    el().style.background = 'var(--mat-sys-surface)';
+    const note = (Array.from(el().querySelectorAll('p')) as HTMLElement[]).find(p =>
+      (p.textContent ?? '').includes('goal.currencyLocked')
+    ) as HTMLElement;
+    expect(note).toBeDefined();
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--text-muted)';
+    document.body.appendChild(probe);
+
+    try {
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(getComputedStyle(note).color).withContext(theme).toBe(getComputedStyle(probe).color);
+          expect(ratio(paintedColor(note), paintedBackground(note)))
+            .withContext(`${theme} note on the dialog`)
+            .toBeGreaterThanOrEqual(4.5);
+        });
+      }
+    } finally {
+      probe.remove();
+    }
   });
 
   it('submits through the form rather than only through onSubmit', async () => {
