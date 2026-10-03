@@ -1,13 +1,18 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { AxeResults } from 'axe-core';
+import { type EffectiveTheme, ThemeService } from '../theme.service';
 import {
+  AUDIT_SCHEMES,
   DISABLED_RULES,
   KNOWN_VIOLATIONS,
   KNOWN_VIOLATION_REASONS,
+  auditInView,
   axeOptions,
   runAxe,
   summarizeViolations,
   unexpectedViolations,
+  withScheme,
 } from './axe';
 
 /**
@@ -80,13 +85,83 @@ class MovingFixtureComponent {
 })
 class SpinnerFixtureComponent {}
 
+/**
+ * A failing pair under a spacer taller than any Karma frame, inside a fixed
+ * scroller the way the app shell's `.main-container` holds every page.
+ *
+ * The scroller is the point. Axe grids the whole document, so a pair in plain
+ * flow is scored at any depth; what it skips is a node under a fixed ancestor
+ * whose top is at or below the viewport's bottom, which axe calls offscreen.
+ * Every routed page sits under one, so a plain pass never scores the cards
+ * below its fold.
+ */
+@Component({
+  selector: 'app-axe-fold-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<div class="scroller"><div class="spacer"></div><p class="pair">Total</p></div>',
+  styles: `
+    .scroller { position: fixed; inset: 0; overflow-y: auto; }
+    .spacer { height: 2000px; }
+    .pair { margin: 0; color: #777777; background: #888888; }
+  `,
+})
+class FoldFixtureComponent {}
+
+/**
+ * Two nodes no scroll can bring into the band below the app's header: one
+ * pinned to the top of the viewport, one taller than any viewport.
+ */
+@Component({
+  selector: 'app-axe-out-of-band-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<p class="pinned">Total</p><div class="tall"><p>Total</p></div>',
+  styles: `
+    .pinned { position: fixed; top: 0; inset-inline: 0; margin: 0; }
+    .tall { height: 4000px; }
+  `,
+})
+class OutOfBandFixtureComponent {}
+
+/** A pair that clears AA in the light theme and fails it in the dark one. */
+@Component({
+  selector: 'app-axe-dark-only-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<p class="pair">Total</p>',
+  styles: `
+    .pair { margin: 0; color: #000000; background: #ffffff; }
+    :host-context(.dark-theme) .pair { color: #777777; background: #888888; }
+  `,
+})
+class DarkOnlyFixtureComponent {}
+
+/**
+ * A component that reads the theme, the shape of every chart card: its first
+ * render creates ThemeService inside the Angular zone, so the service's
+ * effect is flushed in a run of that zone.
+ */
+@Component({
+  selector: 'app-axe-theme-reader-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<p>{{ theme.effectiveTheme() }}</p>',
+})
+class ThemeReaderFixtureComponent {
+  readonly theme = inject(ThemeService);
+}
+
 describe('the axe harness', () => {
+  function rulesOf(results: AxeResults): string[] {
+    return summarizeViolations(results).map(line => line.split(' ')[0]);
+  }
+
   async function violationsOf(component: typeof BrokenFixtureComponent): Promise<string[]> {
     TestBed.configureTestingModule({ imports: [component] });
     const fixture = TestBed.createComponent(component);
     fixture.detectChanges();
-    const results = await runAxe(fixture.nativeElement as Element);
-    return summarizeViolations(results).map(line => line.split(' ')[0]);
+    return rulesOf(await runAxe(fixture.nativeElement as Element));
   }
 
   afterEach(() => {
@@ -163,6 +238,171 @@ describe('the axe harness', () => {
       await expectAsync(runAxe(fixture.nativeElement as Element)).toBeResolved();
 
       expect(spinner.getAnimations().map(animation => animation.playState)).toEqual(['running']);
+    });
+  });
+
+  describe('below the fold', () => {
+    // The tall fixture scrolls the document itself.
+    afterEach(() => {
+      document.scrollingElement?.scrollTo(0, 0);
+    });
+
+    it('scores a node below the fold once it is scrolled into view, and not before', async () => {
+      TestBed.configureTestingModule({ imports: [FoldFixtureComponent] });
+      const fixture = TestBed.createComponent(FoldFixtureComponent);
+      fixture.detectChanges();
+      const pair = (fixture.nativeElement as Element).querySelector('.pair') as HTMLElement;
+      expect(pair.getBoundingClientRect().top)
+        .withContext('the pair starts below the fold')
+        .toBeGreaterThan(window.innerHeight);
+
+      expect(rulesOf(await runAxe(pair)))
+        .withContext('a plain pass never reaches below the fold')
+        .not.toContain('color-contrast');
+      expect(rulesOf(await auditInView(pair))).toContain('color-contrast');
+    });
+
+    // A node the scroll cannot centre below the header would be scored only
+    // where it shows, or not at all, and read as clean. The guard makes that
+    // loud instead.
+    it('refuses a node no scroll can bring into the band below the 64 px header', async () => {
+      TestBed.configureTestingModule({ imports: [OutOfBandFixtureComponent] });
+      const fixture = TestBed.createComponent(OutOfBandFixtureComponent);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as Element;
+
+      await expectAsync(auditInView(root.querySelector('.pinned') as HTMLElement))
+        .withContext('pinned under the header')
+        .toBeRejectedWithError(/outside the band .*64/);
+      await expectAsync(auditInView(root.querySelector('.tall') as HTMLElement))
+        .withContext('taller than the band')
+        .toBeRejectedWithError(/outside the band .*64/);
+    });
+  });
+
+  describe('either scheme', () => {
+    const root = document.documentElement;
+
+    beforeEach(() => {
+      root.classList.remove('light-theme', 'dark-theme');
+    });
+
+    afterEach(() => {
+      root.classList.remove('light-theme', 'dark-theme');
+    });
+
+    function renderDarkOnly(): { theme: ThemeService; host: Element } {
+      TestBed.configureTestingModule({ imports: [DarkOnlyFixtureComponent] });
+      const fixture = TestBed.createComponent(DarkOnlyFixtureComponent);
+      fixture.detectChanges();
+      return { theme: TestBed.inject(ThemeService), host: fixture.nativeElement as Element };
+    }
+
+    it('audits the light scheme and the dark one', () => {
+      expect([...AUDIT_SCHEMES]).toEqual(['light', 'dark']);
+    });
+
+    it('reports a pair that fails only in the dark theme under the dark scheme alone', async () => {
+      const { theme, host } = renderDarkOnly();
+
+      const dark = await withScheme(theme, 'dark', () => {
+        expect(theme.effectiveTheme())
+          .withContext('forced through the service, not stamped on <html>')
+          .toBe('dark');
+        return runAxe(host);
+      });
+      const light = await withScheme(theme, 'light', () => {
+        expect(theme.effectiveTheme()).toBe('light');
+        return runAxe(host);
+      });
+
+      expect(rulesOf(dark)).toContain('color-contrast');
+      expect(rulesOf(light)).not.toContain('color-contrast');
+    });
+
+    // The service stamps a class only when the effective theme changes, and
+    // a restore puts back classes the service has no idea were taken off. A
+    // spec's second pass, in the scheme the host resolves to, starts there.
+    it('forces the scheme the service already resolves to, once its class has been taken off', async () => {
+      const { theme, host } = renderDarkOnly();
+      TestBed.tick();
+      const resolved = theme.effectiveTheme();
+      const other = resolved === 'dark' ? 'light' : 'dark';
+      expect(root.classList.contains(`${resolved}-theme`))
+        .withContext('the service stamped the host scheme')
+        .toBeTrue();
+      root.classList.remove('light-theme', 'dark-theme');
+
+      await withScheme(theme, resolved, () => {
+        expect(root.classList.contains(`${resolved}-theme`))
+          .withContext(`${resolved}-theme`)
+          .toBeTrue();
+        expect(root.classList.contains(`${other}-theme`))
+          .withContext(`${other}-theme`)
+          .toBeFalse();
+        return runAxe(host);
+      });
+    });
+
+    // Forced to the scheme the host does not resolve to, so the restore to
+    // 'system' changes the effective theme and the service stamps a class
+    // again; only putting the classes back after that leaves none behind.
+    function hostOpposite(theme: ThemeService): EffectiveTheme {
+      return theme.effectiveTheme() === 'dark' ? 'light' : 'dark';
+    }
+
+    it('leaves neither theme class behind and the preference on system', async () => {
+      const { theme, host } = renderDarkOnly();
+      expect(theme.theme()).toBe('system');
+
+      await withScheme(theme, hostOpposite(theme), () => runAxe(host));
+
+      expect(root.classList.contains('dark-theme')).withContext('dark-theme').toBeFalse();
+      expect(root.classList.contains('light-theme')).withContext('light-theme').toBeFalse();
+      expect(theme.theme()).toBe('system');
+    });
+
+    it('restores the same way when the pass it wraps rejects', async () => {
+      const { theme } = renderDarkOnly();
+      const forced = hostOpposite(theme);
+
+      const failingPass = (): Promise<AxeResults> => {
+        expect(root.classList.contains(`${forced}-theme`))
+          .withContext('forced while the pass runs')
+          .toBeTrue();
+        return Promise.reject(new Error('the pass failed'));
+      };
+
+      await expectAsync(withScheme(theme, forced, failingPass))
+        .toBeRejectedWithError('the pass failed');
+
+      expect(root.classList.contains('dark-theme')).withContext('dark-theme').toBeFalse();
+      expect(root.classList.contains('light-theme')).withContext('light-theme').toBeFalse();
+      expect(theme.theme()).toBe('system');
+    });
+
+    // A spec calls withScheme from outside the zone. Leaving the zone run the
+    // effect flushes in asks the zone scheduler for a tick while the forced
+    // one is still running; Angular refuses it and only logs the error, so a
+    // spec stays green while every flip is reported as a recursive tick.
+    it('flips a theme a rendered component reads without a recursive tick', () => {
+      TestBed.configureTestingModule({ imports: [ThemeReaderFixtureComponent] });
+      const fixture = TestBed.createComponent(ThemeReaderFixtureComponent);
+      fixture.detectChanges();
+      const theme = TestBed.inject(ThemeService);
+      const errors = spyOn(console, 'error');
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(theme, scheme, () => {
+          expect(theme.effectiveTheme()).withContext(scheme).toBe(scheme);
+        });
+      }
+
+      const recursive = errors.calls
+        .allArgs()
+        .map(args => args.map(String).join(' '))
+        .filter(line => line.includes('NG0101'));
+      expect(recursive).withContext('console.error lines naming NG0101').toEqual([]);
     });
   });
 
