@@ -14,7 +14,17 @@ import {
 } from '../../../core/services/receipt-to-note.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
-import { createTransaction, createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
+import {
+  channels,
+  createTransaction,
+  createTranslationStub,
+  createLocaleFormatStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 
 const managedTransactions = [
@@ -432,5 +442,99 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
     dialogRefSpy.close.calls.reset();
     (el().querySelector('mat-dialog-actions button') as HTMLButtonElement).click();
     expect(dialogRefSpy.close).toHaveBeenCalled();
+  });
+
+  describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /**
+     * The manager, painted with the surface Material gives the dialog
+     * container (`dialog-container-color` is `surface` in M3), which is what
+     * it sits on in the app.
+     */
+    async function renderOnDialog(): Promise<void> {
+      await render();
+      el().style.display = 'block';
+      el().style.background = 'var(--mat-sys-surface)';
+    }
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    it('paints the at-limit line in --color-error-text at AA on a tint of its own, in both themes', async () => {
+      await renderOnDialog();
+      atLimit.set(true);
+      fixture.detectChanges();
+      const line = el().querySelector('.usage-line.at-limit') as HTMLElement;
+      const parts = [
+        ['text', line.querySelector('span') as HTMLElement],
+        ['icon', line.querySelector('.usage-icon') as HTMLElement],
+      ] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(getComputedStyle(line).color).withContext(`${theme} line`).toBe(tokenValue('--color-error-text'));
+          // Opaque, so the pair below is the tint and the text alone,
+          // whatever the line is laid over.
+          expect(channels(getComputedStyle(line).backgroundColor).alpha)
+            .withContext(`${theme} the tint is opaque`)
+            .toBe(1);
+          expect(paintedBackground(line))
+            .withContext(`${theme} the tint shows against the dialog`)
+            .not.toEqual(paintedBackground(el()));
+          for (const [name, node] of parts) {
+            expect(ratio(paintedColor(node), paintedBackground(node)))
+              .withContext(`${theme} ${name} on its tint`)
+              .toBeGreaterThanOrEqual(4.5);
+          }
+        });
+      }
+    });
+
+    it('paints remove and remove-all in --color-error-text at AA on the dialog, in both themes', async () => {
+      await renderOnDialog();
+      const icons = [
+        ['remove', el().querySelector('.remove-btn mat-icon') as HTMLElement],
+        ['remove all', el().querySelector('.remove-all-btn mat-icon') as HTMLElement],
+      ] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [name, icon] of icons) {
+            expect(icon).withContext(name).toBeTruthy();
+            expect(getComputedStyle(icon).color).withContext(`${theme} ${name}`).toBe(tokenValue('--color-error-text'));
+            expect(ratio(paintedColor(icon), paintedBackground(icon)))
+              .withContext(`${theme} ${name} on the dialog`)
+              .toBeGreaterThanOrEqual(4.5);
+          }
+        });
+      }
+    });
+
+    it('draws the rule between rows and the thumbnail edge in --border-primary, in both themes', async () => {
+      await renderOnDialog();
+      const rule = getComputedStyle(groups()[0]);
+      const thumbnail = getComputedStyle(el().querySelector('.thumbnail') as HTMLElement);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const border = tokenValue('--border-primary');
+          expect(rule.borderBottomStyle).withContext(`${theme} the rule is drawn`).toBe('solid');
+          expect(rule.borderBottomColor).withContext(`${theme} rule between rows`).toBe(border);
+          expect(thumbnail.borderTopColor).withContext(`${theme} thumbnail edge`).toBe(border);
+        });
+      }
+    });
   });
 });

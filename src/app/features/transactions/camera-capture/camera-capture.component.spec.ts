@@ -14,6 +14,13 @@ import { ImportResult } from '../../../models';
 import { ProcessingResult } from '../../../core/services/ai-strategy.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
+import {
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
+} from '../../../core/services/testing';
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -619,5 +626,28 @@ describe('CameraCaptureComponent processing overlay', () => {
     // app is installed. The defect was PwaService never saying so inside the
     // native app, which its own spec now covers.
     expect(installHintOnIPhone(true)).toBeNull();
+  });
+
+  // The handle sits on the photo, and a receipt is white paper: the veil
+  // under the glyph has to hold the glyph at AA over white by itself, at
+  // rest, since nothing hovers on a phone.
+  it("holds the drag handle's glyph at AA over a white receipt, on a veil with no rest fade, in both themes", () => {
+    fixture.detectChanges();
+    const item = fixture.nativeElement.querySelector('.image-item') as HTMLElement;
+    const handle = item.querySelector('.drag-handle') as HTMLElement;
+    const glyph = handle.querySelector('mat-icon') as HTMLElement;
+    item.style.background = 'rgb(255, 255, 255)';
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const veil = channels(getComputedStyle(handle).backgroundColor);
+        expect(veil.rgb).withContext(`${theme} the veil is black`).toEqual([0, 0, 0]);
+        expect(veil.alpha).withContext(`${theme} the veil's strength`).toBeGreaterThanOrEqual(0.6);
+        expect(getComputedStyle(handle).opacity).withContext(`${theme} no rest fade`).toBe('1');
+        expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+          .withContext(`${theme} glyph over white paper`)
+          .toBeGreaterThanOrEqual(4.5);
+      });
+    }
   });
 });
