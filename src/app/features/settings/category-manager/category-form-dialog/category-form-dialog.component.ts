@@ -8,7 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
-import { Category } from '../../../../models';
+import { CATEGORY_PALETTE, Category } from '../../../../models';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
@@ -24,14 +24,6 @@ const CATEGORY_ICONS = [
   'medical_services', 'fitness_center', 'school', 'work', 'movie',
   'sports_esports', 'pets', 'child_care', 'card_giftcard', 'celebration',
 ];
-
-// colors:allow-start(category-data) the colours a category can be given are data, the same in every theme
-const CATEGORY_COLORS = [
-  '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
-  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
-  '#ec4899', '#f43f5e', '#64748b', '#71717a', '#78716c',
-];
-// colors:allow-end
 
 @Component({
   selector: 'app-category-form-dialog',
@@ -56,7 +48,7 @@ export class CategoryFormDialogComponent {
   private data = inject<DialogData>(MAT_DIALOG_DATA);
 
   icons = CATEGORY_ICONS;
-  colors = CATEGORY_COLORS;
+  colors = CATEGORY_PALETTE;
 
   name = this.data.category?.name || '';
   selectedIcon = this.data.category?.icon || 'category';

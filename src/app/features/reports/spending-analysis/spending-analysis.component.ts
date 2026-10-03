@@ -6,7 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 
-import { Transaction, Category } from '../../../models';
+import { CATEGORY_FALLBACK_COLOR, Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
@@ -430,7 +430,7 @@ export class SpendingAnalysisComponent {
         return {
           categoryId,
           name: category?.name || 'Unknown',
-          color: category?.color || '#9E9E9E',
+          color: category?.color || CATEGORY_FALLBACK_COLOR,
           icon: category?.icon || 'category',
           total,
           percentage: totalExpense > 0 ? (total / totalExpense) * 100 : 0,

@@ -3,7 +3,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { CategorySuggestionComponent } from './category-suggestion.component';
-import { Category } from '../../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category } from '../../../../models';
 import {
   channels,
   paintedBackground,
@@ -235,7 +235,7 @@ describe('CategorySuggestionComponent', () => {
       fixture.componentRef.setInput('suggestedCategoryId', 'nonexistent');
       fixture.detectChanges();
 
-      expect(component.categoryColor()).toBe('#9e9e9e');
+      expect(component.categoryColor()).toBe(CATEGORY_FALLBACK_COLOR);
     });
   });
 

@@ -1,9 +1,16 @@
 import {
+  CATEGORY_FALLBACK_COLOR,
+  CATEGORY_PALETTE,
+  DEFAULT_EXPENSE_GROUPS,
+  DEFAULT_INCOME_GROUPS,
+} from '../../models';
+import {
   WCAG_AA_TEXT,
   compositeOver,
   contrastRatio,
   ensureContrast,
   parseHexColor,
+  readableOn,
   relativeLuminance,
   toHexColor,
 } from './color-contrast.utils';
@@ -167,5 +174,65 @@ describe('ensureContrast', () => {
     expect(ensureContrast('rebeccapurple', '#ffffff', WCAG_AA_TEXT, 'darken')).toBe('rebeccapurple');
     expect(ensureContrast('#ff980080', '#ffffff', WCAG_AA_TEXT, 'darken')).toBe('#ff980080');
     expect(ensureContrast('#ff9800', 'transparent', WCAG_AA_TEXT, 'darken')).toBe('#ff9800');
+  });
+});
+
+describe('readableOn', () => {
+  const BLACK = '#000000';
+  const WHITE = '#ffffff';
+
+  function ratioOn(fill: string): number {
+    return contrastRatio(parseHexColor(readableOn(fill))!, parseHexColor(fill)!);
+  }
+
+  it('puts black or white at 4.58:1 or more on every colour a category can carry', () => {
+    const seeded = [...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color);
+    const fills = [...new Set([...seeded, ...CATEGORY_PALETTE, CATEGORY_FALLBACK_COLOR].map(c => c.toLowerCase()))];
+
+    // Sixteen seeded colours, the fallback grey among them, and the picker's fifteen.
+    expect(fills.length).toBe(31);
+    expect(seeded.map(c => c.toLowerCase())).toContain(CATEGORY_FALLBACK_COLOR.toLowerCase());
+    expect(CATEGORY_PALETTE.length).toBe(15);
+    for (const fill of fills) {
+      expect([BLACK, WHITE]).withContext(fill).toContain(readableOn(fill));
+      expect(ratioOn(fill)).withContext(fill).toBeGreaterThanOrEqual(4.58);
+    }
+  });
+
+  it('flips from white to black where the two meet at sqrt(21)', () => {
+    // On a fill of luminance L, black scores (L + 0.05) / 0.05 and white
+    // 1.05 / (L + 0.05). The two multiply to 21, so the better of them is
+    // never under sqrt(21) ≈ 4.583, and they cross at L ≈ 0.179: between
+    // #757575 and #767676 on the grey axis.
+    expect(readableOn('#757575')).toBe(WHITE);
+    expect(readableOn('#767676')).toBe(BLACK);
+    for (const fill of ['#757575', '#767676']) {
+      const rgb = parseHexColor(fill)!;
+      expect(contrastRatio([0, 0, 0], rgb) * contrastRatio([255, 255, 255], rgb)).withContext(fill).toBeCloseTo(21, 9);
+      expect(ratioOn(fill)).withContext(fill).toBeGreaterThan(Math.sqrt(21));
+      expect(ratioOn(fill)).withContext(fill).toBeLessThan(4.63);
+    }
+  });
+
+  it('never drops under sqrt(21) on any grey', () => {
+    for (let value = 0; value < 256; value++) {
+      const fill = toHexColor([value, value, value]);
+      expect(ratioOn(fill)).withContext(fill).toBeGreaterThan(Math.sqrt(21));
+    }
+  });
+
+  it('is white on a fill it cannot read', () => {
+    for (const fill of ['', 'rebeccapurple', 'transparent', '#ff980080', 'var(--color-primary)', 'rgb(0, 0, 0)']) {
+      expect(readableOn(fill)).withContext(fill).toBe(WHITE);
+    }
+  });
+
+  it('is the fallback ensureContrast reaches when no shade of the colour can', () => {
+    // A pin: ensureContrast's unreachable-target answer was already black or
+    // white by contrast; this holds it to readableOn after the factoring.
+    expect(ensureContrast('#ffff00', '#ffffff', WCAG_AA_TEXT, 'lighten')).toBe(readableOn('#ffffff'));
+    expect(ensureContrast('#0000ff', '#000000', WCAG_AA_TEXT, 'darken')).toBe(readableOn('#000000'));
+    expect(ensureContrast('#ff9800', '#767676', 22, 'lighten')).toBe(readableOn('#767676'));
+    expect(ensureContrast('#ff9800', '#757575', 22, 'darken')).toBe(readableOn('#757575'));
   });
 });

@@ -37,6 +37,18 @@ export interface CreateCategoryDTO {
   parentId?: string;
 }
 
+// colors:allow-start(category-data) the colours a category can be given are data, the same in every theme
+/** The colours the category form offers a category. */
+export const CATEGORY_PALETTE: readonly string[] = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
+  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
+  '#ec4899', '#f43f5e', '#64748b', '#71717a', '#78716c',
+];
+// colors:allow-end
+
+/** The colour painted for a category that is missing or has none: the seeded Other Expense grey. */
+export const CATEGORY_FALLBACK_COLOR = '#9E9E9E'; // colors:allow(category-data) a missing category's colour, the same in every theme
+
 // colors:allow-start(category-data) a seeded category's colour is data: its own colour, the same in every theme
 // Default Expense Category Groups
 export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [

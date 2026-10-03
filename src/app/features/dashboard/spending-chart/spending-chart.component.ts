@@ -4,7 +4,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
-import { Category, baseCurrencyOf} from '../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category, baseCurrencyOf} from '../../../models';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -88,7 +88,7 @@ export class SpendingChartComponent {
 
     const getCategoryColor = (categoryId: string): string => {
       const category = categories.find(c => c.id === categoryId);
-      return category?.color || '#9E9E9E';
+      return category?.color || CATEGORY_FALLBACK_COLOR;
     };
 
     const labels = top.map(ct => getCategoryName(ct.categoryId));
@@ -144,7 +144,7 @@ export class SpendingChartComponent {
 
   getCategoryColor(categoryId: string): string {
     const category = this.categories().find(c => c.id === categoryId);
-    return category?.color || '#9E9E9E';
+    return category?.color || CATEGORY_FALLBACK_COLOR;
   }
 
   getCategoryIcon(categoryId: string): string {

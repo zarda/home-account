@@ -5,7 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatExpansionModule } from '@angular/material/expansion';
 
-import { Transaction, Category } from '../../../models';
+import { CATEGORY_FALLBACK_COLOR, Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -129,7 +129,7 @@ export class CategoryBreakdownComponent {
           categoryId,
           name: category?.name || 'Unknown',
           icon: category?.icon || 'category',
-          color: category?.color || '#9E9E9E',
+          color: category?.color || CATEGORY_FALLBACK_COLOR,
           total: data.total,
           percentage: total > 0 ? (data.total / total) * 100 : 0,
           transactionCount: data.count,

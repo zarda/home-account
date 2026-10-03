@@ -80,9 +80,8 @@ export function compositeOver(color: Rgb, alpha: number, surface: Rgb): Rgb {
  * distance to black or white equally on every channel, so the hue stays and
  * only the lightness moves; the first step that clears the target wins, which
  * leaves a colour that already clears it untouched. When the whole way to
- * black (or white) is not enough, the answer is whichever of black and white
- * contrasts more with the background: one of the two always reaches 4.58:1,
- * so AA never goes unmet.
+ * black (or white) is not enough, the answer is `readableOn(background)`,
+ * which always reaches 4.58:1, so AA never goes unmet.
  *
  * A colour or background that is not opaque hex cannot be measured, and the
  * colour is returned exactly as given.
@@ -104,5 +103,22 @@ export function ensureContrast(
     if (contrastRatio(candidate, bg) >= target) return toHexColor(candidate);
   }
 
-  return contrastRatio(BLACK, bg) >= contrastRatio(WHITE, bg) ? toHexColor(BLACK) : toHexColor(WHITE);
+  return readableOn(background);
+}
+
+/**
+ * Black or white, whichever contrasts more with `fill`, as `#rrggbb`: the
+ * glyph for a tile or swatch painted in a category's own colour.
+ *
+ * On a fill of luminance L, black scores (L + 0.05) / 0.05 and white
+ * 1.05 / (L + 0.05). The two multiply to 21, so the better of them is never
+ * under sqrt(21) ≈ 4.58:1, whatever the fill.
+ *
+ * A fill that is not opaque hex cannot be measured, so it gets white, the
+ * usual glyph on a coloured tile.
+ */
+export function readableOn(fill: string): string {
+  const rgb = parseHexColor(fill);
+  if (!rgb) return toHexColor(WHITE);
+  return contrastRatio(BLACK, rgb) >= contrastRatio(WHITE, rgb) ? toHexColor(BLACK) : toHexColor(WHITE);
 }

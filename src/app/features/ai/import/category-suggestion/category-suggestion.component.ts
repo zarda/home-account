@@ -4,7 +4,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
-import { Category } from '../../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { CategoryRowType, categoryFitsType } from '../../../../core/utils/categorization.utils';
@@ -68,7 +68,7 @@ export class CategorySuggestionComponent {
 
   categoryColor = computed(() => {
     const category = this.categories().find(c => c.id === this.suggestedCategoryId());
-    return category?.color || '#9e9e9e';
+    return category?.color || CATEGORY_FALLBACK_COLOR;
   });
 
   confidenceClass = computed(() => {

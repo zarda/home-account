@@ -145,20 +145,11 @@ const BASELINE = {
  * Generated with BASELINE and held the same way.
  */
 const BASELINE_CATEGORY = {
-  'src/app/core/services/category-helper.service.ts': {
-    '#9e9e9e': 2,
-  },
   'src/app/features/ai/import/category-suggestion/category-suggestion.component.html': {
     '[style.color]': 2,
   },
-  'src/app/features/ai/import/category-suggestion/category-suggestion.component.ts': {
-    '#9e9e9e': 1,
-  },
   'src/app/features/budgets/budget-form/budget-form.component.html': {
     '[style.color]': 2,
-  },
-  'src/app/features/budgets/budget-progress-card/budget-progress-card.component.html': {
-    '#666': 1,
   },
   'src/app/features/budgets/recurring-transactions/recurring-form-dialog/recurring-form-dialog.component.html': {
     '[style.color]': 1,
@@ -167,17 +158,11 @@ const BASELINE_CATEGORY = {
     '[style.background-color]': 1,
     '[style.color]': 1,
   },
-  'src/app/features/budgets/recurring-transactions/recurring-transactions.component.ts': {
-    '#9e9e9e': 1,
-  },
   'src/app/features/dashboard/budget-progress/budget-progress.component.html': {
     '[style.color]': 1,
   },
   'src/app/features/dashboard/spending-chart/spending-chart.component.html': {
     '[style.background-color]': 2,
-  },
-  'src/app/features/dashboard/spending-chart/spending-chart.component.ts': {
-    '#9e9e9e': 2,
   },
   'src/app/features/dashboard/upcoming-bills/upcoming-bills.component.html': {
     '[style.background-color]': 1,
@@ -189,17 +174,8 @@ const BASELINE_CATEGORY = {
   'src/app/features/reports/category-breakdown/category-breakdown.component.html': {
     '[style.background-color]': 2,
   },
-  'src/app/features/reports/category-breakdown/category-breakdown.component.ts': {
-    '#9e9e9e': 1,
-  },
-  'src/app/features/reports/insights/recurring-list/recurring-list.component.ts': {
-    '#9e9e9e': 1,
-  },
   'src/app/features/reports/spending-analysis/spending-analysis.component.html': {
     '[style.background-color]': 1,
-  },
-  'src/app/features/reports/spending-analysis/spending-analysis.component.ts': {
-    '#9e9e9e': 1,
   },
   'src/app/features/settings/category-manager/category-form-dialog/category-form-dialog.component.html': {
     '[style.background-color]': 2,
@@ -250,8 +226,8 @@ const ALLOWED = {
   },
   'src/app/features/settings/category-manager/category-form-dialog/category-form-dialog.component.ts': {
     kind: 'category-data',
-    count: 16,
-    reason: 'the fifteen colours a category can be given, and the one a new category starts with',
+    count: 1,
+    reason: 'the colour a new category starts with until one is picked',
   },
   'src/app/features/settings/settings.component.scss': {
     kind: 'brand',
@@ -277,8 +253,8 @@ const ALLOWED = {
   },
   'src/app/models/category.model.ts': {
     kind: 'category-data',
-    count: 21,
-    reason: "the seeded categories' colours, each a category's own colour in every theme",
+    count: 37,
+    reason: "the seeded categories' colours, the fifteen a category can be given, and the grey a missing one falls back to, each the same in every theme",
   },
   'src/app/shared/components/category-chip/category-chip.component.ts': {
     kind: 'token-mirror',

@@ -9,6 +9,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import { RecurringService } from '../../../../core/services/recurring.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
+  CATEGORY_FALLBACK_COLOR,
   CreateRecurringDTO,
   StorableRecurringGroup,
   StorableRecurringSummary,
@@ -101,7 +102,7 @@ export class RecurringListComponent {
 
   categoryColor(categoryId: string): string {
     return this.categoryService.categories()
-      .find(item => item.id === categoryId)?.color ?? '#9E9E9E';
+      .find(item => item.id === categoryId)?.color ?? CATEGORY_FALLBACK_COLOR;
   }
 
   cadenceLabel(group: StorableRecurringGroup): string {

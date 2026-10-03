@@ -8,7 +8,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 
 import { Budget, BudgetPeriod } from '../../../models';
-import { Category } from '../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category } from '../../../models';
 import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -41,6 +41,8 @@ export class BudgetProgressCardComponent {
   // Modern Angular 21: signal-based inputs/outputs
   budget = input.required<Budget>();
   category = input<Category | undefined>();
+
+  protected readonly fallbackColor = CATEGORY_FALLBACK_COLOR;
 
   edit = output<void>();
   delete = output<void>();
