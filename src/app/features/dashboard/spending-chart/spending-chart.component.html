@@ -51,11 +51,13 @@
                     </div>
                     <div class="legend-progress-row">
                       <div class="legend-progress">
+                        <!-- colors:allow-start(category-data) the share bar is filled with the category's own colour, as its slice is, and carries no text -->
                         <div
                           class="legend-progress-bar"
                           [style.width.%]="getPercentage(item.total)"
                           [style.background-color]="getCategoryColor(item.categoryId)"
                         ></div>
+                        <!-- colors:allow-end -->
                       </div>
                       <span class="legend-percentage">{{ getPercentage(item.total).toFixed(0) }}%</span>
                     </div>

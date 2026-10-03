@@ -63,22 +63,26 @@
 
             <!-- Share bar anchored to the row so proportions read while collapsed -->
             <div class="row-bar" aria-hidden="true">
+              <!-- colors:allow-start(category-data) the share bar is filled with the category's own colour, as its slice is, and carries no text -->
               <div
                 class="row-bar-fill"
                 [style.width.%]="category.percentage"
                 [style.background-color]="category.color"
               ></div>
+              <!-- colors:allow-end -->
             </div>
           </mat-expansion-panel-header>
 
           <div class="category-details">
             <!-- Progress bar -->
             <div class="percentage-bar">
+              <!-- colors:allow-start(category-data) the share bar is filled with the category's own colour, as its slice is, and carries no text -->
               <div
                 class="percentage-fill"
                 [style.width.%]="category.percentage"
                 [style.background-color]="category.color"
               ></div>
+              <!-- colors:allow-end -->
             </div>
 
             <!-- Stats grid -->
