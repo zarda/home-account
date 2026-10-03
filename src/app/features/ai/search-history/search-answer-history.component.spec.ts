@@ -17,6 +17,13 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { createCategory } from '../../../core/services/testing/test-data';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('SearchAnswerHistoryComponent', () => {
   let fixture: ComponentFixture<SearchAnswerHistoryComponent>;
@@ -328,5 +335,38 @@ describe('SearchAnswerHistoryComponent', () => {
       expect(answerHistory.refreshAnswer).toHaveBeenCalled();
       expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'refresh' });
     });
+  });
+
+  // The meta line sits on the page under a closed row and on --surface-muted
+  // under an open one, the harder of the two in light.
+  it('reads the meta line in --text-muted at AA on the page and on an open row, in both themes', () => {
+    storedAnswers.set([rec('a-1', 2_000), rec('a-2', 1_000)]);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.backgroundColor = 'var(--surface-background)';
+    (host.querySelector('.history-open') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const [open, closed] = Array.from(host.querySelectorAll('.history-row')) as HTMLElement[];
+    expect(open.classList).withContext('the first row is open').toContain('expanded');
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--text-muted)';
+        document.body.appendChild(probe);
+        settleAnimations(document);
+        const muted = getComputedStyle(probe).color;
+        probe.remove();
+
+        for (const [row, where] of [[open, 'open'], [closed, 'closed']] as const) {
+          const meta = row.querySelector('.history-meta') as HTMLElement;
+          expect(getComputedStyle(meta).color).withContext(`${theme} ${where} row's meta`).toBe(muted);
+          expect(ratio(paintedColor(meta), paintedBackground(meta)))
+            .withContext(`${theme} ${where} row's meta on what it sits on`)
+            .toBeGreaterThanOrEqual(4.5);
+        }
+      });
+    }
   });
 });

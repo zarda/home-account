@@ -20,6 +20,15 @@ import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils'
 import { blankImportRow, needsDateAnswer } from '../../../../core/utils/import-review.utils';
 import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { createCategory } from '../../../../core/services/testing/test-data';
+import {
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
+import type { Rgb } from '../../../../core/utils/color-contrast.utils';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyCodeDialogComponent } from '../../../../shared/components/currency-code-dialog/currency-code-dialog.component';
 
@@ -4874,6 +4883,187 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(current('a')?.currency).toBe('ISK');
       expect(chip('a').textContent).toContain('ISK');
       expect(document.activeElement).withContext('focus back on the chip the menu hung from').toBe(chip('a'));
+    });
+  });
+
+  // A category's glyph owes contrast to the surface it sits on, so a checked
+  // or flagged card has to paint a surface the stylesheet declares, not a
+  // tint of whatever happens to be under it.
+  describe('the card\'s surface', () => {
+    /** What `background-color: var(token)` computes to under the theme on <html> now. */
+    function surface(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).backgroundColor;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** A computed colour as the whole channels it is painted in. */
+    function rounded(computed: string): Rgb {
+      const [r, g, b] = channels(computed).rgb;
+      return [Math.round(r), Math.round(g), Math.round(b)];
+    }
+
+    it('paints a checked card on --surface-review-selected and a flagged one on --surface-review-duplicate, in both themes', () => {
+      component.transactions = [
+        makeRow({ id: 'checked', selected: true }),
+        makeRow({ id: 'flagged', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
+      ];
+      component.categories = [];
+      fixture.detectChanges();
+      const card = (id: string) =>
+        fixture.nativeElement.querySelector(`.transaction-card[data-row-id="${id}"]`) as HTMLElement;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          for (const [id, token] of [['checked', '--surface-review-selected'], ['flagged', '--surface-review-duplicate']]) {
+            expect(card(id)).withContext(`${theme} ${id} card`).toBeTruthy();
+            settleAnimations(document);
+            expect(getComputedStyle(card(id)).backgroundColor)
+              .withContext(`${theme} ${id} card's own fill`)
+              .toBe(surface(token));
+            expect(paintedBackground(card(id)))
+              .withContext(`${theme} ${id} card as painted`)
+              .toEqual(rounded(surface(token)));
+          }
+        });
+      }
+    });
+  });
+
+  // The amber and the green the warning and success families are named for
+  // are fills: under 2:1 and 2.2:1 on the light card and chip. So a flag, a
+  // date the reviewer is asked about and an answered date read in their text
+  // steps.
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+    const card = (id: string) =>
+      fixture.nativeElement.querySelector(`.transaction-card[data-row-id="${id}"]`) as HTMLElement;
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+
+    /** What `color: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    function render(rows: CategorizedImportTransaction[], attention: string[] = []): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.dateAttentionIds = new Set(attention);
+      fixture.detectChanges();
+    }
+
+    // A flag is a graphic, so its floor is 3:1 (WCAG 1.4.11). The amount's
+    // and the type's sit on the card itself, the date's and the currency's on
+    // their chip.
+    it('paints every doubted field\'s flag in --color-warning-text at 3:1 or better, on a plain, a checked and a flagged card, in both themes', () => {
+      const doubted = { amount: 0.2, type: 0.2, date: 0.2 };
+      render([
+        makeRow({ id: 'plain', selected: false, fieldConfidence: doubted, currencyFellBack: true }),
+        makeRow({ id: 'checked', selected: true, fieldConfidence: doubted, currencyFellBack: true }),
+        makeRow({
+          id: 'flagged', selected: false, isDuplicate: true, duplicateOf: 'stored-1',
+          fieldConfidence: doubted, currencyFellBack: true,
+        }),
+      ]);
+      const flags = [
+        ['amount', '.amount-section .verify-flag'],
+        ['date', '.date-chip .verify-flag'],
+        ['currency', '.currency-chip .verify-flag'],
+        ['type', '.type-toggle .verify-flag'],
+      ] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const id of ['plain', 'checked', 'flagged']) {
+            for (const [field, selector] of flags) {
+              expectPainted(card(id).querySelector(selector), '--color-warning-text', `${theme} ${id} ${field} flag`, 3);
+            }
+          }
+        });
+      }
+    });
+
+    it('paints a date the reviewer is asked about in --color-warning-text at AA on its chip, in both themes', () => {
+      render(
+        [makeRow({ id: 'doubted', fieldConfidence: { date: 0.2 } }), makeRow({ id: 'another-day', date: yesterday() })],
+        ['another-day']
+      );
+      const chips = [
+        ['doubted', 'needs-verify'],
+        ['another-day', 'not-today'],
+      ] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [id, mark] of chips) {
+            const chip = card(id).querySelector('button.date-chip');
+            expect(chip?.classList.contains(mark)).withContext(`${id} is marked ${mark}`).toBeTrue();
+            expectPainted(chip, '--color-warning-text', `${theme} ${id} date`);
+          }
+        });
+      }
+    });
+
+    it('paints an answered date in --color-success-text, the date at AA and its check at 3:1 on its chip, in both themes', () => {
+      render([makeRow({ id: 'answered', dateReviewed: true })]);
+      const chip = card('answered').querySelector('button.date-chip');
+      expect(chip?.classList.contains('reviewed')).withContext('the chip is marked answered').toBeTrue();
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(chip, '--color-success-text', `${theme} answered date`);
+          expectPainted(chip?.querySelector('mat-icon') ?? null, '--color-success-text', `${theme} its check`, 3);
+        });
+      }
+    });
+
+    // The badge's word is 12px copy, not large text, so its floor is AA. A
+    // checked duplicate is in the set because in dark it wears the checked
+    // card's fill rather than the flagged one's.
+    it('paints the duplicate badge in --color-warning-text at AA on what it sits on, on an unchecked and a checked flagged card, in both themes', () => {
+      render([
+        makeRow({ id: 'flagged', selected: false, isDuplicate: true, duplicateOf: 'stored-1' }),
+        makeRow({ id: 'flagged-checked', selected: true, isDuplicate: true, duplicateOf: 'stored-1' }),
+      ]);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const id of ['flagged', 'flagged-checked']) {
+            expectPainted(card(id).querySelector('.duplicate-badge'), '--color-warning-text', `${theme} ${id} duplicate badge`);
+          }
+        });
+      }
     });
   });
 });

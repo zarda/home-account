@@ -37,8 +37,10 @@
   }
 }
 
+// The amber fill is under 2:1 on the panel's own tint of it, so the glyph
+// heading the warning takes its text step, as the row marks below do.
 .warning-icon {
-  color: var(--color-warning);
+  color: var(--color-warning-text);
   margin-right: 8px;
   font-size: var(--text-xl);
   width: 1em;
@@ -102,12 +104,11 @@ mat-panel-title {
   color: var(--color-error);
 }
 
-.match-likely {
-  color: var(--color-warning);
-}
-
+// The amber the warning family is named for is a fill, under 2:1 on the
+// white row, so a match the reader is asked to weigh takes its text step.
+.match-likely,
 .match-possible {
-  color: #ffc107;
+  color: var(--color-warning-text);
 }
 
 // Neither is a clash with an existing row, so they read as a note, not an alarm.

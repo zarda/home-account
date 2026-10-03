@@ -74,11 +74,14 @@
   }
 }
 
+// The text step of the primary: the glyph sits on its own primary-tinted
+// bubble, and in dark the primary itself falls under 3:1 on that bubble once
+// the zone is hovered.
 .upload-icon {
   font-size: 40px;
   width: 1em;
   height: 1em;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   z-index: 1;
 }
 
@@ -147,21 +150,36 @@
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: rgba(156, 39, 176, 0.08);
-  border: 1px solid rgba(156, 39, 176, 0.2);
+  // Mixed into the zone's fill rather than into transparent, so the text on it
+  // is measured against one opaque colour. The zone repaints itself on hover
+  // and under a drag, so each of those states names its own mix below, on the
+  // zone's own timing so the two never show a seam mid-fade.
+  background: color-mix(in srgb, var(--color-ai) 8%, var(--surface-background));
+  border: 1px solid color-mix(in srgb, var(--color-ai) 20%, transparent);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   color: var(--text-primary);
   cursor: default;
   pointer-events: none;
+  transition: background-color 0.2s ease;
 
   mat-icon {
-    color: #9c27b0;
+    color: var(--color-ai);
     font-size: var(--text-lg);
     width: 1em;
     height: 1em;
     flex-shrink: 0;
   }
+}
+
+.dropzone:hover .multi-image-hint {
+  background: color-mix(in srgb, var(--color-ai) 8%, var(--surface-hover));
+}
+
+// The dragged-over zone is itself a tint over whatever holds it, so there is
+// no opaque fill to mix into: the hint lays its own tint over the zone's.
+.dropzone.dragover .multi-image-hint {
+  background: color-mix(in srgb, var(--color-ai) 8%, transparent);
 }
 
 .file-item {
@@ -282,16 +300,15 @@
   height: 1em;
 }
 
+// The text step of each status colour: a glyph owes 3:1, and the green fill
+// measures under it on the light wrapper. No image rule: an image is shown as
+// its own thumbnail and never reaches the wrapper.
 .file-icon-wrapper mat-icon.csv {
-  color: #4CAF50;
+  color: var(--color-success-text);
 }
 
 .file-icon-wrapper mat-icon.pdf {
-  color: #f44336;
-}
-
-.file-icon-wrapper mat-icon.image {
-  color: #2196F3;
+  color: var(--color-error-text);
 }
 
 .file-thumbnail {

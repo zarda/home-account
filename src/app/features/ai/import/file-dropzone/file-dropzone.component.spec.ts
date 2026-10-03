@@ -4,7 +4,16 @@ import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub } from '../../../../core/services/testing';
+import {
+  channels,
+  createTranslationStub,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
 
 describe('FileDropzoneComponent', () => {
   let component: FileDropzoneComponent;
@@ -441,5 +450,156 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(text('.file-name')).toBe('picked.csv');
     // The handler clears the input so the same file can be picked twice.
     expect(input.value).toBe('');
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11). An image never
+    // reaches the wrapper: it gets a thumbnail (the case above).
+    it('paints a CSV\'s and a PDF\'s icon in a status token at 3:1 or better on its wrapper, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile('rows.csv'), new File(['%PDF'], 'statement.pdf', { type: 'application/pdf' })]);
+      const [csv, pdf] = all('.file-icon-wrapper mat-icon');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(csv, '--color-success-text', `${theme} CSV icon`, 3);
+          expectPainted(pdf, '--color-error-text', `${theme} PDF icon`, 3);
+        });
+      }
+    });
+
+    /**
+     * The upload glyph sits on its own pulsing bubble, a gradient between
+     * two tints that the walk up the parents cannot see. Each end of it is
+     * laid on the glyph's container in turn, at full strength, over the zone
+     * as the pointer leaves it and as the zone's own :hover rule paints it.
+     */
+    it('holds the upload glyph at 3:1 or better over either end of its bubble, at rest and hovered, in both themes', () => {
+      fixture.detectChanges();
+      const zone = el().querySelector('.dropzone') as HTMLElement;
+      const container = el().querySelector('.icon-container') as HTMLElement;
+      const glyph = el().querySelector('.upload-icon') as HTMLElement;
+      const bubble = el().querySelector('.icon-bg') as HTMLElement;
+      const hovered = hoverValue(zone, '.dropzone', 'background');
+      expect(hovered).withContext('the hover rule').toBe('var(--surface-hover)');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const stops = getComputedStyle(bubble).backgroundImage.match(/(?:rgba?|color)\([^()]*\)/g) ?? [];
+          expect(stops.length).withContext(`${theme} the bubble's two ends`).toBe(2);
+          expect(getComputedStyle(glyph).color)
+            .withContext(`${theme} glyph`)
+            .toBe(tokenValue('--color-primary-text'));
+          for (const zoneFill of ['', hovered]) {
+            zone.style.background = zoneFill;
+            try {
+              for (const stop of stops) {
+                container.style.backgroundColor = stop;
+                expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                  .withContext(`${theme} glyph ${zoneFill ? 'hovered' : 'at rest'} over ${stop}`)
+                  .toBeGreaterThanOrEqual(3);
+              }
+            } finally {
+              container.style.backgroundColor = '';
+              zone.style.background = '';
+            }
+          }
+        });
+      }
+    });
+
+    it('paints the multi-image hint\'s icon in --color-ai at 3:1 and its text at AA, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const hint = el().querySelector('.multi-image-hint') as HTMLElement;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(hint.querySelector('mat-icon'), '--color-ai', `${theme} hint icon`, 3);
+          expectPainted(hint.querySelector('span'), '--text-primary', `${theme} hint text`);
+        });
+      }
+    });
+
+    /**
+     * The zone repaints itself while hovered and while a drag is over it, so
+     * a hint held to the resting fill shows as a patch of it: in dark the
+     * hovered zone is #3d3d3d and the resting fill #121212. Every state is
+     * held to one sum, 8% of --color-ai over whatever the zone paints.
+     */
+    it('keeps the multi-image hint 8% --color-ai over the zone\'s own fill at rest, hovered and dragged over, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const zone = el().querySelector('.dropzone') as HTMLElement;
+      const hint = el().querySelector('.multi-image-hint') as HTMLElement;
+      const label = hint.querySelector('span') as HTMLElement;
+      const drag = (type: 'dragover' | 'dragleave') => {
+        zone.dispatchEvent(new DragEvent(type, { bubbles: true }));
+        fixture.detectChanges();
+      };
+      const states = [
+        { name: 'at rest', enter: () => undefined, leave: () => undefined },
+        { name: 'dragged over', enter: () => drag('dragover'), leave: () => drag('dragleave') },
+        {
+          name: 'hovered',
+          enter: () => {
+            zone.style.background = hoverValue(zone, '.dropzone', 'background');
+            hint.style.background = hoverValue(hint, '.multi-image-hint', 'background');
+          },
+          leave: () => {
+            zone.style.background = '';
+            hint.style.background = '';
+          },
+        },
+      ];
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const ai = channels(tokenValue('--color-ai')).rgb;
+          for (const state of states) {
+            state.enter();
+            try {
+              const under = paintedBackground(zone);
+              const painted = paintedBackground(hint);
+              painted.forEach((value, i) => {
+                expect(Math.abs(value - (0.08 * ai[i] + 0.92 * under[i])))
+                  .withContext(`${theme} hint ${state.name}, channel ${i}`)
+                  .toBeLessThanOrEqual(1);
+              });
+              expect(ratio(paintedColor(label), painted))
+                .withContext(`${theme} hint text ${state.name}`)
+                .toBeGreaterThanOrEqual(4.5);
+            } finally {
+              state.leave();
+            }
+          }
+        });
+      }
+    });
   });
 });

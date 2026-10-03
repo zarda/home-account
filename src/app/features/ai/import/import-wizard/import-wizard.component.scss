@@ -64,8 +64,12 @@
    as primary (completed also swaps its number for a checkmark). Previously
    all four circles were an identical solid fill with no sense of progress. */
 ::ng-deep .modern-stepper .mat-step-icon {
-  background: var(--surface-hover);
+  // The empty states' circle and glyph, the pair held to 4.5:1 in both
+  // themes. The stepper is transparent, and in light that fill is all but
+  // the page under it (1.01:1), so the edge is what draws the circle.
+  background: var(--surface-muted);
   color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 ::ng-deep .modern-stepper .mat-step-icon-selected,
@@ -73,6 +77,7 @@
 ::ng-deep .modern-stepper .mat-step-icon-state-edit {
   background: var(--color-primary);
   color: var(--text-inverse);
+  box-shadow: none;
 }
 
 ::ng-deep .modern-stepper .mat-step-label-selected {
@@ -122,7 +127,10 @@
 }
 
 .count-badge {
-  background: rgba(255, 255, 255, 0.2);
+  // The label's own colour, so the tint follows the button the theme paints:
+  // white over the light primary, navy over the dark one. Past about 16% the
+  // white tint takes the count under AA on the light fill.
+  background: color-mix(in srgb, currentColor 12%, transparent);
   padding: 2px 8px;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -164,7 +172,9 @@
 // Anchored to the bottom, so a long filename grows the caption upward over its
 // own thumbnail rather than losing its tail. Covering part of a picture the
 // reader just chose is recoverable; not being able to tell two receipts apart
-// is not.
+// is not. One even veil rather than a fade: a receipt is white paper, and
+// white text holds AA over it only where the veil is 0.6 or more, which a
+// fade from transparent is not at the caption's first line.
 // colors:allow-start(scrim) a dark veil and white text over the receipt photo it names, which has no theme
 .preview-name {
   position: absolute;
@@ -172,7 +182,7 @@
   left: 0;
   right: 0;
   padding: 6px 8px;
-  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  background: rgba(0, 0, 0, 0.6);
   color: white;
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
@@ -319,12 +329,14 @@
   color: var(--color-primary);
 }
 
+// The green the success family is named for is a fill, near 2:1 on the light
+// step and page, so a finished step and the success glyph take its text step.
 .step-indicator.complete {
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 
 .step-indicator.complete mat-icon {
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 
 /* Success Card */
@@ -336,7 +348,7 @@
   font-size: 72px;
   width: 1em;
   height: 1em;
-  color: var(--color-success);
+  color: var(--color-success-text);
   animation: scaleIn 0.4s ease-out;
 }
 
@@ -391,7 +403,7 @@
 
 .error-hint {
   font-size: var(--text-sm);
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary);
   background: var(--surface-hover-active);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
@@ -406,13 +418,15 @@
   justify-content: center;
 }
 
-.error-rate_limit .error-icon { color: var(--color-warning); }
+// The amber the warning family is named for is a fill, under 2:1 on the light
+// page, so a warning glyph takes its text step.
+.error-rate_limit .error-icon { color: var(--color-warning-text); }
 .error-auth .error-icon { color: var(--color-error); }
 .error-network .error-icon { color: var(--color-info); }
-.error-quota .error-icon { color: #e91e63; }
-.error-server .error-icon { color: #9c27b0; }
-.error-timeout .error-icon { color: var(--color-warning); }
-.error-incomplete .error-icon { color: var(--color-warning); }
+.error-quota .error-icon { color: var(--color-warning-text); }
+.error-server .error-icon { color: var(--color-error-text); }
+.error-timeout .error-icon { color: var(--color-warning-text); }
+.error-incomplete .error-icon { color: var(--color-warning-text); }
 
 /* Review Step */
 .review-header {
@@ -465,14 +479,16 @@
 }
 
 /* Sized here rather than by a utility class: a Material icon ships its own
-   line-height, and a font-size set without one drops the glyph off its row. */
+   line-height, and a font-size set without one drops the glyph off its row.
+   The amber fill is under 2:1 on the notice's own tint of it, so the glyph
+   takes the warning's text step. */
 .incomplete-icon {
   flex: 0 0 auto;
   font-size: var(--text-xl);
   width: var(--text-xl);
   height: var(--text-xl);
   line-height: var(--text-xl);
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 
 /* Confirm Step - Summary */
@@ -550,21 +566,20 @@
 .dates-card mat-icon,
 .rows-card mat-icon {
   background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 
 .multi-image-card mat-icon {
-  background: rgba(156, 39, 176, 0.1);
-  color: #9c27b0;
+  background: color-mix(in srgb, var(--color-ai) 10%, transparent);
+  color: var(--color-ai);
 }
 
+// The count itself stays in the card's text colour: --color-info is 3.68:1 on
+// the light card, and below 768px the figure is 18px bold, which is not large
+// text.
 .merged-card mat-icon {
-  background: rgba(0, 150, 136, 0.1);
-  color: #009688;
-}
-
-.merged-card .card-value {
-  color: #009688;
+  background: color-mix(in srgb, var(--color-info) 10%, transparent);
+  color: var(--color-info);
 }
 
 /* Multi-image info banner */
@@ -575,22 +590,24 @@
   gap: 8px;
   padding: 12px 16px;
   margin: 16px 0;
-  background: rgba(156, 39, 176, 0.08);
-  border: 1px solid rgba(156, 39, 176, 0.2);
+  // Mixed into the page it covers rather than into transparent, so the text
+  // on it is measured against one opaque colour.
+  background: color-mix(in srgb, var(--color-ai) 8%, var(--surface-background));
+  border: 1px solid color-mix(in srgb, var(--color-ai) 20%, transparent);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   color: var(--text-primary);
 
   mat-icon {
-    color: #9c27b0;
+    color: var(--color-ai);
     font-size: var(--text-xl);
     width: 1em;
     height: 1em;
   }
 
   .merged-badge {
-    background: #009688;
-    color: white;
+    background: var(--color-info-light);
+    color: var(--text-primary);
     padding: 2px 8px;
     border-radius: var(--radius-md);
     font-size: var(--text-xs);
@@ -621,7 +638,7 @@
 .skipped-card .card-value,
 .dates-card .card-value,
 .rows-card .card-value {
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 
 .card-label {

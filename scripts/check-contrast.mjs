@@ -137,14 +137,31 @@ const PAIRS = [
   { fg: '--color-expense-text', bg: '--color-expense-light', why: 'the expense chip: stat cards, weekly recap, budget alert banner' },
   { fg: '--color-expense-text', bg: '--surface-card', why: 'an expense amount as running text' },
   { fg: '--color-warning-text', bg: '--color-warning-light', why: 'the warning banner: budget alerts, the recurring-rule chip' },
-  { fg: '--color-warning-text', bg: '--surface-card', why: 'a warning as running text' },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-card',
+    why: "a warning as running text. The import wizard's cut-off glyph and the duplicate panel's header glyph " +
+      "sit on their notice's 5% warning tint over the card instead, and clear 4.86:1 there in light",
+  },
   {
     fg: '--color-error-text',
     bg: '--color-error-light',
     why: "the login page's error banner and the transaction filters' clear-button hover",
   },
   { fg: '--color-success-text', bg: '--color-success-light', why: "the import history's completed chip" },
+  { fg: '--text-primary', bg: '--color-info-light', why: "the import wizard's merged-items badge" },
   { fg: '--color-success-text', bg: '--surface-card', why: 'a success state as running text' },
+  {
+    fg: '--color-success-text',
+    bg: '--surface-hover',
+    why: "the import wizard's finished processing steps, whose label and glyph sit on the active step's fill",
+  },
+  {
+    fg: '--color-success-text',
+    bg: '--surface-background',
+    threshold: 3,
+    why: "the import wizard's success glyph on the page: a graphic, so 3:1, as --color-ai",
+  },
   {
     fg: '--color-success-text',
     bg: '--surface-subtle',
@@ -225,10 +242,9 @@ const NOT_PAINTED = {
   '--color-accent-light': 'a border colour and one decorative header glyph',
   '--color-income': "a fill — bars, dots, toggles' tints; never text",
   '--color-expense': "a fill — bars, dots, toggles' tints; never text",
-  '--color-success': 'an icon colour beside its own label (the import wizard\'s success states)',
+  '--color-success': "a border and a fill: the dropzone's edge once it holds files, the category suggestion's confidence dot. The readable success token is --color-success-text",
   '--color-warning': 'an icon and a border colour beside their own labels; the readable warning token is --color-warning-text',
-  '--color-info': 'an icon and a left border on a callout that carries its own text in --text-primary',
-  '--color-info-light': 'declared and unused',
+  '--color-info': "an icon beside its own label (the import wizard's network failure, and its merged-items card on a 10% tile of the same hue) and the info snackbar's leading border; no text is painted in it or on it",
 };
 
 /** Every block with this selector, merged in file order, as the cascade does. */

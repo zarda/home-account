@@ -16,6 +16,14 @@ import { ImportHistory } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
+import {
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
 
 // The real CurrencyService is root-provided and fetches rates from its
 // constructor, and the real AuthService injects Firebase `Auth` and
@@ -651,5 +659,176 @@ describe('ImportHistoryComponent overflow', () => {
     expect(errorItem.getBoundingClientRect().right)
       .withContext('error li right edge vs card right edge')
       .toBeLessThanOrEqual(card.getBoundingClientRect().right + 1);
+  });
+});
+
+// A fourth sibling suite, for the same reason as the two above: every colour
+// here is read where Chrome paints it, on the real template, in both themes.
+describe('ImportHistoryComponent, colours as painted', () => {
+  let fixture: ComponentFixture<ImportHistoryComponent>;
+  let historyService: jasmine.SpyObj<ImportHistoryService>;
+
+  const THEMES = ['light', 'dark'] as const;
+  const STATUSES = [
+    ['completed', '--color-success'],
+    ['partial', '--color-warning'],
+    ['failed', '--color-error'],
+  ] as const;
+
+  const record = (id: string, overrides: Partial<ImportHistory>): ImportHistory => ({
+    id,
+    userId: 'user1',
+    importedAt: { seconds: 1704067200, nanoseconds: 0, toDate: () => new Date(1704067200 * 1000) } as Timestamp,
+    source: 'csv',
+    fileType: 'generic_csv',
+    fileName: `${id}.csv`,
+    fileSize: 2048,
+    transactionCount: 10,
+    successCount: 10,
+    skippedCount: 0,
+    errorCount: 0,
+    totalIncome: 5000,
+    totalExpenses: 1000,
+    duplicatesSkipped: 2,
+    status: 'completed',
+    ...overrides,
+  });
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const cards = () => Array.from(el().querySelectorAll('.history-item')) as HTMLElement[];
+
+  /** What `<property>: var(token)` computes to under the theme on <html> now. */
+  function tokenValue(token: string, property = 'color'): string {
+    const probe = document.createElement('span');
+    probe.style.setProperty(property, `var(${token})`);
+    document.body.appendChild(probe);
+    try {
+      settleAnimations(document);
+      return getComputedStyle(probe).getPropertyValue(property);
+    } finally {
+      probe.remove();
+    }
+  }
+
+  /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+  function expectPainted(node: HTMLElement | null, token: string, label: string, floor = 4.5): void {
+    expect(node).withContext(label).toBeTruthy();
+    if (!node) return;
+    expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+    expect(ratio(paintedColor(node), paintedBackground(node)))
+      .withContext(`${label} on what it sits on`)
+      .toBeGreaterThanOrEqual(floor);
+  }
+
+  beforeEach(async () => {
+    historyService = jasmine.createSpyObj('ImportHistoryService', ['getImportHistory']);
+    historyService.getImportHistory.and.returnValue(of([
+      record('done', {
+        status: 'completed',
+        errors: [{ message: 'one' }, { message: 'two' }, { message: 'three' }, { message: 'four' }],
+      }),
+      record('some', { status: 'partial' }),
+      record('none', { status: 'failed', errorType: 'server', successCount: 0 }),
+    ]));
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((key: string) => key);
+
+    await TestBed.configureTestingModule({
+      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      providers: [
+        { provide: ImportHistoryService, useValue: historyService },
+        { provide: TranslationService, useValue: translation },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
+        { provide: CurrencyService, useValue: currencyStub },
+        { provide: AuthService, useValue: authStub }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ImportHistoryComponent);
+    // The list sits on the page itself.
+    el().style.backgroundColor = 'var(--surface-background)';
+    fixture.detectChanges();
+  });
+
+  // Material paints a chip's label from its own token on an inner span, so a
+  // colour set on the chip itself never reaches the text.
+  it('paints each status chip from its status tokens, the label at AA on the chip, in both themes', () => {
+    for (const theme of THEMES) {
+      withTheme(theme, () => {
+        for (const [status, token] of STATUSES) {
+          const chip = el().querySelector(`mat-chip.${status}`) as HTMLElement;
+          expect(chip).withContext(`${theme} ${status} chip`).toBeTruthy();
+          settleAnimations(document);
+          expect(getComputedStyle(chip).backgroundColor)
+            .withContext(`${theme} ${status} chip fill`)
+            .toBe(tokenValue(`${token}-light`, 'background-color'));
+          expectPainted(
+            chip.querySelector('.mdc-evolution-chip__text-label'),
+            `${token}-text`,
+            `${theme} ${status} chip label`
+          );
+        }
+      });
+    }
+  });
+
+  // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
+  it('paints each status icon in its status text token at 3:1 or better on the card, in both themes', () => {
+    for (const theme of THEMES) {
+      withTheme(theme, () => {
+        STATUSES.forEach(([status, token], index) => {
+          expectPainted(
+            cards()[index].querySelector('mat-icon[mat-card-avatar]'),
+            `${token}-text`,
+            `${theme} ${status} icon`,
+            3
+          );
+        });
+      });
+    }
+  });
+
+  it('sits each record on --surface-card behind an edge in --border-primary, its name and date in the text tokens, in both themes', () => {
+    const card = cards()[0];
+    for (const theme of THEMES) {
+      withTheme(theme, () => {
+        expect(paintedBackground(card))
+          .withContext(`${theme} card`)
+          .toEqual(channels(tokenValue('--surface-card', 'background-color')).rgb);
+        expect(getComputedStyle(card).borderTopStyle).withContext(`${theme} the edge is drawn`).toBe('solid');
+        expect(getComputedStyle(card).borderTopColor).withContext(`${theme} edge`).toBe(tokenValue('--border-primary'));
+        expectPainted(card.querySelector('mat-card-title'), '--text-primary', `${theme} name`);
+        expectPainted(card.querySelector('mat-card-subtitle'), '--text-muted', `${theme} date`);
+      });
+    }
+  });
+
+  it('reads every stat at AA on its tile, each figure in its own token, in both themes', () => {
+    const card = cards()[0];
+    const stat = (selector: string) => card.querySelector(`.stat${selector} .value`) as HTMLElement;
+    for (const theme of THEMES) {
+      withTheme(theme, () => {
+        expectPainted(card.querySelector('.stat .label'), '--text-muted', `${theme} label`);
+        expectPainted(card.querySelector('.stat .value'), '--text-primary', `${theme} count`);
+        expectPainted(stat('.income'), '--color-income-text', `${theme} income`);
+        expectPainted(stat('.expense'), '--color-expense-text', `${theme} expense`);
+        expectPainted(stat('.skipped'), '--color-warning-text', `${theme} skipped`);
+      });
+    }
+  });
+
+  it('reads the errors callout and a failure line at AA, in the error text token, in both themes', () => {
+    const errors = cards()[0].querySelector('.errors') as HTMLElement;
+    for (const theme of THEMES) {
+      withTheme(theme, () => {
+        expectPainted(errors.querySelector('.error-title'), '--color-error-text', `${theme} callout title`);
+        expectPainted(errors.querySelector('li'), '--color-error-text', `${theme} callout item`);
+        expectPainted(errors.querySelector('li.more'), '--text-muted', `${theme} callout overflow line`);
+        expectPainted(cards()[2].querySelector('.failure-class'), '--color-error-text', `${theme} failure line`);
+      });
+    }
   });
 });
