@@ -6,10 +6,8 @@
         <mat-select [value]="part.categoryId" (selectionChange)="setCategory($index, $event.value)">
           @for (cat of categories(); track cat.id) {
             <mat-option [value]="cat.id">
-              <div class="category-option">
-                <mat-icon aria-hidden="true" [style.color]="cat.color">{{ cat.icon }}</mat-icon>
-                <span>{{ cat.name | translate }}</span>
-              </div>
+              <mat-icon aria-hidden="true" [style.color]="cat.color">{{ cat.icon }}</mat-icon>
+              {{ cat.name | translate }}
             </mat-option>
           }
         </mat-select>

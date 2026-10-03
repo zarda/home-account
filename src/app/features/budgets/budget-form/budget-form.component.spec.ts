@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatSelect } from '@angular/material/select';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form.component';
@@ -554,6 +556,43 @@ describe('BudgetFormComponent', () => {
 
       const spinner = fixture.nativeElement.querySelector('mat-spinner');
       expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    describe('the category options', () => {
+      const categorySelect = () =>
+        fixture.debugElement.queryAll(By.directive(MatSelect))
+          .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!;
+
+      afterEach(() => {
+        document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+      });
+
+      // The viewValue is what typeahead matches; an icon nested in a wrapper
+      // put its ligature in front of every name.
+      it('names each option by its category alone', () => {
+        expect(categorySelect().injector.get(MatSelect).options.map(option => option.viewValue))
+          .toEqual(['Food & Drinks', 'Transportation']);
+      });
+
+      it('sizes each option icon at --text-lg, a square of it', () => {
+        // A pin: `mat-option > mat-icon` keeps the size the icon's old `!text-lg` class gave it.
+        (categorySelect().nativeElement.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
+        fixture.detectChanges();
+
+        const icons = Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-select-panel mat-option mat-icon'));
+        expect(icons.length).toBe(2);
+        const probe = document.createElement('span');
+        probe.style.fontSize = 'var(--text-lg)';
+        document.body.appendChild(probe);
+        const expected = getComputedStyle(probe).fontSize;
+        probe.remove();
+        for (const icon of icons) {
+          const style = getComputedStyle(icon);
+          expect(style.fontSize).toBe(expected);
+          expect(style.width).toBe(expected);
+          expect(style.height).toBe(expected);
+        }
+      });
     });
   });
 

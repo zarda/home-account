@@ -347,7 +347,10 @@
   gap: 12px;
 }
 
-.category-option mat-icon {
+// An option's icon stays its direct child: MatOption puts anything else into
+// the label, whose text is the name typeahead matches.
+.category-option mat-icon,
+mat-option > mat-icon {
   font-size: var(--text-xl);
   width: 1em;
   height: 1em;

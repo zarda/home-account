@@ -84,6 +84,23 @@
  * indicator sits inside is actually the one announcing the state, only that
  * something declared the choice deliberately.
  *
+ * A third rule keeps an option's icon out of its name. MatOption projects a
+ * `mat-icon` that is its own direct child into a slot beside its label, and
+ * everything else into the label, whose text is the option's `viewValue`:
+ * what a closed select shows, what typeahead matches and what the trigger
+ * announces. An icon wrapped in a `<div>` or `<span>` with the name goes into
+ * the label with it, so its ligature leads the name. Four category selects
+ * had that shape: typeahead matched icon names on all four, and the split
+ * part's closed field read "restaurantFood". The open list looked right,
+ * because the icon font draws the ligature as a glyph. The rule: inside a
+ * `mat-option`, a `mat-icon` has no element between it and the option.
+ * Control-flow blocks are not elements and do not count — a block whose only
+ * root is the icon is projected as the icon.
+ *
+ * What it cannot see: a block that holds the icon beside other nodes, which
+ * Angular projects as a whole into the label; and an `ngProjectAs` wrapper,
+ * which it flags although it would be projected into the icon's slot.
+ *
  * Reference documentation lives in docs/accessibility.md.
  */
 
@@ -221,6 +238,51 @@ export function scanProgress(source) {
   return hits;
 }
 
+/**
+ * Any opening or closing tag. The attribute part steps over quoted values
+ * whole, so a binding such as `[class.wide]="a > b"` does not end the tag.
+ */
+const ANY_TAG = /<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g;
+
+/** Elements that never close, so they never hold an icon. */
+const VOID_ELEMENTS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr',
+]);
+
+/**
+ * Every `mat-icon` inside a `mat-option` with an element between the two.
+ * Returns `{ line, wrapper }` for each, `wrapper` being the element it sits
+ * in.
+ */
+export function scanOptionIcons(source) {
+  const masked = maskComments(source);
+  const hits = [];
+  // The elements open inside the current option, innermost last; null while
+  // outside any option.
+  let open = null;
+  ANY_TAG.lastIndex = 0;
+  let match;
+  while ((match = ANY_TAG.exec(masked)) !== null) {
+    const [, closing, rawName, attrs] = match;
+    const name = rawName.toLowerCase();
+    const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
+    if (open === null) {
+      if (!closing && !selfClosing && name === 'mat-option') open = [];
+      continue;
+    }
+    if (closing) {
+      if (open.length === 0) open = null;
+      else open.pop();
+      continue;
+    }
+    if (name === 'mat-icon' && open.length > 0) {
+      hits.push({ line: lineOf(masked, match.index), wrapper: open[open.length - 1] });
+    }
+    if (!selfClosing) open.push(name);
+  }
+  return hits;
+}
+
 function walk(dir, found = []) {
   for (const entry of readdirSync(dir)) {
     if (SKIP_DIRS.has(entry)) continue;
@@ -244,6 +306,7 @@ function run() {
   let named = 0;
   let progressTags = 0;
   let progressNamed = 0;
+  let optionFiles = 0;
 
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
@@ -263,6 +326,12 @@ function run() {
       }
       for (const hit of scan(source)) {
         findings.push({ rule: 'icon', site: `${posix(file)}:${hit.line}`, tag: 'mat-icon', attrs: hit.attrs });
+      }
+      if (/<mat-option\b/.test(masked)) {
+        optionFiles++;
+        for (const hit of scanOptionIcons(source)) {
+          findings.push({ rule: 'option', site: `${posix(file)}:${hit.line}`, tag: 'mat-icon', wrapper: hit.wrapper });
+        }
       }
     }
 
@@ -289,11 +358,13 @@ function run() {
       `mat-progress-spinner): ${progressNamed} carry a name or are hidden inside a control ` +
       `that already announces it.`
   );
+  console.log(`Checked the option icons in ${optionFiles} file(s) that hold both a mat-option and a mat-icon.`);
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
     const iconFindings = findings.filter((f) => f.rule === 'icon');
     const progressFindings = findings.filter((f) => f.rule === 'progress');
+    const optionFindings = findings.filter((f) => f.rule === 'option');
 
     if (iconFindings.length > 0) {
       console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
@@ -332,12 +403,30 @@ function run() {
       );
     }
 
+    if (optionFindings.length > 0) {
+      console.error(`\n${optionFindings.length} option icon(s) sit inside the option's name:\n`);
+      for (const finding of optionFindings) {
+        console.error(`  ${finding.site}  <mat-icon> inside <${finding.wrapper}>`);
+        console.error(`    → make the mat-icon a direct child of the mat-option\n`);
+      }
+      console.error(
+        `MatOption projects only a mat-icon that is its own direct child beside its\n` +
+          `label; anything else, an icon in a wrapper included, goes into the label,\n` +
+          `whose text is the option's viewValue. The icon's ligature then leads the\n` +
+          `name in a closed select, in typeahead and in what the trigger announces.\n` +
+          `Drop the wrapper, as recurring-form-dialog.component.html does, and size\n` +
+          `the icon with a \`mat-option > mat-icon\` rule if it needs a size.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
   console.log(
-    `Every named mat-icon carries a literal aria-hidden, and every progress indicator ` +
-      `carries a name or is hidden inside the control that already announces it.`
+    `Every named mat-icon carries a literal aria-hidden, every progress indicator ` +
+      `carries a name or is hidden inside the control that already announces it, and ` +
+      `every option icon sits beside its option's name.`
   );
 }
 
@@ -469,6 +558,87 @@ function selfTest() {
       (hit) => hit.attrs
     ),
     ['mode="determinate" [value]="v"']
+  );
+
+  // --- the option rule: must hit ---
+  const optionLines = (source) => scanOptionIcons(source).map((hit) => hit.line);
+
+  check(
+    'an icon in a div beside the name, the shape four selects had',
+    optionLines(
+      '<mat-option [value]="cat.id">\n  <div class="category-option">\n' +
+        '    <mat-icon [style.color]="cat.color">{{ cat.icon }}</mat-icon>\n' +
+        '    <span>{{ cat.name | translate }}</span>\n  </div>\n</mat-option>'
+    ),
+    [3]
+  );
+  check(
+    'an icon in a span whose binding holds a >',
+    optionLines('<mat-option><span [class.wide]="a > b"><mat-icon>x</mat-icon></span></mat-option>'),
+    [1]
+  );
+  check(
+    'an icon two wrappers deep',
+    optionLines('<mat-option><div><span><mat-icon>x</mat-icon></span></div></mat-option>'),
+    [1]
+  );
+  check(
+    'an ng-container is a wrapper too',
+    optionLines('<mat-option><ng-container><mat-icon>x</mat-icon></ng-container></mat-option>'),
+    [1]
+  );
+  check(
+    'a wrapped icon after a direct one in the same option',
+    optionLines('<mat-option><mat-icon>a</mat-icon>\n<span><mat-icon>b</mat-icon></span></mat-option>'),
+    [2]
+  );
+  check(
+    'the wrapper is named in the report',
+    scanOptionIcons('<mat-option><span class="x"><mat-icon>a</mat-icon></span></mat-option>').map(
+      (hit) => hit.wrapper
+    ),
+    ['span']
+  );
+
+  // --- the option rule: must not hit (the load-bearing half) ---
+  check(
+    'an icon that is the option\'s direct child',
+    optionLines(
+      '<mat-option [value]="category.id">\n  <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>\n' +
+        '  {{ category.name | translate }}\n</mat-option>'
+    ),
+    []
+  );
+  check(
+    'an icon whose only parent is a control-flow block',
+    optionLines(
+      '<mat-option [value]="p.value">\n  {{ p.label }}\n  @if (ok(p)) {\n' +
+        '    <mat-icon class="option-status">check_circle</mat-icon>\n  }\n</mat-option>'
+    ),
+    []
+  );
+  check(
+    'a void or self-closing element before the icon does not wrap it',
+    optionLines('<mat-option><img src="a.png"><br><app-flag /><mat-icon>x</mat-icon></mat-option>'),
+    []
+  );
+  check(
+    'a wrapped icon in a select trigger is not in an option',
+    optionLines(
+      '<mat-select-trigger><div class="category-option"><mat-icon>x</mat-icon></div></mat-select-trigger>\n' +
+        '<mat-option><mat-icon>x</mat-icon>Food</mat-option>'
+    ),
+    []
+  );
+  check(
+    'a wrapped icon after the option has closed',
+    optionLines('<mat-option>Food</mat-option>\n<button><span><mat-icon>close</mat-icon></span></button>'),
+    []
+  );
+  check(
+    'a commented-out wrapped option is not an option',
+    optionLines('<!-- <mat-option><div><mat-icon>x</mat-icon></div></mat-option> -->'),
+    []
   );
 
   const failed = cases.filter((c) => !c.ok);

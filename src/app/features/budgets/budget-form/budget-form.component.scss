@@ -9,6 +9,14 @@ mat-dialog-actions {
   border-color: var(--border-primary);
 }
 
+// A category option's icon stays its direct child: MatOption puts anything
+// else into the label, whose text is the name typeahead matches.
+mat-option > mat-icon {
+  font-size: var(--text-lg);
+  width: 1em;
+  height: 1em;
+}
+
 .threshold-section {
   .slider-container {
     width: 100%;

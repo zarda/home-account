@@ -29,12 +29,8 @@
           </mat-select-trigger>
           @for (category of expenseCategories(); track category.id) {
             <mat-option [value]="category.id">
-              <div class="flex items-center gap-2">
-                <mat-icon [style.color]="category.color" class="!text-lg">
-                  {{ category.icon }}
-                </mat-icon>
-                <span>{{ category.name | translate }}</span>
-              </div>
+              <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+              {{ category.name | translate }}
             </mat-option>
           }
         </mat-select>

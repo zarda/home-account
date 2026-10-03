@@ -1,11 +1,12 @@
 import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { EnvironmentInjector, NO_ERRORS_SCHEMA, createComponent } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
@@ -2739,17 +2740,24 @@ describe('TransactionFormComponent, through its own template', () => {
     fixture.detectChanges();
   }
 
-  /** The category select's panel renders into the CDK overlay. */
+  /**
+   * What each category option answers to: its viewValue, which typeahead
+   * matches and a plain trigger shows. An option's own text also carries its
+   * icon's ligature, so the panel's text is not the name.
+   */
   function categoryOptions(): string[] {
     // By control name, not by position: the currency select is rendered first.
+    const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+      .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!;
+    return select.injector.get(MatSelect).options.map(option => option.viewValue);
+  }
+
+  /** The category select's panel renders into the CDK overlay. */
+  function openCategoryPanel(): HTMLElement {
     const trigger = el().querySelector('mat-select[formControlName="categoryId"]') as HTMLElement;
     (trigger.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
     fixture.detectChanges();
-    const panel = document.querySelector('.mat-mdc-select-panel') as HTMLElement;
-    const names = Array.from(panel.querySelectorAll('mat-option')).map(o => o.textContent?.trim() ?? '');
-    (document.querySelector('.cdk-overlay-backdrop') as HTMLElement | null)?.click();
-    fixture.detectChanges();
-    return names;
+    return document.querySelector('.mat-mdc-select-panel') as HTMLElement;
   }
 
   afterEach(() => {
@@ -2945,15 +2953,30 @@ describe('TransactionFormComponent, through its own template', () => {
 
   it('swaps the category list when the type toggle is flipped', () => {
     render();
-    expect(categoryOptions().some(name => name.includes('food'))).toBeTrue();
+    expect(categoryOptions()).toEqual(['food']);
 
     toggle('income').click();
     fixture.detectChanges();
 
     expect(component.form.get('type')?.value).toBe('income');
-    const incomeOptions = categoryOptions();
-    expect(incomeOptions.some(name => name.includes('salary'))).toBeTrue();
-    expect(incomeOptions.some(name => name.includes('food'))).toBeFalse();
+    expect(categoryOptions()).toEqual(['salary']);
+  });
+
+  it('sizes each category option icon at --text-xl, a square of it', () => {
+    // A pin: `mat-option > mat-icon` keeps the size the icon had inside its old wrapper.
+    render();
+
+    const icons = Array.from(openCategoryPanel().querySelectorAll<HTMLElement>('mat-option mat-icon'));
+    expect(icons.length).toBe(1);
+    const probe = document.createElement('span');
+    probe.style.fontSize = 'var(--text-xl)';
+    document.body.appendChild(probe);
+    const expected = getComputedStyle(probe).fontSize;
+    probe.remove();
+    const style = getComputedStyle(icons[0]);
+    expect(style.fontSize).toBe(expected);
+    expect(style.width).toBe(expected);
+    expect(style.height).toBe(expected);
   });
 
   it('offers both receipt affordances while an engine is available', () => {

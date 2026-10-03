@@ -220,10 +220,8 @@
           </mat-select-trigger>
           @for (cat of filteredCategories(); track cat.id) {
             <mat-option [value]="cat.id">
-              <div class="category-option">
-                <mat-icon [style.color]="cat.color">{{ cat.icon }}</mat-icon>
-                <span>{{ cat.name | translate }}</span>
-              </div>
+              <mat-icon [style.color]="cat.color">{{ cat.icon }}</mat-icon>
+              {{ cat.name | translate }}
             </mat-option>
           }
         </mat-select>
