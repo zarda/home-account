@@ -5,6 +5,12 @@ import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { LoginComponent } from './login.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
+} from '../../../core/services/testing/painted-contrast';
 
 describe('LoginComponent', () => {
   let component: LoginComponent;
@@ -192,6 +198,52 @@ describe('LoginComponent', () => {
       const errorDiv = fixture.nativeElement.querySelector('.error-message');
       expect(errorDiv).toBeTruthy();
       expect(errorDiv.textContent).toContain('Sign-in was cancelled');
+    });
+  });
+
+  describe('colours', () => {
+    /**
+     * The glass card is translucent over the page's gradient, which the
+     * painted-contrast walk cannot read. So the gradient's own stops, read
+     * from the computed style, are laid under the card one at a time as a
+     * flat fill: the text has to read wherever the gradient shows through.
+     */
+    function gradientStops(container: HTMLElement): string[] {
+      return getComputedStyle(container).backgroundImage.match(/rgba?\([^)]*\)/g) ?? [];
+    }
+
+    function expectReadableOverEveryStop(selector: string, theme: 'light' | 'dark'): void {
+      const host = fixture.nativeElement as HTMLElement;
+      const container = host.querySelector('.login-container') as HTMLElement;
+      const text = host.querySelector(selector) as HTMLElement;
+      const stops = gradientStops(container);
+      expect(stops.length).withContext(`${theme} gradient stops behind the card`).toBeGreaterThanOrEqual(2);
+      for (const stop of stops) {
+        container.style.backgroundColor = stop;
+        try {
+          expect(ratio(paintedColor(text), paintedBackground(text)))
+            .withContext(`${theme} ${selector} over the glass card on ${stop}`)
+            .toBeGreaterThanOrEqual(4.5);
+        } finally {
+          container.style.backgroundColor = '';
+        }
+      }
+    }
+
+    it('paints the subtitle at AA or better over the glass card, through its own fade, in both themes', () => {
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => expectReadableOverEveryStop('mat-card-subtitle', theme));
+      }
+    });
+
+    it('paints the title, the sign-in line and the terms notice at AA or better over the glass card, in both themes', () => {
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          for (const selector of ['mat-card-title', 'mat-card-content > p', 'mat-card-footer']) {
+            expectReadableOverEveryStop(selector, theme);
+          }
+        });
+      }
     });
   });
 });

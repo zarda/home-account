@@ -116,11 +116,14 @@ mat-card-header {
   padding: 2rem 1.5rem 1rem !important;
 
   .mat-mdc-card-title {
-    @apply text-gray-900 dark:text-gray-100;
+    color: var(--text-primary);
   }
 
+  // Secondary, not muted: the template fades the subtitle to 80% over the
+  // translucent card, and --text-muted measures 4.13:1 there on the light
+  // gradient's middle stop.
   .mat-mdc-card-subtitle {
-    @apply text-gray-600 dark:text-gray-400;
+    color: var(--text-secondary);
   }
 }
 

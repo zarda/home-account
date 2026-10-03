@@ -213,18 +213,6 @@ const BASELINE = {
     'dark:text-gray-400': 1,
     'text-gray-500': 1,
   },
-  'src/app/features/auth/login/login.component.html': {
-    'dark:text-gray-300': 1,
-    'dark:text-gray-400': 1,
-    'text-gray-500': 1,
-    'text-gray-600': 1,
-  },
-  'src/app/features/auth/login/login.component.scss': {
-    'dark:text-gray-100': 1,
-    'dark:text-gray-400': 1,
-    'text-gray-600': 1,
-    'text-gray-900': 1,
-  },
   'src/app/features/budgets/budget-form/budget-form.component.html': {
     'dark:text-gray-200': 1,
     'dark:text-gray-400': 1,
@@ -590,36 +578,6 @@ const BASELINE = {
     'text-gray-700': 1,
     'text-gray-900': 1,
     'text-primary-600': 2,
-  },
-  'src/app/shared/components/ai-search-dialog/ai-search-dialog.component.scss': {
-    'border-gray-200': 1,
-    'dark:border-gray-700': 1,
-    'dark:text-gray-400': 6,
-    'text-gray-500': 6,
-  },
-  'src/app/shared/components/confirm-dialog/confirm-dialog.component.html': {
-    'bg-primary-100': 1,
-    'bg-red-100': 1,
-    'border-gray-300': 1,
-    'dark:bg-primary-900': 1,
-    'dark:bg-red-900': 1,
-    'dark:border-gray-600': 1,
-    'dark:text-gray-100': 2,
-    'dark:text-gray-300': 1,
-    'dark:text-primary-400': 1,
-    'dark:text-red-400': 1,
-    'text-gray-600': 1,
-    'text-gray-900': 2,
-    'text-primary-600': 1,
-    'text-red-600': 1,
-  },
-  'src/app/shared/components/currency-code-dialog/currency-code-dialog.component.html': {
-    'dark:text-gray-100': 1,
-    'text-gray-900': 1,
-  },
-  'src/app/shared/components/nl-answer-card/nl-answer-card.component.scss': {
-    'dark:text-gray-400': 2,
-    'text-gray-500': 2,
   },
 };
 

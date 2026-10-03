@@ -13,7 +13,7 @@
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .answer-value {
@@ -28,7 +28,7 @@
 .answer-computed-at {
   margin: 0;
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .answer-computed-at {

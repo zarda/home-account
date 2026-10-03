@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 export interface ConfirmDialogData {
@@ -23,7 +24,7 @@ export interface ConfirmDialogData {
 @Component({
   selector: 'app-confirm-dialog',
   standalone: true,
-  imports: [MatDialogModule, MatButtonModule, MatIconModule, TranslatePipe],
+  imports: [MatDialogModule, MatButtonModule, MatIconModule, MatInputModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './confirm-dialog.component.html',
   styleUrl: './confirm-dialog.component.scss',

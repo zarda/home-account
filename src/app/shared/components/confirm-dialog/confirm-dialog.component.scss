@@ -1,1 +1,8 @@
 /* Confirm Dialog Component Styles */
+
+// The default icon's circle. --color-primary-light would vanish on the light
+// dialog (1.06:1), so the circle mixes its own tint into the surface it
+// sits on, which keeps it opaque and visible in both themes.
+.icon-circle-brand {
+  background: color-mix(in srgb, var(--color-primary) 30%, var(--mat-sys-surface));
+}
