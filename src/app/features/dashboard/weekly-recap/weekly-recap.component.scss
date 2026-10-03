@@ -27,18 +27,18 @@
 .card-title {
   font-size: var(--text-lg);
   font-weight: 600;
-  @apply text-gray-900 dark:text-gray-100;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .recap-range {
   font-size: var(--text-xs);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .recap-dismiss {
   flex-shrink: 0;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .card-content {
@@ -60,7 +60,7 @@
 
 .spend-label {
   font-size: var(--text-sm);
-  @apply text-gray-600 dark:text-gray-300;
+  color: var(--text-secondary);
 }
 
 .recap-delta {
@@ -69,7 +69,7 @@
   padding: 2px 8px;
   border-radius: var(--radius-full);
   background: var(--surface-muted);
-  @apply text-gray-600 dark:text-gray-300;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -96,7 +96,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .category-chips {
@@ -121,7 +121,7 @@
 
 .chip-name {
   font-size: var(--text-sm);
-  @apply text-gray-700 dark:text-gray-200;
+  color: var(--text-secondary);
 }
 
 .fact {
@@ -131,7 +131,7 @@
   gap: 8px;
   margin: 0;
   font-size: var(--text-sm);
-  @apply text-gray-700 dark:text-gray-200;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -139,14 +139,14 @@
 // converts live — this says so beside the figure it qualifies.
 .rate-caption {
   font-size: var(--text-xs);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .narrative {
   margin: 0;
   font-size: var(--text-sm);
   line-height: 1.5;
-  @apply text-gray-700 dark:text-gray-300;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -154,7 +154,7 @@
 // week's figures are the card, and the sentence is the extra.
 .narrative-quiet {
   font-style: italic;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .card-footer {
@@ -163,10 +163,13 @@
   border-block-start: 1px solid var(--surface-muted);
 }
 
+// Material's text-button rule paints the label at the same specificity as a
+// colour here, so which one wins would depend on the order the stylesheets
+// loaded in; its own token is read either way.
 .recap-see-transactions {
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-indigo-600 dark:text-indigo-400;
+  --mat-button-text-label-text-color: var(--color-accent);
 }
 
 .footer-icon {

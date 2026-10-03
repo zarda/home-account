@@ -12,7 +12,8 @@ import { RagContextService } from '../../../core/services/rag-context.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
 import {
-  createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
+  channels, createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
+  hoverValue, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
 } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
@@ -627,5 +628,196 @@ describe('AiSummaryComponent, through its own template', () => {
     (el().querySelector('.refresh-btn') as HTMLButtonElement).click();
 
     expect(refreshed).toHaveBeenCalled();
+  });
+
+  describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function showContent(): void {
+      render();
+      component.isLoading.set(false);
+      component.hasError.set(false);
+      component.summary.set('Groceries are **up** 18%.');
+      component.advice.set('Try a weekly cap.');
+      fixture.detectChanges();
+    }
+
+    function find(selector: string): HTMLElement {
+      const found = el().querySelector(selector) as HTMLElement | null;
+      expect(found).withContext(selector).toBeTruthy();
+      return found as HTMLElement;
+    }
+
+    /**
+     * The colours of the card's gradient, as computed. Each top-level
+     * argument that is a colour once its stop position is dropped counts,
+     * so a `color-mix()` stop is read whole rather than as its operands.
+     */
+    function gradientStops(card: HTMLElement): string[] {
+      const image = getComputedStyle(card).backgroundImage;
+      const body = /^linear-gradient\((.*)\)$/.exec(image)?.[1] ?? '';
+      const parts: string[] = [];
+      let depth = 0;
+      let start = 0;
+      for (let i = 0; i < body.length; i++) {
+        if (body[i] === '(') depth++;
+        else if (body[i] === ')') depth--;
+        else if (body[i] === ',' && depth === 0) {
+          parts.push(body.slice(start, i).trim());
+          start = i + 1;
+        }
+      }
+      parts.push(body.slice(start).trim());
+      return parts
+        .map(part => part.replace(/\s+-?[\d.]+(?:%|px)$/, ''))
+        .filter(part => CSS.supports('color', part));
+    }
+
+    /**
+     * Runs `check` once per stop of the card's gradient, with that stop laid
+     * flat under the card's content. The painted-contrast walk reads
+     * background colours, not images, and the gradient is painted over the
+     * card's own background colour, so that colour goes one level down.
+     */
+    function overEveryStop(theme: string, check: (stop: string) => void): void {
+      const card = find('.ai-summary-card');
+      const host = el();
+      const stops = gradientStops(card);
+      expect(stops.length).withContext(`${theme} gradient stops on the card`).toBeGreaterThanOrEqual(2);
+      host.style.backgroundColor = getComputedStyle(card).backgroundColor;
+      card.style.backgroundImage = 'none';
+      try {
+        for (const stop of stops) {
+          card.style.backgroundColor = stop;
+          check(stop);
+        }
+      } finally {
+        card.style.removeProperty('background-color');
+        card.style.removeProperty('background-image');
+        host.style.removeProperty('background-color');
+      }
+    }
+
+    function expectOnItsBackground(target: HTMLElement, floor: number, context: string): void {
+      expect(ratio(paintedColor(target), paintedBackground(target)))
+        .withContext(context)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    it('paints the advice header, its icon and its body in the warning text on an opaque warning tint, at AA or better, in both themes', () => {
+      showContent();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const advice = find('.advice-section');
+          expect(channels(getComputedStyle(advice).backgroundColor).alpha)
+            .withContext(`${theme} advice tint is opaque`)
+            .toBe(1);
+          const parts = [
+            ['header', '.advice-header span', 4.5],
+            ['icon', '.advice-header mat-icon', 3],
+            ['body', '.advice-text', 4.5],
+          ] as const;
+          for (const [label, selector, floor] of parts) {
+            const part = find(selector);
+            expectOnItsBackground(part, floor, `${theme} advice ${label} on its tint`);
+            expect(getComputedStyle(part).color)
+              .withContext(`${theme} advice ${label}`)
+              .toBe(tokenColour('--color-warning-text'));
+          }
+        });
+      }
+    });
+
+    it('paints the failure in the error text on an opaque error tint, at AA or better, in both themes', () => {
+      render();
+      component.isLoading.set(false);
+      component.hasError.set(true);
+      fixture.detectChanges();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const state = find('.error-state');
+          expect(channels(getComputedStyle(state).backgroundColor).alpha)
+            .withContext(`${theme} error tint is opaque`)
+            .toBe(1);
+          const parts = [
+            ['text', '.error-state span', 4.5],
+            ['icon', '.error-state mat-icon', 3],
+          ] as const;
+          for (const [label, selector, floor] of parts) {
+            const part = find(selector);
+            expectOnItsBackground(part, floor, `${theme} error ${label} on its tint`);
+            expect(getComputedStyle(part).color)
+              .withContext(`${theme} error ${label}`)
+              .toBe(tokenColour('--color-error-text'));
+          }
+        });
+      }
+    });
+
+    it('paints the title and the AI icon in the brand text over every stop of the gradient, in both themes', () => {
+      showContent();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const title = find('.title');
+          const icon = find('.ai-icon');
+          overEveryStop(theme, stop => {
+            expectOnItsBackground(title, 4.5, `${theme} title on ${stop}`);
+            expectOnItsBackground(icon, 3, `${theme} AI icon on ${stop}`);
+          });
+          expect(getComputedStyle(title).color).withContext(`${theme} title`).toBe(tokenColour('--color-primary-text'));
+          expect(getComputedStyle(icon).color).withContext(`${theme} AI icon`).toBe(tokenColour('--color-primary-text'));
+        });
+      }
+    });
+
+    it('paints the summary at AA or better over every stop of the gradient, in both themes', () => {
+      showContent();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const paragraph = find('.structured-content p');
+          const emphasis = find('.structured-content strong');
+          overEveryStop(theme, stop => {
+            expectOnItsBackground(paragraph, 4.5, `${theme} summary on ${stop}`);
+            expectOnItsBackground(emphasis, 4.5, `${theme} summary emphasis on ${stop}`);
+          });
+        });
+      }
+    });
+
+    it('paints the refresh icon in the muted text at rest and the primary text hovered, over every stop, in both themes', () => {
+      showContent();
+      const button = find('.refresh-btn');
+      const icon = find('.refresh-btn mat-icon');
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          try {
+            const rest = getComputedStyle(icon).color;
+            expect(rest).withContext(`${theme} refresh at rest`).toBe(tokenColour('--text-muted'));
+            overEveryStop(theme, stop => expectOnItsBackground(icon, 3, `${theme} refresh at rest on ${stop}`));
+
+            button.style.color = hoverValue(button, '.refresh-btn', 'color');
+            const hovered = getComputedStyle(icon).color;
+            expect(hovered).withContext(`${theme} refresh hovered`).toBe(tokenColour('--text-primary'));
+            expect(hovered).withContext(`${theme} refresh hover differs from rest`).not.toBe(rest);
+            overEveryStop(theme, stop => expectOnItsBackground(icon, 3, `${theme} refresh hovered on ${stop}`));
+          } finally {
+            button.style.removeProperty('color');
+          }
+        });
+      }
+    });
   });
 });

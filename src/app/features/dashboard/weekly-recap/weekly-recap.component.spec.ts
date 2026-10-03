@@ -15,6 +15,13 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { RecapFigures } from '../../../core/utils/weekly-recap.utils';
 import { DateWindow, addDays } from '../../../core/utils/transaction-date.utils';
 import { BudgetAlert, Category, RecurringOccurrence } from '../../../models';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 /** The week the stubbed service always claims to be recapping. */
 const WINDOW: DateWindow = {
@@ -376,5 +383,78 @@ describe('WeeklyRecapComponent', () => {
     // storage, so one running before the write would re-book what it retires.
     expect(reminders.sweep).toHaveBeenCalledTimes(1);
     expect(recap.dismiss).toHaveBeenCalledBefore(reminders.sweep);
+  });
+
+  // Not the up and down deltas: those were already the expense and income
+  // tones on their own tints.
+  describe('colours', () => {
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function expectLines(lines: readonly (readonly [string, string, string])[]): void {
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          for (const [label, selector, token] of lines) {
+            const el = (fixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
+            expect(el).withContext(label).toBeTruthy();
+            expect(ratio(paintedColor(el), paintedBackground(el)))
+              .withContext(`${theme} ${label} on what it sits on`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(el).color)
+              .withContext(`${theme} ${label}`)
+              .toBe(tokenColour(token));
+          }
+        });
+      }
+    }
+
+    it('paints every line in its text token, at AA or better, in both themes', () => {
+      recap.figures.set(
+        figures({
+          spendDelta: null,
+          topCategories: [{ categoryId: 'food', total: 120, count: 4, share: 0.38 }],
+        })
+      );
+      recap.narrative.set('You spent less than the week before.');
+      recap.narrativeStatus.set('ready');
+      render({ upcoming: [occurrence({ recurringId: 'r1', amount: 100 })] });
+
+      expectLines([
+        ['title', '.card-title', '--text-primary'],
+        ['range', '.recap-range', '--text-muted'],
+        ['dismiss icon', '.recap-dismiss mat-icon', '--text-muted'],
+        ['spend label', '.spend-label', '--text-secondary'],
+        ['neutral delta on its chip', '.recap-delta', '--text-secondary'],
+        ['section label', '.section-label', '--text-muted'],
+        ['category name on its chip', '.chip-name', '--text-secondary'],
+        ['budgets fact', '.recap-budgets', '--text-secondary'],
+        ['bills fact', '.recap-bills .fact-text', '--text-secondary'],
+        ['rate caption', '.rate-caption', '--text-muted'],
+        ['narrative', '.recap-narrative', '--text-secondary'],
+      ]);
+    });
+
+    it('paints a pending narrative in the muted text, at AA or better, in both themes', () => {
+      recap.narrativeStatus.set('loading');
+      render();
+
+      expectLines([['quiet narrative', '.recap-narrative', '--text-muted']]);
+    });
+
+    it('paints See transactions in the accent, at AA or better on the card, in both themes', () => {
+      render();
+
+      expectLines([['see transactions', '.recap-see-transactions .mdc-button__label', '--color-accent']]);
+    });
   });
 });

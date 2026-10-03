@@ -9,6 +9,14 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { Category } from '../../../models';
+import {
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('SpendingChartComponent', () => {
   let component: SpendingChartComponent;
@@ -415,6 +423,66 @@ describe('SpendingChartComponent', () => {
       chart.chartClick.emit({ active: [{ index: 1 }] });
 
       expect(activated).toEqual(['cat2']);
+    });
+
+    // Not the legend glyph or the progress bar: those paint the category's
+    // own colour.
+    describe('colours', () => {
+      /** What `color: var(token)` computes to under the palette on <html> now. */
+      function tokenColour(token: string): string {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        document.body.appendChild(probe);
+        try {
+          settleAnimations(document);
+          return getComputedStyle(probe).color;
+        } finally {
+          probe.remove();
+        }
+      }
+
+      it('paints the title in the primary text token, at AA or better on the card, in both themes', () => {
+        const title = realFixture.nativeElement.querySelector('.card-title') as HTMLElement;
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            expect(ratio(paintedColor(title), paintedBackground(title)))
+              .withContext(`${theme} title on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(title).color)
+              .withContext(`${theme} title`)
+              .toBe(tokenColour('--text-primary'));
+          });
+        }
+      });
+
+      it('paints each legend line in its text token, at AA or better on the row at rest and hovered, in both themes', () => {
+        const row = realFixture.nativeElement.querySelector('.legend-item') as HTMLElement;
+        const lines = [
+          ['name', '.legend-name', '--text-primary'],
+          ['amount', '.legend-amount', '--text-primary'],
+          ['percentage', '.legend-percentage', '--text-muted'],
+        ] as const;
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            try {
+              for (const state of ['at rest', 'hovered'] as const) {
+                if (state === 'hovered') row.style.background = hoverValue(row, '.legend-item', 'background');
+                for (const [label, selector, token] of lines) {
+                  const el = row.querySelector(selector) as HTMLElement;
+                  expect(ratio(paintedColor(el), paintedBackground(el)))
+                    .withContext(`${theme} ${label} on the row ${state}`)
+                    .toBeGreaterThanOrEqual(4.5);
+                  expect(getComputedStyle(el).color)
+                    .withContext(`${theme} ${label}`)
+                    .toBe(tokenColour(token));
+                }
+              }
+            } finally {
+              row.style.removeProperty('background');
+            }
+          });
+        }
+      });
     });
   });
 });
