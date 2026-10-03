@@ -174,19 +174,11 @@ const BASELINE_CATEGORY = {
   'src/app/features/budgets/recurring-transactions/recurring-form-dialog/recurring-form-dialog.component.html': {
     '[style.color]': 1,
   },
-  'src/app/features/budgets/recurring-transactions/recurring-transactions.component.html': {
-    '[style.background-color]': 1,
-    '[style.color]': 1,
-  },
   'src/app/features/dashboard/budget-progress/budget-progress.component.html': {
     '[style.color]': 1,
   },
   'src/app/features/dashboard/spending-chart/spending-chart.component.html': {
     '[style.background-color]': 2,
-  },
-  'src/app/features/dashboard/upcoming-bills/upcoming-bills.component.html': {
-    '[style.background-color]': 1,
-    '[style.color]': 1,
   },
   'src/app/features/household/household-plans/household-budget-dialog/household-budget-dialog.component.html': {
     '[style.color]': 1,
@@ -198,8 +190,8 @@ const BASELINE_CATEGORY = {
     '[style.background-color]': 1,
   },
   'src/app/features/settings/category-manager/category-form-dialog/category-form-dialog.component.html': {
-    '[style.background-color]': 2,
-    '[style.color]': 2,
+    '[style.background-color]': 1,
+    '[style.color]': 1,
   },
   'src/app/features/transactions/transaction-form/split-parts/split-parts.component.html': {
     '[style.color]': 1,

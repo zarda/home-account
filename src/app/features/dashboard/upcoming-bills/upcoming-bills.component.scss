@@ -78,22 +78,6 @@
   min-height: 44px;
 }
 
-.bill-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  mat-icon {
-    font-size: var(--text-lg);
-    width: 1em;
-    height: 1em;
-  }
-}
-
 .bill-text {
   display: flex;
   flex-direction: column;

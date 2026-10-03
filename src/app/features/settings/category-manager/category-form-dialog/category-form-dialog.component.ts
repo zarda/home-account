@@ -9,6 +9,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import { CATEGORY_PALETTE, Category } from '../../../../models';
+import { CategoryChipComponent } from '../../../../shared/components/category-chip/category-chip.component';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
@@ -29,6 +30,7 @@ const CATEGORY_ICONS = [
   selector: 'app-category-form-dialog',
   standalone: true,
   imports: [
+    CategoryChipComponent,
     DialogHeaderComponent,
     CommonModule,
     FormsModule,

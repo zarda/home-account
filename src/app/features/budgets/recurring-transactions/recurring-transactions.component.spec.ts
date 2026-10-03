@@ -13,16 +13,26 @@ import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { CurrencyService } from '../../../core/services/currency.service';
-import { RecurringTransaction, Category } from '../../../models';
+import { ThemeService } from '../../../core/services/theme.service';
+import {
+  CATEGORY_FALLBACK_COLOR,
+  CATEGORY_PALETTE,
+  Category,
+  DEFAULT_EXPENSE_GROUPS,
+  DEFAULT_INCOME_GROUPS,
+  RecurringTransaction,
+} from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
 import type { Rgb } from '../../../core/utils/color-contrast.utils';
 import {
+  AUDIT_SCHEMES,
   channels,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -658,6 +668,90 @@ describe('RecurringTransactionsComponent', () => {
             } finally {
               button.style.color = '';
             }
+          });
+        }
+      });
+
+      /**
+       * The category glyph in `card`'s header, at AA or better on the tile it
+       * is drawn on, and the tile redrawn for `scheme`, so the dark pass is
+       * not the light one again.
+       */
+      function expectGlyphOnTile(card: HTMLElement, scheme: 'light' | 'dark', label: string): void {
+        const glyph = card.querySelector('.card-header mat-icon') as HTMLElement;
+        expect(glyph).withContext(label).toBeTruthy();
+        const tile = paintedBackground(glyph.parentElement as HTMLElement);
+        expect(scheme === 'dark' ? Math.max(...tile) < 128 : Math.min(...tile) > 128)
+          .withContext(`${label} tile drawn for the scheme`)
+          .toBeTrue();
+        expect(ratio(paintedColor(glyph), tile))
+          .withContext(`${label} glyph on its tile`)
+          .toBeGreaterThanOrEqual(4.5);
+      }
+
+      // Every colour a category can take: the seeded ones, the picker's
+      // palette and the fallback for a missing category.
+      it('draws every category glyph at AA or better on its own tile, in both themes', () => {
+        const colours = [
+          ...new Set(
+            [
+              ...[...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color),
+              ...CATEGORY_PALETTE,
+              CATEGORY_FALLBACK_COLOR,
+            ].map(color => color.toLowerCase())
+          ),
+        ];
+        expect(colours.length).toBe(31);
+        const categories = colours.map((color, i) => ({ ...mockCategories[0], id: `cat${i}`, color }));
+        mockCategoryService.loadCategories.and.returnValue(of(categories));
+        const host = renderRules(
+          categories.map((category, i) => ({ ...mockRecurring[0], id: `rec${i}`, categoryId: category.id }))
+        );
+        host.style.backgroundColor = 'var(--surface-background)';
+
+        const cards = Array.from(host.querySelectorAll('.recurring-card')) as HTMLElement[];
+        expect(cards.length).toBe(colours.length);
+        for (const scheme of AUDIT_SCHEMES) {
+          withScheme(TestBed.inject(ThemeService), scheme, () => {
+            fixture.detectChanges();
+            cards.forEach((card, i) => expectGlyphOnTile(card, scheme, `${scheme} ${colours[i]}`));
+          });
+        }
+      });
+
+      // The Paused chip already says the rule is paused. Faded as well, the
+      // whole card falls under AA, the category glyph included.
+      it('leaves a paused rule unfaded, its category glyph at AA or better on its tile, in both themes', () => {
+        mockCategoryService.loadCategories.and.returnValue(of([{ ...mockCategories[0], color: '#FF9800' }]));
+        const host = renderRules([{ ...mockRecurring[0], isActive: false }]);
+        host.style.backgroundColor = 'var(--surface-background)';
+        const card = host.querySelector('.recurring-card') as HTMLElement;
+        expect(card.querySelector('.status-chip')).withContext('the rule is shown as paused').toBeTruthy();
+
+        for (const scheme of AUDIT_SCHEMES) {
+          withScheme(TestBed.inject(ThemeService), scheme, () => {
+            fixture.detectChanges();
+            settleAnimations(document);
+            expect(getComputedStyle(card).opacity).withContext(`${scheme} the paused card`).toBe('1');
+            expectGlyphOnTile(card, scheme, `${scheme} paused`);
+          });
+        }
+      });
+
+      // Material paints a chip's label from its own token, not from the
+      // colour set on the chip, so the label is read where it is painted.
+      it('paints the Paused chip as a warning, --color-warning-text on --color-warning-light at AA or better, in both themes', () => {
+        const host = renderRules([{ ...mockRecurring[0], isActive: false }]);
+        host.style.backgroundColor = 'var(--surface-background)';
+        const label = host.querySelector('.status-chip .mdc-evolution-chip__text-label') as HTMLElement;
+        expect(label).withContext('the rule is shown as paused').toBeTruthy();
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expect(paintedBackground(label))
+              .withContext(`${theme} the chip's container`)
+              .toEqual(channels(tokenValue('--color-warning-light', 'background-color')).rgb);
+            expectPainted(label, '--color-warning-text', `${theme} Paused label`);
           });
         }
       });

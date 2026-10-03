@@ -47,10 +47,6 @@
   &:hover {
     @apply shadow-md;
   }
-
-  &.paused {
-    opacity: 0.7;
-  }
 }
 
 .card-header {
@@ -58,22 +54,6 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-}
-
-.recurring-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  mat-icon {
-    font-size: var(--text-xl);
-    width: 1em;
-    height: 1em;
-  }
 }
 
 .header-content {
@@ -148,10 +128,12 @@
   margin-top: 4px;
 }
 
+// Material paints the chip's container and label from its own tokens; a
+// `color` on the host never reaches the label.
 .status-chip {
   &.paused {
-    background: var(--color-warning-light) !important;
-    color: var(--color-warning-text) !important;
+    --mat-chip-elevated-container-color: var(--color-warning-light);
+    --mat-chip-label-text-color: var(--color-warning-text);
     font-size: var(--text-xs);
     min-height: 24px;
     padding: 0 8px;

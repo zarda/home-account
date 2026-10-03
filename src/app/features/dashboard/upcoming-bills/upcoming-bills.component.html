@@ -33,14 +33,12 @@
                  unique inside one day group. -->
             @for (occurrence of day.occurrences; track occurrence.recurringId) {
               <div class="bill-row">
-                <div
-                  class="bill-icon"
-                  [style.background-color]="getCategoryColor(occurrence.categoryId) + '20'"
-                >
-                  <mat-icon [style.color]="getCategoryColor(occurrence.categoryId)">
-                    {{ getCategoryIcon(occurrence.categoryId) }}
-                  </mat-icon>
-                </div>
+                <app-category-chip
+                  appearance="tile"
+                  size="sm"
+                  [icon]="getCategoryIcon(occurrence.categoryId)"
+                  [color]="getCategoryColor(occurrence.categoryId)"
+                />
                 <div class="bill-text">
                   <span class="bill-name">{{ occurrence.name }}</span>
                   <span class="bill-category">{{ getCategoryName(occurrence.categoryId) }}</span>

@@ -3,17 +3,26 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { CategoryFormDialogComponent } from './category-form-dialog.component';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { ThemeService } from '../../../../core/services/theme.service';
 import {
+  AUDIT_SCHEMES,
   channels,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../../core/services/testing';
 import type { Rgb } from '../../../../core/utils/color-contrast.utils';
-import { Category } from '../../../../models';
+import {
+  CATEGORY_FALLBACK_COLOR,
+  CATEGORY_PALETTE,
+  Category,
+  DEFAULT_EXPENSE_GROUPS,
+  DEFAULT_INCOME_GROUPS,
+} from '../../../../models';
 
 describe('CategoryFormDialogComponent', () => {
   let fixture: ComponentFixture<CategoryFormDialogComponent>;
@@ -251,6 +260,46 @@ describe('CategoryFormDialogComponent', () => {
           expect(getComputedStyle(chosen).backgroundColor).withContext(`${theme} its own fill`).toBe(token);
           expect(paintedBackground(chosen)).withContext(`${theme} as painted`).toEqual(rounded(token));
         });
+      }
+    });
+
+    // Every colour the preview can show: a new category's default and the
+    // picker's palette, and the seeded colours and the fallback when an
+    // existing category is edited. Each opens the dialog on a category of
+    // that colour, the path that reaches all of them.
+    it('draws the preview glyph at AA or better on its tile for every colour a category can take, in both themes', async () => {
+      const colours = [
+        ...new Set(
+          [
+            ...[...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color),
+            ...CATEGORY_PALETTE,
+            CATEGORY_FALLBACK_COLOR,
+          ].map(color => color.toLowerCase())
+        ),
+      ];
+      expect(colours.length).toBe(31);
+      expect(colours).withContext("a new category's colour").toContain(component.selectedColor.toLowerCase());
+
+      for (const color of colours) {
+        TestBed.resetTestingModule();
+        await setup({
+          type: 'expense',
+          category: { id: 'c1', name: 'Food', icon: 'restaurant', color, type: 'expense' } as Category,
+        });
+        for (const scheme of AUDIT_SCHEMES) {
+          withScheme(TestBed.inject(ThemeService), scheme, () => {
+            fixture.detectChanges();
+            const glyph = part('.preview-item mat-icon');
+            const tile = paintedBackground(glyph.parentElement as HTMLElement);
+            // The tile is redrawn for the scheme, so the dark pass is not the light one again.
+            expect(scheme === 'dark' ? Math.max(...tile) < 128 : Math.min(...tile) > 128)
+              .withContext(`${scheme} ${color} tile drawn for the scheme`)
+              .toBeTrue();
+            expect(ratio(paintedColor(glyph), tile))
+              .withContext(`${scheme} ${color} preview glyph on its tile`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        }
       }
     });
 

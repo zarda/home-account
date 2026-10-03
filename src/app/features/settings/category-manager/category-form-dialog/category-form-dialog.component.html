@@ -66,9 +66,7 @@
     <div class="preview-section">
       <span class="section-label">{{ 'settings.preview' | translate }}</span>
       <div class="preview-item">
-        <div class="preview-icon" [style.background-color]="selectedColor + '20'">
-          <mat-icon [style.color]="selectedColor">{{ selectedIcon }}</mat-icon>
-        </div>
+        <app-category-chip appearance="tile" [icon]="selectedIcon" [color]="selectedColor" />
         <span class="preview-name">{{ name || ('settings.categoryName' | translate) }}</span>
       </div>
     </div>

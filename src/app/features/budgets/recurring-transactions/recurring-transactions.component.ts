@@ -19,6 +19,7 @@ import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
 
@@ -28,6 +29,7 @@ import { NotificationService } from '../../../core/services/notification.service
   imports: [
     LoadingSpinnerComponent,
     AmountDisplayComponent,
+    CategoryChipComponent,
     CommonModule,
     MatIconModule,
     MatButtonModule,

@@ -7,6 +7,7 @@ import { Category, RecurringOccurrence } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
@@ -37,6 +38,7 @@ export interface UpcomingBillDay {
     MatCardModule,
     MatIconModule,
     AmountDisplayComponent,
+    CategoryChipComponent,
     EmptyStateComponent,
     TranslatePipe,
     LocaleDatePipe,

@@ -7,13 +7,23 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
-import { Category, RecurringOccurrence } from '../../../models';
+import { ThemeService } from '../../../core/services/theme.service';
 import {
+  CATEGORY_FALLBACK_COLOR,
+  CATEGORY_PALETTE,
+  Category,
+  DEFAULT_EXPENSE_GROUPS,
+  DEFAULT_INCOME_GROUPS,
+  RecurringOccurrence,
+} from '../../../models';
+import {
+  AUDIT_SCHEMES,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -34,6 +44,7 @@ describe('UpcomingBillsComponent', () => {
   let fixture: ComponentFixture<UpcomingBillsComponent>;
   let component: UpcomingBillsComponent;
   let currency: jasmine.SpyObj<CurrencyService>;
+  let categoryHelper: jasmine.SpyObj<CategoryHelperService>;
 
   function render(occurrences: RecurringOccurrence[], net = 0, olderCount = 0): void {
     fixture.componentRef.setInput('occurrences', occurrences);
@@ -48,7 +59,7 @@ describe('UpcomingBillsComponent', () => {
     currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'convert']);
     currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
 
-    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+    categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
       'getCategoryName',
       'getCategoryIcon',
       'getCategoryColor',
@@ -198,7 +209,8 @@ describe('UpcomingBillsComponent', () => {
     expect(link.textContent).toContain('dashboard.viewAll');
   });
 
-  // Not the category tile or its glyph: those paint the category's own colour.
+  // Not the category tile or its glyph: those paint the category's own colour,
+  // and 'category tiles' below measures them.
   describe('colours', () => {
     /** What `color: var(token)` computes to under the palette on <html> now. */
     function tokenColour(token: string): string {
@@ -260,6 +272,46 @@ describe('UpcomingBillsComponent', () => {
           } finally {
             link.style.removeProperty('color');
           }
+        });
+      }
+    });
+  });
+
+  // Every colour a category can take: the seeded ones, the picker's palette
+  // and the fallback for a missing category.
+  describe('category tiles', () => {
+    const COLOURS = [
+      ...new Set(
+        [
+          ...[...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color),
+          ...CATEGORY_PALETTE,
+          CATEGORY_FALLBACK_COLOR,
+        ].map(color => color.toLowerCase())
+      ),
+    ];
+
+    it('draws every category glyph at AA or better on its own tile, in both themes', () => {
+      expect(COLOURS.length).toBe(31);
+      const colourOf = new Map(COLOURS.map((color, i) => [`cat${i}`, color]));
+      categoryHelper.getCategoryColor.and.callFake((id: string) => colourOf.get(id)!);
+      render([...colourOf.keys()].map((categoryId, i) => occurrence({ recurringId: `r${i}`, categoryId })));
+
+      const rows = Array.from(fixture.nativeElement.querySelectorAll('.bill-row')) as HTMLElement[];
+      expect(rows.length).toBe(COLOURS.length);
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          fixture.detectChanges();
+          rows.forEach((row, i) => {
+            const glyph = row.querySelector('mat-icon') as HTMLElement;
+            const tile = paintedBackground(glyph.parentElement as HTMLElement);
+            // The tile is redrawn for the scheme, so the dark pass is not the light one again.
+            expect(scheme === 'dark' ? Math.max(...tile) < 128 : Math.min(...tile) > 128)
+              .withContext(`${scheme} ${COLOURS[i]} tile drawn for the scheme`)
+              .toBeTrue();
+            expect(ratio(paintedColor(glyph), tile))
+              .withContext(`${scheme} ${COLOURS[i]} glyph on its tile`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
         });
       }
     });
