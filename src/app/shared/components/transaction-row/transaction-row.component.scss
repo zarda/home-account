@@ -23,7 +23,7 @@
    overflow-guard.spec.ts. The menu is 40×40, absolutely pinned to the
    top-right corner, outside the flow — it adds no height. It used to stack
    under the tile in a leading column, which set every row at 100px; that
-   cost was tracked as issue #219 and this layout is the revisit. */
+   cost was tracked as issue 219 and this layout is the revisit. */
 .transaction-row {
   position: relative;
   // hidden first as the fallback; clip because this box must never become a
@@ -67,7 +67,7 @@
 }
 
 /* The tile is what the row is read by at a glance, so it is never the thing
-   that gives way. 32px, the chip's `sm`: the floor issue #219 set for it. */
+   that gives way. 32px, the chip's `sm`: the floor issue 219 set for it. */
 app-category-chip {
   flex-shrink: 0;
   // The gesture that reveals the swipe drawer starts on the surface's leaf
@@ -474,8 +474,8 @@ app-category-chip {
   color: var(--text-primary);
 }
 
-// --color-error is too light for a label in light (white on #ef4444 is
-// 3.76:1); --color-error-strong carries --text-inverse in both themes.
+// --color-error is too light for a label in light (white on it is 3.76:1);
+// --color-error-strong carries --text-inverse in both themes.
 .swipe-action-delete {
   background: var(--color-error-strong);
   color: var(--text-inverse);

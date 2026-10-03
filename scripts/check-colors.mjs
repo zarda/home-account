@@ -310,11 +310,11 @@ const RUNTIME_DECLARED = {
 };
 
 /**
- * Tailwind's own palette, and `primary`: the brand ramp tailwind.config.js
- * defines today. It stays listed once the ramp is deleted, when a leftover
- * `text-primary-600` generates nothing and paints whatever it inherits, so
- * the leftover still fails rather than its row going quietly stale. Any other
- * ramp the config defines is added from the config.
+ * Tailwind's own palette, and `primary`. tailwind.config.js defines no
+ * `primary` ramp — the brand is the `brand` alias — so `text-primary-600`
+ * generates nothing and paints whatever it inherits; the name is listed so
+ * that it fails here rather than passing as a class nothing styles. Any ramp
+ * the config defines is added from the config.
  */
 const TAILWIND_PALETTE = [
   'slate', 'gray', 'zinc', 'neutral', 'stone', 'red', 'orange', 'amber', 'yellow', 'lime', 'green',
@@ -1430,10 +1430,11 @@ function selfTest() {
   ]);
   check('a palette utility in a class attribute', html('<p class="mb-1 text-gray-600">x</p>'), ['text-gray-600']);
   check('a palette utility in [ngClass]', html(`<p [ngClass]="{ 'text-red-500': bad }">x</p>`), ['text-red-500']);
-  check('a brand-ramp utility', html('<p class="text-primary-600 dark:bg-primary-900/50">x</p>'), [
-    'text-primary-600',
-    'dark:bg-primary-900/50',
-  ]);
+  check(
+    'a primary-ramp utility, which the config does not define',
+    html('<p class="text-primary-600 dark:bg-primary-900/50">x</p>'),
+    ['text-primary-600', 'dark:bg-primary-900/50']
+  );
   check('a palette utility in a TypeScript string', ts("function f() { return 'text-red-600 font-semibold'; }"), [
     'text-red-600',
   ]);

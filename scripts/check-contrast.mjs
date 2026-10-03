@@ -141,7 +141,11 @@ const PAIRS = [
   { fg: '--color-income-text', bg: '--surface-card', why: 'an income amount as running text' },
   { fg: '--color-expense-text', bg: '--color-expense-light', why: 'the expense chip: stat cards, weekly recap, budget alert banner' },
   { fg: '--color-expense-text', bg: '--surface-card', why: 'an expense amount as running text' },
-  { fg: '--color-warning-text', bg: '--color-warning-light', why: 'the warning banner: budget alerts, the recurring-rule chip' },
+  {
+    fg: '--color-warning-text',
+    bg: '--color-warning-light',
+    why: "the warning banner: budget alerts, the recurring-rule chip, the import review card's duplicate badge",
+  },
   {
     fg: '--color-warning-text',
     bg: '--surface-card',
@@ -149,9 +153,49 @@ const PAIRS = [
       "sit on their notice's 5% warning tint over the card instead, and clear 4.86:1 there in light",
   },
   {
+    fg: '--color-warning-text',
+    bg: '--surface-hover',
+    why: "the import review card's date chip while its day is doubted or asked about, and the flag on that chip " +
+      'and on the currency chip',
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-background',
+    threshold: 3,
+    why: "the import review card's amount and type flags and the category suggestion's medium-confidence dot on an " +
+      "unchecked card, which is the page's own fill: graphics, so 3:1, as --color-ai. On a checked or flagged card " +
+      'they sit on --surface-review-selected or --surface-review-duplicate, which this script cannot read, and ' +
+      "clear 4.61:1 and 4.82:1 there in light. The transaction form's flags sit on the dialog's --mat-sys-surface, " +
+      'which Material declares, and clear 4.78:1 there',
+  },
+  {
     fg: '--color-error-text',
     bg: '--color-error-light',
     why: "the login page's error banner and the transaction filters' clear-button hover",
+  },
+  {
+    fg: '--color-error-text',
+    bg: '--surface-card',
+    why: "an error as running text: the app lock, the security settings and activity, the filters' clear button, " +
+      "the split hints, the two translation errors, the import preview's amount. The dropzone's message sits on " +
+      "its banner's 10% error tint over the dropzone's own fill instead, and clears 5.2:1 there in light",
+  },
+  {
+    fg: '--color-error',
+    bg: '--surface-card',
+    threshold: 3,
+    why: "error glyphs: the exact-duplicate mark beside its words and the dropzone's hovered remove. Graphics, so " +
+      "3:1, as --color-ai. The dropzone's banner icon sits on that banner's 10% error tint over the dropzone's own " +
+      "fill, and clears 3.05:1 there in light; the data page's danger icon sits on its zone's 8% error tint over " +
+      'the card, and clears 3.39:1. Everywhere else the token is an edge or a tint under --color-error-text copy',
+  },
+  {
+    fg: '--color-error',
+    bg: '--surface-background',
+    threshold: 3,
+    why: "the import wizard's provider-key, unknown and nothing-found failure icons on the page, and the category " +
+      "suggestion's low-confidence dot on an unchecked review card: graphics, so 3:1. On a checked or flagged card " +
+      'the dot clears 3.45:1 and 3.61:1 in light',
   },
   { fg: '--color-success-text', bg: '--color-success-light', why: "the import history's completed chip" },
   { fg: '--text-primary', bg: '--color-info-light', why: "the import wizard's merged-items badge" },
@@ -159,13 +203,16 @@ const PAIRS = [
   {
     fg: '--color-success-text',
     bg: '--surface-hover',
-    why: "the import wizard's finished processing steps, whose label and glyph sit on the active step's fill",
+    why: "the import wizard's finished processing steps, whose label and glyph sit on the active step's fill, and " +
+      "the import review card's answered date and its check, on the date chip",
   },
   {
     fg: '--color-success-text',
     bg: '--surface-background',
     threshold: 3,
-    why: "the import wizard's success glyph on the page: a graphic, so 3:1, as --color-ai",
+    why: "the import wizard's success glyph on the page, and the category suggestion's high-confidence dot on an " +
+      'unchecked review card: graphics, so 3:1, as --color-ai. On a checked or flagged card the dot clears 4.60:1 ' +
+      'and 4.81:1 in light',
   },
   {
     fg: '--color-success-text',
@@ -247,9 +294,25 @@ const NOT_PAINTED = {
   '--color-accent-light': 'a border colour and one decorative header glyph',
   '--color-income': "a fill — bars, dots, toggles' tints; never text",
   '--color-expense': "a fill — bars, dots, toggles' tints; never text",
-  '--color-success': "a border and a fill: the dropzone's edge once it holds files, the category suggestion's confidence dot. The readable success token is --color-success-text",
-  '--color-warning': 'an icon and a border colour beside their own labels; the readable warning token is --color-warning-text',
-  '--color-info': "an icon beside its own label (the import wizard's network failure, and its merged-items card on a 10% tile of the same hue) and the info snackbar's leading border; no text is painted in it or on it",
+  '--color-success':
+    "an edge only: the dropzone's, once it holds the files it lists. No text or glyph is painted in it: the import " +
+    "wizard's success states, the review card's answered date and the category suggestion's high-confidence dot " +
+    'read in --color-success-text, scored above',
+  '--color-warning':
+    "edges and tints only; no text or glyph is painted in it. Edges: the budget alert banner's; on the import " +
+    "review card, a flagged card's, the fell-back currency chip's and the date question's; the duplicate panel's " +
+    "and each duplicate's leading edge; the import wizard's cut-off notice and its two hints; the AI summary's " +
+    "advice and the snapshot timeline's stale strip. Tints, and what sits on each: a flagged card's fill " +
+    "(--surface-review-duplicate), the whole card; the duplicate panel's, copy in --text-muted, --text-secondary " +
+    "and Material's own colours; the wizard's notice and hints, copy in --text-secondary; the stale strip's, copy " +
+    "in --text-secondary and Material's own colours; the advice's, copy in --color-warning-text; and the wizard's " +
+    "summary-card icon tiles. The warning glyph on the panel, the notice, the strip, the advice and each tile reads " +
+    'in --color-warning-text, scored above. The duplicate badge is no tint of it: it sits on --color-warning-light',
+  '--color-info':
+    "glyphs beside their own words that clear 3:1, a tile and an edge: the import wizard's network-failure and " +
+    "queued-offline icons on the page (3.37:1 in light) and its merged-items icon on that card's 10% tile of the " +
+    "same hue (3.29:1), the first and the last held at 3:1 by the wizard's painted spec; that tile; and the info " +
+    "snackbar's leading edge. No text is painted in it or on it",
 };
 
 /** Every block with this selector, merged in file order, as the cascade does. */

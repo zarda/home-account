@@ -193,8 +193,8 @@
 }
 
 // A receipt is white paper, so the veil alone has to hold the glyph at AA
-// over white: 0.6 black lays #666 under it there, 5.74:1. It never fades at
-// rest, because a phone has no hover to bring it back.
+// over white: 0.6 black there makes a mid grey, and white on it is 5.74:1.
+// It never fades at rest, because a phone has no hover to bring it back.
 // colors:allow-start(scrim) a dark veil and a white glyph over a receipt photo, which has no theme
 .drag-handle {
   position: absolute;

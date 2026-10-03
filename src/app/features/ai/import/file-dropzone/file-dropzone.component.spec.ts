@@ -533,6 +533,20 @@ describe('FileDropzoneComponent, through its own template', () => {
       }
     });
 
+    // The message sits on its banner's 10% error tint over the zone, not on a
+    // card, and the zone fades between its states, so it is settled first.
+    it('reads a refused file\'s message in --color-error-text at AA on its banner, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(el().querySelector('.error-banner .error-message'), '--color-error-text', `${theme} message`);
+        });
+      }
+    });
+
     it('paints the multi-image hint\'s icon in --color-ai at 3:1 and its text at AA, in both themes', () => {
       fixture.detectChanges();
       dropFiles([imageFile('first.png'), imageFile('second.png')]);

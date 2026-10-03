@@ -47,7 +47,7 @@
 }
 
 // Brighter wordmark on dark surfaces: the light-mode brand indigo reads
-// almost black on #1e1e1e.
+// almost black on the dark --surface-card.
 :host-context(.dark-theme) .app-title {
   color: var(--color-accent-light);
 }
