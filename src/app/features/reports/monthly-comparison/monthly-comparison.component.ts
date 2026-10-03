@@ -16,7 +16,7 @@ import { Transaction } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
 import { CurrencyService } from '../../../core/services/currency.service';
-import { ChartThemeService } from '../../../core/services/chart-theme.service';
+import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -302,43 +302,45 @@ export class MonthlyComparisonComponent {
   // Chart data as computed signal to prevent re-renders
   chartData = computed((): ChartData<'bar'> => {
     const data = this.monthlyData();
+    const palette = this.chartTheme.palette();
 
     const datasets: ChartData<'bar'>['datasets'] = [
       {
         label: this.translationService.t('common.income'),
         data: data.map(d => d.income),
-        backgroundColor: 'rgba(34, 197, 94, 0.8)',
-        borderColor: '#22c55e',
+        backgroundColor: hexToRgba(palette.income, 0.8),
+        borderColor: palette.incomeEdge,
         borderWidth: 1,
         maxBarThickness: 32,
       },
       {
         label: this.translationService.t('common.totalExpenses'),
         data: data.map(d => d.expense),
-        backgroundColor: 'rgba(239, 68, 68, 0.8)',
-        borderColor: '#ef4444',
+        backgroundColor: hexToRgba(palette.expense, 0.8),
+        borderColor: palette.expenseEdge,
         borderWidth: 1,
         maxBarThickness: 32,
       },
     ];
 
     // Only when there is history to show: empty prior-year bars would add two
-    // legend entries standing for nothing.
+    // legend entries standing for nothing. Last year is muted in its fill
+    // only: a translucent edge would drop the bar's outline under 3:1.
     if (this.hasPriorYearData()) {
       datasets.push(
         {
           label: this.translationService.t('reports.incomeLastYear'),
           data: data.map(d => d.prevYearIncome ?? 0),
-          backgroundColor: 'rgba(34, 197, 94, 0.35)',
-          borderColor: 'rgba(34, 197, 94, 0.5)',
+          backgroundColor: hexToRgba(palette.income, 0.35),
+          borderColor: palette.incomeEdge,
           borderWidth: 1,
           maxBarThickness: 32,
         },
         {
           label: this.translationService.t('reports.expensesLastYear'),
           data: data.map(d => d.prevYearExpense ?? 0),
-          backgroundColor: 'rgba(239, 68, 68, 0.35)',
-          borderColor: 'rgba(239, 68, 68, 0.5)',
+          backgroundColor: hexToRgba(palette.expense, 0.35),
+          borderColor: palette.expenseEdge,
           borderWidth: 1,
           maxBarThickness: 32,
         }

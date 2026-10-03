@@ -9,11 +9,15 @@ import { provideAppCharts } from '../../../core/config/chart.config';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
+import { ThemeService } from '../../../core/services/theme.service';
 import {
+  AUDIT_SCHEMES,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -252,6 +256,30 @@ describe('SpendingAnalysisComponent', () => {
       expect(data.datasets[0].label).toBe('Income');
       expect(data.datasets[1].label).toBe('Expenses');
     });
+
+    it('draws each line in its series edge over a faint fill of the series colour, in the theme on screen', () => {
+      const chartTheme = TestBed.inject(ChartThemeService);
+      const drawn = new Set<unknown>();
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          const palette = chartTheme.palette();
+          const [income, expense] = component.chartData().datasets;
+
+          expect(income.borderColor).withContext(`${scheme} income edge`).toBe(palette.incomeEdge);
+          expect(income.backgroundColor)
+            .withContext(`${scheme} income fill`)
+            .toBe(hexToRgba(palette.income, 0.1));
+          expect(expense.borderColor).withContext(`${scheme} expense edge`).toBe(palette.expenseEdge);
+          expect(expense.backgroundColor)
+            .withContext(`${scheme} expense fill`)
+            .toBe(hexToRgba(palette.expense, 0.1));
+          drawn.add(income.borderColor);
+        });
+      }
+      // One edge for both schemes would mean the palette never moved, and the
+      // loop above proved nothing about following a flip.
+      expect(drawn.size).withContext('income edges drawn across the schemes').toBe(AUDIT_SCHEMES.length);
+    });
   });
 
   describe('monthlyData', () => {
@@ -333,6 +361,32 @@ describe('SpendingAnalysisComponent', () => {
       expect(data.datasets.length).toBe(3);
       expect(data.datasets[2].yAxisID).toBe('y1');
       expect((data.datasets[2] as { spanGaps?: boolean }).spanGaps).toBeTrue();
+    });
+
+    it('draws the savings rate in the accent of the theme on screen', () => {
+      component.transactions = [
+        makeTransaction('income', 5000, new Date(2024, 0, 5)),
+        makeTransaction('expense', 4000, new Date(2024, 0, 20))
+      ];
+      component.categories = mockCategories;
+      component.dateRange = monthGranularityRange;
+      fixture.detectChanges();
+
+      const chartTheme = TestBed.inject(ChartThemeService);
+      const drawn = new Set<unknown>();
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          const palette = chartTheme.palette();
+          const savings = component.chartData().datasets[2];
+
+          expect(savings.borderColor).withContext(`${scheme} edge`).toBe(palette.accentEdge);
+          expect(savings.backgroundColor)
+            .withContext(`${scheme} fill`)
+            .toBe(hexToRgba(palette.accent, 0.1));
+          drawn.add(savings.borderColor);
+        });
+      }
+      expect(drawn.size).withContext('accent edges drawn across the schemes').toBe(AUDIT_SCHEMES.length);
     });
 
     it('keeps exactly two datasets at day granularity', () => {

@@ -244,30 +244,6 @@ const BASELINE = {
     'text-gray-800': 3,
     'to-purple-50': 1,
   },
-  'src/app/features/reports/forecast/forecast.component.ts': {
-    '#22c55e': 1,
-    '#6366f1': 1,
-    'rgba(34, 197, 94, 0.1)': 1,
-    'rgba(99, 102, 241, 0.1)': 1,
-  },
-  'src/app/features/reports/monthly-comparison/monthly-comparison.component.ts': {
-    '#22c55e': 1,
-    '#ef4444': 1,
-    'rgba(239, 68, 68, 0.35)': 1,
-    'rgba(239, 68, 68, 0.5)': 1,
-    'rgba(239, 68, 68, 0.8)': 1,
-    'rgba(34, 197, 94, 0.35)': 1,
-    'rgba(34, 197, 94, 0.5)': 1,
-    'rgba(34, 197, 94, 0.8)': 1,
-  },
-  'src/app/features/reports/spending-analysis/spending-analysis.component.ts': {
-    '#22c55e': 1,
-    '#6366f1': 1,
-    '#ef4444': 1,
-    'rgba(239, 68, 68, 0.1)': 1,
-    'rgba(34, 197, 94, 0.1)': 1,
-    'rgba(99, 102, 241, 0.1)': 1,
-  },
   'src/app/features/settings/ai-settings-page/ai-settings-page.component.scss': {
     'rgba(0, 0, 0, 0.3)': 1,
   },
@@ -378,8 +354,8 @@ const BASELINE_CATEGORY = {
 const ALLOWED = {
   'src/app/core/services/chart-theme.service.ts': {
     kind: 'token-fallback',
-    count: 3,
-    reason: "a canvas reads computed values; each read falls back to light's token before the stylesheet loads",
+    count: 8,
+    reason: "a canvas reads computed values; each token it reads falls back to light's value before the stylesheet loads",
   },
   'src/app/core/services/theme.service.ts': {
     kind: 'browser-chrome',
