@@ -115,14 +115,15 @@
 .initial-error {
   flex-direction: column;
   padding: 32px 16px;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 /* A chosen row, in the select mode: a bar of the primary colour along its
-   leading edge, beside the checked box. Not a tint: any tone darker than the
-   card sinks the table's gray-500 dates under AA in the light scheme, and the
-   bar changes no text's background. Above the row's own hover tone. On the
-   table it rides the checkbox cell, the row's leading edge in the mode. */
+   leading edge, beside the checked box. Not a tint: a tint is the background
+   of every text in the row, so each of those pairs would need its own AA
+   proof in both schemes, while the bar changes no text's background. Above
+   the row's own hover tone. On the table it rides the checkbox cell, the
+   row's leading edge in the mode. */
 app-transaction-row.row-selected,
 .row-selected > .col-select {
   position: relative;
@@ -221,7 +222,7 @@ app-transaction-row.row-selected::before,
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  @apply border-b border-gray-200 dark:border-gray-700;
+  border-block-end: 1px solid var(--border-primary);
 }
 
 ::ng-deep .desktop-table .mat-mdc-row {
@@ -234,7 +235,7 @@ app-transaction-row.row-selected::before,
 }
 
 ::ng-deep .desktop-table .mat-mdc-cell {
-  @apply border-b border-gray-100 dark:border-gray-700;
+  border-block-end: 1px solid var(--border-primary);
 }
 
 .col-date {
@@ -270,7 +271,7 @@ app-transaction-row.row-selected::before,
 
 .date-text {
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .category-cell {
@@ -297,7 +298,7 @@ app-transaction-row.row-selected::before,
 
 .category-name {
   font-size: var(--text-sm);
-  @apply text-gray-700 dark:text-gray-300;
+  color: var(--text-secondary);
 }
 
 // The box is the row's own .receipt-indicator (transaction-row.component.scss),
@@ -319,7 +320,7 @@ app-transaction-row.row-selected::before,
   font-size: var(--text-sm);
   font-weight: 500;
   overflow-wrap: anywhere;
-  @apply text-gray-900 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 // The note is a control now, not a decoration, so the gap belongs to the
@@ -351,11 +352,11 @@ app-transaction-row.row-selected::before,
   font-size: var(--text-sm) !important;
   width: 1em !important;
   height: 1em !important;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
 }
 
 .note-button:hover .note-icon {
-  @apply text-primary-600 dark:text-primary-400;
+  color: var(--color-primary-text);
 }
 
 // Sized like .note-button: a 32px visible box (the glyph inside keeps its own
@@ -373,6 +374,7 @@ app-transaction-row.row-selected::before,
   margin-left: 4px;
   line-height: 1;
   position: relative;
+  border-radius: 50%;
 
   &::after {
     content: '';
@@ -383,10 +385,18 @@ app-transaction-row.row-selected::before,
   }
 }
 
+// A plain button has no state layer of its own, so its hover is this fill.
+// It can only be hovered inside a hovered row, which is --surface-muted, so
+// the fill is the next step up, and round like the note button's state
+// layer beside it.
+.receipt-icon-button:hover {
+  background-color: var(--surface-strong);
+}
+
 // Image count next to the icon, only shown past one image
 .receipt-count-badge {
   font-size: var(--text-xs);
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
   line-height: 1;
 }
 
@@ -479,21 +489,12 @@ app-transaction-row.row-selected::before,
   font-size: var(--text-sm) !important;
   width: 1em !important;
   height: 1em !important;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
   vertical-align: middle;
 }
 
 .receipt-icon-button:hover .receipt-icon {
-  @apply text-primary-600 dark:text-primary-400;
-}
-
-.receipt-indicator {
-  font-size: var(--text-sm) !important;
-  width: 1em !important;
-  height: 1em !important;
-  @apply text-gray-400 dark:text-gray-500;
-  margin-left: 4px;
-  vertical-align: middle;
+  color: var(--color-primary-text);
 }
 
 // nowrap on both value lines is what appFitText needs: a number broken across

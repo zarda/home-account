@@ -30,7 +30,18 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
 import { MAX_BULK_SHARE, Transaction } from '../../../models';
-import { createTransaction, createUser, runAxe, summarizeViolations } from '../../../core/services/testing';
+import {
+  createTransaction,
+  createUser,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  runAxe,
+  settleAnimations,
+  summarizeViolations,
+  withTheme,
+} from '../../../core/services/testing';
 
 /** An account in no household: its index, as the share controls read it, is empty. */
 const NO_HOUSEHOLDS = { subscribeToCollection: () => of([]) };
@@ -2457,5 +2468,208 @@ describe('TransactionListComponent select mode', () => {
       const firstRow = rowOf('t0').getBoundingClientRect();
       expect(within(firstRow, host.getBoundingClientRect())).withContext('a row with long shares').toBeTrue();
     });
+  });
+});
+
+/**
+ * The colours the list paints itself, read where Chrome paints them, in both
+ * themes. Not the category tile: it paints the category's own colour.
+ */
+describe('TransactionListComponent colours', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let host: HTMLElement;
+  let windowSource: ReturnType<typeof createMockWindowSource>;
+
+  const txns: Transaction[] = [
+    createTransaction({
+      id: 'a',
+      amount: 30,
+      description: 'Banana',
+      note: 'Ripe by Friday',
+      receiptUrl: 'https://storage.example.com/r1.jpg',
+      receiptUrls: ['https://storage.example.com/r1.jpg', 'https://storage.example.com/r2.jpg'],
+      receiptCount: 2,
+    }),
+    createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
+  ];
+
+  function menuItems(): HTMLElement[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel button[mat-menu-item]'));
+  }
+
+  /** What `color: var(token)` computes to under the theme on <html> now. */
+  function tokenColour(token: string): string {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${token})`;
+    document.body.appendChild(probe);
+    try {
+      settleAnimations(document);
+      return getComputedStyle(probe).color;
+    } finally {
+      probe.remove();
+    }
+  }
+
+  /** The element whose own text node holds `text`: the one that paints it. */
+  function paintedTextOf(root: Element, text: string): HTMLElement {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.textContent!.includes(text)) return node.parentElement!;
+    }
+    throw new Error(`no text node holds "${text}"`);
+  }
+
+  async function render(desktop: boolean): Promise<void> {
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: windowSource },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a}`, amountInBase: (t: { amount: number }) => t.amount },
+        },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: { formatDate: () => 'date', formatRelativeDate: () => 'rel' } },
+        {
+          provide: CategoryHelperService,
+          useValue: { getCategoryName: () => 'Cat', getCategoryIcon: () => 'icon', getCategoryColor: () => '#000' },
+        },
+        { provide: TranslationService, useValue: { t: (k: string) => k } },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  }
+
+  beforeEach(() => {
+    windowSource = createMockWindowSource();
+  });
+
+  afterEach(() => {
+    host?.remove();
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  for (const [view, desktop, trigger] of [
+    ['phone', false, '.row-menu-btn'],
+    ['desktop', true, '.action-btn'],
+  ] as const) {
+    // Material colours a menu item's label and icon in rules that outrank a
+    // utility on the item, so both are read where they are painted.
+    it(`paints Delete's label and icon on the ${view} menu in --color-error-text, at AA, in both themes`, async () => {
+      await render(desktop);
+      (host.querySelector(trigger) as HTMLElement).click();
+      fixture.detectChanges();
+
+      const item = menuItems().find(el => el.textContent!.includes('common.delete'));
+      expect(item).withContext('the delete item').toBeDefined();
+      const label = paintedTextOf(item!, 'common.delete');
+      const icon = item!.querySelector('mat-icon') as HTMLElement;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          const expected = tokenColour('--color-error-text');
+          expect(getComputedStyle(label).color).withContext(`${theme} label`).toBe(expected);
+          expect(getComputedStyle(icon).color).withContext(`${theme} icon`).toBe(expected);
+          expect(ratio(paintedColor(label), paintedBackground(label)))
+            .withContext(`${theme} label on the menu`)
+            .toBeGreaterThanOrEqual(4.5);
+        });
+      }
+    });
+  }
+
+  // A plain button has no state layer, so its hover needs a fill of its own;
+  // and it can only be hovered inside a hovered row, so that fill has to
+  // differ from the row's.
+  it('paints the receipt icon at AA at rest, and gives its button a hover fill of its own, in both themes', async () => {
+    await render(true);
+    const button = host.querySelector('.receipt-icon-button') as HTMLElement;
+    const icon = button.querySelector('.receipt-icon') as HTMLElement;
+    const row = button.closest('tr') as HTMLElement;
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        expect(ratio(paintedColor(icon), paintedBackground(icon)))
+          .withContext(`${theme} icon at rest`)
+          .toBeGreaterThanOrEqual(4.5);
+        try {
+          row.style.background = hoverValue(row, '.desktop-table .mat-mdc-row', 'background');
+          button.style.backgroundColor = hoverValue(button, '.receipt-icon-button', 'background-color');
+          icon.style.color = hoverValue(icon, '.receipt-icon-button', 'color');
+          expect(paintedBackground(button))
+            .withContext(`${theme} the hover fill against the hovered row`)
+            .not.toEqual(paintedBackground(row));
+          expect(ratio(paintedColor(icon), paintedBackground(icon)))
+            .withContext(`${theme} icon hovered`)
+            .toBeGreaterThanOrEqual(4.5);
+        } finally {
+          row.style.removeProperty('background');
+          button.style.removeProperty('background-color');
+          icon.style.removeProperty('color');
+        }
+      });
+    }
+  });
+
+  it("paints the table's lines in their text tokens at AA, and its rules in --border-primary, in both themes", async () => {
+    await render(true);
+    const lines = [
+      ['date', '.date-text', '--text-muted'],
+      ['category name', '.category-name', '--text-secondary'],
+      ['description', '.description-text', '--text-primary'],
+      ['note icon', '.note-icon', '--text-muted'],
+      ['receipt icon', '.receipt-icon', '--text-muted'],
+      ['receipt count', '.receipt-count-badge', '--text-muted'],
+    ] as const;
+    const rules = [
+      ['header cell', 'th.mat-mdc-header-cell'],
+      ['body cell', 'td.mat-mdc-cell'],
+    ] as const;
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        settleAnimations(document);
+        for (const [label, selector, token] of lines) {
+          const el = host.querySelector(selector) as HTMLElement;
+          expect(el).withContext(label).toBeTruthy();
+          expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenColour(token));
+          expect(ratio(paintedColor(el), paintedBackground(el)))
+            .withContext(`${theme} ${label} on the table`)
+            .toBeGreaterThanOrEqual(4.5);
+        }
+        const border = tokenColour('--border-primary');
+        for (const [label, selector] of rules) {
+          const cell = getComputedStyle(host.querySelector(selector) as HTMLElement);
+          expect(cell.borderBlockEndStyle).withContext(`${theme} ${label} rule is drawn`).toBe('solid');
+          expect(cell.borderBlockEndColor).withContext(`${theme} ${label} rule`).toBe(border);
+        }
+      });
+    }
+  });
+
+  it('paints the failed-load line in --text-muted, at AA, in both themes', async () => {
+    windowSource.loadError.set('initial');
+    await render(true);
+    const line = host.querySelector('.initial-error > span') as HTMLElement;
+    expect(line).withContext('the failed-load line').toBeTruthy();
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        settleAnimations(document);
+        expect(getComputedStyle(line).color).withContext(theme).toBe(tokenColour('--text-muted'));
+        expect(ratio(paintedColor(line), paintedBackground(line)))
+          .withContext(`${theme} on the page`)
+          .toBeGreaterThanOrEqual(4.5);
+      });
+    }
   });
 });
