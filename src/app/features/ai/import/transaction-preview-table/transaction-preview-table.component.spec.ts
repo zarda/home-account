@@ -21,13 +21,18 @@ import { blankImportRow, needsDateAnswer } from '../../../../core/utils/import-r
 import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { createCategory } from '../../../../core/services/testing/test-data';
 import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
   channels,
+  hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../../core/services/testing';
+import { ThemeService } from '../../../../core/services/theme.service';
 import type { Rgb } from '../../../../core/utils/color-contrast.utils';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyCodeDialogComponent } from '../../../../shared/components/currency-code-dialog/currency-code-dialog.component';
@@ -2385,7 +2390,12 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
 
     it('scrolls without animation under prefers-reduced-motion', () => {
-      spyOn(window, 'matchMedia').and.returnValue({ matches: true } as MediaQueryList);
+      // Only the motion query is answered: the card's category glyph reads
+      // the theme, whose service listens to the colour-scheme query.
+      const matchMedia = window.matchMedia.bind(window);
+      spyOn(window, 'matchMedia').and.callFake((query: string) =>
+        query.includes('prefers-reduced-motion') ? ({ matches: true } as MediaQueryList) : matchMedia(query)
+      );
       const blank = makeRow({ id: 'blank', amount: 0 });
       render([blank]);
       const scroll = spyOn(card('blank'), 'scrollIntoView');
@@ -4930,6 +4940,54 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
             expect(paintedBackground(card(id)))
               .withContext(`${theme} ${id} card as painted`)
               .toEqual(rounded(surface(token)));
+          }
+        });
+      }
+    });
+
+    // The category chip's glyph is corrected for every fill a card takes, so
+    // it reads on each. A checked duplicate is in the set because in dark it
+    // wears the checked card's fill rather than the flagged one's, and only
+    // an unchecked card shows its hover fill: the checked and flagged fills
+    // are declared after it.
+    it('draws the category glyph at AA or better on an unchecked, a checked, a hovered and a flagged card, in both themes', () => {
+      const probes = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color]) =>
+        createCategory({ id: `probe-${scheme}`, name: `Probe ${scheme}`, color, type: 'expense' })
+      );
+      const states = [
+        ['unchecked', { selected: false }],
+        ['checked', { selected: true }],
+        ['hovered', { selected: false }],
+        ['flagged', { isDuplicate: true, duplicateOf: 'stored-1', selected: false }],
+        ['flagged and checked', { isDuplicate: true, duplicateOf: 'stored-1', selected: true }],
+      ] as const;
+      const cards = probes.flatMap(probe =>
+        states.map(([state, row], i) => ({ id: `${probe.id}-${i}`, state, color: probe.color, row }))
+      );
+      component.transactions = cards.map(({ id, row }, i) =>
+        makeRow({ id, suggestedCategoryId: probes[Math.floor(i / states.length)].id, ...row })
+      );
+      component.categories = probes;
+      fixture.detectChanges();
+      const card = (id: string) =>
+        fixture.nativeElement.querySelector(`.transaction-card[data-row-id="${id}"]`) as HTMLElement;
+      const hovered = hoverValue(card(cards[2].id), '.transaction-card', 'background');
+      expect(hovered).withContext('the hover rule').toBe('var(--surface-hover)');
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          fixture.detectChanges();
+          for (const { id, state, color } of cards) {
+            const glyph = card(id).querySelector('.category-icon') as HTMLElement;
+            expect(glyph).withContext(`${id} glyph`).toBeTruthy();
+            if (state === 'hovered') card(id).style.background = hovered;
+            try {
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${color} on the ${state} card`)
+                .toBeGreaterThanOrEqual(4.5);
+            } finally {
+              card(id).style.background = '';
+            }
           }
         });
       }

@@ -25,7 +25,7 @@
             [class.category-group]="option.group"
             [class.category-sub]="!option.group"
           >
-            <mat-icon [style.color]="option.color">{{ option.icon }}</mat-icon>
+            <mat-icon [style.color]="option.color | categoryGlyph:'panel'">{{ option.icon }}</mat-icon>
             {{ names().get(option.id) }}
           </mat-option>
         }

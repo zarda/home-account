@@ -6,6 +6,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { ThemeService } from '../../../../core/services/theme.service';
 import {
   AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
   channels,
   hoverValue,
   paintedBackground,
@@ -263,29 +264,37 @@ describe('CategoryFormDialogComponent', () => {
       }
     });
 
-    // Every colour the preview can show: a new category's default and the
-    // picker's palette, and the seeded colours and the fallback when an
-    // existing category is edited. Each opens the dialog on a category of
-    // that colour, the path that reaches all of them.
+    /**
+     * Every colour a category can take: the picker's palette (a new
+     * category's default among them), and the seeded colours and the
+     * fallback, which an edited category can carry.
+     */
+    const everyCategoryColour = (): string[] => [
+      ...new Set(
+        [
+          ...[...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color),
+          ...CATEGORY_PALETTE,
+          CATEGORY_FALLBACK_COLOR,
+        ].map(color => color.toLowerCase())
+      ),
+    ];
+
+    /** Opens the dialog afresh on a category of `color`, the path that reaches every colour. */
+    const setupIn = async (color: string): Promise<void> => {
+      TestBed.resetTestingModule();
+      await setup({
+        type: 'expense',
+        category: { id: 'c1', name: 'Food', icon: 'restaurant', color, type: 'expense' } as Category,
+      });
+    };
+
     it('draws the preview glyph at AA or better on its tile for every colour a category can take, in both themes', async () => {
-      const colours = [
-        ...new Set(
-          [
-            ...[...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color),
-            ...CATEGORY_PALETTE,
-            CATEGORY_FALLBACK_COLOR,
-          ].map(color => color.toLowerCase())
-        ),
-      ];
+      const colours = everyCategoryColour();
       expect(colours.length).toBe(31);
       expect(colours).withContext("a new category's colour").toContain(component.selectedColor.toLowerCase());
 
       for (const color of colours) {
-        TestBed.resetTestingModule();
-        await setup({
-          type: 'expense',
-          category: { id: 'c1', name: 'Food', icon: 'restaurant', color, type: 'expense' } as Category,
-        });
+        await setupIn(color);
         for (const scheme of AUDIT_SCHEMES) {
           withScheme(TestBed.inject(ThemeService), scheme, () => {
             fixture.detectChanges();
@@ -297,6 +306,32 @@ describe('CategoryFormDialogComponent', () => {
               .toBeTrue();
             expect(ratio(paintedColor(glyph), tile))
               .withContext(`${scheme} ${color} preview glyph on its tile`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        }
+      }
+    });
+
+    // The chosen icon is drawn in the chosen colour on its
+    // --surface-icon-selected fill, corrected for it.
+    it('draws the chosen icon at AA or better on --surface-icon-selected for every colour a category can take, in both themes', async () => {
+      const colours = everyCategoryColour();
+      expect(colours).toContain(GLYPH_PROBE_COLOURS.light.toLowerCase());
+      expect(colours).toContain(GLYPH_PROBE_COLOURS.dark.toLowerCase());
+
+      for (const color of colours) {
+        await setupIn(color);
+        for (const scheme of AUDIT_SCHEMES) {
+          withScheme(TestBed.inject(ThemeService), scheme, () => {
+            fixture.detectChanges();
+            const chosen = el().querySelector('.icon-btn.selected') as HTMLElement;
+            expect(chosen?.textContent?.trim()).withContext(`${scheme} ${color} the chosen icon`).toBe('restaurant');
+            const glyph = chosen.querySelector('mat-icon') as HTMLElement;
+            expect(paintedBackground(glyph))
+              .withContext(`${scheme} ${color} on --surface-icon-selected`)
+              .toEqual(rounded(tokenValue('--surface-icon-selected', 'background-color')));
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${scheme} ${color} chosen icon`)
               .toBeGreaterThanOrEqual(4.5);
           });
         }

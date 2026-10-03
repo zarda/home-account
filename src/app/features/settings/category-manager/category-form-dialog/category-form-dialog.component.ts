@@ -12,6 +12,7 @@ import { CATEGORY_PALETTE, Category } from '../../../../models';
 import { CategoryChipComponent } from '../../../../shared/components/category-chip/category-chip.component';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 
 interface DialogData {
   category?: Category;
@@ -40,6 +41,7 @@ const CATEGORY_ICONS = [
     MatButtonModule,
     MatIconModule,
     TranslatePipe,
+    CategoryGlyphPipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './category-form-dialog.component.html',

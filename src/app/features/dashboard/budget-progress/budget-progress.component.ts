@@ -10,6 +10,7 @@ import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryGlyphPipe } from '../../../shared/pipes/category-glyph.pipe';
 
 @Component({
   selector: 'app-budget-progress',
@@ -20,7 +21,8 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatIconModule,
     MatButtonModule,
     MatProgressBarModule,
-    TranslatePipe
+    TranslatePipe,
+    CategoryGlyphPipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './budget-progress.component.html',

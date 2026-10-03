@@ -13,7 +13,7 @@
         <div class="budget-item">
           <div class="budget-header">
             <div class="budget-info">
-              <mat-icon [style.color]="getCategoryColor(budget.categoryId)">
+              <mat-icon [style.color]="getCategoryColor(budget.categoryId) | categoryGlyph:'subtle'">
                 {{ getCategoryIcon(budget.categoryId) }}
               </mat-icon>
               <span class="budget-name">{{ budget.name }}</span>

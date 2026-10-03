@@ -14,7 +14,7 @@
     [matMenuTriggerFor]="categoryMenu"
     class="category-button"
   >
-    <mat-icon class="category-icon" [style.color]="categoryColor()">
+    <mat-icon class="category-icon" [style.color]="categoryColor() | categoryGlyph:'reviewCard'">
       {{ categoryIcon() }}
     </mat-icon>
     <span class="category-name" appFitText>{{ categoryName() }}</span>
@@ -28,7 +28,7 @@
         (click)="selectCategory(category.id)"
         [class.selected]="category.id === suggestedCategoryId()"
       >
-        <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+        <mat-icon [style.color]="category.color | categoryGlyph:'menu'">{{ category.icon }}</mat-icon>
         <span>{{ translateName(category.name) }}</span>
       </button>
     }

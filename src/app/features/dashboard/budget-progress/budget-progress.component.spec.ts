@@ -5,13 +5,17 @@ import { Timestamp } from '@angular/fire/firestore';
 import { BudgetProgressComponent } from './budget-progress.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
+import { ThemeService } from '../../../core/services/theme.service';
 import { Budget, Category } from '../../../models';
 import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
   channels,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -300,6 +304,32 @@ describe('BudgetProgressComponent', () => {
               .withContext(`${theme} ${label}`)
               .toBe(tokenColour(token));
           }
+        });
+      }
+    });
+
+    // A category's glyph is drawn on the budget row, so it is corrected for
+    // --surface-subtle in the theme on screen.
+    it("draws each category's glyph at AA or better on its budget row's --surface-subtle, in both themes", () => {
+      const colours: Record<string, string> = { green: GLYPH_PROBE_COLOURS.light, indigo: GLYPH_PROBE_COLOURS.dark };
+      mockCategoryHelperService.getCategoryColor.and.callFake((id: string) => colours[id]);
+      setBudgets(Object.keys(colours).map(id => createMockBudget({ id, categoryId: id })));
+      fixture.detectChanges();
+      const glyphs = Array.from(fixture.nativeElement.querySelectorAll('.budget-info mat-icon')) as HTMLElement[];
+      expect(glyphs.length).withContext('one glyph per budget').toBe(2);
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          fixture.detectChanges();
+          glyphs.forEach((glyph, i) => {
+            const label = `${scheme} ${Object.values(colours)[i]}`;
+            expect(paintedBackground(glyph))
+              .withContext(`${label} on the row`)
+              .toEqual(channels(tokenColour('--surface-subtle')).rgb);
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${label} glyph`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
         });
       }
     });

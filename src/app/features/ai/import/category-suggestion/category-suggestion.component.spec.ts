@@ -1,17 +1,24 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 
 import { CategorySuggestionComponent } from './category-suggestion.component';
 import { CATEGORY_FALLBACK_COLOR, Category } from '../../../../models';
+import { EffectiveTheme, ThemeService } from '../../../../core/services/theme.service';
 import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
   channels,
   paintedBackground,
+  paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../../core/services/testing';
-import type { Rgb } from '../../../../core/utils/color-contrast.utils';
+import { CategorySurface, Rgb, categoryGlyphColor } from '../../../../core/utils/color-contrast.utils';
 
 const mockCategories: Category[] = [
   {
@@ -404,10 +411,30 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
     fixture.detectChanges();
   });
 
+  /**
+   * The inline colour a glyph of `color` is given on `surface` in `scheme`:
+   * the category's own colour, corrected to read on that surface.
+   */
+  function glyphColour(color: string, surface: CategorySurface, scheme: EffectiveTheme): string {
+    const probe = document.createElement('span');
+    probe.style.color = categoryGlyphColor(color, surface, scheme);
+    return probe.style.color;
+  }
+
+  /** The chip's glyph is drawn in `color`, corrected for the review card, in both themes. */
+  function expectGlyphIn(color: string): void {
+    for (const scheme of AUDIT_SCHEMES) {
+      withScheme(TestBed.inject(ThemeService), scheme, () => {
+        fixture.detectChanges();
+        expect(icon().style.color).withContext(scheme).toBe(glyphColour(color, 'reviewCard', scheme));
+      });
+    }
+  }
+
   it('renders the suggested category', () => {
     expect(name()).toBe('Food & Dining');
     expect(icon().textContent?.trim()).toBe('restaurant');
-    expect(icon().style.color).toBe('rgb(255, 87, 34)');
+    expectGlyphIn('#FF5722');
   });
 
   it('moves the rendered name, icon and colour to a corrected category', () => {
@@ -416,7 +443,7 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
 
     expect(name()).toBe('Transportation');
     expect(icon().textContent?.trim()).toBe('directions_car');
-    expect(icon().style.color).toBe('rgb(33, 150, 243)');
+    expectGlyphIn('#2196F3');
   });
 
   it('turns the dot green once the reviewer has confirmed the category', () => {
@@ -536,6 +563,55 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
           expect(paintedBackground(current!))
             .withContext(`${theme} the item as painted`)
             .toEqual(rounded(surface('--surface-menu-current')));
+        });
+      }
+    });
+
+    // Every item's glyph is corrected for the menu, so it reads on an item at
+    // rest, on the current item and on the item the keyboard is on, whichever
+    // category is current. Each item is focused from the keyboard in turn.
+    it('draws each glyph at AA or better on an item at rest, on the current item and on a keyboard-focused item, in both themes', () => {
+      const probes: Category[] = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color], i) => ({
+        ...mockCategories[0],
+        id: `probe-${scheme}`,
+        name: `Probe ${scheme}`,
+        color,
+        order: 10 + i,
+      }));
+      fixture.componentRef.setInput('categories', [...mockCategories, ...probes]);
+      const trigger = fixture.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const current of probes) {
+            fixture.componentRef.setInput('suggestedCategoryId', current.id);
+            fixture.detectChanges();
+            trigger.openMenu();
+            fixture.detectChanges();
+            const items = fixture.debugElement
+              .queryAll(By.directive(MatMenuItem))
+              .map(node => node.injector.get(MatMenuItem));
+            expect(items.length).withContext('one item per top-level active category').toBe(5);
+
+            for (const focused of items) {
+              focused.focus('keyboard');
+              fixture.detectChanges();
+              expect(focused._getHostElement().classList.contains('cdk-keyboard-focused'))
+                .withContext(`${scheme} the keyboard is on ${focused.getLabel()}`)
+                .toBeTrue();
+              for (const item of items) {
+                const host = item._getHostElement();
+                const glyph = host.querySelector('mat-icon') as HTMLElement;
+                const state =
+                  item === focused ? 'keyboard-focused' : host.classList.contains('selected') ? 'current' : 'at rest';
+                expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                  .withContext(`${scheme} ${current.color} current, ${item.getLabel()} ${state}`)
+                  .toBeGreaterThanOrEqual(4.5);
+              }
+            }
+            trigger.closeMenu();
+            fixture.detectChanges();
+          }
         });
       }
     });

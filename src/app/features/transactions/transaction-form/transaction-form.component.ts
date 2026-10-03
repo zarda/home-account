@@ -66,6 +66,7 @@ import {
   shareKey
 } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryGlyphPipe } from '../../../shared/pipes/category-glyph.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { NoteTranslationComponent } from '../../../shared/components/note-translation/note-translation.component';
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
@@ -130,6 +131,7 @@ const OTHER_CURRENCY = 'other-currency';
     MatChipsModule,
     MatTooltipModule,
     TranslatePipe,
+    CategoryGlyphPipe,
     CdkTextareaAutosize
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

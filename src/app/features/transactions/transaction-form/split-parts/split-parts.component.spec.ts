@@ -7,8 +7,19 @@ import { MatSelect } from '@angular/material/select';
 import { SplitPartsComponent } from './split-parts.component';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { ThemeService } from '../../../../core/services/theme.service';
 import { Category, SplitPart } from '../../../../models';
-import { createCategory } from '../../../../core/services/testing';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  chooseOption,
+  createCategory,
+  eachOptionState,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withScheme,
+} from '../../../../core/services/testing';
 
 /** What formatCurrency answers here, so a footer assertion pins the call, not Intl. */
 const FORMATTED = '<money>';
@@ -189,6 +200,35 @@ describe('SplitPartsComponent', () => {
         expect(style.height).toBe(style.fontSize);
       }
     }));
+  });
+
+  // A category's glyph is drawn in the panel on an option at rest, active
+  // and selected, and is corrected for each. Each probe is picked in turn, so
+  // each is seen selected.
+  it("draws each category's glyph at AA or better on its option at rest, active and selected, in both themes", () => {
+    render();
+    const probes = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color]) =>
+      createCategory({ id: `probe-${scheme}`, name: `probe-${scheme}`, color, type: 'expense' })
+    );
+    host.categories.set(probes);
+    addButton().click();
+    fixture.detectChanges();
+    const flush = () => fixture.detectChanges();
+
+    for (const scheme of AUDIT_SCHEMES) {
+      withScheme(TestBed.inject(ThemeService), scheme, () => {
+        for (const probe of probes) {
+          chooseOption(select(0), probe.id, flush);
+          expect(host.parts()[0].categoryId).withContext(`${scheme} ${probe.id} picked`).toBe(probe.id);
+          eachOptionState(select(0), flush, (option, state) => {
+            const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${scheme} ${probe.id} picked, ${option.value} ${state}`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        }
+      });
+    }
   });
 
   describe('removing a part', () => {

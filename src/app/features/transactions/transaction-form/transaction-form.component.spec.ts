@@ -19,7 +19,7 @@ import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogContainer, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -55,19 +55,26 @@ import { LedgerShareRefusal, LedgerShareService } from '../../../core/services/l
 import { MAX_RECEIPTS_PER_TRANSACTION } from '../../../core/services/storage.service';
 import { Transaction, Category, Goal, User } from '../../../models';
 import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
   channels,
+  chooseOption,
   createTransaction,
   createCategory,
   createUser,
   createTranslationStub,
+  eachOptionState,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../core/services/testing';
 import type { Rgb } from '../../../core/utils/color-contrast.utils';
+import { ThemeService } from '../../../core/services/theme.service';
+import { CategoryGlyphPipe } from '../../../shared/pipes/category-glyph.pipe';
 
 const renderExpenseCategory = createCategory({ id: 'food', type: 'expense', name: 'food' });
 const renderIncomeCategory = createCategory({ id: 'salary', type: 'income', name: 'salary' });
@@ -2879,6 +2886,7 @@ describe('TransactionFormComponent, through its own template', () => {
             MatChipsModule,
             MatTooltipModule,
             TranslatePipe,
+            CategoryGlyphPipe,
             CdkTextareaAutosize,
           ],
           // A standalone component's template is governed by its own schemas,
@@ -3561,6 +3569,71 @@ describe('TransactionFormComponent, through its own template', () => {
         copy.remove();
       }
     }
+
+    /** Renders the form on the dialog with a category of each probe colour on the expense side. */
+    function renderWithProbes(): Category[] {
+      renderOnDialog();
+      const probes = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color]) =>
+        createCategory({ id: `probe-${scheme}`, name: `probe-${scheme}`, color, type: 'expense' })
+      );
+      (TestBed.inject(CategoryService).expenseCategories as WritableSignal<Category[]>).set(probes);
+      fixture.detectChanges();
+      return probes;
+    }
+
+    // A category's glyph is drawn on the dialog in the closed select, and in
+    // the panel on an option at rest, active and selected; it is corrected
+    // for each. Each probe is chosen in turn, so each is seen selected.
+    it('draws each category glyph at AA or better in the closed select and on its panel at rest, active and selected, in both themes', () => {
+      const probes = renderWithProbes();
+      const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!
+        .injector.get(MatSelect);
+      const flush = () => fixture.detectChanges();
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const probe of probes) {
+            chooseOption(select, probe.id, flush);
+            const closed = el().querySelector('mat-select[formControlName="categoryId"] .category-option mat-icon') as HTMLElement;
+            expect(closed).withContext(`${scheme} ${probe.id} in the closed select`).toBeTruthy();
+            expect(ratio(paintedColor(closed), paintedBackground(closed)))
+              .withContext(`${scheme} ${probe.color} in the closed select`)
+              .toBeGreaterThanOrEqual(4.5);
+            eachOptionState(select, flush, (option, state) => {
+              const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${probe.id} chosen, ${option.value} ${state}`)
+                .toBeGreaterThanOrEqual(4.5);
+            });
+          }
+        });
+      }
+    });
+
+    it("draws the suggested category's glyph at AA or better on the suggestion chip at rest and hovered, in both themes", () => {
+      const probes = renderWithProbes();
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const probe of probes) {
+            component.suggestedCategory.set(probe);
+            fixture.detectChanges();
+            const chip = el().querySelector('.suggestion-chip') as HTMLElement;
+            const glyph = chip.querySelector('mat-icon:not(.ai-icon)') as HTMLElement;
+            expect(glyph?.textContent?.trim()).withContext(`${scheme} ${probe.id} glyph`).toBe(probe.icon);
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${scheme} ${probe.color} at rest`)
+              .toBeGreaterThanOrEqual(4.5);
+            withStyles([[chip, 'background-color', hoverValue(chip, '.suggestion-chip', 'background-color')]], () => {
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${probe.color} hovered`)
+                .toBeGreaterThanOrEqual(4.5);
+            });
+          }
+        });
+      }
+    });
 
     it('lays the suggestion chip on --surface-suggestion, and hovered on --surface-suggestion-hover, with its offer, reason and AI icon at AA on both, in both themes', () => {
       renderOnDialog();

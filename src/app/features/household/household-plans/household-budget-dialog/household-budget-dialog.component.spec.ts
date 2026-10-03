@@ -16,7 +16,18 @@ import { HouseholdError } from '../../../../core/services/household.service';
 import { HouseholdBudgetInput } from '../../../../core/services/household-plans.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub } from '../../../../core/services/testing';
+import { ThemeService } from '../../../../core/services/theme.service';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  chooseOption,
+  createTranslationStub,
+  eachOptionState,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withScheme,
+} from '../../../../core/services/testing';
 import { defaultCategories } from '../../../../core/utils/category-merge.utils';
 import { defaultBudgetStart } from '../../../../core/utils/transaction-date.utils';
 import { HouseholdBudget } from '../../../../models';
@@ -214,6 +225,31 @@ describe('HouseholdBudgetDialogComponent', () => {
       const category = nameNode(option('food_groceries'), component.names().get('food_groceries')!);
       expect(getComputedStyle(group).fontWeight).toBe('600');
       expect(getComputedStyle(category).fontWeight).not.toBe('600');
+    });
+
+    // Every built-in expense category is offered, so every glyph is measured
+    // at rest and active, and is corrected for both. Education wears the
+    // darkest colour a category can take; it is chosen, though a multiple
+    // select paints no selected fill under a chosen option.
+    it("draws each category's glyph at AA or better on its option at rest, active and chosen, in both themes", () => {
+      const select = categorySelect();
+      const flush = () => fixture.detectChanges();
+      expect(component.categories.find(option => option.id === 'education')?.color)
+        .withContext("education's colour")
+        .toBe(GLYPH_PROBE_COLOURS.dark);
+      chooseOption(select, 'education', flush);
+      expect(component.form.controls.categoryIds.value).toEqual(['education']);
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          eachOptionState(select, flush, (option, state) => {
+            const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${scheme} ${option.value} ${state}`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        });
+      }
     });
 
     it('sizes each option icon at --text-lg, a square of it', () => {

@@ -165,23 +165,8 @@ const BASELINE = {
  * Generated with BASELINE and held the same way.
  */
 const BASELINE_CATEGORY = {
-  'src/app/features/ai/import/category-suggestion/category-suggestion.component.html': {
-    '[style.color]': 2,
-  },
-  'src/app/features/budgets/budget-form/budget-form.component.html': {
-    '[style.color]': 2,
-  },
-  'src/app/features/budgets/recurring-transactions/recurring-form-dialog/recurring-form-dialog.component.html': {
-    '[style.color]': 1,
-  },
-  'src/app/features/dashboard/budget-progress/budget-progress.component.html': {
-    '[style.color]': 1,
-  },
   'src/app/features/dashboard/spending-chart/spending-chart.component.html': {
     '[style.background-color]': 2,
-  },
-  'src/app/features/household/household-plans/household-budget-dialog/household-budget-dialog.component.html': {
-    '[style.color]': 1,
   },
   'src/app/features/reports/category-breakdown/category-breakdown.component.html': {
     '[style.background-color]': 2,
@@ -191,13 +176,6 @@ const BASELINE_CATEGORY = {
   },
   'src/app/features/settings/category-manager/category-form-dialog/category-form-dialog.component.html': {
     '[style.background-color]': 1,
-    '[style.color]': 1,
-  },
-  'src/app/features/transactions/transaction-form/split-parts/split-parts.component.html': {
-    '[style.color]': 1,
-  },
-  'src/app/features/transactions/transaction-form/transaction-form.component.html': {
-    '[style.color]': 3,
   },
 };
 

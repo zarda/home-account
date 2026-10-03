@@ -22,14 +22,14 @@
           <mat-select-trigger>
             @if (selectedCategory(); as cat) {
               <div class="flex items-center gap-2">
-                <mat-icon [style.color]="cat.color" class="!text-lg">{{ cat.icon }}</mat-icon>
+                <mat-icon [style.color]="cat.color | categoryGlyph:'dialog'" class="!text-lg">{{ cat.icon }}</mat-icon>
                 <span>{{ cat.name | translate }}</span>
               </div>
             }
           </mat-select-trigger>
           @for (category of expenseCategories(); track category.id) {
             <mat-option [value]="category.id">
-              <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+              <mat-icon [style.color]="category.color | categoryGlyph:'panel'">{{ category.icon }}</mat-icon>
               {{ category.name | translate }}
             </mat-option>
           }

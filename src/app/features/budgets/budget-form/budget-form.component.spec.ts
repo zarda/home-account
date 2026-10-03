@@ -12,13 +12,19 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { ThemeService } from '../../../core/services/theme.service';
 import { Budget, Category, User } from '../../../models';
 import { of } from 'rxjs';
 import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  chooseOption,
+  eachOptionState,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
+  withScheme,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -614,6 +620,11 @@ describe('BudgetFormComponent', () => {
       el().style.background = 'var(--mat-sys-surface)';
     });
 
+    // The category select's panel renders into the CDK overlay.
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
     /** What `<property>: var(token)` computes to under the theme on <html> now. */
     function tokenValue(token: string, property = 'color'): string {
       const probe = document.createElement('span');
@@ -645,6 +656,44 @@ describe('BudgetFormComponent', () => {
             expect(ratio(paintedColor(node), paintedBackground(node)))
               .withContext(`${theme} ${name} on the dialog`)
               .toBeGreaterThanOrEqual(4.5);
+          }
+        });
+      }
+    });
+
+    // A category's glyph is drawn on the dialog in the closed select, and in
+    // the panel on an option at rest, active and selected; it is corrected
+    // for each. Each probe is chosen in turn, so each is seen selected.
+    it('draws each category glyph at AA or better in the closed select and on its panel at rest, active and selected, in both themes', () => {
+      const probes: Category[] = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color], i) => ({
+        ...mockCategories[0],
+        id: `probe-${scheme}`,
+        name: `probe-${scheme}`,
+        color,
+        order: 10 + i,
+      }));
+      mockCategoryService.expenseCategories.set(probes);
+      fixture.detectChanges();
+      const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!
+        .injector.get(MatSelect);
+      const flush = () => fixture.detectChanges();
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const probe of probes) {
+            chooseOption(select, probe.id, flush);
+            const closed = el().querySelector('mat-select[formControlName="categoryId"] mat-select-trigger mat-icon') as HTMLElement;
+            expect(closed?.textContent?.trim()).withContext(`${scheme} ${probe.id} in the closed select`).toBe(probe.icon);
+            expect(ratio(paintedColor(closed), paintedBackground(closed)))
+              .withContext(`${scheme} ${probe.color} in the closed select`)
+              .toBeGreaterThanOrEqual(4.5);
+            eachOptionState(select, flush, (option, state) => {
+              const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${probe.id} chosen, ${option.value} ${state}`)
+                .toBeGreaterThanOrEqual(4.5);
+            });
           }
         });
       }

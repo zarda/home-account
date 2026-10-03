@@ -29,7 +29,7 @@
             type="button"
             class="icon-btn"
             [class.selected]="selectedIcon === icon"
-            [style.color]="selectedIcon === icon ? selectedColor : ''"
+            [style.color]="(selectedIcon === icon ? selectedColor : '') | categoryGlyph:'iconGrid'"
             (click)="selectIcon(icon)"
           >
             <mat-icon>{{ icon }}</mat-icon>

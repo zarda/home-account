@@ -22,6 +22,7 @@ import { defaultBudgetStart } from '../../../../core/utils/transaction-date.util
 import { BudgetPeriod, HOUSEHOLD_PLAN_CATEGORY_MAX, HOUSEHOLD_PLAN_NAME_LENGTH, HouseholdBudget } from '../../../../models';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 import { writeFailureMessage } from '../../household-failure';
 import {
   budgetCategoriesValidator,
@@ -83,7 +84,8 @@ function endNotBeforeStart(control: AbstractControl<Date | null>): ValidationErr
     MatProgressSpinnerModule,
     MatSelectModule,
     ReactiveFormsModule,
-    TranslatePipe
+    TranslatePipe,
+    CategoryGlyphPipe
   ],
   // Each hint and error grows its own field rather than running over the
   // next one; the stylesheet keeps the one-line row Material would reserve.
