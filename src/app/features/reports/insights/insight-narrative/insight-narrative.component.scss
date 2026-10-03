@@ -1,7 +1,12 @@
+// Both stops mix into the card rather than into transparent, so the gradient
+// is opaque and every line on it is measured against declared colours.
 .narrative-card {
-  @apply bg-gradient-to-br from-primary-50 to-indigo-50;
-  @apply dark:from-primary-900/20 dark:to-indigo-900/20;
-  @apply border border-primary-100 dark:border-primary-800;
+  background-image: linear-gradient(
+    to bottom right,
+    color-mix(in srgb, var(--color-primary) 12%, var(--surface-card)),
+    color-mix(in srgb, var(--color-accent) 10%, var(--surface-card))
+  );
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -77,8 +82,8 @@ mat-card-title {
   padding: 12px;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  @apply bg-red-50 dark:bg-red-900/20;
-  @apply text-red-600 dark:text-red-400;
+  background: color-mix(in srgb, var(--color-error) 8%, var(--surface-card));
+  color: var(--color-error-text);
 
   mat-icon {
     font-size: var(--text-lg);

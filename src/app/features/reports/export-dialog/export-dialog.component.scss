@@ -140,9 +140,11 @@ mat-dialog-actions {
   display: inline-block;
   margin-right: 8px;
 
+  // The button is disabled while it exports, so the stroke follows the
+  // label's disabled ink rather than a fixed colour.
   ::ng-deep {
     circle {
-      stroke: white;
+      stroke: currentColor;
     }
   }
 }

@@ -10,6 +10,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
+import { settleAnimations, withTheme } from '../../../core/services/testing';
 
 describe('ExportDialogComponent', () => {
   let component: ExportDialogComponent;
@@ -251,6 +252,31 @@ describe('ExportDialogComponent', () => {
 
       const spinner = fixture.nativeElement.querySelector('mat-spinner');
       expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+    });
+  });
+
+  describe('colours', () => {
+    it('strokes the exporting spinner in the colour of the label beside it, in both themes', () => {
+      component.isExporting.set(true);
+      fixture.detectChanges();
+
+      const label = fixture.nativeElement.querySelector('mat-dialog-actions .btn-spinner')
+        ?.closest('.mdc-button__label') as HTMLElement | null;
+      const circles = Array.from(
+        fixture.nativeElement.querySelectorAll('.btn-spinner circle')
+      ) as SVGCircleElement[];
+      expect(label).withContext('the export button label').toBeTruthy();
+      expect(circles.length).withContext('spinner circles').toBeGreaterThan(0);
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          const ink = getComputedStyle(label as HTMLElement).color;
+          for (const circle of circles) {
+            expect(getComputedStyle(circle).stroke).withContext(`${theme} spinner stroke`).toBe(ink);
+          }
+        });
+      }
     });
   });
 
