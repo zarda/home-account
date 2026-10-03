@@ -99,16 +99,17 @@ export class BudgetProgressComponent {
     return `${this.formatAmount(remaining, budget.currency)} left`;
   }
 
+  // Critical shares the warning colour, as the bar does: the theme has no
+  // orange text token, and the alert text names the severity.
   getPercentageClass(budget: Budget): string {
     switch (this.getSeverity(budget)) {
       case 'exceeded':
-        return 'text-red-600';
+        return 'text-error-text';
       case 'critical':
-        return 'text-orange-500';
       case 'warning':
-        return 'text-yellow-600';
+        return 'text-warning-text';
       default:
-        return 'text-green-600';
+        return 'text-success-text';
     }
   }
 }

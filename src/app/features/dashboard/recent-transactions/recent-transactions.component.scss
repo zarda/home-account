@@ -16,7 +16,7 @@
 .card-title {
   font-size: var(--text-lg);
   font-weight: 600;
-  @apply text-gray-900 dark:text-gray-100;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -26,13 +26,16 @@
   gap: 2px;
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-indigo-600 dark:text-indigo-400;
+  color: var(--color-accent);
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
+// Toward the text colour, so the hover reads stronger in either theme:
+// darker in light, lighter in dark. --color-accent-light, the lighter step,
+// is under 3:1 on the light card.
 .view-all-link:hover {
-  @apply text-indigo-700 dark:text-indigo-300;
+  color: color-mix(in srgb, var(--color-accent) 75%, var(--text-primary));
 }
 
 .view-all-icon {

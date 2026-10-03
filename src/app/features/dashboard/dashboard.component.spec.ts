@@ -35,7 +35,15 @@ import {
   UpcomingSchedule,
   User,
 } from '../../models';
-import { createTransaction, createCategory, createUser } from '../../core/services/testing';
+import {
+  createTransaction,
+  createCategory,
+  createUser,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
+} from '../../core/services/testing';
 import {
   PeriodSelection,
   defaultPeriodSelection,
@@ -1309,6 +1317,40 @@ describe('DashboardComponent', () => {
       expect(empty.textContent).toContain('dashboard.noCardsShown');
       const link = empty.querySelector('.customize-link');
       expect(link.getAttribute('href')).toBe('/settings?panel=dashboard');
+    });
+
+    it('paints the empty line in the muted text token, at AA or better on the page, in both themes', () => {
+      authService.currentUser.set(createUser({
+        preferences: {
+          dashboardLayout: {
+            order: ['budgets'],
+            hidden: ['recent', 'upcoming', 'chart', 'insights'],
+          },
+        } as User['preferences'],
+      }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      const line = fixture.nativeElement.querySelector('.dashboard-empty p') as HTMLElement;
+      const muted = () => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--text-muted)';
+        document.body.appendChild(probe);
+        try {
+          return getComputedStyle(probe).color;
+        } finally {
+          probe.remove();
+        }
+      };
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          expect(ratio(paintedColor(line), paintedBackground(line)))
+            .withContext(`${theme} empty line on the page`)
+            .toBeGreaterThanOrEqual(4.5);
+          expect(getComputedStyle(line).color).withContext(`${theme} empty line`).toBe(muted());
+        });
+      }
     });
 
     it('names the refetch bar for a period change once the first load has painted', () => {

@@ -105,7 +105,7 @@
       </a>
     } @else {
       <div class="dashboard-empty">
-        <p class="text-gray-500 dark:text-gray-400 text-sm">{{ 'dashboard.noCardsShown' | translate }}</p>
+        <p class="text-fg-muted text-sm">{{ 'dashboard.noCardsShown' | translate }}</p>
         <a mat-button routerLink="/settings" [queryParams]="{ panel: 'dashboard' }" class="customize-link">
           <mat-icon>tune</mat-icon>
           {{ 'dashboard.customize' | translate }}

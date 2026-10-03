@@ -14,7 +14,15 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction } from '../../../models';
-import { createUser } from '../../../core/services/testing';
+import {
+  createUser,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 import { parseDayKey } from '../../../core/utils/transaction-date.utils';
 
 describe('RecentTransactionsComponent', () => {
@@ -140,6 +148,58 @@ describe('RecentTransactionsComponent', () => {
     const txn = { date: new Date(2026, 0, 5) } as unknown as Transaction;
     component.onTransactionClick(txn);
     expect(navSpy).toHaveBeenCalledWith(['/transactions'], { queryParams: { date: '2026-01-05' } });
+  });
+
+  describe('colours', () => {
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    it('paints the title in the primary text token, at AA or better on the card, in both themes', () => {
+      const title = fixture.nativeElement.querySelector('.card-title') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          expect(ratio(paintedColor(title), paintedBackground(title)))
+            .withContext(`${theme} title on the card`)
+            .toBeGreaterThanOrEqual(4.5);
+          expect(getComputedStyle(title).color)
+            .withContext(`${theme} title`)
+            .toBe(tokenColour('--text-primary'));
+        });
+      }
+    });
+
+    it('paints View all in the accent at rest, and a different AA colour hovered, in both themes', () => {
+      const link = fixture.nativeElement.querySelector('.view-all-link') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          try {
+            expect(ratio(paintedColor(link), paintedBackground(link)))
+              .withContext(`${theme} link at rest on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            const rest = getComputedStyle(link).color;
+            expect(rest).withContext(`${theme} link at rest`).toBe(tokenColour('--color-accent'));
+
+            link.style.color = hoverValue(link, '.view-all-link', 'color');
+            expect(ratio(paintedColor(link), paintedBackground(link)))
+              .withContext(`${theme} link hovered on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(link).color).withContext(`${theme} hover differs from rest`).not.toBe(rest);
+          } finally {
+            link.style.removeProperty('color');
+          }
+        });
+      }
+    });
   });
 
   /**

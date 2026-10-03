@@ -6,6 +6,30 @@ import { BudgetProgressComponent } from './budget-progress.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { Budget, Category } from '../../../models';
+import {
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
+
+/**
+ * What `color: var(token)` computes to under the palette on <html> now,
+ * once any transition the theme swap started has run to its end.
+ */
+function tokenColour(token: string): string {
+  const probe = document.createElement('span');
+  probe.style.color = `var(${token})`;
+  document.body.appendChild(probe);
+  try {
+    settleAnimations(document);
+    return getComputedStyle(probe).color;
+  } finally {
+    probe.remove();
+  }
+}
 
 describe('BudgetProgressComponent', () => {
   let component: BudgetProgressComponent;
@@ -206,20 +230,93 @@ describe('BudgetProgressComponent', () => {
     });
   });
 
-  describe('getPercentageClass', () => {
-    it('should return green for under 80%', () => {
-      const budget = createMockBudget({ amount: 100, spent: 50 });
-      expect(component.getPercentageClass(budget)).toBe('text-green-600');
+  describe('getPercentageClass, as painted', () => {
+    // Each severity at a spend that reaches it under the budget's 80%
+    // threshold. Critical shares the warning colour, as the bar already
+    // does: there is no orange token, and the alert text names the severity.
+    const SEVERITIES = [
+      { name: 'within budget', spent: 50, token: '--color-success-text' },
+      { name: 'warning', spent: 85, token: '--color-warning-text' },
+      { name: 'critical', spent: 95, token: '--color-warning-text' },
+      { name: 'exceeded', spent: 110, token: '--color-error-text' },
+    ] as const;
+
+    it('reads each severity at AA or better on the budget row, in both themes', () => {
+      for (const severity of SEVERITIES) {
+        setBudgets([createMockBudget({ amount: 100, spent: severity.spent })]);
+        fixture.detectChanges();
+        const percentage = fixture.nativeElement.querySelector('.budget-percentage') as HTMLElement;
+        const row = fixture.nativeElement.querySelector('.budget-item') as HTMLElement;
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            expect(paintedBackground(row))
+              .withContext(`${theme} row`)
+              .toEqual(channels(tokenColour('--surface-subtle')).rgb);
+            expect(ratio(paintedColor(percentage), paintedBackground(percentage)))
+              .withContext(`${theme} ${severity.name} on the row`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(percentage).color)
+              .withContext(`${theme} ${severity.name}`)
+              .toBe(tokenColour(severity.token));
+          });
+        }
+      }
+    });
+  });
+
+  describe('colours (real template)', () => {
+    beforeEach(() => {
+      setBudgets([createMockBudget()]);
+      fixture.detectChanges();
     });
 
-    it('should return yellow for 80-99%', () => {
-      const budget = createMockBudget({ amount: 100, spent: 85 });
-      expect(component.getPercentageClass(budget)).toBe('text-yellow-600');
+    it("paints the Manage link in the theme's own primary, at AA or better on the card, in both themes", () => {
+      const link = fixture.nativeElement.querySelector('a[mat-button]') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          expect(ratio(paintedColor(link), paintedBackground(link)))
+            .withContext(`${theme} Manage link on the card`)
+            .toBeGreaterThanOrEqual(4.5);
+          expect(getComputedStyle(link).color)
+            .withContext(`${theme} Manage link`)
+            .toBe(tokenColour('--mat-sys-primary'));
+        });
+      }
     });
 
-    it('should return red for 100% and over', () => {
-      const budget = createMockBudget({ amount: 100, spent: 110 });
-      expect(component.getPercentageClass(budget)).toBe('text-red-600');
+    it('paints the name and the amounts in the theme text tokens, at AA or better, in both themes', () => {
+      const name = fixture.nativeElement.querySelector('.budget-name') as HTMLElement;
+      const amounts = fixture.nativeElement.querySelector('.budget-amounts') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          for (const [label, el, token] of [
+            ['name', name, '--text-primary'],
+            ['amounts', amounts, '--text-muted'],
+          ] as const) {
+            expect(ratio(paintedColor(el), paintedBackground(el)))
+              .withContext(`${theme} ${label} on the row`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(el).color)
+              .withContext(`${theme} ${label}`)
+              .toBe(tokenColour(token));
+          }
+        });
+      }
+    });
+
+    // The track is Material's own and already follows the theme. An
+    // override has to set --mat-progress-bar-track-color: Material reads no
+    // --mdc-* name.
+    it("draws the progress track in Material's own track colour, in both themes", () => {
+      const track = fixture.nativeElement.querySelector('.mdc-linear-progress__buffer-bar') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(getComputedStyle(track).backgroundColor)
+            .withContext(`${theme} track`)
+            .toBe(tokenColour('--mat-sys-surface-variant'));
+        });
+      }
     });
   });
 

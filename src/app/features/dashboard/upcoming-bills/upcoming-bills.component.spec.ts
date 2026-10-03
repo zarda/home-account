@@ -8,6 +8,14 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { Category, RecurringOccurrence } from '../../../models';
+import {
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 function occurrence(overrides: Partial<RecurringOccurrence> = {}): RecurringOccurrence {
   return {
@@ -188,5 +196,72 @@ describe('UpcomingBillsComponent', () => {
     // route would land on envelopes.
     expect(link.getAttribute('href')).toBe('/budgets?tab=recurring');
     expect(link.textContent).toContain('dashboard.viewAll');
+  });
+
+  // Not the category tile or its glyph: those paint the category's own colour.
+  describe('colours', () => {
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    it('paints every line in its text token, at AA or better on the card, in both themes', () => {
+      render([occurrence()], -1200, 2);
+      const lines = [
+        ['title', '.card-title', '--text-primary'],
+        ['day header', '.day-header', '--text-muted'],
+        ['bill name', '.bill-name', '--text-primary'],
+        ['bill category', '.bill-category', '--text-muted'],
+        ['older note', '.older-note', '--text-muted'],
+        ['net label', '.net-label', '--text-secondary'],
+        ['rate caption', '.rate-caption', '--text-muted'],
+      ] as const;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          for (const [label, selector, token] of lines) {
+            const el = fixture.nativeElement.querySelector(selector) as HTMLElement;
+            expect(el).withContext(label).toBeTruthy();
+            expect(ratio(paintedColor(el), paintedBackground(el)))
+              .withContext(`${theme} ${label} on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(el).color)
+              .withContext(`${theme} ${label}`)
+              .toBe(tokenColour(token));
+          }
+        });
+      }
+    });
+
+    it('paints View all in the accent at rest, and a different AA colour hovered, in both themes', () => {
+      render([occurrence()]);
+      const link = fixture.nativeElement.querySelector('.view-all-link') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          try {
+            expect(ratio(paintedColor(link), paintedBackground(link)))
+              .withContext(`${theme} link at rest on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            const rest = getComputedStyle(link).color;
+            expect(rest).withContext(`${theme} link at rest`).toBe(tokenColour('--color-accent'));
+
+            link.style.color = hoverValue(link, '.view-all-link', 'color');
+            expect(ratio(paintedColor(link), paintedBackground(link)))
+              .withContext(`${theme} link hovered on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(link).color).withContext(`${theme} hover differs from rest`).not.toBe(rest);
+          } finally {
+            link.style.removeProperty('color');
+          }
+        });
+      }
+    });
   });
 });
