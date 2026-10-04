@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { Router } from '@angular/router';
-import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -27,6 +28,14 @@ export interface PaletteCommand {
   action?: PaletteAction;
 }
 
+/**
+ * What the palette may be opened on, as MAT_DIALOG_DATA. Ctrl/Cmd+K passes
+ * none, so the token is optional; `?` names the Shortcuts section.
+ */
+export interface CommandPaletteData {
+  section: 'shortcuts';
+}
+
 /** A command with its label resolved against the loaded catalog. */
 export interface LabelledPaletteCommand extends PaletteCommand {
   label: string;
@@ -47,6 +56,8 @@ const ACTION_COMMANDS: readonly PaletteCommand[] = [
  * Every destination in the shared nav list — including the three that no
  * navigation surface shows — plus the two quick actions, in one filterable
  * list. KeyboardShortcutService owns opening and closing it.
+ * `?` opens the palette on its Shortcuts section, a reference list that is
+ * never a command.
  *
  * Three decisions worth stating:
  *
@@ -72,6 +83,7 @@ const ACTION_COMMANDS: readonly PaletteCommand[] = [
   standalone: true,
   imports: [
     DialogHeaderComponent,
+    NgTemplateOutlet,
     MatDialogModule,
     MatFormFieldModule,
     MatIconModule,
@@ -89,6 +101,14 @@ export class CommandPaletteComponent {
   private quickAdd = inject(QuickAddService);
   private announcer = inject(AnnouncerService);
   private translationService = inject(TranslationService);
+  private data = inject<CommandPaletteData | null>(MAT_DIALOG_DATA, { optional: true });
+
+  /**
+   * Whether the palette was opened on its Shortcuts section (`?`): the
+   * section then leads, so it is what the user sees without scrolling, and
+   * otherwise it follows the commands.
+   */
+  readonly shortcutsFirst = this.data?.section === 'shortcuts';
 
   /** Every command the palette knows, destinations first. */
   private readonly commands: readonly PaletteCommand[] = [
@@ -122,6 +142,13 @@ export class CommandPaletteComponent {
     if (!needle) return all;
     return all.filter(command => command.label.toLocaleLowerCase().includes(needle));
   });
+
+  /**
+   * The Shortcuts section is reference, not a command, so it is never in
+   * `filtered()`: Enter runs that list's head, and the arrows rove only its
+   * rows. It shows while nothing is typed, and a query narrows to commands.
+   */
+  showShortcuts = computed(() => this.query().trim() === '');
 
   navResults = computed(() => this.filtered().filter(command => command.kind === 'nav'));
   actionResults = computed(() => this.filtered().filter(command => command.kind === 'action'));

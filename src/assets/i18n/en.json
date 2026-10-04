@@ -1805,10 +1805,16 @@
     "noResults": "Nothing matches that",
     "sectionNavigate": "Go to",
     "sectionActions": "Actions",
+    "sectionShortcuts": "Keyboard shortcuts",
     "resultCount": {
       "one": "{{count}} result",
       "other": "{{count}} results"
     }
+  },
+  "shortcuts": {
+    "addTransaction": "Add a transaction",
+    "openPalette": "Open or close this palette",
+    "showShortcuts": "Show these shortcuts"
   },
   "widget": {
     "spent": "Spent",

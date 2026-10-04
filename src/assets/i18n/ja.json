@@ -1649,7 +1649,13 @@
     "noResults": "一致するものはありません",
     "sectionNavigate": "移動先",
     "sectionActions": "操作",
+    "sectionShortcuts": "キーボードショートカット",
     "resultCount": "{{count}} 件の結果"
+  },
+  "shortcuts": {
+    "addTransaction": "取引を追加",
+    "openPalette": "このパレットを開く／閉じる",
+    "showShortcuts": "このショートカット一覧を表示"
   },
   "widget": {
     "spent": "支出",

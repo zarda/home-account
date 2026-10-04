@@ -281,4 +281,107 @@ describe('KeyboardShortcutService', () => {
       expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
     });
   });
+
+  // '?' is a printable character like 'n', so it takes the 'n' hotkey's
+  // three guards rather than the palette chord's: somebody typing a question
+  // mark into a field, or steering a typeahead with it, is not asking for
+  // help.
+  describe('shortcuts hotkey (?)', () => {
+    function keydownQuestion(
+      target: EventTarget,
+      overrides: Partial<KeyboardEvent> = {}
+    ): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', {
+        key: '?',
+        shiftKey: true,
+        cancelable: true,
+        ...overrides,
+      });
+      Object.defineProperty(event, 'target', { value: target, configurable: true });
+      return event;
+    }
+
+    it('opens the palette on its Shortcuts section and claims the key', () => {
+      const event = keydownQuestion(document.body);
+
+      service.handleHelpHotkey(event);
+
+      expect(event.defaultPrevented).toBeTrue();
+      expect(dialog.open).toHaveBeenCalledOnceWith(CommandPaletteComponent, {
+        width: '520px',
+        maxWidth: '95vw',
+        data: { section: 'shortcuts' },
+      });
+    });
+
+    it('leaves an IME composition alone, key and all', () => {
+      const event = keydownQuestion(document.body, {
+        isComposing: true,
+      } as unknown as KeyboardEventInit);
+
+      service.handleHelpHotkey(event);
+
+      expect(event.defaultPrevented).toBeFalse();
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+
+    it('stands down over an open dialog and leaves the key to it', () => {
+      dialog.openDialogs = [{}];
+      const event = keydownQuestion(document.body);
+
+      service.handleHelpHotkey(event);
+
+      expect(event.defaultPrevented).toBeFalse();
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+
+    it('stands down when the target owns the typed key', () => {
+      const input = document.createElement('input');
+      const combobox = document.createElement('div');
+      combobox.setAttribute('role', 'combobox');
+
+      for (const target of [input, combobox]) {
+        const event = keydownQuestion(target);
+
+        service.handleHelpHotkey(event);
+
+        expect(event.defaultPrevented).withContext(target.tagName).toBeFalse();
+      }
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+
+    it('never opens a second palette', () => {
+      service.handleHelpHotkey(keydownQuestion(document.body));
+      service.handleHelpHotkey(keydownQuestion(document.body));
+
+      // Over a palette Ctrl/Cmd+K opened, too.
+      service.handlePaletteHotkey(keydownK(document.body));
+      settleClose(openedRefs[0]);
+      service.handlePaletteHotkey(keydownK(document.body));
+      service.handleHelpHotkey(keydownQuestion(document.body));
+
+      expect(dialog.open).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens a palette that Ctrl/Cmd+K then toggles closed', () => {
+      service.handleHelpHotkey(keydownQuestion(document.body));
+
+      service.handlePaletteHotkey(keydownK(document.body));
+
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+      expect(openedRefs[0].close).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves the Ctrl/Cmd+K palette without a section', () => {
+      service.handleHelpHotkey(keydownQuestion(document.body));
+      settleClose(openedRefs[0]);
+
+      service.handlePaletteHotkey(keydownK(document.body));
+
+      expect(dialog.open.calls.mostRecent().args).toEqual([
+        CommandPaletteComponent,
+        { width: '520px', maxWidth: '95vw' },
+      ]);
+    });
+  });
 });

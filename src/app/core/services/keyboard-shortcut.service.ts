@@ -1,7 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { QuickAddService } from './quick-add.service';
-import { CommandPaletteComponent } from '../../shared/components/command-palette/command-palette.component';
+import {
+  CommandPaletteComponent,
+  CommandPaletteData,
+} from '../../shared/components/command-palette/command-palette.component';
 import { isImeComposition, ownsTypedKey } from '../utils/keyboard.utils';
 
 /**
@@ -18,7 +21,8 @@ import { isImeComposition, ownsTypedKey } from '../utils/keyboard.utils';
  *  3. A target that already owns the letter (keyboard.utils' ownsTypedKey:
  *     native text entry, or a Material typeahead widget guard 2 cannot see)
  *     means the user is typing 'n' or steering with it, not invoking it.
- *  Only once all three pass does the key do anything.
+ *  Only once all three pass does the key do anything. '?' is a printable
+ *  character too, so it takes the same three.
  */
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutService {
@@ -67,10 +71,35 @@ export class KeyboardShortcutService {
     }
     if (this.dialog.openDialogs.length > 0) return;
 
-    // Same width as the app's other typed-into dialog (Smart Search).
+    this.openPalette();
+  }
+
+  /**
+   * '?' opens the palette on its Shortcuts section. The 'n' hotkey's three
+   * guards, in its order, and for its reasons: a question mark typed into a
+   * field or steering a typeahead is text, and over an open dialog (this
+   * palette included) the key belongs to that dialog, so there is never a
+   * second palette. Unlike Ctrl/Cmd+K, the key is claimed only on the path
+   * that acts on it, as 'n' is: a '?' this service stands down for reaches
+   * whatever it was typed into, untouched.
+   */
+  handleHelpHotkey(event: KeyboardEvent): void {
+    if (isImeComposition(event)) return;
+    if (this.dialog.openDialogs.length > 0) return;
+    if (ownsTypedKey(event.target)) return;
+
+    event.preventDefault();
+    this.openPalette({ section: 'shortcuts' });
+  }
+
+  private openPalette(data?: CommandPaletteData): void {
+    // Same width as the app's other typed-into dialog (Smart Search). `data`
+    // is set only when there is some, so the plain palette's config is
+    // exactly what it always was.
     const ref = this.dialog.open(CommandPaletteComponent, {
       width: '520px',
       maxWidth: '95vw',
+      ...(data ? { data } : {}),
     });
     this.paletteRef = ref;
     ref.afterClosed().subscribe(() => {

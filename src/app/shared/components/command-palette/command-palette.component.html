@@ -17,6 +17,10 @@
       />
     </mat-form-field>
 
+    @if (shortcutsFirst && showShortcuts()) {
+      <ng-container [ngTemplateOutlet]="shortcuts" />
+    }
+
     @if (navResults().length > 0) {
       <section class="palette-section">
         <h3 class="palette-section-title">{{ 'palette.sectionNavigate' | translate }}</h3>
@@ -66,8 +70,41 @@
       </section>
     }
 
+    @if (!shortcutsFirst && showShortcuts()) {
+      <ng-container [ngTemplateOutlet]="shortcuts" />
+    }
+
     @if (filtered().length === 0) {
       <p class="palette-empty">{{ 'palette.noResults' | translate }}</p>
     }
   </mat-dialog-content>
 </div>
+
+<!--
+  Reference, not commands: nothing here is a .palette-item or focusable, so
+  Enter and the arrows never reach it. Both modifiers are shown because
+  nothing in the app detects the platform.
+-->
+<ng-template #shortcuts>
+  <section class="palette-section palette-shortcuts">
+    <h3 class="palette-section-title">{{ 'palette.sectionShortcuts' | translate }}</h3>
+    <dl class="shortcut-list">
+      <div class="shortcut-row">
+        <dt class="shortcut-keys"><kbd>n</kbd></dt>
+        <dd class="shortcut-label">{{ 'shortcuts.addTransaction' | translate }}</dd>
+      </div>
+      <div class="shortcut-row">
+        <dt class="shortcut-keys">
+          <span class="shortcut-chord"><kbd>Ctrl</kbd>+<kbd>K</kbd></span>
+          <span class="shortcut-or">/</span>
+          <span class="shortcut-chord"><kbd>⌘</kbd><kbd>K</kbd></span>
+        </dt>
+        <dd class="shortcut-label">{{ 'shortcuts.openPalette' | translate }}</dd>
+      </div>
+      <div class="shortcut-row">
+        <dt class="shortcut-keys"><kbd>?</kbd></dt>
+        <dd class="shortcut-label">{{ 'shortcuts.showShortcuts' | translate }}</dd>
+      </div>
+    </dl>
+  </section>
+</ng-template>

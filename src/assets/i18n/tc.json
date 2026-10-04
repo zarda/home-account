@@ -1649,7 +1649,13 @@
     "noResults": "沒有符合的項目",
     "sectionNavigate": "前往",
     "sectionActions": "操作",
+    "sectionShortcuts": "鍵盤快捷鍵",
     "resultCount": "{{count}} 個結果"
+  },
+  "shortcuts": {
+    "addTransaction": "新增交易",
+    "openPalette": "開啟或關閉此面板",
+    "showShortcuts": "顯示這份快捷鍵列表"
   },
   "widget": {
     "spent": "支出",

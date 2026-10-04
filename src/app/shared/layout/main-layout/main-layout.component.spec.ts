@@ -40,6 +40,7 @@ describe('MainLayoutComponent', () => {
     keyboardShortcuts = jasmine.createSpyObj('KeyboardShortcutService', [
       'handleAddHotkey',
       'handlePaletteHotkey',
+      'handleHelpHotkey',
     ]);
 
     await TestBed.configureTestingModule({
@@ -288,6 +289,42 @@ describe('MainLayoutComponent', () => {
       expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
     });
   });
+
+  describe('shortcuts hotkey (#446)', () => {
+    // On a US layout '?' is Shift+/, and Angular folds the Shift into the
+    // matched key ("shift.?"), so a bare `keydown.?` line alone would never
+    // fire there. Dispatched for real, like the folding pins above.
+    it('reaches the service on "?" typed with Shift', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', shiftKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleHelpHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    // Layouts that type '?' on an unshifted key.
+    it('reaches the service on "?" typed without Shift', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleHelpHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not reached by ctrl+k or "n"', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleHelpHotkey).not.toHaveBeenCalled();
+    });
+
+    it('reaches neither the add hotkey nor the palette chord', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', shiftKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+      expect(keyboardShortcuts.handlePaletteHotkey).not.toHaveBeenCalled();
+    });
+  });
 });
 
 /**
@@ -331,7 +368,7 @@ describe('MainLayoutComponent, through its own template', () => {
         {
           provide: KeyboardShortcutService,
           useValue: jasmine.createSpyObj('KeyboardShortcutService', [
-            'handleAddHotkey', 'handlePaletteHotkey',
+            'handleAddHotkey', 'handlePaletteHotkey', 'handleHelpHotkey',
           ]),
         },
         { provide: TranslationService, useValue: createTranslationStub() },
