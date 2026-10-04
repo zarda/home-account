@@ -30,7 +30,7 @@ import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, TransactionFilters, Category, baseCurrencyOf } from '../../models';
 import { injectIsMobileViewport } from '../../core/layout/viewport';
-import { parseDayKey } from '../../core/utils/transaction-date.utils';
+import { parseDayKey, yearWindow } from '../../core/utils/transaction-date.utils';
 import { pinLeadingMinus, snapDisplayZero } from '../../core/utils/money-display.utils';
 import { FitTextDirective } from '../../shared/directives/fit-text.directive';
 import { TransactionListComponent } from './transaction-list/transaction-list.component';
@@ -196,6 +196,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   initialDate = signal<Date | undefined>(undefined);
   showAll = signal<boolean>(false);
+  pickerFloor = signal<Date | null>(null);
 
   // Filters pushed from outside the filters panel (insight chips, smart
   // search). Always set with a fresh object so the panel's ngOnChanges fires
@@ -297,6 +298,8 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     // Load categories (only once)
     this.categoriesSub = this.categoryService.loadCategories().subscribe();
 
+    this.loadPickerFloor();
+
     // No transaction load here: the filters component always emits its initial
     // filter set (thisMonth / cleared / initialDate) right after init, and
     // onFiltersChanged seeds the window from it. isInitialLoading starts true
@@ -313,6 +316,16 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.categoriesSub?.unsubscribe();
+  }
+
+  // Read once: a filter change does not move the oldest row. An account with
+  // no rows still gets this year, so the pickers are not left without a floor.
+  private loadPickerFloor(): void {
+    this.transactionService.getEarliestTransactionDateFromServer().then(
+      earliest => this.pickerFloor.set(earliest ?? yearWindow(new Date().getFullYear()).start),
+      // Offline or refused: no floor, rather than one read from a partial cache.
+      () => undefined,
+    );
   }
 
   // One-shot action params perform their action once; leaving them in the

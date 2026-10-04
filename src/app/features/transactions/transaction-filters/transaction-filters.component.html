@@ -59,7 +59,12 @@
       ></mat-datepicker>
 
       <!-- Hidden Month Picker -->
-      <input [matDatepicker]="monthPicker" style="display: none">
+      <input
+        [matDatepicker]="monthPicker"
+        [min]="bounds().min"
+        [max]="bounds().max"
+        style="display: none"
+      >
       <mat-datepicker
         #monthPicker
         startView="year"
@@ -67,7 +72,12 @@
       ></mat-datepicker>
 
       <!-- Hidden Year Picker -->
-      <input [matDatepicker]="yearPicker" style="display: none">
+      <input
+        [matDatepicker]="yearPicker"
+        [min]="bounds().min"
+        [max]="bounds().max"
+        style="display: none"
+      >
       <mat-datepicker
         #yearPicker
         startView="multi-year"

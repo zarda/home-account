@@ -2014,7 +2014,8 @@ export class TransactionService {
 
   /**
    * The date of the account's oldest row, or null when it has none: the floor
-   * of the period selector's month and year pickers.
+   * of the month and year pickers in the period selector and the transaction
+   * filters.
    *
    * Asked of the server, because a warm cache's oldest row is only the oldest
    * of whatever windows this session browsed, and a floor read from it would

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA, NgZone } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, NgZone, input, output } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { MatButtonModule } from '@angular/material/button';
@@ -28,7 +29,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
-import { Transaction, User } from '../../models';
+import { Category, Transaction, TransactionFilters, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import { createTransaction, createCategory, createTranslationStub } from '../../core/services/testing';
 
@@ -49,6 +50,21 @@ function createMockWindowSource() {
   };
 }
 
+/**
+ * The filters panel in the rendered describe: an empty template carrying the
+ * inputs the page binds, so what the page hands the panel can be read back.
+ */
+@Component({ selector: 'app-transaction-filters', standalone: true, template: '' })
+class TransactionFiltersStubComponent {
+  categories = input<Category[]>([]);
+  incomeCategories = input<Category[]>([]);
+  initialDate = input<Date | undefined>(undefined);
+  presetFilters = input<TransactionFilters | undefined>(undefined);
+  showAll = input(false);
+  floor = input<Date | null>(null);
+  filtersChanged = output<TransactionFilters>();
+}
+
 function createMockPeriodTotals() {
   return {
     status: signal<PeriodTotalsStatus>({ kind: 'idle' }),
@@ -67,6 +83,7 @@ describe('TransactionsComponent', () => {
     lastMutation: ReturnType<typeof signal<TransactionMutation | null>>;
     deleteTransaction: jasmine.Spy;
     getTransactionOnce: jasmine.Spy;
+    getEarliestTransactionDateFromServer: jasmine.Spy;
   };
   let windowSource: ReturnType<typeof createMockWindowSource>;
   let periodTotals: ReturnType<typeof createMockPeriodTotals>;
@@ -101,6 +118,9 @@ describe('TransactionsComponent', () => {
       lastMutation: signal<TransactionMutation | null>(null),
       deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
       getTransactionOnce: jasmine.createSpy('getTransactionOnce').and.resolveTo(null),
+      getEarliestTransactionDateFromServer: jasmine
+        .createSpy('getEarliestTransactionDateFromServer')
+        .and.resolveTo(null),
     };
     windowSource = createMockWindowSource();
     periodTotals = createMockPeriodTotals();
@@ -255,6 +275,18 @@ describe('TransactionsComponent', () => {
     tick(100);
     expect(quickAdd.openAddTransaction).toHaveBeenCalled();
   }));
+
+  describe('the filters\' picker floor read', () => {
+    it('reads the oldest row\'s date once on init, not again on a filter change', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getEarliestTransactionDateFromServer).toHaveBeenCalledTimes(1);
+
+      fixture.componentInstance.onFiltersChanged({ type: 'expense' });
+
+      expect(transactionService.getEarliestTransactionDateFromServer).toHaveBeenCalledTimes(1);
+    });
+  });
 
   it('onFiltersChanged resets the window and the period totals with the same filters', () => {
     const component = build().componentInstance;
@@ -720,8 +752,9 @@ describe('TransactionsComponent', () => {
  * neither* (`transactions.component.html:65-68`). Nothing has ever checked
  * that contract holds.
  *
- * Partial render: the list, the filters and the insight chips are left
- * unresolved. Each has its own spec, and none is asserted about here.
+ * Partial render: the list and the insight chips are left unresolved, and
+ * the filters are a stub that only carries their inputs. Each has its own
+ * spec; of the three, only what the page hands the filters is asserted here.
  */
 describe('TransactionsComponent, through its own template', () => {
   let fixture: ComponentFixture<TransactionsComponent>;
@@ -730,6 +763,7 @@ describe('TransactionsComponent, through its own template', () => {
   let windowMock: ReturnType<typeof createMockWindowSource>;
   let quickAddSpy: jasmine.SpyObj<QuickAddService>;
   let viewport$: BehaviorSubject<BreakpointState>;
+  let earliestRead: jasmine.Spy;
 
   const el = () => fixture.nativeElement as HTMLElement;
   const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
@@ -762,6 +796,7 @@ describe('TransactionsComponent, through its own template', () => {
     quickAddSpy = jasmine.createSpyObj('QuickAddService', [
       'openAddTransaction', 'openScanReceipt', 'openImportPhotos',
     ]);
+    earliestRead = jasmine.createSpy('getEarliestTransactionDateFromServer').and.resolveTo(null);
 
     await TestBed.configureTestingModule({
       imports: [TransactionsComponent, NoopAnimationsModule],
@@ -774,6 +809,7 @@ describe('TransactionsComponent, through its own template', () => {
             lastMutation: signal<TransactionMutation | null>(null),
             deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
             getTransactionOnce: jasmine.createSpy('getTransactionOnce').and.resolveTo(null),
+            getEarliestTransactionDateFromServer: earliestRead,
           },
         },
         {
@@ -818,10 +854,11 @@ describe('TransactionsComponent, through its own template', () => {
             LoadingSpinnerComponent,
             FitTextDirective,
             TranslatePipe,
+            TransactionFiltersStubComponent,
           ],
           // A standalone component's template is governed by its own schemas,
-          // not the TestBed's: the list, the filters and the insight chips
-          // are left unresolved and are never asserted about here.
+          // not the TestBed's: the list and the insight chips are left
+          // unresolved and are never asserted about here.
           schemas: [NO_ERRORS_SCHEMA],
           // This override replaces the component's own providers array, so
           // every page-provided service needs its mock listed here.
@@ -1136,6 +1173,38 @@ describe('TransactionsComponent, through its own template', () => {
     await expectAsync(pending).toBeResolved();
     expect((TestBed.inject(AnnouncerService) as jasmine.SpyObj<AnnouncerService>).announce)
       .not.toHaveBeenCalled();
+  });
+
+  describe('the filters\' picker floor', () => {
+    const filtersFloor = async () => {
+      render();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const filters = fixture.debugElement.query(By.directive(TransactionFiltersStubComponent))
+        .componentInstance as TransactionFiltersStubComponent;
+      return filters.floor();
+    };
+
+    it('hands the filters the date of the oldest row', async () => {
+      const oldest = new Date(2024, 11, 5, 12);
+      earliestRead.and.resolveTo(oldest);
+
+      expect(await filtersFloor()).toEqual(oldest);
+    });
+
+    it('floors an account with no rows at the current year', async () => {
+      earliestRead.and.resolveTo(null);
+
+      expect(await filtersFloor()).toEqual(new Date(new Date().getFullYear(), 0, 1));
+    });
+
+    it('gives the filters no floor when the read fails', async () => {
+      // A pin: null is also the floor the page and the stub hold before any
+      // read lands, so this only catches an error path that sets a floor.
+      earliestRead.and.rejectWith(new Error('unavailable'));
+
+      expect(await filtersFloor()).toBeNull();
+    });
   });
 
   it('offers all three add entries from the desktop menu', () => {

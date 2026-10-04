@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, ViewChild, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, ViewChild, computed, inject, input, signal } from '@angular/core';
 
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { FormsModule } from '@angular/forms';
@@ -27,6 +27,7 @@ import {
   DateWindow,
   endOfDay,
   monthWindow,
+  pickerBounds,
   startOfDay,
   weekWindow,
   yearWindow,
@@ -80,7 +81,14 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
    */
   @Input() presetFilters?: TransactionFilters;
   @Input() showAll = false;
+  /**
+   * The oldest month the month and year pickers offer. Null leaves them
+   * capped at next year with no floor, which is what a failed read gets.
+   */
+  floor = input<Date | null>(null);
   @Output() filtersChanged = new EventEmitter<TransactionFilters>();
+
+  bounds = computed(() => pickerBounds(this.floor(), new Date()));
 
   expanded = signal(false);
   activeQuickFilter = signal<string | null>(null);

@@ -1148,6 +1148,31 @@ describe('TransactionFiltersComponent', () => {
 
       host.remove();
     });
+
+    describe('the month and year pickers\' bounds', () => {
+      const year = new Date().getFullYear();
+      const endOfNextYear = new Date(year + 1, 11, 31, 23, 59, 59, 999);
+
+      const boundedInputs = () => [component.monthPicker, component.yearPicker]
+        .map(picker => picker.datepickerInput);
+
+      it('gives both the floor\'s month and 31 December next year', () => {
+        fixture.componentRef.setInput('floor', new Date(year - 2, 5, 15, 9));
+        fixture.detectChanges();
+
+        for (const input of boundedInputs()) {
+          expect(input.min).toEqual(new Date(year - 2, 5, 1));
+          expect(input.max).toEqual(endOfNextYear);
+        }
+      });
+
+      it('caps both and leaves the floor open with no floor input', () => {
+        for (const input of boundedInputs()) {
+          expect(input.min).toBeNull();
+          expect(input.max).toEqual(endOfNextYear);
+        }
+      });
+    });
   });
 
   describe('presetFilters input', () => {
