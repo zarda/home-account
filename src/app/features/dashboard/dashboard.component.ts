@@ -34,6 +34,7 @@ import {
   clampWindowToNow,
   monthWindow,
   previousPeriodWindow,
+  yearWindow,
 } from '../../core/utils/transaction-date.utils';
 import { dashboardGridAreas } from './dashboard-layout.utils';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
@@ -113,6 +114,10 @@ export class DashboardComponent implements OnInit {
 
   // Current selection from the shared period selector (calendar bounds).
   private currentPeriod = signal<PeriodSelection>(defaultPeriodSelection());
+
+  // The oldest month the selector's pickers offer; null until read, and for
+  // good when the read fails.
+  pickerFloor = signal<Date | null>(null);
 
   // Every stream below wraps a Firestore onSnapshot that never completes, so
   // each period change must supersede the previous listener or they stack —
@@ -337,6 +342,7 @@ export class DashboardComponent implements OnInit {
       .subscribe(schedule => this.upcomingSchedule.set(schedule));
 
     this.loadData();
+    this.loadPickerFloor();
     // Post recurring occurrences that came due since the app was last open.
     // Deliberately outside loadData(): period toggles must not re-run it.
     // The live subscriptions above surface newly posted docs automatically.
@@ -359,6 +365,16 @@ export class DashboardComponent implements OnInit {
   onPeriodSelection(selection: PeriodSelection): void {
     this.currentPeriod.set(selection);
     this.loadData();
+  }
+
+  // Read once: a period change does not move the oldest row. An account with
+  // no rows still gets this year, so the pickers are not left without a floor.
+  private loadPickerFloor(): void {
+    this.transactionService.getEarliestTransactionDateFromServer().then(
+      earliest => this.pickerFloor.set(earliest ?? yearWindow(new Date().getFullYear()).start),
+      // Offline or refused: no floor, rather than one read from a partial cache.
+      () => undefined,
+    );
   }
 
   private loadData(): void {

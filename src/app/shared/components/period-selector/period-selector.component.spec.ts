@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { MatDatepicker } from '@angular/material/datepicker';
+import { By } from '@angular/platform-browser';
+import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
 import {
   PeriodSelectorComponent,
   PeriodSelection,
@@ -97,5 +98,62 @@ describe('PeriodSelectorComponent', () => {
     expect(emitted[1].option).toBe('thisMonth');
     expect(component.isCustomPeriod()).toBeFalse();
     expect(component.customPeriodLabel()).toBe('');
+  });
+
+  describe('picker bounds', () => {
+    const year = new Date().getFullYear();
+    const endOfNextYear = new Date(year + 1, 11, 31, 23, 59, 59, 999);
+
+    const pickerInputs = () =>
+      fixture.debugElement
+        .queryAll(By.directive(MatDatepickerInput))
+        .map(node => node.injector.get(MatDatepickerInput) as MatDatepickerInput<Date>);
+
+    // The year view is a CDK overlay, outside the fixture.
+    const yearCell = (value: number) =>
+      Array.from(document.querySelectorAll<HTMLElement>('.mat-calendar-body-cell'))
+        .find(cell => cell.textContent?.trim() === String(value));
+
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    it('gives both pickers the floor\'s month and 31 December next year', () => {
+      fixture.componentRef.setInput('floor', new Date(year - 2, 5, 15, 9));
+      fixture.detectChanges();
+
+      const inputs = pickerInputs();
+      expect(inputs.length).toBe(2);
+      for (const input of inputs) {
+        expect(input.min).toEqual(new Date(year - 2, 5, 1));
+        expect(input.max).toEqual(endOfNextYear);
+      }
+    });
+
+    it('caps both pickers and leaves the floor open with no floor input', () => {
+      const inputs = pickerInputs();
+      expect(inputs.length).toBe(2);
+      for (const input of inputs) {
+        expect(input.min).toBeNull();
+        expect(input.max).toEqual(endOfNextYear);
+      }
+    });
+
+    it('disables the years before the floor and offers none past next year', () => {
+      fixture.componentRef.setInput('floor', new Date(year - 2, 5, 15));
+      fixture.detectChanges();
+
+      component.openYearPicker();
+      fixture.detectChanges();
+
+      expect(yearCell(year - 3)?.getAttribute('aria-disabled')).toBe('true');
+      expect(yearCell(year - 2)?.getAttribute('aria-disabled')).toBeNull();
+      expect(yearCell(year)?.getAttribute('aria-disabled')).toBeNull();
+      expect(yearCell(year + 1)?.getAttribute('aria-disabled')).toBeNull();
+      // The page ends on the cap, and there is no page after it.
+      expect(yearCell(year + 2)).toBeUndefined();
+      expect(document.querySelector('.mat-calendar-next-button')?.getAttribute('aria-disabled'))
+        .toBe('true');
+    });
   });
 });

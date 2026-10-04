@@ -4,7 +4,11 @@
       {{ 'common.welcome' | translate }}, {{ userName() }}
     </p>
 
-    <app-period-selector header-actions (selectionChange)="onPeriodSelection($event)" />
+    <app-period-selector
+      header-actions
+      [floor]="pickerFloor()"
+      (selectionChange)="onPeriodSelection($event)"
+    />
   </app-page-header>
 
   <!-- Budget threshold alerts: inline + dismissible, not a standing snackbar -->

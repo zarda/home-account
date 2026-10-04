@@ -46,6 +46,7 @@ import {
 } from '../../core/services/testing';
 import {
   PeriodSelection,
+  PeriodSelectorComponent,
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
 import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
@@ -688,6 +689,19 @@ describe('DashboardComponent', () => {
 
       expect(fixture.componentInstance.isLoading()).toBeFalse();
       expect(transactionService.getByDateRange).toHaveBeenCalled();
+    });
+  });
+
+  describe('the period pickers\' floor read', () => {
+    it('reads the oldest row\'s date once on init, not again on period changes', () => {
+      const read = jasmine.createSpy('getEarliestTransactionDateFromServer').and.resolveTo(null);
+      transactionService.getEarliestTransactionDateFromServer = read;
+      const fixture = build();
+      fixture.detectChanges();
+      expect(read).toHaveBeenCalledTimes(1);
+
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      expect(read).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1358,6 +1372,38 @@ describe('DashboardComponent', () => {
           expect(getComputedStyle(line).color).withContext(`${theme} empty line`).toBe(muted());
         });
       }
+    });
+
+    describe('the period pickers\' floor', () => {
+      const selectorFloor = async () => {
+        const fixture = build();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        fixture.detectChanges();
+        const selector = fixture.debugElement.query(By.directive(PeriodSelectorComponent))
+          .componentInstance as PeriodSelectorComponent;
+        return selector.floor();
+      };
+
+      it('hands the selector the date of the oldest row', async () => {
+        const oldest = new Date(2024, 11, 5, 12);
+        transactionService.getEarliestTransactionDateFromServer = () => Promise.resolve(oldest);
+
+        expect(await selectorFloor()).toEqual(oldest);
+      });
+
+      it('floors an account with no rows at the current year', async () => {
+        transactionService.getEarliestTransactionDateFromServer = () => Promise.resolve(null);
+
+        expect(await selectorFloor()).toEqual(new Date(new Date().getFullYear(), 0, 1));
+      });
+
+      it('gives the selector no floor when the read fails', async () => {
+        transactionService.getEarliestTransactionDateFromServer =
+          () => Promise.reject(new Error('unavailable'));
+
+        expect(await selectorFloor()).toBeNull();
+      });
     });
 
     it('names the refetch bar for a period change once the first load has painted', () => {

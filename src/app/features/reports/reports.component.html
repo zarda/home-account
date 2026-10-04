@@ -1,7 +1,7 @@
 <div class="reports-container">
   <app-page-header titleKey="reports.title" subtitleKey="reports.subtitle" class="header-section">
     <div header-actions class="header-right">
-      <app-period-selector (selectionChange)="onPeriodSelection($event)" />
+      <app-period-selector [floor]="pickerFloor()" (selectionChange)="onPeriodSelection($event)" />
 
       <button mat-flat-button color="primary" (click)="openExportDialog()" class="export-btn">
         <mat-icon>download</mat-icon>
