@@ -319,6 +319,42 @@ describe('App routes (emulator smoke test)', () => {
   }
 
   /**
+   * The shell's two navigation landmarks carry names, and not the same one.
+   *
+   * At Karma's tablet width the sidebar exists only inside the overlay
+   * drawer, so the drawer is opened the way a reader opens it, through the
+   * header's menu button. The bottom nav is in the document at every width,
+   * shown by class. The drawer is closed again before anything else runs,
+   * so no later axe pass audits a page behind its backdrop.
+   */
+  async function expectLandmarksNamed(): Promise<void> {
+    const shell = harness.routeNativeElement;
+    if (!shell) {
+      throw new Error('No shell to read the navigation landmarks from');
+    }
+    const menuButton = () => shell.querySelector<HTMLButtonElement>('app-header .menu-button');
+    expect(menuButton()).withContext('the header menu button').not.toBeNull();
+
+    menuButton()!.click();
+    await waitForDom('the navigation drawer', () => !!shell.querySelector('.sidebar-drawer app-sidebar nav'));
+
+    const labels = Array.from(
+      shell.querySelectorAll<HTMLElement>('nav'),
+      nav => (nav.getAttribute('aria-label') ?? '').trim()
+    );
+    expect(labels.length).withContext('navigation landmarks with the drawer open').toBe(2);
+    expect(labels.every(label => label !== ''))
+      .withContext(`every navigation landmark is named: ${JSON.stringify(labels)}`)
+      .toBeTrue();
+    expect(new Set(labels).size)
+      .withContext(`no two navigation landmarks share a name: ${JSON.stringify(labels)}`)
+      .toBe(labels.length);
+
+    menuButton()!.click();
+    await waitForDom('the navigation drawer closed', () => !shell.querySelector('.sidebar-drawer'));
+  }
+
+  /**
    * The screen name analytics would report for the page just navigated to.
    *
    * Worth asserting here rather than only in the unit spec: this is a real
@@ -493,6 +529,7 @@ describe('App routes (emulator smoke test)', () => {
 
       try {
         await expectPage('/dashboard', 'dashboard.title', 'Blue Bottle Coffee', 'app-dashboard');
+        await expectLandmarksNamed();
 
         // Every component checks with OnPush (ADR 0024), so a view only
         // repaints when something marks it dirty. Both seeded transactions are

@@ -14,6 +14,7 @@ const LABELS: Record<string, string> = {
   'nav.add': 'Add',
   'nav.budgets': 'Budgets',
   'nav.reports': 'Reports',
+  'nav.landmarkQuick': 'Quick access',
 };
 
 /** Somewhere for the test router to land; the nav is what is under test. */
@@ -89,6 +90,13 @@ describe('BottomNavComponent', () => {
       (el) => (el as HTMLElement).textContent!.trim(),
     );
     expect(labels).toEqual(['Dashboard', 'Transactions', 'Budgets', 'Reports']);
+  });
+
+  // The drawer renders the sidebar's nav beside this one, and two unnamed
+  // navigation landmarks announce identically in a landmark list.
+  it('names its landmark, apart from the sidebar', () => {
+    const nav = fixture.nativeElement.querySelector('nav') as HTMLElement;
+    expect(nav.getAttribute('aria-label')).toBe('Quick access');
   });
 
   it('gives every item an aria-label', () => {

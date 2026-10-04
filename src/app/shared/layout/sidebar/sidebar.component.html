@@ -1,4 +1,4 @@
-<nav>
+<nav [attr.aria-label]="landmarkLabel()">
   <mat-nav-list>
     @for (item of navItems(); track item.route) {
       <!--

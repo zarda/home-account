@@ -73,7 +73,9 @@
     "add": "追加",
     "searchHistory": "検索履歴",
     "importFile": "写真をインポート",
-    "importHistory": "インポート履歴"
+    "importHistory": "インポート履歴",
+    "landmarkMain": "メイン",
+    "landmarkQuick": "クイックアクセス"
   },
   "dashboard": {
     "title": "ダッシュボード",

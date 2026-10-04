@@ -66,6 +66,14 @@ describe('SidebarComponent', () => {
     expect(component.navItems().map((i) => i.route)).toContain('/data');
   });
 
+  // The phone layout renders the bottom nav beside this one, and two
+  // unnamed navigation landmarks announce identically in a landmark list.
+  it('names its landmark, apart from the bottom nav', () => {
+    const nav = fixture.nativeElement.querySelector('nav') as HTMLElement;
+    expect(nav.getAttribute('aria-label')).toBe('t:nav.landmarkMain');
+    expect(mockTranslationService.t).toHaveBeenCalledWith('nav.landmarkMain');
+  });
+
   /**
    * The active route reached assistive tech as a CSS class and nothing else,
    * so every link announced identically (#274, ADR 0055). Here the attribute

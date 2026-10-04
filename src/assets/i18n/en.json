@@ -73,7 +73,9 @@
     "add": "Add",
     "searchHistory": "Search History",
     "importFile": "Import photos",
-    "importHistory": "Import History"
+    "importHistory": "Import History",
+    "landmarkMain": "Main",
+    "landmarkQuick": "Quick access"
   },
   "dashboard": {
     "title": "Dashboard",

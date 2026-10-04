@@ -301,12 +301,16 @@ describe('Receipt viewer doors and lens (emulator smoke test)', () => {
 
         // The lens is real, and so is the provider registry behind it: nothing
         // in this environment holds a key, so the only honest answer is a
-        // disabled button that says where a key would go.
+        // held button that says where a key would go. Held, not natively
+        // disabled, so the keyboard still reaches it and its reason.
         const translate = document.querySelector<HTMLButtonElement>('.translate-button');
         expect(translate).withContext('the lens rendered its button').not.toBeNull();
-        expect(translate!.disabled).withContext('no provider can answer').toBeTrue();
-        expect(document.querySelector('.no-provider-hint')?.textContent)
-          .toContain('receiptViewer.noVisionProvider');
+        expect(translate!.getAttribute('aria-disabled')).withContext('no provider can answer').toBe('true');
+        expect(translate!.disabled).withContext('still in the tab order').toBeFalse();
+        const hint = document.querySelector<HTMLElement>('.no-provider-hint');
+        expect(hint?.textContent).toContain('receiptViewer.noVisionProvider');
+        expect(hint?.id).withContext('the hint carries an id').toBeTruthy();
+        expect(translate!.getAttribute('aria-describedby')).toBe(hint!.id);
 
         document.querySelector<HTMLElement>('.close-button')!.click();
         await waitFor(

@@ -233,12 +233,24 @@ describe('ReceiptViewerDialogComponent', () => {
     expect(query('.translate-button')).not.toBeNull();
   });
 
-  it('offers the disabled button and names the fix when no provider can see', () => {
+  it('keeps the unavailable button in the tab order, described by the fix, and asks for nothing on a press', () => {
     available.set(false);
     open({ transaction: twoImages() });
 
-    expect((query('.translate-button') as HTMLButtonElement).disabled).toBeTrue();
-    expect(query('.no-provider-hint')?.textContent).toContain('receiptViewer.noVisionProvider');
+    // A natively disabled button leaves the tab order, so a keyboard reader
+    // never reaches it, nor the hint that says why it does nothing.
+    const button = query('.translate-button') as HTMLButtonElement;
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.disabled).withContext('not natively disabled').toBeFalse();
+    const hint = query('.no-provider-hint')!;
+    expect(hint.textContent).toContain('receiptViewer.noVisionProvider');
+    expect(hint.id).withContext('the hint carries an id').not.toBe('');
+    expect(button.getAttribute('aria-describedby')).toBe(hint.id);
+
+    click('.translate-button');
+
+    expect(translate).not.toHaveBeenCalled();
+    expect(query('app-loading-spinner')).toBeNull();
   });
 
   it('spins while the model reads the photo, then shows the text beside it', async () => {
@@ -370,17 +382,31 @@ describe('ReceiptViewerDialogComponent', () => {
     expect(query('.translated-text')?.textContent).toContain('Rice ball 150');
   });
 
-  it('disables Retry too when no provider can see', async () => {
+  it('holds Retry too when no provider can see, reachable and described by the fix', async () => {
     translate.and.rejectWith(new Error('offline'));
     open({ transaction: twoImages() });
 
     click('.translate-button');
     await settle();
+    expect(query('.no-provider-hint')).withContext('no hint while a provider can see').toBeNull();
+    expect(query('.retry-button')?.getAttribute('aria-describedby')).toBeNull();
 
     available.set(false);
     fixture.detectChanges();
 
-    expect((query('.retry-button') as HTMLButtonElement).disabled).toBeTrue();
+    const retry = query('.retry-button') as HTMLButtonElement;
+    expect(retry.getAttribute('aria-disabled')).toBe('true');
+    expect(retry.disabled).withContext('not natively disabled').toBeFalse();
+    const hint = query('.no-provider-hint')!;
+    expect(hint.textContent).toContain('receiptViewer.noVisionProvider');
+    expect(hint.id).withContext('the hint carries an id').not.toBe('');
+    expect(retry.getAttribute('aria-describedby')).toBe(hint.id);
+    expect(query('.translation-error')).withContext('the failure stays on screen').not.toBeNull();
+
+    click('.retry-button');
+    await settle();
+
+    expect(translate).toHaveBeenCalledTimes(1);
   });
 
   it('moves focus onto Retry when the failure replaces the button', async () => {

@@ -22,6 +22,9 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { Transaction, receiptImageSlots } from '../../../models';
 
+/** One hint id per viewer, so a description never resolves to another dialog's hint. */
+let hintSeq = 0;
+
 export interface ReceiptViewerDialogData {
   transaction: Transaction;
   /**
@@ -126,6 +129,9 @@ export class ReceiptViewerDialogComponent {
   /** Whether any configured provider could read a photo at all. */
   readonly available = this.receiptTranslation.available;
 
+  /** What the held Translate and Retry buttons point their description at. */
+  readonly hintId = `receipt-translation-hint-${++hintSeq}`;
+
   /**
    * Bumped by every request that starts and by every move between images, so
    * an `await` resuming after either can tell whether it is still the one
@@ -155,7 +161,9 @@ export class ReceiptViewerDialogComponent {
 
   /** Read this image back in the app's language. */
   async translateReceipt(): Promise<void> {
-    if (this.isLoading()) {
+    // The held buttons stay focusable and clickable (disabledInteractive), so
+    // a press with no provider still lands here and has to stop here.
+    if (this.isLoading() || !this.available()) {
       return;
     }
 

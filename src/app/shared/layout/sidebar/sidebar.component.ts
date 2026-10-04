@@ -28,6 +28,9 @@ export class SidebarComponent {
     }))
   );
 
+  /** Tells this landmark from the bottom nav's, which the phone renders beside it. */
+  landmarkLabel = computed(() => this.translationService.t('nav.landmarkMain'));
+
   onNavClick(): void {
     this.navItemClicked.emit();
   }

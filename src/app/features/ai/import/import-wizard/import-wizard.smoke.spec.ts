@@ -2711,6 +2711,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // receipt dated on another day carries.
       expect(chip!.querySelector('.extra-text')?.textContent?.trim())
         .toBe(translation.t('import.dateAssumedKeep'));
+      // Its Change opens the same touch dialog the date button does, and
+      // says so before the press.
+      expect(chip!.querySelector('.extra-change')?.getAttribute('aria-haspopup'))
+        .withContext('the question\'s Change announces its dialog')
+        .toBe('dialog');
       expect(cards[1].querySelector('.date-chip')?.textContent)
         .toContain(localeFormat.formatDate(new Date()));
 

@@ -73,7 +73,9 @@
     "add": "新增",
     "searchHistory": "搜尋紀錄",
     "importFile": "匯入照片",
-    "importHistory": "匯入歷史"
+    "importHistory": "匯入歷史",
+    "landmarkMain": "主要",
+    "landmarkQuick": "快速存取"
   },
   "dashboard": {
     "title": "儀表板",

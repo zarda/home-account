@@ -1754,6 +1754,13 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(openDialog()?.getAttribute('aria-labelledby')).toBe('date-chip-r1');
     });
 
+    it('says the question\'s change button opens a dialog, as the date button does', () => {
+      render([makeRow({ id: 'r1', dateAssumed: true })]);
+
+      const change = fixture.nativeElement.querySelector('.date-check .extra-change') as HTMLElement;
+      expect(change.getAttribute('aria-haspopup')).toBe('dialog');
+    });
+
     it('opens the picker on the row\'s own day, and a picked day comes back through dateChange', () => {
       // The anchor's [value] is what the calendar opens on; without it the
       // dialog opens on today's month, and a June receipt corrected in

@@ -316,7 +316,7 @@
                   <mat-icon aria-hidden="true">event</mat-icon>
                   <span class="extra-text">{{ dateChipText(row) }}</span>
                 </button>
-                <button type="button" class="extra-remove extra-change" [attr.aria-label]="changeDateLabel(row)" (click)="datePicker.open()">
+                <button type="button" class="extra-remove extra-change" aria-haspopup="dialog" [attr.aria-label]="changeDateLabel(row)" (click)="datePicker.open()">
                   <mat-icon>edit_calendar</mat-icon>
                 </button>
               </span>
