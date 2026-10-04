@@ -30,6 +30,7 @@ import { WidgetSnapshotService } from '../../core/services/widget-snapshot.servi
 import {
   BudgetAlert,
   Category,
+  DashboardCardId,
   RecurringOccurrence,
   Transaction,
   UpcomingSchedule,
@@ -145,6 +146,33 @@ describe('DashboardComponent', () => {
       });
     });
     return () => land();
+  }
+
+  // Each call hands out a fresh never-completing Subject, the shape of the
+  // real Firestore wrappers: the only way a listener is released is an
+  // explicit unsubscribe, so `observed` tells the truth about leaks.
+  function trackSubjects(spy: jasmine.Spy): Subject<unknown>[] {
+    const created: Subject<unknown>[] = [];
+    spy.and.callFake(() => {
+      const subject = new Subject<unknown>();
+      created.push(subject);
+      return subject;
+    });
+    return created;
+  }
+
+  /** The device build: the widget plugin is present. */
+  function withWidget(): void {
+    const available = Object.getOwnPropertyDescriptor(widgetSnapshots, 'available')!.get as jasmine.Spy;
+    available.and.returnValue(true);
+  }
+
+  function setPreferences(preferences: Partial<User['preferences']>): void {
+    authService.currentUser.set(createUser({ preferences: preferences as User['preferences'] }));
+  }
+
+  function hiding(...hidden: DashboardCardId[]): Partial<User['preferences']> {
+    return { dashboardLayout: { hidden } };
   }
 
   beforeEach(async () => {
@@ -690,6 +718,166 @@ describe('DashboardComponent', () => {
     });
   });
 
+  // The baseline's rule above, for the recent and upcoming listeners (#442):
+  // a hidden card opens no listener that nothing else on the page reads.
+  describe('listeners of hidden cards', () => {
+    const rent: RecurringOccurrence = {
+      recurringId: 'r1',
+      name: 'Rent',
+      type: 'expense',
+      amount: 1200,
+      currency: 'USD',
+      categoryId: 'food',
+      date: new Date(2026, 8, 1),
+    };
+
+    describe('recent', () => {
+      it('never opens the recent listener while Recent is hidden, across period changes', () => {
+        setPreferences(hiding('recent'));
+        const fixture = build();
+        fixture.detectChanges();
+        fixture.componentInstance.onPeriodSelection(
+          selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+        fixture.detectChanges();
+
+        expect(transactionService.getRecentTransactions).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.recentTransactions()).toEqual([]);
+      });
+
+      it('opens the recent listener once while Recent is shown, not again on each period change', () => {
+        const fixture = build();
+        fixture.detectChanges();
+        fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+        fixture.componentInstance.onPeriodSelection(
+          selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+        fixture.detectChanges();
+
+        expect(transactionService.getRecentTransactions).toHaveBeenCalledOnceWith(5);
+      });
+
+      it('releases the recent listener when Recent is hidden, and opens a new one when it is shown again', () => {
+        const created = trackSubjects(transactionService.getRecentTransactions);
+        const fixture = build();
+        fixture.detectChanges();
+        created[0].next([createTransaction({ id: 't1' })]);
+        expect(fixture.componentInstance.recentTransactions().length).toBe(1);
+
+        setPreferences(hiding('recent'));
+        fixture.detectChanges();
+
+        expect(created[0].observed).withContext('the first listener once hidden').toBeFalse();
+        expect(fixture.componentInstance.recentTransactions()).toEqual([]);
+
+        setPreferences({});
+        fixture.detectChanges();
+
+        expect(created.length).withContext('recent listeners opened').toBe(2);
+        expect(created[1].observed).toBeTrue();
+      });
+
+      it('closes the recent listener on a layout-service hide, before the write lands', async () => {
+        const created = trackSubjects(transactionService.getRecentTransactions);
+        const land = holdLayoutWrite();
+        const fixture = build();
+        fixture.detectChanges();
+        expect(created[0].observed).toBeTrue();
+
+        const saved = TestBed.inject(DashboardLayoutService).hide('recent');
+        fixture.detectChanges();
+
+        expect(authService.updatePreferenceFields).toHaveBeenCalledTimes(1);
+        expect(created[0].observed).withContext('before the write lands').toBeFalse();
+
+        land();
+        await saved;
+        fixture.detectChanges();
+
+        expect(created.length).withContext('once the write lands').toBe(1);
+        expect(created[0].observed).toBeFalse();
+      });
+    });
+
+    describe('upcoming', () => {
+      it('never opens the upcoming listener while Upcoming is hidden, the recap is off and there is no widget', () => {
+        setPreferences(hiding('upcoming'));
+        const fixture = build();
+        fixture.detectChanges();
+
+        expect(recurringService.getUpcomingSchedule).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.upcomingSchedule()).toEqual({ occurrences: [], olderCount: 0 });
+      });
+
+      // A pin: the recap lists the week ahead's bills from the same window.
+      it('keeps the upcoming listener for the recap while Upcoming is hidden', () => {
+        setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
+        const fixture = build();
+        fixture.detectChanges();
+
+        expect(recurringService.getUpcomingSchedule).toHaveBeenCalledOnceWith(14);
+      });
+
+      // A pin: the widget publishes the next scheduled bill from the same window.
+      it('keeps the upcoming listener for the widget while Upcoming is hidden', () => {
+        withWidget();
+        setPreferences(hiding('upcoming'));
+        const fixture = build();
+        fixture.detectChanges();
+
+        expect(recurringService.getUpcomingSchedule).toHaveBeenCalledOnceWith(14);
+      });
+
+      it('releases the upcoming listener once nothing reads it, and opens a new one when the recap is turned on', () => {
+        const created = trackSubjects(recurringService.getUpcomingSchedule);
+        const fixture = build();
+        fixture.detectChanges();
+        created[0].next({ occurrences: [rent], olderCount: 2 });
+        expect(fixture.componentInstance.upcomingOccurrences()).toEqual([rent]);
+
+        setPreferences(hiding('upcoming'));
+        fixture.detectChanges();
+
+        expect(created[0].observed).withContext('the first listener once hidden').toBeFalse();
+        expect(fixture.componentInstance.upcomingSchedule()).toEqual({ occurrences: [], olderCount: 0 });
+
+        setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
+        fixture.detectChanges();
+
+        expect(created.length).withContext('upcoming listeners opened').toBe(2);
+        expect(created[1].observed).toBeTrue();
+      });
+    });
+
+    // A pin: each gate is a boolean, so only a change to its own card or reader
+    // can reopen the listener behind it.
+    it('keeps each listener through a change to another card or preference', () => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      setPreferences({ ...hiding('chart'), baseCurrency: 'JPY' });
+      fixture.detectChanges();
+      setPreferences({ ...hiding('chart', 'insights'), enableWeeklyRecap: true });
+      fixture.detectChanges();
+
+      expect(transactionService.getRecentTransactions).toHaveBeenCalledTimes(1);
+      expect(recurringService.getUpcomingSchedule).toHaveBeenCalledTimes(1);
+    });
+
+    // A pin: budgets has a card, but the banner (which cannot be hidden), the
+    // recap's alerts, insights, the widget and the reminder sweep all read the
+    // list, so it stays ungated.
+    it('subscribes to budgets exactly once, whatever is hidden', () => {
+      setPreferences(hiding('recent', 'upcoming', 'chart', 'insights', 'budgets'));
+      const fixture = build();
+      fixture.detectChanges();
+      setPreferences({});
+      fixture.detectChanges();
+      setPreferences(hiding('budgets'));
+      fixture.detectChanges();
+
+      expect(budgetService.getBudgets).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('recurring catch-up', () => {
     it('triggers the catch-up once on init, not again on period changes', () => {
       const fixture = build();
@@ -889,33 +1077,22 @@ describe('DashboardComponent', () => {
   });
 
   describe('period-scoped listener lifecycle', () => {
-    // Each spy hands out a fresh never-completing Subject per call, the shape
-    // of the real Firestore wrappers: the only way a listener is released is
-    // an explicit unsubscribe, so `observed` tells the truth about leaks.
-    function trackSubjects(spy: jasmine.Spy): Subject<unknown>[] {
-      const created: Subject<unknown>[] = [];
-      spy.and.callFake(() => {
-        const subject = new Subject<unknown>();
-        created.push(subject);
-        return subject;
-      });
-      return created;
-    }
-
     function trackAllStreams() {
       // Standard tier so the anomaly-baseline stream participates too.
       authService.currentUser.set(
         createUser({ preferences: { ragInsightsLevel: 'standard' } as User['preferences'] }));
       return {
-        byRange: trackSubjects(transactionService.getByDateRange),
+        periodScoped: {
+          byRange: trackSubjects(transactionService.getByDateRange),
+          prevTotals: trackSubjects(transactionService.getPeriodCategoryTotals),
+          baseline: trackSubjects(transactionService.getExpensesInRange),
+        },
         recent: trackSubjects(transactionService.getRecentTransactions),
-        prevTotals: trackSubjects(transactionService.getPeriodCategoryTotals),
-        baseline: trackSubjects(transactionService.getExpensesInRange),
       };
     }
 
-    it('holds at most one live listener per stream across ten period changes', () => {
-      const streams = trackAllStreams();
+    it('holds at most one live listener per stream across ten period changes, and one recent listener throughout', () => {
+      const { periodScoped, recent } = trackAllStreams();
       const fixture = build();
       fixture.detectChanges();
 
@@ -924,15 +1101,20 @@ describe('DashboardComponent', () => {
         fixture.detectChanges();
       }
 
-      for (const created of Object.values(streams)) {
+      for (const created of Object.values(periodScoped)) {
         expect(created.length).toBeGreaterThan(1);
         expect(created.filter(s => s.observed).length).toBe(1);
         expect(created[created.length - 1].observed).toBeTrue();
       }
+      // The latest rows, whatever the period: nothing to supersede.
+      expect(recent.length).withContext('recent listeners opened').toBe(1);
+      expect(recent[0].observed).toBeTrue();
     });
 
-    it('releases every period-scoped listener on destroy', () => {
-      const streams = trackAllStreams();
+    // A pin: every stream, the recent one included, ends through
+    // takeUntilDestroyed, so a gate holds nothing open past destroy.
+    it('releases every listener on destroy, the recent one included', () => {
+      const { periodScoped, recent } = trackAllStreams();
       const fixture = build();
       fixture.detectChanges();
       fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
@@ -940,7 +1122,8 @@ describe('DashboardComponent', () => {
 
       fixture.destroy();
 
-      for (const created of Object.values(streams)) {
+      for (const created of [...Object.values(periodScoped), recent]) {
+        expect(created.length).toBeGreaterThan(0);
         expect(created.some(s => s.observed)).toBeFalse();
       }
     });
@@ -1112,6 +1295,38 @@ describe('DashboardComponent', () => {
       TestBed.tick();
 
       expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    // A pin: the widget reads the upcoming window too, so hiding the card must
+    // not take the widget's next scheduled bill away.
+    it('publishes the upcoming window with Recent and Upcoming hidden, when there is a widget', () => {
+      withWidget();
+      setPreferences(hiding('recent', 'upcoming'));
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const upcoming: RecurringOccurrence[] = [{
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+      }];
+      recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: upcoming, olderCount: 0 }));
+
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 0,
+        net: 0,
+        baseCurrency: 'USD',
+        budgets: [],
+        upcoming,
+      });
     });
   });
 

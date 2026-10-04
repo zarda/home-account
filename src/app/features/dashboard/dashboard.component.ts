@@ -26,6 +26,7 @@ import {
   effectiveRagLevel,
   baseCurrencyOf,
   DashboardCardId,
+  weeklyRecapEnabled,
 } from '../../models';
 import { roundMoney, sumByType } from '../../core/utils/transaction-aggregation.utils';
 import {
@@ -125,9 +126,12 @@ export class DashboardComponent implements OnInit {
   // reports page holds priorYearSub for exactly this reason). takeUntilDestroyed
   // covers leaving the page; these fields cover staying on it.
   private periodSub?: Subscription;
-  private recentSub?: Subscription;
   private prevPeriodSub?: Subscription;
   private baselineSub?: Subscription;
+  // These two follow no period. They are held so that a hidden card's
+  // listener can be closed when nothing else on the page reads it.
+  private recentSub?: Subscription;
+  private upcomingSub?: Subscription;
 
   // The period the loaded rows actually belong to — not the one the selector is
   // on. It feeds the AI summary's cache key and prompt context, and the two have
@@ -239,6 +243,17 @@ export class DashboardComponent implements OnInit {
 
   insightsShown = computed(() => this.arrangedCards().includes('insights'));
 
+  // Booleans, so a change to another card or another preference never
+  // reopens a listener. The recent rows are read by their card alone. The
+  // upcoming window also feeds the recap and, on a build with the widget
+  // plugin, the widget.
+  private recentWanted = computed(() => !this.layout().hidden.includes('recent'));
+  private upcomingWanted = computed(() =>
+    !this.layout().hidden.includes('upcoming') ||
+    weeklyRecapEnabled(this.authService.currentUser()?.preferences) ||
+    this.widgetSnapshots.available
+  );
+
   gridAreas = computed(() => dashboardGridAreas(this.arrangedCards()));
 
   // Scheduled money for the next UPCOMING_WINDOW_DAYS, with the count of the
@@ -293,6 +308,29 @@ export class DashboardComponent implements OnInit {
       untracked(() => this.loadHistoricalBaseline(months));
     });
 
+    // The same rule for the two streams that follow no period: each is
+    // opened once while something reads it, and closed, with the data it fed,
+    // when nothing does. A period change touches neither.
+    effect(() => {
+      if (!this.recentWanted()) {
+        this.recentSub?.unsubscribe();
+        this.recentSub = undefined;
+        this.recentTransactions.set([]);
+        return;
+      }
+      untracked(() => this.loadRecentTransactions());
+    });
+
+    effect(() => {
+      if (!this.upcomingWanted()) {
+        this.upcomingSub?.unsubscribe();
+        this.upcomingSub = undefined;
+        this.upcomingSchedule.set({ occurrences: [], olderCount: 0 });
+        return;
+      }
+      untracked(() => this.loadUpcomingSchedule());
+    });
+
     // Hands the widget the figures this page already holds, each time it
     // repaints for this month — the dashboard is the landing route, so this
     // is every app open and every live change. Keyed on the paint counter,
@@ -318,7 +356,9 @@ export class DashboardComponent implements OnInit {
     // getBudgets is an infinite live stream, so period changes must not
     // stack extra subscriptions, and takeUntilDestroyed stops destroyed
     // dashboard instances from reacting to later budget writes made
-    // elsewhere in the app.
+    // elsewhere in the app. Not gated on the budgets card: the banner, which
+    // cannot be hidden, the recap's alerts, insights, the widget and the
+    // reminder sweep all read the list.
     this.budgetService.getBudgets()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
@@ -333,14 +373,6 @@ export class DashboardComponent implements OnInit {
     this.categoryService.loadCategories()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
-
-    // The upcoming window is anchored to today, not to the selected period,
-    // so it belongs here beside budgets rather than in loadData() — and, like
-    // them, it is an onSnapshot that never completes, so a period change must
-    // not stack a second listener on it.
-    this.recurringService.getUpcomingSchedule(UPCOMING_WINDOW_DAYS)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(schedule => this.upcomingSchedule.set(schedule));
 
     this.loadData();
     this.loadPickerFloor();
@@ -408,7 +440,16 @@ export class DashboardComponent implements OnInit {
         }
       });
 
-    // Load recent transactions
+    // Load previous period data for AI comparison. (The trailing historical
+    // window for the anomaly baseline is loaded by the constructor effect,
+    // which also reacts to period changes via currentPeriod. Categories are
+    // period-independent and loaded once in ngOnInit; the recent rows and the
+    // upcoming window by their own constructor effects.)
+    this.loadPreviousPeriodData();
+  }
+
+  // The latest rows, whatever the selected period.
+  private loadRecentTransactions(): void {
     this.recentSub?.unsubscribe();
     this.recentSub = this.transactionService.getRecentTransactions(5)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -417,12 +458,14 @@ export class DashboardComponent implements OnInit {
           this.recentTransactions.set(transactions);
         }
       });
+  }
 
-    // Load previous period data for AI comparison. (The trailing historical
-    // window for the anomaly baseline is loaded by the constructor effect,
-    // which also reacts to period changes via currentPeriod. Categories are
-    // period-independent and loaded once in ngOnInit.)
-    this.loadPreviousPeriodData();
+  // Anchored to today, not to the selected period.
+  private loadUpcomingSchedule(): void {
+    this.upcomingSub?.unsubscribe();
+    this.upcomingSub = this.recurringService.getUpcomingSchedule(UPCOMING_WINDOW_DAYS)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(schedule => this.upcomingSchedule.set(schedule));
   }
 
   private loadPreviousPeriodData(): void {

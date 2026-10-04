@@ -33,6 +33,12 @@ export class WidgetSnapshotService {
   private readonly injector = inject(Injector);
 
   /**
+   * True on a build that carries the widget plugin, whether or not a widget
+   * has been placed on the home screen: nothing here can tell.
+   */
+  readonly available = this.plugin !== null;
+
+  /**
    * The last payload the plugin accepted, without `writtenAt`. Equal payloads
    * are not rewritten, so a listener's re-emission does not reload the widget's
    * timelines; the `updated` label carries the local date, so a new day still

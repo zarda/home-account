@@ -31,6 +31,8 @@ import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/stora
 import { routes } from '../../app.routes';
 import { AuthService } from '../../core/services/auth.service';
 import { TransactionService } from '../../core/services/transaction.service';
+import { FirestoreService } from '../../core/services/firestore.service';
+import { budgetPeriodWindow, dayKey } from '../../core/utils/transaction-date.utils';
 import { MockAuthService, createMockUser } from '../../core/services/testing';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { dashboardGridAreas } from './dashboard-layout.utils';
@@ -140,6 +142,26 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
       period: 'monthly',
       startDate: now,
       spent: 50,
+      isActive: true,
+      alertThreshold: 80,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    // Over its threshold, so the alert banner has something to say. Stamped
+    // with the current period: BudgetService.freshenSpent shows an unstamped
+    // `spent` as 0 and recalculates it, which would clear the alert.
+    const budgetStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    await addDoc(collection(firestore, `users/${uid}/budgets`), {
+      userId: uid,
+      categoryId: categoryRef.id,
+      name: 'Dining Out Budget',
+      amount: 100,
+      currency: 'USD',
+      period: 'monthly',
+      startDate: Timestamp.fromDate(budgetStart),
+      spent: 95,
+      spentPeriod: dayKey(budgetPeriodWindow('monthly', budgetStart, new Date()).start),
       isActive: true,
       alertThreshold: 80,
       createdAt: now,
@@ -325,6 +347,50 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
         .filter(([prefs]) => 'dashboardLayout' in prefs);
       expect(wholeLayoutWrites).toEqual([]);
       expect(mockAuth.currentUser()?.preferences.dashboardLayout).toEqual({ hidden: ['insights'] });
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #442: a hidden card opens no listener that nothing else on the page reads.
+  // Budgets is hidden too, yet keeps its one listener: the banner, which
+  // cannot be hidden, reads it.
+  it(
+    'opens no recent or upcoming listener for hidden cards, and one budgets listener for the banner',
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid, {
+        preferences: {
+          ...DEFAULT_USER_PREFERENCES,
+          onboardingCompleted: true,
+          enableWeeklyRecap: false,
+          dashboardLayout: { hidden: ['recent', 'upcoming', 'budgets'] }
+        }
+      }));
+
+      const subscribeSpy = spyOn(TestBed.inject(FirestoreService), 'subscribeToCollection').and.callThrough();
+      const listenersOn = (path: string, limit?: number): number =>
+        subscribeSpy.calls.allArgs()
+          .filter(([p, options]) => p === path && (limit === undefined || options?.limit === limit))
+          .length;
+
+      await harness.navigateByUrl('/dashboard');
+      const doc = harness.routeNativeElement!.ownerDocument;
+      await waitForDom(
+        'the budget alert banner beside the rendered grid',
+        () =>
+          doc.querySelector('app-budget-alert-banner .alert-banner') !== null &&
+          doc.querySelector('.dashboard-grid') !== null
+      );
+
+      const childTags = Array.from(doc.querySelector('.dashboard-grid')!.children).map(el => el.tagName);
+      expect(childTags).toEqual(['APP-SPENDING-CHART', 'APP-AI-SUMMARY']);
+      expect(doc.querySelector('app-budget-progress')).toBeNull();
+
+      expect(listenersOn(`users/${uid}/transactions`, 5)).withContext('recent transactions').toBe(0);
+      expect(listenersOn(`users/${uid}/recurring`)).withContext('recurring rules').toBe(0);
+      expect(listenersOn(`users/${uid}/budgets`)).withContext('budgets').toBe(1);
 
       harness.fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 200));

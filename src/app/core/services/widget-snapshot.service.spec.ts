@@ -149,6 +149,10 @@ describe('WidgetSnapshotService', () => {
   describe('on the web', () => {
     beforeEach(() => configure(null, false));
 
+    it('is not available', () => {
+      expect(TestBed.inject(WidgetSnapshotService).available).toBeFalse();
+    });
+
     it('resolves no formatter and writes nothing, from publish or from its effects', () => {
       const service = TestBed.inject(WidgetSnapshotService);
       TestBed.tick();
@@ -177,6 +181,10 @@ describe('WidgetSnapshotService', () => {
       write = jasmine.createSpy('write').and.resolveTo();
       configure({ write });
       service = TestBed.inject(WidgetSnapshotService);
+    });
+
+    it('is available', () => {
+      expect(service.available).toBeTrue();
     });
 
     describe('the payload', () => {
