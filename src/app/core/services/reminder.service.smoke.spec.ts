@@ -75,6 +75,7 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     title: string;
     body: string;
     tag: string;
+    route: string;
   }
 
   /**
@@ -98,9 +99,10 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     protected override async showWebNotification(
       title: string,
       body: string,
-      tag: string
+      tag: string,
+      route: string
     ): Promise<boolean> {
-      this.webNotifications.push({ title, body, tag });
+      this.webNotifications.push({ title, body, tag, route });
       return true;
     }
 
@@ -305,7 +307,10 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     expect(sentKeys()).toEqual([dueKey]);
     expect(service.plugin.schedule).not.toHaveBeenCalled();
     // Not toEqual: the service's own effect may have swept once already, and
-    // deliveredThisSession only stops that pass repeating, not appearing.
-    expect(service.webNotifications).toContain(jasmine.objectContaining({ tag: dueKey }));
+    // deliveredThisSession only stops that pass repeating, not appearing. The
+    // route is the stored rule's own id, which is what the dashboard looks up.
+    expect(service.webNotifications).toContain(
+      jasmine.objectContaining({ tag: dueKey, route: '/dashboard?bill=smoke-reminder-due' })
+    );
   }, 30000);
 });

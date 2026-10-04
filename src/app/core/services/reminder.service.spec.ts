@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import type { LocalNotificationsPlugin } from '@capacitor/local-notifications';
 import { Subject, of } from 'rxjs';
@@ -34,6 +35,7 @@ interface WebNotification {
   title: string;
   body: string;
   tag: string;
+  route: string;
 }
 
 /**
@@ -60,9 +62,10 @@ class TestReminderService extends ReminderService {
   protected override async showWebNotification(
     title: string,
     body: string,
-    tag: string
+    tag: string,
+    route: string
   ): Promise<boolean> {
-    this.webNotifications.push({ title, body, tag });
+    this.webNotifications.push({ title, body, tag, route });
     return typeof this.webDisplays === 'function' ? this.webDisplays(tag) : this.webDisplays;
   }
 
@@ -99,8 +102,8 @@ class RealWebSeamService extends ReminderService {
     return 'granted';
   }
 
-  raiseWebNotification(title: string, body: string, tag: string): Promise<boolean> {
-    return this.showWebNotification(title, body, tag);
+  raiseWebNotification(title: string, body: string, tag: string, route: string): Promise<boolean> {
+    return this.showWebNotification(title, body, tag, route);
   }
 }
 
@@ -394,6 +397,69 @@ describe('ReminderService', () => {
       await sweep();
 
       expect(service.webNotifications).toEqual([]);
+    });
+  });
+
+  describe('the route a tap opens', () => {
+    it('hands the web seam the dashboard row for a bill', async () => {
+      occurrences = [occurrence({ date: daysOut(3), remindDaysBefore: 3 })];
+      const service = createService();
+
+      await sweep();
+
+      expect(service.webNotifications.map(n => n.route)).toEqual(['/dashboard?bill=rule-1']);
+    });
+
+    it('hands the web seam the budgets tab for a budget alert', async () => {
+      budgetAlerts.set([alert()]);
+      const service = createService();
+
+      await sweep();
+
+      expect(service.webNotifications.map(n => n.route)).toEqual(['/budgets?tab=budgets']);
+    });
+
+    it('books every native bill, due now or ahead, with its row', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [
+        occurrence({ date: daysOut(3), remindDaysBefore: 3 }),
+        occurrence({ recurringId: 'rule-2', name: 'Gym', date: daysOut(10), remindDaysBefore: 3 }),
+      ];
+      const service = createService();
+
+      await sweep();
+
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.map(n => [Boolean(n.schedule), n.extra])).toEqual([
+        [false, { route: '/dashboard?bill=rule-1' }],
+        [true, { route: '/dashboard?bill=rule-2' }],
+      ]);
+    });
+
+    it('books a native budget alert with the budgets tab', async () => {
+      isNative.and.returnValue(true);
+      budgetAlerts.set([alert()]);
+      const service = createService();
+
+      await sweep();
+
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.map(n => n.extra)).toEqual([{ route: '/budgets?tab=budgets' }]);
+    });
+
+    it('books the recap nudge with the week it announces', async () => {
+      isNative.and.returnValue(true);
+      setPreferences({ enableWeeklyRecap: true });
+      const service = createService();
+
+      await sweep();
+
+      // NOW is Tuesday 1 September; the nudge on Monday the 7th announces
+      // the week that opened on 31 August.
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.map(n => n.extra)).toEqual([
+        { route: '/dashboard?recap=2026-08-31' },
+      ]);
     });
   });
 
@@ -782,6 +848,7 @@ describe('ReminderService', () => {
   });
 
   describe('the web seam', () => {
+    const ROUTE = '/dashboard?bill=rule-1';
     let service: RealWebSeamService;
 
     beforeEach(() => {
@@ -793,6 +860,7 @@ describe('ReminderService', () => {
 
     it('raises through the registered worker rather than the constructor', async () => {
       const fakeRegistration = {
+        active: {},
         showNotification: jasmine.createSpy().and.resolveTo(),
       } as unknown as ServiceWorkerRegistration;
       const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
@@ -802,7 +870,7 @@ describe('ReminderService', () => {
       // forever (nothing controls this origin), and this must fail fast on
       // that rather than ride out Jasmine's async timeout. Two microtask
       // turns are enough for the real seam's `getRegistration()` call.
-      const pending = service.raiseWebNotification('title', 'b', 't');
+      const pending = service.raiseWebNotification('title', 'b', 't', ROUTE);
       await Promise.resolve();
       await Promise.resolve();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
@@ -811,9 +879,12 @@ describe('ReminderService', () => {
 
       expect(result).toBeTrue();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
+      // The route rides in `data`, which is all the worker's click handler
+      // can read back.
       expect(fakeRegistration.showNotification).toHaveBeenCalledWith('title', {
         body: 'b',
         tag: 't',
+        data: { route: ROUTE },
       });
       expect(notificationSpy).not.toHaveBeenCalled();
     });
@@ -822,7 +893,7 @@ describe('ReminderService', () => {
       const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(undefined);
       const notificationSpy = spyOn(window, 'Notification');
 
-      const result = await service.raiseWebNotification('title', 'b', 't');
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
 
       expect(result).toBeTrue();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
@@ -830,13 +901,53 @@ describe('ReminderService', () => {
       expect(notificationSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('falls back to the constructor while the registration has no active worker', async () => {
+      // A worker still installing: showNotification rejects until one is
+      // active, so the first visit after a deploy would raise nothing.
+      const fakeRegistration = {
+        active: null,
+        showNotification: jasmine.createSpy().and.rejectWith(new TypeError('No active registration')),
+      } as unknown as ServiceWorkerRegistration;
+      spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
+      const notificationSpy = spyOn(window, 'Notification');
+
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
+
+      expect(result).toBeTrue();
+      expect(fakeRegistration.showNotification).not.toHaveBeenCalled();
+      expect(notificationSpy).toHaveBeenCalledOnceWith('title', { body: 'b', tag: 't' });
+    });
+
+    it('opens the route in this page when a constructor-raised notification is clicked', async () => {
+      spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(undefined);
+      const raised = {
+        onclick: null as ((event: Event) => unknown) | null,
+        close: jasmine.createSpy('close'),
+      };
+      spyOn(window, 'Notification').and.callFake(function () {
+        return raised;
+      } as unknown as () => Notification);
+      const focus = spyOn(window, 'focus');
+      const navigate = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+      await service.raiseWebNotification('title', 'b', 't', ROUTE);
+      expect(navigate).not.toHaveBeenCalled();
+
+      raised.onclick?.(new Event('click'));
+
+      expect(focus).toHaveBeenCalled();
+      expect(navigate).toHaveBeenCalledOnceWith(ROUTE);
+      expect(raised.close).toHaveBeenCalled();
+    });
+
     it('reports false when the registration refuses to display', async () => {
       const fakeRegistration = {
+        active: {},
         showNotification: jasmine.createSpy().and.rejectWith(new Error('refused')),
       } as unknown as ServiceWorkerRegistration;
       const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
 
-      const result = await service.raiseWebNotification('title', 'b', 't');
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
 
       expect(result).toBeFalse();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
@@ -848,7 +959,7 @@ describe('ReminderService', () => {
         throw new TypeError('Notification is not allowed');
       });
 
-      const result = await service.raiseWebNotification('title', 'b', 't');
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
 
       expect(result).toBeFalse();
       expect(notificationSpy).toHaveBeenCalled();

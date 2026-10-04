@@ -1,4 +1,5 @@
 import { DestroyRef, Injectable, computed, effect, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type {
@@ -11,6 +12,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { RecurringService } from './recurring.service';
 import { TranslationService } from './translation.service';
+import { billRoute, budgetRoute, recapRoute } from '../utils/notification-route.utils';
 import { fnv1a32 } from '../utils/transaction-aggregation.utils';
 import { addDays, dayKey, startOfDay, wholeDaysBetween } from '../utils/transaction-date.utils';
 import {
@@ -69,6 +71,8 @@ interface PreparedReminder {
   /** Dedup key; also the web tag and the seed for the native id. */
   key: string;
   body: string;
+  /** The in-app path a tap on it opens, from `notification-route.utils`. */
+  route: string;
   /** Ahead-of-time delivery moment; absent means deliver now. */
   at?: Date;
 }
@@ -115,6 +119,7 @@ export class ReminderService {
   private budgetService = inject(BudgetService);
   private recurringService = inject(RecurringService);
   private translation = inject(TranslationService);
+  private router = inject(Router);
   private destroyRef = inject(DestroyRef);
 
   private billSweep: Subscription | null = null;
@@ -355,15 +360,21 @@ export class ReminderService {
     if (!this.recapEnabled()) return [];
 
     const at = nextRecapMoment(this.now());
+    const week = recapKeyAnnouncedBy(at);
     // A week dismissed on this device before the nudge was due has nothing
     // left to announce. Producing nothing also retires an already-booked one,
     // since the stale-cancel spares only what this pass produced.
-    if (readDismissedRecapWeek(userId) === recapKeyAnnouncedBy(at)) return [];
+    if (readDismissedRecapWeek(userId) === week) return [];
 
     // The nudge day, not the recapped week: one notification per Monday, and
     // the same key on every sweep until it fires.
     return [
-      { key: `recap|${dayKey(at)}`, body: this.translation.t('reminders.recapReady'), at },
+      {
+        key: `recap|${dayKey(at)}`,
+        body: this.translation.t('reminders.recapReady'),
+        route: recapRoute(week),
+        at,
+      },
     ];
   }
 
@@ -403,7 +414,11 @@ export class ReminderService {
         // sweep would raise every one of them together.
         if (hasDue.has(occurrence.recurringId)) continue;
         hasDue.add(occurrence.recurringId);
-        reminders.push({ key, body: this.billBody(occurrence.name, daysUntil) });
+        reminders.push({
+          key,
+          body: this.billBody(occurrence.name, daysUntil),
+          route: billRoute(occurrence.recurringId),
+        });
         continue;
       }
 
@@ -416,6 +431,7 @@ export class ReminderService {
         // The body is read on the reminder day, when the bill is `lead` days
         // out — not `daysUntil`, which is where it stands today.
         body: this.billBody(occurrence.name, lead),
+        route: billRoute(occurrence.recurringId),
         at: this.reminderMoment(date, lead),
       });
     }
@@ -440,6 +456,7 @@ export class ReminderService {
           name: alert.budgetName,
           percent: Math.round(alert.percentUsed),
         }),
+        route: budgetRoute(),
       });
     }
 
@@ -492,7 +509,9 @@ export class ReminderService {
       // tolerated, and a refusal of one call is that call's alone — the
       // batch goes on, and the key is not marked, so the next sweep tries
       // again.
-      if (!(await this.showWebNotification(title, reminder.body, reminder.key))) continue;
+      if (!(await this.showWebNotification(title, reminder.body, reminder.key, reminder.route))) {
+        continue;
+      }
       this.markDelivered(userId, reminder.key);
     }
   }
@@ -525,6 +544,8 @@ export class ReminderService {
             id: notificationId(reminder.key),
             title,
             body: reminder.body,
+            // Handed back on the tap's `localNotificationActionPerformed`.
+            extra: { route: reminder.route },
             ...(reminder.at ? { schedule: { at: reminder.at } } : {}),
           })),
         });
@@ -683,10 +704,18 @@ export class ReminderService {
    * constructor is known to fail: Android's refusal is a `TypeError` raised
    * at construction, which no feature test can see coming, so probing ahead
    * of time would still throw on exactly the platforms this exists to
-   * protect. Preferring the registration is also what gives the notification
-   * a click behaviour at all: `share-target-sw.js`'s `notificationclick`
-   * fires only for a registration-raised notification, so the constructor
-   * fallback below has none.
+   * protect.
+   *
+   * `route` is what a tap should open, and each path hands it over
+   * differently. A registration-raised notification carries it in `data`,
+   * because `share-target-sw.js`'s `notificationclick` sees only the
+   * notification, never this page; the worker's click never reaches a
+   * constructor-raised one, so that one's tap is handled here, in the page
+   * that raised it.
+   *
+   * Only a registration with an active worker: until the first worker has
+   * activated, `showNotification` rejects, and the constructor can still
+   * raise the notification then.
    *
    * `getRegistration()`, never `.ready`: `.ready` never resolves where
    * registration failed, and a sweep must not hang waiting for a worker that
@@ -695,13 +724,23 @@ export class ReminderService {
    * No `showTrigger`: it ships in no browser (ADR 0092), so an ahead-of-time
    * reminder stays unschedulable on the web regardless of the worker.
    */
-  protected async showWebNotification(title: string, body: string, tag: string): Promise<boolean> {
+  protected async showWebNotification(
+    title: string,
+    body: string,
+    tag: string,
+    route: string
+  ): Promise<boolean> {
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
-      if (registration) {
-        await registration.showNotification(title, { body, tag });
+      if (registration?.active) {
+        await registration.showNotification(title, { body, tag, data: { route } });
       } else {
-        new Notification(title, { body, tag });
+        const notification = new Notification(title, { body, tag });
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+          void this.router.navigateByUrl(route);
+        };
       }
       return true;
     } catch {
