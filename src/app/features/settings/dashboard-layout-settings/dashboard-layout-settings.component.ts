@@ -21,24 +21,13 @@ import { NotificationService } from '../../../core/services/notification.service
 import { TranslationService } from '../../../core/services/translation.service';
 import { DashboardCardId, DashboardLayout, effectiveDashboardLayout } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { moveCard, sameLayout, setCardHidden } from '../../dashboard/dashboard-layout.utils';
-
-/** The dashboard's own card titles, so a row reads as the card it arranges. */
-const CARD_TITLE_KEYS: Readonly<Record<DashboardCardId, string>> = {
-  recent: 'dashboard.recentTransactions',
-  upcoming: 'dashboard.upcomingBills',
-  chart: 'dashboard.spendingByCategory',
-  insights: 'ai.insights',
-  budgets: 'dashboard.budgetProgress',
-};
-
-const CARD_ICONS: Readonly<Record<DashboardCardId, string>> = {
-  recent: 'receipt_long',
-  upcoming: 'event_upcoming',
-  chart: 'donut_large',
-  insights: 'psychology',
-  budgets: 'savings',
-};
+import {
+  CARD_ICONS,
+  CARD_TITLE_KEYS,
+  moveCard,
+  sameLayout,
+  setCardHidden
+} from '../../dashboard/dashboard-layout.utils';
 
 /** A pending write: the latest layout, or deleting the key. */
 type LayoutWrite = 'update' | 'clear';
