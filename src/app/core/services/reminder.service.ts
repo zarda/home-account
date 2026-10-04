@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, computed, effect, inject } from '@angular/core';
+import { DestroyRef, Injectable, Injector, computed, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -10,21 +10,28 @@ import { Subscription, take } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
+import { CurrencyService } from './currency.service';
 import { RecurringService } from './recurring.service';
+import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import { billRoute, budgetRoute, recapRoute } from '../utils/notification-route.utils';
 import { fnv1a32 } from '../utils/transaction-aggregation.utils';
 import { addDays, dayKey, startOfDay, wholeDaysBetween } from '../utils/transaction-date.utils';
 import {
+  composeRecapFigures,
+  hasSomethingToSay,
   nextRecapMoment,
   readDismissedRecapWeek,
   recapKeyAnnouncedBy,
+  recapWindow,
+  weekBeforeWindow,
 } from '../utils/weekly-recap.utils';
 import {
   BudgetAlert,
   BudgetAlertSeverity,
   MAX_REMINDER_LEAD_DAYS,
   RecurringOccurrence,
+  baseCurrencyOf,
   remindersEnabled,
   weeklyRecapEnabled,
 } from '../../models';
@@ -121,11 +128,32 @@ export class ReminderService {
   private translation = inject(TranslationService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
+  private injector = inject(Injector);
 
   private billSweep: Subscription | null = null;
+  /**
+   * Settles the pass waiting on `billSweep`. Unsubscribing before the first
+   * snapshot fires none of the listener's callbacks, so closing it is what
+   * lets that pass settle.
+   */
+  private settleBillSweep: (() => void) | null = null;
   private lastSweptAt = 0;
   private lastUserId: string | null = null;
   private deliveredThisSession = new Set<string>();
+
+  /**
+   * Which pass may still deliver. Every pass and every retirement moves it on,
+   * so a pass that wakes from the recap gate's read to find it moved stands
+   * down rather than booking beside a later pass, or after a cancel.
+   */
+  private sweepPass = 0;
+
+  /** That pass's run: what a pass standing down hands its own caller. */
+  private currentSweep: Promise<void> = Promise.resolve();
+
+  /** `uid|week` the announced week was last found to have news for. */
+  private recapNewsFor: string | null = null;
+  private recapNewsRead: { key: string; promise: Promise<boolean> } | null = null;
 
   readonly enabled = computed(() => remindersEnabled(this.auth.currentUser()?.preferences));
 
@@ -224,8 +252,9 @@ export class ReminderService {
       return;
     }
     // A listener an earlier pass left open would still deliver its first
-    // snapshot after this cancel and book bills the cancel just retired.
-    this.closeBillSweep();
+    // snapshot after this cancel and book bills the cancel just retired, and
+    // a pass still reading the recap gate would book its nudge.
+    this.retireSweeps();
     await this.cancelScheduledFor(this.auth.userId());
   }
 
@@ -235,8 +264,15 @@ export class ReminderService {
    * A sweep is the only other caller of the prune and no sweep runs while the
    * preference is off, so without this an opt-out would leave up to a month of
    * scheduled bill reminders firing with no way in the app to stop them.
+   *
+   * Earlier passes stand down first, as they do for the both-off sweep. The
+   * switch cancels before it writes the preference, and the account document
+   * moves only once the server acknowledges that write, so a pass waking from
+   * the recap gate's read would still find reminders on and book what this
+   * retired.
    */
   async cancelScheduled(): Promise<void> {
+    this.retireSweeps();
     await this.cancelScheduledFor(this.auth.userId());
   }
 
@@ -276,7 +312,7 @@ export class ReminderService {
     document.addEventListener('visibilitychange', onVisibilityChange);
     this.destroyRef.onDestroy(() => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      this.closeBillSweep();
+      this.retireSweeps();
     });
   }
 
@@ -291,19 +327,39 @@ export class ReminderService {
     void this.sweepBills();
   }
 
-  /** Resolves once the pass has delivered, so `sweep()` can be awaited. */
+  /**
+   * Resolves once the pass has delivered, or once the pass that took over
+   * from it has, so `sweep()` can be awaited. That holds whether the pass was
+   * overtaken while the recap gate read or while its listener waited for a
+   * first snapshot.
+   */
   private sweepBills(): Promise<void> {
     this.lastSweptAt = this.now().getTime();
 
     const userId = this.auth.userId();
     if (!userId) return Promise.resolve();
 
-    // Before either path: a listener an earlier pass left waiting for its
-    // first snapshot would otherwise deliver bills for a preference that has
-    // been switched off since it opened.
-    this.closeBillSweep();
+    // Before the recap gate reads, not after: a listener an earlier pass left
+    // waiting for its first snapshot would otherwise deliver bills, while this
+    // pass waits, for a preference that has been switched off since it opened.
+    const pass = this.retireSweeps();
+    const run = this.runSweep(userId, pass);
+    this.currentSweep = run;
+    return run;
+  }
 
-    const nudge = this.recapNudge(userId);
+  private async runSweep(userId: string, pass: number): Promise<void> {
+    const nudge = await this.recapNudge(userId);
+
+    // A later pass, or a cancel, started while the gate read. Delivering
+    // beside it would book the same nudge twice, or book after the cancel;
+    // the caller gets the later pass's result instead.
+    if (pass !== this.sweepPass) return this.currentSweep;
+    // The read can outlast the account that asked for it, and delivering
+    // would book one account's week under another's session.
+    if (this.auth.userId() !== userId) return;
+    // Past both checks no other pass has started, so the listener assigned
+    // below replaces nothing.
 
     // An account that asked for the recap and not for reminders never reaches
     // the listener below: it would refresh the shared recurringTransactions
@@ -320,8 +376,12 @@ export class ReminderService {
     // it — unlike the freshenSpent recalculations a getBudgets() subscription
     // would make this service a second writer of — and nothing here may grow
     // one.
-    return new Promise<void>(resolve => {
+    const closedUnread = await new Promise<boolean>(resolve => {
       let delivering = false;
+      // A pass already delivering finishes and settles on its own.
+      this.settleBillSweep = () => {
+        if (!delivering) resolve(true);
+      };
       this.billSweep = this.recurringService
         .getNextOccurrences(MAX_REMINDER_LEAD_DAYS + 1)
         .pipe(take(1))
@@ -329,23 +389,41 @@ export class ReminderService {
           next: occurrences => {
             delivering = true;
             void this.deliverBills(userId, occurrences, nudge).then(
-              () => resolve(),
-              () => resolve()
+              () => resolve(false),
+              () => resolve(false)
             );
           },
-          error: () => resolve(),
+          error: () => resolve(false),
           // take(1) completes immediately after its emission, so a pass still
           // delivering must not be released here.
           complete: () => {
-            if (!delivering) resolve();
+            if (!delivering) resolve(false);
           },
         });
     });
+    // Closed before anything reached it by a later pass or a cancel, both of
+    // which move the pass count on as they close it: the caller gets the later
+    // run, as a pass overtaken during the read does. A close that moved
+    // nothing on, the account switch's on a sign-out, has nothing to hand over.
+    if (closedUnread && pass !== this.sweepPass) return this.currentSweep;
   }
 
   private closeBillSweep(): void {
     this.billSweep?.unsubscribe();
     this.billSweep = null;
+    const settle = this.settleBillSweep;
+    this.settleBillSweep = null;
+    settle?.();
+  }
+
+  /** Stand every earlier pass down, and number the one starting now. */
+  private retireSweeps(): number {
+    this.closeBillSweep();
+    // Until a starting pass replaces it: a pass that stood down for a cancel
+    // has nothing later to wait on.
+    this.currentSweep = Promise.resolve();
+    this.sweepPass += 1;
+    return this.sweepPass;
   }
 
   /**
@@ -356,7 +434,7 @@ export class ReminderService {
    * at. `deliverWeb` skips anything carrying `at`, so the web build produces
    * it and never raises it — the card is what a browser gets.
    */
-  private recapNudge(userId: string): PreparedReminder[] {
+  private async recapNudge(userId: string): Promise<PreparedReminder[]> {
     if (!this.recapEnabled()) return [];
 
     const at = nextRecapMoment(this.now());
@@ -365,6 +443,12 @@ export class ReminderService {
     // left to announce. Producing nothing also retires an already-booked one,
     // since the stale-cancel spares only what this pass produced.
     if (readDismissedRecapWeek(userId) === week) return [];
+
+    // An empty week after a week with no spending has no card to open, and
+    // producing nothing retires a nudge booked while it still looked
+    // otherwise. Asked only where the nudge can be booked: the web build
+    // drops it unread, so a read there buys nothing.
+    if (Capacitor.isNativePlatform() && !(await this.recapHasNews(userId, week, at))) return [];
 
     // The nudge day, not the recapped week: one notification per Monday, and
     // the same key on every sweep until it fires.
@@ -376,6 +460,37 @@ export class ReminderService {
         at,
       },
     ];
+  }
+
+  /**
+   * `recapWeekHasNews`, asked at most once at a time per account and week,
+   * and not again once it has said yes: within a week a positive answer only
+   * changes if every row behind it is deleted, and a nudge for a week that
+   * went quiet costs one look at the dashboard. A quiet answer is asked again
+   * on every pass, since the next expense makes it news.
+   *
+   * Fails open. A nudge for a quiet week costs that look; one withheld on a
+   * failed read is a recap nobody was told about. The failure is not
+   * remembered, so the next pass asks again.
+   */
+  private recapHasNews(userId: string, week: string, at: Date): Promise<boolean> {
+    const key = `${userId}|${week}`;
+    if (this.recapNewsFor === key) return Promise.resolve(true);
+    if (this.recapNewsRead?.key === key) return this.recapNewsRead.promise;
+
+    const promise = this.recapWeekHasNews(at)
+      .then(
+        hasNews => {
+          if (hasNews) this.recapNewsFor = key;
+          return hasNews;
+        },
+        () => true
+      )
+      .finally(() => {
+        if (this.recapNewsRead?.key === key) this.recapNewsRead = null;
+      });
+    this.recapNewsRead = { key, promise };
+    return promise;
   }
 
   private async deliverBills(
@@ -746,6 +861,38 @@ export class ReminderService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Whether the week a nudge at `at` announces has a card to show: the card's
+   * own test, over that week as it stands so far and the week before it.
+   *
+   * Both services are resolved here rather than injected, so a harness that
+   * stands in for this seam never builds them, and nothing on the startup
+   * path that constructs this service has to.
+   *
+   * The server's answer, never the cache's: a cache that never held those
+   * weeks answers with no rows, and a quiet fortnight read from it would
+   * retire a nudge the account has news for. Offline it rejects instead, and
+   * the caller books the nudge.
+   */
+  protected async recapWeekHasNews(at: Date): Promise<boolean> {
+    const transactions = this.injector.get(TransactionService);
+    const currency = this.injector.get(CurrencyService);
+    const baseCurrency = baseCurrencyOf(this.auth.currentUser());
+    const week = recapWindow(at);
+    const before = weekBeforeWindow(at);
+
+    const [weekRows, beforeRows] = await Promise.all([
+      transactions.getTransactionsInRangeFromServer(week.start, week.end),
+      transactions.getTransactionsInRangeFromServer(before.start, before.end),
+    ]);
+
+    return hasSomethingToSay(
+      composeRecapFigures(weekRows, beforeRows, transaction =>
+        currency.amountInBase(transaction, baseCurrency)
+      )
+    );
   }
 
   /** Plugin seam, so specs can observe scheduling without a native binary. */
