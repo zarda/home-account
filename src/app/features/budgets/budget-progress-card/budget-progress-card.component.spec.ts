@@ -174,25 +174,25 @@ describe('BudgetProgressCardComponent', () => {
     });
   });
 
-  describe('progressColor', () => {
-    it('should return primary for under 50%', () => {
+  describe('barTone', () => {
+    it('should return none for under 50%', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 40 }));
-      expect(component.progressColor()).toBe('primary');
+      expect(component.barTone()).toBeNull();
     });
 
-    it('should return primary while under the alert threshold', () => {
+    it('should return none while under the alert threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 60 }));
-      expect(component.progressColor()).toBe('primary');
+      expect(component.barTone()).toBeNull();
     });
 
-    it('should return accent from the warning threshold', () => {
+    it('should return near from the warning threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
-      expect(component.progressColor()).toBe('accent');
+      expect(component.barTone()).toBe('near');
     });
 
-    it('should return warn for over budget', () => {
+    it('should return over for over budget', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 150 }));
-      expect(component.progressColor()).toBe('warn');
+      expect(component.barTone()).toBe('over');
     });
   });
 
@@ -227,14 +227,14 @@ describe('BudgetProgressCardComponent', () => {
     it('bar, percentage text and chip all agree in the warning band', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
       expect(component.alertSeverity()).toBe('warning');
-      expect(component.progressColor()).toBe('accent');
+      expect(component.barTone()).toBe('near');
       expect(component.statusClass()).toBe('text-warning-text');
     });
 
     it('bar, percentage text and chip all agree when exceeded', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 300, spent: 350.49 }));
       expect(component.alertSeverity()).toBe('exceeded');
-      expect(component.progressColor()).toBe('warn');
+      expect(component.barTone()).toBe('over');
       expect(component.statusClass()).toBe('text-error-text font-semibold');
       expect(component.percentage()).toBeGreaterThan(100);
     });
@@ -313,6 +313,37 @@ describe('BudgetProgressCardComponent', () => {
             }
           });
         }
+      }
+    });
+
+    // Material paints the indicator as the inner bar's top border. It is a
+    // graphic, so its floor is 3:1 (WCAG 1.4.11), against the track it runs
+    // along and the card around it.
+    it("draws each severity's bar in the colour its percentage reads in, at 3:1 or better on its track and the card, in both themes", () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const painted = new Map<string, string>();
+          for (const severity of SEVERITIES) {
+            render({ amount: 100, spent: severity.spent });
+            settleAnimations(document);
+            const label = `${theme} ${severity.name} bar`;
+            const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
+            painted.set(severity.name, indicator);
+            expect(indicator).withContext(label).toBe(tokenValue(severity.token));
+            expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
+              .withContext(`${label} on its track`)
+              .toBeGreaterThanOrEqual(3);
+            expect(ratio(channels(indicator).rgb, paintedBackground(part('.budget-card'))))
+              .withContext(`${label} on the card`)
+              .toBeGreaterThanOrEqual(3);
+          }
+          expect(painted.get('warning'))
+            .withContext(`${theme} a warning bar paints apart from one within budget`)
+            .not.toBe(painted.get('within budget'));
+          expect(painted.get('exceeded'))
+            .withContext(`${theme} an exceeded bar paints apart from a warning one`)
+            .not.toBe(painted.get('warning'));
+        });
       }
     });
 

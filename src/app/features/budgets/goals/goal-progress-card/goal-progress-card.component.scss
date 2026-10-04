@@ -94,6 +94,14 @@
     }
   }
 
+  // A reached goal's bar turns the colour of done. Material paints the
+  // indicator from this token alone; mat.theme() gives a [color] class no
+  // colour. The -text token, because the success fill measures under 3:1 on
+  // Material's track in light.
+  &.reached mat-progress-bar {
+    --mat-progress-bar-active-indicator-color: var(--color-success-text);
+  }
+
   .goal-items {
     margin-top: 12px;
     display: flex;

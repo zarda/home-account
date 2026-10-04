@@ -114,7 +114,8 @@
                 <mat-progress-bar
                   mode="determinate"
                   [value]="view.bar"
-                  [color]="view.severity === 'exceeded' ? 'warn' : view.severity ? 'accent' : 'primary'"
+                  [class.over]="view.severity === 'exceeded'"
+                  [class.near]="view.severity === 'warning' || view.severity === 'critical'"
                   [attr.aria-label]="'budgets.progressLabel' | translate: { name: view.name, percent: view.percent }"
                 />
                 @if (view.severity; as severity) {

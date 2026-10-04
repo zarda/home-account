@@ -203,20 +203,20 @@ describe('BudgetProgressComponent', () => {
     });
   });
 
-  describe('getProgressColor', () => {
-    it('should return primary for under 80%', () => {
+  describe('getBarTone', () => {
+    it('should return none for under 80%', () => {
       const budget = createMockBudget({ amount: 100, spent: 50 });
-      expect(component.getProgressColor(budget)).toBe('primary');
+      expect(component.getBarTone(budget)).toBeNull();
     });
 
-    it('should return accent for 80-99%', () => {
+    it('should return near for 80-99%', () => {
       const budget = createMockBudget({ amount: 100, spent: 85 });
-      expect(component.getProgressColor(budget)).toBe('accent');
+      expect(component.getBarTone(budget)).toBe('near');
     });
 
-    it('should return warn for 100% and over', () => {
+    it('should return over for 100% and over', () => {
       const budget = createMockBudget({ amount: 100, spent: 110 });
-      expect(component.getProgressColor(budget)).toBe('warn');
+      expect(component.getBarTone(budget)).toBe('over');
     });
   });
 
@@ -236,17 +236,18 @@ describe('BudgetProgressComponent', () => {
     });
   });
 
-  describe('getPercentageClass, as painted', () => {
-    // Each severity at a spend that reaches it under the budget's 80%
-    // threshold. Critical shares the warning colour, as the bar already
-    // does: there is no orange token, and the alert text names the severity.
-    const SEVERITIES = [
-      { name: 'within budget', spent: 50, token: '--color-success-text' },
-      { name: 'warning', spent: 85, token: '--color-warning-text' },
-      { name: 'critical', spent: 95, token: '--color-warning-text' },
-      { name: 'exceeded', spent: 110, token: '--color-error-text' },
-    ] as const;
+  // Each severity at a spend that reaches it under the budget's 80%
+  // threshold, and the token its percentage and its bar both read in.
+  // Critical shares the warning colour: there is no orange token, and the
+  // alert text names the severity.
+  const SEVERITIES = [
+    { name: 'within budget', spent: 50, token: '--color-success-text' },
+    { name: 'warning', spent: 85, token: '--color-warning-text' },
+    { name: 'critical', spent: 95, token: '--color-warning-text' },
+    { name: 'exceeded', spent: 110, token: '--color-error-text' },
+  ] as const;
 
+  describe('getPercentageClass, as painted', () => {
     it('reads each severity at AA or better on the budget row, in both themes', () => {
       for (const severity of SEVERITIES) {
         setBudgets([createMockBudget({ amount: 100, spent: severity.spent })]);
@@ -347,6 +348,39 @@ describe('BudgetProgressComponent', () => {
           expect(getComputedStyle(track).backgroundColor)
             .withContext(`${theme} track`)
             .toBe(tokenColour('--mat-sys-surface-variant'));
+        });
+      }
+    });
+
+    // Material paints the indicator as the inner bar's top border. It is a
+    // graphic, so its floor is 3:1 (WCAG 1.4.11), against the track it runs
+    // along and the row around it.
+    it("draws each severity's bar in the colour its percentage reads in, at 3:1 or better on its track and its row, in both themes", () => {
+      const part = (selector: string) => fixture.nativeElement.querySelector(selector) as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          const painted = new Map<string, string>();
+          for (const severity of SEVERITIES) {
+            setBudgets([createMockBudget({ amount: 100, spent: severity.spent })]);
+            fixture.detectChanges();
+            settleAnimations(document);
+            const label = `${theme} ${severity.name} bar`;
+            const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
+            painted.set(severity.name, indicator);
+            expect(indicator).withContext(label).toBe(tokenColour(severity.token));
+            expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
+              .withContext(`${label} on its track`)
+              .toBeGreaterThanOrEqual(3);
+            expect(ratio(channels(indicator).rgb, paintedBackground(part('.budget-item'))))
+              .withContext(`${label} on its row`)
+              .toBeGreaterThanOrEqual(3);
+          }
+          expect(painted.get('warning'))
+            .withContext(`${theme} a warning bar paints apart from one within budget`)
+            .not.toBe(painted.get('within budget'));
+          expect(painted.get('exceeded'))
+            .withContext(`${theme} an exceeded bar paints apart from a warning one`)
+            .not.toBe(painted.get('warning'));
         });
       }
     });

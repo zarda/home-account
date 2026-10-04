@@ -38,7 +38,8 @@
     </div>
     <mat-progress-bar
       [value]="barValue()"
-      [color]="progressColor()"
+      [class.near]="barTone() === 'near'"
+      [class.over]="barTone() === 'over'"
       [attr.aria-label]="'budgets.progressLabel' | translate: { name: budget().name, percent: percentage().toFixed(0) }"
     ></mat-progress-bar>
     <div class="status-row">

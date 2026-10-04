@@ -73,16 +73,18 @@ export class BudgetProgressCardComponent {
   );
 
   // Bar, percentage text and status chip all derive from the one severity
-  // above so the card can never send mixed signals for a single state.
-  progressColor = computed((): 'primary' | 'accent' | 'warn' => {
+  // above so the card can never send mixed signals for a single state. The
+  // bar's tone is a class the stylesheet colours, and none under the
+  // threshold.
+  barTone = computed((): 'near' | 'over' | null => {
     switch (this.alertSeverity()) {
       case 'exceeded':
-        return 'warn';
+        return 'over';
       case 'critical':
       case 'warning':
-        return 'accent';
+        return 'near';
       default:
-        return 'primary';
+        return null;
     }
   });
 

@@ -79,15 +79,17 @@ export class BudgetProgressComponent {
     return getBudgetAlertSeverity(this.getPercentage(budget), budget.alertThreshold);
   }
 
-  getProgressColor(budget: Budget): 'primary' | 'accent' | 'warn' {
+  // The bar's class, which its stylesheet colours; none under the budget's
+  // alert threshold.
+  getBarTone(budget: Budget): 'near' | 'over' | null {
     switch (this.getSeverity(budget)) {
       case 'exceeded':
-        return 'warn';
+        return 'over';
       case 'critical':
       case 'warning':
-        return 'accent';
+        return 'near';
       default:
-        return 'primary';
+        return null;
     }
   }
 

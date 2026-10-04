@@ -49,9 +49,22 @@ a[mat-button] > mat-icon {
     }
   }
 
+  // The indicator reads in the colour of its percentage. Material paints it
+  // from this token alone: [color] only adds a .mat-accent or .mat-warn
+  // class, and mat.theme() gives those no colours. The -text tokens, because
+  // the fills measure under 3:1 on Material's track in light.
   mat-progress-bar {
     @apply rounded-full;
     height: 5px;
+    --mat-progress-bar-active-indicator-color: var(--color-success-text);
+
+    &.near {
+      --mat-progress-bar-active-indicator-color: var(--color-warning-text);
+    }
+
+    &.over {
+      --mat-progress-bar-active-indicator-color: var(--color-error-text);
+    }
   }
 
   ::ng-deep .mdc-linear-progress {

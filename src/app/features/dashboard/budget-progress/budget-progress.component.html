@@ -26,7 +26,8 @@
 
           <mat-progress-bar
             [value]="getBarValue(budget)"
-            [color]="getProgressColor(budget)"
+            [class.near]="getBarTone(budget) === 'near'"
+            [class.over]="getBarTone(budget) === 'over'"
             [attr.aria-label]="'budgets.progressLabel' | translate: { name: budget.name, percent: getPercentage(budget).toFixed(0) }"
           />
 
