@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { QuickAddService } from './quick-add.service';
 import { CommandPaletteComponent } from '../../shared/components/command-palette/command-palette.component';
-import { isImeComposition } from '../utils/keyboard.utils';
+import { isImeComposition, ownsTypedKey } from '../utils/keyboard.utils';
 
 /**
  * Global keyboard shortcuts for the authed shell (#80). MainLayoutComponent
@@ -15,17 +15,9 @@ import { isImeComposition } from '../utils/keyboard.utils';
  *     never be read as a command — reuses keyboard.utils' isImeComposition.
  *  2. A dialog already open means the user is mid-form (or focused on a
  *     confirm button inside one); a second 'n' must not spawn another form.
- *  3. A target that already owns the letter means the user is typing 'n' or
- *     steering with it, not invoking it. That is two families, and both are
- *     in the one selector:
- *       - native text entry: input/textarea/select/contenteditable;
- *       - a Material overlay widget whose key manager consumes printable
- *         letters for first-letter typeahead — mat-select (focused trigger
- *         or open panel), mat-menu, selection list. None of those is a
- *         MatDialog, so guard 2 never sees them, and none is a native
- *         control, so the tag selectors never see them either; they are
- *         reached by their ARIA roles (combobox/listbox/menu/menubar) and
- *         by the overlay pane the open ones render into.
+ *  3. A target that already owns the letter (keyboard.utils' ownsTypedKey:
+ *     native text entry, or a Material typeahead widget guard 2 cannot see)
+ *     means the user is typing 'n' or steering with it, not invoking it.
  *  Only once all three pass does the key do anything.
  */
 @Injectable({ providedIn: 'root' })
@@ -39,13 +31,7 @@ export class KeyboardShortcutService {
   handleAddHotkey(event: KeyboardEvent): void {
     if (isImeComposition(event)) return;
     if (this.dialog.openDialogs.length > 0) return;
-    if (
-      (event.target as Element | null)?.closest?.(
-        'input, textarea, select, [contenteditable], [role="listbox"], [role="menu"], [role="menubar"], [role="combobox"], .cdk-overlay-pane'
-      )
-    ) {
-      return;
-    }
+    if (ownsTypedKey(event.target)) return;
 
     event.preventDefault();
     this.quickAdd.openAddTransaction();
