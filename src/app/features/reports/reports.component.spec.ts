@@ -77,11 +77,13 @@ describe('ReportsComponent', () => {
     queryParams = {};
     mockTransactionService = jasmine.createSpyObj(
       'TransactionService',
-      ['getByDateRange', 'getTransactionsInRange'],
+      {
+        getByDateRange: of([]),
+        getTransactionsInRange: of([]),
+        getEarliestTransactionDateFromServer: Promise.resolve(null),
+      },
       { transactions: signal<Transaction[]>([]) }
     );
-    mockTransactionService.getByDateRange.and.returnValue(of([]));
-    mockTransactionService.getTransactionsInRange.and.returnValue(of([]));
 
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['loadCategories'], {
       categories: signal([])
@@ -420,7 +422,11 @@ describe('ReportsComponent, through its own template', () => {
           provide: TransactionService,
           useValue: jasmine.createSpyObj(
             'TransactionService',
-            { getByDateRange: of([]), getTransactionsInRange: of([]) },
+            {
+              getByDateRange: of([]),
+              getTransactionsInRange: of([]),
+              getEarliestTransactionDateFromServer: Promise.resolve(null),
+            },
             { transactions: signal<Transaction[]>([]) }
           ),
         },

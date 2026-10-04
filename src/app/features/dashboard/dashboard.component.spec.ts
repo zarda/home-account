@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { Router, provideRouter } from '@angular/router';
-import { of, Subject, throwError, EMPTY } from 'rxjs';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { of, BehaviorSubject, Subject, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
@@ -96,6 +96,7 @@ describe('DashboardComponent', () => {
     getRecentTransactions: jasmine.Spy;
     getPeriodCategoryTotals: jasmine.Spy;
     getExpensesInRange: jasmine.Spy;
+    getEarliestTransactionDateFromServer: () => Promise<Date | null>;
   };
   let budgetService: {
     activeBudgets: ReturnType<typeof signal<unknown[]>>;
@@ -118,6 +119,7 @@ describe('DashboardComponent', () => {
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
   let widgetSnapshots: jasmine.SpyObj<WidgetSnapshotService>;
+  let activatedRoute: { queryParamMap: BehaviorSubject<ParamMap> };
 
   function build() {
     return TestBed.createComponent(DashboardComponent);
@@ -133,6 +135,7 @@ describe('DashboardComponent', () => {
         .createSpy('getPeriodCategoryTotals')
         .and.returnValue(of({ income: 0, expense: 0, byCategory: [] })),
       getExpensesInRange: jasmine.createSpy('getExpensesInRange').and.returnValue(of([])),
+      getEarliestTransactionDateFromServer: () => Promise.resolve(null),
     };
     budgetService = {
       activeBudgets: signal<unknown[]>([]),
@@ -179,7 +182,10 @@ describe('DashboardComponent', () => {
     router.navigate.and.returnValue(Promise.resolve(true));
     // Root-provided and reaches AppLockService, which throws on this suite's
     // userId-less AuthService double — doubled here rather than left real.
-    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish']);
+    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish'], { available: false });
+    // Router is a spy here, so nothing else provides ActivatedRoute; the
+    // real-template describe keeps provideRouter's root route instead.
+    activatedRoute = { queryParamMap: new BehaviorSubject<ParamMap>(convertToParamMap({})) };
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -197,6 +203,7 @@ describe('DashboardComponent', () => {
         { provide: AnnouncerService, useValue: announcer },
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
+        { provide: ActivatedRoute, useValue: activatedRoute },
         { provide: WidgetSnapshotService, useValue: widgetSnapshots },
       ],
     })
