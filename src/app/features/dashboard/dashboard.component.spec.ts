@@ -20,7 +20,7 @@ import { BudgetService } from '../../core/services/budget.service';
 import { GoalService } from '../../core/services/goal.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
-import { AuthService } from '../../core/services/auth.service';
+import { AuthService, withPreferenceFields } from '../../core/services/auth.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
@@ -51,6 +51,7 @@ import {
 } from '../../shared/components/period-selector/period-selector.component';
 import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
 import { dashboardGridAreas } from './dashboard-layout.utils';
+import { DashboardLayoutService } from './dashboard-layout.service';
 
 function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
   return { option, start, end, label: '' };
@@ -112,7 +113,10 @@ describe('DashboardComponent', () => {
     getUpcomingSchedule: jasmine.Spy;
   };
   let insightSnapshotService: { generateClosedMonths: jasmine.Spy };
-  let authService: { currentUser: ReturnType<typeof signal<User | null>> };
+  let authService: {
+    currentUser: ReturnType<typeof signal<User | null>>;
+    updatePreferenceFields: jasmine.Spy;
+  };
   let currencyService: jasmine.SpyObj<CurrencyService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let announcer: jasmine.SpyObj<AnnouncerService>;
@@ -124,6 +128,23 @@ describe('DashboardComponent', () => {
 
   function build() {
     return TestBed.createComponent(DashboardComponent);
+  }
+
+  /**
+   * Holds the next layout write until the returned function lands it; it then
+   * lands as AuthService's does, merged into the user as it stands by then.
+   */
+  function holdLayoutWrite(): () => void {
+    let land!: () => void;
+    authService.updatePreferenceFields.and.callFake(async (key, fields) => {
+      await new Promise<void>(resolve => (land = resolve));
+      const latest = authService.currentUser()!;
+      authService.currentUser.set({
+        ...latest,
+        preferences: withPreferenceFields(latest.preferences, key, fields),
+      });
+    });
+    return () => land();
   }
 
   beforeEach(async () => {
@@ -167,7 +188,10 @@ describe('DashboardComponent', () => {
         .createSpy('generateClosedMonths')
         .and.returnValue(Promise.resolve([])),
     };
-    authService = { currentUser: signal<User | null>(createUser({ displayName: 'Ada Lovelace' })) };
+    authService = {
+      currentUser: signal<User | null>(createUser({ displayName: 'Ada Lovelace' })),
+      updatePreferenceFields: jasmine.createSpy('updatePreferenceFields').and.resolveTo(),
+    };
     currencyService = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase']);
     currencyService.convert.and.callFake((amount: number) => amount);
     currencyService.amountInBase.and.callFake(
@@ -535,6 +559,22 @@ describe('DashboardComponent', () => {
       }));
 
       expect(build().componentInstance.arrangedCards()).toEqual([]);
+    });
+
+    it('drops a card the layout service hides before the write lands', async () => {
+      const land = holdLayoutWrite();
+      const component = build().componentInstance;
+      expect(component.arrangedCards()).toEqual(['recent', 'upcoming', 'chart', 'insights']);
+
+      const saved = TestBed.inject(DashboardLayoutService).hide('chart');
+
+      expect(authService.updatePreferenceFields).toHaveBeenCalledTimes(1);
+      expect(component.arrangedCards()).toEqual(['recent', 'upcoming', 'insights']);
+
+      land();
+      await saved;
+
+      expect(component.arrangedCards()).withContext('once the write lands').toEqual(['recent', 'upcoming', 'insights']);
     });
   });
 
@@ -1292,6 +1332,27 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
 
       expect(fixture.nativeElement.querySelector('app-ai-summary')).toBeNull();
+    });
+
+    it('takes away the host of a card the layout service hides before the write lands', async () => {
+      const land = holdLayoutWrite();
+      const fixture = build();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-spending-chart')).not.toBeNull();
+
+      const saved = TestBed.inject(DashboardLayoutService).hide('chart');
+      fixture.detectChanges();
+
+      const tags = () => Array.from(fixture.nativeElement.querySelectorAll('.dashboard-grid > *'))
+        .map((el) => (el as Element).tagName.toLowerCase());
+      expect(tags()).toEqual(['app-recent-transactions', 'app-upcoming-bills', 'app-ai-summary']);
+
+      land();
+      await saved;
+      fixture.detectChanges();
+
+      expect(tags()).withContext('once the write lands')
+        .toEqual(['app-recent-transactions', 'app-upcoming-bills', 'app-ai-summary']);
     });
 
     it('binds the computed grid areas as a custom property', () => {

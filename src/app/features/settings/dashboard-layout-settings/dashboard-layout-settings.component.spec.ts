@@ -4,7 +4,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { DashboardLayoutSettingsComponent } from './dashboard-layout-settings.component';
 import { AnnouncerService } from '../../../core/services/announcer.service';
-import { AuthService } from '../../../core/services/auth.service';
+import { AuthService, withPreferenceFields } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { DashboardCardId, DashboardLayout, User, UserPreferences } from '../../../models';
@@ -60,9 +60,11 @@ describe('DashboardLayoutSettingsComponent', () => {
   beforeEach(async () => {
     currentUser = signal<User | null>(null);
 
-    auth = jasmine.createSpyObj('AuthService', ['updateUserPreferences', 'clearUserPreferences'], {
-      currentUser,
-    });
+    auth = jasmine.createSpyObj(
+      'AuthService',
+      ['updatePreferenceFields', 'updateUserPreferences', 'clearUserPreferences'],
+      { currentUser }
+    );
     holdWrites = false;
     pendingWrites = [];
     const landing = (): Promise<void> =>
@@ -70,6 +72,13 @@ describe('DashboardLayoutSettingsComponent', () => {
         ? new Promise((land, fail) => pendingWrites.push({ land: () => land(), fail }))
         : Promise.resolve();
 
+    // As AuthService does: the nested write lands, then its fields are merged
+    // one level deep into the user as it stands by then.
+    auth.updatePreferenceFields.and.callFake(async (key, fields) => {
+      await landing();
+      const latest = currentUser()!;
+      currentUser.set({ ...latest, preferences: withPreferenceFields(latest.preferences, key, fields) });
+    });
     // As AuthService does: the user is read before the write and, once it
     // lands, currentUser becomes that user with the change folded in — so an
     // earlier write landing late reports an older layout than a newer one.
@@ -139,17 +148,32 @@ describe('DashboardLayoutSettingsComponent', () => {
       expect(switchFor('recent').getAttribute('aria-checked')).toBe('true');
     });
 
-    it("hides a card from its switch and writes the layout key alone", async () => {
+    it('hides a card from its switch and writes only the hidden field', async () => {
       render();
 
       switchFor('insights').click();
       await fixture.whenStable();
       fixture.detectChanges();
 
-      expect(auth.updateUserPreferences).toHaveBeenCalledOnceWith({
-        dashboardLayout: { order: defaultOrder, hidden: ['insights'] },
+      expect(auth.updatePreferenceFields).toHaveBeenCalledOnceWith('dashboardLayout', {
+        hidden: { set: ['insights'] },
       });
+      expect(auth.updateUserPreferences).not.toHaveBeenCalled();
       expect(auth.clearUserPreferences).not.toHaveBeenCalled();
+      expect(currentUser()?.preferences.dashboardLayout).toEqual({ hidden: ['insights'] });
+    });
+
+    it('deletes the hidden field when the last hidden card is shown again', async () => {
+      render({ dashboardLayout: { hidden: ['insights'] } });
+
+      switchFor('insights').click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(auth.updatePreferenceFields).toHaveBeenCalledOnceWith('dashboardLayout', {
+        hidden: { delete: true },
+      });
+      expect(switchFor('insights').getAttribute('aria-checked')).toBe('true');
     });
   });
 
@@ -158,7 +182,7 @@ describe('DashboardLayoutSettingsComponent', () => {
     // the binding never reads a changed value and only the component turning
     // the switch back makes it agree with the account again.
     it('says so, and turns the switch back on', async () => {
-      auth.updateUserPreferences.and.rejectWith(new Error('offline'));
+      auth.updatePreferenceFields.and.rejectWith(new Error('offline'));
       render();
 
       switchFor('insights').click();
@@ -174,7 +198,7 @@ describe('DashboardLayoutSettingsComponent', () => {
 
   describe('a failed move', () => {
     it('says so, then announces the position the card fell back to', async () => {
-      auth.updateUserPreferences.and.rejectWith(new Error('offline'));
+      auth.updatePreferenceFields.and.rejectWith(new Error('offline'));
       render();
 
       moveButton('recent', 'down').click();
@@ -214,8 +238,8 @@ describe('DashboardLayoutSettingsComponent', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      expect(auth.updateUserPreferences).toHaveBeenCalledOnceWith({
-        dashboardLayout: { order: ['upcoming', 'recent', 'chart', 'insights', 'budgets'], hidden: [] },
+      expect(auth.updatePreferenceFields).toHaveBeenCalledOnceWith('dashboardLayout', {
+        order: { set: ['upcoming', 'recent', 'chart', 'insights', 'budgets'] },
       });
       // A position is current state: a later move makes it stale, so it
       // replaces any position still waiting to be spoken.
@@ -288,8 +312,8 @@ describe('DashboardLayoutSettingsComponent', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      expect(auth.updateUserPreferences).toHaveBeenCalledOnceWith({
-        dashboardLayout: { order: ['upcoming', 'chart', 'insights', 'recent', 'budgets'], hidden: [] },
+      expect(auth.updatePreferenceFields).toHaveBeenCalledOnceWith('dashboardLayout', {
+        order: { set: ['upcoming', 'chart', 'insights', 'recent', 'budgets'] },
       });
       expect(rows()).toEqual(['upcoming', 'chart', 'insights', 'recent', 'budgets']);
     });
@@ -302,6 +326,22 @@ describe('DashboardLayoutSettingsComponent', () => {
       expect(resetButton().disabled).toBe(true);
     });
 
+    // A switch turned off and on again leaves the map with neither field.
+    it('is disabled while the stored layout holds neither field', () => {
+      render({ dashboardLayout: {} });
+
+      expect(resetButton().disabled).toBe(true);
+    });
+
+    it('is enabled while either field is stored', () => {
+      render({ dashboardLayout: { hidden: ['insights'] } });
+      expect(resetButton().disabled).withContext('hidden alone').toBe(false);
+
+      currentUser.set(userWith({ dashboardLayout: { order: stored.order } }));
+      fixture.detectChanges();
+      expect(resetButton().disabled).withContext('order alone').toBe(false);
+    });
+
     it('deletes the stored key and renders the default order', async () => {
       render({ dashboardLayout: stored });
       expect(resetButton().disabled).toBe(false);
@@ -311,6 +351,7 @@ describe('DashboardLayoutSettingsComponent', () => {
       fixture.detectChanges();
 
       expect(auth.clearUserPreferences).toHaveBeenCalledOnceWith(['dashboardLayout']);
+      expect(auth.updatePreferenceFields).not.toHaveBeenCalled();
       expect(auth.updateUserPreferences).not.toHaveBeenCalled();
       expect(rows()).toEqual(defaultOrder);
     });
@@ -342,7 +383,7 @@ describe('DashboardLayoutSettingsComponent', () => {
     // layout derived by identity would snap back to the account's mid-save.
     it('keeps a pending move when an unrelated preference changes', async () => {
       let settle!: () => void;
-      auth.updateUserPreferences.and.returnValue(new Promise<void>(resolve => (settle = resolve)));
+      auth.updatePreferenceFields.and.returnValue(new Promise<void>(resolve => (settle = resolve)));
       render();
 
       moveButton('recent', 'down').click();
@@ -378,7 +419,7 @@ describe('DashboardLayoutSettingsComponent', () => {
       fixture.detectChanges();
 
       expect(rows()).toEqual(afterSecond);
-      expect(auth.updateUserPreferences).toHaveBeenCalledTimes(1);
+      expect(auth.updatePreferenceFields).toHaveBeenCalledTimes(1);
 
       pendingWrites[0].land();
       await settled();
@@ -388,9 +429,9 @@ describe('DashboardLayoutSettingsComponent', () => {
       pendingWrites[1].land();
       await settled();
 
-      expect(auth.updateUserPreferences.calls.allArgs()).toEqual([
-        [{ dashboardLayout: { order: afterFirst, hidden: [] } }],
-        [{ dashboardLayout: { order: afterSecond, hidden: [] } }],
+      expect(auth.updatePreferenceFields.calls.allArgs()).toEqual([
+        ['dashboardLayout', { order: { set: afterFirst } }],
+        ['dashboardLayout', { order: { set: afterSecond } }],
       ]);
       expect(currentUser()?.preferences.dashboardLayout?.order).toEqual(afterSecond);
       expect(rows()).toEqual(afterSecond);
@@ -412,9 +453,9 @@ describe('DashboardLayoutSettingsComponent', () => {
       pendingWrites[1]?.land();
       await settled();
 
-      expect(auth.updateUserPreferences.calls.allArgs()).toEqual([
-        [{ dashboardLayout: { order: afterFirst, hidden: [] } }],
-        [{ dashboardLayout: { order: afterThird, hidden: [] } }],
+      expect(auth.updatePreferenceFields.calls.allArgs()).toEqual([
+        ['dashboardLayout', { order: { set: afterFirst } }],
+        ['dashboardLayout', { order: { set: afterThird } }],
       ]);
       expect(rows()).toEqual(afterThird);
     });
@@ -434,9 +475,37 @@ describe('DashboardLayoutSettingsComponent', () => {
       await settled();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('settings.dashboardLayoutSaveFailed');
-      expect(auth.updateUserPreferences).toHaveBeenCalledTimes(1);
+      expect(auth.updatePreferenceFields).toHaveBeenCalledTimes(1);
       expect(currentUser()?.preferences.dashboardLayout).toBeUndefined();
       expect(rows()).toEqual(defaultOrder);
+    });
+
+    // One failed save, two things to undo: the switch pressed and the move
+    // announced, each once, behind the one snackbar.
+    it('undoes a toggle and a move that shared a failed save', async () => {
+      holdWrites = true;
+      render();
+
+      switchFor('insights').click();
+      fixture.detectChanges();
+      moveButton('recent', 'down').click();
+      fixture.detectChanges();
+
+      pendingWrites[0].fail(new Error('offline'));
+      await settled();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('settings.dashboardLayoutSaveFailed');
+      expect(auth.updatePreferenceFields).toHaveBeenCalledTimes(1);
+      expect(switchFor('insights').getAttribute('aria-checked')).toBe('true');
+      expect(rows()).toEqual(defaultOrder);
+      expect(announcer.announce.calls.allArgs()).toEqual([
+        [
+          t('settings.dashboardCardMoved', { card: 'dashboard.recentTransactions', position: 2, total: 5 }),
+          'polite',
+          'replace',
+        ],
+        [t('settings.dashboardCardMoveReverted', { card: 'dashboard.recentTransactions', position: 1, total: 5 })],
+      ]);
     });
   });
 });

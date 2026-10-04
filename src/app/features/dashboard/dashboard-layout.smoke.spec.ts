@@ -168,7 +168,7 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
       ],
       // Kept alive after each case (destroyed by hand below instead): a
       // Firestore timer that fires into a torn-down injector crashes with
-      // NG0205, and this file shares one Firebase app across both cases.
+      // NG0205, and this file shares one Firebase app across its cases.
       teardown: { destroyAfterEach: false }
     });
     harness = await RouterTestingHarness.create();
@@ -279,6 +279,52 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
         "getExpensesInRange called for the shown insights card's anomaly baseline",
         () => getExpensesInRangeSpy.calls.count() > 0
       );
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #442 AC 2, through the real editor and layout service: a toggle sends the
+  // hidden field alone, so no order is pinned on an account that never moved
+  // a card.
+  it(
+    'saves an editor toggle as the hidden field alone',
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid, {
+        preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+      }));
+
+      await harness.navigateByUrl('/settings?panel=dashboard');
+      await waitForDom(
+        'the dashboard layout editor rows',
+        () => (harness.routeNativeElement?.ownerDocument.querySelectorAll('.card-row').length ?? 0) === 5
+      );
+
+      const settingsDoc = harness.routeNativeElement!.ownerDocument;
+      const insightsSwitch = (): HTMLButtonElement | null =>
+        settingsDoc.querySelector<HTMLButtonElement>(
+          'button[role="switch"][aria-labelledby="dashboard-card-insights-title"]'
+        );
+      expect(insightsSwitch()?.getAttribute('aria-checked')).toBe('true');
+
+      insightsSwitch()!.click();
+      await waitForDom(
+        'the insights switch saved as off',
+        () =>
+          mockAuth.updatePreferenceFieldsSpy.calls.count() > 0 &&
+          insightsSwitch()?.getAttribute('aria-checked') === 'false'
+      );
+
+      expect(mockAuth.updatePreferenceFieldsSpy).toHaveBeenCalledOnceWith('dashboardLayout', {
+        hidden: { set: ['insights'] }
+      });
+      const wholeLayoutWrites = mockAuth.updateUserPreferencesSpy.calls
+        .allArgs()
+        .filter(([prefs]) => 'dashboardLayout' in prefs);
+      expect(wholeLayoutWrites).toEqual([]);
+      expect(mockAuth.currentUser()?.preferences.dashboardLayout).toEqual({ hidden: ['insights'] });
 
       harness.fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 200));

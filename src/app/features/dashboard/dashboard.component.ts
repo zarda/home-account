@@ -26,7 +26,6 @@ import {
   effectiveRagLevel,
   baseCurrencyOf,
   DashboardCardId,
-  effectiveDashboardLayout,
 } from '../../models';
 import { roundMoney, sumByType } from '../../core/utils/transaction-aggregation.utils';
 import {
@@ -37,6 +36,7 @@ import {
   yearWindow,
 } from '../../core/utils/transaction-date.utils';
 import { dashboardGridAreas } from './dashboard-layout.utils';
+import { DashboardLayoutService } from './dashboard-layout.service';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
@@ -222,9 +222,10 @@ export class DashboardComponent implements OnInit {
   activeGoals = this.goalService.activeGoals;
 
   // The account's own arrangement of the five grid cards (#87). Absent
-  // preferences resolve to today's fixed order via effectiveDashboardLayout,
-  // so an account that has never opened the editor sees nothing different.
-  private layout = computed(() => effectiveDashboardLayout(this.authService.currentUser()?.preferences));
+  // preferences resolve to today's fixed order, so an account that has never
+  // opened the editor sees nothing different. Held while a change is saving,
+  // so a hidden card leaves the page at once rather than when its write lands.
+  private layout = inject(DashboardLayoutService).layout;
 
   // The cards actually rendered: the account's order, minus anything hidden,
   // minus budgets when there is nothing to show it — the same condition the
