@@ -108,7 +108,7 @@ describe('RecurringTransactionsComponent', () => {
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
-    mockTranslationService.t.and.callFake((key: string) => {
+    mockTranslationService.t.and.callFake((key: string, params?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
         'settings.recurringPaused': 'Recurring transaction paused',
         'settings.recurringResumed': 'Recurring transaction resumed',
@@ -125,6 +125,7 @@ describe('RecurringTransactionsComponent', () => {
         'settings.deleteRecurringMessage': 'Are you sure?',
         'common.close': 'Close',
         'common.delete': 'Delete',
+        'common.moreActionsFor': `More actions for ${params?.['description']}`,
         'Food & Drinks': 'Food & Drinks'
       };
       return translations[key] || key;
@@ -540,6 +541,19 @@ describe('RecurringTransactionsComponent', () => {
 
       expect(host.querySelector('.recurring-card')).toBeTruthy();
       expect(host.querySelector('.recurring-next')).toBeNull();
+    });
+
+    // One card per rule, so a menu button named only "More actions" would
+    // repeat across the grid with nothing to say which rule it pauses,
+    // edits or deletes.
+    it("names each card's menu button after its own rule", () => {
+      const host = renderRules([mockRecurring[0], { ...mockRecurring[0], id: 'rec2', name: 'Gym Membership' }]);
+
+      const triggers = Array.from(host.querySelectorAll<HTMLElement>('.recurring-card .action-btn'));
+      expect(triggers.map(trigger => trigger.getAttribute('aria-label'))).toEqual([
+        'More actions for Monthly Rent',
+        'More actions for Gym Membership',
+      ]);
     });
 
     it('should offer an Edit action in the card menu', fakeAsync(() => {

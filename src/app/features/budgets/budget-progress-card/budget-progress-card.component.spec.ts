@@ -71,6 +71,7 @@ describe('BudgetProgressCardComponent', () => {
         'budget.approachingLimit': 'Approaching limit',
         'budget.amountLeft': `${params?.['amount']} left`,
         'budget.amountOver': `${params?.['amount']} over`,
+        'common.moreActionsFor': `More actions for ${params?.['description']}`,
         'transactions.weekly': 'Weekly',
         'transactions.monthly': 'Monthly',
         'transactions.yearly': 'Yearly'
@@ -587,6 +588,20 @@ describe('BudgetProgressCardComponent', () => {
     it('should display menu button', () => {
       const menuButton = fixture.nativeElement.querySelector('[mat-icon-button]');
       expect(menuButton).toBeTruthy();
+    });
+
+    // The Budgets page renders one card per budget, so a menu button named
+    // only "More actions" would repeat down the grid with nothing to tell
+    // one card's menu from the next.
+    it("names its menu button after its own budget, so two cards' menus differ", () => {
+      const other = TestBed.createComponent(BudgetProgressCardComponent);
+      other.componentRef.setInput('budget', createMockBudget({ id: 'budget2', name: 'Rent Budget' }));
+      other.detectChanges();
+
+      const names = [fixture, other].map(card =>
+        (card.nativeElement as HTMLElement).querySelector('.menu-btn')?.getAttribute('aria-label')
+      );
+      expect(names).toEqual(['More actions for Food Budget', 'More actions for Rent Budget']);
     });
   });
 

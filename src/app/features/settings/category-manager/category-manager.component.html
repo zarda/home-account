@@ -44,7 +44,11 @@
           }
         </div>
 
-        <button mat-icon-button [matMenuTriggerFor]="categoryMenu" [attr.aria-label]="'common.moreActions' | translate">
+        <button
+          mat-icon-button
+          [matMenuTriggerFor]="categoryMenu"
+          [attr.aria-label]="'common.moreActionsFor' | translate: { description: (category.name | translate) }"
+        >
           <mat-icon>more_vert</mat-icon>
         </button>
 

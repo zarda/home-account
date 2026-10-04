@@ -12,7 +12,12 @@
       <span class="budget-meta">{{ getPeriodLabel(budget().period) }}</span>
     </div>
 
-    <button mat-icon-button [matMenuTriggerFor]="menu" class="menu-btn" [attr.aria-label]="'common.moreActions' | translate">
+    <button
+      mat-icon-button
+      [matMenuTriggerFor]="menu"
+      class="menu-btn"
+      [attr.aria-label]="'common.moreActionsFor' | translate: { description: budget().name }"
+    >
       <mat-icon>more_vert</mat-icon>
     </button>
     <mat-menu #menu="matMenu">

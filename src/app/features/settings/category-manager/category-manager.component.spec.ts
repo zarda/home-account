@@ -434,7 +434,7 @@ describe('CategoryManagerComponent, through its own template', () => {
    * a case that opened one closes it again.
    */
   function openMenu(index: number): HTMLElement {
-    (rows()[index].querySelector('[aria-label="common.moreActions"]') as HTMLButtonElement).click();
+    (rows()[index].querySelector('button[aria-haspopup="menu"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     return document.querySelector('.mat-mdc-menu-panel') as HTMLElement;
   }
@@ -551,6 +551,18 @@ describe('CategoryManagerComponent, through its own template', () => {
     menuItem(openMenu(0), 'common.delete')?.click();
 
     expect(dialog.open).toHaveBeenCalled();
+  });
+
+  // One menu per row, and the row around it is not a named control, so a
+  // menu button named only "More actions" repeats down the list with
+  // nothing to say which category it edits or deletes.
+  it('names each row\'s menu button after its category', () => {
+    setUp(mockCategoryList);
+
+    expect(rows().map(row => row.querySelector('button[aria-haspopup="menu"]')?.getAttribute('aria-label'))).toEqual([
+      'common.moreActionsFor:{"description":"Food & Drinks"}',
+      'common.moreActionsFor:{"description":"Transportation"}',
+    ]);
   });
 
   it('gives each row a drag handle so the order can be changed at all', () => {

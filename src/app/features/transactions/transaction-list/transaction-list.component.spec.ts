@@ -677,7 +677,7 @@ describe('TransactionListComponent desktop note doors', () => {
     categoryHelper.getCategoryIcon.and.returnValue('icon');
     categoryHelper.getCategoryColor.and.returnValue('#000');
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string) => k);
+    translation.t.and.callFake((k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k));
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
@@ -780,6 +780,18 @@ describe('TransactionListComponent desktop note doors', () => {
     openActionsMenu(1);
 
     expect(menuItems().some(el => el.textContent!.includes('transactions.viewReceipt'))).toBeFalse();
+  });
+
+  // A screen reader moving down the actions column hears each button's own
+  // name, so "More actions" alone repeats once per row with nothing to say
+  // which row the menu edits or deletes.
+  it('names each row menu after the row it belongs to', () => {
+    const triggers: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.action-btn'));
+
+    expect(triggers.map(trigger => trigger.getAttribute('aria-label'))).toEqual([
+      'common.moreActionsFor:{"description":"Banana"}',
+      'common.moreActionsFor:{"description":"Apple"}',
+    ]);
   });
 });
 
@@ -1127,7 +1139,6 @@ describe('TransactionListComponent desktop table width floor', () => {
       'transactions.category': 'Category',
       'transactions.description': 'Description',
       'transactions.amount': 'Amount',
-      'common.moreActions': 'More actions',
     };
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => HEADER_LABELS[k] ?? k);
@@ -2391,7 +2402,6 @@ describe('TransactionListComponent select mode', () => {
         'transactions.category': 'Category',
         'transactions.description': 'Description',
         'transactions.amount': 'Amount',
-        'common.moreActions': 'More actions',
         'transactions.select.start': 'Select',
         'transactions.select.done': 'Done',
       };
