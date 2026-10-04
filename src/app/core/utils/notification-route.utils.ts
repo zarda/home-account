@@ -40,6 +40,10 @@ const CONTROL_CHARACTER = /\p{Cc}/u;
  * backslash and no control character. `//host` is protocol-relative, a URL
  * parser reads `\` as `/` (so `/\host` is `//host` too), and the controls are
  * stripped before parsing; anything with a scheme fails the leading `/`.
+ *
+ * `public/share-target-sw.js` carries a copy, because a worker cannot import
+ * this module. Change the two together: `share-target-sw.spec.ts` runs one
+ * table of candidates through both and fails when their answers part.
  */
 export function safeAppRoute(candidate: unknown): string | null {
   if (typeof candidate !== 'string') return null;

@@ -10,12 +10,18 @@
 // registration's `showNotification()` reaches the user there — and this
 // worker is already registered at scope `/` on every non-native session, so
 // ReminderService reuses it rather than opening a second one; a `register()`
-// at the same scope would replace this one instead of adding to it. The
-// click handler below is what a page-raised notification's default click
-// behaviour used to be, restated here because a worker-raised one gets none:
-// focus an open tab, or open one at `/`, where the Upcoming card is. No
-// `notificationclose`, no `data`, no deep link — the reminder already names
-// the bill.
+// at the same scope would replace this one instead of adding to it.
+//
+// A worker-raised notification has no default click behaviour, so the click
+// handler below supplies one. ReminderService puts the in-app path the tap
+// should open in the notification's `data.route`; the handler admits it only
+// through the copy of safeAppRoute below and falls back to `/` for anything
+// else, including a notification raised before routes were carried. An open
+// tab is focused and handed the route in a `{type: 'notification-route',
+// route}` message, because a worker cannot drive the app's router and
+// navigating the tab itself would reload the app. With no open tab, or when
+// focus() is refused, a new one opens at the route instead. No
+// `notificationclose`.
 //
 // Every other request passes through untouched: no caching, no offline
 // shell, and deliberately no `sync` handler — registering any worker makes
@@ -33,6 +39,22 @@ const SHARE_STASH_SESSION_STORE = 'session';
 const SHARE_STASH_VERSION = 2;
 const SHARE_TARGET_PATH = '/share-target';
 const WIZARD_URL = '/import/file?source=share';
+const NOTIFICATION_ROUTE_MESSAGE = 'notification-route';
+
+// A copy of safeAppRoute in src/app/core/utils/notification-route.utils.ts,
+// which a worker cannot import; src/app/share-target-sw.spec.ts holds the two
+// to the same answers. `//host` is protocol-relative, a URL parser reads `\`
+// as `/`, and it drops tabs and newlines before parsing, so `/\t/host` would
+// open `//host`; every other control character is refused with them.
+const CONTROL_CHARACTER = /\p{Cc}/u;
+
+function safeAppRoute(candidate) {
+  if (typeof candidate !== 'string') return null;
+  if (!candidate.startsWith('/') || candidate.startsWith('//')) return null;
+  if (candidate.includes('\\')) return null;
+  if (CONTROL_CHARACTER.test(candidate)) return null;
+  return candidate;
+}
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -52,10 +74,12 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(focusOrOpen());
+  const data = event.notification.data;
+  const route = safeAppRoute(data && data.route) || '/';
+  event.waitUntil(focusOrOpen(route));
 });
 
-async function focusOrOpen() {
+async function focusOrOpen(route) {
   // matchAll({ type: 'window' }) returns only WindowClients, and every one
   // exposes focus() — there is nothing to filter on, so this is
   // windowClients[0].
@@ -63,14 +87,16 @@ async function focusOrOpen() {
   const target = windowClients[0];
   if (target) {
     try {
-      return await target.focus();
+      await target.focus();
+      target.postMessage({ type: NOTIFICATION_ROUTE_MESSAGE, route });
+      return;
     } catch {
       // focus() rejects when the click's user activation isn't attributed to
       // it (Chrome: InvalidAccessError) — fall through instead of leaving
       // event.waitUntil() holding a rejected promise and no window opening.
     }
   }
-  return self.clients.openWindow('/');
+  return self.clients.openWindow(route);
 }
 
 async function handleShare(request) {
