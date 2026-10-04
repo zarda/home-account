@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, NgZone } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { MatButtonModule } from '@angular/material/button';
@@ -56,6 +56,7 @@ function createMockPeriodTotals() {
     reset: jasmine.createSpy('reset').and.resolveTo(undefined),
     refresh: jasmine.createSpy('refresh').and.resolveTo(undefined),
     calculate: jasmine.createSpy('calculate').and.resolveTo(true),
+    retry: jasmine.createSpy('retry').and.resolveTo(true),
   };
 }
 
@@ -974,6 +975,167 @@ describe('TransactionsComponent, through its own template', () => {
     mobile(true);
 
     expect(el().querySelector('.period-totals-line')).toBeNull();
+  });
+
+  // The phone's two actions read as words in the subtitle line, so their box
+  // is the text's, about 21 px tall; a tap needs the app's 40 px floor.
+  const inlineActions: [PeriodTotalsStatus, string][] = [
+    [{ kind: 'unavailable' }, '.period-totals-retry-link'],
+    [{ kind: 'over-cap', serverCount: 1200 }, '.period-totals-calc-link'],
+  ];
+  for (const [status, selector] of inlineActions) {
+    it(`gives the phone's ${selector} a 40 px tap target without growing the line`, () => {
+      render();
+      totals.status.set(status);
+      mobile(true);
+
+      const action = el().querySelector(selector) as HTMLElement;
+      const box = action.getBoundingClientRect();
+      const overhang = getComputedStyle(action, '::after');
+      const px = (value: string) => parseFloat(value) || 0;
+      expect(overhang.position).withContext('an overhang laid over the link').toBe('absolute');
+      expect(box.height - px(overhang.top) - px(overhang.bottom)).toBeGreaterThanOrEqual(40);
+      expect(box.width - px(overhang.left) - px(overhang.right)).toBeGreaterThanOrEqual(40);
+      expect(box.height).withContext('the visible box stays the text\'s').toBeLessThan(40);
+    });
+  }
+
+  // A failed count or sweep is not the last word: Retry recounts in place, in
+  // whichever placement the width puts the totals.
+  for (const placement of ['desktop', 'phone'] as const) {
+    describe(`Retry on unavailable totals (${placement})`, () => {
+      const retryButton = () =>
+        el().querySelector(
+          placement === 'phone' ? '.period-totals-retry-link' : '.period-totals-retry'
+        ) as HTMLButtonElement | null;
+      const totalsLine = () =>
+        el().querySelector(
+          placement === 'phone' ? '.period-totals-line' : '.period-totals-slot'
+        ) as HTMLElement | null;
+      const announcer = () => TestBed.inject(AnnouncerService) as jasmine.SpyObj<AnnouncerService>;
+
+      function renderUnavailable(): void {
+        render();
+        totals.status.set({ kind: 'unavailable' });
+        mobile(placement === 'phone');
+      }
+
+      function settleReadyOnRetry(): void {
+        totals.retry.and.callFake(async () => {
+          totals.totals.set({ expense: 120, income: 400, balance: 280 } as TypeTotals);
+          totals.status.set({ kind: 'ready' });
+          return true;
+        });
+      }
+
+      // The page's effects run in the Angular zone. Ticked from outside it,
+      // leaving their run empties the zone and the zone scheduler starts a
+      // tick inside this one (NG0101, only logged); tickInZone in
+      // core/services/testing/axe.ts says the same.
+      const tickInZone = () => TestBed.inject(NgZone).run(() => TestBed.tick());
+
+      afterEach(() => (document.activeElement as HTMLElement | null)?.blur());
+
+      it('offers Retry beside the unavailable note', () => {
+        renderUnavailable();
+
+        expect(retryButton()?.textContent?.trim()).toBe('common.retry');
+        expect(totalsLine()?.textContent).toContain('transactions.totalsUnavailable');
+      });
+
+      it('calls onRetryTotals on a click', () => {
+        renderUnavailable();
+        const retry = spyOn(component, 'onRetryTotals');
+
+        retryButton()!.click();
+
+        expect(retry).toHaveBeenCalled();
+      });
+
+      it('announces the settled line once the recount lands', async () => {
+        renderUnavailable();
+        settleReadyOnRetry();
+
+        await component.onRetryTotals();
+
+        expect(totals.retry).toHaveBeenCalled();
+        expect(announcer().announce).toHaveBeenCalledOnceWith(
+          'transactions.totalsAnnouncement:{"spent":"USD 120","net":"USD 280"}',
+          'polite',
+          'replace'
+        );
+      });
+
+      it('moves focus to the totals line once the settled line renders', async () => {
+        renderUnavailable();
+        settleReadyOnRetry();
+        // The button the viewer pressed leaves with the unavailable state.
+        retryButton()!.focus();
+
+        await component.onRetryTotals();
+        tickInZone();
+
+        expect(retryButton()).toBeNull();
+        const line = totalsLine()!;
+        expect(line.getAttribute('tabindex')).toBe('-1');
+        expect(document.activeElement).toBe(line);
+      });
+
+      it('leaves focus where the viewer put it while the recount was out', async () => {
+        renderUnavailable();
+        settleReadyOnRetry();
+        const elsewhere = document.body.appendChild(document.createElement('button'));
+        try {
+          elsewhere.focus();
+
+          await component.onRetryTotals();
+          tickInZone();
+
+          expect(document.activeElement).toBe(elsewhere);
+        } finally {
+          elsewhere.remove();
+        }
+      });
+
+      it('stays silent and leaves focus alone when the recount was superseded', async () => {
+        renderUnavailable();
+        totals.retry.and.resolveTo(false);
+
+        await component.onRetryTotals();
+        tickInZone();
+
+        expect(announcer().announce).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(totalsLine());
+      });
+    });
+  }
+
+  it('says the totals are still unavailable when the recount fails again', async () => {
+    render();
+    totals.status.set({ kind: 'unavailable' });
+    fixture.detectChanges();
+    totals.retry.and.resolveTo(true);
+
+    await component.onRetryTotals();
+
+    expect((TestBed.inject(AnnouncerService) as jasmine.SpyObj<AnnouncerService>).announce)
+      .toHaveBeenCalledOnceWith('transactions.totalsUnavailable', 'polite', 'replace');
+  });
+
+  it('neither announces nor throws when the page goes before the recount lands', async () => {
+    render();
+    totals.status.set({ kind: 'unavailable' });
+    fixture.detectChanges();
+    let land!: (landed: boolean) => void;
+    totals.retry.and.returnValue(new Promise<boolean>(resolve => (land = resolve)));
+
+    const pending = component.onRetryTotals();
+    fixture.destroy();
+    land(true);
+
+    await expectAsync(pending).toBeResolved();
+    expect((TestBed.inject(AnnouncerService) as jasmine.SpyObj<AnnouncerService>).announce)
+      .not.toHaveBeenCalled();
   });
 
   it('offers all three add entries from the desktop menu', () => {

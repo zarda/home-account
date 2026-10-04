@@ -215,6 +215,130 @@ describe('PeriodTotalsService', () => {
     expect(getPage.calls.count()).toBe(1);
   });
 
+  describe('retry', () => {
+    it('declines unless the totals are unavailable, without a read', async () => {
+      seedTransactions([{ amount: 10 }]);
+      const count = spyOn(mockFirestore, 'countDocuments').and.callThrough();
+
+      // Idle: no reset has run.
+      await expectAsync(service.retry()).toBeResolvedTo(false);
+
+      await service.reset({});
+      expect(service.status().kind).toBe('ready');
+      await expectAsync(service.retry()).toBeResolvedTo(false);
+
+      const pending = service.refresh();
+      expect(service.status().kind).toBe('computing');
+      await expectAsync(service.retry()).toBeResolvedTo(false);
+      await pending;
+
+      count.and.resolveTo(AUTO_SWEEP_LIMIT + 1);
+      await service.refresh();
+      expect(service.status().kind).toBe('over-cap');
+      await expectAsync(service.retry()).toBeResolvedTo(false);
+
+      // The reset and the two refreshes; no declined retry counted.
+      expect(count.calls.count()).toBe(3);
+    });
+
+    it('recounts under the same filters and resolves true once the sweep lands', async () => {
+      const seeded = seedTransactions([{ amount: 10 }, { amount: 20 }, { amount: 30 }]);
+      const filters = { startDate: new Date(2026, 5, 1), endDate: new Date(2026, 5, 30) };
+      const count = spyOn(mockFirestore, 'countDocuments').and.rejectWith(new Error('offline'));
+      await service.reset(filters);
+      expect(service.status().kind).toBe('unavailable');
+
+      count.and.callThrough();
+      const pending = service.retry();
+      expect(service.status().kind).toBe('computing');
+      await expectAsync(pending).toBeResolvedTo(true);
+
+      expect(count.calls.count()).toBe(2);
+      expect(count.calls.mostRecent().args[1]).toEqual({ where: buildTransactionWhere(filters) });
+      expect(service.status().kind).toBe('ready');
+      expect(service.totals()).toEqual(
+        sumByType(seeded, t => currencyStub().amountInBase(t, 'USD'))
+      );
+    });
+
+    it('resolves true when its recount lands over the cap, without paging', async () => {
+      seedTransactions([{ amount: 10 }]);
+      const count = spyOn(mockFirestore, 'countDocuments').and.rejectWith(new Error('offline'));
+      await service.reset({});
+
+      count.and.resolveTo(AUTO_SWEEP_LIMIT + 1);
+      await expectAsync(service.retry()).toBeResolvedTo(true);
+
+      expect(service.status()).toEqual({ kind: 'over-cap', serverCount: AUTO_SWEEP_LIMIT + 1 });
+      expect(mockFirestore.getPageSpy.calls.length).toBe(0);
+    });
+
+    it('resolves true when its recount fails again, settling unavailable', async () => {
+      seedTransactions([{ amount: 10 }]);
+      const count = spyOn(mockFirestore, 'countDocuments').and.rejectWith(new Error('offline'));
+      await service.reset({});
+
+      await expectAsync(service.retry()).toBeResolvedTo(true);
+
+      expect(count.calls.count()).toBe(2);
+      expect(service.status().kind).toBe('unavailable');
+    });
+
+    it('resolves true when a failed sweep is swept again', async () => {
+      seedTransactions([{ amount: 10 }, { amount: 20 }]);
+      const getPage = spyOn(mockFirestore, 'getPage').and.rejectWith(new Error('transient'));
+      await service.reset({});
+      expect(service.status().kind).toBe('unavailable');
+
+      getPage.and.callThrough();
+      await expectAsync(service.retry()).toBeResolvedTo(true);
+
+      expect(service.status().kind).toBe('ready');
+      expect(service.totals()!.expense).toBe(30);
+    });
+
+    it('keeps an over-cap consent the user already gave', async () => {
+      seedTransactions([{ amount: 10 }, { amount: 20 }]);
+      const count = spyOn(mockFirestore, 'countDocuments').and.resolveTo(AUTO_SWEEP_LIMIT + 1);
+      await service.reset({});
+      await service.calculate();
+      count.and.rejectWith(new Error('offline'));
+      await service.refresh();
+      expect(service.status().kind).toBe('unavailable');
+
+      // The failure was the mutation's recount, not a new filter set: the
+      // consent to this set's cost still stands.
+      count.and.resolveTo(AUTO_SWEEP_LIMIT + 1);
+      await expectAsync(service.retry()).toBeResolvedTo(true);
+
+      expect(service.status().kind).toBe('ready');
+      expect(service.totals()!.expense).toBe(30);
+    });
+
+    it('is superseded by a reset that lands while it recounts', async () => {
+      seedTransactions([{ amount: 10 }]);
+      const count = spyOn(mockFirestore, 'countDocuments').and.rejectWith(new Error('offline'));
+      await service.reset({ type: 'expense' });
+
+      let resolveRetryCount!: (value: number) => void;
+      count.and.returnValues(
+        new Promise<number>(resolve => (resolveRetryCount = resolve)),
+        Promise.resolve(1)
+      );
+      const retried = service.retry();
+      await service.reset({ type: 'income' });
+      expect(service.status().kind).toBe('ready');
+      const settled = service.totals();
+
+      // The retry's count lands late: it must neither restart a sweep under
+      // the abandoned filters nor claim the settled line as its own.
+      resolveRetryCount(1);
+      await expectAsync(retried).toBeResolvedTo(false);
+      expect(service.status().kind).toBe('ready');
+      expect(service.totals()).toBe(settled);
+    });
+  });
+
   it('discards a superseded sweep through the generation guard', async () => {
     seedTransactions([{ amount: 10 }]);
     let resolveFirstCount!: (count: number) => void;

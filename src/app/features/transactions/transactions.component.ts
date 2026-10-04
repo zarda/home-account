@@ -1,4 +1,18 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  OnDestroy,
+  OnInit,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked
+} from '@angular/core';
 
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -76,6 +90,9 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
   private pendingFilters = inject(PendingFiltersService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private injector = inject(Injector);
+  private destroyRef = inject(DestroyRef);
 
   // The layout gate for both the add affordance and the totals. The
   // bottom-nav "+" that replaces the header FAB binds to this same query,
@@ -347,6 +364,27 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     if (!(await this.periodTotals.calculate())) return;
     // Figures, like the reset's count: a state message, not an event.
     this.announcer.announce(this.totalsAnnouncementText(), 'polite', 'replace');
+  }
+
+  async onRetryTotals(): Promise<void> {
+    // False means superseded or nothing to retry: another path owns the next
+    // announcement. The page may also have gone while the recount was out, and
+    // a render hook registered on a destroyed injector throws (NG0911).
+    if (!(await this.periodTotals.retry()) || this.destroyRef.destroyed) return;
+    this.announcer.announce(this.totalsAnnouncementText(), 'polite', 'replace');
+    // The Retry button left with the state it sat in, dropping focus on the
+    // document. Focus lands on the settled line once it renders, unless the
+    // viewer has put it somewhere else meanwhile.
+    afterNextRender(
+      () => {
+        const active = document.activeElement;
+        if (active && active !== document.body) return;
+        this.host.nativeElement
+          .querySelector<HTMLElement>('.period-totals-slot, .period-totals-line')
+          ?.focus();
+      },
+      { injector: this.injector }
+    );
   }
 
   // The totals as translated prose. Amounts are spoken without the WORD

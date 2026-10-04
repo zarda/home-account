@@ -8,6 +8,16 @@
   color: var(--text-muted);
 }
 
+// The one flex item the desktop totals occupy beside the FAB, whichever state
+// is showing. It passes the figures' shrink path through (min-width: 0), so
+// the totals still give way before the button does.
+.period-totals-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 // Header figures at 600px and up: label over value, right-aligned beside the
 // add FAB. Values keep nowrap on the host so appFitText owns the shrink path
 // (scale to its floor, then wrap) — see docs/ui-overflow.md G3.
@@ -98,7 +108,11 @@
     font-weight: 600;
   }
 
-  .period-totals-calc-link {
+  // Words in the line, so the box stays the text's; the ::after overhang
+  // carries the tap target to the 40px floor, the transaction list's idiom.
+  .period-totals-calc-link,
+  .period-totals-retry-link {
+    position: relative;
     padding: 0;
     border: 0;
     background: none;
@@ -106,5 +120,13 @@
     color: var(--text-secondary);
     text-decoration: underline;
     cursor: pointer;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: min(0px, calc((100% - 40px) / 2));
+      bottom: min(0px, calc((100% - 40px) / 2));
+      inset-inline: min(0px, calc((100% - 40px) / 2));
+    }
   }
 }
