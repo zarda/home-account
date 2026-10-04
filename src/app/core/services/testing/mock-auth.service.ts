@@ -2,6 +2,7 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../../models';
 import { Timestamp } from '@angular/fire/firestore';
+import { MapPreferenceKey, PreferenceFieldWrites, withPreferenceFields } from '../auth.service';
 
 /**
  * Mock AuthService for unit testing
@@ -23,6 +24,7 @@ export class MockAuthService {
   signOutSpy = jasmine.createSpy('signOut');
   updateUserPreferencesSpy = jasmine.createSpy('updateUserPreferences');
   clearUserPreferencesSpy = jasmine.createSpy('clearUserPreferences');
+  updatePreferenceFieldsSpy = jasmine.createSpy('updatePreferenceFields');
   updateUserProfileSpy = jasmine.createSpy('updateUserProfile');
 
   // Set a mock user for testing
@@ -49,6 +51,7 @@ export class MockAuthService {
     this.signOutSpy.calls.reset();
     this.updateUserPreferencesSpy.calls.reset();
     this.clearUserPreferencesSpy.calls.reset();
+    this.updatePreferenceFieldsSpy.calls.reset();
     this.updateUserProfileSpy.calls.reset();
   }
 
@@ -85,6 +88,23 @@ export class MockAuthService {
       }
       this.currentUser.set({ ...user, preferences: preferences as unknown as UserPreferences });
     }
+  }
+
+  /** The real service's rules, through its own merge: no user rejects, an empty set changes nothing. */
+  async updatePreferenceFields<K extends MapPreferenceKey>(
+    key: K,
+    fields: PreferenceFieldWrites<K>
+  ): Promise<void> {
+    this.updatePreferenceFieldsSpy(key, fields);
+    const user = this.currentUser();
+    if (!user) {
+      throw new Error('No authenticated user');
+    }
+    if (!Object.values(fields).some(write => write !== undefined)) return;
+    this.currentUser.set({
+      ...user,
+      preferences: withPreferenceFields(user.preferences, key, fields)
+    });
   }
 
   async updateUserProfile(data: { displayName?: string; photoURL?: string }): Promise<void> {

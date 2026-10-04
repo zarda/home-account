@@ -43,8 +43,8 @@ silenceFirebaseWarnings();
  * emulators: the create and existing branches of the profile load, the
  * profile-load failure path (a signed-in auth user whose Firestore is
  * unreachable must stay signed in on a degraded fallback profile, not be
- * bounced to login), and the three profile/preference write paths with
- * their exact written shapes.
+ * bounced to login), and the profile/preference write paths with their
+ * exact written shapes.
  *
  * The module-level @angular/fire calls the service makes cannot be spied on,
  * which is why this coverage runs against the emulator rather than in the
@@ -272,6 +272,60 @@ describe('AuthService (emulator smoke test)', () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { dashboardLayout: _removed, ...rest } = before as unknown as Record<string, unknown>;
       expect(service.currentUser()!.preferences).toEqual(rest as unknown as typeof before);
+    });
+
+    function storedLayout(snapshot: Record<string, unknown>): unknown {
+      return (snapshot['preferences'] as Record<string, unknown>)['dashboardLayout'];
+    }
+
+    it('updatePreferenceFields stores a hide as hidden alone, with no order (AC 2)', async () => {
+      const service = await authedService();
+      // Earlier cases run in random order and may leave a layout behind.
+      await service.clearUserPreferences(['dashboardLayout']);
+
+      await service.updatePreferenceFields('dashboardLayout', { hidden: { set: ['insights'] } });
+
+      // The SDK made the absent parent map for the nested path.
+      const stored = storedLayout((await getDoc(userRef())).data()!) as Record<string, unknown>;
+      expect(stored).toEqual({ hidden: ['insights'] });
+      expect('order' in stored).toBeFalse();
+      expect(service.currentUser()!.preferences.dashboardLayout).toEqual({ hidden: ['insights'] });
+    });
+
+    it('updatePreferenceFields leaves the order another device wrote, and deleting hidden leaves it too', async () => {
+      const service = await authedService();
+      const sessionOrder = ['budgets', 'chart', 'recent', 'upcoming', 'insights'];
+      await service.updateUserPreferences({ dashboardLayout: { order: sessionOrder } });
+      // Another device's raw write, carrying a card this build does not know.
+      const otherOrder = ['chart', 'future-card', 'recent', 'budgets', 'upcoming', 'insights'];
+      await updateDoc(userRef(), { 'preferences.dashboardLayout.order': otherOrder });
+
+      await service.updatePreferenceFields('dashboardLayout', { hidden: { set: ['recent'] } });
+
+      expect(storedLayout((await getDoc(userRef())).data()!)).toEqual({
+        order: otherOrder,
+        hidden: ['recent']
+      });
+      // No document listener: the signal is this session's view plus the field it wrote.
+      expect(service.currentUser()!.preferences.dashboardLayout).toEqual({
+        order: sessionOrder,
+        hidden: ['recent']
+      });
+
+      await service.updatePreferenceFields('dashboardLayout', { hidden: { delete: true } });
+
+      expect(storedLayout((await getDoc(userRef())).data()!)).toEqual({ order: otherOrder });
+      expect(service.currentUser()!.preferences.dashboardLayout).toEqual({ order: sessionOrder });
+    });
+
+    it('updatePreferenceFields replaces a stored value that is not a map, in the document as in the signal', async () => {
+      const service = await authedService();
+      await service.updateUserPreferences({ dashboardLayout: 'not-a-map' as never });
+
+      await service.updatePreferenceFields('dashboardLayout', { hidden: { set: ['insights'] } });
+
+      expect(storedLayout((await getDoc(userRef())).data()!)).toEqual({ hidden: ['insights'] });
+      expect(service.currentUser()!.preferences.dashboardLayout).toEqual({ hidden: ['insights'] });
     });
 
     it('lands the language write the Google heal issues, in the document and in the signal', async () => {

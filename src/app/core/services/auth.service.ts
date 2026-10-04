@@ -68,6 +68,59 @@ export function buildNewUserProfile(
   return profile;
 }
 
+/** One nested field's write: replace its value, or delete the field. */
+export type PreferenceFieldWrite<T> = { set: T } | { delete: true };
+
+/** The preference keys whose value is a map, so a field inside it can be written on its own. */
+export type MapPreferenceKey = {
+  [K in keyof UserPreferences]-?: NonNullable<UserPreferences[K]> extends readonly unknown[]
+    ? never
+    : NonNullable<UserPreferences[K]> extends object
+      ? K
+      : never;
+}[keyof UserPreferences];
+
+/** Per field of the map at `K`: a write, or nothing. */
+export type PreferenceFieldWrites<K extends MapPreferenceKey> = {
+  [F in keyof NonNullable<UserPreferences[K]>]?: PreferenceFieldWrite<
+    NonNullable<NonNullable<UserPreferences[K]>[F]>
+  >;
+};
+
+function isPlainMap(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function fieldWrites(fields: object): [string, PreferenceFieldWrite<unknown>][] {
+  return (Object.entries(fields) as [string, PreferenceFieldWrite<unknown> | undefined][]).filter(
+    (entry): entry is [string, PreferenceFieldWrite<unknown>] => entry[1] !== undefined
+  );
+}
+
+/**
+ * `preferences` with `fields` applied to the map at `key`, one level deep.
+ * A value there that is not a map is replaced, since a nested write has
+ * nothing to merge into. Exported so the test double applies the same rule.
+ */
+export function withPreferenceFields<K extends MapPreferenceKey>(
+  preferences: UserPreferences,
+  key: K,
+  fields: PreferenceFieldWrites<K>
+): UserPreferences {
+  const current: unknown = preferences[key];
+  const merged: Record<string, unknown> = isPlainMap(current) ? { ...current } : {};
+  for (const [field, write] of fieldWrites(fields)) {
+    if ('delete' in write) {
+      delete merged[field];
+    } else {
+      merged[field] = write.set;
+    }
+  }
+  return { ...preferences, [key]: merged };
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private auth = inject(Auth);
@@ -651,6 +704,50 @@ export class AuthService {
       delete preferences[key];
     }
     this.currentUser.set({ ...user, preferences: preferences as unknown as UserPreferences });
+  }
+
+  /**
+   * Write or delete single fields of the map at `preferences.<key>`, one
+   * nested path each, so a field another device changed is not sent back
+   * over it. The SDK creates the map when it is absent; no rules change is
+   * needed, since `preferences` stays a map. An empty set writes nothing.
+   *
+   * The signal is re-read after the write and the fields merged into the map
+   * as it then stands: a preference saved while this write was out (a theme
+   * switch) would otherwise be reverted. Nothing is merged if the session
+   * ended or moved to another account meanwhile.
+   */
+  async updatePreferenceFields<K extends MapPreferenceKey>(
+    key: K,
+    fields: PreferenceFieldWrites<K>
+  ): Promise<void> {
+    const user = this.currentUser();
+    if (!user) {
+      throw new Error('No authenticated user');
+    }
+    const writes = fieldWrites(fields);
+    if (writes.length === 0) return;
+
+    const fieldUpdates: Record<string, unknown> = {};
+    for (const [field, write] of writes) {
+      fieldUpdates[`preferences.${key}.${field}`] = 'delete' in write ? deleteField() : write.set;
+    }
+    await this.writeUserFields(user.id, fieldUpdates);
+
+    const latest = this.currentUser();
+    if (latest?.id !== user.id) return;
+    this.currentUser.set({
+      ...latest,
+      preferences: withPreferenceFields(latest.preferences, key, fields)
+    });
+  }
+
+  /**
+   * updatePreferenceFields' write, apart so the unit spec can hold it open:
+   * the module-level @angular/fire calls cannot be spied on.
+   */
+  private writeUserFields(uid: string, fieldUpdates: Record<string, unknown>): Promise<void> {
+    return updateDoc(doc(this.firestore, 'users', uid), fieldUpdates);
   }
 
   /**

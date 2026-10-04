@@ -1766,6 +1766,33 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts the nested field writes and deletes a dashboard change sends', async () => {
+      // The seeded profile has no layout, so the first write also has the
+      // SDK create the parent map.
+      const layoutPath = (field: string) => `preferences.dashboardLayout.${field}`;
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), { [layoutPath('hidden')]: ['insights', 'future-card'] }),
+        'nested hidden write'
+      );
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), {
+          [layoutPath('order')]: ['chart', 'future-card', 'budgets', 'recent', 'upcoming', 'insights'],
+        }),
+        'nested order write'
+      );
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), {
+          [layoutPath('hidden')]: ['insights'],
+          [layoutPath('order')]: deleteField(),
+        }),
+        'nested write and delete together'
+      );
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), { [layoutPath('hidden')]: deleteField() }),
+        'nested hidden delete'
+      );
+    });
+
     it('accepts the whole provider map the note-translation picker writes', async () => {
       // The shape the picker really sends: it hands updateUserPreferences the
       // entire llmProviderPreferences object, which becomes one dotted update
