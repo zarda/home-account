@@ -289,6 +289,72 @@ describe('ImportWizardComponent', () => {
     it('leaves the stash alone on a plain visit', () => {
       expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
     });
+
+    // The flags name something to do once: left on the URL, a reload or Back
+    // reads them again — a second drain of an emptied stash, or the same
+    // notice raised over a share that is long gone.
+    const expectFlagsStripped = () =>
+      expect(mockRouter.navigate).toHaveBeenCalledOnceWith([], {
+        relativeTo: routeStub as unknown as ActivatedRoute,
+        queryParams: { source: null, error: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      });
+
+    it('takes the share flag off the URL once it is read', fakeAsync(() => {
+      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
+
+      component.ngOnInit();
+      tick();
+
+      expectFlagsStripped();
+      expect(notifications.error).not.toHaveBeenCalled();
+    }));
+
+    it('says the share was lost when the worker could not keep it', fakeAsync(() => {
+      // The share-target worker's redirect when stashing the POST threw.
+      routeStub.snapshot = {
+        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
+      };
+
+      component.ngOnInit();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+      expectFlagsStripped();
+      // Anything an earlier share left in the stash is still picked up.
+      expect(mockShareIntake.consumeAll).toHaveBeenCalled();
+    }));
+
+    it('leaves the URL alone on a plain visit', () => {
+      // The outer beforeEach ran ngOnInit over a route with no params.
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      expect(notifications.error).not.toHaveBeenCalled();
+    });
+
+    it('says the share was lost when the stash cannot be read', fakeAsync(() => {
+      mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
+      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
+
+      component.ngOnInit();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+      expect(component.selectedFiles()).toEqual([]);
+      expectFlagsStripped();
+    }));
+
+    it('says it once when the worker and the stash both failed', fakeAsync(() => {
+      mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
+      routeStub.snapshot = {
+        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
+      };
+
+      component.ngOnInit();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+    }));
   });
 
   describe('shared images with a generic mime type', () => {

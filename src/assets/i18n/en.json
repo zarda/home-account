@@ -1242,6 +1242,7 @@
       "other": "The transactions were saved, but {{count}} receipt photos could not be uploaded. You can attach them from the transaction."
     },
     "importSavedHistoryUnavailable": "Import finished, but the summary could not be loaded. See Import History for details.",
+    "shareLost": "The shared files couldn't be received. Share them again to import them.",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "duplicatesSkipped": "Duplicates skipped",

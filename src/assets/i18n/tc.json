@@ -1133,6 +1133,7 @@
     "importPhotosSkipped": "交易已儲存，但已達圖片儲存上限，{{count}} 張收據照片未附加",
     "importPhotosFailed": "交易已儲存，但有 {{count}} 張收據照片無法上傳，可從該筆交易再次附加。",
     "importSavedHistoryUnavailable": "匯入已完成，但無法載入摘要。詳情請見匯入紀錄。",
+    "shareLost": "無法接收分享的檔案。請再分享一次以匯入。",
     "noTransactionsFound": "未找到交易",
     "noTransactionsFoundDescription": "無法從此檔案擷取任何交易。請嘗試使用其他檔案或確保圖片清晰可讀。",
     "noTransactionsInImages": "無法從圖片中偵測到任何交易。請使用更清晰的照片再試一次。",

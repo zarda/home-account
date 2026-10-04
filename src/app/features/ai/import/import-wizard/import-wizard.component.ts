@@ -455,14 +455,45 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Files shared from another app: both share pipelines stage them (see
     // ShareIntakeService) and arrive here with ?source=share. They enter
-    // exactly the flow a dropzone pick would, review step included.
-    if (this.route.snapshot.queryParamMap.get('source') === 'share') {
-      void this.consumeSharedFiles();
+    // exactly the flow a dropzone pick would, review step included. The
+    // share-target worker adds error=1 when it could not stash the POST.
+    const params = this.route.snapshot.queryParamMap;
+    if (params.get('source') === 'share') {
+      const lost = params.get('error') === '1';
+      if (lost) {
+        this.notifications.error(this.t('import.shareLost'));
+      }
+      this.stripShareParams();
+      // Still drained when this share was lost: an earlier one may be waiting.
+      void this.consumeSharedFiles(lost);
     }
   }
 
-  private async consumeSharedFiles(): Promise<void> {
-    const files = await this.shareIntake.consumeAll();
+  /**
+   * Both flags name something to do once (ADR 0082): left on the URL, a
+   * reload or Back drains the stash again and repeats the lost notice.
+   */
+  private stripShareParams(): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { source: null, error: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  private async consumeSharedFiles(lostAlreadySaid: boolean): Promise<void> {
+    let files: File[];
+    try {
+      files = await this.shareIntake.consumeAll();
+    } catch {
+      // The files never reach the picker, so to the user this share is lost
+      // as surely as one the worker could not stash.
+      if (!lostAlreadySaid) {
+        this.notifications.error(this.t('import.shareLost'));
+      }
+      return;
+    }
     if (files.length > 0) {
       this.onFilesSelected(files);
     }
