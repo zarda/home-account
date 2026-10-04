@@ -820,14 +820,15 @@ describe('AiSummaryComponent, through its own template', () => {
 
       const box = find('.structured-content');
       const headings = Array.from(box.querySelectorAll<HTMLElement>('h2'));
-      // A heading line is wrapped in a <p> the parser closes empty, so the
-      // prose is the one paragraph with content.
-      const paragraph = find('.structured-content p:not(:empty)');
+      const paragraph = find('.structured-content p');
       const emphasis = find('.structured-content strong');
       const list = find('.structured-content ul');
       const items = Array.from(list.querySelectorAll<HTMLElement>('li'));
       expect(headings.length).withContext('headings').toBe(2);
       expect(items.length).withContext('list items').toBe(3);
+      // A heading sits in no paragraph, so the parser leaves none empty
+      // beside it.
+      expect(box.querySelectorAll('p').length).withContext('paragraphs').toBe(1);
 
       for (const theme of THEMES) {
         withTheme(theme, () => {
@@ -844,9 +845,8 @@ describe('AiSummaryComponent, through its own template', () => {
           }
           // The first section opens flush under the card header; later ones
           // are set off from the section above. Where the heading lands is
-          // what counts: a margin on the empty <p> in front of it collapses
-          // through that box onto the heading, so the heading's own margin
-          // can read 0 while it still sits low.
+          // what counts, not only its own margin: a margin on any box in
+          // front of it would collapse onto it and move it down.
           expect(getComputedStyle(headings[0]).marginBlockStart).withContext(`${theme} first heading`).toBe('0px');
           const content = find('mat-card-content');
           const contentStyle = getComputedStyle(content);
