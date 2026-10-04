@@ -6,3 +6,13 @@
 .icon-circle-brand {
   background: color-mix(in srgb, var(--color-primary) 30%, var(--mat-sys-surface));
 }
+
+// Font size alone, the box and line box tracking it, so the circle that
+// centres the box centres the glyph: a type utility ships a line height
+// taller than its font size, which drops the glyph low in its box.
+.dialog-icon {
+  font-size: var(--text-2xl);
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+}

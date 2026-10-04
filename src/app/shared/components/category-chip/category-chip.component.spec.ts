@@ -5,6 +5,8 @@ import { ThemeService } from '../../../core/services/theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
   channels,
+  iconBox,
+  iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
@@ -218,6 +220,18 @@ describe('CategoryChipComponent', () => {
       } finally {
         probe.remove();
       }
+    });
+  });
+
+  describe('pill appearance', () => {
+    // A glyph fills its box only when its line box is its font size, so the
+    // pill that centres the box centres the glyph beside its label.
+    it("sizes the pill's icon at --text-base, its box and line box the same", () => {
+      component.category = category;
+      fixture.detectChanges();
+      const icon = fixture.nativeElement.querySelector('mat-icon') as HTMLElement;
+      expect(icon?.textContent?.trim()).toBe('restaurant');
+      expect(iconBox(icon)).toEqual(iconSquare('--text-base'));
     });
   });
 

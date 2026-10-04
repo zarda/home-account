@@ -1,3 +1,14 @@
+// The Manage link's arrow, a size under Material's button icon. The
+// attribute selector outranks Material's own `.mat-mdc-button > .mat-icon`,
+// which sets the size and box this replaces; a type utility would also bring
+// a line height taller than the font size and drop the glyph low.
+a[mat-button] > mat-icon {
+  font-size: var(--text-base);
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+}
+
 .budget-item {
   @apply p-2.5 rounded-lg;
   background: var(--surface-subtle);

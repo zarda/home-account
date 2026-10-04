@@ -20,6 +20,8 @@ import {
   GLYPH_PROBE_COLOURS,
   chooseOption,
   eachOptionState,
+  iconBox,
+  iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
@@ -581,7 +583,7 @@ describe('BudgetFormComponent', () => {
       });
 
       it('sizes each option icon at --text-lg, a square of it', () => {
-        // A pin: `mat-option > mat-icon` keeps the size the icon's old `!text-lg` class gave it.
+        // A pin: `mat-option > mat-icon` keeps the size the icon's old important large-text utility gave it.
         (categorySelect().nativeElement.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
         fixture.detectChanges();
 
@@ -598,6 +600,14 @@ describe('BudgetFormComponent', () => {
           expect(style.width).toBe(expected);
           expect(style.height).toBe(expected);
         }
+      });
+
+      it("sizes the closed select's icon at --text-lg, its box and line box the same", () => {
+        chooseOption(categorySelect().injector.get(MatSelect), 'cat1', () => fixture.detectChanges());
+
+        const icon = fixture.nativeElement.querySelector('mat-select-trigger mat-icon') as HTMLElement;
+        expect(icon?.textContent?.trim()).toBe('restaurant');
+        expect(iconBox(icon)).toEqual(iconSquare('--text-lg'));
       });
     });
   });

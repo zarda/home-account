@@ -9,6 +9,8 @@ import { Budget, Category } from '../../../models';
 import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
 import {
   channels,
+  iconBox,
+  iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
@@ -591,6 +593,64 @@ describe('BudgetProgressCardComponent', () => {
       const rect = menuButton.getBoundingClientRect();
       expect(rect.width).withContext('menu button width vs the 40px floor').toBeGreaterThanOrEqual(40);
       expect(rect.height).withContext('menu button height vs the 40px floor').toBeGreaterThanOrEqual(40);
+    });
+  });
+
+  // A glyph fills its box only when its line box is its font size, so the
+  // row that centres the box centres the glyph.
+  describe('icon sizes', () => {
+    const icon = (selector: string) => fixture.nativeElement.querySelector(selector) as HTMLElement;
+
+    it('sizes the menu glyph at --text-base, and --text-lg from 640px, its box and line box the same', () => {
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.detectChanges();
+      const token = matchMedia('(min-width: 640px)').matches ? '--text-lg' : '--text-base';
+      expect(iconBox(icon('.menu-btn mat-icon'))).toEqual(iconSquare(token));
+    });
+
+    // The measurement sees only the branch the Karma window falls in, so
+    // both branches are read from the stylesheet: the declarations of every
+    // rule naming `.menu-btn` that matches the glyph, by media condition.
+    it('declares the menu glyph --text-base below 640px and --text-lg from it, its box and line box in em', () => {
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.detectChanges();
+      const glyph = icon('.menu-btn mat-icon');
+      const declared: Record<string, Record<string, string>> = {};
+      const visit = (rules: CSSRuleList, media: string) => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSMediaRule) {
+            visit(rule.cssRules, rule.conditionText);
+          } else if (
+            rule instanceof CSSStyleRule &&
+            rule.selectorText.includes('.menu-btn') &&
+            glyph.matches(rule.selectorText)
+          ) {
+            for (const prop of ['font-size', 'width', 'height', 'line-height']) {
+              const value = rule.style.getPropertyValue(prop);
+              if (value) (declared[media] ??= {})[prop] = value;
+            }
+          }
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue; // cross-origin sheet; nothing this app injects is one
+        }
+        visit(rules, '');
+      }
+      expect(declared).toEqual({
+        '': { 'font-size': 'var(--text-base)', width: '1em', height: '1em', 'line-height': '1' },
+        '(min-width: 640px)': { 'font-size': 'var(--text-lg)' },
+      });
+    });
+
+    it("sizes the alert's glyph at --text-sm, its box and line box the same", () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
+      fixture.detectChanges();
+      expect(iconBox(icon('.alert mat-icon'))).toEqual(iconSquare('--text-sm'));
     });
   });
 

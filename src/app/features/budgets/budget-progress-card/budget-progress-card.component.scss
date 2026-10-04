@@ -27,8 +27,18 @@
       @apply w-10 h-10 flex-shrink-0;
       color: var(--text-muted);
 
+      // Font size alone, the box and line box tracking it: a type utility
+      // ships a line height taller than its font size, which drops the
+      // glyph below the middle of its box. 640px is the card's sm step.
       mat-icon {
-        @apply text-base sm:text-lg;
+        font-size: var(--text-base);
+        width: 1em;
+        height: 1em;
+        line-height: 1;
+
+        @media (min-width: 640px) {
+          font-size: var(--text-lg);
+        }
       }
     }
   }
@@ -96,8 +106,13 @@
       .alert {
         @apply flex items-center gap-0.5 font-medium flex-shrink-0;
 
+        // Sized like the menu's glyph, for the same reason.
         mat-icon {
-          @apply w-3.5 h-3.5 text-xs flex-shrink-0;
+          @apply flex-shrink-0;
+          font-size: var(--text-sm);
+          width: 1em;
+          height: 1em;
+          line-height: 1;
         }
 
         .alert-text {

@@ -4,6 +4,8 @@ import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from './confirm-dialog.component';
 import {
   channels,
+  iconBox,
+  iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
@@ -60,6 +62,14 @@ describe('ConfirmDialogComponent', () => {
     const buttons = fixture.nativeElement.querySelectorAll('mat-dialog-actions button');
     expect(buttons[0].textContent).toContain('Keep');
     expect(buttons[1].textContent).toContain('Delete');
+  });
+
+  // A glyph fills its box only when its line box is its font size, so the
+  // circle that centres the box centres the glyph.
+  it('sizes its icon at --text-2xl, its box and line box the same', () => {
+    const icon = fixture.nativeElement.querySelector('mat-icon') as HTMLElement;
+    expect(icon?.textContent?.trim()).toBe('delete');
+    expect(iconBox(icon)).toEqual(iconSquare('--text-2xl'));
   });
 
   describe('label fallbacks', () => {

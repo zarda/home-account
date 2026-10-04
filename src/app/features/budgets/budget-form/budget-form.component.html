@@ -22,7 +22,7 @@
           <mat-select-trigger>
             @if (selectedCategory(); as cat) {
               <div class="flex items-center gap-2">
-                <mat-icon [style.color]="cat.color | categoryGlyph:'dialog'" class="!text-lg">{{ cat.icon }}</mat-icon>
+                <mat-icon [style.color]="cat.color | categoryGlyph:'dialog'">{{ cat.icon }}</mat-icon>
                 <span>{{ cat.name | translate }}</span>
               </div>
             }

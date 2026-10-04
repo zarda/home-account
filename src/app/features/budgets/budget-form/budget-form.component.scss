@@ -17,6 +17,16 @@ mat-option > mat-icon {
   height: 1em;
 }
 
+// The closed select shows the chosen category's icon at the same size. Its
+// line box is its font size: a type utility ships a taller one, which drops
+// the glyph below the middle of its box.
+mat-select-trigger mat-icon {
+  font-size: var(--text-lg);
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+}
+
 .threshold-section {
   .slider-container {
     width: 100%;

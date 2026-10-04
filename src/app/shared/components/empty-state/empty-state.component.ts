@@ -27,16 +27,7 @@ import { MatButtonModule } from '@angular/material/button';
         [class.h-12]="size === 'sm'"
         [class.mb-3]="size === 'sm'"
       >
-        <mat-icon
-          class="text-fg-muted"
-          [class.!text-4xl]="size === 'md'"
-          [class.!w-10]="size === 'md'"
-          [class.!h-10]="size === 'md'"
-          [class.!text-2xl]="size === 'sm'"
-          [class.!w-8]="size === 'sm'"
-          [class.!h-8]="size === 'sm'"
-          >{{ icon }}</mat-icon
-        >
+        <mat-icon class="empty-icon text-fg-muted" [class.empty-icon-sm]="size === 'sm'">{{ icon }}</mat-icon>
       </div>
 
       @switch (headingLevel) {
@@ -72,6 +63,21 @@ import { MatButtonModule } from '@angular/material/button';
         </button>
       }
     </div>
+  `,
+  styles: `
+    /* Font size alone, the box and line box tracking it, so the circle that
+       centres the box centres the glyph: a type utility ships a line height
+       taller than its font size, which drops the glyph low in its box. */
+    .empty-icon {
+      font-size: var(--text-4xl);
+      width: 1em;
+      height: 1em;
+      line-height: 1;
+    }
+
+    .empty-icon-sm {
+      font-size: var(--text-2xl);
+    }
   `,
 })
 export class EmptyStateComponent {

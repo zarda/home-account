@@ -2,6 +2,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { EmptyStateComponent } from './empty-state.component';
 import {
+  iconBox,
+  iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
@@ -70,6 +72,17 @@ describe('EmptyStateComponent', () => {
     fixture.detectChanges();
     expect(root().classList).toContain('py-6');
     expect(root().classList).not.toContain('py-12');
+  });
+
+  // A glyph fills its box only when its line box is its font size, so the
+  // circle that centres the box centres the glyph.
+  it('sizes its icon at --text-4xl, and --text-2xl when size=sm, its box and line box the same', () => {
+    const icon = (): HTMLElement => fixture.nativeElement.querySelector('mat-icon');
+    expect(iconBox(icon())).withContext('md').toEqual(iconSquare('--text-4xl'));
+
+    fixture.componentRef.setInput('size', 'sm');
+    fixture.detectChanges();
+    expect(iconBox(icon())).withContext('sm').toEqual(iconSquare('--text-2xl'));
   });
 
   describe('colours', () => {

@@ -11,6 +11,8 @@ import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
   channels,
+  iconBox,
+  iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
@@ -374,6 +376,12 @@ describe('BudgetProgressComponent', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       // Check for translation key or translated text
       expect(compiled.textContent?.includes('Manage') || compiled.textContent?.includes('budget.manage')).toBe(true);
+    });
+
+    it("sizes the Manage link's arrow at --text-base, its box and line box the same", () => {
+      const arrow = fixture.nativeElement.querySelector('a[mat-button] mat-icon') as HTMLElement;
+      expect(arrow?.textContent?.trim()).toBe('arrow_forward');
+      expect(iconBox(arrow)).toEqual(iconSquare('--text-base'));
     });
 
     it('should display budget name', () => {
