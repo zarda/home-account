@@ -797,6 +797,94 @@ describe('AiSummaryComponent, through its own template', () => {
       }
     });
 
+    /**
+     * The summary reaches the card through [innerHTML], so its elements carry
+     * no encapsulation attribute and a plain component rule never matches
+     * them. The fixture has the shape the summary prompt asks for: sections
+     * under `## ` headings, prose with emphasis, and a bullet list.
+     */
+    it('styles the summary\'s headings, lists and emphasis in the text tokens, at AA or better over every stop, in both themes', () => {
+      render();
+      component.isLoading.set(false);
+      component.hasError.set(false);
+      component.summary.set([
+        '## Spending Pattern',
+        'Groceries are **up** 18%.',
+        '## Actionable Insights',
+        '- Cap dining out',
+        '- Batch the weekly shop',
+        '- Review subscriptions',
+      ].join('\n'));
+      component.advice.set('');
+      fixture.detectChanges();
+
+      const box = find('.structured-content');
+      const headings = Array.from(box.querySelectorAll<HTMLElement>('h2'));
+      // A heading line is wrapped in a <p> the parser closes empty, so the
+      // prose is the one paragraph with content.
+      const paragraph = find('.structured-content p:not(:empty)');
+      const emphasis = find('.structured-content strong');
+      const list = find('.structured-content ul');
+      const items = Array.from(list.querySelectorAll<HTMLElement>('li'));
+      expect(headings.length).withContext('headings').toBe(2);
+      expect(items.length).withContext('list items').toBe(3);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const primary = tokenColour('--text-primary');
+          const secondary = tokenColour('--text-secondary');
+          const bodySize = parseFloat(getComputedStyle(paragraph).fontSize);
+
+          for (const heading of headings) {
+            const style = getComputedStyle(heading);
+            expect(style.color).withContext(`${theme} heading colour`).toBe(primary);
+            expect(parseFloat(style.fontSize)).withContext(`${theme} heading size over body ${bodySize}px`)
+              .toBeGreaterThan(bodySize);
+            expect(Number(style.fontWeight)).withContext(`${theme} heading weight`).toBeGreaterThanOrEqual(600);
+          }
+          // The first section opens flush under the card header; later ones
+          // are set off from the section above. Where the heading lands is
+          // what counts: a margin on the empty <p> in front of it collapses
+          // through that box onto the heading, so the heading's own margin
+          // can read 0 while it still sits low.
+          expect(getComputedStyle(headings[0]).marginBlockStart).withContext(`${theme} first heading`).toBe('0px');
+          const content = find('mat-card-content');
+          const contentStyle = getComputedStyle(content);
+          const contentTop = content.getBoundingClientRect().top
+            + parseFloat(contentStyle.borderBlockStartWidth) + parseFloat(contentStyle.paddingBlockStart);
+          expect(headings[0].getBoundingClientRect().top)
+            .withContext(`${theme} first heading against the card content's top`).toBeCloseTo(contentTop, 1);
+          expect(parseFloat(getComputedStyle(headings[1]).marginBlockStart))
+            .withContext(`${theme} later heading`).toBeGreaterThan(0);
+
+          expect(getComputedStyle(paragraph).color).withContext(`${theme} body colour`).toBe(secondary);
+          expect(getComputedStyle(emphasis).color).withContext(`${theme} emphasis colour`).toBe(primary);
+          expect(Number(getComputedStyle(emphasis).fontWeight)).withContext(`${theme} emphasis weight`)
+            .toBeGreaterThanOrEqual(600);
+
+          const listStyle = getComputedStyle(list);
+          expect(listStyle.listStyleType).withContext(`${theme} list marker`).toBe('disc');
+          expect(parseFloat(listStyle.paddingInlineStart)).withContext(`${theme} list indent`).toBeGreaterThan(0);
+          for (const item of items) {
+            expect(getComputedStyle(item).color).withContext(`${theme} list item colour`).toBe(secondary);
+          }
+          for (let i = 1; i < items.length; i++) {
+            const gap = items[i].getBoundingClientRect().top - items[i - 1].getBoundingClientRect().bottom;
+            expect(gap).withContext(`${theme} gap above list item ${i + 1}`).toBeGreaterThan(0);
+          }
+
+          overEveryStop(theme, stop => {
+            headings.forEach((heading, i) =>
+              expectOnItsBackground(heading, 4.5, `${theme} heading ${i + 1} on ${stop}`));
+            expectOnItsBackground(paragraph, 4.5, `${theme} body on ${stop}`);
+            expectOnItsBackground(emphasis, 4.5, `${theme} emphasis on ${stop}`);
+            items.forEach((item, i) =>
+              expectOnItsBackground(item, 4.5, `${theme} list item ${i + 1} on ${stop}`));
+          });
+        });
+      }
+    });
+
     it('paints the refresh icon in the muted text at rest and the primary text hovered, over every stop, in both themes', () => {
       showContent();
       const button = find('.refresh-btn');

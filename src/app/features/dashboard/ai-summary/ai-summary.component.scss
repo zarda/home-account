@@ -113,6 +113,84 @@ mat-card-content {
   margin-bottom: 16px;
 }
 
+// The summary is bound through [innerHTML], so its elements carry no
+// encapsulation attribute and only a ::ng-deep rule reaches them. :host keeps
+// these rules inside this card.
+:host ::ng-deep .structured-content {
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--text-secondary);
+
+  h1,
+  h2,
+  h3 {
+    color: var(--text-primary);
+    font-weight: 600;
+    line-height: 1.4;
+    margin-block: 16px 8px;
+  }
+
+  // markdownToHtml wraps each heading line in a <p>, which the parser closes
+  // empty in front of the heading, so the opening heading is the second child.
+  > :first-child,
+  > p:empty:first-child + * {
+    margin-block-start: 0;
+  }
+
+  .markdown-h1 {
+    font-size: var(--text-xl);
+    padding-block-end: 8px;
+    border-block-end: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  }
+
+  .markdown-h2 {
+    font-size: var(--text-lg);
+    padding-block-end: 6px;
+    border-block-end: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  }
+
+  .markdown-h3 {
+    font-size: var(--text-base);
+  }
+
+  p {
+    margin-block: 0 8px;
+
+    &:last-child {
+      margin-block-end: 0;
+    }
+
+    // The parser's empty paragraphs around each heading have no height, so a
+    // margin on one collapses through it onto the heading and moves it.
+    &:empty {
+      margin-block: 0;
+    }
+  }
+
+  strong {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .markdown-list {
+    list-style: disc;
+    padding-inline-start: 20px;
+    margin-block: 0 8px;
+
+    &:last-child {
+      margin-block-end: 0;
+    }
+  }
+
+  li {
+    margin-block-end: 6px;
+
+    &:last-child {
+      margin-block-end: 0;
+    }
+  }
+}
+
 // The header, its icon and the body all take the section's colour.
 .advice-section {
   padding: 12px;
