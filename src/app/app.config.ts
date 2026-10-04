@@ -370,6 +370,59 @@ function scheduleLedgerSweep(hooks: LedgerSweepHooks, uid: string, reason: 'star
 }
 
 /**
+ * NotificationTapService (core/services/notification-tap.service.ts) as the
+ * arming below sees it: by shape, as the ledger sweep is, so nothing in this
+ * file names the service's module outside a dynamic import.
+ */
+export interface NotificationTapArmer {
+  arm(): Promise<void>;
+}
+
+const NOTIFICATION_TAP_LOG = '[NotificationTapService]';
+
+/**
+ * The app's loader for armNotificationTaps: the one place the service's
+ * module is named, and only as a dynamic import, so it stays in a lazy chunk
+ * (the initial bundle sits at its budget, docs/performance.md).
+ */
+export function notificationTapLoader(injector: Injector = inject(Injector)): () => Promise<NotificationTapArmer> {
+  return () => import('./core/services/notification-tap.service')
+    .then(({ NotificationTapService }) => injector.get(NotificationTapService));
+}
+
+/**
+ * Arms NotificationTapService, which opens what a tapped reminder names in a
+ * page that is already running. On the web it loads the service from an idle
+ * task, and a tab that receives the worker's message before then is only
+ * focused. In the iOS app it loads it at once: the plugin holds a tap that
+ * started the app until the listener attaches, and attaching it seconds
+ * later would open that tap over wherever the user had gone meanwhile. The
+ * chunk comes from the app's own files there, so nothing is downloaded early.
+ * Nothing here throws, and a service that fails to load or arm is logged,
+ * never handed to the ErrorHandler: the tap still focused the app.
+ */
+export function armNotificationTaps(
+  load: () => Promise<NotificationTapArmer> = notificationTapLoader(),
+  whenIdle: (task: () => void) => void = task => whenBrowserIdle(task),
+  isNative: () => boolean = () => Capacitor.isNativePlatform(),
+): void {
+  const notArmed = (error: unknown) => console.warn(`${NOTIFICATION_TAP_LOG} Notification taps were not armed`, error);
+  const arm = () => {
+    try {
+      load().then(taps => taps.arm()).catch(notArmed);
+    } catch (error) {
+      notArmed(error);
+    }
+  };
+  try {
+    if (isNative()) arm();
+    else whenIdle(arm);
+  } catch (error) {
+    notArmed(error);
+  }
+}
+
+/**
  * Locale data for the two non-English languages. Angular ships only `en` in
  * the bundle; without these, anything reading LOCALE_ID for `ja` or
  * `zh-Hant` throws "Missing locale data" at runtime rather than degrading.
@@ -492,6 +545,12 @@ export const appConfig: ApplicationConfig = {
       // Repairs household copies a follow-up left behind, from an idle task
       // that loads the service only then (armLedgerSweep).
       armLedgerSweep();
+    }),
+    provideAppInitializer(() => {
+      // Opens what a tapped reminder names in a page already running, from a
+      // service loaded only then: after an idle task on the web, at once in
+      // the iOS app (armNotificationTaps).
+      armNotificationTaps();
     })
   ]
 };

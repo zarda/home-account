@@ -193,6 +193,29 @@ describe('PwaService', () => {
       window.removeEventListener('check-model-updates', onModel);
       expect(onModel).not.toHaveBeenCalled();
     });
+
+    // The channel is shared: the share-target worker posts notification
+    // routes on it, and anything else under this origin may post anything.
+    // A listener that throws is reported for every message, by every
+    // instance still listening.
+    it('ignores a message whose data is not an object, through the real container', () => {
+      make();
+      const thrown: unknown[] = [];
+      const onError = (event: ErrorEvent) => {
+        thrown.push(event.error);
+        event.preventDefault();
+      };
+      window.addEventListener('error', onError);
+      try {
+        for (const data of [null, undefined, 42, 'SYNC_OFFLINE_QUEUE']) {
+          navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data }));
+        }
+      } finally {
+        window.removeEventListener('error', onError);
+      }
+
+      expect(thrown).toEqual([]);
+    });
   });
 
   describe('platform detection', () => {

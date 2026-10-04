@@ -19,8 +19,10 @@
 // else, including a notification raised before routes were carried. An open
 // tab is focused and handed the route in a `{type: 'notification-route',
 // route}` message, because a worker cannot drive the app's router and
-// navigating the tab itself would reload the app. With no open tab, or when
-// focus() is refused, a new one opens at the route instead. No
+// navigating the tab itself would reload the app; the page's
+// NotificationTapService (src/app/core/services/notification-tap.service.ts)
+// opens it, and the type is a literal on both sides. With no open tab, or
+// when focus() is refused, a new one opens at the route instead. No
 // `notificationclose`.
 //
 // Every other request passes through untouched: no caching, no offline

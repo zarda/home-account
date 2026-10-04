@@ -87,8 +87,11 @@ export class PwaService {
     }
   }
 
-  private handleServiceWorkerMessage(data: { type: string; payload?: unknown }): void {
-    switch (data.type) {
+  // The channel is shared (the share-target worker posts notification routes
+  // on it), so a message is not assumed to be one of this service's.
+  private handleServiceWorkerMessage(data: unknown): void {
+    if (typeof data !== 'object' || data === null) return;
+    switch ((data as { type?: unknown }).type) {
       case 'SYNC_OFFLINE_QUEUE':
         // Trigger offline queue sync (will be handled by offline-queue service)
         window.dispatchEvent(new CustomEvent('sync-offline-queue'));
