@@ -263,6 +263,13 @@ const EXEMPT = [
     bg: '--color-success',
     why: 'nothing paints it, as the --color-info row above',
   },
+  {
+    fg: '--color-primary-text',
+    bg: '--surface-background',
+    why: "nothing paints it straight on the page. The budgets tab's count badge sits on a 16% primary tint mixed " +
+      'into the page, a color-mix() fill this script cannot read; the budgets spec holds its count at 4.5:1 ' +
+      'on that tint in both themes (4.99:1 in light, 9.45:1 in dark)',
+  },
 ];
 
 /**
