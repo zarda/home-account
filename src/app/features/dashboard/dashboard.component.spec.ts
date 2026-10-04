@@ -1,8 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import {
+  ActivatedRoute,
+  NavigationExtras,
+  ParamMap,
+  Router,
+  convertToParamMap,
+  provideRouter,
+} from '@angular/router';
 import { of, BehaviorSubject, Subject, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
@@ -10,7 +18,7 @@ import { FinancialSummaryComponent } from './financial-summary/financial-summary
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
-import { UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
+import { RuleFocusOutcome, UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
 import { WeeklyRecapComponent } from './weekly-recap/weekly-recap.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
@@ -28,6 +36,7 @@ import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
 import { CloudLLMProviderService } from '../../core/services/cloud-llm-provider.service';
+import { WeeklyRecapService } from '../../core/services/weekly-recap.service';
 import {
   BudgetAlert,
   Category,
@@ -52,6 +61,7 @@ import {
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
 import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
+import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
 import { dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
 import { DashboardCardMenuComponent } from './dashboard-card-menu/dashboard-card-menu.component';
@@ -86,6 +96,8 @@ class UpcomingBillsStubComponent {
   baseCurrency = input<string>('USD');
   net = input<number>(0);
   olderCount = input<number>(0);
+  focusRuleId = input<string | null>(null);
+  ruleFocus = output<RuleFocusOutcome>();
 }
 
 // Same for the weekly recap card. The real one injects WeeklyRecapService,
@@ -119,6 +131,7 @@ describe('DashboardComponent', () => {
   let recurringService: {
     catchUpRecurringTransactions: jasmine.Spy;
     getUpcomingSchedule: jasmine.Spy;
+    getUpcomingScheduleFromServer: jasmine.Spy;
   };
   let insightSnapshotService: { generateClosedMonths: jasmine.Spy };
   let authService: {
@@ -134,6 +147,11 @@ describe('DashboardComponent', () => {
   let widgetSnapshots: jasmine.SpyObj<WidgetSnapshotService>;
   let cloudLLM: { hasAnyCloudProvider: ReturnType<typeof signal<boolean>> };
   let activatedRoute: { queryParamMap: BehaviorSubject<ParamMap> };
+  let recap: {
+    load: jasmine.Spy<() => Promise<void>>;
+    weekKey: ReturnType<typeof signal<string>>;
+    visible: ReturnType<typeof signal<boolean>>;
+  };
 
   function build() {
     return TestBed.createComponent(DashboardComponent);
@@ -216,6 +234,9 @@ describe('DashboardComponent', () => {
       getUpcomingSchedule: jasmine
         .createSpy('getUpcomingSchedule')
         .and.returnValue(of({ occurrences: [], olderCount: 0 })),
+      getUpcomingScheduleFromServer: jasmine
+        .createSpy('getUpcomingScheduleFromServer')
+        .and.returnValue(Promise.resolve({ occurrences: [], olderCount: 0 })),
     };
     // Root-provided, so without this the real service is constructed and its
     // Firestore injection fails.
@@ -249,6 +270,13 @@ describe('DashboardComponent', () => {
     // Router is a spy here, so nothing else provides ActivatedRoute; the
     // real-template describe keeps provideRouter's root route instead.
     activatedRoute = { queryParamMap: new BehaviorSubject<ParamMap>(convertToParamMap({})) };
+    // Root-provided, and the real one reads AuthService.userId, which this
+    // suite's double does not have.
+    recap = {
+      load: jasmine.createSpy('load').and.resolveTo(),
+      weekKey: signal('2026-09-21'),
+      visible: signal(false),
+    };
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -269,6 +297,7 @@ describe('DashboardComponent', () => {
         { provide: ActivatedRoute, useValue: activatedRoute },
         { provide: WidgetSnapshotService, useValue: widgetSnapshots },
         { provide: CloudLLMProviderService, useValue: cloudLLM },
+        { provide: WeeklyRecapService, useValue: recap },
       ],
     })
       .overrideComponent(DashboardComponent, { set: { imports: [], template: '' } })
@@ -1041,6 +1070,460 @@ describe('DashboardComponent', () => {
     });
   });
 
+  // #446: a reminder's tap opens /dashboard?bill=<rule> or ?recap=<week>.
+  describe('links from a notification', () => {
+    const rent: RecurringOccurrence = {
+      recurringId: 'r1',
+      name: 'Rent',
+      type: 'expense',
+      amount: 1200,
+      currency: 'USD',
+      categoryId: 'food',
+      date: new Date(2026, 8, 1),
+    };
+    const TO_RECURRING = [['/budgets'], { queryParams: { tab: 'recurring' }, replaceUrl: true }] as const;
+
+    /** The navigation that takes both params off the URL; the route double is rebuilt per case. */
+    function strip(): [string[], NavigationExtras] {
+      return [
+        [],
+        {
+          relativeTo: activatedRoute as unknown as ActivatedRoute,
+          queryParams: { bill: null, recap: null },
+          queryParamsHandling: 'merge',
+          replaceUrl: true,
+        },
+      ];
+    }
+
+    function open(params: Record<string, string>): void {
+      activatedRoute.queryParamMap.next(convertToParamMap(params));
+    }
+
+    const settle = () => new Promise(resolve => setTimeout(resolve));
+
+    describe('?bill', () => {
+      // The recap keeps the window's listener open while Upcoming is hidden;
+      // the redirect does not wait for it to emit.
+      it('opens the recurring rules at once while Upcoming is hidden, and says why', () => {
+        setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
+        recurringService.getUpcomingSchedule.and.returnValue(new Subject<UpcomingSchedule>());
+        open({ bill: 'r1' });
+
+        const fixture = build();
+        fixture.detectChanges();
+
+        expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkCardHidden');
+        expect(fixture.componentInstance.billInFocus()).toBeNull();
+      });
+
+      it('asks the card for the rule only once the window has emitted, and strips the link', () => {
+        const upcoming$ = new Subject<UpcomingSchedule>();
+        recurringService.getUpcomingSchedule.and.returnValue(upcoming$);
+        open({ bill: 'r1' });
+
+        const fixture = build();
+        fixture.detectChanges();
+
+        expect(router.navigate).toHaveBeenCalledOnceWith(...strip());
+        expect(fixture.componentInstance.billInFocus()).withContext('before the first emission').toBeNull();
+
+        upcoming$.next({ occurrences: [rent], olderCount: 0 });
+
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+      });
+
+      it('asks the card at once for a link that arrives once the window is in', () => {
+        recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: [rent], olderCount: 0 }));
+        const fixture = build();
+        fixture.detectChanges();
+        expect(fixture.componentInstance.billInFocus()).toBeNull();
+
+        open({ bill: 'r1' });
+
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+      });
+
+      it('opens the recurring rules when neither the card nor the server has the rule, and says why', async () => {
+        open({ bill: 'gone' });
+        const fixture = build();
+        fixture.detectChanges();
+        expect(fixture.componentInstance.billInFocus()).toBe('gone');
+        router.navigate.calls.reset();
+
+        fixture.componentInstance.onBillFocus('absent');
+        expect(fixture.componentInstance.billInFocus()).toBeNull();
+        expect(router.navigate).withContext('before the server answers').not.toHaveBeenCalled();
+        await settle();
+
+        expect(recurringService.getUpcomingScheduleFromServer).toHaveBeenCalledOnceWith(14);
+        expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
+      });
+
+      // Offline the read rejects; the rules page lists every rule that exists,
+      // so it is still the right place, and it is reached at once.
+      it('opens the recurring rules when the server cannot be asked', async () => {
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(Promise.reject(new Error('offline')));
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
+      });
+
+      // A persistent cache answers the listener first, and it can predate the
+      // rule or its move into the fortnight. Sending the user away is done
+      // once, so the card's "absent" is only acted on once the server agrees.
+      // The listener walks its fortnight only when it emits, and a page open
+      // since an earlier day gets no emission to walk it again: the stream it
+      // holds never brings the rule, so the page asks a re-opened one.
+      it('re-opens the listener when the server has the rule the window lacked, and asks the card on its first emission', async () => {
+        const stale$ = new Subject<UpcomingSchedule>();
+        const fresh$ = new Subject<UpcomingSchedule>();
+        recurringService.getUpcomingSchedule.and.returnValues(stale$, fresh$);
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(
+          Promise.resolve({ occurrences: [rent], olderCount: 0 })
+        );
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        stale$.next({ occurrences: [], olderCount: 0 });
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+        router.navigate.calls.reset();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(router.navigate).not.toHaveBeenCalled();
+        expect(announcer.announce).not.toHaveBeenCalled();
+        expect(recurringService.getUpcomingSchedule).withContext('listeners opened').toHaveBeenCalledTimes(2);
+        expect(stale$.observed).withContext('the stale listener').toBeFalse();
+        expect(fixture.componentInstance.billInFocus()).withContext('before the new listener emits').toBeNull();
+
+        fresh$.next({ occurrences: [rent], olderCount: 0 });
+
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+      });
+
+      it('opens the recurring rules when the re-opened window still lacks a rule the server listed, asking once', async () => {
+        const stale$ = new Subject<UpcomingSchedule>();
+        const fresh$ = new Subject<UpcomingSchedule>();
+        recurringService.getUpcomingSchedule.and.returnValues(stale$, fresh$);
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(
+          Promise.resolve({ occurrences: [rent], olderCount: 0 })
+        );
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        stale$.next({ occurrences: [], olderCount: 0 });
+        router.navigate.calls.reset();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+        fresh$.next({ occurrences: [], olderCount: 0 });
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(recurringService.getUpcomingScheduleFromServer).toHaveBeenCalledTimes(1);
+        expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
+      });
+
+      // A pin: the effect closed the listener when the card went, and opens it
+      // again if the card comes back; the pending rule is asked of that one.
+      it('leaves the listener closed when Upcoming is hidden during the read', async () => {
+        let answer!: (schedule: UpcomingSchedule) => void;
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(new Promise(resolve => (answer = resolve)));
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+
+        fixture.componentInstance.onBillFocus('absent');
+        setPreferences(hiding('upcoming'));
+        TestBed.tick();
+        answer({ occurrences: [rent], olderCount: 0 });
+        await settle();
+
+        expect(recurringService.getUpcomingSchedule).toHaveBeenCalledTimes(1);
+        expect(router.navigate).not.toHaveBeenCalledWith(...TO_RECURRING);
+      });
+
+      it('asks the card again at once when the listener caught up during the read', async () => {
+        const upcoming$ = new Subject<UpcomingSchedule>();
+        recurringService.getUpcomingSchedule.and.returnValue(upcoming$);
+        let answer!: (schedule: UpcomingSchedule) => void;
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(new Promise(resolve => (answer = resolve)));
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        upcoming$.next({ occurrences: [], olderCount: 0 });
+
+        fixture.componentInstance.onBillFocus('absent');
+        upcoming$.next({ occurrences: [rent], olderCount: 0 });
+        expect(fixture.componentInstance.billInFocus()).withContext('while the server is asked').toBeNull();
+        answer({ occurrences: [rent], olderCount: 0 });
+        await settle();
+
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+      });
+
+      // The server listed it, so a second "absent" is the card's last word:
+      // no second read, and no loop between the two.
+      it('opens the recurring rules on a second absent for a rule the server listed, asking once', async () => {
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(
+          Promise.resolve({ occurrences: [rent], olderCount: 0 })
+        );
+        recurringService.getUpcomingSchedule.and.returnValue(of({ occurrences: [rent], olderCount: 0 }));
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(recurringService.getUpcomingScheduleFromServer).toHaveBeenCalledTimes(1);
+        expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
+      });
+
+      it('does nothing with the answer once the page has gone', async () => {
+        let answer!: (schedule: UpcomingSchedule) => void;
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(new Promise(resolve => (answer = resolve)));
+        open({ bill: 'gone' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+
+        fixture.componentInstance.onBillFocus('absent');
+        fixture.destroy();
+        answer({ occurrences: [], olderCount: 0 });
+        await settle();
+
+        expect(router.navigate).not.toHaveBeenCalled();
+        expect(announcer.announce).not.toHaveBeenCalled();
+      });
+
+      // Reminders booked for the same minute are tapped one after another,
+      // and the read for the first can still be out when the second lands.
+      describe('when a newer link arrives during the read', () => {
+        let answer: (schedule: UpcomingSchedule) => void;
+
+        beforeEach(() => {
+          recurringService.getUpcomingScheduleFromServer.and.returnValue(new Promise(resolve => (answer = resolve)));
+        });
+
+        it('does not send the user away on the earlier link\'s answer', async () => {
+          open({ bill: 'r1' });
+          const fixture = build();
+          fixture.detectChanges();
+          fixture.componentInstance.onBillFocus('absent');
+
+          open({ bill: 'r2' });
+          expect(fixture.componentInstance.billInFocus()).toBe('r2');
+          fixture.componentInstance.onBillFocus('focused');
+          router.navigate.calls.reset();
+          answer({ occurrences: [], olderCount: 0 });
+          await settle();
+
+          expect(router.navigate).not.toHaveBeenCalled();
+          expect(announcer.announce).not.toHaveBeenCalled();
+        });
+
+        it('does not ask the card for the earlier rule again', async () => {
+          const upcoming$ = new Subject<UpcomingSchedule>();
+          recurringService.getUpcomingSchedule.and.returnValue(upcoming$);
+          open({ bill: 'r1' });
+          const fixture = build();
+          fixture.detectChanges();
+          upcoming$.next({ occurrences: [], olderCount: 0 });
+          fixture.componentInstance.onBillFocus('absent');
+
+          open({ bill: 'r2' });
+          fixture.componentInstance.onBillFocus('focused');
+          upcoming$.next({ occurrences: [rent], olderCount: 0 });
+          answer({ occurrences: [rent], olderCount: 0 });
+          await settle();
+          upcoming$.next({ occurrences: [rent], olderCount: 0 });
+
+          expect(fixture.componentInstance.billInFocus()).toBeNull();
+          expect(recurringService.getUpcomingSchedule).withContext('listeners opened').toHaveBeenCalledTimes(1);
+        });
+
+        it('does not send the user away from a recap link that came after', async () => {
+          open({ bill: 'r1' });
+          const fixture = build();
+          fixture.detectChanges();
+          fixture.componentInstance.onBillFocus('absent');
+
+          open({ recap: '2026-09-21' });
+          await settle();
+          router.navigate.calls.reset();
+          answer({ occurrences: [], olderCount: 0 });
+          await settle();
+
+          expect(router.navigate).not.toHaveBeenCalled();
+          expect(announcer.announce).not.toHaveBeenCalled();
+        });
+      });
+
+      it('stays on the dashboard once the card has the row', () => {
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+
+        fixture.componentInstance.onBillFocus('focused');
+
+        expect(router.navigate).not.toHaveBeenCalled();
+        expect(announcer.announce).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.billInFocus()).toBeNull();
+      });
+
+      it('asks again for a second link while the page is open, the same rule included', () => {
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        fixture.componentInstance.onBillFocus('focused');
+
+        open({ bill: 'r2' });
+        expect(fixture.componentInstance.billInFocus()).toBe('r2');
+        fixture.componentInstance.onBillFocus('focused');
+
+        open({ bill: 'r2' });
+        expect(fixture.componentInstance.billInFocus()).toBe('r2');
+        expect(router.navigate.calls.allArgs()).toEqual([strip(), strip(), strip()]);
+      });
+
+      // The strip is itself a query-params change, read like any other.
+      it('leaves a pending request alone when the stripped URL comes back', () => {
+        const upcoming$ = new Subject<UpcomingSchedule>();
+        recurringService.getUpcomingSchedule.and.returnValue(upcoming$);
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+
+        open({});
+        upcoming$.next({ occurrences: [rent], olderCount: 0 });
+
+        expect(router.navigate).toHaveBeenCalledTimes(1);
+        expect(fixture.componentInstance.billInFocus()).toBe('r1');
+      });
+
+      it('neither navigates nor asks anything without a link', () => {
+        const fixture = build();
+        fixture.detectChanges();
+
+        expect(router.navigate).not.toHaveBeenCalled();
+        expect(recap.load).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.billInFocus()).toBeNull();
+      });
+    });
+
+    describe('?recap', () => {
+      let attached: HTMLElement | undefined;
+      let region: HTMLElement;
+
+      /**
+       * The page, attached so focus can move, with the recap region already
+       * where the card renders one unless `withRegion` is false. This suite
+       * blanks the page's template, so the region is put there by hand.
+       */
+      function render(withRegion = true): ComponentFixture<DashboardComponent> {
+        const fixture = build();
+        attached = fixture.nativeElement as HTMLElement;
+        document.body.appendChild(attached);
+        region = document.createElement('section');
+        region.setAttribute('role', 'region');
+        region.tabIndex = -1;
+        if (withRegion) showRegion(fixture);
+        fixture.detectChanges();
+        return fixture;
+      }
+
+      function showRegion(fixture: ComponentFixture<DashboardComponent>): void {
+        const card = document.createElement('app-weekly-recap');
+        card.appendChild(region);
+        (fixture.nativeElement as HTMLElement).appendChild(card);
+      }
+
+      /**
+       * Runs whatever follows the landed load, short of a macrotask, so no
+       * render hook can run in between.
+       */
+      async function drainMicrotasks(): Promise<void> {
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      }
+
+      /** Lets the awaited load settle, then runs the render hooks it booked. */
+      async function settle(fixture: ComponentFixture<DashboardComponent>): Promise<void> {
+        await fixture.whenStable();
+        fixture.detectChanges();
+        TestBed.tick();
+      }
+
+      afterEach(() => {
+        attached?.remove();
+        attached = undefined;
+      });
+
+      it('focuses the recap once a load still running at mount settles with something to say', async () => {
+        let land!: () => void;
+        recap.load.and.returnValue(new Promise<void>(resolve => (land = resolve)));
+        open({ recap: '2026-09-21' });
+
+        const fixture = render(false);
+        expect(recap.load).toHaveBeenCalled();
+        expect(router.navigate).toHaveBeenCalledOnceWith(...strip());
+
+        recap.visible.set(true);
+        land();
+        await drainMicrotasks();
+        // The card renders its region only on the render after the load lands,
+        // so a focus that does not wait for that render finds nothing.
+        showRegion(fixture);
+        await settle(fixture);
+
+        expect(document.activeElement).toBe(region);
+      });
+
+      it('focuses nothing when the week turns out to have nothing to say', async () => {
+        let land!: () => void;
+        recap.load.and.returnValue(new Promise<void>(resolve => (land = resolve)));
+        open({ recap: '2026-09-21' });
+
+        const fixture = render();
+        land();
+        await settle(fixture);
+
+        expect(document.activeElement).not.toBe(region);
+        expect(router.navigate).toHaveBeenCalledOnceWith(...strip());
+      });
+
+      it('focuses nothing for a link to another week', async () => {
+        recap.visible.set(true);
+        open({ recap: '2026-09-14' });
+
+        const fixture = render();
+        await settle(fixture);
+
+        expect(recap.load).toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(region);
+        expect(router.navigate).toHaveBeenCalledOnceWith(...strip());
+      });
+    });
+  });
+
   describe('budget alerts', () => {
     const warningAlert: BudgetAlert = {
       budgetId: 'b1',
@@ -1403,6 +1886,7 @@ describe('DashboardComponent', () => {
           { provide: AnnouncerService, useValue: announcer },
           { provide: WidgetSnapshotService, useValue: widgetSnapshots },
           { provide: CloudLLMProviderService, useValue: cloudLLM },
+          { provide: WeeklyRecapService, useValue: recap },
         ],
       })
         .overrideComponent(DashboardComponent, {
@@ -1496,6 +1980,32 @@ describe('DashboardComponent', () => {
         ?.componentInstance as UpcomingBillsStubComponent;
       expect(stub).withContext('app-upcoming-bills rendered').toBeTruthy();
       expect(stub.olderCount()).toBe(4);
+    });
+
+    // #446: the rule a bill link names reaches the card, and the card's answer
+    // reaches the page.
+    it('hands app-upcoming-bills the rule a link names, and follows its answer', async () => {
+      const realRouter = TestBed.inject(Router);
+      await realRouter.navigateByUrl('/?bill=r1');
+      // Nothing is routed in this suite, so the redirect is caught here.
+      const navigate = spyOn(realRouter, 'navigate').and.resolveTo(true);
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      const stub = fixture.debugElement.query(By.directive(UpcomingBillsStubComponent))
+        ?.componentInstance as UpcomingBillsStubComponent;
+      expect(stub).withContext('app-upcoming-bills rendered').toBeTruthy();
+      expect(stub.focusRuleId()).toBe('r1');
+
+      navigate.calls.reset();
+      stub.ruleFocus.emit('absent');
+      fixture.detectChanges();
+      // The server is asked before the redirect; the double lists nothing.
+      await new Promise(resolve => setTimeout(resolve));
+
+      expect(stub.focusRuleId()).toBeNull();
+      expect(navigate).toHaveBeenCalledOnceWith(['/budgets'], { queryParams: { tab: 'recurring' }, replaceUrl: true });
     });
 
     it('binds the alerts, the upcoming window, base currency and categories to app-weekly-recap', () => {
@@ -1693,13 +2203,23 @@ describe('DashboardComponent', () => {
        * the press.
        */
       function press(fixture: ComponentFixture<DashboardComponent>, host: string, action: string): void {
-        triggerIn(fixture, host).click();
+        const trigger = triggerIn(fixture, host);
+        trigger.click();
         TestBed.tick();
-        (document.querySelector(`.mat-mdc-menu-panel [data-action="${action}"]`) as HTMLButtonElement).click();
+        // The panel this trigger opened: an earlier press's can still be attached.
+        const panel = document.getElementById(trigger.getAttribute('aria-controls')!)!;
+        (panel.querySelector(`[data-action="${action}"]`) as HTMLButtonElement).click();
         TestBed.tick();
       }
 
       beforeEach(() => {
+        // What a menu counts depends on the width. The real observer would
+        // answer with the Karma window's, below the desktop breakpoint
+        // headless but possibly above it in a visible browser, so every case
+        // pins its own.
+        TestBed.overrideProvider(BreakpointObserver, {
+          useValue: { observe: () => of({ matches: false, breakpoints: {} }) },
+        });
         budgetService.activeBudgets.set([{} as never]);
         cloudLLM.hasAnyCloudProvider.set(true);
         // Lands the way AuthService's write does, so the account follows it.
@@ -1787,6 +2307,180 @@ describe('DashboardComponent', () => {
 
         expect(hostTags(fixture).slice(0, 2)).toEqual(['app-upcoming-bills', 'app-recent-transactions']);
         expect(document.activeElement).toBe(triggerIn(fixture, 'app-upcoming-bills'));
+      });
+
+      // Every change made during one save shares its run, which rejects as a
+      // whole when any of its writes fails, after an earlier one may have
+      // landed. A correction is said only for what the fallback undid, and
+      // counted over the cards back on the page.
+      describe('a failed save shared by a move and a hide', () => {
+        let writes: { land: () => void; fail: () => void }[];
+
+        const settle = () => new Promise((resolve) => setTimeout(resolve));
+        const said = (key: string) =>
+          announcer.announce.calls.allArgs().map(([text]) => text).filter((text) => text.startsWith(key));
+
+        beforeEach(() => {
+          translation.t.and.callFake((key: string, params?: Record<string, unknown>) =>
+            params ? `${key}:${JSON.stringify(params)}` : key
+          );
+          writes = [];
+          authService.updatePreferenceFields.and.callFake(async (key, fields) => {
+            await new Promise<void>((land, fail) =>
+              writes.push({ land: () => land(), fail: () => fail(new Error('offline')) })
+            );
+            const latest = authService.currentUser()!;
+            authService.currentUser.set({
+              ...latest,
+              preferences: withPreferenceFields(latest.preferences, key, fields),
+            });
+          });
+        });
+
+        /** Fails the write `index`, then lets the corrections render. */
+        async function fail(index: number): Promise<void> {
+          writes[index].fail();
+          await settle();
+          TestBed.tick();
+        }
+
+        it('counts the move correction over the cards back on the page when a hide joined the save', async () => {
+          const fixture = render();
+          press(fixture, 'app-spending-chart', 'down');
+          press(fixture, 'app-recent-transactions', 'hide');
+
+          await fail(0);
+
+          expect(said('settings.dashboardCardMoveReverted')).toEqual([
+            'settings.dashboardCardMoveReverted:{"card":"dashboard.spendingByCategory","position":3,"total":5}',
+          ]);
+          expect(said('dashboard.cardHideReverted')).toEqual([
+            'dashboard.cardHideReverted:{"card":"dashboard.recentTransactions"}',
+          ]);
+        });
+
+        it('says nothing of a hide that landed before a later write failed', async () => {
+          const fixture = render();
+          press(fixture, 'app-recent-transactions', 'hide');
+          press(fixture, 'app-spending-chart', 'down');
+          writes[0].land();
+          await settle();
+
+          await fail(1);
+
+          expect(said('dashboard.cardHideReverted')).toEqual([]);
+          expect(hostTags(fixture)).not.toContain('app-recent-transactions');
+          expect(said('settings.dashboardCardMoveReverted')).toEqual([
+            'settings.dashboardCardMoveReverted:{"card":"dashboard.spendingByCategory","position":2,"total":4}',
+          ]);
+        });
+
+        it('says nothing of a move that landed before a later write failed', async () => {
+          const fixture = render();
+          press(fixture, 'app-spending-chart', 'down');
+          press(fixture, 'app-budget-progress', 'hide');
+          writes[0].land();
+          await settle();
+
+          await fail(1);
+
+          expect(said('settings.dashboardCardMoveReverted')).toEqual([]);
+          expect(said('dashboard.cardHideReverted')).toEqual([
+            'dashboard.cardHideReverted:{"card":"dashboard.budgetProgress"}',
+          ]);
+        });
+      });
+
+      // From 1024 px the grid draws two columns, chart and insights against
+      // the rest (dashboardGridAreas), so a card moves and counts among the
+      // cards of the column it is drawn in.
+      describe('at the desktop breakpoint', () => {
+        const MAIN: DashboardCardId[] = ['chart', 'insights'];
+        const RAIL: DashboardCardId[] = ['recent', 'upcoming', 'budgets'];
+
+        beforeEach(() => {
+          TestBed.overrideProvider(BreakpointObserver, {
+            useValue: {
+              observe: (query: string) => of({ matches: query === APP_BREAKPOINTS.desktop, breakpoints: {} }),
+            },
+          });
+        });
+
+        it("hands each card's menu the cards of its own column", () => {
+          const fixture = render();
+
+          const lists = Object.fromEntries(menus(fixture).map((menu) => [menu.card(), menu.visible()]));
+          expect(lists).toEqual({ recent: RAIL, upcoming: RAIL, chart: MAIN, insights: MAIN, budgets: RAIL });
+        });
+
+        it('offers no Move up on the first card of a column, whatever stands before it in the order', () => {
+          const fixture = render();
+
+          triggerIn(fixture, 'app-spending-chart').click();
+          TestBed.tick();
+
+          const up = document.querySelector('.mat-mdc-menu-panel [data-action="up"]') as HTMLButtonElement;
+          expect(up.disabled).toBeTrue();
+        });
+
+        it('moves a card one step within its column, which changes what is drawn', () => {
+          translation.t.and.callFake((key: string, params?: Record<string, unknown>) =>
+            params ? `${key}:${JSON.stringify(params)}` : key
+          );
+          const fixture = render();
+          const before = fixture.componentInstance.gridAreas();
+
+          press(fixture, 'app-upcoming-bills', 'down');
+
+          expect(fixture.componentInstance.gridAreas()).not.toBe(before);
+          expect(fixture.componentInstance.gridAreas()).toBe(
+            dashboardGridAreas(['recent', 'chart', 'insights', 'budgets', 'upcoming'])
+          );
+          expect(announcer.announce).toHaveBeenCalledWith(
+            'settings.dashboardCardMoved:{"card":"dashboard.upcomingBills","position":3,"total":3}',
+            'polite',
+            'replace'
+          );
+        });
+
+        // A pin: Upcoming Bills is followed in its column by Budget Progress,
+        // and in the page, which is the focus order, by Spending by Category.
+        // That is also the second trigger left, as Upcoming Bills is second in
+        // the rail, so the two cases after it tell an index in the column
+        // from the page order.
+        it('moves focus after a hide to the next card in page order, whichever column it is drawn in', () => {
+          const fixture = render();
+
+          press(fixture, 'app-upcoming-bills', 'hide');
+
+          expect(document.activeElement).toBe(triggerIn(fixture, 'app-spending-chart'));
+        });
+
+        // A card's place in its column is not its place in the focus order.
+        // Budget Progress is third in the rail, and the third trigger left
+        // is Spending by Category's.
+        it('moves focus after hiding the last card in page order to the customize link', () => {
+          const fixture = render();
+
+          press(fixture, 'app-budget-progress', 'hide');
+
+          expect(hostTags(fixture)).not.toContain('app-budget-progress');
+          expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.customize-link'));
+        });
+
+        // Spending by Category is the main column's only card with a menu, so
+        // its column holds no next card, and the first trigger left is Recent
+        // Transactions'. Next in page order are the insights card, which has
+        // no menu, then Budget Progress.
+        it("moves focus after hiding the main column's only card to the next card with a menu in page order", () => {
+          cloudLLM.hasAnyCloudProvider.set(false);
+          const fixture = render();
+
+          press(fixture, 'app-spending-chart', 'hide');
+
+          expect(hostTags(fixture)).not.toContain('app-spending-chart');
+          expect(document.activeElement).toBe(triggerIn(fixture, 'app-budget-progress'));
+        });
       });
     });
 

@@ -115,7 +115,9 @@
     "cardMenuMoveUp": "上へ移動",
     "cardMenuMoveDown": "下へ移動",
     "cardHidden": "「{{card}}」を非表示にしました。「ダッシュボードをカスタマイズ」から再表示できます。",
-    "cardHideReverted": "保存できませんでした。「{{card}}」をダッシュボードに戻しました。"
+    "cardHideReverted": "保存できませんでした。「{{card}}」をダッシュボードに戻しました。",
+    "billLinkCardHidden": "「今後の予定」はダッシュボードで非表示のため、代わりに定期取引を表示します。",
+    "billLinkNotUpcoming": "この予定は現在「今後の予定」にないため、代わりに定期取引を表示します。"
   },
   "transactions": {
     "title": "取引履歴",

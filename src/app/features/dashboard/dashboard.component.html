@@ -72,8 +72,8 @@
                   <app-dashboard-card-menu
                     card-actions
                     [card]="card"
-                    [visible]="menuCards()"
-                    (cardHidden)="focusAfterHide($event)"
+                    [visible]="menuCardsFor(card)"
+                    (cardHidden)="focusAfterHide(card)"
                   />
                 }
               </app-ai-summary>
@@ -88,8 +88,8 @@
                 <app-dashboard-card-menu
                   card-actions
                   [card]="card"
-                  [visible]="menuCards()"
-                  (cardHidden)="focusAfterHide($event)"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
                 />
               </app-spending-chart>
             }
@@ -102,8 +102,8 @@
                 <app-dashboard-card-menu
                   card-actions
                   [card]="card"
-                  [visible]="menuCards()"
-                  (cardHidden)="focusAfterHide($event)"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
                 />
               </app-recent-transactions>
             }
@@ -115,12 +115,14 @@
                 [baseCurrency]="baseCurrency()"
                 [net]="upcomingNet()"
                 [olderCount]="upcomingSchedule().olderCount"
+                [focusRuleId]="billInFocus()"
+                (ruleFocus)="onBillFocus($event)"
               >
                 <app-dashboard-card-menu
                   card-actions
                   [card]="card"
-                  [visible]="menuCards()"
-                  (cardHidden)="focusAfterHide($event)"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
                 />
               </app-upcoming-bills>
             }
@@ -133,8 +135,8 @@
                 <app-dashboard-card-menu
                   card-actions
                   [card]="card"
-                  [visible]="menuCards()"
-                  (cardHidden)="focusAfterHide($event)"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
                 />
               </app-budget-progress>
             }

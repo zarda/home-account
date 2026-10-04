@@ -1,16 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
-import { UpcomingBillsComponent } from './upcoming-bills.component';
+import { RuleFocusOutcome, UpcomingBillsComponent } from './upcoming-bills.component';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { AccessibilityService } from '../../../core/services/accessibility.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { ThemeService } from '../../../core/services/theme.service';
+import { addDays, dayKey, startOfDay } from '../../../core/utils/transaction-date.utils';
 import { DashboardLayoutService } from '../dashboard-layout.service';
 import { DashboardCardMenuComponent } from '../dashboard-card-menu/dashboard-card-menu.component';
 import {
@@ -65,6 +67,7 @@ describe('UpcomingBillsComponent', () => {
   let component: UpcomingBillsComponent;
   let currency: jasmine.SpyObj<CurrencyService>;
   let categoryHelper: jasmine.SpyObj<CategoryHelperService>;
+  let reducedMotion: ReturnType<typeof signal<boolean>>;
 
   function render(occurrences: RecurringOccurrence[], net = 0, olderCount = 0, baseCurrency = 'USD'): void {
     fixture.componentRef.setInput('occurrences', occurrences);
@@ -97,10 +100,15 @@ describe('UpcomingBillsComponent', () => {
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
 
+    // A double rather than the real one, whose effect writes the preference
+    // onto <html> as a class every later spec would inherit.
+    reducedMotion = signal(false);
+
     await TestBed.configureTestingModule({
       imports: [UpcomingBillsComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
+        { provide: AccessibilityService, useValue: { reducedMotion } },
         { provide: CurrencyService, useValue: currency },
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
@@ -264,6 +272,155 @@ describe('UpcomingBillsComponent', () => {
     // route would land on envelopes.
     expect(link.getAttribute('href')).toBe('/budgets?tab=recurring');
     expect(link.textContent).toContain('dashboard.viewAll');
+  });
+
+  // #446: a bill reminder's link names a rule, not a day, so the card picks
+  // the row of that rule nearest today.
+  describe('a link to one rule', () => {
+    let attached: HTMLElement;
+    let outcomes: RuleFocusOutcome[];
+
+    /** Noon, so no zone's midnight or DST change moves the row to another day. */
+    function dueIn(days: number, recurringId: string): RecurringOccurrence {
+      const day = addDays(startOfDay(new Date()), days);
+      return occurrence({ recurringId, date: new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12) });
+    }
+
+    function rowOn(days: number, recurringId: string): HTMLElement {
+      const day = dayKey(addDays(startOfDay(new Date()), days));
+      return attached.querySelector(`.bill-row[data-day="${day}"][data-rule-id="${recurringId}"]`) as HTMLElement;
+    }
+
+    function highlighted(): HTMLElement[] {
+      return Array.from(attached.querySelectorAll('.bill-row-highlight')) as HTMLElement[];
+    }
+
+    /** The rows lay out first, then the link arrives: render hooks run on an application tick. */
+    function focus(ruleId: string | null): void {
+      fixture.componentRef.setInput('focusRuleId', ruleId);
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+    }
+
+    beforeEach(() => {
+      attached = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(attached);
+      outcomes = [];
+      component.ruleFocus.subscribe(outcome => outcomes.push(outcome));
+    });
+
+    afterEach(() => attached.remove());
+
+    it('marks every row with its rule, focusable by script and not by Tab', () => {
+      render([dueIn(-2, 'r1'), dueIn(3, 'r2')]);
+
+      const rows = Array.from(attached.querySelectorAll('.bill-row')) as HTMLElement[];
+      expect(rows.map(row => row.getAttribute('data-rule-id'))).toEqual(['r1', 'r2']);
+      for (const row of rows) {
+        expect(row.getAttribute('tabindex')).withContext(row.dataset['ruleId']!).toBe('-1');
+      }
+    });
+
+    it('focuses and highlights the upcoming row when it is nearer than one past due', () => {
+      render([dueIn(-3, 'r1'), dueIn(1, 'r1'), dueIn(1, 'r2'), dueIn(8, 'r1')]);
+
+      focus('r1');
+
+      expect(outcomes).toEqual(['focused']);
+      expect(document.activeElement).toBe(rowOn(1, 'r1'));
+      expect(highlighted()).toEqual([rowOn(1, 'r1')]);
+    });
+
+    it('focuses and highlights the past-due row when it is the nearer', () => {
+      render([dueIn(-1, 'r1'), dueIn(4, 'r1')]);
+
+      focus('r1');
+
+      expect(outcomes).toEqual(['focused']);
+      expect(document.activeElement).toBe(rowOn(-1, 'r1'));
+      expect(highlighted()).toEqual([rowOn(-1, 'r1')]);
+    });
+
+    // A reminder only ever names an occurrence today or later.
+    it('takes the upcoming row when a past-due one is as near', () => {
+      render([dueIn(-2, 'r1'), dueIn(2, 'r1')]);
+
+      focus('r1');
+
+      expect(document.activeElement).toBe(rowOn(2, 'r1'));
+    });
+
+    it('keeps the highlight for two seconds, and the focus after it', () => {
+      jasmine.clock().install();
+      try {
+        render([dueIn(1, 'r1')]);
+        focus('r1');
+
+        jasmine.clock().tick(1999);
+        fixture.detectChanges();
+        expect(highlighted()).withContext('at 1999 ms').toEqual([rowOn(1, 'r1')]);
+
+        jasmine.clock().tick(1);
+        fixture.detectChanges();
+        expect(highlighted()).withContext('at 2000 ms').toEqual([]);
+        expect(document.activeElement).toBe(rowOn(1, 'r1'));
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('says the rule is absent when no row names it, and moves nothing', () => {
+      render([dueIn(1, 'r1')]);
+      const before = document.activeElement;
+
+      focus('gone');
+
+      expect(outcomes).toEqual(['absent']);
+      expect(document.activeElement).toBe(before);
+      expect(highlighted()).toEqual([]);
+    });
+
+    it('says the rule is absent from an empty window', () => {
+      render([]);
+
+      focus('r1');
+
+      expect(outcomes).toEqual(['absent']);
+    });
+
+    it('scrolls the row to the middle of the view, smoothly', () => {
+      const scroll = spyOn(Element.prototype, 'scrollIntoView');
+      render([dueIn(1, 'r1')]);
+
+      focus('r1');
+
+      expect(scroll).toHaveBeenCalledOnceWith({ block: 'center', behavior: 'smooth' });
+      expect(scroll.calls.mostRecent().object).toBe(rowOn(1, 'r1'));
+    });
+
+    it('scrolls without animation when motion is reduced', () => {
+      const scroll = spyOn(Element.prototype, 'scrollIntoView');
+      reducedMotion.set(true);
+      render([dueIn(1, 'r1')]);
+
+      focus('r1');
+
+      expect(scroll).toHaveBeenCalledOnceWith({ block: 'center', behavior: 'auto' });
+    });
+
+    it('asks nothing of a cleared link, and answers the same rule again once asked again', () => {
+      render([dueIn(1, 'r1')]);
+      focus('r1');
+      focus(null);
+      expect(outcomes).toEqual(['focused']);
+
+      (document.activeElement as HTMLElement).blur();
+      focus('r1');
+
+      expect(outcomes).toEqual(['focused', 'focused']);
+      expect(document.activeElement).toBe(rowOn(1, 'r1'));
+    });
   });
 
   // At 1024 px the dashboard's rail is about 229 px wide, too narrow for the

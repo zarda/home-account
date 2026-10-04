@@ -12,9 +12,11 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router, RouterLink } from '@angular/router';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -31,6 +33,8 @@ import { TranslationService } from '../../core/services/translation.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
 import { CloudLLMProviderService } from '../../core/services/cloud-llm-provider.service';
+import { WeeklyRecapService } from '../../core/services/weekly-recap.service';
+import { AnnouncerService } from '../../core/services/announcer.service';
 import {
   Transaction,
   Category,
@@ -50,12 +54,13 @@ import {
   previousPeriodWindow,
   yearWindow,
 } from '../../core/utils/transaction-date.utils';
-import { dashboardGridAreas } from './dashboard-layout.utils';
+import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
+import { DASHBOARD_MAIN_COLUMN, dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
-import { UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
+import { RuleFocusOutcome, UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { WeeklyRecapComponent } from './weekly-recap/weekly-recap.component';
@@ -117,7 +122,10 @@ export class DashboardComponent implements OnInit {
   private pendingFilters = inject(PendingFiltersService);
   private widgetSnapshots = inject(WidgetSnapshotService);
   private cloudLLM = inject(CloudLLMProviderService);
+  private recap = inject(WeeklyRecapService);
+  private announcer = inject(AnnouncerService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private destroyRef = inject(DestroyRef);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private injector = inject(Injector);
@@ -267,10 +275,34 @@ export class DashboardComponent implements OnInit {
   // nothing.
   insightsHasContent = computed(() => this.cloudLLM.hasAnyCloudProvider());
 
-  /** The cards that carry a menu, in page order: what their moves count over. */
+  /** The cards that carry a menu, in page order. */
   menuCards = computed(() =>
     this.arrangedCards().filter(id => id !== 'insights' || this.insightsHasContent())
   );
+
+  // The width at which the grid draws its two columns (dashboard.component.scss).
+  private isDesktop = toSignal(
+    inject(BreakpointObserver).observe(APP_BREAKPOINTS.desktop).pipe(map(result => result.matches)),
+    { initialValue: false }
+  );
+
+  // What each menu moves and counts over: the column its card is drawn in
+  // where the grid draws two (dashboardGridAreas), the page where it draws
+  // one. A step across columns would change nothing on screen.
+  private menuColumns = computed(() => {
+    const cards = this.menuCards();
+    if (!this.isDesktop()) return { main: cards, rail: cards };
+    return {
+      main: cards.filter(id => DASHBOARD_MAIN_COLUMN.includes(id)),
+      rail: cards.filter(id => !DASHBOARD_MAIN_COLUMN.includes(id)),
+    };
+  });
+
+  /** The cards `card`'s menu moves and counts over, in the order drawn. */
+  menuCardsFor(card: DashboardCardId): readonly DashboardCardId[] {
+    const columns = this.menuColumns();
+    return DASHBOARD_MAIN_COLUMN.includes(card) ? columns.main : columns.rail;
+  }
 
   // Booleans, so a change to another card or another preference never
   // reopens a listener. The recent rows are read by their card alone. The
@@ -293,6 +325,21 @@ export class DashboardComponent implements OnInit {
   // (ADR 0091). Older than the floor is a rule that stalled long ago, which
   // the card names rather than lists (ADR 0141).
   upcomingSchedule = signal<UpcomingSchedule>({ occurrences: [], olderCount: 0 });
+
+  // A bill link (#446) waits here for the upcoming listener's first emission:
+  // the signal's initial empty schedule would have the card answer "absent"
+  // for every rule. Reset whenever a listener is opened or closed.
+  private requestedBill: string | null = null;
+  private upcomingArrived = false;
+  // The rule the server listed after the card first said "absent": a second
+  // "absent" for it is final, so the two never ask each other in a loop.
+  private billOnServer: string | null = null;
+  // Counts the links followed, so a server answer can tell that a later link
+  // has overtaken the one it was asked for.
+  private linksFollowed = 0;
+
+  /** The rule the upcoming card is asked to bring into view; cleared once it answers. */
+  billInFocus = signal<string | null>(null);
 
   upcomingOccurrences = computed(() => this.upcomingSchedule().occurrences);
 
@@ -354,6 +401,7 @@ export class DashboardComponent implements OnInit {
       if (!this.upcomingWanted()) {
         this.upcomingSub?.unsubscribe();
         this.upcomingSub = undefined;
+        this.upcomingArrived = false;
         this.upcomingSchedule.set({ occurrences: [], olderCount: 0 });
         return;
       }
@@ -422,6 +470,12 @@ export class DashboardComponent implements OnInit {
     this.insightSnapshots.generateClosedMonths().catch(() => {
       // Non-fatal: snapshots are history, not a precondition for anything.
     });
+
+    // Every emission, not the snapshot: a second reminder tapped while the
+    // page is open changes only the query.
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(params => this.followLink(params));
   }
 
   onPeriodSelection(selection: PeriodSelection): void {
@@ -492,9 +546,125 @@ export class DashboardComponent implements OnInit {
   // Anchored to today, not to the selected period.
   private loadUpcomingSchedule(): void {
     this.upcomingSub?.unsubscribe();
+    this.upcomingArrived = false;
     this.upcomingSub = this.recurringService.getUpcomingSchedule(UPCOMING_WINDOW_DAYS)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(schedule => this.upcomingSchedule.set(schedule));
+      .subscribe(schedule => {
+        this.upcomingSchedule.set(schedule);
+        this.upcomingArrived = true;
+        this.bindRequestedBill();
+      });
+  }
+
+  /**
+   * A reminder's link (#446): `?bill=<rule id>` brings that rule's row into
+   * view on the upcoming card, `?recap=<week key>` the weekly recap. Each
+   * names something to do once, so both leave the URL as soon as they are
+   * read (ADR 0082); the stripped URL comes back through here and does
+   * nothing.
+   */
+  private followLink(params: ParamMap): void {
+    if (!params.has('bill') && !params.has('recap')) return;
+    this.linksFollowed++;
+    const bill = params.get('bill');
+    const week = params.get('recap');
+
+    if (bill && this.layout().hidden.includes('upcoming')) {
+      this.showRecurringRules(this.translationService.t('dashboard.billLinkCardHidden'));
+      return;
+    }
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { bill: null, recap: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+
+    if (bill) {
+      this.billOnServer = null;
+      this.requestedBill = bill;
+      this.bindRequestedBill();
+    }
+    if (week) void this.focusRecap(week);
+  }
+
+  private bindRequestedBill(): void {
+    if (this.requestedBill === null || !this.upcomingArrived) return;
+    this.billInFocus.set(this.requestedBill);
+    this.requestedBill = null;
+  }
+
+  /**
+   * The upcoming card's answer to `billInFocus`. A rule with no row on the
+   * card — due past the fortnight, already posted, or deleted — is sent to
+   * the recurring rules, which list every rule that still exists.
+   */
+  onBillFocus(outcome: RuleFocusOutcome): void {
+    const ruleId = this.billInFocus();
+    this.billInFocus.set(null);
+    if (outcome === 'absent' && ruleId !== null) void this.confirmBillAbsent(ruleId);
+  }
+
+  // The card answers from whatever the listener holds, and its first emission
+  // can be this device's cache from before the rule was made or moved into
+  // the fortnight. Sending the user away is done once, so "absent" is asked
+  // of the server before it is acted on (ADR 0139). Offline the read rejects
+  // and the rules page, which lists every rule there is, is still the answer.
+  private async confirmBillAbsent(ruleId: string): Promise<void> {
+    if (this.billOnServer !== ruleId) {
+      const link = this.linksFollowed;
+      let listed = false;
+      try {
+        const schedule = await this.recurringService.getUpcomingScheduleFromServer(UPCOMING_WINDOW_DAYS);
+        listed = schedule.occurrences.some(occurrence => occurrence.recurringId === ruleId);
+      } catch {
+        listed = false;
+      }
+      // A link followed during the read is the one that counts: acting on
+      // this answer would take the user away from it or move focus off it.
+      if (this.destroyRef.destroyed || link !== this.linksFollowed) return;
+      if (listed) {
+        this.billOnServer = ruleId;
+        this.requestedBill = ruleId;
+        // Caught up during the read: ask the card now.
+        if (this.upcomingOccurrences().some(occurrence => occurrence.recurringId === ruleId)) {
+          this.bindRequestedBill();
+        } else if (this.upcomingWanted()) {
+          // The listener walks the fortnight from the day it last emitted, and
+          // it emits only when a rule changes, so a page open since an earlier
+          // day can wait on it forever. A new listener walks from today, over
+          // the cache the read has just refreshed, and its first emission asks
+          // the card. A closed one is left closed: the effect re-opens it with
+          // the card, and the rule is asked of that one.
+          this.loadUpcomingSchedule();
+        }
+        return;
+      }
+    }
+    this.showRecurringRules(this.translationService.t('dashboard.billLinkNotUpcoming'));
+  }
+
+  // Replacing the entry, so Back from the rules does not land on the link
+  // again and come straight back.
+  private showRecurringRules(reason: string): void {
+    this.announcer.announce(reason);
+    void this.router.navigate(['/budgets'], { queryParams: { tab: 'recurring' }, replaceUrl: true });
+  }
+
+  /**
+   * The card's own load is the same single-flight composition, so this waits
+   * for it rather than starting another. A link to another week, or to a week
+   * the card does not show, has nothing to bring into view.
+   */
+  private async focusRecap(week: string): Promise<void> {
+    await this.recap.load();
+    if (this.destroyRef.destroyed) return;
+    if (this.recap.weekKey() !== week || !this.recap.visible()) return;
+    afterNextRender(
+      () => this.host.nativeElement.querySelector<HTMLElement>('app-weekly-recap [role="region"]')?.focus(),
+      { injector: this.injector }
+    );
   }
 
   private loadPreviousPeriodData(): void {
@@ -563,16 +733,20 @@ export class DashboardComponent implements OnInit {
 
   /**
    * A hidden card takes its menu with it, so focus would fall to the page.
-   * It goes on to the card that took the hidden one's place among those
-   * with a menu, or, past the last of them, to the editor's link.
+   * It goes on to the next card with a menu in page order, which is the
+   * focus order whichever column a card is drawn in, or, past the last of
+   * them, to the editor's link.
    */
-  focusAfterHide(index: number): void {
+  focusAfterHide(card: DashboardCardId): void {
     if (this.destroyRef.destroyed) return;
     afterNextRender(() => {
+      const order = this.layout().order;
+      const successor = this.menuCards().find(id => order.indexOf(id) > order.indexOf(card));
       const page = this.host.nativeElement;
-      const next = page.querySelectorAll<HTMLElement>('.dashboard-grid .card-menu-trigger')[index]
-        ?? page.querySelector<HTMLElement>('.customize-link');
-      next?.focus();
+      const trigger = successor
+        ? page.querySelector<HTMLElement>(`.dashboard-grid > .area-${successor} .card-menu-trigger`)
+        : null;
+      (trigger ?? page.querySelector<HTMLElement>('.customize-link'))?.focus();
     }, { injector: this.injector });
   }
 

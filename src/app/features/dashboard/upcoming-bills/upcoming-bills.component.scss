@@ -87,11 +87,29 @@
 // Nothing here truncates (docs/ui-overflow.md): a shortened rule name or
 // amount reads as a different bill, so both wrap and the row grows instead.
 .bill-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 6px 16px;
   min-height: 44px;
+}
+
+// Inside the row: the card clips overflow, and the global ring sits outside.
+.bill-row:focus-visible {
+  outline-offset: -2px;
+}
+
+// The row a bill link landed on. A bar at the edge rather than a fill, so no
+// text on the row changes background.
+.bill-row-highlight::before {
+  content: '';
+  position: absolute;
+  inset-block: 4px;
+  inset-inline-start: 0;
+  inline-size: 3px;
+  border-radius: 2px;
+  background: var(--color-primary);
 }
 
 .bill-text {

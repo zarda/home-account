@@ -115,17 +115,17 @@ describe('DashboardCardMenuComponent', () => {
     expect(labels).toEqual(['dashboard.cardMenuHide', 'dashboard.cardMenuMoveUp', 'dashboard.cardMenuMoveDown']);
   });
 
-  it('hides its card through the layout service, says so, and hands the dashboard its place', () => {
+  it('hides its card through the layout service, says so, and tells the dashboard', () => {
     render('upcoming', ['recent', 'upcoming', 'chart']);
-    const hidden: number[] = [];
-    fixture.componentInstance.cardHidden.subscribe(index => hidden.push(index));
+    let hidden = 0;
+    fixture.componentInstance.cardHidden.subscribe(() => hidden++);
     openMenu();
 
     item('hide')!.click();
 
     expect(layout.hide).toHaveBeenCalledOnceWith('upcoming');
     expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.cardHidden:{"card":"Upcoming Bills"}');
-    expect(hidden).withContext('its index among the visible cards').toEqual([1]);
+    expect(hidden).toBe(1);
   });
 
   // Recent and upcoming come before chart in the stored order, but neither

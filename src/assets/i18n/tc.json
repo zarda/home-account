@@ -115,7 +115,9 @@
     "cardMenuMoveUp": "上移",
     "cardMenuMoveDown": "下移",
     "cardHidden": "已隱藏{{card}}。可從「自訂儀表板」重新顯示。",
-    "cardHideReverted": "無法儲存。{{card}}已回到儀表板。"
+    "cardHideReverted": "無法儲存。{{card}}已回到儀表板。",
+    "billLinkCardHidden": "「近期排程」已在儀表板上隱藏，因此改為顯示定期交易。",
+    "billLinkNotUpcoming": "這筆帳單目前不在「近期排程」中，因此改為顯示定期交易。"
   },
   "transactions": {
     "title": "交易紀錄",

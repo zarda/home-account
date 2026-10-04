@@ -35,7 +35,14 @@
             <!-- A rule advances by at least a day each step, so its id is
                  unique inside one day group. -->
             @for (occurrence of day.occurrences; track occurrence.recurringId) {
-              <div class="bill-row">
+              <!-- Focusable from script only: a bill reminder's link lands here. -->
+              <div
+                class="bill-row"
+                tabindex="-1"
+                [attr.data-day]="day.key"
+                [attr.data-rule-id]="occurrence.recurringId"
+                [class.bill-row-highlight]="highlightedRow() === day.key + '|' + occurrence.recurringId"
+              >
                 <app-category-chip
                   appearance="tile"
                   size="sm"

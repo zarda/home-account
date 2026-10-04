@@ -27,10 +27,11 @@ import { CARD_TITLE_KEYS } from '../dashboard-layout.utils';
  * step, where it is seen. Showing a hidden card again stays in the settings
  * editor, since a hidden card has nowhere to carry a menu.
  *
- * Moves step over `visible`, the cards rendered with this menu, and the
- * position announced is counted over them, so every press changes what is
- * seen and the position said is the one on screen. The layout service shows
- * each change at once and reports a failed save itself.
+ * Moves step over `visible`, the cards drawn with a menu in this card's
+ * column (the whole page where the grid draws one column), and the position
+ * announced is counted over them, so every press changes what is seen and
+ * the position said is the one on screen. The layout service shows each
+ * change at once and reports a failed save itself.
  */
 @Component({
   selector: 'app-dashboard-card-menu',
@@ -48,14 +49,14 @@ export class DashboardCardMenuComponent {
   private destroyRef = inject(DestroyRef);
 
   readonly card = input.required<DashboardCardId>();
-  /** The cards rendered with a menu, in page order. */
+  /** The cards drawn with a menu in this card's column, in the order drawn. */
   readonly visible = input.required<readonly DashboardCardId[]>();
 
   /**
-   * The hidden card's index in `visible`. The menu goes with its card, so
-   * the dashboard decides where focus lands.
+   * The card has been hidden. The menu goes with its card, so the dashboard
+   * decides where focus lands.
    */
-  readonly cardHidden = output<number>();
+  readonly cardHidden = output<void>();
 
   private trigger = viewChild.required('trigger', { read: ElementRef<HTMLButtonElement> });
 
@@ -69,7 +70,6 @@ export class DashboardCardMenuComponent {
 
   hide(): void {
     const id = this.card();
-    const index = this.index();
     const card = this.translation.t(this.titleKey());
     // Announced before the save settles, so a failed save, which puts the card
     // back, is announced too (accessibility.md, "Announcements"). The save
@@ -81,7 +81,7 @@ export class DashboardCardMenuComponent {
       this.announcer.announce(this.translation.t('dashboard.cardHideReverted', { card }));
     });
     this.announcer.announce(this.translation.t('dashboard.cardHidden', { card }));
-    this.cardHidden.emit(index);
+    this.cardHidden.emit();
   }
 
   move(delta: -1 | 1): void {

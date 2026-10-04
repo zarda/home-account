@@ -11,7 +11,7 @@
 //   npm run smoke
 // (CI wraps `npm run test:smoke` with `firebase emulators:exec --only auth,storage,firestore`.)
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
@@ -24,6 +24,9 @@ import {
   connectFirestoreEmulator,
   collection,
   addDoc,
+  deleteDoc,
+  doc,
+  setDoc,
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
@@ -32,7 +35,7 @@ import { routes } from '../../app.routes';
 import { AuthService } from '../../core/services/auth.service';
 import { TransactionService } from '../../core/services/transaction.service';
 import { FirestoreService } from '../../core/services/firestore.service';
-import { budgetPeriodWindow, dayKey } from '../../core/utils/transaction-date.utils';
+import { addDays, budgetPeriodWindow, dayKey, startOfDay } from '../../core/utils/transaction-date.utils';
 import { MockAuthService, createMockUser } from '../../core/services/testing';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { dashboardGridAreas } from './dashboard-layout.utils';
@@ -451,4 +454,94 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
     },
     CASE_TIMEOUT
   );
+
+  // #446: a bill reminder's link, /dashboard?bill=<rule id>, through the real
+  // router, the recurring listener and the card.
+  describe('a bill link', () => {
+    const RULE_ID = 'smoke-bill-link';
+
+    // Three days ahead, so the catch-up the dashboard runs posts nothing and
+    // the row stays on the Upcoming card.
+    beforeEach(async () => {
+      const due = addDays(startOfDay(new Date()), 3);
+      await setDoc(doc(firestore, `users/${uid}/recurring/${RULE_ID}`), {
+        userId: uid,
+        name: 'Smoke Rent',
+        type: 'expense',
+        amount: 42,
+        currency: 'USD',
+        categoryId: 'housing_rent',
+        description: 'Smoke Rent',
+        frequency: { type: 'yearly', interval: 1 },
+        startDate: Timestamp.fromDate(due),
+        nextOccurrence: Timestamp.fromDate(due),
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+    });
+
+    afterEach(async () => {
+      harness.fixture.destroy();
+      await deleteDoc(doc(firestore, `users/${uid}/recurring/${RULE_ID}`)).catch(() => undefined);
+      await new Promise(resolve => setTimeout(resolve, 200));
+    });
+
+    it(
+      'focuses the rule on the Upcoming card, and takes the link off the URL',
+      async () => {
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+        }));
+        const router = TestBed.inject(Router);
+
+        await harness.navigateByUrl(`/dashboard?bill=${RULE_ID}`);
+        const page = harness.routeNativeElement!.ownerDocument;
+        await waitForDom(
+          'the bill row focused',
+          () => page.activeElement?.matches(`app-upcoming-bills .bill-row[data-rule-id="${RULE_ID}"]`) ?? false
+        );
+
+        expect(page.activeElement?.textContent).toContain('Smoke Rent');
+        expect(router.url).toBe('/dashboard');
+      },
+      CASE_TIMEOUT
+    );
+
+    it(
+      'opens the recurring rules while Upcoming is hidden',
+      async () => {
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: {
+            ...DEFAULT_USER_PREFERENCES,
+            onboardingCompleted: true,
+            dashboardLayout: { hidden: ['upcoming'] }
+          }
+        }));
+        const router = TestBed.inject(Router);
+
+        await harness.navigateByUrl(`/dashboard?bill=${RULE_ID}`);
+        await waitForDom('the recurring rules', () => router.url === '/budgets?tab=recurring');
+
+        expect(harness.routeNativeElement?.ownerDocument.querySelector('app-upcoming-bills')).toBeNull();
+      },
+      CASE_TIMEOUT
+    );
+
+    // The card has no row for it, so the server is asked before the user is
+    // sent away; the emulator answers that read here.
+    it(
+      'opens the recurring rules for a rule the server does not list in the fortnight',
+      async () => {
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+        }));
+        const router = TestBed.inject(Router);
+
+        await harness.navigateByUrl('/dashboard?bill=smoke-no-such-rule');
+        await waitForDom('the recurring rules', () => router.url === '/budgets?tab=recurring');
+      },
+      CASE_TIMEOUT
+    );
+  });
 });

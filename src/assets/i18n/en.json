@@ -118,7 +118,9 @@
     "cardMenuMoveUp": "Move up",
     "cardMenuMoveDown": "Move down",
     "cardHidden": "{{card}} hidden. Show it again from Customize dashboard.",
-    "cardHideReverted": "Couldn't save. {{card}} is back on the dashboard."
+    "cardHideReverted": "Couldn't save. {{card}} is back on the dashboard.",
+    "billLinkCardHidden": "Upcoming Bills is hidden on the dashboard, so here are your recurring transactions instead.",
+    "billLinkNotUpcoming": "That bill isn't in Upcoming Bills right now, so here are your recurring transactions instead."
   },
   "transactions": {
     "title": "Transactions",

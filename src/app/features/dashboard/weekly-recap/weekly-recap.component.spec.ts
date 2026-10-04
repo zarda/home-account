@@ -367,6 +367,23 @@ describe('WeeklyRecapComponent', () => {
     expect(card?.querySelector('[aria-live]')).toBeNull();
   });
 
+  // #446: a recap link focuses the region, so it takes focus from script and
+  // stays out of the Tab order.
+  it('lets the region take focus from script, and not from Tab', () => {
+    render();
+    const root = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(root);
+    try {
+      const card = root.querySelector('[role="region"]') as HTMLElement;
+
+      expect(card.getAttribute('tabindex')).toBe('-1');
+      card.focus();
+      expect(document.activeElement).toBe(card);
+    } finally {
+      root.remove();
+    }
+  });
+
   it('announces the card once per appearance, not once per repaint', () => {
     render();
     fixture.detectChanges();

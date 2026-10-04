@@ -1920,6 +1920,48 @@ describe('RecurringService', () => {
         expect(occurrences).toEqual(schedule.occurrences);
       });
 
+      // A bill link sends the user away on the card's answer, once, so its
+      // check is the same walk over what the server holds, never the cache.
+      it('getUpcomingScheduleFromServer walks what the server holds, the same way', async () => {
+        const { schedule } = walk(20, 14);
+        const pointer = addDays(startOfDay(TODAY), -20);
+        mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([
+          createRecurring({
+            id: 'dormant',
+            frequency: { type: 'daily', interval: 1 },
+            startDate: Timestamp.fromDate(pointer),
+            nextOccurrence: Timestamp.fromDate(pointer)
+          })
+        ]));
+        mockFirestoreService.subscribeToCollection.calls.reset();
+
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(TODAY);
+          expect(await service.getUpcomingScheduleFromServer(14)).toEqual(schedule);
+        } finally {
+          jasmine.clock().uninstall();
+        }
+        expect(mockFirestoreService.getCollectionFromServer).toHaveBeenCalledOnceWith(
+          'users/user123/recurring',
+          { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] }
+        );
+        expect(mockFirestoreService.subscribeToCollection).not.toHaveBeenCalled();
+      });
+
+      it('getUpcomingScheduleFromServer answers empty without a user, reading nothing', async () => {
+        (mockAuthService.userId as jasmine.Spy).and.returnValue(null);
+
+        expect(await service.getUpcomingScheduleFromServer(14)).toEqual({ occurrences: [], olderCount: 0 });
+        expect(mockFirestoreService.getCollectionFromServer).not.toHaveBeenCalled();
+      });
+
+      it('getUpcomingScheduleFromServer rejects when the server cannot answer', async () => {
+        mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.reject(new Error('offline')));
+
+        await expectAsync(service.getUpcomingScheduleFromServer(14)).toBeRejectedWithError('offline');
+      });
+
       // The count is exact and uncapped: a cap that stopped the walk would
       // leave the pointer below the floor and drop the in-window rows too.
       it('counts exactly, however far back the pointer is', () => {
