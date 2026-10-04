@@ -650,8 +650,6 @@ export class AuthService {
       throw new Error('No authenticated user');
     }
 
-    const userRef = doc(this.firestore, 'users', user.id);
-
     // Dotted field paths so only the touched keys are sent — rewriting the
     // whole map from this session's snapshot reverted anything another
     // device changed since it was read (change the theme on a phone and the
@@ -665,13 +663,10 @@ export class AuthService {
     }
     if (Object.keys(fieldUpdates).length === 0) return;
 
-    await updateDoc(userRef, fieldUpdates);
-
-    // Update local state
-    this.currentUser.set({
-      ...user,
-      preferences: { ...user.preferences, ...prefs }
-    });
+    await this.writeAndMerge(user.id, fieldUpdates, latest => ({
+      ...latest,
+      preferences: { ...latest.preferences, ...prefs }
+    }));
   }
 
   /**
@@ -689,21 +684,20 @@ export class AuthService {
     }
     if (keys.length === 0) return;
 
-    const userRef = doc(this.firestore, 'users', user.id);
     const fieldUpdates: Record<string, unknown> = {};
     for (const key of keys) {
       fieldUpdates[`preferences.${key}`] = deleteField();
     }
-    await updateDoc(userRef, fieldUpdates);
-
-    // A dynamic-key view over the copy, the same shape
-    // ai-model-migrations.ts uses: the keys removed here are not all
-    // individually optional on UserPreferences.
-    const preferences = { ...user.preferences } as Record<string, unknown>;
-    for (const key of keys) {
-      delete preferences[key];
-    }
-    this.currentUser.set({ ...user, preferences: preferences as unknown as UserPreferences });
+    await this.writeAndMerge(user.id, fieldUpdates, latest => {
+      // A dynamic-key view over the copy, the same shape
+      // ai-model-migrations.ts uses: the keys removed here are not all
+      // individually optional on UserPreferences.
+      const preferences = { ...latest.preferences } as Record<string, unknown>;
+      for (const key of keys) {
+        delete preferences[key];
+      }
+      return { ...latest, preferences: preferences as unknown as UserPreferences };
+    });
   }
 
   /**
@@ -711,11 +705,8 @@ export class AuthService {
    * nested path each, so a field another device changed is not sent back
    * over it. The SDK creates the map when it is absent; no rules change is
    * needed, since `preferences` stays a map. An empty set writes nothing.
-   *
-   * The signal is re-read after the write and the fields merged into the map
-   * as it then stands: a preference saved while this write was out (a theme
-   * switch) would otherwise be reverted. Nothing is merged if the session
-   * ended or moved to another account meanwhile.
+   * The fields are merged into the map as it stands once the write lands, so
+   * a sibling field changed meanwhile is kept.
    */
   async updatePreferenceFields<K extends MapPreferenceKey>(
     key: K,
@@ -732,19 +723,34 @@ export class AuthService {
     for (const [field, write] of writes) {
       fieldUpdates[`preferences.${key}.${field}`] = 'delete' in write ? deleteField() : write.set;
     }
-    await this.writeUserFields(user.id, fieldUpdates);
-
-    const latest = this.currentUser();
-    if (latest?.id !== user.id) return;
-    this.currentUser.set({
+    await this.writeAndMerge(user.id, fieldUpdates, latest => ({
       ...latest,
       preferences: withPreferenceFields(latest.preferences, key, fields)
-    });
+    }));
   }
 
   /**
-   * updatePreferenceFields' write, apart so the unit spec can hold it open:
-   * the module-level @angular/fire calls cannot be spied on.
+   * Send a profile write, then fold it into the signal as it stands once the
+   * write lands, never into the copy read before it. Another write can land
+   * while this one is out (a card hidden during a theme switch), and a user
+   * built from the earlier copy would drop that change from the signal until
+   * a reload, though the document holds it. Nothing is folded if the session
+   * ended or moved to another account meanwhile.
+   */
+  private async writeAndMerge(
+    uid: string,
+    fieldUpdates: Record<string, unknown>,
+    merge: (latest: User) => User
+  ): Promise<void> {
+    await this.writeUserFields(uid, fieldUpdates);
+    const latest = this.currentUser();
+    if (latest?.id !== uid) return;
+    this.currentUser.set(merge(latest));
+  }
+
+  /**
+   * Every profile write, apart so the unit spec can hold it open: the
+   * module-level @angular/fire calls cannot be spied on.
    */
   private writeUserFields(uid: string, fieldUpdates: Record<string, unknown>): Promise<void> {
     return updateDoc(doc(this.firestore, 'users', uid), fieldUpdates);
@@ -754,9 +760,9 @@ export class AuthService {
    * Drop the provider API keys older builds stored on the preferences map.
    *
    * Field-level deletes rather than a whole-map rewrite, so a preference edit
-   * racing in from another device is not clobbered. The local signal is
-   * stripped too: updateUserPreferences rewrites the whole map from the
-   * in-memory copy, which would otherwise put the keys straight back.
+   * racing in from another device is not clobbered. The signal drops them
+   * too, so it matches the document: ProviderKeyService reads the legacy keys
+   * from it, and would find them again on its next load.
    */
   async clearStoredProviderApiKeys(): Promise<void> {
     const user = this.currentUser();
@@ -764,24 +770,18 @@ export class AuthService {
       throw new Error('No authenticated user');
     }
 
-    const userRef = doc(this.firestore, 'users', user.id);
-    await updateDoc(userRef, {
+    const fieldUpdates = {
       'preferences.geminiApiKey': deleteField(),
       'preferences.openaiApiKey': deleteField(),
       'preferences.claudeApiKey': deleteField()
+    };
+    await this.writeAndMerge(user.id, fieldUpdates, latest => {
+      const preferences = { ...latest.preferences } as UserPreferences & LegacyProviderApiKeys;
+      delete preferences.geminiApiKey;
+      delete preferences.openaiApiKey;
+      delete preferences.claudeApiKey;
+      return { ...latest, preferences };
     });
-
-    // Re-read rather than reusing the snapshot taken before the await: a
-    // preference the user changed while the delete was in flight would
-    // otherwise be reverted in the signal.
-    const latest = this.currentUser();
-    if (!latest) return;
-
-    const preferences = { ...latest.preferences } as UserPreferences & LegacyProviderApiKeys;
-    delete preferences.geminiApiKey;
-    delete preferences.openaiApiKey;
-    delete preferences.claudeApiKey;
-    this.currentUser.set({ ...latest, preferences });
   }
 
   async updateUserProfile(data: { displayName?: string; photoURL?: string }): Promise<void> {
@@ -790,13 +790,6 @@ export class AuthService {
       throw new Error('No authenticated user');
     }
 
-    const userRef = doc(this.firestore, 'users', user.id);
-    await updateDoc(userRef, data);
-
-    // Update local state
-    this.currentUser.set({
-      ...user,
-      ...data
-    });
+    await this.writeAndMerge(user.id, data, latest => ({ ...latest, ...data }));
   }
 }

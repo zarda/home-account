@@ -79,20 +79,19 @@ describe('DashboardLayoutSettingsComponent', () => {
       const latest = currentUser()!;
       currentUser.set({ ...latest, preferences: withPreferenceFields(latest.preferences, key, fields) });
     });
-    // As AuthService does: the user is read before the write and, once it
-    // lands, currentUser becomes that user with the change folded in — so an
-    // earlier write landing late reports an older layout than a newer one.
+    // As AuthService does: the write lands, then its change is folded into
+    // the user as it stands by then.
     auth.updateUserPreferences.and.callFake(async prefs => {
-      const user = currentUser()!;
       await landing();
-      currentUser.set({ ...user, preferences: { ...user.preferences, ...prefs } });
+      const latest = currentUser()!;
+      currentUser.set({ ...latest, preferences: { ...latest.preferences, ...prefs } });
     });
     auth.clearUserPreferences.and.callFake(async keys => {
-      const user = currentUser()!;
       await landing();
-      const preferences = { ...user.preferences } as Record<string, unknown>;
+      const latest = currentUser()!;
+      const preferences = { ...latest.preferences } as Record<string, unknown>;
       for (const key of keys) delete preferences[key];
-      currentUser.set({ ...user, preferences: preferences as unknown as UserPreferences });
+      currentUser.set({ ...latest, preferences: preferences as unknown as UserPreferences });
     });
 
     notifications = jasmine.createSpyObj('NotificationService', ['error']);

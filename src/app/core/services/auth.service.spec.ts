@@ -428,6 +428,140 @@ describe('AuthService', () => {
     });
   });
 
+  /**
+   * Every profile and preference write crosses an await, and another write
+   * can land while it is out: a card hidden while a theme switch is saving.
+   * Each write here is held open through the private seam and released in
+   * the order the case names.
+   */
+  describe('a write that lands after the signal moved', () => {
+    const UID = 'test-user-123';
+    let seam: jasmine.Spy;
+    let writes: (() => void)[];
+
+    const signIn = (preferences: Record<string, unknown>, id = UID) =>
+      service.currentUser.set({
+        id,
+        email: 'test@example.com',
+        displayName: 'Test User',
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        preferences: { ...DEFAULT_USER_PREFERENCES, ...preferences } as UserPreferences
+      });
+
+    const prefs = () => service.currentUser()!.preferences as unknown as Record<string, unknown>;
+
+    const hideChart = () =>
+      service.updatePreferenceFields('dashboardLayout', { hidden: { set: ['chart'] } });
+
+    interface Writer {
+      name: string;
+      seed: Record<string, unknown>;
+      write: () => Promise<void>;
+      sends: Record<string, unknown>;
+      /** Another write sent after this one, which lands first. */
+      meanwhile: () => Promise<void>;
+      applied: () => void;
+      kept: () => void;
+    }
+
+    const writers: Writer[] = [
+      {
+        name: 'updateUserPreferences',
+        seed: { theme: 'light' },
+        write: () => service.updateUserPreferences({ theme: 'dark' }),
+        sends: { 'preferences.theme': 'dark' },
+        meanwhile: hideChart,
+        applied: () => expect(prefs()['theme']).toBe('dark'),
+        kept: () => expect(prefs()['dashboardLayout']).toEqual({ hidden: ['chart'] })
+      },
+      {
+        name: 'clearUserPreferences',
+        seed: { theme: 'light', dashboardLayout: { hidden: ['insights'] } },
+        write: () => service.clearUserPreferences(['dashboardLayout']),
+        sends: { 'preferences.dashboardLayout': jasmine.anything() },
+        meanwhile: () => service.updateUserPreferences({ theme: 'dark' }),
+        applied: () => expect('dashboardLayout' in prefs()).toBeFalse(),
+        kept: () => expect(prefs()['theme']).toBe('dark')
+      },
+      {
+        name: 'updateUserProfile',
+        seed: {},
+        write: () => service.updateUserProfile({ displayName: 'Renamed' }),
+        sends: { displayName: 'Renamed' },
+        meanwhile: hideChart,
+        applied: () => expect(service.currentUser()!.displayName).toBe('Renamed'),
+        kept: () => expect(prefs()['dashboardLayout']).toEqual({ hidden: ['chart'] })
+      },
+      {
+        name: 'clearStoredProviderApiKeys',
+        seed: { geminiApiKey: 'g', openaiApiKey: 'o', claudeApiKey: 'c' },
+        write: () => service.clearStoredProviderApiKeys(),
+        sends: {
+          'preferences.geminiApiKey': jasmine.anything(),
+          'preferences.openaiApiKey': jasmine.anything(),
+          'preferences.claudeApiKey': jasmine.anything()
+        },
+        meanwhile: hideChart,
+        applied: () =>
+          expect(Object.keys(prefs()).filter(key => key.endsWith('ApiKey'))).toEqual([]),
+        kept: () => expect(prefs()['dashboardLayout']).toEqual({ hidden: ['chart'] })
+      }
+    ];
+
+    beforeEach(() => {
+      writes = [];
+      seam = spyOn(
+        service as unknown as {
+          writeUserFields: (uid: string, fields: Record<string, unknown>) => Promise<void>;
+        },
+        'writeUserFields'
+      ).and.callFake(() => new Promise<void>(resolve => writes.push(resolve)));
+    });
+
+    for (const writer of writers) {
+      describe(writer.name, () => {
+        it('keeps what another write changed meanwhile, and applies its own change', async () => {
+          signIn(writer.seed);
+
+          const pending = writer.write();
+          const other = writer.meanwhile();
+          writes[1]();
+          await other;
+          writes[0]();
+          await pending;
+
+          expect(seam.calls.first().args).toEqual([UID, writer.sends]);
+          writer.applied();
+          writer.kept();
+        });
+
+        it('leaves the signal alone when the session ended during the write', async () => {
+          signIn(writer.seed);
+
+          const pending = writer.write();
+          service.currentUser.set(null);
+          writes[0]();
+          await pending;
+
+          expect(service.currentUser()).toBeNull();
+        });
+
+        it('leaves the signal alone when another account signed in during the write', async () => {
+          signIn(writer.seed);
+
+          const pending = writer.write();
+          signIn(writer.seed, 'user-2');
+          const next = service.currentUser();
+          writes[0]();
+          await pending;
+
+          expect(service.currentUser()).toBe(next);
+        });
+      });
+    }
+  });
+
   describe('signed-out guards', () => {
     it('updateUserProfile rejects when no user is signed in', async () => {
       await expectAsync(

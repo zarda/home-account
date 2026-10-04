@@ -1,11 +1,23 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Auth } from '@angular/fire/auth';
+import { Firestore, Timestamp } from '@angular/fire/firestore';
 
 import { DashboardLayoutService } from './dashboard-layout.service';
 import { AuthService, withPreferenceFields } from '../../core/services/auth.service';
+import { AccessibilityService } from '../../core/services/accessibility.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { PAGE_RELOAD } from '../../core/services/page-reload';
+import { PwaService } from '../../core/services/pwa.service';
+import { ThemeService } from '../../core/services/theme.service';
 import { TranslationService } from '../../core/services/translation.service';
-import { DashboardCardId, StoredDashboardLayout, User, UserPreferences } from '../../models';
+import {
+  DEFAULT_USER_PREFERENCES,
+  DashboardCardId,
+  StoredDashboardLayout,
+  User,
+  UserPreferences,
+} from '../../models';
 
 describe('DashboardLayoutService', () => {
   let service: DashboardLayoutService;
@@ -59,25 +71,29 @@ describe('DashboardLayoutService', () => {
         ? new Promise((land, fail) => pendingWrites.push({ land: () => land(), fail }))
         : Promise.resolve();
 
-    // As AuthService does: the nested write lands, then its fields are merged
-    // into the user as it stands by then.
-    auth.updatePreferenceFields.and.callFake(async (key, fields) => {
+    // As AuthService does: each write lands, then its change is folded into
+    // the user as it stands by then, unless the session has moved to another
+    // account meanwhile.
+    const landAndMerge = async (change: (latest: User) => User): Promise<void> => {
+      const uid = currentUser()?.id;
       await landing();
-      const latest = currentUser()!;
-      currentUser.set({ ...latest, preferences: withPreferenceFields(latest.preferences, key, fields) });
-    });
-    auth.updateUserPreferences.and.callFake(async prefs => {
-      const user = currentUser()!;
-      await landing();
-      currentUser.set({ ...user, preferences: { ...user.preferences, ...prefs } });
-    });
-    auth.clearUserPreferences.and.callFake(async keys => {
-      const user = currentUser()!;
-      await landing();
-      const preferences = { ...user.preferences } as Record<string, unknown>;
-      for (const key of keys) delete preferences[key];
-      currentUser.set({ ...user, preferences: preferences as unknown as UserPreferences });
-    });
+      const latest = currentUser();
+      if (!latest || latest.id !== uid) return;
+      currentUser.set(change(latest));
+    };
+    auth.updatePreferenceFields.and.callFake((key, fields) =>
+      landAndMerge(latest => ({ ...latest, preferences: withPreferenceFields(latest.preferences, key, fields) }))
+    );
+    auth.updateUserPreferences.and.callFake(prefs =>
+      landAndMerge(latest => ({ ...latest, preferences: { ...latest.preferences, ...prefs } }))
+    );
+    auth.clearUserPreferences.and.callFake(keys =>
+      landAndMerge(latest => {
+        const preferences = { ...latest.preferences } as Record<string, unknown>;
+        for (const key of keys) delete preferences[key];
+        return { ...latest, preferences: preferences as unknown as UserPreferences };
+      })
+    );
 
     notifications = jasmine.createSpyObj('NotificationService', ['error']);
 
@@ -449,5 +465,163 @@ describe('DashboardLayoutService', () => {
       expect(unhandled).toEqual([]);
       expect(consoleError).not.toHaveBeenCalled();
     });
+  });
+
+  // Signing out and in again on the page does not reload it, so this root
+  // service outlives the account. A write still out at the switch settles,
+  // if ever, only once its own account is signed in again.
+  describe('a change of account', () => {
+    const otherAccount: User = { id: 'user-2', preferences: { dashboardLayout: { hidden: ['insights'] } } } as User;
+
+    const switchAccount = (): void => currentUser.set(otherAccount);
+
+    it("shows the next account its own layout, and saves that account's change in a write of its own", async () => {
+      holdWrites = true;
+      start();
+      void service.hide('chart');
+      void service.moveVisible('recent', 1, shown());
+
+      switchAccount();
+
+      expect(service.layout()).toEqual({ order: defaultOrder, hidden: ['insights'] });
+
+      const saved = service.hide('budgets');
+
+      expect(auth.updatePreferenceFields.calls.allArgs()).toEqual([
+        ['dashboardLayout', { hidden: { set: ['chart'] } }],
+        ['dashboardLayout', { hidden: { set: ['insights', 'budgets'] } }],
+      ]);
+
+      pendingWrites[1].land();
+      await saved;
+
+      expect(stored()).toEqual({ hidden: ['insights', 'budgets'] });
+      expect(service.layout()).toEqual({ order: defaultOrder, hidden: ['insights', 'budgets'] });
+    });
+
+    it("sends nothing more for the previous account when its write settles late, and leaves the next account's save alone", async () => {
+      holdWrites = true;
+      start();
+      void service.hide('chart');
+      void service.moveVisible('recent', 1, shown());
+      switchAccount();
+      void service.hide('budgets');
+      void service.moveVisible('chart', -1, service.layout().order);
+
+      pendingWrites[0].land();
+      await flush();
+
+      expect(auth.updatePreferenceFields).withContext('the two first writes only').toHaveBeenCalledTimes(2);
+      expect(service.layout())
+        .withContext("the next account's changes, still held")
+        .toEqual({ order: ['recent', 'chart', 'upcoming', 'insights', 'budgets'], hidden: ['insights', 'budgets'] });
+
+      pendingWrites[1].land();
+      await flush();
+
+      expect(auth.updatePreferenceFields.calls.mostRecent().args).toEqual([
+        'dashboardLayout',
+        { order: { set: ['recent', 'chart', 'upcoming', 'insights', 'budgets'] } },
+      ]);
+      pendingWrites[2].land();
+      await flush();
+
+      expect(stored()).toEqual({
+        hidden: ['insights', 'budgets'],
+        order: ['recent', 'chart', 'upcoming', 'insights', 'budgets'],
+      });
+      expect(notifications.error).not.toHaveBeenCalled();
+    });
+
+    it('shows the first account its own layout when it signs in again, and resumes nothing it had queued', async () => {
+      holdWrites = true;
+      start();
+      void service.hide('chart');
+      void service.hide('upcoming');
+      switchAccount();
+      expect(service.layout().hidden).withContext('the next account, shown').toEqual(['insights']);
+
+      currentUser.set(userWith({ theme: 'light' }));
+
+      expect(service.layout()).toEqual({ order: defaultOrder, hidden: [] });
+
+      // The SDK settles a write once its own account is signed in again.
+      pendingWrites[0].land();
+      await flush();
+
+      expect(auth.updatePreferenceFields).toHaveBeenCalledTimes(1);
+      expect(stored()).toEqual({ hidden: ['chart'] });
+      expect(service.layout()).toEqual({ order: defaultOrder, hidden: ['chart'] });
+    });
+  });
+});
+
+/**
+ * The doubles above stand in for AuthService's merge rules; this pins the
+ * real ones underneath the layout. Every write is held open through
+ * AuthService's private seam and released in the order the case names.
+ */
+describe('DashboardLayoutService over the real AuthService', () => {
+  let auth: AuthService;
+  let service: DashboardLayoutService;
+  let writes: (() => void)[];
+
+  beforeEach(() => {
+    const firebaseAuth = jasmine.createSpyObj('Auth', ['onAuthStateChanged'], { currentUser: null });
+    firebaseAuth.onAuthStateChanged.and.returnValue(() => undefined);
+
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: Auth, useValue: firebaseAuth },
+        { provide: Firestore, useValue: jasmine.createSpyObj('Firestore', ['doc']) },
+        {
+          provide: TranslationService,
+          useValue: {
+            t: (key: string) => key,
+            syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
+            currentLocale: signal('en'),
+            detectedBrowserLocale: 'en',
+          },
+        },
+        { provide: ThemeService, useValue: { init: jasmine.createSpy('init') } },
+        { provide: AccessibilityService, useValue: { init: jasmine.createSpy('init') } },
+        {
+          provide: NotificationService,
+          useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']),
+        },
+        { provide: PwaService, useValue: { isOnline: signal(false) } },
+        { provide: PAGE_RELOAD, useValue: jasmine.createSpy('reload') },
+      ],
+    });
+
+    auth = TestBed.inject(AuthService);
+    writes = [];
+    spyOn(
+      auth as unknown as {
+        writeUserFields: (uid: string, fields: Record<string, unknown>) => Promise<void>;
+      },
+      'writeUserFields'
+    ).and.callFake(() => new Promise<void>(resolve => writes.push(resolve)));
+    auth.currentUser.set({
+      id: 'user-1',
+      email: 'test@example.com',
+      displayName: 'Test User',
+      createdAt: Timestamp.now(),
+      lastLoginAt: Timestamp.now(),
+      preferences: { ...DEFAULT_USER_PREFERENCES, theme: 'light' },
+    });
+    service = TestBed.inject(DashboardLayoutService);
+  });
+
+  it('keeps a card hidden when a theme write sent before the hide lands after it', async () => {
+    const theme = auth.updateUserPreferences({ theme: 'dark' });
+    const hidden = service.hide('chart');
+    writes[1]();
+    await hidden;
+    writes[0]();
+    await theme;
+
+    expect(service.layout().hidden).toEqual(['chart']);
+    expect(auth.currentUser()!.preferences.theme).toBe('dark');
   });
 });
