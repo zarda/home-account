@@ -6,18 +6,34 @@
   width: 100%; // Ensure it respects grid constraints
 }
 
+// View all and the card's menu stay one line together, beside the title
+// while the whole title fits next to them and on the row below once it does
+// not, as Budget Progress's do: the title's base width is all of it, so it
+// never breaks to keep them beside it. It wraps only when it alone is wider
+// than the card. At 1024 px the rail is about 229 px wide, and they drop.
 .card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  column-gap: 8px;
+  row-gap: 4px;
   padding: 16px 16px 12px;
 }
 
 .card-title {
+  flex: 1 1 auto;
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+  white-space: nowrap;
 }
 
 .view-all-link {

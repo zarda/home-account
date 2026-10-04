@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { AiSummaryComponent } from './ai-summary.component';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
@@ -485,6 +485,19 @@ describe('AiSummaryComponent', () => {
   });
 });
 
+// The card as the dashboard renders it: what carries `card-actions` is the
+// card's own menu.
+@Component({
+  standalone: true,
+  imports: [AiSummaryComponent],
+  template: `
+    <app-ai-summary>
+      <span card-actions class="projected-action"></span>
+    </app-ai-summary>
+  `,
+})
+class AiSummaryWithActionHostComponent {}
+
 /**
  * Every case above compiles the card with `{ imports: [], template: '' }`, so
  * the four-arm body chain — loading, not-enough-data, error, content — has
@@ -617,6 +630,19 @@ describe('AiSummaryComponent, through its own template', () => {
 
     expect(el().querySelector('.insight-section')).not.toBeNull();
     expect(el().querySelector('.advice-section')).toBeNull();
+  });
+
+  it('projects the card actions into its header, after refresh', () => {
+    const hostFixture = TestBed.createComponent(AiSummaryWithActionHostComponent);
+    hostFixture.detectChanges();
+
+    const header = hostFixture.nativeElement.querySelector('.header-content') as HTMLElement;
+    const action = header.querySelector('.projected-action');
+    expect(action).withContext('in the header').not.toBeNull();
+    const refresh = header.querySelector('.refresh-btn') as HTMLElement;
+    expect(refresh.compareDocumentPosition(action!) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .withContext('after refresh')
+      .toBeTruthy();
   });
 
   it('reaches refresh from its own button once there is enough data', () => {

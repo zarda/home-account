@@ -1,4 +1,17 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  OnInit,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -17,6 +30,7 @@ import { InsightSnapshotService } from '../../core/services/insight-snapshot.ser
 import { TranslationService } from '../../core/services/translation.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
+import { CloudLLMProviderService } from '../../core/services/cloud-llm-provider.service';
 import {
   Transaction,
   Category,
@@ -46,6 +60,7 @@ import { BudgetProgressComponent } from './budget-progress/budget-progress.compo
 import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { WeeklyRecapComponent } from './weekly-recap/weekly-recap.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
+import { DashboardCardMenuComponent } from './dashboard-card-menu/dashboard-card-menu.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
@@ -81,6 +96,7 @@ const UPCOMING_WINDOW_DAYS = 14;
     BudgetAlertBannerComponent,
     WeeklyRecapComponent,
     AiSummaryComponent,
+    DashboardCardMenuComponent,
     LoadingSpinnerComponent,
     TranslatePipe
   ],
@@ -100,8 +116,11 @@ export class DashboardComponent implements OnInit {
   private translationService = inject(TranslationService);
   private pendingFilters = inject(PendingFiltersService);
   private widgetSnapshots = inject(WidgetSnapshotService);
+  private cloudLLM = inject(CloudLLMProviderService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private injector = inject(Injector);
 
   isLoading = signal(true);
   // True once the first load has painted; keeps period-change refetches
@@ -242,6 +261,16 @@ export class DashboardComponent implements OnInit {
   });
 
   insightsShown = computed(() => this.arrangedCards().includes('insights'));
+
+  // The insights card renders nothing without a provider, so it carries no
+  // menu then, and a move steps over it as over any card that renders
+  // nothing.
+  insightsHasContent = computed(() => this.cloudLLM.hasAnyCloudProvider());
+
+  /** The cards that carry a menu, in page order: what their moves count over. */
+  menuCards = computed(() =>
+    this.arrangedCards().filter(id => id !== 'insights' || this.insightsHasContent())
+  );
 
   // Booleans, so a change to another card or another preference never
   // reopens a listener. The recent rows are read by their card alone. The
@@ -530,6 +559,21 @@ export class DashboardComponent implements OnInit {
 
   private getPreviousPeriodDates(): DateWindow | null {
     return previousPeriodWindow(this.currentPeriod(), new Date());
+  }
+
+  /**
+   * A hidden card takes its menu with it, so focus would fall to the page.
+   * It goes on to the card that took the hidden one's place among those
+   * with a menu, or, past the last of them, to the editor's link.
+   */
+  focusAfterHide(index: number): void {
+    if (this.destroyRef.destroyed) return;
+    afterNextRender(() => {
+      const page = this.host.nativeElement;
+      const next = page.querySelectorAll<HTMLElement>('.dashboard-grid .card-menu-trigger')[index]
+        ?? page.querySelector<HTMLElement>('.customize-link');
+      next?.focus();
+    }, { injector: this.injector });
   }
 
   /**

@@ -110,7 +110,12 @@
     "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。",
     "upcomingOlderHidden": "{{count}}件の期限切れの予定は表示されていません",
     "customize": "ダッシュボードをカスタマイズ",
-    "noCardsShown": "ダッシュボードに表示するカードがありません。"
+    "noCardsShown": "ダッシュボードに表示するカードがありません。",
+    "cardMenuHide": "非表示にする",
+    "cardMenuMoveUp": "上へ移動",
+    "cardMenuMoveDown": "下へ移動",
+    "cardHidden": "「{{card}}」を非表示にしました。「ダッシュボードをカスタマイズ」から再表示できます。",
+    "cardHideReverted": "保存できませんでした。「{{card}}」をダッシュボードに戻しました。"
   },
   "transactions": {
     "title": "取引履歴",

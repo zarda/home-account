@@ -110,7 +110,12 @@
     "noUpcomingBillsHint": "即將到期的定期收入與支出會顯示於此。請在預算 → 定期建立規則。",
     "upcomingOlderHidden": "另有 {{count}} 筆逾期項目未顯示",
     "customize": "自訂儀表板",
-    "noCardsShown": "儀表板上沒有顯示任何卡片。"
+    "noCardsShown": "儀表板上沒有顯示任何卡片。",
+    "cardMenuHide": "隱藏",
+    "cardMenuMoveUp": "上移",
+    "cardMenuMoveDown": "下移",
+    "cardHidden": "已隱藏{{card}}。可從「自訂儀表板」重新顯示。",
+    "cardHideReverted": "無法儲存。{{card}}已回到儀表板。"
   },
   "transactions": {
     "title": "交易紀錄",

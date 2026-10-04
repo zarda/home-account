@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -27,6 +27,7 @@ import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
+import { CloudLLMProviderService } from '../../core/services/cloud-llm-provider.service';
 import {
   BudgetAlert,
   Category,
@@ -53,6 +54,7 @@ import {
 import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
 import { dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
+import { DashboardCardMenuComponent } from './dashboard-card-menu/dashboard-card-menu.component';
 
 function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
   return { option, start, end, label: '' };
@@ -71,8 +73,13 @@ class FinancialSummaryStubComponent {
 }
 
 // Stands in for the real upcoming-bills card when the real dashboard template
-// is rendered, capturing exactly what the template binds to each input.
-@Component({ selector: 'app-upcoming-bills', standalone: true, template: '' })
+// is rendered, capturing exactly what the template binds to each input. It
+// keeps the real card's menu slot, so the card's menu still renders.
+@Component({
+  selector: 'app-upcoming-bills',
+  standalone: true,
+  template: '<ng-content select="[card-actions]" />',
+})
 class UpcomingBillsStubComponent {
   occurrences = input<RecurringOccurrence[]>([]);
   categories = input<Map<string, Category>>(new Map());
@@ -125,6 +132,7 @@ describe('DashboardComponent', () => {
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
   let widgetSnapshots: jasmine.SpyObj<WidgetSnapshotService>;
+  let cloudLLM: { hasAnyCloudProvider: ReturnType<typeof signal<boolean>> };
   let activatedRoute: { queryParamMap: BehaviorSubject<ParamMap> };
 
   function build() {
@@ -236,6 +244,8 @@ describe('DashboardComponent', () => {
     // Root-provided and reaches AppLockService, which throws on this suite's
     // userId-less AuthService double — doubled here rather than left real.
     widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish'], { available: false });
+    // Root-provided, and the real one constructs every provider's client.
+    cloudLLM = { hasAnyCloudProvider: signal(false) };
     // Router is a spy here, so nothing else provides ActivatedRoute; the
     // real-template describe keeps provideRouter's root route instead.
     activatedRoute = { queryParamMap: new BehaviorSubject<ParamMap>(convertToParamMap({})) };
@@ -258,6 +268,7 @@ describe('DashboardComponent', () => {
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: activatedRoute },
         { provide: WidgetSnapshotService, useValue: widgetSnapshots },
+        { provide: CloudLLMProviderService, useValue: cloudLLM },
       ],
     })
       .overrideComponent(DashboardComponent, { set: { imports: [], template: '' } })
@@ -1391,6 +1402,7 @@ describe('DashboardComponent', () => {
           { provide: MatSnackBar, useValue: snackBar },
           { provide: AnnouncerService, useValue: announcer },
           { provide: WidgetSnapshotService, useValue: widgetSnapshots },
+          { provide: CloudLLMProviderService, useValue: cloudLLM },
         ],
       })
         .overrideComponent(DashboardComponent, {
@@ -1648,6 +1660,134 @@ describe('DashboardComponent', () => {
           expect(getComputedStyle(line).color).withContext(`${theme} empty line`).toBe(muted());
         });
       }
+    });
+
+    // #442: each card carries its own menu in its header's slot, so the
+    // grid's children stay the card hosts the area math places.
+    describe('card menus', () => {
+      const ALL_FIVE: DashboardCardId[] = ['recent', 'upcoming', 'chart', 'insights', 'budgets'];
+      let attached: HTMLElement | undefined;
+
+      const hostTags = (fixture: ComponentFixture<DashboardComponent>) =>
+        Array.from(fixture.nativeElement.querySelectorAll('.dashboard-grid > *'))
+          .map((el) => (el as Element).tagName.toLowerCase());
+      const menus = (fixture: ComponentFixture<DashboardComponent>) =>
+        fixture.debugElement.queryAll(By.directive(DashboardCardMenuComponent))
+          .map((menu) => menu.componentInstance as DashboardCardMenuComponent);
+      const triggerIn = (fixture: ComponentFixture<DashboardComponent>, host: string) =>
+        fixture.nativeElement.querySelector(`${host} .card-menu-trigger`) as HTMLButtonElement;
+
+      /** Attached to the document, so focus can move. */
+      function render(): ComponentFixture<DashboardComponent> {
+        const fixture = build();
+        attached = fixture.nativeElement as HTMLElement;
+        document.body.appendChild(attached);
+        fixture.detectChanges();
+        return fixture;
+      }
+
+      /**
+       * Opens a card's menu, which renders in the CDK overlay, and presses an
+       * item. Render hooks run on an application tick, not on a fixture's:
+       * the open one moves focus into the menu, as a real open does, before
+       * the press.
+       */
+      function press(fixture: ComponentFixture<DashboardComponent>, host: string, action: string): void {
+        triggerIn(fixture, host).click();
+        TestBed.tick();
+        (document.querySelector(`.mat-mdc-menu-panel [data-action="${action}"]`) as HTMLButtonElement).click();
+        TestBed.tick();
+      }
+
+      beforeEach(() => {
+        budgetService.activeBudgets.set([{} as never]);
+        cloudLLM.hasAnyCloudProvider.set(true);
+        // Lands the way AuthService's write does, so the account follows it.
+        authService.updatePreferenceFields.and.callFake(async (key, fields) => {
+          const latest = authService.currentUser()!;
+          authService.currentUser.set({
+            ...latest,
+            preferences: withPreferenceFields(latest.preferences, key, fields),
+          });
+        });
+      });
+
+      afterEach(() => {
+        attached?.remove();
+        attached = undefined;
+        document.querySelectorAll('.cdk-overlay-container').forEach((node) => node.remove());
+      });
+
+      it('projects one menu into every card host, and the hosts stay the grid children', () => {
+        const fixture = render();
+
+        expect(hostTags(fixture)).toEqual([
+          'app-recent-transactions',
+          'app-upcoming-bills',
+          'app-spending-chart',
+          'app-ai-summary',
+          'app-budget-progress',
+        ]);
+        const hosts = Array.from(fixture.nativeElement.querySelectorAll('.dashboard-grid > *')) as HTMLElement[];
+        for (const host of hosts) {
+          expect(host.querySelectorAll('app-dashboard-card-menu').length).withContext(host.tagName).toBe(1);
+        }
+        expect(menus(fixture).map((menu) => menu.card())).toEqual(ALL_FIVE);
+        for (const menu of menus(fixture)) {
+          expect(menu.visible()).withContext(menu.card()).toEqual(ALL_FIVE);
+        }
+      });
+
+      it('gives the insights card no menu without an AI provider, and leaves it out of the cards every menu counts', () => {
+        cloudLLM.hasAnyCloudProvider.set(false);
+        const fixture = render();
+
+        expect(hostTags(fixture)).withContext('the insights host').toContain('app-ai-summary');
+        expect(fixture.nativeElement.querySelector('app-ai-summary app-dashboard-card-menu')).toBeNull();
+        const counted: DashboardCardId[] = ['recent', 'upcoming', 'chart', 'budgets'];
+        expect(menus(fixture).map((menu) => menu.card())).toEqual(counted);
+        for (const menu of menus(fixture)) {
+          expect(menu.visible()).withContext(menu.card()).toEqual(counted);
+        }
+      });
+
+      it("moves focus to the next card's trigger after a hide", () => {
+        const fixture = render();
+
+        press(fixture, 'app-upcoming-bills', 'hide');
+
+        expect(hostTags(fixture)).not.toContain('app-upcoming-bills');
+        expect(document.activeElement).toBe(triggerIn(fixture, 'app-spending-chart'));
+      });
+
+      it('moves focus to the customize link after hiding the last card', () => {
+        const fixture = render();
+
+        press(fixture, 'app-budget-progress', 'hide');
+
+        expect(hostTags(fixture)).not.toContain('app-budget-progress');
+        expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.customize-link'));
+      });
+
+      it("moves focus to the empty state's customize link after hiding the only card", () => {
+        setPreferences(hiding('recent', 'upcoming', 'insights', 'budgets'));
+        const fixture = render();
+        expect(hostTags(fixture)).toEqual(['app-spending-chart']);
+
+        press(fixture, 'app-spending-chart', 'hide');
+
+        expect(fixture.nativeElement.querySelector('.dashboard-grid')).toBeNull();
+        expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.dashboard-empty .customize-link'));
+      });
+
+      it("keeps focus on the moved card's trigger", () => {
+        const fixture = render();
+
+        press(fixture, 'app-upcoming-bills', 'up');
+
+        expect(hostTags(fixture).slice(0, 2)).toEqual(['app-upcoming-bills', 'app-recent-transactions']);
+        expect(document.activeElement).toBe(triggerIn(fixture, 'app-upcoming-bills'));
+      });
     });
 
     describe('the period pickers\' floor', () => {

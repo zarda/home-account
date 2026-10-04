@@ -113,7 +113,12 @@
       "other": "{{count}} older occurrences are overdue and not shown"
     },
     "customize": "Customize dashboard",
-    "noCardsShown": "No cards are shown on the dashboard."
+    "noCardsShown": "No cards are shown on the dashboard.",
+    "cardMenuHide": "Hide",
+    "cardMenuMoveUp": "Move up",
+    "cardMenuMoveDown": "Move down",
+    "cardHidden": "{{card}} hidden. Show it again from Customize dashboard.",
+    "cardHideReverted": "Couldn't save. {{card}} is back on the dashboard."
   },
   "transactions": {
     "title": "Transactions",

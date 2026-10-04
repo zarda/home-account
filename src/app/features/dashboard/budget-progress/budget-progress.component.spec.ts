@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Component } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
@@ -36,6 +37,19 @@ function tokenColour(token: string): string {
     probe.remove();
   }
 }
+
+// The card as the dashboard renders it: what carries `card-actions` is the
+// card's own menu.
+@Component({
+  standalone: true,
+  imports: [BudgetProgressComponent],
+  template: `
+    <app-budget-progress>
+      <span card-actions class="projected-action"></span>
+    </app-budget-progress>
+  `,
+})
+class BudgetProgressWithActionHostComponent {}
 
 describe('BudgetProgressComponent', () => {
   let component: BudgetProgressComponent;
@@ -461,6 +475,19 @@ describe('BudgetProgressComponent', () => {
     it("names the progress bar with the budget's own name and percentage", () => {
       const progressBar = fixture.nativeElement.querySelector('mat-progress-bar');
       expect(progressBar.getAttribute('aria-label')).toBe('budgets.progressLabel');
+    });
+
+    it('projects the card actions into its header, after Manage', () => {
+      const hostFixture = TestBed.createComponent(BudgetProgressWithActionHostComponent);
+      hostFixture.detectChanges();
+
+      const header = hostFixture.nativeElement.querySelector('mat-card-header') as HTMLElement;
+      const action = header.querySelector('.projected-action');
+      expect(action).withContext('in the header').not.toBeNull();
+      const manage = header.querySelector('a[mat-button]') as HTMLElement;
+      expect(manage.compareDocumentPosition(action!) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .withContext('after Manage')
+        .toBeTruthy();
     });
 
     it('should render multiple budgets', () => {

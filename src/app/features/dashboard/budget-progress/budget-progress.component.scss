@@ -1,3 +1,19 @@
+// Manage and the card's menu stay one line together, and drop below the
+// title when the rail is too narrow for both on one row (about 229 px at
+// 1024).
+mat-card-header {
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
 // The Manage link's arrow, a size under Material's button icon. The
 // attribute selector outranks Material's own `.mat-mdc-button > .mat-icon`,
 // which sets the size and box this replaces; a type utility would also bring

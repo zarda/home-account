@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
-import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { BaseChartDirective } from 'ng2-charts';
 import { provideAppCharts } from '../../../core/config/chart.config';
 import { SpendingChartComponent } from './spending-chart.component';
@@ -23,9 +23,23 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  textLines,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
+
+// The card as the dashboard renders it: what carries `card-actions` is the
+// card's own menu, whose trigger is a 40 px box.
+@Component({
+  standalone: true,
+  imports: [SpendingChartComponent],
+  template: `
+    <app-spending-chart>
+      <span card-actions class="projected-action" style="display: inline-block; inline-size: 40px; block-size: 40px"></span>
+    </app-spending-chart>
+  `,
+})
+class SpendingChartWithActionHostComponent {}
 
 describe('SpendingChartComponent', () => {
   let component: SpendingChartComponent;
@@ -397,6 +411,45 @@ describe('SpendingChartComponent', () => {
     });
 
     afterEach(() => realFixture.destroy());
+
+    // At 229 px the title wraps, and the action stays on its row: centred on
+    // the title, after it, and inside the header.
+    it('projects the card actions into its header, on the title row', () => {
+      mockTranslationService.t.and.callFake((key: string) =>
+        key === 'dashboard.spendingByCategory' ? 'Spending by Category' : key
+      );
+      const hostFixture = TestBed.createComponent(SpendingChartWithActionHostComponent);
+      const host = hostFixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = '229px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback; the title inherits this one. The Linux runner's DejaVu
+      // Sans matches Verdana to within a few pixels.
+      host.style.fontFamily = "Verdana, 'DejaVu Sans', sans-serif";
+      document.body.appendChild(host);
+      try {
+        hostFixture.detectChanges();
+
+        const header = hostFixture.nativeElement.querySelector('.card-header') as HTMLElement;
+        const action = header.querySelector('.projected-action') as HTMLElement | null;
+        expect(action).withContext('in the header').not.toBeNull();
+
+        const titleElement = header.querySelector('.card-title') as HTMLElement;
+        expect(textLines(titleElement)).withContext('title lines').toBeGreaterThan(1);
+        const title = titleElement.getBoundingClientRect();
+        const box = action!.getBoundingClientRect();
+        const content = header.getBoundingClientRect();
+        const padEnd = parseFloat(getComputedStyle(header).paddingInlineEnd);
+        expect(Math.abs((box.top + box.bottom) / 2 - (title.top + title.bottom) / 2))
+          .withContext('centred on the title row')
+          .toBeLessThanOrEqual(1);
+        expect(box.left).withContext('after the title').toBeGreaterThanOrEqual(title.right);
+        expect(box.right).withContext('inside the header').toBeLessThanOrEqual(content.right - padEnd + 0.5);
+      } finally {
+        hostFixture.destroy();
+        host.remove();
+      }
+    });
 
     it('should render each legend row as a real button', () => {
       const buttons = realFixture.debugElement.queryAll(By.css('button.legend-item'));

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Component } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -10,6 +11,8 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { ThemeService } from '../../../core/services/theme.service';
+import { DashboardLayoutService } from '../dashboard-layout.service';
+import { DashboardCardMenuComponent } from '../dashboard-card-menu/dashboard-card-menu.component';
 import {
   CATEGORY_FALLBACK_COLOR,
   CATEGORY_PALETTE,
@@ -25,6 +28,7 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  textLines,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
@@ -40,6 +44,20 @@ function occurrence(overrides: Partial<RecurringOccurrence> = {}): RecurringOccu
     date: new Date(2026, 8, 1, 9, 0),
     ...overrides,
   };
+}
+
+// The card as the dashboard renders it, with its own menu in the header slot.
+@Component({
+  standalone: true,
+  imports: [UpcomingBillsComponent, DashboardCardMenuComponent],
+  template: `
+    <app-upcoming-bills [occurrences]="[]" [categories]="categories" baseCurrency="USD" [net]="0">
+      <app-dashboard-card-menu card-actions [card]="'upcoming'" [visible]="['upcoming']" />
+    </app-upcoming-bills>
+  `,
+})
+class UpcomingWithMenuHostComponent {
+  readonly categories = new Map<string, Category>();
 }
 
 describe('UpcomingBillsComponent', () => {
@@ -90,6 +108,8 @@ describe('UpcomingBillsComponent', () => {
           provide: LocaleFormatService,
           useValue: { locale: 'en-US', formatDate: (value: Date) => `day ${value.getDate()}` },
         },
+        // The menu the rail describe projects; nothing there presses it.
+        { provide: DashboardLayoutService, useValue: {} },
       ],
     }).compileComponents();
 
@@ -244,6 +264,74 @@ describe('UpcomingBillsComponent', () => {
     // route would land on envelopes.
     expect(link.getAttribute('href')).toBe('/budgets?tab=recurring');
     expect(link.textContent).toContain('dashboard.viewAll');
+  });
+
+  // At 1024 px the dashboard's rail is about 229 px wide, too narrow for the
+  // title, View all and the menu on one line. The title may wrap; the link
+  // and the menu stay one line, together.
+  describe('header beside its menu, at the rail width', () => {
+    const COPY: Record<string, string> = {
+      'dashboard.upcomingBills': 'Upcoming Bills',
+      'dashboard.viewAll': 'View All',
+    };
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      const translation = TestBed.inject(TranslationService) as unknown as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake((key: string) => COPY[key] ?? key);
+      const railFixture = TestBed.createComponent(UpcomingWithMenuHostComponent);
+      host = railFixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = '229px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      document.body.appendChild(host);
+      railFixture.detectChanges();
+    });
+
+    afterEach(() => host.remove());
+
+    it('keeps View all on one line, with the menu trigger on its row, inside the card', () => {
+      const link = host.querySelector('.view-all-link') as HTMLElement;
+      const trigger = host.querySelector('.card-menu-trigger') as HTMLElement | null;
+      expect(trigger).withContext('the projected menu trigger').not.toBeNull();
+
+      expect(textLines(link)).withContext('View all lines').toBe(1);
+      const linkBox = link.getBoundingClientRect();
+      const triggerBox = trigger!.getBoundingClientRect();
+      expect(Math.abs((triggerBox.top + triggerBox.bottom) / 2 - (linkBox.top + linkBox.bottom) / 2))
+        .withContext('trigger centred on the link row')
+        .toBeLessThanOrEqual(1);
+      expect(triggerBox.left).withContext('trigger after the link').toBeGreaterThanOrEqual(linkBox.right);
+      expect(triggerBox.right)
+        .withContext('trigger inside the card')
+        .toBeLessThanOrEqual(host.querySelector('mat-card')!.getBoundingClientRect().right);
+    });
+
+    // Three cards stack in the rail, and Budget Progress keeps its title whole
+    // and drops its actions to the row below. A title broken to keep the
+    // actions beside it reads as a different header, so at every width the
+    // actions share a row only with a title on one line. Swept, because where
+    // the break falls depends on the font, and Karma serves none of the app's.
+    it('never breaks the title to keep the actions beside it, at any rail width', () => {
+      const title = host.querySelector('.card-title') as HTMLElement;
+      const link = host.querySelector('.view-all-link') as HTMLElement;
+      let beside = 0;
+
+      for (let width = 200; width <= 420; width += 10) {
+        host.style.width = `${width}px`;
+        if (link.getBoundingClientRect().top >= title.getBoundingClientRect().bottom - 1) continue;
+        beside++;
+        expect(textLines(title)).withContext(`title lines beside the actions at ${width} px`).toBe(1);
+      }
+      expect(beside).withContext('widths with the actions beside the title').toBeGreaterThan(0);
+    });
   });
 
   // Not the category tile or its glyph: those paint the category's own colour,

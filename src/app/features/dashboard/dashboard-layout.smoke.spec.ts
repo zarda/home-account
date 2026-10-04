@@ -397,4 +397,58 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
     },
     CASE_TIMEOUT
   );
+
+  // #442 AC 4: a card hidden from its own menu on the dashboard, through the
+  // real layout service, and the editor shows the same state.
+  it(
+    "hides a card from the dashboard's own menu, and the editor shows it hidden",
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid, {
+        preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+      }));
+
+      await harness.navigateByUrl('/dashboard');
+      const doc = harness.routeNativeElement!.ownerDocument;
+      const chartTrigger = (): HTMLButtonElement | null =>
+        doc.querySelector<HTMLButtonElement>('app-spending-chart .card-menu-trigger');
+      const hideItem = (): HTMLButtonElement | null =>
+        doc.querySelector<HTMLButtonElement>('.mat-mdc-menu-panel [data-action="hide"]');
+      await waitForDom('the spending chart card and its menu', () => chartTrigger() !== null);
+
+      chartTrigger()!.click();
+      await waitForDom('the open card menu', () => hideItem() !== null);
+      hideItem()!.click();
+
+      await waitForDom(
+        'the chart hidden and its hide saved',
+        () => doc.querySelector('app-spending-chart') === null && mockAuth.updatePreferenceFieldsSpy.calls.count() > 0
+      );
+      expect(mockAuth.updatePreferenceFieldsSpy).toHaveBeenCalledOnceWith('dashboardLayout', {
+        hidden: { set: ['chart'] }
+      });
+      expect(mockAuth.currentUser()?.preferences.dashboardLayout).toEqual({ hidden: ['chart'] });
+
+      await harness.navigateByUrl('/settings?panel=dashboard');
+      await waitForDom(
+        'the dashboard layout editor rows',
+        () => (harness.routeNativeElement?.ownerDocument.querySelectorAll('.card-row').length ?? 0) === 5
+      );
+
+      const settingsDoc = harness.routeNativeElement!.ownerDocument;
+      const ariaCheckedFor = (titleId: string): string | null =>
+        settingsDoc
+          .querySelector<HTMLButtonElement>(`button[role="switch"][aria-labelledby="${titleId}"]`)
+          ?.getAttribute('aria-checked') ?? null;
+      expect(ariaCheckedFor('dashboard-card-chart-title')).toBe('false');
+      for (const card of ['recent', 'upcoming', 'insights', 'budgets']) {
+        expect(ariaCheckedFor(`dashboard-card-${card}-title`)).withContext(card).toBe('true');
+      }
+
+      harness.fixture.destroy();
+      // The menu rendered into the CDK overlay, outside the routed view.
+      doc.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
 });

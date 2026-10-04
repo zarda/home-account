@@ -1,6 +1,7 @@
 <mat-card class="card">
   <div class="card-header">
     <h3 class="card-title">{{ 'dashboard.spendingByCategory' | translate }}</h3>
+    <ng-content select="[card-actions]" />
   </div>
 
   <div class="card-content">

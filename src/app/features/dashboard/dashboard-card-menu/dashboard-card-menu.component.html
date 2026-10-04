@@ -1,0 +1,25 @@
+<button
+  #trigger
+  mat-icon-button
+  type="button"
+  class="card-menu-trigger"
+  [matMenuTriggerFor]="menu"
+  [attr.aria-label]="'common.moreActionsFor' | translate: { description: (titleKey() | translate) }"
+>
+  <mat-icon>more_vert</mat-icon>
+</button>
+
+<mat-menu #menu="matMenu">
+  <button mat-menu-item type="button" data-action="hide" (click)="hide()">
+    <mat-icon>visibility_off</mat-icon>
+    <span>{{ 'dashboard.cardMenuHide' | translate }}</span>
+  </button>
+  <button mat-menu-item type="button" data-action="up" [disabled]="first()" (click)="move(-1)">
+    <mat-icon>arrow_upward</mat-icon>
+    <span>{{ 'dashboard.cardMenuMoveUp' | translate }}</span>
+  </button>
+  <button mat-menu-item type="button" data-action="down" [disabled]="last()" (click)="move(1)">
+    <mat-icon>arrow_downward</mat-icon>
+    <span>{{ 'dashboard.cardMenuMoveDown' | translate }}</span>
+  </button>
+</mat-menu>

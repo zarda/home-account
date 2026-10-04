@@ -19,7 +19,15 @@ mat-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   width: 100%;
+}
+
+// Refresh and the card's menu, together at the end of the title's row.
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .title-row {

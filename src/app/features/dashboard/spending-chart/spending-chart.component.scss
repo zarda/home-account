@@ -6,11 +6,17 @@
   width: 100%;
 }
 
+// The card's menu sits at the end of the title's row; the title wraps
+// beside it rather than pushing it out.
 .card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 16px 16px 12px;
 }
 
 .card-title {
+  flex: 1 1 0;
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
