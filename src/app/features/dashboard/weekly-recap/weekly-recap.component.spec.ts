@@ -1,9 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 
 import { WeeklyRecapComponent } from './weekly-recap.component';
+import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { RecapStatus, WeeklyRecapService } from '../../../core/services/weekly-recap.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
@@ -97,12 +99,18 @@ describe('WeeklyRecapComponent', () => {
     return (fixture.nativeElement as HTMLElement).querySelector(selector)?.textContent?.trim() ?? '';
   }
 
+  /** The bills line's amount, as the card bound it. */
+  function billsAmount(): AmountDisplayComponent {
+    return fixture.debugElement.query(By.css('.recap-bills app-amount-display'))
+      .componentInstance as AmountDisplayComponent;
+  }
+
   function render(
-    options: { alerts?: BudgetAlert[]; upcoming?: RecurringOccurrence[] } = {}
+    options: { alerts?: BudgetAlert[]; upcoming?: RecurringOccurrence[]; baseCurrency?: string } = {}
   ): void {
     fixture.componentRef.setInput('alerts', options.alerts ?? []);
     fixture.componentRef.setInput('upcoming', options.upcoming ?? []);
-    fixture.componentRef.setInput('baseCurrency', 'USD');
+    fixture.componentRef.setInput('baseCurrency', options.baseCurrency ?? 'USD');
     fixture.componentRef.setInput(
       'categories',
       new Map<string, Category>([['food', { id: 'food', name: 'categoryNames.food' } as Category]])
@@ -270,6 +278,30 @@ describe('WeeklyRecapComponent', () => {
 
     expect(component.billsDueNet()).toBe(40);
     expect(text('.recap-bills')).toContain('+');
+  });
+
+  // #440 P4: a week with nothing due is neither money in nor money out, so
+  // the net takes neither tone.
+  it('leaves an empty week of bills in the neutral tone, unsigned', () => {
+    render({ upcoming: [] });
+
+    expect(billsAmount().type()).toBe('neutral');
+    expect(text('.recap-bills')).not.toContain('+');
+  });
+
+  // Under half a yen formats as ¥0 at zero decimals, so it is the same
+  // nothing as an empty week, not a "+¥0" of income.
+  it('snaps a sub-yen net to an unsigned neutral zero', () => {
+    render({
+      upcoming: [occurrence({ recurringId: 'r1', amount: 0.2, currency: 'JPY', type: 'income' })],
+      baseCurrency: 'JPY',
+    });
+
+    // convert() doubles, so the raw net is 0.4 yen.
+    expect(component.billsDueNet()).toBe(0.4);
+    expect(billsAmount().type()).toBe('neutral');
+    expect(billsAmount().amount()).toBe(0);
+    expect(text('.recap-bills')).not.toContain('+');
   });
 
   // #429 P1: a scheduled occurrence has no write-time snapshot, so this line

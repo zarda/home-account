@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { UpcomingBillsComponent } from './upcoming-bills.component';
+import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -46,13 +48,19 @@ describe('UpcomingBillsComponent', () => {
   let currency: jasmine.SpyObj<CurrencyService>;
   let categoryHelper: jasmine.SpyObj<CategoryHelperService>;
 
-  function render(occurrences: RecurringOccurrence[], net = 0, olderCount = 0): void {
+  function render(occurrences: RecurringOccurrence[], net = 0, olderCount = 0, baseCurrency = 'USD'): void {
     fixture.componentRef.setInput('occurrences', occurrences);
     fixture.componentRef.setInput('categories', new Map<string, Category>());
-    fixture.componentRef.setInput('baseCurrency', 'USD');
+    fixture.componentRef.setInput('baseCurrency', baseCurrency);
     fixture.componentRef.setInput('net', net);
     fixture.componentRef.setInput('olderCount', olderCount);
     fixture.detectChanges();
+  }
+
+  /** The net footer's amount, as the card bound it. */
+  function netAmount(): AmountDisplayComponent {
+    return fixture.debugElement.query(By.css('.net-footer app-amount-display'))
+      .componentInstance as AmountDisplayComponent;
   }
 
   beforeEach(async () => {
@@ -150,6 +158,35 @@ describe('UpcomingBillsComponent', () => {
     expect(footer.textContent).toContain('dashboard.upcomingNet');
     expect(footer.textContent).toContain('-');
     expect(currency.formatCurrency).toHaveBeenCalledWith(742.5, 'USD');
+  });
+
+  // #440 P4: a window whose income and bills cancel out moved nothing either
+  // way, so its net takes neither the income nor the expense tone.
+  it('leaves a net of exactly zero in the neutral tone, unsigned', () => {
+    render(
+      [
+        occurrence({ recurringId: 'r1', type: 'expense', amount: 1200 }),
+        occurrence({ recurringId: 'r2', type: 'income', amount: 1200, date: new Date(2026, 8, 2, 9, 0) }),
+      ],
+      0
+    );
+
+    expect(netAmount().type()).toBe('neutral');
+    const footer = fixture.nativeElement.querySelector('.net-footer');
+    expect(footer.textContent).not.toContain('+');
+    expect(footer.textContent).not.toContain('-');
+  });
+
+  // Less than half a yen formats as ¥0, so a signed or coloured one would be
+  // a figure the card cannot show.
+  it('snaps a net below the base currency\'s smallest unit to an unsigned neutral zero', () => {
+    render([occurrence({ currency: 'JPY', amount: 0.4 })], -0.4, 0, 'JPY');
+
+    expect(netAmount().type()).toBe('neutral');
+    expect(netAmount().amount()).toBe(0);
+    const footer = fixture.nativeElement.querySelector('.net-footer');
+    expect(footer.textContent).not.toContain('+');
+    expect(footer.textContent).not.toContain('-');
   });
 
   // #429 P1: a scheduled occurrence has no write-time snapshot, so its net

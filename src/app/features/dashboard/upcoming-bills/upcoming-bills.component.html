@@ -67,9 +67,9 @@
           <span class="rate-caption">{{ 'common.atTodaysRate' | translate }}</span>
         </span>
         <app-amount-display
-          [amount]="net()"
+          [amount]="netDisplay()"
           [currency]="baseCurrency()"
-          [type]="net() >= 0 ? 'income' : 'expense'"
+          [type]="netDisplay() > 0 ? 'income' : netDisplay() < 0 ? 'expense' : 'neutral'"
           [showSign]="true"
           [bold]="true"
           size="sm"

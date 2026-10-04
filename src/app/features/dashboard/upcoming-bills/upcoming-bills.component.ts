@@ -5,6 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { Category, RecurringOccurrence } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
+import { snapDisplayZero } from '../../../core/utils/money-display.utils';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
@@ -85,6 +86,13 @@ export class UpcomingBillsComponent {
     }
     return [...days.values()];
   });
+
+  /**
+   * The net as the footer shows it, sign and tone included. A window that
+   * cancels out, or nets below the base currency's smallest unit, moves no
+   * money either way, so it is neither income-green nor expense-red.
+   */
+  readonly netDisplay = computed(() => snapDisplayZero(this.net(), this.baseCurrency()));
 
   getCategoryName(categoryId: string): string {
     return this.categoryHelperService.getCategoryName(categoryId, this.categories());

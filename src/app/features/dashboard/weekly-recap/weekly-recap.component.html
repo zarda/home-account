@@ -60,9 +60,9 @@
       <div class="fact recap-bills">
         <span class="fact-text">{{ billsLabel() }}</span>
         <app-amount-display
-          [amount]="billsDueNet()"
+          [amount]="billsDueDisplay()"
           [currency]="baseCurrency()"
-          [type]="billsDueNet() >= 0 ? 'income' : 'expense'"
+          [type]="billsDueDisplay() > 0 ? 'income' : billsDueDisplay() < 0 ? 'expense' : 'neutral'"
           [showSign]="true"
           size="sm"
         />
