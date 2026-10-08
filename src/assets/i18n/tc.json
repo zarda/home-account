@@ -1406,6 +1406,15 @@
       "cardDescription": "再次查看一開始顯示的歡迎畫面，了解家庭記帳能做什麼，以及記錄支出的三種方式。",
       "replayButton": "查看歡迎畫面"
     },
+    "install": {
+      "cardTitle": "安裝應用程式",
+      "promptDescription": "在這部裝置上安裝家庭記帳，即可從專屬圖示在獨立視窗中開啟。",
+      "button": "安裝",
+      "iosDescription": "將家庭記帳加入主畫面，即可從專屬圖示以全螢幕開啟：",
+      "iosStepShare": "點一下「分享」按鈕（位於 Safari 的工具列，或「⋯」選單中）。",
+      "iosStepAdd": "選擇「加入主畫面」。",
+      "iosStepConfirm": "點一下「加入」。"
+    },
     "feedback": {
       "cardTitle": "傳送意見回饋",
       "cardDescription": "無論是錯誤、想法或任何建議，都歡迎告訴開發者。訊息會儲存在您的帳號中，並以電子郵件寄給開發者。",

@@ -1541,6 +1541,15 @@
       "cardDescription": "Missed something the first time, or just want to see it again? Replay the welcome and the three ways to record what you spend.",
       "replayButton": "Replay welcome"
     },
+    "install": {
+      "cardTitle": "Install the app",
+      "promptDescription": "Install Home Account on this device to open it from its own icon, in a window of its own.",
+      "button": "Install",
+      "iosDescription": "Add Home Account to your Home Screen to open it from its own icon, full screen:",
+      "iosStepShare": "Tap the Share button, in Safari's toolbar or under the ⋯ menu.",
+      "iosStepAdd": "Choose Add to Home Screen.",
+      "iosStepConfirm": "Tap Add."
+    },
     "feedback": {
       "cardTitle": "Send feedback",
       "cardDescription": "Found a bug, have an idea, or just want to say something? Your message is stored with your account and mailed to the developer.",

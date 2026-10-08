@@ -1,3 +1,4 @@
+import { WritableSignal, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Capacitor } from '@capacitor/core';
@@ -10,16 +11,28 @@ import { AuthService } from '../../core/services/auth.service';
 import { DateFormatService } from '../../core/services/date-format.service';
 import { FeedbackService } from '../../core/services/feedback.service';
 import { OnboardingService } from '../../core/services/onboarding.service';
+import { PwaService } from '../../core/services/pwa.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackEntry } from '../../models';
 import {
+  AUDIT_SCHEMES,
   paintedBackground,
   paintedColor,
   ratio,
+  runAxe,
   settleAnimations,
+  summarizeViolations,
   withTheme,
 } from '../../core/services/testing';
 import packageJson from '../../../../package.json';
+
+/** The PwaService surface the About page reads, as signals each case sets. */
+interface PwaStub {
+  canPromptInstall: WritableSignal<boolean>;
+  isIOS: WritableSignal<boolean>;
+  isStandalone: WritableSignal<boolean>;
+  promptInstall: jasmine.Spy<() => Promise<void>>;
+}
 
 describe('AboutComponent', () => {
   let component: AboutComponent;
@@ -27,6 +40,7 @@ describe('AboutComponent', () => {
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockFeedback: jasmine.SpyObj<FeedbackService>;
   let mockOnboarding: jasmine.SpyObj<OnboardingService>;
+  let mockPwa: PwaStub;
 
   beforeEach(async () => {
     const translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
@@ -42,6 +56,16 @@ describe('AboutComponent', () => {
     const dateFormat = jasmine.createSpyObj<DateFormatService>('DateFormatService', ['formatDate']);
     dateFormat.formatDate.and.returnValue('2026-08-15');
     mockOnboarding = jasmine.createSpyObj<OnboardingService>('OnboardingService', ['show']);
+    // A browser with nothing to offer by default: no held prompt, not iOS,
+    // not installed.
+    mockPwa = {
+      canPromptInstall: signal(false),
+      isIOS: signal(false),
+      isStandalone: signal(false),
+      promptInstall: jasmine.createSpy('promptInstall'),
+    };
+    // As the service does: an event prompts once, so it is let go.
+    mockPwa.promptInstall.and.callFake(async () => mockPwa.canPromptInstall.set(false));
 
     await TestBed.configureTestingModule({
       imports: [AboutComponent, NoopAnimationsModule],
@@ -52,6 +76,7 @@ describe('AboutComponent', () => {
         { provide: DateFormatService, useValue: dateFormat },
         { provide: OnboardingService, useValue: mockOnboarding },
         { provide: AuthService, useValue: { userId: () => 'user-1' } },
+        { provide: PwaService, useValue: mockPwa },
       ],
     }).compileComponents();
 
@@ -126,6 +151,115 @@ describe('AboutComponent', () => {
       fixture.detectChanges();
       (fixture.nativeElement.querySelector('.welcome-button') as HTMLButtonElement).click();
       expect(mockOnboarding.show).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Three states: the browser's own prompt where it handed one over, the
+   * Home Screen steps on iOS, which has no prompt, and no card at all once
+   * the app is installed or where the browser offers neither (#446).
+   */
+  describe('install card', () => {
+    const card = () => (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.install-card');
+    const installButton = () => card()?.querySelector<HTMLButtonElement>('.install-button') ?? null;
+    const steps = () => [...(card()?.querySelectorAll('.install-steps li') ?? [])];
+
+    function render(state: { canPromptInstall?: boolean; isIOS?: boolean; isStandalone?: boolean }): void {
+      mockPwa.canPromptInstall.set(state.canPromptInstall ?? false);
+      mockPwa.isIOS.set(state.isIOS ?? false);
+      mockPwa.isStandalone.set(state.isStandalone ?? false);
+      fixture.detectChanges();
+    }
+
+    it('offers the prompt the browser handed over, and the button raises it', () => {
+      render({ canPromptInstall: true });
+
+      expect(card()).withContext('the card').not.toBeNull();
+      expect(card()!.textContent).toContain('about.install.cardTitle');
+      expect(card()!.textContent).toContain('about.install.promptDescription');
+      expect(steps()).withContext('no iOS steps beside a prompt').toEqual([]);
+      expect(installButton()?.textContent).toContain('about.install.button');
+
+      installButton()!.click();
+
+      expect(mockPwa.promptInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves once the prompt is spent: the browser hands over a new one when it will ask again', () => {
+      render({ canPromptInstall: true });
+
+      installButton()!.click();
+      fixture.detectChanges();
+
+      expect(card()).toBeNull();
+    });
+
+    it('hands focus on to the feedback button as it leaves, rather than dropping it on the page', () => {
+      render({ canPromptInstall: true });
+      installButton()!.focus();
+
+      installButton()!.click();
+      fixture.detectChanges();
+
+      expect(card()).withContext('the card left').toBeNull();
+      expect(document.activeElement)
+        .toBe((fixture.nativeElement as HTMLElement).querySelector('.feedback-button'));
+    });
+
+    it('lists the Home Screen steps on iOS, in order, with no button to press', () => {
+      render({ isIOS: true });
+
+      expect(card()).withContext('the card').not.toBeNull();
+      expect(card()!.textContent).toContain('about.install.iosDescription');
+      expect(card()!.querySelector('ol.install-steps')).withContext('an ordered list').not.toBeNull();
+      expect(steps().map(step => step.textContent?.trim())).toEqual([
+        'about.install.iosStepShare',
+        'about.install.iosStepAdd',
+        'about.install.iosStepConfirm',
+      ]);
+      expect(installButton()).toBeNull();
+    });
+
+    it('shows no card once the app runs installed', () => {
+      render({ canPromptInstall: true, isIOS: true, isStandalone: true });
+
+      expect(card()).toBeNull();
+    });
+
+    it('shows no card in the native app, whatever the web layer reports', () => {
+      spyOn(Capacitor, 'isNativePlatform').and.returnValue(true);
+      fixture = TestBed.createComponent(AboutComponent);
+
+      render({ canPromptInstall: true, isIOS: true });
+
+      expect(card()).toBeNull();
+    });
+
+    it('shows no card where the browser offers neither, as Firefox and desktop Safari do', () => {
+      render({});
+
+      expect(card()).toBeNull();
+    });
+
+    it('passes the axe sweep in each state that shows a card, in both schemes', async () => {
+      const states = { prompt: { canPromptInstall: true }, ios: { isIOS: true } };
+
+      for (const [name, state] of Object.entries(states)) {
+        render(state);
+        expect(card()).withContext(`the ${name} card under audit`).not.toBeNull();
+        for (const scheme of AUDIT_SCHEMES) {
+          await withTheme(scheme, async () => {
+            const results = await runAxe(card()!);
+            expect(summarizeViolations(results)).withContext(`${name}, ${scheme} scheme`).toEqual([]);
+            expect(results.passes.map(result => result.id))
+              .withContext(`${name}, ${scheme} scheme: contrast was scored`)
+              .toContain('color-contrast');
+            expect(results.incomplete.map(result => result.id))
+              .withContext(`${name}, ${scheme} scheme: contrast was scored, not left undecided`)
+              .not.toContain('color-contrast');
+          });
+        }
+      }
     });
   });
 

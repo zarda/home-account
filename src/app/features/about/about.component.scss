@@ -216,6 +216,13 @@
   }
 }
 
+// Install Card: everything else is the welcome card's. The base reset
+// strips a list's numbers and indent, and these steps are read in order.
+.install-steps {
+  list-style: decimal;
+  padding-inline-start: 20px;
+}
+
 // Feedback Card
 .feedback-card {
   background: var(--surface-card);

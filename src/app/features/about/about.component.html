@@ -65,6 +65,44 @@
     </mat-card-content>
   </mat-card>
 
+  <!-- Install Card: styled by the welcome card's classes; install-* are hooks -->
+  @if (installOffer(); as offer) {
+    <mat-card class="welcome-card install-card">
+      <mat-card-content>
+        <div class="welcome-content">
+          <mat-icon class="welcome-icon">install_mobile</mat-icon>
+          <div class="welcome-text">
+            <p class="welcome-title">{{ 'about.install.cardTitle' | translate }}</p>
+            @if (offer === 'prompt') {
+              <p class="welcome-body">{{ 'about.install.promptDescription' | translate }}</p>
+            } @else {
+              <p class="welcome-body">{{ 'about.install.iosDescription' | translate }}</p>
+              <ol class="welcome-body install-steps">
+                <li>{{ 'about.install.iosStepShare' | translate }}</li>
+                <li>{{ 'about.install.iosStepAdd' | translate }}</li>
+                <li>{{ 'about.install.iosStepConfirm' | translate }}</li>
+              </ol>
+            }
+          </div>
+          <!-- The button leaves with the prompt it raises, so focus moves on
+               to the next stop, the feedback card's button, rather than
+               falling to the page while the browser's dialog is open. -->
+          @if (offer === 'prompt') {
+            <button
+              mat-raised-button
+              color="primary"
+              class="welcome-button install-button"
+              (click)="feedbackButton.focus(); onInstall()"
+            >
+              <mat-icon>install_mobile</mat-icon>
+              {{ 'about.install.button' | translate }}
+            </button>
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+  }
+
   <!-- Feedback Card: the door for the stored feedback kind -->
   <mat-card class="feedback-card">
     <mat-card-content>
@@ -75,6 +113,7 @@
           <p class="feedback-body">{{ 'about.feedback.cardDescription' | translate }}</p>
         </div>
         <button
+          #feedbackButton="matButton"
           mat-raised-button
           color="primary"
           class="feedback-button"
