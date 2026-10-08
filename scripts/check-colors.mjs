@@ -241,18 +241,11 @@ const ALLOWED = {
     count: 7,
     reason: "each settings area's colour tile and the white glyph on it",
   },
-  'src/app/features/transactions/camera-capture/camera-capture.component.scss': [
-    {
-      kind: 'brand',
-      count: 6,
-      reason: "the on-device and cloud scan badges' own gradients",
-    },
-    {
-      kind: 'scrim',
-      count: 2,
-      reason: 'the drag handle sits on a receipt photo, which has no theme',
-    },
-  ],
+  'src/app/features/transactions/camera-capture/camera-capture.component.scss': {
+    kind: 'scrim',
+    count: 2,
+    reason: 'the drag handle sits on a receipt photo, which has no theme',
+  },
   'src/app/features/transactions/transaction-form/transaction-form.component.scss': {
     kind: 'scrim',
     count: 2,

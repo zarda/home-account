@@ -143,7 +143,7 @@ const PAIRS = [
     fg: '--color-primary-text',
     bg: '--color-primary-light',
     why: "the stat-card neutral icon, the import preview badge, the period selector's toggle " +
-      "and chip, the bottom-nav active pill, the profile-settings checked toggle",
+      "and chip, the bottom-nav active pill, the profile-settings checked toggle, the camera's cloud scan badge",
   },
   {
     fg: '--color-primary-text',
@@ -224,7 +224,11 @@ const PAIRS = [
       "suggestion's low-confidence dot on an unchecked review card: graphics, so 3:1. On a checked or flagged card " +
       'the dot clears 3.45:1 and 3.61:1 in light',
   },
-  { fg: '--color-success-text', bg: '--color-success-light', why: "the import history's completed chip" },
+  {
+    fg: '--color-success-text',
+    bg: '--color-success-light',
+    why: "the import history's completed chip and the camera's on-device scan badge",
+  },
   { fg: '--text-primary', bg: '--color-info-light', why: "the import wizard's merged-items badge" },
   { fg: '--color-success-text', bg: '--surface-card', why: 'a success state as running text' },
   {
