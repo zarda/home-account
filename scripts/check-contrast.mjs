@@ -146,6 +146,11 @@ const PAIRS = [
       "and chip, the bottom-nav active pill, the profile-settings checked toggle",
   },
   {
+    fg: '--color-primary-text',
+    bg: '--surface-active',
+    why: "the desktop sidebar's current page, its label and its icon",
+  },
+  {
     fg: '--text-secondary',
     bg: '--color-primary-light',
     why: "the export dialog's description of the chosen format and of a format under the pointer",
