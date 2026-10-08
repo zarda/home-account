@@ -300,7 +300,11 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
 
   --text-primary: #ffffff;
   --text-secondary: #e5e7eb;
-  --text-muted: #9ca3af;
+  // gray-400 lifted 7% towards white along its own hue: muted copy sits on
+  // --surface-hover as well as on the card, on resting chips and under every
+  // hover, and gray-400 measured 4.28:1 there. This is the smallest such
+  // lift that reads 4.6:1 on it, a margin over AA rather than a tie.
+  --text-muted: #a3a9b5;
   --text-disabled: #6b7280;
   --text-inverse: #111827;
 

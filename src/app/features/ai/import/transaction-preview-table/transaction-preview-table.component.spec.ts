@@ -5098,6 +5098,24 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       }
     });
 
+    // A date nobody doubts and a currency that did not fall back are plain
+    // data: muted copy on the chip's own fill, on every card at rest.
+    it('paints a resting date and currency chip in --text-muted at AA on the chip, in both themes', () => {
+      render([makeRow({ id: 'resting', selected: false })]);
+      const chips = ['button.date-chip', 'button.currency-chip'].map(selector => card('resting').querySelector(selector));
+      for (const mark of ['needs-verify', 'not-today', 'reviewed', 'fell-back']) {
+        expect(chips.some(chip => chip?.classList.contains(mark))).withContext(`no chip is marked ${mark}`).toBeFalse();
+      }
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(chips[0], '--text-muted', `${theme} resting date`);
+          expectPainted(chips[1], '--text-muted', `${theme} resting currency`);
+        });
+      }
+    });
+
     it('paints an answered date in --color-success-text, the date at AA and its check at 3:1 on its chip, in both themes', () => {
       render([makeRow({ id: 'answered', dateReviewed: true })]);
       const chip = card('answered').querySelector('button.date-chip');

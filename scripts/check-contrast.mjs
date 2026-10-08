@@ -113,6 +113,13 @@ const PAIRS = [
   { fg: '--text-muted', bg: '--surface-strong', why: "the category manager's Default badge" },
   { fg: '--text-muted', bg: '--surface-background', why: 'captions on the page' },
   {
+    fg: '--text-muted',
+    bg: '--surface-hover',
+    why: "the import review card's resting date, currency, place and tag chips and its zero-selection badge, the " +
+      "dropzone's file-type label, the export dialog's summary line, and muted copy under a hovered row, card or " +
+      'link card',
+  },
+  {
     fg: '--text-inverse',
     bg: '--color-primary',
     why: "the transactions quick filters' active button and filter count, the import stepper's current step, " +
