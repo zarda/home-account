@@ -215,15 +215,16 @@ full browser window.
   the page is reloaded. So run the phone journey at the pane's **own** width
   when it is already narrow enough, and reload before concluding that a
   control does nothing.
-- **A screenshot can freeze under a scaled emulation** — the image that comes
-  back is the one from before the last interaction, which reads exactly like a
+- **A screenshot can freeze under a scaled emulation** — the image captured
+  is the one from before the last interaction, which reads exactly like a
   control that did nothing. Confirm against the page's text, not the picture.
 - **A hidden pane stops painting, and the app's render scheduler with it.**
   Angular schedules a render on `requestAnimationFrame` raced against a
   timer, and a pane the host is not showing throttles both, so a click lands
   in the model while the view lags behind it — a control that did nothing,
   read from a screenshot that never updated, and focus that never arrived.
-  Front the pane before reading anything off it. Where it cannot be fronted,
+  Bring the pane into view before reading anything off it. Where it cannot
+  be,
   `ng.applyChanges(ng.getComponent(document.querySelector('app-import-wizard')))`
   after each action renders what the model already holds — state only, so it
   proves nothing about what the app would have painted — and everything
@@ -241,7 +242,7 @@ full browser window.
   `const d = ng.getDirectives(label).find(x => x.overflowRatio);
   d.registry.markDirty(d); d.registry.flush();` — and read the font-size
   after: state only, diagnostic-grade, as the render flush above is; a
-  fronted pane does this on its own. A card born after the last flush — a
+  pane in view does this on its own. A card born after the last flush — a
   split's part, a row added by hand — has a label no flush has reached, and
   it reads as the same overflow until it gets one of its own. The pane's
   390px emulation also raises the root font to 20.8px, so a label reads
@@ -253,7 +254,8 @@ full browser window.
   bottom navigation's active pill, whose background eases over 0.15s, read
   its dark fill behind the light glyph — 1.31:1 — where the settled pill reads
   6.15:1. Finish what is running before reading a computed colour,
-  `document.getAnimations().forEach(a => a.finish())`, or front the pane.
+  `document.getAnimations().forEach(a => a.finish())`, or bring the pane into
+  view.
 - **A desktop-only door needs a pane genuinely wide enough for the table.**
   The list swaps to the table at `min-width: 768px`, so below that the row's
   note icon does not exist and journey 2 silently becomes journey 4.
@@ -261,15 +263,15 @@ full browser window.
   to a third-party host and can be missing from the log entirely, so its
   absence proves nothing. The translated text on screen is the proof the
   provider answered.
-- **A pane's Escape key reaches no dialog.** The key tool's Escape lands
-  somewhere the CDK overlay's own keydown handler never sees: the receipt
-  viewer and the note dialog both stay open with focus inside and nothing in
-  the console, which reads exactly like a dialog that has stopped honouring
-  Escape. The app honours it — a synthetic `keydown` (`key: 'Escape'`,
-  `keyCode: 27`) dispatched on the open dialog closes it, which is how this
-  was settled — so close dialogs through their own Close or Cancel control,
-  which every journey does anyway, and never conclude an Escape defect from a
-  pane.
+- **A pane's Escape key reaches no dialog.** An Escape sent as synthetic key
+  input from outside the page lands somewhere the CDK overlay's own keydown
+  handler never sees: the receipt viewer and the note dialog both stay open
+  with focus inside and nothing in the console, which reads exactly like a
+  dialog that has stopped honouring Escape. The app honours it — a
+  synthetic `keydown` (`key: 'Escape'`, `keyCode: 27`) dispatched on the
+  open dialog closes it, which is how this was settled — so close dialogs
+  through their own Close or Cancel control, which every journey does
+  anyway, and never conclude an Escape defect from a pane.
 
   Two things about a key the run constructs itself, since the same trick is
   what drives the tab strips. The pane's Chromium leaves `keyCode` at 0 on a
@@ -279,14 +281,15 @@ full browser window.
   key dispatched on the header, or on the group, reaches no key manager and
   reads exactly like a strip that ignores the keyboard. Dispatch from the
   focused tab.
-- **A pane clears viewport emulation between turns.** A width set for a phone
-  journey is gone by the next turn, and any measurement that crosses that
-  boundary describes a layout that no longer exists — one run read a
-  zero-size box before the image had loaded and came back to find the dialog
-  apparently gone, which is the pane's reset and not the app. Set the width
-  and take every measurement of it inside one turn. The app is not upset by
-  the change either way: an open viewer watched through a mobile→desktop swap
-  stayed open while the table re-rendered underneath it.
+- **A pane can drop viewport emulation on its own.** A width set for a
+  phone journey can be gone a step later, and any measurement that crosses
+  that reset describes a layout that no longer exists — one run read a
+  zero-size box before the image had loaded and, reading again later, found
+  the dialog apparently gone, which is the pane's reset and not the app.
+  Set the width and take every measurement of it immediately, in the same
+  step. The app is not upset by the change either way: an open viewer
+  watched through a mobile→desktop swap stayed open while the table
+  re-rendered underneath it.
 - **The wizard's back arrow navigates asynchronously.** The click returns
   before the route has changed, so a file handed to the dropzone's input in
   the same breath goes to the wizard the run thought it had left and joins
@@ -950,8 +953,8 @@ IndexedDB record, `{ fbase_key, value }`, so it can go into either store.
 
 **The first sign-in, on a clean origin,** can still put the record into
 IndexedDB and load the app: that load carries it across. Start the write,
-and read its flag in a **second** call — a pane script that awaits the
-IndexedDB transaction can hang:
+and read its flag in a **second** console evaluation — a pane script that
+awaits the IndexedDB transaction can hang:
 
 ```js
 const record = /* sessions.json's "alex", "sam" or "kai" object, pasted whole */;
@@ -991,15 +994,15 @@ and the guards move one that was signed out off `/login` onto the dashboard
 each to reload itself onto the account rather than navigating it there. The
 page that made the write is told nothing — a browser raises no storage event
 in the document that changed the store — and goes on as the account it was
-until the run reloads it: straight after the write, in a call of its own or
-with the browser's reload. The same write signs in a page that is signed
-out, and the run reloads that one the same way.
+until the run reloads it: straight after the write, as a separate console
+evaluation or with the browser's reload. The same write signs in a page
+that is signed out, and the run reloads that one the same way.
 
 A value the run needs after a reload goes in `sessionStorage`, which a
 reload of the same tab keeps; a `window` flag dies with the page it was set
-on. Front a tab before reading it: a background tab paints nothing and runs
-its timers late, so a page that has reloaded can hold its new account with
-none of it on screen ([In a hidden pane](#in-a-hidden-pane)). The console
+on. Switch to a tab before reading it: a background tab paints nothing and
+runs its timers late, so a page that has reloaded can hold its new account
+with none of it on screen ([In a hidden pane](#in-a-hidden-pane)). The console
 keeps its entries across reloads, and a swap reloads every page of the
 origin, so judge each tab's console by the difference, as check 3 of
 [Before every run](#before-every-run) says.
@@ -1038,13 +1041,13 @@ every dialog's own component with `mat-mdc-dialog-component-host`, stacked
 ones included. A dialog also opens on an animation frame, which a hidden
 pane throttles: until its `mat-dialog-container` carries `mdc-dialog--open`,
 the surface is still at its opening `scale(0.8)` — a 320px dialog measures
-256 — and its content at opacity 0. Read the class in a call of its own,
-and again in later calls until it is there; then finish the animations and
-measure.
+256 — and its content at opacity 0. Read the class as a separate console
+evaluation, and again in later evaluations until it is there; then finish
+the animations and measure.
 
 State only, diagnostic-grade, and never a timer in a pane script. Inline every
-probe in the call that uses it: a helper left on `window` does not survive a
-navigation.
+probe in the evaluation that uses it: a helper left on `window` does not
+survive a navigation.
 
 ### Reading past the rules
 
@@ -2234,8 +2237,9 @@ photo, and the cached second answer.
 
 375px wide, at the pane's **own** width where possible — pointer input stalls
 under emulation, and this journey is a menu and a dialog
-([Panes and viewports](#panes-and-viewports)). Take every measurement in the
-same turn that sets the width: a pane clears the emulation between turns.
+([Panes and viewports](#panes-and-viewports)). Take every measurement
+immediately, in the same step that sets the width: a pane can drop the
+emulation on its own.
 
 Below `min-width: 768px` the table is gone and the list is
 `app-transaction-row` elements. The row's receipt mark is an **indicator**,
@@ -2538,8 +2542,9 @@ so six pages rendered one column wherever the rule applied. The rules start at
 600, 768 and 1024px; Karma's window is 756px, so three of them cannot be read
 as layout in a spec at all — this is where the render is proved.
 
-The pane is narrower than 1024px, so set the width and read the DOM inside the
-one turn ([Panes and viewports](#panes-and-viewports)). For each grid:
+The pane is narrower than 1024px, so set the width and read the DOM
+immediately, in the same step ([Panes and viewports](#panes-and-viewports)).
+For each grid:
 
 ```js
 getComputedStyle(document.querySelector('.summary-cards')).gridTemplateColumns;
@@ -2606,7 +2611,7 @@ overflowing at 1280.
 
 The account's own `--app-font-scale` is 1.3, which is what a reload renders.
 Compare against 1.0 by overriding the inline variable on `documentElement`
-inside the same turn — it persists nothing:
+in the same step as the readings that use it — it persists nothing:
 
 ```js
 document.documentElement.style.setProperty('--app-font-scale', '1.0');
@@ -4075,8 +4080,8 @@ One shot: the goal with its linked rows and contributions.
 reported only by a page that saw the membership live. Sam stays on
 `http://localhost:4300/household/chen-home`. A second tab at
 `http://127.0.0.1:4300`, cleaned as in pre-flight step 8, gets Alex's record
-and opens `/household/chen-home` there. Front each tab before reading it, or
-flush it as [In a hidden pane](#in-a-hidden-pane) says.
+and opens `/household/chen-home` there. Switch to each tab before reading
+it, or flush it as [In a hidden pane](#in-a-hidden-pane) says.
 
 1. **Alex removes Sam.** In Alex's tab, *Remove* on Sam's row → *Remove Sam
    Lee?* → **Remove**. **Pass:** while the removal runs, the purge line
@@ -4469,7 +4474,7 @@ type grade).
 1. **Hand the rows over.** Wait until the wizard holds its catalogue —
    `ng.getComponent(document.querySelector('app-import-wizard')).categories().length`
    above 0 — since the converter grades each category against it. Then, in
-   one call:
+   one console evaluation:
 
    ```js
    const w = ng.getComponent(document.querySelector('app-import-wizard'));
@@ -4547,8 +4552,8 @@ type grade).
    side to the refund and the expense side to each purchase. A category
    that fits both sides would be offered to every row; the seed holds none.
 4. **The flip.** Click the doubted purchase's toggle. Then read the live
-   region in a call of its own — the announcer writes on a timer of its
-   own, as journey 48 says:
+   region as a separate console evaluation — the announcer writes on a
+   timer of its own, as journey 48 says:
 
    ```js
    document.querySelector('.cdk-live-announcer-element').textContent;
@@ -4651,7 +4656,7 @@ type grade).
    nor a device. So the scan goes through the form's own handler, with the
    strategy service answering from the page — state only, which journey 41
    accepts for a flag whose attributes do not care how it was raised. In
-   one call:
+   one console evaluation:
 
    ```js
    const f = ng.getComponent(document.querySelector('app-transaction-form'));
@@ -4740,9 +4745,10 @@ the account it now holds, with nothing reported on the way out
 - **Tab 2:** `http://localhost:4300/transactions` in a second tab. The same
   origin, so Alex there too, with no welcome: it was skipped.
 - Both list Alex's *Electric bill* and *Hardware store*.
-- Front each tab before reading it.
+- Switch to each tab before reading it.
 
-**The probe**, run in **both** tabs before every step, one call each:
+**The probe**, run in **both** tabs before every step, one console
+evaluation each:
 
 ```js
 window.__j80 = 'armed';
@@ -4797,8 +4803,8 @@ every report the app's error handler logs (`global-error-handler.ts:39`).
 1. **Sam, written from tab 2.** Arm both tabs. In tab 2, write Sam's record
    into local storage — the swap in
    [Signing in a seeded account](#signing-in-a-seeded-account) — and reload
-   tab 2 straight after, in a call of its own. Front tab 1 and read, then
-   tab 2.
+   tab 2 straight after, as a separate console evaluation. Switch to tab 1
+   and read, then tab 2.
    - **Pass, tab 1:** `{ marker: undefined, fresh: true, departing: [],
      path: '/transactions' }` — it reloaded by itself, where it stood, and
      the page it left reported nothing.
