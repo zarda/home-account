@@ -33,6 +33,16 @@ gets Material's own forced-colors marker for the row.
 non-anchor list item, `[activated]` gives the visual treatment and no attribute
 at all.
 
+**Each surface is a named landmark.** The sidebar's `nav` is *Main*
+(`nav.landmarkMain`) and the bottom nav's is *Quick access*
+(`nav.landmarkQuick`). A phone has both, the bottom nav on screen and the
+sidebar in its drawer, and unnamed, each was announced only as *navigation*,
+so a landmark list could not tell one from the other. The names are short
+because a screen reader says *navigation* after them. The sidebar builds its
+name with a `computed` over `TranslationService.t`, as it does its link
+labels, and the bottom nav uses the translate pipe
+([ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+
 ## Active state is never conveyed by colour alone
 
 Both navigation surfaces originally expressed "active" as colour plus a font
@@ -585,6 +595,16 @@ every alias to its token in all four modes.
   `/about` have no link there. The gate tests for the anchor, not the
   attribute, so a regression that drops `aria-current` still fails every route
   that has a link.
+- `sidebar.component.spec.ts` ("names its landmark, apart from the bottom
+  nav") and `bottom-nav.component.spec.ts` ("names its landmark, apart from
+  the sidebar") pin each surface's name. `app.smoke.spec.ts` checks the pair
+  in the real shell with `expectLandmarksNamed`, on its first `/dashboard`
+  visit. Karma's frame is below the desktop breakpoint, so the sidebar is in
+  the overlay drawer: the helper opens it through the header's menu button,
+  asserts exactly two `nav` elements in the shell, each named and no two the
+  same, and closes it again, so no later axe pass audits a page behind the
+  drawer's backdrop. The walkthrough serves no i18n, so "no two the same"
+  compares keys; the catalogs are `i18n:check`'s.
 - `user.model.spec.ts` pins the three resolvers against absent, null,
   off-list and wrongly-typed input.
 - `accessibility.service.spec.ts` drives the service against a faked document,
@@ -635,8 +655,6 @@ every alias to its token in all four modes.
   selector express selection visually and have not been; the tab strips are
   audited for reachability and keyboard travel only, not for how selection is
   announced.
-- **No landmark structure beyond `nav`.** The two navigation surfaces are
-  indistinguishable to a user listing landmarks.
 - **The automated pass is a phone audit of eight routes, in one theme.**
   `app.smoke.spec.ts` runs axe-core (WCAG 2.1 A and AA, `color-contrast`
   included) inside `expectPage`, so every page the walkthrough opens is swept,

@@ -169,6 +169,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md) | A refund read on the device is filed as income, and the review asks about it | Accepted; amends 0147; applies 0008, 0146 and 0149 | 2026-10-02 |
 | [0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md) | A page reloads on an account change it did not start, and the web keeps the session in local storage | Accepted; amends 0009 and 0052; leaves 0089 standing | 2026-10-02 |
 | [0164](0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md) | Colours come from theme tokens, and a gate keeps them there | Accepted; applies 0145; closes a gap of 0151 and one of accessibility.md | 2026-10-08 |
+| [0165](0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md) | The period pickers are bounded, unavailable totals offer Retry, and three smaller papercuts close | Accepted; closes gaps of 0054, 0055, 0061, 0082, 0095, 0096 and 0099, and a gap of accessibility.md | 2026-10-08 |
 
 ## What belongs here
 

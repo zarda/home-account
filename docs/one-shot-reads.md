@@ -378,6 +378,23 @@ the account's rows in the changed category and each of their copies from the
 cache when offline, so a category edit made offline still queues its copies'
 rewrites; a copy it cannot read is written.
 
+## The period pickers' floor (#440)
+
+`TransactionService.getEarliestTransactionDateFromServer` reads the date of
+the account's oldest row. That date is the floor of the month and year
+pickers on the dashboard, the reports and the transactions page
+([ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+Nothing writes it down, but it is a gate: every month before it is
+disabled. Online, `getCollection` would wait for the server too. Offline,
+a floor read through it would come from the cache, whose oldest row is only
+the oldest of whatever windows this session browsed, so it would disable
+months that hold rows, with nothing on screen to say so.
+
+`getCollectionFromServer`, the strict variant, ordered by `date` ascending
+with a limit of one. Each page reads it once, on init. Offline it rejects,
+and the page leaves its pickers with the cap and no floor: every year up to
+the cap is offered, which errs on the side that hides nothing.
+
 ## The deliberate live readers
 
 These are not exceptions to the rule — they are the other question. The
@@ -430,6 +447,7 @@ moving a method to the strict variant, because one of them may be painting.
 | the household index listing (`indexEntries`) | which entries a tidy, an erasure or the limit check at ten judges | `getCollectionFromServer`, answered by the index listener while attached | **rejects** |
 | the index before a row delete (`indexedHouseholds`) | which households' copies the delete takes out | `getCollection` | cache: the delete works offline |
 | `reprojectCategory` | which copies a category change rewrites | `getCollection`, `getDocument` | cache: the rewrites queue |
+| `getEarliestTransactionDateFromServer` | the month and year pickers' floor (dashboard, reports, transactions) | `getCollectionFromServer` (one row, oldest first) | **rejects; the pickers keep the cap and get no floor** |
 
 ## The gate
 

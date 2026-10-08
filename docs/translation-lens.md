@@ -159,9 +159,21 @@ third line is missing — so this is the one place the app does *not* read an
 answer as far as it goes
 ([ADR 0066](ADR/0066-an-answers-budget-follows-its-question.md)).
 
-**With no provider configured** the Translate button is shown and disabled,
+**With no provider configured** the Translate button is shown and held,
 with a hint naming where a key goes. A control that vanishes teaches nobody
-that the feature exists.
+that the feature exists, and one the keyboard cannot reach teaches only the
+mouse.
+
+Held means `[disabled]="!available()" disabledInteractive`. Material renders
+`aria-disabled="true"` and no native `disabled`, so the button stays in the
+tab order, and while it is held `aria-describedby` points it at the hint.
+Retry, in the error branch, is held the same way with the hint beside it,
+for a provider that goes away while a failure is showing. Each lens takes
+its hint id from a module sequence (`note-translation-hint-N`), so two
+lenses in one document never share one. Material lets a `<button>`'s click
+through `disabledInteractive`, so `translateNote()` itself returns early
+while no provider can answer, and a press asks for nothing
+([ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
 
 **A blank note never reaches a provider.** A model handed nothing to translate
 answers with prose rather than JSON, which the parser then classes as a
@@ -253,7 +265,10 @@ for text with no vision model — so three seams sit in front of the call:
 
 - `hasVisionProvider` — true when at least one configured provider takes
   images. The Translate button reads it: with nothing that can see, the button
-  is **shown and disabled** with a hint naming Settings → AI Processing.
+  is **shown and held** with a hint naming Settings → AI Processing, the way
+  the note lens holds its own. Retry is held too, and the hint renders in the
+  error branch for it. Both stay in the tab order, described by the hint
+  (`receipt-translation-hint-N`), and `translateReceipt()` returns early.
 - `resolveVisionProvider('translation')` — the `translation` preference when
   it can see, else the first of `gemini → openai → claude` that can, else
   null. The same fallback order every resolver in the façade uses, from one
@@ -333,6 +348,9 @@ download is usually a storage bucket without CORS configuration
   transaction and, where the door knows one, the slot it was pressed on.
   Gate it on the transaction actually having an image; the viewer's
   empty-state guard is defensive, not a path a door should take.
+- **The held buttons are written twice.** Each lens holds Translate and
+  Retry with `disabledInteractive`, its own hint id sequence and its own
+  early return in the handler. Change one and change the other.
 - The two lenses are deliberately separate components. The note lens stands
   its answer in for the text and reports `showingTranslation` outward; this
   one adds a panel beside an image that never moves, and resets per image

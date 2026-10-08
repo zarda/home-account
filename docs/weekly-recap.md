@@ -96,6 +96,15 @@ Its window is the seven days ahead, not the fortnight the Upcoming card shows
 — a week's story reads beside a week — and occurrences already past are left
 to that card rather than counted here as money still to move.
 
+**An empty week's bills are neither income nor expense.** The net is snapped
+at the base currency's display precision first (`snapDisplayZero`), and the
+snapped value sets both the figure and its tone: income above zero, expense
+below, neutral and unsigned at zero. A net that rounds to zero at the
+currency's precision, under half its smallest unit (JPY −0.4 say), is that
+neutral zero too. The Upcoming card's net footer follows the same rule
+([recurring.md](recurring.md#the-upcoming-card),
+[ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+
 **The composition is memoised per account per week**, behind a single-flight
 promise. A finished week's figures do not change, so a second dashboard visit,
 or two surfaces asking at once, costs nothing. Only a completed composition is
@@ -268,5 +277,3 @@ narrative is bounded by its key.
 - **The bills line reads the clock once per computation.** A tab left open
   across midnight keeps yesterday's seven-day window until something
   recomputes it.
-- **Zero bills due renders `0` in the income colour.** The line signs its net
-  and treats non-negative as income, which for an empty week is a green zero.
