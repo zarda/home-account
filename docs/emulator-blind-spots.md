@@ -411,8 +411,8 @@ beside itself instead of passing for what the door receives today.
 ## What the axe pass can and cannot see
 
 `app.smoke.spec.ts`'s `expectPage()` runs axe-core over every page it opens,
-WCAG 2.1 A and AA, scoped to the routed element. Six properties of the
-harness bound what that can honestly mean, and none of them is about axe:
+WCAG 2.1 A and AA, scoped to the routed element. Six properties, each of the
+harness or of how axe meets it, shape what that can honestly mean:
 
 - **i18n is not served.** Karma's asset config does not publish the catalogs,
   so `| translate` renders the raw key. Every accessible name on screen is a
@@ -421,51 +421,59 @@ harness bound what that can honestly mean, and none of them is about axe:
   stylesheets compile.
 - **Karma's window is 756px**, so this is a phone and small-tablet audit. A
   rule that only fires on a desktop layout is never reached.
-- **Only the top 413px of a page is measured.** The frame the specs render in
-  is 413px tall where it was measured and scrolls inside its own body, and
-  `color-contrast` cannot measure a node below that fold: axe leaves it
-  incomplete rather than failing it, the harness reads violations only, and
-  scrolled into the frame the node is measured like any other. On
-  `/transactions` both seeded rows sit inside the frame. On `/budgets` the
-  budget card's chip starts 445px down, and on `/dashboard` the two
-  recent-transaction chips start at 591px and 675px, the spending chart's
-  legend at 1426px and the budget card's icon at 1602px. So the category
-  chip's orange tile, which failed in light at 1.95:1 on `/transactions` and
-  at 1.78:1 on `/dashboard` and `/budgets` — its tint mixed there over the
-  Material card's `#f4f2fc` — was reported on `/transactions` only. And two
-  failures on the walkthrough's own orange category go unreported: the budget
-  card's orange icon on `--surface-subtle` at 2.06:1 in light, and the
-  legend's white glyph at 2.16:1 in both themes, two of the sites
-  [accessibility.md](accessibility.md) lists as painting a category's colour
-  without the chip.
+- **A page pass scores only what starts in the frame.** The frame the specs
+  render in is 413px tall where it was measured, and every routed page
+  renders inside the shell's `.main-container`, a `position: fixed`
+  scroller. axe counts a node under a fixed ancestor as offscreen once its
+  top reaches the viewport's bottom, and skips an offscreen node outright:
+  it appears in no result at all, not even `incomplete`. (A node in plain
+  flow, by contrast, is scored at any depth, which is why the fold fixture
+  in `axe.spec.ts` wraps its pair in a fixed scroller.) `auditInView(node)`
+  in `core/services/testing/axe.ts` answers it for one node at a time: it
+  scrolls the node to the middle of the scroller, instantly, waits a frame,
+  and audits only if the whole node lies between the 64px header and the
+  frame's bottom, since a part under the header reads as overlapped and a
+  part past the bottom is skipped. The scroller runs from behind the header,
+  so a centred node keeps its top clear of the header only while it is at
+  most about 285px tall; a taller card is audited as its parts. The
+  walkthrough audits five nodes this way: the spending chart's legend list
+  and the Budget Progress widget on `/dashboard`, the overview on `/budgets`
+  (256px), the rules grid on the Recurring tab, and Upcoming Bills once a
+  rule exists. Everything else that starts below the frame is never scored.
+  In the run that measured it, every page pass started from the top of the
+  page, and these started below the frame: on `/dashboard`'s first visit,
+  Recent Transactions (521px), the spending chart's card around its legend
+  list (1018px) and AI Insights (1481px); on `/settings`, all but the top of
+  the profile section (373px) and every section after it, from the rate
+  status (549px) to the category manager (2236px); on `/data`, everything
+  past the first 413px of a page 2687px tall; on `/household`'s member view,
+  the second row of figures (472px), the member chips, the shared rows, the
+  plans and the members; and on `/about`, every card after the first (420px).
 - **The run is scoped to the routed element**, because Karma's `debug.html`
   owns the `<html>` element, a banner and its own headings. Eight page-level
   rules are therefore disabled by name (`html-has-lang`, `document-title`,
   `landmark-one-main`, `landmark-unique`, `landmark-banner-is-top-level`,
   `page-has-heading-one`, `bypass`, `region`) — a landmark rule has no meaning
   when the thing being audited is a fragment.
-- **It renders one theme per run, and the host picks it.** The walkthrough's
-  account keeps the default `theme: 'system'`, and nothing in the harness pins
-  a colour scheme, so `ThemeService` follows the `prefers-color-scheme` of the
-  machine running Chrome: light on the CI runner, dark on a Mac in dark mode.
-  A run sees light or dark, never both, and nothing it prints says which. A
-  contrast failure that exists in only one theme is seen only where that theme
-  renders. The category chip's orange tile, 1.95:1 on its own tint in light,
-  passed every run on a Mac in dark mode and failed CI's. The chip failed in
-  dark too — `#9C27B0`, `#E91E63`, `#3F51B5` and `#795548` on their dark tints
-  — but orange is the one category the walkthrough's rows and budget use, and
-  the default colours render only in the Categories panel on `/settings`,
-  which the walkthrough leaves collapsed; axe measures nothing hidden, so no
-  run of either theme measured a colour that failed there. The dashboard's
-  subtitle, gray-500 on the light page background at 4.43:1, passes in dark;
-  the runs that emptied the contrast freeze rendered dark — axe reported the
-  page background as `#121212` — and CI's light run had `color-contrast`
-  frozen on `/dashboard`, so it was found by reading the pairs
+- **Each pass runs in both schemes, forced in the spec.** The walkthrough's
+  account keeps the default `theme: 'system'`, which follows the
+  `prefers-color-scheme` of the machine running Chrome: light on the CI
+  runner, dark on a Mac in dark mode. Left alone, a run would see one of the
+  two, and a contrast failure in only the other would pass there, as the
+  category chip's orange tile passed on every dark Mac while it failed CI
   ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
-  The pass's first runs had rendered light, which is how
-  [ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md) came to
-  record two failures in light mode. Where a finding depends on the theme,
-  measure both in a browser — journeys 45 and 57 in [e2e.md](e2e.md) do.
+  So every page pass, every in-view audit and the household switcher's panel
+  run once for each of `AUDIT_SCHEMES`, `['light', 'dark']`, inside
+  `withScheme`. It sets the scheme through `ThemeService.setTheme`, as the
+  Settings control does, so the category chip, the glyph pipe and the chart
+  palette follow it along with the stylesheet, then puts the preference and
+  both theme classes on `<html>` back. Each failure names its scheme. The
+  walkthrough sets the light preference before its first page, so between
+  passes it renders the same scheme on any host, and restores the system
+  preference and the classes in a `finally` and again in `afterAll`, so no
+  scheme leaks into the next smoke file. What the walkthrough cannot reach
+  is measured in both themes in a browser — journeys 45 and 57 in
+  [e2e.md](e2e.md) do.
 - **Colours are read at rest, not in motion.** `provideNoopAnimations` stops
   Angular's animations but not plain CSS transitions, and headless Chrome need
   not paint a frame between a class landing and the pass, so a transition can
@@ -480,8 +488,26 @@ harness bound what that can honestly mean, and none of them is about axe:
   running), and `expectNoAxeViolations` lets the page's zero-delay timers
   land before that, so a class cannot start moving mid-audit.
 
-And it sweeps only the routes the walkthrough visits: `/dashboard`,
-`/transactions`, `/budgets`, `/reports`, `/settings`, `/data`, `/household`
+A pass audits whatever has rendered by then. `expectPage` waits for the
+page's landmark, for the data it is told to expect, and until no
+`app-loading-spinner` is left on the route, and nothing else; a section
+that loads without a spinner is audited as it stands. Before that last
+wait, `/reports`' light pass audited the report's loading spinner and the
+dark pass, a moment later, the first tab. axe's `incomplete` results are
+not read either: a one-character text, and a label axe finds overlapped by
+another element, land there and are scored by no pass. In the runs that built the sweeps, the second kind
+included the Paused chip's label, the period toggles' desktop labels, the
+inputs on `/settings` and `/household`, and the household switcher's closed
+trigger, and the first kind hid the Budgets tab badge's count at 4.42:1 in
+dark until it was read by hand
+([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
+
+And it sweeps only the routes the walkthrough visits: `/dashboard` (its top,
+then the legend and the Budget Progress widget in view, and Upcoming Bills
+once a rule exists), `/transactions`, `/budgets` (its Budgets tab with the
+overview in view, then its Recurring tab with an active rule and a paused
+one, in the walkthrough's orange category, the rules grid in view),
+`/reports` (its first tab), `/settings`, `/data`, `/household`
 (its setup state, then its member view: the walkthrough's account forms two
 households through the service, shares one seeded row into the one shown
 and is shown one pending invite, so the shared row, the plans section's
@@ -490,9 +516,13 @@ the household's own budget and goal, with a contribution, are made, so the
 plans cards are swept too; and the switcher's open panel, which renders in
 the overlay container outside the routed element, is audited on its own)
 and `/about`.
-**`/ai`, `/search-history`, `/import/file` and `/import/history` are
-unswept** — no spec opens them, so nothing here says anything about their
-accessibility. `wcag22aa` is left out on purpose: its headline rule,
+**`/login` is opened by the redirect case and never audited, and `/lock`,
+`/ai`, `/search-history`, `/import/file` and `/import/history` are never
+visited** — nothing here says anything about their accessibility. Nor does
+the walkthrough open a dialog, a category select or a menu: the switcher's
+panel is the only overlay it audits, so the category pickers, the import
+review's category menu and the category dialog are held by their component
+specs alone. `wcag22aa` is left out on purpose: its headline rule,
 `target-size`, measures the 800×600 headless viewport rather than the markup
 on a mobile-first layout, and the 40px hit boxes are pinned by the component
 specs at the widths they were designed for.
@@ -504,23 +534,19 @@ reason, and all of them are fixed
 The table stays: a new violation fails the run on any route, and the only way
 past is a row with its reason.
 
-**Running the walkthrough in the other theme.** The repo commits no Karma
-config — the builder supplies its own defaults — so nothing pins the scheme,
-and a local run on a Mac in dark mode can pass what CI fails. To pin it, write
-a Karma config of your own outside the tree: a copy of `getBuiltInKarmaConfig`
-in `node_modules/@angular/build/src/builders/karma/karma-config.js`, its
-plugins required from the workspace, with a custom launcher on
-`ChromeHeadless` that adds `--blink-settings=preferredColorScheme=1` for light
-or `=0` for dark. Hand it to the builder with `--karma-config` and name the
-launcher in `--browsers`:
+**No launcher is needed for the other theme.** The walkthrough renders both
+schemes on any host, so a local run on a Mac in dark mode fails whatever
+CI's light run fails, with no Karma config of your own and no launcher that
+pins `prefers-color-scheme`. The command is the plain one:
 
 ```bash
 npx firebase emulators:exec --only auth,storage,firestore --project demo-home-account \
-  "npx ng test --watch=false --karma-config=<config> --browsers=<launcher> --include='**/app.smoke.spec.ts'"
+  "npx ng test --watch=false --browsers=ChromeHeadless --include='**/app.smoke.spec.ts'"
 ```
 
-Without one, plain `ChromeHeadless` follows the machine's appearance, so
-switching the Mac to light before the run has the same effect for that run.
+A spec that measures a colour outside the walkthrough forces its own scheme
+the same way, with `withScheme`, or stamps one with `withTheme` when it only
+probes a token ([testing.md](testing.md#colour-as-painted)).
 
 ## A rule that tightens, and the data already stored (#454)
 
@@ -665,7 +691,7 @@ top-level `node_modules/@firebase/firestore` (4.16.0, from `firebase`
 | An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 | A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
-| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, at 756px and above the frame's fold, with unserved i18n, in the one theme the host resolves (light on CI) | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, in both schemes forced through `ThemeService`, at 756px with unserved i18n; above the frame's fold, plus five cards scrolled into view | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
 | An SDK assertion from a CPU-starved run | nothing: re-run on an idle machine; the signature (`c050` hanging the suite, or `ca9` then `b815`) tells it apart | above |
 
 ## When you add another one

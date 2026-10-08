@@ -173,6 +173,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0166](0166-a-hidden-card-closes-what-nothing-else-reads-the-layout-stores-only-what-changed-and-each-card-has-a-menu.md) | A hidden card closes what nothing else reads, the layout stores only what changed, and each card has a menu | Accepted; closes gaps of 0132; amends 0132 | 2026-10-08 |
 | [0167](0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md) | A notification carries its route and a tap lands on it, and the recap nudge needs a week with news | Accepted; closes gaps of 0096 and 0104 | 2026-10-08 |
 | [0168](0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md) | The palette lists the shortcuts and the header opens it, and About offers to install the app | Accepted; closes gaps of 0073 and 0112; amends 0112 | 2026-10-08 |
+| [0169](0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md) | A category's colour is drawn through the chip or a pipe that knows its surface, and the axe pass sweeps both themes below the fold | Accepted; closes three gaps of 0151 and two of accessibility.md | 2026-10-08 |
 
 ## What belongs here
 

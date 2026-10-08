@@ -327,6 +327,127 @@ exceed its `clientWidth` while nothing visible overflows; measure the label's
 drawn box instead. The phone-width describe in
 `household-members.component.spec.ts` does all three (#71).
 
+## Colour, as painted
+
+A spec that holds a colour pair to WCAG renders the real template and
+measures what Chrome paints, through `core/services/testing/painted-contrast.ts`,
+never a computed value read off one element
+([ADR 0164](ADR/0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md),
+[ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
+Each helper there answers a way the computed value lies:
+
+- **A computed colour is not always `rgb()`.** Chrome keeps a `color-mix()`
+  in its own space: `color-mix(in srgb, #3f51b5 6%, transparent)` computes
+  to `color(srgb 0.247059 0.317647 0.709804 / 0.06)`, which a `[\d.]+`
+  scrape reads as three channels near zero and an alpha it then drops.
+  `channels()` reads `rgb()`, `rgba()` and `color(srgb … / a)`, the three
+  shapes Chrome computes an sRGB colour to, scales the last to 0–255, and
+  throws on anything else (a keyword, hex, `none`, a wide-gamut space)
+  rather than guess.
+- **A translucent fill takes on what is under it, and an ancestor's
+  `opacity` fades everything inside it.** `paintedBackground(el)` composites
+  the element's background over every ancestor's, with each `opacity`
+  applied to its whole group, and rounds to whole channels at the end, as
+  the page is painted. `paintedColor(el)` composites the text colour over
+  the same chain. Both finish running transitions first, so they read the
+  colour the page rests on, and both throw when nothing under the element
+  is opaque or the element is not in the document. `ratio(a, b)` scores the
+  pair. It is written out in the helper rather than imported, so a spec of
+  `color-contrast.utils.ts` is not measured by the code it tests.
+- **The walk follows the DOM parent chain.** That is the painting order for
+  in-flow content and for an overlay pane under `.cdk-overlay-container`,
+  but not for a pseudo-element, a sibling, or an element positioned over an
+  unrelated one. A stroked button's hover and focus layers are its
+  `::before`, so the review card's spec measures the card's fills, and the
+  glyph pipe's spec renders the button and composites its layers itself.
+- **Read the element that is painted.** A colour set on a host and read
+  back from the host proves nothing. Material paints a chip's label on
+  `.mdc-evolution-chip__text-label`, from `--mat-chip-label-text-color`; a
+  menu item's icon from `--mat-menu-item-icon-color`; and a progress bar's
+  indicator as the top border of `.mdc-linear-progress__bar-inner`, read as
+  `borderTopColor`. A `mat-dialog-title` is coloured by Material whatever
+  class its host carries.
+
+### The theme
+
+- `withTheme('light' | 'dark', fn)` stamps exactly one of `.light-theme` and
+  `.dark-theme` on `<html>` and restores both afterwards, once the promise
+  settles when `fn` is async. It is for probing tokens and stylesheet rules.
+  It stamps exactly one because Material's `--mat-sys-*` are `light-dark()`
+  pairs that follow `color-scheme`: a probe with neither class reads the
+  host's OS scheme.
+- Anything that reads `ThemeService.effectiveTheme()` (the category chip,
+  the `categoryGlyph` pipe, the chart palette) ignores the classes. Drive it
+  through the service: `withScheme(themeService, scheme, fn)` from `axe.ts`,
+  looped over `AUDIT_SCHEMES`, or `setTheme(...)` and `TestBed.tick()`.
+  `withScheme` ticks inside the Angular zone, because a tick from outside
+  it makes the service's effect start a second tick, which Angular refuses
+  as NG0101 and only logs. It throws when the class it asked for is not
+  alone on `<html>`, so a stubbed service cannot pass the host's scheme off
+  as the forced one, and it restores the preference, flushes it, and only
+  then the classes.
+- Restore both classes in a `finally`. A leaked `dark-theme` reads every
+  later spec in the wrong scheme (ADR 0151).
+
+### A `:hover` colour, from the CSSOM
+
+Karma cannot put the pointer over an element.
+`hoverValue(el, selectorPart, prop, pseudoElement?)` finds the `:hover`
+rule that styles `el` and returns the value as declared, `var(--token)`
+included:
+
+- `selectorPart` is matched with `includes`, because emulated encapsulation
+  rewrites `.chip:hover` to `.chip[_ngcontent-…]:hover`;
+- a selector counts only if `el` matches it with each `:hover` taken to
+  hold, so a rule for another element, or for the other theme's html class,
+  is not returned;
+- a rule that ends in a pseudo-element is read only when `pseudoElement`
+  names it, as `'::before'`: Material paints a button's hover layer as
+  `.mat-mdc-outlined-button:hover > .mat-mdc-button-persistent-ripple::before`;
+- it throws when no rule declares the property for that target, naming any
+  rule that declares it for another part of `el`, and when several rules
+  disagree, since it does not compute the cascade between them. Enclosing
+  `@media` and `@supports` conditions are not evaluated, and a shorthand
+  declared with `var()` has no longhand to read, so ask for the shorthand.
+
+Assert that the rule exists, then set its value on the element inline and
+measure the result with `paintedBackground` or `paintedColor`.
+
+### An option or a menu item in a state
+
+A select's options and a menu's items are painted differently at rest,
+active and selected, so one glyph sits on several tones.
+`core/services/testing/option-states.ts` puts a select's options through
+them:
+
+- `chooseOption(select, value, flush)` opens the panel and clicks the
+  option, so whatever the host binds (a form control, `ngModel`, a selection
+  handler) takes the value as it would from a pointer.
+- `eachOptionState(select, flush, check)` opens the panel and calls `check`
+  once per option per state. **Selected** is each chosen option with the
+  active mark taken off it: the panel opens with the chosen option active,
+  and Material paints the active layer in place of the selected fill.
+  **At rest** is every other option. **Active** is each option not chosen,
+  made active in turn, as the arrow keys make it. A multiple select paints
+  no selected fill, so there a chosen option, still passed as `'selected'`,
+  is painted as one at rest. Hover is left out: Karma cannot hover, and
+  Material's hover layer (0.08) is fainter than its active one (0.12), so
+  what reads on the active layer reads on the hovered one.
+- `GLYPH_PROBE_COLOURS` names the two colours to choose: the lightest seeded
+  category colour, which a light surface reads worst, and the darkest a
+  category can take, which a dark surface reads worst.
+
+A menu has no helper. Open it through its `MatMenuTrigger`, give each
+`MatMenuItem` `focus('keyboard')` in turn, and assert `cdk-keyboard-focused`
+on its host before measuring, since the keyboard's focus layer is a state a
+pointer-free spec cannot otherwise reach. The menu focuses its first item
+as it opens, and that layer covers the item's own fill, so a case that
+measures a marked item's fill, such as the current category, makes a later
+item the marked one (`category-suggestion.component.spec.ts`).
+
+Both render in the CDK overlay, so the describe removes
+`.cdk-overlay-container` after each case (see *In both shapes*).
+
 ## The noise floor
 
 `test:ci` prints console output from paths that deliberately report a failure.

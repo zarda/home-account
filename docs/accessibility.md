@@ -75,6 +75,14 @@ silently.
 appending to it would break the match between accessible name and visible text.
 That is what `aria-current` is for.
 
+**A button that shows only a glyph or a colour is named for what it picks.**
+The category dialog's icon grid and colour swatches show no text: each
+button carries its icon's or colour's name from the catalog, and
+`aria-pressed` says which one is picked, the selection its ring and fill
+show. They are toggle buttons in a named `group`, not radios, which would
+ask for arrow-key roving and one tab stop
+([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
+
 ### A progress indicator is named, or hidden inside the control that names it
 
 Material renders `mat-spinner`, `mat-progress-bar` and `mat-progress-spinner`
@@ -97,17 +105,39 @@ process button). Idle, the visible text names it.
 npm run icon-labels:check
 ```
 
-`scripts/check-icon-labels.mjs` holds two rules over every template: a
-`mat-icon` carrying `role="img"` or a label also carries a literal
-`aria-hidden` ([ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md)),
-and every progress indicator carries an `aria-label` in any form, an
-`aria-labelledby`, or a literal `aria-hidden="true"` — `"false"` and a bound
-value hide nothing
-([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+`scripts/check-icon-labels.mjs` holds four rules over every template:
+
+- a `mat-icon` carrying `role="img"` or a label also carries a literal
+  `aria-hidden` ([ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md));
+- every progress indicator carries an `aria-label` in any form, an
+  `aria-labelledby`, or a literal `aria-hidden="true"` — `"false"` and a
+  bound value hide nothing
+  ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md));
+- inside a `mat-option`, a `mat-icon` is a direct child of the option. The
+  option projects such an icon into a slot beside its label and everything
+  else into the label, whose text is the option's `viewValue`: what the
+  closed select shows, what typeahead matches and what the trigger
+  announces. An icon wrapped with the name in a `<div>` or `<span>` puts its
+  ligature at the front of the name, while the open list, drawing the
+  ligature as a glyph, looks right. Control-flow blocks are not elements
+  and do not count; an `ng-container` does
+  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md));
+- a menu button stamped once per item does not take its name from
+  `common.moreActions`, which names no item, so every copy down a list
+  would say the same. It names its item with `common.moreActionsFor`, as
+  *More actions for {description}*. "Once per item" is an `@for`, an
+  element under `*ngFor`, `*cdkVirtualFor` or a table's cell or row
+  definition, or a component that another template stamps that way: the
+  budget card's button sits in no repeat of its own, and the overview's
+  `@for` repeats it
+  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
+
 It reads the markup, so it cannot tell a useful label from a useless one, nor
 whether the control a hidden indicator sits in really announces the state;
 and it reads each tag alone, so an indicator under a hidden parent repeats the
-attribute.
+attribute. Nor can it see a block that holds an option's icon beside other
+nodes, which Angular projects whole into the label, or a menu button's name
+built in TypeScript. The script's header lists the rest.
 
 ## A transaction row is a button beside its controls
 
@@ -425,6 +455,65 @@ ones, in both themes, and holds the composited surface to the stylesheet's
 `--surface-card`
 ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
 
+A category's colour reaches a template in one of three ways, and
+`colors:check` fails any other
+([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)):
+
+- **The chip**, `<app-category-chip>`, wherever a tile or a pill fits. Its
+  tile is opaque, so the surface under it does not matter.
+- **A glyph through `categoryGlyph`**, named for the surface it sits on:
+  `cat.color | categoryGlyph:'panel'`. Anywhere else, a glyph in the
+  category's colour sits on whatever is beneath it, and that is rarely one
+  colour: a select option is painted at rest, hovered, active and selected.
+  `CATEGORY_SURFACES`, beside `ensureContrast` in
+  `core/utils/color-contrast.utils.ts`, lists every tone each surface takes
+  in each theme. `categoryGlyphColor` moves the colour against the hardest
+  of them, the darkest in light and the lightest in dark, the same way the
+  chip moves its own glyph, so the glyph clears 4.5:1 on every tone. The
+  pipe reads `ThemeService.effectiveTheme()`, so a theme switch repaints
+  it. The surfaces are:
+
+  | Key | What the glyph sits on |
+  |---|---|
+  | `dialog` | a dialog's surface, under a closed select |
+  | `panel` | a select panel's option at rest, hovered, active and selected |
+  | `menu` | the same four, and a menu's current item on `--surface-menu-current` |
+  | `subtle` | `--surface-subtle`, under each budget in the dashboard's Budget Progress widget |
+  | `reviewCard` | the import review card checked, unchecked, hovered and flagged as a duplicate, each at rest and under the category button's hover and keyboard-focus layers |
+  | `suggestionChip` | the transaction form's suggested category, `--surface-suggestion` and its hover |
+  | `iconGrid` | the category dialog's chosen icon, on `--surface-icon-selected` |
+
+- **A fill of the colour itself**, which keeps it: the spending legend's
+  tile matches its chart segment, and the category dialog's swatch is the
+  colour on offer. Its glyph goes through `readableOn`, black or white,
+  whichever contrasts more. One of the two always reaches at least √21,
+  about 4.58:1, so the pipe needs no theme. A fill sits inside a
+  `colors:allow-start(category-data)` block with its reason. The bars of
+  the spending legend and of the reports' category breakdown and spending
+  analysis are fills too: graphics beside a printed amount or percentage,
+  held to no contrast.
+
+**Adding a site.** Use the chip where a tile fits. Otherwise pipe the
+colour through `categoryGlyph` with the key of the surface the glyph sits
+on. A surface the table lacks gets a key, its tones in both themes, and a
+case in `category-glyph.pipe.spec.ts` that holds those tones to what paints
+them. The gate checks that the key exists, not that it names the right
+surface, so the site's own spec measures the painted glyph in each state
+the site paints and in both themes. A missing category's colour is
+`CATEGORY_FALLBACK_COLOR`, `#9E9E9E`, and the category dialog offers
+`CATEGORY_PALETTE`; both live in `category.model.ts`.
+
+**The gate is the specs.** `category-glyph.pipe.spec.ts` measures the 31
+colours a category can carry (the seeded colours, `CATEGORY_PALETTE` and
+the fallback) and fourteen hostile ones on every tone of every surface, and
+holds each surface's tones to the stylesheet: Material's own expressions
+for the dialog, the select panel and the menu, the named `--surface-*`
+tokens, and a rendered stroked button's state layers.
+`readable-on.pipe.spec.ts` paints the glyph on every one of the 31 fills.
+Each site renders its real template and measures its glyph in both
+themes, a select's options through `eachOptionState`
+([testing.md](testing.md#colour-as-painted)).
+
 ### Colours come from tokens
 
 **Check:**
@@ -581,7 +670,9 @@ reads a `:hover` rule from the CSSOM, because Karma cannot hover. Read the
 element Material paints, not the host: a chip's label is
 `.mdc-evolution-chip__text-label`, and a progress bar's indicator is the top
 border of `.mdc-linear-progress__bar-inner`. `theme-aliases.spec.ts` holds
-every alias to its token in all four modes.
+every alias to its token in all four modes. [testing.md](testing.md#colour-as-painted)
+has the helpers in full, and how a spec puts a select's options or a menu's
+items into each state it measures.
 
 ## What is tested
 
@@ -658,42 +749,48 @@ every alias to its token in all four modes.
   selector express selection visually and have not been; the tab strips are
   audited for reachability and keyboard travel only, not for how selection is
   announced.
-- **The automated pass is a phone audit of eight routes, in one theme.**
+- **The automated pass is a phone audit of eight routes.**
   `app.smoke.spec.ts` runs axe-core (WCAG 2.1 A and AA, `color-contrast`
-  included) inside `expectPage`, so every page the walkthrough opens is swept,
-  and nothing it has found is frozen any more. What it cannot see is stated in
+  included) inside `expectPage`, so every page the walkthrough opens is
+  swept, once in each scheme, forced through `ThemeService`: a pair that
+  fails in only one theme fails on any host. Nothing it has found is frozen
+  any more. What it cannot see is stated in
   [emulator-blind-spots.md](emulator-blind-spots.md): i18n is not served,
-  Karma's window is 756px, eight page-level rules are disabled because the run
-  is scoped to the routed element, four routes (`/ai`, `/search-history`,
-  `/import/file`, `/import/history`) are never opened, and `color-contrast`
-  reports nothing below the fold of Karma's frame (the next gap). Each run
-  renders the one theme the host's `prefers-color-scheme` resolves — light on
-  the CI runner, dark on a Mac in dark mode — so a failure that exists only in
-  the other theme is seen only where that theme renders, and nothing committed
-  pins it; the same page says how to run the other. The dashboard's subtitle
-  failed in light only, at 4.43:1, and was found by reading. The category chip
-  failed in both themes — thirteen of the sixteen default colours in light,
-  four in dark, `#E91E63` in both — and CI's light run was the first to report
-  it: the walkthrough's rows and budget use one category, orange, which failed
-  in light at 1.95:1 and passed in dark at 5.85:1, and the default colours,
-  the ones that failed in dark among them, render only in the Categories panel
-  on `/settings`, which the walkthrough leaves collapsed and axe does not
-  measure. Everything outside that is still a hand-written spec, and nothing
-  sweeps for the next instance of a class nobody has met.
-- **The axe pass measures only the top 413px of a page.** Karma's frame is
-  756px wide and 413px tall and scrolls inside its own body, and axe's
-  `color-contrast` rule cannot measure a node below that fold: it leaves the
-  node incomplete rather than failing it, the harness reads violations only,
-  and scrolled into the frame the node is measured like any other. On
-  `/transactions` the seeded rows' chips sit inside the frame. On `/budgets`
-  the budget card's chip starts 445px down, and on `/dashboard` the two
-  recent-transaction chips start at 591px and 675px, the spending chart's
-  legend at 1426px and the budget card's icon at 1602px, so none of those is
-  measured. Two of them fail on the walkthrough's own orange category — the
-  budget card's orange icon at 2.06:1 in light, and the legend's white glyph
-  at 2.16:1 in both themes, both among the sites listed below that paint a
-  category's colour without the chip — and the smoke walkthrough passes
-  regardless.
+  Karma's window is 756px, eight page-level rules are disabled because the
+  run is scoped to the routed element, and `color-contrast` scores nothing
+  below the fold of Karma's frame but the five nodes the walkthrough
+  scrolls into view (the next gap). `/login` is opened by the redirect case
+  and never audited; `/lock`, `/ai`, `/search-history`, `/import/file` and
+  `/import/history` are never opened. Nor does it open a dialog, a
+  category select or a menu, so the pickers, the import review's category
+  menu and the category dialog are held by their component specs alone.
+  axe's `incomplete` results are not read, so a one-character text, or a
+  label axe finds overlapped by another element, is scored by no pass.
+  Everything outside that is still a hand-written spec, and nothing sweeps
+  for the next instance of a class nobody has met.
+- **The axe pass scores only what starts in Karma's frame, and five nodes
+  below it.** Every page renders inside the shell's fixed scroller,
+  `.main-container`, and axe counts a node under a fixed ancestor as
+  offscreen once its top passes the viewport's bottom. An offscreen node is
+  skipped outright: it appears in no result, not even `incomplete`. A node
+  in plain flow would be scored at any depth. Karma's frame is 756px wide
+  and 413px tall. `auditInView` (`core/services/testing/axe.ts`) scrolls a
+  node into the band between the header and the frame's bottom before it
+  audits, and the walkthrough uses it, in both schemes, on five nodes: the
+  spending chart's legend list and the Budget Progress widget on
+  `/dashboard`, the overview on `/budgets`, the rules grid on the Recurring
+  tab, with an active rule and a paused one, and Upcoming Bills. Everything
+  else that starts below the frame is never scored. In the run that
+  measured it, that was: on `/dashboard`, Recent Transactions (its top at
+  521px), the chart's card around its legend list and AI Insights; on
+  `/settings`, all but the top of the profile section and every section
+  after it; on `/data`, everything past the first 413px of a page 2687px
+  tall; on `/household`'s member view, the second row of figures, the
+  member chips, the shared rows, the plans and the members; and on
+  `/about`, every card after the first. A node taller than about 285px
+  cannot be centred inside the band, so a tall card is audited as its
+  parts
+  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
 - **Contrast is measured for the pairs somebody listed.** `npm run
   contrast:check` scores a hand-written table of the pairs the app actually
   paints, in all four rendered modes, and every failure it has found is fixed.
@@ -712,40 +809,6 @@ every alias to its token in all four modes.
   and nothing repeats it. A category's own colour is data; the chip's spec
   and the pipes' specs hold it. The axe pass is the other half: it measures
   what a rendered page paints.
-- **Ten components paint a category's colour without the chip**, so the
-  correction the chip applies never reaches them. Figures are for the sixteen
-  default colours. *On a tint of itself*, in both themes: the dashboard's
-  upcoming bills (`upcoming-bills.component.html`), the recurring rules page
-  (`recurring-transactions.component.html`) and the category dialog's preview
-  (`category-form-dialog.component.html`) paint the raw colour on the icon
-  over the colour with `20` appended, which takes on the surface beneath — the
-  Material card's `#f4f2fc` / `#1a1b22`, `--surface-card` and
-  `--surface-subtle` respectively, and a paused rule's card is drawn at 70%
-  opacity besides. Thirteen colours fail there in light, down to 1.75:1
-  (`#8BC34A`), and six to eight in dark, down to 2.08:1 (`#3F51B5`). *On the
-  surface beneath, with no tint of its own*: the dashboard's budget card icon
-  on `--surface-subtle` (`budget-progress.component.html`, `#FF9800` at 2.06:1
-  in light); the import review's category button and its menu
-  (`category-suggestion.component.html`); the category pickers of the
-  transaction form — its options, the field showing the choice, and its
-  suggestion chip — of the split parts, the budget form and the recurring
-  dialog, whose select panel is `#efedf6` / `#1f1f26`; and the category
-  dialog's icon grid, on its selected icon. Thirteen fail in light, down to
-  1.75:1, and five in dark — `#9C27B0`, `#E91E63`, `#607D8B`, `#3F51B5` and
-  `#795548` — down to 2.26:1. *White on the colour*, the same in both themes:
-  the dashboard spending chart's legend tile (`spending-chart.component.html`,
-  its glyph white in `spending-chart.component.scss`) and the category
-  dialog's selected swatch. On the legend, which draws the account's
-  categories, `#FF9800` measures 2.16:1, `#4CAF50` 2.78:1 and the `#9E9E9E`
-  fallback 2.68:1; all of the sixteen default colours but `#9C27B0`, `#3F51B5`
-  and `#795548` fail. The swatch grid draws only the dialog's own palette,
-  fifteen Tailwind 500s, and twelve of them fail under the white glyph; the
-  same palette fails the preview too, all fifteen in light and ten in dark.
-  Each site is left for a follow-up, which can put the chip there or pass the
-  colour through `ensureContrast` against the surface it sits on. The bars and
-  chart segments filled with a category's colour are graphics beside a printed
-  amount or percentage, not text, and are not counted
-  ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
 - **Nothing sweeps for the next animation CSS cannot reach.** Chart.js and the
   Material tab strips were found by reading the code; a new WAAPI duration or
   canvas animation will honour neither kill-switch and no gate will say so.
