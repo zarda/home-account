@@ -364,17 +364,17 @@ loaded instead — `coverage/home-account/core/services/…` for
 `auth.service.spec.ts` alone — and leaves the last full run's `app/` tree
 beside it, older and still readable.
 
-### `auth.service.ts` — exempt, at 66.21 % statements
+### `auth.service.ts` — exempt, at 81.30 % statements
 
 `FirebaseAuthentication` is a `registerPlugin` **Proxy over an empty target**
 (`@capacitor/core` `dist/index.cjs.js:161`). `spyOn` reads an `undefined`
 property descriptor and throws, so three call sites are **unreachable in
-Karma**: `signInWithGoogleNative` (`:449`), the native `reauthenticate` arm
-(`:562`), and `deleteFirebaseUser`'s plugin sign-out (`:589`) — about 20
+Karma**: `signInWithGoogleNative` (`:502`), the native `reauthenticate` arm
+(`:615`), and `deleteFirebaseUser`'s plugin sign-out (`:642`) — about 20
 statements. The `signInWithPopup` / `reauthenticateWithPopup` ESM call sites
-(`:440`, `:574`) are unspyable for the same reason.
+(`:493`, `:627`) are unspyable for the same reason.
 
-What covers them instead is `auth.service.smoke.spec.ts`, 755 lines against the
+What covers them instead is `auth.service.smoke.spec.ts`, 809 lines against the
 real emulator — and `test:ci` excludes smoke, so none of it counts toward the
 figure. This is the same situation the suite already excuses for
 `firestore.service.ts`.
@@ -386,11 +386,20 @@ surgery, and was deliberately not done for a coverage number.
 The reachable half **is** covered, by one tier or the other. Karma runs the
 auth-state listener's branches with ADR 0052's guards, the reload on an
 account change the page did not start and its own-change marker (ADR 0163),
-`signOut` with its catch, and account deletion's web arm. The emulator suite
-runs `getOrCreateUser` on both arms including its `stillSignedInAs` guard,
-`updateUserPreferences`' dotted-path loop, `clearUserPreferences`'
-`deleteField()` loop, `clearStoredProviderApiKeys` and `updateUserProfile`,
-which the unit spec reaches only as far as their early guards.
+`signOut` with its catch, and account deletion's web arm. It also runs the
+five profile writers past their guards: `updateUserPreferences`,
+`clearUserPreferences`, `updatePreferenceFields`,
+`clearStoredProviderApiKeys` and `updateUserProfile`. Each sends its write
+through the private `writeUserFields` seam, which the unit spec holds open,
+so the field maps they build (the `deleteField()` sentinels included), the
+re-read of the signal once the write lands and the merge into it all run
+under Karma ("a write that lands after the signal moved", ADR 0166). What
+no Karma spec executes in them is the seam's own body, the real
+`updateDoc`, and `updateUserPreferences`' return on an empty map. The
+emulator suite runs `getOrCreateUser` on both arms including its
+`stillSignedInAs` guard, and each writer's real round trip: the dotted
+paths, the `deleteField()` deletes, the parent map the SDK creates for a
+nested path, and a nested write over a stored value that is not a map.
 
 ### The other four
 

@@ -154,7 +154,10 @@ for the optimistic-write pattern this follows.
 
 The rule generalizes beyond that one control: anywhere an announcement is
 made ahead of a write rather than after it, a failure path needs its own
-announcement, not only its own visual notification.
+announcement, not only its own visual notification. The dashboard's card
+menu is the second instance: its Hide and its moves announce before the
+save settles, and a failed save is followed by where the card really is
+([docs/dashboard.md](dashboard.md#the-card-menu)).
 
 **One voice per event.** `NotificationService` already announces every
 snackbar it shows, so a change a snackbar reports is never announced a second

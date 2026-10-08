@@ -136,7 +136,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0129](0129-a-receipt-photo-is-read-through-a-lens-and-the-image-is-the-original.md) | A receipt photo is read through a lens, and the image is the original | Accepted; applies 0095; closes the last gap of 0095 | 2026-09-13 |
 | [0130](0130-biometry-unlocks-the-app-and-the-pin-is-still-the-credential.md) | Biometry unlocks the app, and the PIN is still the credential | Accepted; applies 0040; first record of the app lock | 2026-09-13 |
 | [0131](0131-a-rung-a-boot-cannot-reach-is-reached-by-re-entering-the-ladder.md) | A rung a boot cannot reach is reached by re-entering the ladder | Accepted; extends 0127; a rejection of 0127 stands | 2026-09-13 |
-| [0132](0132-the-dashboard-is-arranged-by-the-account-and-a-hidden-card-composes-nothing.md) | The dashboard is arranged by the account, and a hidden card composes nothing | Accepted | 2026-09-16 |
+| [0132](0132-the-dashboard-is-arranged-by-the-account-and-a-hidden-card-composes-nothing.md) | The dashboard is arranged by the account, and a hidden card composes nothing | Accepted; amended by 0166 | 2026-09-16 |
 | [0133](0133-the-home-screen-widget-shows-the-dashboards-last-this-month-paint-and-nothing-a-lock-hides.md) | The home-screen widget shows the dashboard's last this-month paint, and nothing a lock hides | Accepted | 2026-09-16 |
 | [0134](0134-an-emulator-run-carries-no-provider-key.md) | An emulator run carries no provider key | Accepted; corrects a gap of 0131 | 2026-09-16 |
 | [0135](0135-a-purchase-split-across-categories-is-stored-as-sibling-rows-sharing-a-group.md) | A purchase split across categories is stored as sibling rows sharing a group | Accepted | 2026-09-17 |
@@ -170,6 +170,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md) | A page reloads on an account change it did not start, and the web keeps the session in local storage | Accepted; amends 0009 and 0052; leaves 0089 standing | 2026-10-02 |
 | [0164](0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md) | Colours come from theme tokens, and a gate keeps them there | Accepted; applies 0145; closes a gap of 0151 and one of accessibility.md | 2026-10-08 |
 | [0165](0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md) | The period pickers are bounded, unavailable totals offer Retry, and three smaller papercuts close | Accepted; closes gaps of 0054, 0055, 0061, 0082, 0095, 0096 and 0099, and a gap of accessibility.md | 2026-10-08 |
+| [0166](0166-a-hidden-card-closes-what-nothing-else-reads-the-layout-stores-only-what-changed-and-each-card-has-a-menu.md) | A hidden card closes what nothing else reads, the layout stores only what changed, and each card has a menu | Accepted; closes gaps of 0132; amends 0132 | 2026-10-08 |
 
 ## What belongs here
 

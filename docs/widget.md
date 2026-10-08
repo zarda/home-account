@@ -50,6 +50,17 @@ period is `'thisMonth'` — not on the shared `transactions` signal, which
 other code can write for reasons that have nothing to do with a new month's
 figures being ready.
 
+**What the dashboard keeps open for it.** *Top budget* and *Next scheduled*
+come from the dashboard's budgets stream and its upcoming window, and the
+dashboard keeps both open whatever the account hides
+([dashboard.md](dashboard.md#what-a-hidden-card-skips)). The budgets stream
+is never gated on its card. The upcoming window stays open with Upcoming
+Bills hidden while `WidgetSnapshotService.available` is true: on a build
+that carries the plugin, whether or not a widget has been placed, since
+nothing in the service can tell. On the web it is false, and a hidden
+Upcoming Bills card closes its listener unless the weekly recap reads the
+window.
+
 Two more writes happen with no dashboard paint at all, from effects armed at
 service construction (see [Startup arming](#the-four-states-and-startup-arming)):
 a `locked` write whenever the app lock can engage, and a `signedOut` write
@@ -207,11 +218,10 @@ under real system memory pressure — see Known gaps.
   source of its own, an account that never opens the dashboard this month
   keeps seeing last month's figures, or the stale sentence once the month
   turns.
-- **The widget ignores the dashboard's arrangement.** The page publishes its
-  budgets and occurrences whatever the account arranged, so hiding Budget
-  Progress or Upcoming Bills on the dashboard does not take *Top budget* or
-  *Next scheduled* off the home screen. The widget is its own surface with
-  fixed content; the two features simply do not talk to each other.
+- **Hiding a card does not change the widget.** With Budget Progress or
+  Upcoming Bills hidden on the dashboard, *Top budget* and *Next scheduled*
+  stay on the home screen: the dashboard keeps both streams open for the
+  widget (above), and the widget has no arrangement of its own.
 - **A currency or language change alone does not refresh it.** The publishing
   effect reads the totals, the base currency and the catalog untracked, so a
   new base currency or a switched app language reaches the widget only on the
