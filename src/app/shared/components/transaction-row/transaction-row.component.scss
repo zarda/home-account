@@ -162,12 +162,15 @@ app-category-chip {
   flex-shrink: 0;
 }
 
+// The receipt and split marks are information, not a control nobody can
+// operate, so they owe a graphic's 3:1 and take the muted ink, never the
+// disabled one.
 .receipt-indicator {
   font-size: var(--text-sm);
   width: 1em;
   height: 1em;
   line-height: 1em;
-  color: var(--text-disabled);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -176,7 +179,7 @@ app-category-chip {
   width: 1em;
   height: 1em;
   line-height: 1em;
-  color: var(--text-disabled);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 

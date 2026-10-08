@@ -344,6 +344,18 @@ describe('ExportDialogComponent', () => {
       }
     });
 
+    // Each icon names what its line counts, so it owes a graphic's 3:1.
+    it('paints the summary icons in --text-muted at 3:1 or better on the panel, in both themes', () => {
+      const icons = Array.from(fixture.nativeElement.querySelectorAll('.export-info .info-item mat-icon')) as HTMLElement[];
+      expect(icons.length).withContext('one icon per summary line').toBe(2);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          icons.forEach((icon, i) => expectPainted(icon, '--text-muted', `${theme} summary icon ${i + 1}`, 3));
+        });
+      }
+    });
+
     it('strokes the exporting spinner in the colour of the label beside it, in both themes', () => {
       component.isExporting.set(true);
       fixture.detectChanges();

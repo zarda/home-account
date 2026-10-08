@@ -258,7 +258,10 @@ const EXEMPT = [
   {
     fg: '--text-disabled',
     bg: '--surface-card',
-    why: 'WCAG 1.4.3 exempts text that is part of an inactive control — and dimming a disabled control is how it says it is disabled',
+    why: 'kept for a control nobody can operate, whose text WCAG 1.4.3 exempts, and nothing paints it today: the ' +
+      "confidence dot's base fill is always replaced by its level's colour, and the marks that look quiet but " +
+      "say something — a row's receipt and split marks, the export dialog's summary icons — read in --text-muted, " +
+      'scored above',
   },
   {
     fg: '--border-primary',

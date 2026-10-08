@@ -449,6 +449,31 @@ describe('TransactionRowComponent', () => {
         });
       }
     });
+
+    // The split mark is the only way the row says it is one part of a larger
+    // purchase, and the receipt mark that a photo is attached: information,
+    // so each owes a graphic's 3:1, at rest and on the hovered row.
+    it('paints the split and receipt marks in --text-muted at 3:1 or better, at rest and hovered, in both themes', () => {
+      setTransaction({ splitGroupId: 'group-1', receiptUrl: 'https://example.com/r.png' } as Partial<Transaction>);
+      const row = fixture.nativeElement.querySelector('.transaction-row') as HTMLElement;
+      const lift = hoverValue(row, '.transaction-row', 'background-color');
+      const marks = ['split', 'receipt'].map(name => [name, fixture.nativeElement.querySelector(`.${name}-indicator`)] as const);
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          for (const state of ['at rest', 'hovered']) {
+            row.style.backgroundColor = state === 'hovered' ? lift : '';
+            try {
+              for (const [name, mark] of marks) {
+                expectPainted(mark, '--text-muted', `${theme} ${name} mark ${state}`, 3);
+              }
+            } finally {
+              row.style.backgroundColor = '';
+            }
+          }
+        });
+      }
+    });
   });
 });
 
