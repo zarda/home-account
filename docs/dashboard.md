@@ -235,7 +235,9 @@ Settings page beside Profile/Preferences and Categories, opened by the same
 `?panel=` convention Categories already used — `?panel=dashboard`, read once
 at arrival and turned into `dashboardExpanded`. The dashboard's own
 **Customize dashboard** link is exactly that URL; a dialog was considered
-and rejected — see ADR 0132.
+and rejected — see ADR 0132. The dashboard reads two query parameters of its
+own, `?bill` and `?recap`, which a notification's tap opens; see
+[Links from a notification](#links-from-a-notification-bill-and-recap).
 
 Every change writes immediately; there is no Save. The rows are the
 service's held layout, so a slower write settling after a faster one cannot
@@ -278,6 +280,72 @@ visible title span, never a bound `aria-label` — the house idiom
 (`security-settings.component.html:9`): the inner `button[role=switch]`
 takes its name from the referenced element, and `[attr.aria-label]` would
 stay on the host instead.
+
+## Links from a notification: `?bill` and `?recap`
+
+A reminder's tap opens `/dashboard?bill={rule id}`, and the recap's Monday
+nudge `/dashboard?recap={week key}` ([reminders.md](reminders.md#where-a-tap-lands)).
+Why each notification carries a route is in
+[ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md).
+
+The page subscribes to `queryParamMap` rather than reading the snapshot, so a
+second tap while it is open is seen. Each parameter names something to do
+once, so the page takes both off the URL as it reads them, with
+`replaceUrl`, in the shape
+[ADR 0082](ADR/0082-one-shot-query-params-leave-the-url-once-consumed.md)
+gave the transactions page. The stripped URL comes back through the same
+subscription and does nothing.
+
+**`?bill`**
+
+1. **Upcoming Bills hidden.** The page announces
+   `dashboard.billLinkCardHidden` (*Upcoming Bills is hidden on the
+   dashboard, so here are your recurring transactions instead.*) and goes to
+   `/budgets?tab=recurring`.
+2. **Otherwise it waits for the upcoming listener's first emission**, since
+   the signal's initial empty schedule would answer "absent" for every rule,
+   and then binds the rule to `app-upcoming-bills`' `focusRuleId`.
+3. **The card answers.** Every bill row carries `data-rule-id`, `data-day`
+   and `tabindex="-1"`, so it can be focused by script and never by Tab. The
+   card picks the rule's day nearest today, a tie going to the later day,
+   scrolls that row to the middle of the view (smoothly, or at once under
+   reduced motion), focuses it, and marks it for two seconds with a 3 px
+   `--color-primary` edge at its inline start. It answers `focused`, or
+   `absent` when no row names the rule.
+4. **An "absent" is asked of the server before the page acts on it.** The
+   card answers from whatever the listener holds, and its first emission can
+   be this device's cache from before the rule was made or moved into the
+   fortnight. `RecurringService.getUpcomingScheduleFromServer` walks the
+   rules the server holds over the fortnight from the moment it is asked
+   ([one-shot-reads.md](one-shot-reads.md)). The listener walks its own
+   fortnight only when it emits, and it emits only when a rule changes, so on
+   a page open since an earlier day the two windows differ. When the server
+   lists the rule, the page asks the card again at once if the listener
+   already has it. Otherwise it re-opens the listener, whose first emission
+   walks the fortnight from today over the cache the read has just
+   refreshed, and asks the card then. A second "absent" for that rule is
+   final. An answer that comes back after a later link (a bill or a recap)
+   has been followed is dropped, so it neither sends the user away from that
+   link nor moves focus off it.
+5. **No row, then.** A rule due past the fortnight, already posted or
+   deleted, an unanswered read (offline, say), or a second "absent" announces
+   `dashboard.billLinkNotUpcoming` (*That bill isn't in Upcoming Bills right
+   now, so here are your recurring transactions instead.*) and goes to
+   `/budgets?tab=recurring`, which lists every rule that still exists.
+
+Both redirects replace the history entry, so Back from the rules goes to
+wherever the user was before the link, not to the link and straight back. A
+focused row is not announced: moving focus to it is what has a screen reader
+read it.
+
+**`?recap`**
+
+The page awaits `WeeklyRecapService.load()`, the same single-flight load the
+recap card makes. When the card's `weekKey()` is the linked week and the
+recap is `visible()`, the page focuses `app-weekly-recap`'s region after the
+next render; the region carries `tabindex="-1"` for it. A link to another
+week, or to a week with nothing to say, is only taken off the URL
+([weekly-recap.md](weekly-recap.md#the-monday-nudge)).
 
 ## The card menu
 
@@ -406,13 +474,18 @@ Journey 25 carries this feature's one authorised write —
 `preferences.dashboardLayout` — restored before the run ends; see
 [e2e.md's permitted-writes table](e2e.md#what-a-run-may-touch).
 
-Against the emulators, `dashboard-layout.smoke.spec.ts` stores an editor
-toggle as the `hidden` field alone ("saves an editor toggle as the hidden
-field alone"), counts the listeners with Recent Transactions, Upcoming
-Bills and Budget Progress hidden ("opens no recent or upcoming listener for
-hidden cards, and one budgets listener for the banner"), and hides a card
-from its menu and finds it hidden in the editor ("hides a card from the
-dashboard's own menu, and the editor shows it hidden").
+Against the emulators, `dashboard-layout.smoke.spec.ts` follows a bill link
+to its focused row ("focuses the rule on the Upcoming card, and takes the
+link off the URL"), to the recurring rules with Upcoming hidden ("opens the
+recurring rules while Upcoming is hidden"), and to them for a rule the
+server does not list ("opens the recurring rules for a rule the server does
+not list in the fortnight"). It stores an editor toggle as the `hidden`
+field alone ("saves an editor toggle as the hidden field alone"), counts
+the listeners with Recent Transactions, Upcoming Bills and Budget Progress
+hidden ("opens no recent or upcoming listener for hidden cards, and one
+budgets listener for the banner"), and hides a card from its menu and finds
+it hidden in the editor ("hides a card from the dashboard's own menu, and
+the editor shows it hidden").
 `auth.service.smoke.spec.ts` covers the nested writes themselves, including
 the parent map the SDK creates and a nested write over a stored value that
 is not a map.

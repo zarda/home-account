@@ -180,16 +180,19 @@ Falls back to cloud AI if native OCR is unavailable.
 
 The web app installs as a Progressive Web App:
 
-- **Installable** - The browser offers its own install prompt where it has one; the app neither suppresses it nor puts up a prompt of its own. iOS has no such prompt, so it is still Add to Home Screen from the Share sheet (below)
+- **Installable** - The browser offers its own install prompt where it has one, and the app never suppresses it. Where a Chromium browser has handed the prompt over, the About page offers it too, with an **Install** button; on iOS, which has no prompt, About lists the Add to Home Screen steps (below). Firefox and desktop Safari get no card ([docs/pwa.md](docs/pwa.md))
 - **Offline queue** - A receipt captured without a connection is stored in IndexedDB on the device and processed when the connection returns, or on **Sync Now** in Settings → AI Processing
 - **Share target** - A receipt shared from another app lands in the import wizard ([docs/share-import.md](docs/share-import.md))
 
 There is no caching worker: the app itself needs a connection to load.
 
 ### iOS Installation (PWA)
-1. Open in Safari
-2. Tap Share button
-3. Select "Add to Home Screen"
+1. Open the app in Safari, on an iPhone or an iPad
+2. Tap the Share button, in Safari's toolbar or under the ⋯ menu
+3. Choose "Add to Home Screen"
+4. Tap "Add"
+
+The About page lists the same steps on iOS, and shows nothing once the app runs from the Home Screen.
 
 ## Scripts
 
@@ -270,12 +273,13 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/storage-cors-setup.md](docs/storage-cors-setup.md) | One-time Cloud Storage CORS setup for in-browser receipt reads |
 | [docs/ui-overflow.md](docs/ui-overflow.md) | What the app does when content does not fit: the five layout invariants, and where each is enforced |
 | [docs/recurring.md](docs/recurring.md) | Recurring rules: frequencies, the clamp and the anchor, the catch-up engine, pause/resume, the reminder lead, the Upcoming card, and the validity floor |
-| [docs/reminders.md](docs/reminders.md) | Bill and budget reminders: the opt-in, when a sweep runs, the per-device dedup keys, and the web/native delivery split |
-| [docs/weekly-recap.md](docs/weekly-recap.md) | The weekly recap: the opt-in, which week and its key, where the figures come from, the card's lifetime, the Monday nudge, the narrative gate, and the device-local state |
-| [docs/dashboard.md](docs/dashboard.md) | The dashboard: its fixed parts and its five arranged cards, what each card reads, the layout preference and its resolver, the desktop areas rule, and the editor |
+| [docs/reminders.md](docs/reminders.md) | Bill and budget reminders: the opt-in, when a sweep runs, the per-device dedup keys, where a tap lands, and the web/native delivery split |
+| [docs/weekly-recap.md](docs/weekly-recap.md) | The weekly recap: the opt-in, which week and its key, where the figures come from, the card's lifetime, the Monday nudge and the week it needs, the narrative gate, and the device-local state |
+| [docs/dashboard.md](docs/dashboard.md) | The dashboard: its fixed parts and its five arranged cards, what each card reads, the layout preference and its resolver, the desktop areas rule, the editor, the links a notification opens, and each card's menu |
 | [docs/smart-search.md](docs/smart-search.md) | Natural-language search: one interpretation call, local aggregation, keyword fallback, and the persisted answer history |
 | [docs/account-deletion.md](docs/account-deletion.md) | Account deletion: the client-side cascade, its ordering, partial-failure semantics, and the rules it needed |
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |
+| [docs/pwa.md](docs/pwa.md) | The PWA layer: reachability, running installed, iOS and iPadOS detection, the install prompt and the About page's card, background sync and the worker's messages |
 | [docs/widget.md](docs/widget.md) | The iOS home-screen widget: the snapshot contract, when it is written and deduplicated, the four states, the plugin and target, and verifying it on the simulator |
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
 | [docs/household.md](docs/household.md) | Households: what a shared row reveals and what stays private, sharing, the household's own budgets and goals, the flows, the invite callable's answers, the data model and rules, the cleanup triggers, and the operator runbook for the callable, its invoker grant and its mail |
@@ -298,7 +302,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the reload on an account change the page did not start, where the web keeps the session, the degraded fallback profile and its retry, and the identity check every write across an await makes |
 | [docs/accessibility.md](docs/accessibility.md) | What the app guarantees to assistive technology, where each guarantee is enforced, and the gaps that remain |
 | [docs/onboarding.md](docs/onboarding.md) | The first-run welcome: what decides a launch is a first run, the three panes, what a skip records, and the About-page card that replays it |
-| [docs/shortcuts.md](docs/shortcuts.md) | The two global keyboard shortcuts, the guards each stands down for, and the command palette they open |
+| [docs/shortcuts.md](docs/shortcuts.md) | The three global keyboard shortcuts, the guards each stands down for, the command palette and its Shortcuts section, and the header's palette button and one-time hint |
 | [docs/rtl.md](docs/rtl.md) | Layout direction: where a locale's direction comes from, the ratchet that freezes the physical CSS left, and what still blocks an RTL locale |
 | [docs/locale-formatting.md](docs/locale-formatting.md) | Dates and numbers in the chosen language: the one formatting chokepoint, named styles over patterns, and what deliberately stays raw |
 | [docs/deploy.md](docs/deploy.md) | What deploys when: the change-gated CI deploys, the manual override, the service account and both secret inventories, a callable's invoker and the Firestore event triggers, the index-deletion policy, and the version scheme |

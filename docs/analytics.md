@@ -167,9 +167,9 @@ table can enumerate.
 |---|---|---|
 | `login` | `login` | signed out |
 | `lock` | `lock` | app lock |
-| `dashboard` | `dashboard` | default landing |
+| `dashboard` | `dashboard` | default landing, a bill or recap notification's tap |
 | `transactions` | `transactions` | nav |
-| `budgets` | `budgets` | nav |
+| `budgets` | `budgets` | nav, a budget notification's tap, a bill link the dashboard cannot show |
 | `reports` | `reports` | nav |
 | `settings` | `settings` | nav |
 | `ai` | `ai` | settings |
@@ -196,7 +196,11 @@ Notes:
 - **Query parameters do not make a distinct screen.** `/transactions?showAll=`,
   `?date=`, `?action=add` and `?tx=` (a transaction id, stripped from the URL
   once consumed) all report `transactions`, and the query string is stripped
-  from `page_location` regardless.
+  from `page_location` regardless. The same holds for the links a
+  notification's tap opens: `/dashboard?bill=` (a recurring rule's id) and
+  `?recap=` (a week's Monday) report `dashboard` and leave the URL once the
+  page has read them, and `/budgets?tab=budgets` reports `budgets`. None of
+  them carries text a user typed.
 - **`screen_class`** is the element selector of the deepest activated route
   that has a component.
   Note this differs from what `@angular/fire`'s own `ScreenTrackingService`

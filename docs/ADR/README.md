@@ -116,7 +116,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0109](0109-a-hand-typed-amount-is-whole-in-its-currency.md) | A hand-typed amount is whole in its currency | Accepted; extends 0099; the two follow-up gaps closed by 0117 | 2026-09-10 |
 | [0110](0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md) | The probe measures the card at phone width, and in both directions | Accepted; extends 0010 and 0071; closes a gap of 0102; caret follow-up closed by 0122 | 2026-09-10 |
 | [0111](0111-the-position-overlap-pass-is-removed.md) | The position-overlap pass is removed | Accepted; applies 0048; records a helper 0106 deferred; merged-count figure removed by 0116 | 2026-09-10 |
-| [0112](0112-pwaservice-keeps-only-the-surface-something-calls.md) | PwaService keeps only the surface something calls | Accepted; applies 0048 and 0105; closes a gap of 0105 | 2026-09-10 |
+| [0112](0112-pwaservice-keeps-only-the-surface-something-calls.md) | PwaService keeps only the surface something calls | Accepted; applies 0048 and 0105; closes a gap of 0105; amended by 0168 | 2026-09-10 |
 | [0113](0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md) | The wizard's picker takes a backup, and grades the category it defaulted | Accepted; applies 0045; extends 0062 and 0074; closes a gap of 0103 | 2026-09-11 |
 | [0114](0114-the-confirm-step-reads-the-writes-progress-from-the-service.md) | The confirm step reads the write's progress from the service | Accepted; extends 0103; closes a gap of 0103; three gaps closed by 0118 | 2026-09-11 |
 | [0115](0115-a-failed-row-is-named-by-its-id.md) | A failed row is named by its id | Accepted; extends 0103; restates a boundary of 0060; deselected-rows gap closed by 0120 | 2026-09-11 |
@@ -171,6 +171,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0164](0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md) | Colours come from theme tokens, and a gate keeps them there | Accepted; applies 0145; closes a gap of 0151 and one of accessibility.md | 2026-10-08 |
 | [0165](0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md) | The period pickers are bounded, unavailable totals offer Retry, and three smaller papercuts close | Accepted; closes gaps of 0054, 0055, 0061, 0082, 0095, 0096 and 0099, and a gap of accessibility.md | 2026-10-08 |
 | [0166](0166-a-hidden-card-closes-what-nothing-else-reads-the-layout-stores-only-what-changed-and-each-card-has-a-menu.md) | A hidden card closes what nothing else reads, the layout stores only what changed, and each card has a menu | Accepted; closes gaps of 0132; amends 0132 | 2026-10-08 |
+| [0167](0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md) | A notification carries its route and a tap lands on it, and the recap nudge needs a week with news | Accepted; closes gaps of 0096 and 0104 | 2026-10-08 |
+| [0168](0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md) | The palette lists the shortcuts and the header opens it, and About offers to install the app | Accepted; closes gaps of 0073 and 0112; amends 0112 | 2026-10-08 |
 
 ## What belongs here
 

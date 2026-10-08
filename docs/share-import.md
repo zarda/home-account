@@ -16,11 +16,20 @@ as if the file had been dropped on the dropzone
    would 404 before the app loads. This is the first — and only — service
    worker the app registers, and it has two jobs and no more:
    - It handles `POST /share-target`, and it raises the app's reminders:
-     `ReminderService` calls this registration's `showNotification`, because
-     Android Chrome and Firefox refuse the page's `Notification` constructor
-     and a second worker registered at the same scope would replace this one
+     `ReminderService` calls this registration's `showNotification` once its
+     worker is active, because Android Chrome and Firefox refuse the page's
+     `Notification` constructor and a second worker registered at the same
+     scope would replace this one
      ([ADR 0104](ADR/0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md)).
-     Its `notificationclick` handler focuses an open tab or opens one at `/`.
+     Its `notificationclick` handler reads the route the reminder carries in
+     `data.route`, admitting it only through a copy of the app's
+     `safeAppRoute` and falling back to `/`. It focuses the first open tab
+     and posts it `{ type: 'notification-route', route }`, which the page's
+     `NotificationTapService` opens with the router; with no open tab, or
+     when `focus()` is refused, it opens a new one at the route
+     ([reminders.md](reminders.md#where-a-tap-lands),
+     [ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md)).
+     It never navigates an open tab itself, which would reload the app.
    - Every other fetch passes through untouched; there is no caching and no
      offline shell. The Angular `ngsw` build artifacts remain unactivated,
      and the hand-written caching worker that once sat dead in `src/` is gone
