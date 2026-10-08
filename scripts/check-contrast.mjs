@@ -146,6 +146,11 @@ const PAIRS = [
       "and chip, the bottom-nav active pill, the profile-settings checked toggle",
   },
   {
+    fg: '--text-secondary',
+    bg: '--color-primary-light',
+    why: "the export dialog's description of the chosen format and of a format under the pointer",
+  },
+  {
     fg: '--color-primary-text',
     bg: '--surface-hover',
     why: "the import wizard's processing step under way, the About page's feedback category chip and a hovered " +

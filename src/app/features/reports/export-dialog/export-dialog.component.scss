@@ -117,6 +117,13 @@
   color: var(--text-muted);
 }
 
+// On the --color-primary-light tint, which one option always wears, muted
+// copy reads 3.81:1 in dark.
+.option-content:hover .option-description,
+.format-option.mat-mdc-radio-checked .option-description {
+  color: var(--text-secondary);
+}
+
 // Export Options
 .export-options {
   display: flex;

@@ -10,7 +10,14 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
-import { settleAnimations, withTheme } from '../../../core/services/testing';
+import {
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('ExportDialogComponent', () => {
   let component: ExportDialogComponent;
@@ -256,6 +263,87 @@ describe('ExportDialogComponent', () => {
   });
 
   describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `color: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      settleAnimations(document);
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    /** The format options once the group has taken its default, the chosen one first. */
+    async function formats(): Promise<{ chosen: HTMLElement; other: HTMLElement }> {
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const options = Array.from(fixture.nativeElement.querySelectorAll('.format-option')) as HTMLElement[];
+      const chosen = options.find(option => option.classList.contains('mat-mdc-radio-checked'));
+      const other = options.find(option => !option.classList.contains('mat-mdc-radio-checked'));
+      expect(chosen).withContext('the chosen format').toBeTruthy();
+      expect(other).withContext('a format not chosen').toBeTruthy();
+      return { chosen: chosen!, other: other! };
+    }
+
+    // One format is always chosen, and the chosen one and any one under the
+    // pointer are tinted with --color-primary-light, a mid indigo in dark.
+    it("paints the chosen format's description in --text-secondary at AA on its tint, in both themes", async () => {
+      const { chosen } = await formats();
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(chosen.querySelector('.option-description'), '--text-secondary', `${theme} chosen description`);
+        });
+      }
+    });
+
+    it("paints a hovered format's description in --text-secondary at AA on its tint, in both themes", async () => {
+      const { other } = await formats();
+      const content = other.querySelector('.option-content') as HTMLElement;
+      const description = other.querySelector('.option-description') as HTMLElement;
+      const tint = hoverValue(content, '.option-content', 'background');
+      const ink = hoverValue(description, '.option-description', 'color');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          content.style.background = tint;
+          description.style.color = ink;
+          try {
+            expectPainted(description, '--text-secondary', `${theme} hovered description`);
+          } finally {
+            content.style.background = '';
+            description.style.color = '';
+          }
+        });
+      }
+    });
+
+    it('reads the summary line in --text-muted at AA on its panel, in both themes', () => {
+      const lines = Array.from(fixture.nativeElement.querySelectorAll('.export-info .info-item span')) as HTMLElement[];
+      expect(lines.length).withContext('the count and the date range').toBe(2);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          lines.forEach((line, i) => expectPainted(line, '--text-muted', `${theme} summary ${i + 1}`));
+        });
+      }
+    });
+
     it('strokes the exporting spinner in the colour of the label beside it, in both themes', () => {
       component.isExporting.set(true);
       fixture.detectChanges();
