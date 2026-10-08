@@ -415,6 +415,34 @@ describe('AboutComponent', () => {
       return card;
     }
 
+    // 12px semibold copy on the hover fill, so text's 4.5.
+    it("paints a sent entry's category in --color-primary-text, at AA on its chip, in both themes", () => {
+      mockFeedback.watchOwn.and.returnValue(
+        of([
+          {
+            id: 'f1',
+            userId: 'user-1',
+            category: 'idea',
+            message: 'a widget would be nice',
+            appVersion: packageJson.version,
+            platform: 'web',
+            locale: 'en',
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+          } as FeedbackEntry,
+        ])
+      );
+      fixture = TestBed.createComponent(AboutComponent);
+      fixture.detectChanges();
+      const chip = (fixture.nativeElement as HTMLElement).querySelector('.feedback-item-category');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(chip, '--color-primary-text', `${theme} entry category`);
+        });
+      }
+    });
+
     // The badge's glyph is held to text's 4.5 rather than a graphic's 3:1:
     // it is the card's one visual mark.
     it('paints the donate badge glyph in --text-inverse, at AA on its accent bubble, in both themes', () => {

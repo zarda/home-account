@@ -2903,6 +2903,26 @@ describe('ImportWizardComponent', () => {
         }
       });
 
+      // Mid-way, one step is under way and not yet finished: its label and
+      // glyph are the indigo the active fill was given, on that fill.
+      it('paints the step under way in --color-primary-text, its label at AA and its glyph at 3:1 on the step, in both themes', () => {
+        mockImportService.isProcessing.set(true);
+        mockImportService.processingProgress.set(40);
+        realFixture.detectChanges();
+        const steps = Array.from(
+          el().querySelectorAll('.processing-steps .step-indicator.active:not(.complete)')
+        ) as HTMLElement[];
+        expect(steps.length).withContext('one step under way').toBe(1);
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            settleAnimations(document);
+            expectPainted(steps[0].querySelector('span'), '--color-primary-text', `${theme} step under way label`);
+            expectPainted(steps[0].querySelector('mat-icon'), '--color-primary-text', `${theme} step under way icon`, 3);
+          });
+        }
+      });
+
       it('paints the success glyph in --color-success-text at 3:1 or better on the page, in both themes', () => {
         realFixture.componentInstance.extractedTransactions.set([{ ...mockTransactions[0] }]);
         realFixture.detectChanges();

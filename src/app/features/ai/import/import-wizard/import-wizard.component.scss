@@ -326,7 +326,9 @@
 
 .step-indicator.active {
   background: var(--surface-hover);
-  color: var(--color-primary);
+  // The fill token reads 3.15:1 on this surface in dark; its -text step is
+  // the indigo meant to sit on a tint.
+  color: var(--color-primary-text);
 }
 
 // The green the success family is named for is a fill, near 2:1 on the light

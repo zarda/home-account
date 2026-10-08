@@ -5116,6 +5116,61 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       }
     });
 
+    // The note button tints itself with the primary over whatever card it is
+    // on, and an unchecked card under the pointer is the lightest fill that
+    // tint lands on in dark. Dark raises the tint in a rule of its own, so
+    // each theme's fill is read from the rule that paints it there.
+    it('paints a hovered add-notes label in --color-primary-text at AA on a hovered unchecked card, in both themes', () => {
+      render([makeRow({ id: 'plain', selected: false })]);
+      const host = card('plain');
+      const button = host.querySelector('.add-notes-btn') as HTMLElement;
+      expect(button).withContext('the add-notes button').toBeTruthy();
+      const cardFill = hoverValue(host, '.transaction-card', 'background');
+      const ink = hoverValue(button, '.add-notes-btn', 'color');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const tint = hoverValue(button, theme === 'dark' ? '.dark-theme' : '.add-notes-btn', 'background');
+          host.style.background = cardFill;
+          button.style.color = ink;
+          button.style.background = tint;
+          try {
+            settleAnimations(document);
+            expectPainted(button.querySelector('span'), '--color-primary-text', `${theme} hovered add-notes label`);
+          } finally {
+            host.style.background = '';
+            button.style.color = '';
+            button.style.background = '';
+          }
+        });
+      }
+    });
+
+    // The add-row button wears the same tint, but in the footer under the
+    // list, so what is under the tint is the table's own card fill.
+    it('paints a hovered add-row label and icon in --color-primary-text on the table, in both themes', () => {
+      render([makeRow({ id: 'plain', selected: false })]);
+      const button = fixture.nativeElement.querySelector('.list-footer .add-row') as HTMLElement;
+      expect(button).withContext('the add-row button').toBeTruthy();
+      const ink = hoverValue(button, '.add-row', 'color');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const tint = hoverValue(button, theme === 'dark' ? '.dark-theme' : '.add-row', 'background');
+          button.style.color = ink;
+          button.style.background = tint;
+          try {
+            settleAnimations(document);
+            expectPainted(button.querySelector('span'), '--color-primary-text', `${theme} hovered add-row label`);
+            expectPainted(button.querySelector('mat-icon'), '--color-primary-text', `${theme} hovered add-row icon`, 3);
+          } finally {
+            button.style.color = '';
+            button.style.background = '';
+          }
+        });
+      }
+    });
+
     it('paints an answered date in --color-success-text, the date at AA and its check at 3:1 on its chip, in both themes', () => {
       render([makeRow({ id: 'answered', dateReviewed: true })]);
       const chip = card('answered').querySelector('button.date-chip');

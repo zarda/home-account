@@ -264,8 +264,10 @@ app-category-chip {
   text-decoration: none;
   color: var(--text-muted);
 
+  // A hovered link is on a hovered row, --surface-hover, where the fill
+  // token reads 3.15:1 in dark.
   &:hover {
-    color: var(--color-primary);
+    color: var(--color-primary-text);
     text-decoration: underline;
   }
 }

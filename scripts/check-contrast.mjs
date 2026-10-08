@@ -145,6 +145,15 @@ const PAIRS = [
     why: "the stat-card neutral icon, the import preview badge, the period selector's toggle " +
       "and chip, the bottom-nav active pill, the profile-settings checked toggle",
   },
+  {
+    fg: '--color-primary-text',
+    bg: '--surface-hover',
+    why: "the import wizard's processing step under way, the About page's feedback category chip and a hovered " +
+      "transaction row's location link. Two hovered labels of the import review step sit on the primary's own " +
+      "tint instead, 5% in light and 10% in dark: a review card's add-notes label over its card, and the list " +
+      "footer's add-row label over the table's --surface-card. The preview spec holds both at 4.5:1 in both " +
+      'themes, the add-notes label on a hovered unchecked card',
+  },
   { fg: '--color-income-text', bg: '--color-income-light', why: 'the income chip: stat cards, weekly recap' },
   { fg: '--color-income-text', bg: '--surface-card', why: 'an income amount as running text' },
   { fg: '--color-expense-text', bg: '--color-expense-light', why: 'the expense chip: stat cards, weekly recap, budget alert banner' },

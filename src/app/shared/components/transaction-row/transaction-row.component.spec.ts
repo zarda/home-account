@@ -11,9 +11,11 @@ import {
   createCategory,
   createUser,
   createTranslationStub,
+  hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
+  settleAnimations,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -395,6 +397,58 @@ describe('TransactionRowComponent', () => {
 
     (root.querySelector('.row-date') as HTMLElement).click();
     expect(emitted.length).withContext('a click opens the row').toBe(1);
+  });
+
+  // A row sits on a list card and lifts to --surface-hover under the
+  // pointer, so whatever is hovered inside it is read on that lift.
+  describe('colours, as painted', () => {
+    /** What `color: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      settleAnimations(document);
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    beforeEach(() => {
+      (fixture.nativeElement as HTMLElement).style.backgroundColor = 'var(--surface-card)';
+    });
+
+    it('paints a hovered location link in --color-primary-text at AA on the hovered row, in both themes', () => {
+      setTransaction({ location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 } } as Partial<Transaction>);
+      const row = fixture.nativeElement.querySelector('.transaction-row') as HTMLElement;
+      const link = fixture.nativeElement.querySelector('.location-link') as HTMLElement;
+      const lift = hoverValue(row, '.transaction-row', 'background-color');
+      const ink = hoverValue(link, '.location-link', 'color');
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          row.style.backgroundColor = lift;
+          link.style.color = ink;
+          try {
+            expectPainted(link, '--color-primary-text', `${theme} hovered location link`);
+          } finally {
+            row.style.backgroundColor = '';
+            link.style.color = '';
+          }
+        });
+      }
+    });
   });
 });
 

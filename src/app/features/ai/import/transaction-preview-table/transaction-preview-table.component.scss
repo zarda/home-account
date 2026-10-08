@@ -98,7 +98,7 @@
 }
 
 .add-row:hover {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   border-color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 5%, transparent);
 }
@@ -852,7 +852,9 @@
 }
 
 .add-notes-btn:hover {
-  color: var(--color-primary);
+  // The label sits on the primary's own tint over the card, where the fill
+  // token reads 2.81:1 in dark; the border keeps the fill.
+  color: var(--color-primary-text);
   border-color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 5%, transparent);
 }
