@@ -168,6 +168,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0161](0161-a-deleted-membership-or-household-is-swept-by-server-triggers-as-a-backstop.md) | A deleted membership or household is swept by server triggers, as a backstop | Accepted; narrowly revisits 0154's rejection of merging on the server; keeps 0155's smoke decision | 2026-09-28 |
 | [0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md) | A refund read on the device is filed as income, and the review asks about it | Accepted; amends 0147; applies 0008, 0146 and 0149 | 2026-10-02 |
 | [0163](0163-a-page-reloads-on-an-account-change-it-did-not-start-and-the-web-keeps-the-session-in-local-storage.md) | A page reloads on an account change it did not start, and the web keeps the session in local storage | Accepted; amends 0009 and 0052; leaves 0089 standing | 2026-10-02 |
+| [0164](0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md) | Colours come from theme tokens, and a gate keeps them there | Accepted; applies 0145; closes a gap of 0151 and one of accessibility.md | 2026-10-08 |
 
 ## What belongs here
 

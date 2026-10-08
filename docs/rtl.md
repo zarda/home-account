@@ -78,7 +78,7 @@ one-class change.
 self-test of its own scanners and then compares the physical direction in
 `src/**/*.{scss,html}` against a frozen per-file baseline.
 
-Today: **99 hits in 33 files.** Every number in that map is a debt, and the
+Today: **98 hits in 33 files.** Every number in that map is a debt, and the
 only legal edits are downward.
 
 ### What counts as a hit
@@ -191,7 +191,7 @@ here, and the four other utility patterns never excluded it. The
 
 ## Still to do before an RTL locale renders correctly
 
-The conversion is the large item — 99 hits, 33 files — but it is not the only
+The conversion is the large item — 98 hits, 33 files — but it is not the only
 one. These are known, in scope for a first RTL locale, and out of scope for the
 groundwork:
 
@@ -225,7 +225,7 @@ groundwork:
      the first non-English one allowed to carry plural members, and
      `i18n.md`'s rule needs rewriting rather than the spec relaxing.
    - `scripts/check-i18n.mjs`'s `LOCALES` constant.
-5. **Then the real work**: the four rows above, and the 99 remaining hits.
+5. **Then the real work**: the four rows above, and the 98 remaining hits.
    Force `dir="rtl"` on `<html>` in a running dev server first — it is the
    cheapest way to see which of them actually matter. One surface is already
    done and needs looking at rather than converting: the import review card's
