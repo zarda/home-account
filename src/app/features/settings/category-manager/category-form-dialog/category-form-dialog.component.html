@@ -21,13 +21,15 @@
       <span class="section-label">{{ 'settings.icon' | translate }}</span>
       <div
         class="icons-grid"
-        role="radiogroup"
+        role="group"
         [attr.aria-label]="'settings.iconSelection' | translate"
       >
         @for (icon of icons; track icon) {
           <button
             type="button"
             class="icon-btn"
+            [attr.aria-label]="iconNameKeys[icon] | translate"
+            [attr.aria-pressed]="selectedIcon === icon"
             [class.selected]="selectedIcon === icon"
             [style.color]="(selectedIcon === icon ? selectedColor : '') | categoryGlyph:'iconGrid'"
             (click)="selectIcon(icon)"
@@ -43,14 +45,16 @@
       <span class="section-label">{{ 'settings.color' | translate }}</span>
       <div
         class="colors-grid"
-        role="radiogroup"
+        role="group"
         [attr.aria-label]="'settings.colorSelection' | translate"
       >
-        @for (color of colors; track color) {
+        @for (color of colors; track color; let i = $index) {
           <!-- colors:allow-start(category-data) each swatch is filled with the colour it offers -->
           <button
             type="button"
             class="color-btn"
+            [attr.aria-label]="colorNameKeys[i] | translate"
+            [attr.aria-pressed]="selectedColor === color"
             [class.selected]="selectedColor === color"
             [style.background-color]="color"
             (click)="selectColor(color)"

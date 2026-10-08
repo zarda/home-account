@@ -28,6 +28,54 @@ const CATEGORY_ICONS = [
   'sports_esports', 'pets', 'child_care', 'card_giftcard', 'celebration',
 ];
 
+/** What each icon button is called: the glyph alone names nothing to a screen reader. */
+const CATEGORY_ICON_NAME_KEYS: Readonly<Record<string, string>> = {
+  restaurant: 'settings.categoryIconNames.restaurant',
+  local_cafe: 'settings.categoryIconNames.local_cafe',
+  fastfood: 'settings.categoryIconNames.fastfood',
+  shopping_cart: 'settings.categoryIconNames.shopping_cart',
+  shopping_bag: 'settings.categoryIconNames.shopping_bag',
+  local_gas_station: 'settings.categoryIconNames.local_gas_station',
+  directions_car: 'settings.categoryIconNames.directions_car',
+  flight: 'settings.categoryIconNames.flight',
+  hotel: 'settings.categoryIconNames.hotel',
+  home: 'settings.categoryIconNames.home',
+  apartment: 'settings.categoryIconNames.apartment',
+  payments: 'settings.categoryIconNames.payments',
+  attach_money: 'settings.categoryIconNames.attach_money',
+  credit_card: 'settings.categoryIconNames.credit_card',
+  account_balance: 'settings.categoryIconNames.account_balance',
+  medical_services: 'settings.categoryIconNames.medical_services',
+  fitness_center: 'settings.categoryIconNames.fitness_center',
+  school: 'settings.categoryIconNames.school',
+  work: 'settings.categoryIconNames.work',
+  movie: 'settings.categoryIconNames.movie',
+  sports_esports: 'settings.categoryIconNames.sports_esports',
+  pets: 'settings.categoryIconNames.pets',
+  child_care: 'settings.categoryIconNames.child_care',
+  card_giftcard: 'settings.categoryIconNames.card_giftcard',
+  celebration: 'settings.categoryIconNames.celebration',
+};
+
+/** The palette's colours by name, in CATEGORY_PALETTE's order. */
+const CATEGORY_PALETTE_NAME_KEYS: readonly string[] = [
+  'settings.categoryColorNames.red',
+  'settings.categoryColorNames.orange',
+  'settings.categoryColorNames.yellow',
+  'settings.categoryColorNames.green',
+  'settings.categoryColorNames.teal',
+  'settings.categoryColorNames.cyan',
+  'settings.categoryColorNames.blue',
+  'settings.categoryColorNames.indigo',
+  'settings.categoryColorNames.violet',
+  'settings.categoryColorNames.purple',
+  'settings.categoryColorNames.pink',
+  'settings.categoryColorNames.rose',
+  'settings.categoryColorNames.slate',
+  'settings.categoryColorNames.gray',
+  'settings.categoryColorNames.stone',
+];
+
 @Component({
   selector: 'app-category-form-dialog',
   standalone: true,
@@ -55,6 +103,8 @@ export class CategoryFormDialogComponent {
 
   icons = CATEGORY_ICONS;
   colors = CATEGORY_PALETTE;
+  readonly iconNameKeys = CATEGORY_ICON_NAME_KEYS;
+  readonly colorNameKeys = CATEGORY_PALETTE_NAME_KEYS;
 
   name = this.data.category?.name || '';
   selectedIcon = this.data.category?.icon || 'category';

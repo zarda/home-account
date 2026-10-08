@@ -12,7 +12,9 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  runAxe,
   settleAnimations,
+  summarizeViolations,
   withScheme,
   withTheme,
 } from '../../../../core/services/testing';
@@ -24,6 +26,7 @@ import {
   DEFAULT_EXPENSE_GROUPS,
   DEFAULT_INCOME_GROUPS,
 } from '../../../../models';
+import en from '../../../../../assets/i18n/en.json';
 
 describe('CategoryFormDialogComponent', () => {
   let fixture: ComponentFixture<CategoryFormDialogComponent>;
@@ -86,11 +89,62 @@ describe('CategoryFormDialogComponent', () => {
       expect(input.getAttribute('placeholder')).toBe('name-placeholder-t');
     });
 
-    it('gives both radiogroups translated aria-labels', async () => {
+    it('gives both groups translated aria-labels', async () => {
       await setup({ type: 'expense' });
-      const groups = fixture.nativeElement.querySelectorAll('[role="radiogroup"]');
+      const groups = fixture.nativeElement.querySelectorAll('.icons-grid, .colors-grid');
+      expect(Array.from(groups, (el: Element) => el.getAttribute('role'))).toEqual(['group', 'group']);
       const labels = Array.from(groups, (el: Element) => el.getAttribute('aria-label'));
       expect(labels).toEqual(['icon-group-t', 'color-group-t']);
+    });
+
+    // A grid of glyphs and swatches says nothing to a screen reader on its
+    // own: each button carries the name of what it picks, from the catalog,
+    // and says whether it is the one picked.
+    for (const [grid, selector] of [['icon', '.icon-btn'], ['colour', '.color-btn']] as const) {
+      it(`names every ${grid} button through the catalog, and says whether it is pressed`, async () => {
+        await setup({ type: 'expense' });
+        const buttons = Array.from(fixture.nativeElement.querySelectorAll(selector)) as HTMLButtonElement[];
+        const keys = buttons.map(button => button.getAttribute('aria-label') ?? '');
+        const catalog = en as unknown as Record<string, Record<string, Record<string, string>>>;
+        const english = keys.map(key => {
+          const [section, group, leaf] = key.split('.');
+          return catalog[section]?.[group]?.[leaf];
+        });
+
+        expect(new Set(keys).size).withContext('one name each').toBe(buttons.length);
+        expect(english.every(name => typeof name === 'string' && name.length > 0))
+          .withContext(`every name resolves in en.json: ${keys.join(', ')}`)
+          .toBeTrue();
+        // A new category starts on an icon the grid does not offer, so none
+        // of the grid is pressed until one is picked.
+        expect(buttons.filter(button => button.getAttribute('aria-pressed') === 'true').length)
+          .withContext('at most one pressed')
+          .toBeLessThanOrEqual(1);
+        expect(buttons.every(button => ['true', 'false'].includes(button.getAttribute('aria-pressed') ?? '')))
+          .withContext('every button says whether it is pressed')
+          .toBeTrue();
+      });
+    }
+
+    it('moves the pressed state with the pick', async () => {
+      await setup({ type: 'expense' });
+      component.selectIcon('pets');
+      component.selectColor(CATEGORY_PALETTE[2]);
+      fixture.detectChanges();
+
+      const pressed = (selector: string) => Array.from(
+        fixture.nativeElement.querySelectorAll(`${selector}[aria-pressed="true"]`) as NodeListOf<HTMLElement>,
+        button => button.getAttribute('aria-label')
+      );
+      expect(pressed('.icon-btn')).toEqual(['settings.categoryIconNames.pets']);
+      expect(pressed('.color-btn')).toEqual(['settings.categoryColorNames.yellow']);
+    });
+
+    it('leaves no button unnamed for axe', async () => {
+      await setup({ type: 'expense' });
+
+      const violations = summarizeViolations(await runAxe(fixture.nativeElement));
+      expect(violations.filter(line => line.startsWith('button-name'))).toEqual([]);
     });
 
     it('falls back to the translated name label in the preview when the name is empty', async () => {
