@@ -3,14 +3,23 @@ import { signal } from '@angular/core';
 import { NavigationEnd, Router, provideRouter } from '@angular/router';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { MatDialog } from '@angular/material/dialog';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { BehaviorSubject, Subject, map } from 'rxjs';
 import { HeaderComponent } from './header.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
+import { CommandPaletteComponent } from '../../components/command-palette/command-palette.component';
 import { User } from '../../../models';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub } from '../../../core/services/testing';
+import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
+import { APP_BREAKPOINTS, AppBreakpointName } from '../../../core/layout/breakpoints';
+import {
+  AUDIT_SCHEMES,
+  createTranslationStub,
+  runAxe,
+  summarizeViolations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('HeaderComponent', () => {
   let component: HeaderComponent;
@@ -320,5 +329,320 @@ describe('HeaderComponent, through its own template', () => {
     (Array.from(panel.querySelectorAll('button[mat-menu-item]')) as HTMLButtonElement[])[1].click();
 
     expect(auth.signOut).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The palette button and the one-time '?' hint (#446), through the real
+ * template.
+ *
+ * The BreakpointObserver double answers each query for one width at a time,
+ * as CDK does, so the header's two observations (mobile for auto-hide,
+ * desktop for the hint) never both match. The shortcut service is the real
+ * one over a MatDialog double: what the button must reach is the service's
+ * tracked palette, the one Ctrl/Cmd+K toggles closed, not a dialog of its
+ * own.
+ */
+describe('HeaderComponent, the palette button and the ? hint (#446)', () => {
+  const HINT_KEY = 'homeaccount.shortcuts-hint-dismissed';
+
+  let fixture: ComponentFixture<HeaderComponent>;
+  let width$: BehaviorSubject<AppBreakpointName>;
+  let dialog: { openDialogs: unknown[]; open: jasmine.Spy };
+  let paletteRef: { close: jasmine.Spy; afterClosed: () => Subject<undefined> };
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const hint = () => el().querySelector<HTMLElement>('.shortcuts-hint');
+  const paletteButton = () => el().querySelector<HTMLButtonElement>('.palette-button');
+  const dismissButton = () => el().querySelector<HTMLButtonElement>('.shortcuts-hint-dismiss');
+
+  function observe(query: string | string[]) {
+    const queries = Array.isArray(query) ? query : [query];
+    return width$.pipe(
+      map(width => {
+        const breakpoints = Object.fromEntries(queries.map(q => [q, q === APP_BREAKPOINTS[width]]));
+        return { matches: Object.values(breakpoints).some(Boolean), breakpoints };
+      })
+    );
+  }
+
+  function create(): void {
+    fixture = TestBed.createComponent(HeaderComponent);
+    fixture.detectChanges();
+  }
+
+  /** Destroys the header and mounts a new one, as a reload would. */
+  function recreate(): void {
+    fixture.destroy();
+    create();
+  }
+
+  function at(width: AppBreakpointName): void {
+    width$.next(width);
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    localStorage.removeItem(HINT_KEY);
+    width$ = new BehaviorSubject<AppBreakpointName>('desktop');
+    const closed$ = new Subject<undefined>();
+    paletteRef = { close: jasmine.createSpy('close'), afterClosed: () => closed$ };
+    dialog = {
+      openDialogs: [],
+      open: jasmine.createSpy('open').and.callFake(() => {
+        dialog.openDialogs = [paletteRef];
+        return paletteRef;
+      }),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [HeaderComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal<User | null>({ id: 'u1', displayName: 'Tester' } as User),
+            signOut: jasmine.createSpy('signOut'),
+          },
+        },
+        { provide: MatDialog, useValue: dialog },
+        { provide: BreakpointObserver, useValue: { observe } },
+        { provide: TranslationService, useValue: createTranslationStub() },
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    localStorage.removeItem(HINT_KEY);
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  it('opens the plain palette through the shortcut service', () => {
+    create();
+    const shortcuts = TestBed.inject(KeyboardShortcutService);
+    const open = spyOn(shortcuts, 'openPalette').and.callThrough();
+
+    expect(paletteButton()?.getAttribute('aria-label')).toBe('palette.title');
+    expect(paletteButton()?.getAttribute('aria-haspopup')).toBe('dialog');
+    paletteButton()!.click();
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(dialog.open).toHaveBeenCalledOnceWith(CommandPaletteComponent, {
+      width: '520px',
+      maxWidth: '95vw',
+    });
+    // The service's own palette: Ctrl/Cmd+K closes it rather than opening a
+    // second one.
+    shortcuts.handlePaletteHotkey(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+    expect(paletteRef.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the button at every width: it is the only door a touch screen has', () => {
+    create();
+    for (const width of ['mobile', 'tablet', 'desktop'] as const) {
+      at(width);
+      expect(paletteButton()).withContext(width).not.toBeNull();
+    }
+  });
+
+  it('shows the hint at desktop while its key is absent', () => {
+    create();
+
+    expect(hint()).not.toBeNull();
+    expect(hint()!.textContent).toContain('shortcuts.hint');
+    expect(dismissButton()?.getAttribute('aria-label')).toBe('shortcuts.hintDismiss');
+  });
+
+  it('hides the hint at tablet and phone widths without retiring it', () => {
+    create();
+
+    at('tablet');
+    expect(hint()).withContext('tablet').toBeNull();
+    at('mobile');
+    expect(hint()).withContext('phone').toBeNull();
+    at('desktop');
+    expect(hint()).withContext('back at desktop').not.toBeNull();
+    expect(localStorage.getItem(HINT_KEY)).toBeNull();
+  });
+
+  it('retires the hint for good when it is dismissed', () => {
+    create();
+
+    dismissButton()!.click();
+    fixture.detectChanges();
+
+    expect(hint()).toBeNull();
+    expect(localStorage.getItem(HINT_KEY)).toBe('true');
+    recreate();
+    expect(hint()).withContext('after a re-create').toBeNull();
+  });
+
+  it('hands focus to the palette button when the hint is dismissed, so a keyboard keeps its place', () => {
+    create();
+
+    dismissButton()!.focus();
+    dismissButton()!.click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(paletteButton());
+  });
+
+  it('retires the hint for good once the button opens the palette', () => {
+    create();
+
+    paletteButton()!.click();
+    fixture.detectChanges();
+
+    expect(hint()).toBeNull();
+    expect(localStorage.getItem(HINT_KEY)).toBe('true');
+    recreate();
+    expect(hint()).withContext('after a re-create').toBeNull();
+  });
+
+  it('retires the hint once ? opens the palette, too', () => {
+    create();
+    const question = new KeyboardEvent('keydown', { key: '?', shiftKey: true, cancelable: true });
+    Object.defineProperty(question, 'target', { value: document.body });
+
+    TestBed.inject(KeyboardShortcutService).handleHelpHotkey(question);
+    fixture.detectChanges();
+
+    expect(hint()).toBeNull();
+    expect(localStorage.getItem(HINT_KEY)).toBe('true');
+  });
+
+  it('shows no hint, and still renders, when storage throws on read', () => {
+    spyOn(Storage.prototype, 'getItem').and.throwError(new DOMException('denied', 'SecurityError'));
+
+    expect(() => create()).not.toThrow();
+    expect(hint()).toBeNull();
+    expect(paletteButton()).not.toBeNull();
+  });
+
+  it('still hides a dismissed hint when storage throws on write', () => {
+    create();
+    spyOn(Storage.prototype, 'setItem').and.throwError(new DOMException('full', 'QuotaExceededError'));
+
+    expect(() => {
+      dismissButton()!.click();
+      fixture.detectChanges();
+    }).not.toThrow();
+    expect(hint()).toBeNull();
+  });
+
+  it('passes the axe sweep with the hint showing, in both schemes', async () => {
+    create();
+    document.body.appendChild(el());
+    expect(hint()).withContext('the hint under audit').not.toBeNull();
+
+    try {
+      for (const scheme of AUDIT_SCHEMES) {
+        await withTheme(scheme, async () => {
+          expect(summarizeViolations(await runAxe(el())))
+            .withContext(`${scheme} scheme`)
+            .toEqual([]);
+        });
+      }
+    } finally {
+      el().remove();
+    }
+  });
+});
+
+describe("HeaderComponent, focus after a palette opened from the hint's own dismiss (#446)", () => {
+  const HINT_KEY = 'homeaccount.shortcuts-hint-dismissed';
+
+  let fixture: ComponentFixture<HeaderComponent>;
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const hint = () => el().querySelector<HTMLElement>('.shortcuts-hint');
+  const paletteButton = () => el().querySelector<HTMLButtonElement>('.palette-button');
+  const dismissButton = () => el().querySelector<HTMLButtonElement>('.shortcuts-hint-dismiss');
+
+  /** A key the layout's host listener would hand on, as the dismiss received it. */
+  function pressedOnDismiss(init: KeyboardEventInit): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'target', { value: dismissButton() });
+    return event;
+  }
+
+  async function render(): Promise<void> {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    localStorage.removeItem(HINT_KEY);
+    // The real MatDialog: restoring focus as a dialog closes is the CDK's.
+    await TestBed.configureTestingModule({
+      imports: [HeaderComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal<User | null>({ id: 'u1', displayName: 'Tester' } as User),
+            signOut: jasmine.createSpy('signOut'),
+          },
+        },
+        {
+          provide: BreakpointObserver,
+          useValue: {
+            observe: (query: string | string[]) => {
+              const queries = Array.isArray(query) ? query : [query];
+              const matches = queries.includes(APP_BREAKPOINTS.desktop);
+              return new BehaviorSubject<BreakpointState>({ matches, breakpoints: {} });
+            },
+          },
+        },
+        { provide: TranslationService, useValue: createTranslationStub() },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(HeaderComponent);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    TestBed.inject(MatDialog).closeAll();
+    localStorage.removeItem(HINT_KEY);
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  const doors: [string, (shortcuts: KeyboardShortcutService) => void][] = [
+    ['?', shortcuts => shortcuts.handleHelpHotkey(pressedOnDismiss({ key: '?', shiftKey: true }))],
+    ['Ctrl+K', shortcuts => shortcuts.handlePaletteHotkey(pressedOnDismiss({ key: 'k', ctrlKey: true }))],
+  ];
+
+  for (const [door, press] of doors) {
+    it(`hands focus to the palette button when ${door} on the dismiss opens a palette that then closes`, async () => {
+      expect(hint()).withContext('the hint at desktop').not.toBeNull();
+      dismissButton()!.focus();
+
+      press(TestBed.inject(KeyboardShortcutService));
+      await render();
+      expect(hint()).withContext('retired as the palette opened, and its dismiss with it').toBeNull();
+
+      TestBed.inject(MatDialog).closeAll();
+      await render();
+
+      expect(document.activeElement).toBe(paletteButton());
+    });
+  }
+
+  it('leaves focus to return where it was when the palette opens from anywhere else', async () => {
+    const menuButton = el().querySelector<HTMLButtonElement>('.menu-button')!;
+    menuButton.focus();
+    const chord = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true });
+    Object.defineProperty(chord, 'target', { value: menuButton });
+
+    TestBed.inject(KeyboardShortcutService).handlePaletteHotkey(chord);
+    await render();
+    TestBed.inject(MatDialog).closeAll();
+    await render();
+
+    expect(document.activeElement).toBe(menuButton);
   });
 });

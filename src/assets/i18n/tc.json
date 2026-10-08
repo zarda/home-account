@@ -1655,7 +1655,9 @@
   "shortcuts": {
     "addTransaction": "新增交易",
     "openPalette": "開啟或關閉此面板",
-    "showShortcuts": "顯示這份快捷鍵列表"
+    "showShortcuts": "顯示這份快捷鍵列表",
+    "hint": "按 ? 鍵即可查看鍵盤快捷鍵",
+    "hintDismiss": "關閉此提示"
   },
   "widget": {
     "spent": "支出",

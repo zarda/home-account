@@ -56,6 +56,58 @@
   flex: 1;
 }
 
+// The one-time '?' hint hangs off the palette button's start side, inside
+// the toolbar's band. Positioned out of the row's flow, it takes no room
+// from the wordmark or the buttons, and it covers none of the page below,
+// where a page's own actions sit at the same end.
+.palette-anchor {
+  position: relative;
+  display: flex;
+}
+
+.shortcuts-hint {
+  position: absolute;
+  inset-inline-end: calc(100% + 8px);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  inline-size: max-content;
+  max-inline-size: 30rem;
+  padding-block: 2px;
+  padding-inline: 12px 2px;
+  white-space: normal;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+}
+
+.shortcuts-hint-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.shortcuts-hint-text {
+  margin: 0;
+  min-inline-size: 0;
+  // The toolbar's title typography would otherwise reach in.
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+}
+
+.shortcuts-hint-dismiss {
+  flex-shrink: 0;
+  // Compact, with no 48px touch target spilling past the hint: the hint
+  // shows only at desktop widths, and 32px clears the 24px minimum target.
+  --mat-icon-button-state-layer-size: 32px;
+  --mat-icon-button-touch-target-display: none;
+}
+
 .user-avatar {
   width: 32px;
   height: 32px;

@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, HostBinding, Input, NgZone, OnDestroy, OnInit, Output, computed, inject, linkedSignal, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, HostBinding, Input, NgZone, OnDestroy, OnInit, Output, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
 
 import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
@@ -10,11 +10,15 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../../core/services/auth.service';
+import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { FitTextDirective } from '../../directives/fit-text.directive';
 import { filter, map, Subscription } from 'rxjs';
+
+/** localStorage key: the '?' hint was retired on this device. */
+const SHORTCUTS_HINT_KEY = 'homeaccount.shortcuts-hint-dismissed';
 
 @Component({
   selector: 'app-header',
@@ -42,6 +46,7 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
   private ngZone = inject(NgZone);
   private breakpointObserver = inject(BreakpointObserver);
   private dialog = inject(MatDialog);
+  private keyboardShortcuts = inject(KeyboardShortcutService);
   private lastScrollY = 0;
   private routerSubscription?: Subscription;
   private scrollContainer: HTMLElement | null = null;
@@ -55,6 +60,18 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
     { initialValue: false }
   );
 
+  // The '?' hint speaks to a keyboard, and the docked-desktop width is the
+  // one where the app assumes there is one.
+  private isDesktopViewport = toSignal(
+    this.breakpointObserver.observe(APP_BREAKPOINTS.desktop).pipe(map((r) => r.matches)),
+    { initialValue: false }
+  );
+
+  // Per device, not per account: the hint teaches this device's keyboard.
+  private shortcutsHintDismissed = signal(this.readShortcutsHintDismissed());
+
+  showShortcutsHint = computed(() => this.isDesktopViewport() && !this.shortcutsHintDismissed());
+
   currentUser = computed(() => this.authService.currentUser());
   isVisible = signal(true);
 
@@ -65,6 +82,16 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
   @HostBinding('class.hidden')
   get isHidden(): boolean {
     return !this.isVisible();
+  }
+
+  constructor() {
+    // The palette lists every shortcut whenever its search is empty, so once
+    // it has opened, by the button or by a key, the hint has said its piece.
+    effect(() => {
+      if (this.keyboardShortcuts.paletteOpened()) {
+        untracked(() => this.dismissShortcutsHint());
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -140,6 +167,34 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
     cancelAnimationFrame(this.rafId);
     if (this.scrollContainer && this.scrollHandler) {
       this.scrollContainer.removeEventListener('scroll', this.scrollHandler);
+    }
+  }
+
+  openPalette(): void {
+    this.keyboardShortcuts.openPalette();
+  }
+
+  dismissShortcutsHint(): void {
+    if (this.shortcutsHintDismissed()) return;
+    this.shortcutsHintDismissed.set(true);
+    try {
+      localStorage.setItem(SHORTCUTS_HINT_KEY, 'true');
+    } catch {
+      // Storage refused the write: the dismissal lasts only as long as this
+      // header, and a lock, which mounts a new one, shows the hint again.
+      // Storage that reads but will not write is too rare to carry a
+      // session-wide flag for.
+    }
+  }
+
+  private readShortcutsHintDismissed(): boolean {
+    try {
+      return localStorage.getItem(SHORTCUTS_HINT_KEY) === 'true';
+    } catch {
+      // Unreadable storage could never keep a dismissal either, so the hint
+      // would come back on every launch. The palette's button and its own
+      // list of shortcuts still teach the keys.
+      return true;
     }
   }
 

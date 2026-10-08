@@ -1655,7 +1655,9 @@
   "shortcuts": {
     "addTransaction": "取引を追加",
     "openPalette": "このパレットを開く／閉じる",
-    "showShortcuts": "このショートカット一覧を表示"
+    "showShortcuts": "このショートカット一覧を表示",
+    "hint": "? キーを押すとキーボードショートカットを表示します",
+    "hintDismiss": "このヒントを閉じる"
   },
   "widget": {
     "spent": "支出",

@@ -1814,7 +1814,9 @@
   "shortcuts": {
     "addTransaction": "Add a transaction",
     "openPalette": "Open or close this palette",
-    "showShortcuts": "Show these shortcuts"
+    "showShortcuts": "Show these shortcuts",
+    "hint": "Press ? to see the keyboard shortcuts",
+    "hintDismiss": "Dismiss this tip"
   },
   "widget": {
     "spent": "Spent",

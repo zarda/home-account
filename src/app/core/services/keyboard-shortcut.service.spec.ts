@@ -384,4 +384,74 @@ describe('KeyboardShortcutService', () => {
       ]);
     });
   });
+
+  // The header's button is the palette's only door on a touch screen. It
+  // opens the palette Ctrl/Cmd+K opens, and that is one tracked palette.
+  describe('palette button (#446)', () => {
+    it('opens the plain palette at the shared dialog width', () => {
+      service.openPalette();
+
+      expect(dialog.open).toHaveBeenCalledOnceWith(CommandPaletteComponent, {
+        width: '520px',
+        maxWidth: '95vw',
+      });
+    });
+
+    it('opens a palette that Ctrl/Cmd+K then toggles closed', () => {
+      service.openPalette();
+
+      service.handlePaletteHotkey(keydownK(document.body));
+
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+      expect(openedRefs[0].close).toHaveBeenCalledTimes(1);
+    });
+
+    it('never opens a palette over an open dialog, its own included', () => {
+      service.openPalette();
+      service.openPalette();
+      settleClose(openedRefs[0]);
+      dialog.openDialogs = [{}];
+      service.openPalette();
+
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // What the header's one-time '?' hint reads: once any door has opened the
+  // palette, its Shortcuts section has been on screen.
+  describe('paletteOpened (#446)', () => {
+    const question = (): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', { key: '?', shiftKey: true, cancelable: true });
+      Object.defineProperty(event, 'target', { value: document.body, configurable: true });
+      return event;
+    };
+
+    it('is false until a palette opens', () => {
+      expect(service.paletteOpened()).toBeFalse();
+    });
+
+    const doors: [string, (s: KeyboardShortcutService) => void][] = [
+      ['the button', s => s.openPalette()],
+      ['Ctrl/Cmd+K', s => s.handlePaletteHotkey(keydownK(document.body))],
+      ['?', s => s.handleHelpHotkey(question())],
+    ];
+    for (const [door, open] of doors) {
+      it(`turns true when ${door} opens one, and stays true after it closes`, () => {
+        open(service);
+        settleClose(openedRefs[0]);
+
+        expect(service.paletteOpened()).toBeTrue();
+      });
+    }
+
+    it('stays false when every door stands down', () => {
+      dialog.openDialogs = [{}];
+      service.openPalette();
+      service.handlePaletteHotkey(keydownK(document.body));
+      service.handleHelpHotkey(question());
+
+      expect(dialog.open).not.toHaveBeenCalled();
+      expect(service.paletteOpened()).toBeFalse();
+    });
+  });
 });

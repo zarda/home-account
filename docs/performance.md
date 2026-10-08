@@ -147,12 +147,27 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.47 MB | 2.7 MB |
+| Initial bundle | 2.472 MB | 2.7 MB |
 
-Against 2.46 MB, measured from a clean production build on 2026-09-28. The
-warning stood at 2.45 MB until household sharing (#465) put the initial
-bundle 12.85 kB over it, and moved by that much and no more. What bought the
-space is code the first screen reaches without a route change:
+Against 2,471,499 bytes, measured from a clean production build on
+2026-10-09. The warning stood at 2.45 MB until household sharing (#465) put
+the initial bundle 12.85 kB over it, and moved by that much and no more. It
+moved again, from 2.47 MB to 2.472 MB, when the theme, dashboard and
+notification work of #436, #440, #442, #446 and #461 put it 1,499 bytes
+over. That work grew the initial JavaScript by 5.9 kB and shrank the
+stylesheet by 0.9 kB: the theme aliases came in and the palette ramp and
+every palette utility went out. The JavaScript is what the first screen now
+reaches without a route change: the `categoryGlyph` pipe the eagerly loaded
+transaction form uses, `AuthService`'s field-level preference writes and
+the re-read every writer merges through, the routes reminders carry and
+the arming of the tap service (from an idle task on the web, at once in
+the iOS app; the service itself is a dynamic import), the weekly recap's fold that the reminder sweep's nudge gate runs
+(`ReminderService` is built at startup), the `?` shortcut and the palette's
+inline Shortcuts section, the header's palette button and its one-time
+hint, and the install prompt `PwaService` now holds.
+
+The earlier move's space is code the first screen reaches without a route
+change:
 `FirestoreService`'s batch commit and server aggregate, the Firestore SDK's
 `arrayUnion`/`arrayRemove` in the shared chunk, the transaction service's
 follow-up that carries a shared row's edit to its copies, and the
