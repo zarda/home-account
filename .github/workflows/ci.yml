@@ -156,6 +156,12 @@ jobs:
       - name: Self-test the Firestore index wait
         run: node scripts/wait-for-indexes.mjs --self-test
 
+      # The bundle analyzer reads the stats file only a production build with
+      # --stats-json writes, so nothing here runs it for real. Its --self-test
+      # proves the part that can drift unseen: which outputs count as initial.
+      - name: Self-test the bundle analyzer
+        run: node scripts/analyze-bundle.mjs --self-test
+
       # G3 in docs/ui-overflow.md: nothing in the app truncates. The script's
       # header always said it ran in CI; now it does. It reads the source, so
       # it catches the text-overflow added next month as well as the sites
