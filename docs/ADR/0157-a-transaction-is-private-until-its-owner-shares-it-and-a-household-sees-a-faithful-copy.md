@@ -1,8 +1,39 @@
 # 157. A transaction is private until its owner shares it, and a household sees a faithful copy
 
-**Status:** Accepted, implemented · **Date:** 2026-09-28 · **Issues:** #71, #465
+**Status:** Accepted, implemented; amended by
+[0173](0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)
+· **Date:** 2026-09-28 · **Issues:** #71, #465
 
 Reference documentation lives in [../household.md](../household.md).
+
+**Amended by
+[0173](0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md).**
+The copy, its id `{memberUid}_{sourceId}` and everything the rules hold it
+to stand. What changes is the id the app chooses for two kinds of row. A
+recurring posting is now named by a digest of its rule and its occurrence
+time, and a row read off a scan queued offline by a digest of a random seed
+stored with the image and the row's position. Each is 32 lower-case hex
+characters, and neither says which rule, which day, which image or when it
+was queued. So the sentence under *What a copy withholds* that ends "so a
+recurring posting's id names its rule" now holds only for a posting named
+the old way, and so does the remark under *Consequences* that the id of a
+recurring posting or a queued scan says more. The Known gap *A copy's id
+says where some rows came from* is narrowed to these rows, which nothing
+migrates:
+
+- a recurring posting written before 0173, at
+  `rec-{ruleId}-{occurrenceMs}`;
+- a row read off an image the earlier app queued, at
+  `img_{queuedMs}_{random}-{index}`, whenever it is drained;
+- a row written by a copy of the earlier app that is still running;
+- a row a `/data` restore writes back, at the id its file holds.
+
+The copies of one rule's postings still share their description, amount
+and category, so a member can still group them by their content. The id
+alone no longer confirms it, but the digest is unkeyed: once one of the rows
+above has shown a household a rule's id, a member can recompute the digest
+over a later copy's date and confirm that rule's postings. 0173 lists that
+as a Known gap of its own.
 
 Supersedes [0152](0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md)'s
 peer reads (a member reading the other members' transactions, categories,

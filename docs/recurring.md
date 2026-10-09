@@ -112,9 +112,19 @@ document is re-read fresh inside that transaction, every due occurrence is
 written, and the pointer is advanced — all in one atomic commit. A second device
 running its own catch-up at the same time reads the advanced pointer and no-ops.
 
-**Occurrence ids are deterministic:** `rec-<ruleId>-<occurrence time in ms>`. The
-same occurrence always lands on the same document, so nothing duplicates a
-posting even if two runs overlap.
+**Occurrence ids are deterministic:** a digest of the rule's id and the
+occurrence time in ms, `opaqueRowId('rec', ruleId, occurrenceMs)`, which is 32
+lower-case hex characters. The same occurrence always lands on the same
+document, so nothing duplicates a posting even if two runs overlap, and a claim
+Firestore retries computes the same ids again. The id is a digest rather than
+the two values spelled out because a shared posting's household copy carries
+it, and it must name neither the rule nor the day
+([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
+It is unkeyed, so a household that has already seen a rule's id can still
+test a copy against it ([household.md](household.md#known-gaps)).
+Postings written before that change keep their
+`rec-<ruleId>-<occurrence time in ms>` ids, so one rule can hold both shapes;
+nothing reads either.
 
 **A claim posts at most 400 occurrences.** A Firestore transaction is capped at
 500 writes and one occurrence is one write, plus the rule update — 400 leaves
@@ -496,10 +506,14 @@ after it: the data it will not guess at, and what it still reports badly.
   occurrence id is deterministic, so the ledger keeps exactly one row — but
   every run rewrites that row with a fresh `createdAt` and stamps the rule
   with a fresh `updatedAt` and `lastProcessed` beside it, and that goes on
-  until the interval is edited or the rule deleted. Nothing picks a
-  corrected interval on the user's behalf. What changed here is only the
-  resume half, which now refuses such a rule by name instead of reporting
-  success.
+  until the interval is edited or the rule deleted. Across the change of id
+  shape it is two rows: a rule that posted the occurrence at its `rec-` id
+  posts it once more at the digest, and the old row stays beside the new one,
+  which is the only one rewritten from then on
+  ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
+  Nothing picks a corrected interval on the user's behalf. What changed here
+  is only the resume half, which now refuses such a rule by name instead of
+  reporting success.
 - **The interval refusal answers for more than the interval.** Resume raises
   `INVALID_RECURRING_FREQUENCY` for a stored `frequency.type` outside the four
   known kinds as well, and for a day of month below 1 when that leaves the

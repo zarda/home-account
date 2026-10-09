@@ -1034,7 +1034,15 @@ rather than rewritten. So a reclaimed receipt aims at exactly the documents its
 first pass wrote: a replay does not duplicate them and does not discard an edit
 you made to them in between. The count in the toast is what the receipt
 produced, so a receipt that had already fully landed reports its rows again and
-writes nothing. One helper names those rows: `queueRowTxId`, in
+writes nothing. What the id takes from the image is a random seed, drawn when
+the image is queued and stored with it, so the id is a digest that names
+neither the image nor when it was queued: a shared row's household copy
+carries it
+([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
+An image the earlier app queued has no seed, and its rows keep that app's
+`{queue id}-{index}`, so a drain it left half done resumes at the documents it
+wrote. An entry whose record is gone by the time the drain reads its seed fails
+like one whose image is gone. One helper names those rows: `queueRowTxId`, in
 `offline-queue.service.ts` beside the code that mints the queue id. The
 drain's photo plan, its existence check and its write all take the id from
 it, so none of them can aim at a different document from the others
