@@ -204,17 +204,19 @@ const PAIRS = [
     fg: '--color-error-text',
     bg: '--surface-card',
     why: "an error as running text: the app lock, the security settings and activity, the filters' clear button, " +
-      "the split hints, the two translation errors, the import preview's amount. The dropzone's message sits on " +
-      "its banner's 10% error tint over the dropzone's own fill instead, and clears 5.2:1 there in light",
+      "the split hints, the two translation errors, the import preview's amount. The dropzone's message sits " +
+      "instead on its banner's 10% error tint below the zone, over the page's own --surface-background (the " +
+      "wizard's stepper is transparent), and clears 5.2:1 there in light",
   },
   {
     fg: '--color-error',
     bg: '--surface-card',
     threshold: 3,
     why: "error glyphs: the exact-duplicate mark beside its words and the dropzone's hovered remove. Graphics, so " +
-      "3:1, as --color-ai. The dropzone's banner icon sits on that banner's 10% error tint over the dropzone's own " +
-      "fill, and clears 3.05:1 there in light; the data page's danger icon sits on its zone's 8% error tint over " +
-      'the card, and clears 3.39:1. Everywhere else the token is an edge or a tint under --color-error-text copy',
+      "3:1, as --color-ai. The dropzone's banner icon sits on that banner's 10% error tint below the zone, over " +
+      "the page's --surface-background, and clears 3.05:1 there in light; the data page's danger icon sits on its " +
+      "zone's 8% error tint over the card, and clears 3.39:1. Everywhere else the token is an edge or a tint " +
+      'under --color-error-text copy',
   },
   {
     fg: '--color-error',
