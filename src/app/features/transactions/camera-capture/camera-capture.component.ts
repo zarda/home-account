@@ -8,15 +8,9 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 
 import { CaptureStatus } from '../../../models';
-import {
-  AIImportService,
-  AI_NO_PROVIDER,
-  AI_QUEUED_OFFLINE,
-} from '../../../core/services/ai-import.service';
-import {
-  AIStrategyService,
-  AI_CLOUD_UNAVAILABLE,
-} from '../../../core/services/ai-strategy.service';
+import { AIImportService } from '../../../core/services/ai-import.service';
+import { AIStrategyService } from '../../../core/services/ai-strategy.service';
+import { parseAIError } from '../../../core/utils/ai-error.utils';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -330,28 +324,25 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Queue images for later processing when offline.
-   */
-  /**
    * Turn a failure into something worth reading.
    *
-   * The import path raises codes rather than sentences so they can be said in
-   * the user's language; anything else is a provider's own wording, which
-   * cannot be translated and is shown as-is.
+   * The classifier the import wizard reads decides which failures have a line
+   * in the user's language (the sentinel codes, a rejected key, an answer cut
+   * short); anything else is a provider's own wording, which cannot be
+   * translated and is shown as-is.
    */
   private describeError(err: unknown): string {
-    const raw = err instanceof Error ? err.message : '';
-    const keys: Record<string, string> = {
-      [AI_NO_PROVIDER]: 'import.errorNoProvider',
-      [AI_QUEUED_OFFLINE]: 'import.errorQueuedOffline',
-      [AI_CLOUD_UNAVAILABLE]: 'import.errorCloudUnavailable',
-    };
-    if (keys[raw]) {
-      return this.translationService.t(keys[raw]);
+    const key = parseAIError(err).messageKey;
+    if (key) {
+      return this.translationService.t(key);
     }
+    const raw = err instanceof Error ? err.message : '';
     return raw || this.translationService.t('import.errorProcessingFailed');
   }
 
+  /**
+   * Queue images for later processing when offline.
+   */
   private async queueForLaterProcessing(files: File[], attempt: ReceiptAttempt): Promise<void> {
     this.processingStatus.set({ name: 'queueing' });
 

@@ -10,6 +10,13 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import {
+  AI_CLOUD_UNAVAILABLE,
+  AI_NO_PROVIDER,
+  AI_QUEUE_WRITE_FAILED,
+  AI_QUEUE_WRITE_PARTIAL,
+  AI_QUEUED_OFFLINE,
+} from '../../../core/utils/ai-error.utils';
 import { ImportResult } from '../../../models';
 import { ProcessingResult } from '../../../core/services/ai-strategy.service';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -460,6 +467,54 @@ describe('CameraCaptureComponent', () => {
         await component.processImage();
         expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
         expect(component.error()).toBe('503 service unavailable');
+      });
+    });
+
+    // The line under the preview comes from the same classifier the wizard
+    // reads, so a failure the wizard names in the user's language is named
+    // the same way here. The catalog is stubbed to echo its key.
+    describe('the error line', () => {
+      async function failWith(failure: Error): Promise<string | null> {
+        spyOn(console, 'warn');
+        strategyService.processMultipleImages.and.rejectWith(new Error('boom'));
+        importService.importFromMultipleImages.and.rejectWith(failure);
+        const component = build().componentInstance;
+        withImages(component, 1);
+        await component.processImage();
+        return component.error();
+      }
+
+      // Three of the five were already translated here, so they are pins;
+      // the two queue-write codes were shown as raw sentinel text.
+      const sentinels: [string, string, boolean][] = [
+        [AI_NO_PROVIDER, 'import.errorNoProvider', true],
+        [AI_CLOUD_UNAVAILABLE, 'import.errorCloudUnavailable', true],
+        [AI_QUEUED_OFFLINE, 'import.errorQueuedOffline', true],
+        [AI_QUEUE_WRITE_FAILED, 'import.errorQueueWrite', false],
+        [AI_QUEUE_WRITE_PARTIAL, 'import.errorQueueWritePartial', false],
+      ];
+      for (const [code, key, pin] of sentinels) {
+        it(`says ${code} as ${key}${pin ? ' (pin)' : ''}`, async () => {
+          expect(await failWith(new Error(code))).toBe(key);
+        });
+      }
+
+      it('says a rejected key as import.errorInvalidKey rather than the provider\'s wording', async () => {
+        expect(await failWith(new Error('401 Unauthorized'))).toBe('import.errorInvalidKey');
+      });
+
+      it('says an unreadable answer as import.errorAnswerIncomplete rather than the parser\'s wording', async () => {
+        expect(await failWith(new SyntaxError("Expected ']' at position 502"))).toBe('import.errorAnswerIncomplete');
+      });
+
+      it('shows a failure the classifier has no key for as the provider wrote it (pin)', async () => {
+        expect(await failWith(new Error('The upstream answered with something odd'))).toBe(
+          'The upstream answered with something odd',
+        );
+      });
+
+      it('falls back to the generic key when the failure carries no text (pin)', async () => {
+        expect(await failWith(new Error(''))).toBe('import.errorProcessingFailed');
       });
     });
   });

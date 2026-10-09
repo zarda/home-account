@@ -9,6 +9,11 @@
 // harness. The queue→Firestore leg is covered separately by
 // offline-queue-processor.service.smoke.spec.ts.
 //
+// The same harness carries one online case: the error line under a failed
+// capture. That one is a component-level proof only — it feeds the dialog the
+// code the import service throws when the queue keeps nothing, and reads what
+// the dialog shows; the throw itself is covered in ai-import.service.spec.ts.
+//
 // Runs under `npm run smoke` alongside the emulator suites.
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
@@ -25,6 +30,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { AI_QUEUE_WRITE_FAILED } from '../../../core/utils/ai-error.utils';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 
 function attemptStub() {
@@ -38,16 +44,19 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
   let queue: OfflineQueueService;
   let dialogRef: jasmine.SpyObj<MatDialogRef<CameraCaptureComponent>>;
   let attempts: ReturnType<typeof attemptStub>;
+  let pwaService: jasmine.SpyObj<PwaService>;
+  let importService: jasmine.SpyObj<AIImportService>;
+  let strategyService: jasmine.SpyObj<AIStrategyService>;
 
   beforeEach(async () => {
-    const pwaService = jasmine.createSpyObj('PwaService', ['isIOS', 'isStandalone', 'isOnline']);
+    pwaService = jasmine.createSpyObj('PwaService', ['isIOS', 'isStandalone', 'isOnline']);
     pwaService.isIOS.and.returnValue(false);
     pwaService.isStandalone.and.returnValue(false);
     pwaService.isOnline.and.returnValue(false);
 
     // AI must stay inert: only the queue path may run.
-    const importService = jasmine.createSpyObj('AIImportService', ['importFromImage', 'importFromMultipleImages']);
-    const strategyService = jasmine.createSpyObj('AIStrategyService', [
+    importService = jasmine.createSpyObj('AIImportService', ['importFromImage', 'importFromMultipleImages']);
+    strategyService = jasmine.createSpyObj('AIStrategyService', [
       'canUseNative', 'canUseCloud', 'processReceipt', 'processMultipleImages', 'platform',
     ]);
     const translationService = jasmine.createSpyObj('TranslationService', ['t']);
@@ -120,5 +129,33 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
 
     expect(dialogRef.close).toHaveBeenCalledWith({ success: true, queued: true, count: 3 });
     expect(attempts.handle.queued).toHaveBeenCalled();
+  }, 20000);
+
+  // Component-level proof, not an end-to-end one: both doubles are scripted,
+  // so this shows the dialog's reading of the code, not that the real import
+  // service raises it. Online with a usable cloud provider, the strategy
+  // fails and the fallback reports that the queue kept nothing.
+  it('names a capture the queue could not keep in the user\'s language when online', async () => {
+    pwaService.isOnline.and.returnValue(true);
+    strategyService.canUseCloud.and.returnValue(true);
+    strategyService.canUseNative.and.returnValue(false);
+    strategyService.processMultipleImages.and.rejectWith(new Error('boom'));
+    importService.importFromMultipleImages.and.rejectWith(new Error(AI_QUEUE_WRITE_FAILED));
+    spyOn(console, 'warn');
+
+    const fixture = TestBed.createComponent(CameraCaptureComponent);
+    const component = fixture.componentInstance;
+    component.ngOnInit();
+    component.capturedImages.set([
+      { id: 'img0', file: new File(['payload'], 'a.jpg', { type: 'image/jpeg' }), previewUrl: 'blob:0' },
+    ]);
+
+    await component.processImage();
+
+    expect(strategyService.processMultipleImages).toHaveBeenCalled();
+    expect(importService.importFromMultipleImages).toHaveBeenCalled();
+    expect(component.error()).toBe('import.errorQueueWrite');
+    expect(dialogRef.close).not.toHaveBeenCalled();
+    expect(component.isProcessing()).toBeFalse();
   }, 20000);
 });
