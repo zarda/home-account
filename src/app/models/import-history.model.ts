@@ -240,7 +240,6 @@ export interface CategorizedImportTransaction {
    * (`rowCarriesReviewerWork`).
    */
   editedOnCard?: true;
-  originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
   isDuplicate: boolean;

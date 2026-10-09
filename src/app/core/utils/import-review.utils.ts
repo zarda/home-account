@@ -363,7 +363,7 @@ export function sameSplit(
  *    (`commitAmount`). The date's grade, and every other review-step mark
  *    (`dateAssumed`, `dateReviewed`, `currencyFellBack`, `currencySuggestion`,
  *    `receiptCountry`) and reader-supplied field (`tags`, `location`,
- *    `merchant`, `originalText`, `suggestedCategoryId`, `categoryConfidence`,
+ *    `merchant`, `suggestedCategoryId`, `categoryConfidence`,
  *    `period`), travel to both untouched: the receipt was read once, and
  *    splitting the amount does not reread the date. A part born of a row
  *    whose date question is still open carries `dateAssumed` and shows the

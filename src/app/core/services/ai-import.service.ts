@@ -1402,7 +1402,6 @@ export class AIImportService {
         // row is flagged instead of wearing the high chip it never earned.
         // (ADR 0045)
         categoryConfidence: named ? EXTRACTION_CATEGORY_GRADE : UNRESOLVED_CATEGORY_CONFIDENCE,
-        originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         // A row that carries its own note (a CSV's Note column) keeps it
         // verbatim; formatItemNotes is for receipt item lists and splits
         // plain commas into newlines.

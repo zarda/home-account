@@ -3039,15 +3039,20 @@ describe('AIImportService', () => {
       expect('dateAssumed' in result[0]).toBeFalse();
     });
 
-    it('should build originalText from merchant and details', async () => {
+    it('turns comma-separated details into newline-separated notes', async () => {
       const result = await service.categorizeTransactions([
         { date: '2024-06-01', description: 'Burger', amount: 9, type: 'expense', currency: 'USD',
           merchant: 'Diner', details: 'fries, soda' }
       ]);
-      expect(result[0].originalText).toContain('Diner');
-      expect(result[0].originalText).toContain('Burger');
-      // Comma-separated details become newline-separated notes
       expect(result[0].notes).toBe('fries\nsoda');
+    });
+
+    it('does not keep the source text it was built from beside the fields it became', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Burger', amount: 9, type: 'expense', currency: 'USD',
+          merchant: 'Diner', details: 'fries, soda' }
+      ]);
+      expect('originalText' in result[0]).toBeFalse();
     });
 
     it('should keep multi-line details as-is in notes', async () => {
@@ -3066,7 +3071,7 @@ describe('AIImportService', () => {
       ]);
 
       // The slot was declared and never assigned; the value reached this
-      // method and died inside originalText, where nothing can query it.
+      // method and stopped there, in a string nothing could query.
       expect(result[0].merchant).toBe('Diner');
       expect('merchant' in result[1]).toBeFalse();
     });
