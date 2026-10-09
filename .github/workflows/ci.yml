@@ -243,6 +243,17 @@ jobs:
       - name: Check icon labels
         run: npm run icon-labels:check
 
+      # The ADR index carries every gap closure on both rows: the closer names
+      # the record it closed, and the closed record names its closer. The
+      # older row is the one that needs the pointer, since its record still
+      # describes the gap as open, and nothing reads it: the index is prose
+      # in a table, and a new record's review reads the new row. Closures went
+      # missing from one row or both, and a sweep found records nobody had
+      # read for them. This reads the closures each record states, wrapped
+      # lines and all, and fails when either row leaves the other out.
+      - name: Check the ADR index
+        run: npm run adr-index:check
+
       - name: Unit tests
         run: npm run test:ci
 

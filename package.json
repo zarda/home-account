@@ -34,6 +34,7 @@
     "contrast:check": "node scripts/check-contrast.mjs --self-test && node scripts/check-contrast.mjs",
     "colors:check": "node scripts/check-colors.mjs --self-test && node scripts/check-colors.mjs",
     "icon-labels:check": "node scripts/check-icon-labels.mjs --self-test && node scripts/check-icon-labels.mjs",
+    "adr-index:check": "node scripts/check-adr-index.mjs --self-test && node scripts/check-adr-index.mjs",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",
