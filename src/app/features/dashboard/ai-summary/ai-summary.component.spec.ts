@@ -243,6 +243,26 @@ describe('AiSummaryComponent', () => {
       expect(cloudLLM.generateSpendingSummary).not.toHaveBeenCalled();
     });
 
+    // A contract pin: no provider reads byCategory on the advice path today,
+    // so this holds the shape a later reader would find — expenses only,
+    // largest first, an exact tie ranked by category id.
+    it('hands the advice its category totals ranked, ties by category id', async () => {
+      const component = build().componentInstance;
+      const internal = internals(component);
+      await internal.loadInsights([
+        createTransaction({ type: 'expense', amount: 30, categoryId: 'transport' }),
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'shopping' }),
+        createTransaction({ type: 'income', amount: 900, categoryId: 'employment_salary' }),
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'food' }),
+      ], 'thisMonth', internal.cacheKey());
+
+      expect(cloudLLM.getFinancialAdvice.calls.mostRecent().args[0].byCategory).toEqual([
+        { categoryId: 'food', total: 50 },
+        { categoryId: 'shopping', total: 50 },
+        { categoryId: 'transport', total: 30 },
+      ]);
+    });
+
     it('migrates the legacy boolean to the standard tier config', async () => {
       currentUser.set(createUser({ preferences: { enableRagInsights: true } as User['preferences'] }));
       await generate(build().componentInstance);

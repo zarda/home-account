@@ -46,6 +46,7 @@ import {
   readPrintedLocation,
   readReceiptTotal,
 } from '../utils/receipt-extraction.utils';
+import { groupExpensesByCategoryWithCounts } from '../utils/transaction-aggregation.utils';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import {
   AIRequestOptions,
@@ -678,19 +679,10 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       // Prompt amounts: plain digits, no sub-digits for zero-decimal currencies
       const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
 
-      // Group transactions by category
-      const byCategory = new Map<string, { name: string; total: number; count: number }>();
-      for (const t of transactions) {
-        if (t.type !== 'expense') continue;
-
-        const category = categories.find(c => c.id === t.categoryId);
-        const categoryName = this.translateCategoryName(category?.name);
-
-        const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
-        existing.total += toBaseCurrency(t);
-        existing.count += 1;
-        byCategory.set(t.categoryId, existing);
-      }
+      // The shared fold, read by the breakdown and the budget lines. It breaks
+      // an exact tie by category id, so a tie at rank five sends the same
+      // category on every run.
+      const byCategory = groupExpensesByCategoryWithCounts(transactions, toBaseCurrency);
 
       const totalIncome = transactions
         .filter(t => t.type === 'income')
@@ -701,10 +693,13 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         .reduce((sum, t) => sum + toBaseCurrency(t), 0);
 
       const categoryBreakdown = renderCategoryBreakdown(
-        Array.from(byCategory.values())
-          .sort((a, b) => b.total - a.total)
+        byCategory
           .slice(0, 5)
-          .map(c => ({ name: c.name, total: fmt(c.total), count: c.count })),
+          .map(row => ({
+            name: this.translateCategoryName(categories.find(c => c.id === row.categoryId)?.name),
+            total: fmt(row.total),
+            count: row.count,
+          })),
         baseCurrency
       );
 
@@ -745,7 +740,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       if (budgets && budgets.length > 0) {
         budgetSection = renderBudgetSection(
           budgets.map(b => {
-            const categorySpent = byCategory.get(b.categoryId)?.total ?? 0;
+            const categorySpent = byCategory.find(row => row.categoryId === b.categoryId)?.total ?? 0;
             // Convert budget amount to base currency for comparison
             const budgetAmountInBaseCurrency = this.currencyService.convert(
               b.amount,

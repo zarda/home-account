@@ -16,6 +16,7 @@ import { LocaleFormatService } from '../../../core/services/locale-format.servic
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { groupExpensesByCategory } from '../../../core/utils/transaction-aggregation.utils';
 import { dayKey, monthKey } from '../../../core/utils/transaction-date.utils';
 
 interface MonthlyData {
@@ -411,22 +412,16 @@ export class SpendingAnalysisComponent {
     return (this.netSavings() / income) * 100;
   });
 
-  // Top spending categories (using dynamic conversion)
+  // Top spending categories (using dynamic conversion). The shared fold ranks
+  // them and breaks an exact tie by category id, so a tie at rank five shows
+  // the same category on every render.
   topCategories = computed(() => {
-    const transactions = this._transactions();
     const categories = this._categories();
-    const expenseTransactions = transactions.filter(t => t.type === 'expense');
-
-    const totals = new Map<string, number>();
-    for (const t of expenseTransactions) {
-      const current = totals.get(t.categoryId) || 0;
-      totals.set(t.categoryId, current + this.toBaseCurrency(t));
-    }
-
     const totalExpense = this.totalExpenses();
 
-    return Array.from(totals.entries())
-      .map(([categoryId, total]) => {
+    return groupExpensesByCategory(this._transactions(), t => this.toBaseCurrency(t))
+      .slice(0, 5)
+      .map(({ categoryId, total }) => {
         const category = categories.find(c => c.id === categoryId);
         return {
           categoryId,
@@ -436,9 +431,7 @@ export class SpendingAnalysisComponent {
           total,
           percentage: totalExpense > 0 ? (total / totalExpense) * 100 : 0,
         };
-      })
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
+      });
   });
 
   hasData = computed(() => this._transactions().length > 0);

@@ -31,6 +31,7 @@ import {
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
 import {
   CategoryTypeTotal,
+  compareCategoryTotals,
   groupByCategoryAndType,
   roundMoney,
 } from '../utils/transaction-aggregation.utils';
@@ -416,9 +417,8 @@ export class ExportService {
    * Category summary as PDF.
    *
    * A separate builder rather than a mode of exportToPDF, which slices its
-   * category table to the ten largest rows and reorders the caller's array
-   * with an in-place sort. Neither is wanted here: the summary is the whole
-   * period, and the transactions handed in belong to the caller.
+   * category table to the ten largest rows. That is not wanted here: the
+   * summary is the whole period.
    */
   async exportCategorySummaryPDF(
     transactions: Transaction[],
@@ -583,8 +583,11 @@ export class ExportService {
       doc.setFontSize(14);
       doc.text(this.pdfT('spendingByCategory'), 14, summaryY + 35);
 
-      const categoryData = report.summary.byCategory
-        .sort((a, b) => b.total - a.total)
+      // The table promises the ten largest, so it ranks a copy by the shared
+      // fold's rule (largest first, ties by id) rather than trusting the
+      // caller's order, and leaves the caller's array as it was.
+      const categoryData = [...report.summary.byCategory]
+        .sort(compareCategoryTotals)
         .slice(0, 10)
         .map(c => {
           const category = report.categories.find(cat => cat.id === c.categoryId);

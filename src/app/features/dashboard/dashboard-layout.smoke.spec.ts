@@ -454,6 +454,76 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
     CASE_TIMEOUT
   );
 
+  // #438 P4: the Spending by Category card ranks through the fold reports
+  // uses, so two categories with equal spending list by category id. The
+  // window arrives date-descending, so first-seen order would put Tie Beta,
+  // dated later today, ahead of Tie Alpha.
+  it(
+    'lists two categories with equal spending in category id order',
+    async () => {
+      const transactionIds: string[] = [];
+      const seedCategory = (id: string, name: string) =>
+        setDoc(doc(firestore, `users/${uid}/categories/${id}`), {
+          userId: uid,
+          name,
+          icon: 'category',
+          color: '#607D8B',
+          type: 'expense',
+          order: 1,
+          isActive: true,
+          isDefault: false
+        });
+      const seedExpense = async (categoryId: string, date: Timestamp) => {
+        const ref = await addDoc(collection(firestore, `users/${uid}/transactions`), {
+          userId: uid,
+          type: 'expense',
+          categoryId,
+          date,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          isRecurring: false,
+          amount: 25,
+          currency: 'USD',
+          amountInBaseCurrency: 25,
+          exchangeRate: 1,
+          description: `Smoke ${categoryId}`
+        });
+        transactionIds.push(ref.id);
+      };
+
+      try {
+        await seedCategory('smoke-tie-a', 'Tie Alpha');
+        await seedCategory('smoke-tie-b', 'Tie Beta');
+        await seedExpense('smoke-tie-a', Timestamp.fromDate(startOfDay(new Date())));
+        await seedExpense('smoke-tie-b', Timestamp.now());
+
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+        }));
+
+        await harness.navigateByUrl('/dashboard');
+        const page = harness.routeNativeElement!.ownerDocument;
+        const tiedLegend = (): string[] =>
+          Array.from(page.querySelectorAll('app-spending-chart .legend-name'))
+            .map(el => el.textContent?.trim() ?? '')
+            .filter(name => name.startsWith('Tie '));
+        await waitForDom('both tied categories in the legend', () => tiedLegend().length === 2);
+
+        expect(tiedLegend()).toEqual(['Tie Alpha', 'Tie Beta']);
+      } finally {
+        harness.fixture.destroy();
+        for (const id of transactionIds) {
+          await deleteDoc(doc(firestore, `users/${uid}/transactions/${id}`)).catch(() => undefined);
+        }
+        for (const id of ['smoke-tie-a', 'smoke-tie-b']) {
+          await deleteDoc(doc(firestore, `users/${uid}/categories/${id}`)).catch(() => undefined);
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    },
+    CASE_TIMEOUT
+  );
+
   // #446: a bill reminder's link, /dashboard?bill=<rule id>, through the real
   // router, the recurring listener and the card.
   describe('a bill link', () => {

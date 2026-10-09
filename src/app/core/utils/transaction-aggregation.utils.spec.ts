@@ -1,6 +1,7 @@
 import {
   bucketByMonth,
   bucketByMonthAndCategory,
+  compareCategoryTotals,
   finiteOrNull,
   fnv1a32,
   groupByCategoryAndType,
@@ -113,6 +114,18 @@ describe('transaction-aggregation.utils', () => {
 
     it('returns an empty list when there are no expenses', () => {
       expect(groupExpensesByCategory([income(10)], toBase)).toEqual([]);
+    });
+  });
+
+  describe('compareCategoryTotals', () => {
+    it('ranks the larger total first and breaks an exact tie by category id', () => {
+      const rows = [
+        { categoryId: 'zoo', total: 10 },
+        { categoryId: 'transport', total: 80 },
+        { categoryId: 'art', total: 10 },
+      ];
+      expect([...rows].sort(compareCategoryTotals).map(c => c.categoryId))
+        .toEqual(['transport', 'art', 'zoo']);
     });
   });
 

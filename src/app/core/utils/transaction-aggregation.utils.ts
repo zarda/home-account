@@ -97,6 +97,16 @@ export function compareIds(a: string, b: string): number {
   return a > b ? 1 : 0;
 }
 
+/**
+ * Larger total first, an exact tie by category id: the order every category
+ * fold here returns (within each side, for groupByCategoryAndType). Exported
+ * so a consumer that must rank a list it was handed, such as the report
+ * PDF's ten largest, applies this rule rather than a copy of it.
+ */
+export function compareCategoryTotals(a: CategoryTotal, b: CategoryTotal): number {
+  return b.total - a.total || compareIds(a.categoryId, b.categoryId);
+}
+
 /** Round to cents. Stability matters more here than accounting exactness. */
 export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -178,7 +188,7 @@ export function groupExpensesByCategoryWithCounts(
       total: roundMoney(entry.total),
       count: entry.count,
     }))
-    .sort((a, b) => b.total - a.total || compareIds(a.categoryId, b.categoryId));
+    .sort(compareCategoryTotals);
 }
 
 /**
@@ -215,10 +225,7 @@ export function groupByCategoryAndType(
 
   return [...totals.values()]
     .map(entry => ({ ...entry, total: roundMoney(entry.total) }))
-    .sort((a, b) =>
-      sideRank(a) - sideRank(b)
-      || b.total - a.total
-      || compareIds(a.categoryId, b.categoryId));
+    .sort((a, b) => sideRank(a) - sideRank(b) || compareCategoryTotals(a, b));
 }
 
 function sideRank(row: CategoryTypeTotal): number {

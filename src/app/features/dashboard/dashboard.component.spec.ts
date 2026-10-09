@@ -375,6 +375,27 @@ describe('DashboardComponent', () => {
       expect(totals[1]).toEqual(jasmine.objectContaining({ categoryId: 'travel', total: 100, count: 1 }));
     });
 
+    // #438 P4: the category fold reports uses, so an exact tie ranks by id
+    // rather than by whichever row the listener happened to deliver first.
+    it('ranks an exact tie between categories by category id', () => {
+      transactionService.transactions.set([
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'travel' }),
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'food' }),
+      ]);
+      const totals = build().componentInstance.categoryTotals();
+      expect(totals.map(row => row.categoryId)).toEqual(['food', 'travel']);
+    });
+
+    it('rounds each category total at the fold boundary', () => {
+      transactionService.transactions.set([
+        createTransaction({ type: 'expense', amount: 0.1, categoryId: 'food' }),
+        createTransaction({ type: 'expense', amount: 0.2, categoryId: 'food' }),
+      ]);
+      expect(build().componentInstance.categoryTotals()).toEqual([
+        { categoryId: 'food', total: 0.3, count: 2 },
+      ]);
+    });
+
     it('builds a categories map', () => {
       expect(build().componentInstance.categoriesMap().get('food')).toBeTruthy();
     });

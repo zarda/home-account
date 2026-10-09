@@ -243,6 +243,27 @@ describe('SpendingAnalysisComponent', () => {
       expect(top[0].name).toBe('Food & Drinks');
       expect(top[0].color).toBe('#FF5722');
     });
+
+    // #438 P4: the list keeps five, so a tie at rank five decides which
+    // category is shown at all. The shared fold ranks it by id, not by
+    // whichever row arrived first.
+    it('breaks a tie at rank five by category id', () => {
+      const expenseIn = (categoryId: string, amount: number): Transaction => ({
+        ...makeTransaction('expense', amount, new Date(2024, 5, 10)),
+        categoryId,
+      });
+      component.transactions = [
+        expenseIn('rank_1', 90),
+        expenseIn('tie_b', 20),
+        expenseIn('rank_2', 70),
+        expenseIn('rank_3', 50),
+        expenseIn('tie_a', 20),
+        expenseIn('rank_4', 30),
+      ];
+
+      expect(component.topCategories().map(c => c.categoryId))
+        .toEqual(['rank_1', 'rank_2', 'rank_3', 'rank_4', 'tie_a']);
+    });
   });
 
   describe('chartData', () => {

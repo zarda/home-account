@@ -399,6 +399,7 @@ describe('ExportDialogComponent', () => {
     let snapshotDialogRef: jasmine.SpyObj<MatDialogRef<ExportDialogComponent>>;
     let snapshotExportService: jasmine.SpyObj<ExportService>;
     let snapshotCurrencyService: jasmine.SpyObj<CurrencyService>;
+    let snapshotData: typeof mockDialogData;
 
     const snapshotTransactions: Transaction[] = [
       {
@@ -431,19 +432,18 @@ describe('ExportDialogComponent', () => {
       snapshotCurrencyService.convert.and.callFake((amount: number) => amount * 2);
       snapshotCurrencyService.amountInBase.and.callFake((t: Transaction) => t.amountInBaseCurrency);
 
+      snapshotData = {
+        transactions: snapshotTransactions,
+        categories: mockCategories,
+        dateRange: { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) },
+        currency: 'USD',
+      };
+
       await TestBed.configureTestingModule({
         imports: [ExportDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: snapshotDialogRef },
-          {
-            provide: MAT_DIALOG_DATA,
-            useValue: {
-              transactions: snapshotTransactions,
-              categories: mockCategories,
-              dateRange: { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) },
-              currency: 'USD',
-            },
-          },
+          { provide: MAT_DIALOG_DATA, useValue: snapshotData },
           { provide: ExportService, useValue: snapshotExportService },
           { provide: TranslationService, useValue: mockTranslationService },
           { provide: CurrencyService, useValue: snapshotCurrencyService },
@@ -465,6 +465,24 @@ describe('ExportDialogComponent', () => {
       const reportData = snapshotExportService.exportToPDF.calls.mostRecent().args[0];
       expect(reportData.summary.expense).toBe(150);
       expect(reportData.summary.byCategory).toEqual([{ categoryId: 'cat1', total: 150 }]);
+    });
+
+    // #438 P4: the shared category fold, so the PDF orders an exact tie by
+    // category id, as the reports page's top five do; the page's full
+    // breakdown still ranks a tie first-seen (ADR 0171, Remaining folds).
+    it('ranks an exact tie in the summary by category id', async () => {
+      snapshotData.transactions = [
+        { ...snapshotTransactions[0], id: 't3', categoryId: 'cat2', amountInBaseCurrency: 80 },
+        { ...snapshotTransactions[0], id: 't4', categoryId: 'cat1', amountInBaseCurrency: 80 },
+      ];
+      snapshotComponent.selectedFormat = 'pdf';
+      await snapshotComponent.export();
+
+      const reportData = snapshotExportService.exportToPDF.calls.mostRecent().args[0];
+      expect(reportData.summary.byCategory).toEqual([
+        { categoryId: 'cat1', total: 80 },
+        { categoryId: 'cat2', total: 80 },
+      ]);
     });
   });
 });

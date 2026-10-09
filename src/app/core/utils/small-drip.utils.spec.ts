@@ -133,6 +133,17 @@ describe('small-drip.utils', () => {
       expect(result.byCategory[0].count).toBe(20);
     });
 
+    it('pin: ranks an exact tie between categories by category id, as every category fold does', () => {
+      // Transport arrives first, so first-seen order would list it first.
+      const transactions = [
+        ...many(10, 5, { categoryId: 'transport' }),
+        ...many(10, 5, { categoryId: 'food' }),
+        ...many(4, 200, { categoryId: 'rent' }),
+      ];
+      const result = computeSmallAmountDrip(transactions, toBase, window, 'USD');
+      expect(result.byCategory.map(c => [c.categoryId, c.total])).toEqual([['food', 50], ['transport', 50]]);
+    });
+
     it('never returns a value Firestore would reject', () => {
       const result = computeSmallAmountDrip([expense(10)], toBase, window, 'USD');
       for (const value of [
