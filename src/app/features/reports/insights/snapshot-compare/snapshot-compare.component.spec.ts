@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { SnapshotCompareComponent } from './snapshot-compare.component';
@@ -7,7 +6,11 @@ import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightSnapshot } from '../../../../models';
 import { createCategory } from '../../../../core/services/testing/test-data';
-import { createTranslationStub, createLocaleFormatStub } from '../../../../core/services/testing';
+import {
+  createTranslationStub,
+  createLocaleFormatStub,
+  provideNoMotion,
+} from '../../../../core/services/testing';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 
 function snapshotFor(
@@ -187,7 +190,7 @@ describe('SnapshotCompareComponent, through its own template', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [SnapshotCompareComponent, NoopAnimationsModule],
+      imports: [SnapshotCompareComponent],
       providers: [
         {
           provide: CategoryService,
@@ -200,6 +203,7 @@ describe('SnapshotCompareComponent, through its own template', () => {
           useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
         },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

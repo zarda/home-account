@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Component, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { AiSummaryComponent } from './ai-summary.component';
@@ -14,6 +13,7 @@ import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../mo
 import {
   channels, createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
   hoverValue, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
@@ -542,7 +542,7 @@ describe('AiSummaryComponent, through its own template', () => {
     sanitizer.bypassSecurityTrustHtml.and.callFake((val: string) => val);
 
     await TestBed.configureTestingModule({
-      imports: [AiSummaryComponent, NoopAnimationsModule],
+      imports: [AiSummaryComponent],
       providers: [
         { provide: CloudLLMProviderService, useValue: llm },
         { provide: CurrencyService, useValue: currencySpy },
@@ -552,6 +552,7 @@ describe('AiSummaryComponent, through its own template', () => {
         { provide: RagContextService, useValue: rag },
         { provide: DomSanitizer, useValue: sanitizer },
         { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackAiAssistUsed']) },
+        provideNoMotion(),
       ],
     }).compileComponents();
   });

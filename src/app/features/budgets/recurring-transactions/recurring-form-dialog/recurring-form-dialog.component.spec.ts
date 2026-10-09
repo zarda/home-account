@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, flush } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSelect } from '@angular/material/select';
@@ -27,6 +26,7 @@ import {
   paintedColor,
   ratio,
   withScheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 
 describe('RecurringFormDialogComponent', () => {
@@ -109,14 +109,15 @@ describe('RecurringFormDialogComponent', () => {
     });
 
     await TestBed.configureTestingModule({
-      imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+      imports: [RecurringFormDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: {} },
         { provide: AuthService, useValue: mockAuthService },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: CurrencyService, useValue: mockCurrencyService },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -164,7 +165,7 @@ describe('RecurringFormDialogComponent', () => {
     it('should return true when recurring data provided', async () => {
       await TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        imports: [RecurringFormDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: MAT_DIALOG_DATA, useValue: {
@@ -184,7 +185,8 @@ describe('RecurringFormDialogComponent', () => {
           { provide: AuthService, useValue: mockAuthService },
           { provide: CategoryService, useValue: mockCategoryService },
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -205,7 +207,7 @@ describe('RecurringFormDialogComponent', () => {
     async function createWithPrefill(): Promise<RecurringFormDialogComponent> {
       await TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        imports: [RecurringFormDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: mockDialogRef },
           {
@@ -226,7 +228,8 @@ describe('RecurringFormDialogComponent', () => {
           { provide: AuthService, useValue: mockAuthService },
           { provide: CategoryService, useValue: mockCategoryService },
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -269,14 +272,15 @@ describe('RecurringFormDialogComponent', () => {
     ): Promise<RecurringFormDialogComponent> {
       await TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        imports: [RecurringFormDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: MAT_DIALOG_DATA, useValue: { recurring } },
           { provide: AuthService, useValue: mockAuthService },
           { provide: CategoryService, useValue: mockCategoryService },
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -372,14 +376,15 @@ describe('RecurringFormDialogComponent', () => {
     ): Promise<RecurringFormDialogComponent> {
       await TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        imports: [RecurringFormDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: MAT_DIALOG_DATA, useValue: { recurring } },
           { provide: AuthService, useValue: mockAuthService },
           { provide: CategoryService, useValue: mockCategoryService },
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -618,14 +623,15 @@ describe('RecurringFormDialogComponent', () => {
     ): Promise<RecurringFormDialogComponent> {
       await TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        imports: [RecurringFormDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: MAT_DIALOG_DATA, useValue: { recurring } },
           { provide: AuthService, useValue: mockAuthService },
           { provide: CategoryService, useValue: mockCategoryService },
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -693,14 +699,15 @@ describe('RecurringFormDialogComponent', () => {
     ): Promise<RecurringFormDialogComponent> {
       await TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        imports: [RecurringFormDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: MAT_DIALOG_DATA, useValue: { recurring } },
           { provide: AuthService, useValue: mockAuthService },
           { provide: CategoryService, useValue: mockCategoryService },
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -839,7 +846,7 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
     mockDialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
 
     await TestBed.configureTestingModule({
-      imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+      imports: [RecurringFormDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { recurring: editedRule } },
@@ -859,7 +866,8 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
           // labels without depending on English wording.
           provide: TranslationService,
           useValue: { t: (key: string) => key }
-        }
+        },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

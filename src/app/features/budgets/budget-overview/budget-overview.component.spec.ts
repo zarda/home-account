@@ -1,10 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetOverviewComponent } from './budget-overview.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { Budget, Category } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('BudgetOverviewComponent', () => {
   let component: BudgetOverviewComponent;
@@ -68,7 +68,7 @@ describe('BudgetOverviewComponent', () => {
     mockCategories.forEach(cat => categoriesMap.set(cat.id, cat));
 
     await TestBed.configureTestingModule({
-      imports: [BudgetOverviewComponent, NoopAnimationsModule],
+      imports: [BudgetOverviewComponent],
       providers: [
         // The rendered budget-progress-card children delegate money
         // formatting to CurrencyService, whose real instance needs Firestore.
@@ -84,7 +84,8 @@ describe('BudgetOverviewComponent', () => {
         {
           provide: AuthService,
           useValue: { currentUser: () => ({ preferences: { baseCurrency: 'THB' } }) }
-        }
+        },
+        provideNoMotion()
       ]
     }).compileComponents();
 

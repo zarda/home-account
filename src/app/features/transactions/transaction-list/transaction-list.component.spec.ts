@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { FocusMonitor } from '@angular/cdk/a11y';
@@ -36,6 +35,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   runAxe,
   settleAnimations,
@@ -105,7 +105,7 @@ describe('TransactionListComponent', () => {
     quickAdd = jasmine.createSpyObj('QuickAddService', ['openAddTransaction']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: windowSource },
         { provide: CurrencyService, useValue: currency },
@@ -116,6 +116,7 @@ describe('TransactionListComponent', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: quickAdd },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -487,7 +488,7 @@ describe('TransactionListComponent mobile row wiring', () => {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: createMockWindowSource() },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: false, breakpoints: {} }) } },
@@ -499,6 +500,7 @@ describe('TransactionListComponent mobile row wiring', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -681,7 +683,7 @@ describe('TransactionListComponent desktop note doors', () => {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: createMockWindowSource() },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
@@ -693,6 +695,7 @@ describe('TransactionListComponent desktop note doors', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -845,7 +848,7 @@ describe('TransactionListComponent desktop receipt doors', () => {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: createMockWindowSource() },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
@@ -857,6 +860,7 @@ describe('TransactionListComponent desktop receipt doors', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -941,7 +945,7 @@ describe('TransactionListComponent desktop category cell', () => {
     translation.t.and.callFake((k: string) => k);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: createMockWindowSource() },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
@@ -953,6 +957,7 @@ describe('TransactionListComponent desktop category cell', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -1030,7 +1035,7 @@ describe('TransactionListComponent desktop hit boxes', () => {
     translation.t.and.callFake((k: string) => k);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: createMockWindowSource() },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
@@ -1042,6 +1047,7 @@ describe('TransactionListComponent desktop hit boxes', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -1144,7 +1150,7 @@ describe('TransactionListComponent desktop table width floor', () => {
     translation.t.and.callFake((k: string) => HEADER_LABELS[k] ?? k);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: createMockWindowSource() },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
@@ -1156,6 +1162,7 @@ describe('TransactionListComponent desktop table width floor', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -1240,7 +1247,7 @@ describe('TransactionListComponent sharing', () => {
 
   async function render(): Promise<void> {
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: windowSource },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
@@ -1265,6 +1272,7 @@ describe('TransactionListComponent sharing', () => {
         { provide: NotificationService, useValue: notifications },
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: AnalyticsService, useValue: analytics },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -1633,7 +1641,7 @@ describe('TransactionListComponent select mode', () => {
 
   async function render(): Promise<void> {
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: windowSource },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
@@ -1661,6 +1669,7 @@ describe('TransactionListComponent select mode', () => {
         { provide: AnnouncerService, useValue: announcer },
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: AnalyticsService, useValue: analytics },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -2531,7 +2540,7 @@ describe('TransactionListComponent colours', () => {
 
   async function render(desktop: boolean): Promise<void> {
     await TestBed.configureTestingModule({
-      imports: [TransactionListComponent, NoopAnimationsModule],
+      imports: [TransactionListComponent],
       providers: [
         { provide: TransactionWindowService, useValue: windowSource },
         { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
@@ -2549,6 +2558,7 @@ describe('TransactionListComponent colours', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
         { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

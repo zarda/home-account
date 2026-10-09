@@ -1,7 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, flush } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatSelect } from '@angular/material/select';
 
 import { SplitPartsComponent } from './split-parts.component';
@@ -19,6 +18,7 @@ import {
   paintedColor,
   ratio,
   withScheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 
 /** What formatCurrency answers here, so a footer assertion pins the call, not Intl. */
@@ -103,7 +103,7 @@ describe('SplitPartsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HostComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: TranslationService, useValue: { t } },
         // The real service resolves a locale off TranslationService and
         // fetches rates from its constructor; neither belongs in here.

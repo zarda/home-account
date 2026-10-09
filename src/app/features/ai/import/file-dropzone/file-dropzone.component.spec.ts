@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
@@ -10,6 +9,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -21,12 +21,15 @@ describe('FileDropzoneComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [FileDropzoneComponent, NoopAnimationsModule],
+      imports: [FileDropzoneComponent],
       schemas: [NO_ERRORS_SCHEMA],
       // The component itself reads the catalog now — its two file refusals
       // are user-facing sentences — so the stub is needed even with the
       // template blanked.
-      providers: [{ provide: TranslationService, useValue: createTranslationStub() }]
+      providers: [
+        { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion()
+      ]
     })
       .overrideComponent(FileDropzoneComponent, {
         set: { template: '<div></div>' }
@@ -301,8 +304,11 @@ describe('FileDropzoneComponent, through its own template', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [FileDropzoneComponent, NoopAnimationsModule],
-      providers: [{ provide: TranslationService, useValue: createTranslationStub() }]
+      imports: [FileDropzoneComponent],
+      providers: [
+        { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion()
+      ]
     }).compileComponents();
 
     fixture = TestBed.createComponent(FileDropzoneComponent);

@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetProgressCardComponent } from './budget-progress-card.component';
@@ -13,6 +12,7 @@ import {
   iconSquare,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -95,10 +95,11 @@ describe('BudgetProgressCardComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [BudgetProgressCardComponent, NoopAnimationsModule],
+      imports: [BudgetProgressCardComponent],
       providers: [
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

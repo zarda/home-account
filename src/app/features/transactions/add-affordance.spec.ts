@@ -17,7 +17,6 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { BehaviorSubject, Subject, of, EMPTY } from 'rxjs';
 
 import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
@@ -40,7 +39,7 @@ import { FitTextRegistry } from '../../shared/directives/fit-text.registry';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { Transaction, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
-import { createCategory } from '../../core/services/testing';
+import { createCategory, provideNoMotion } from '../../core/services/testing';
 
 const MOBILE = APP_BREAKPOINTS.mobile;
 const TABLET = APP_BREAKPOINTS.tablet;
@@ -127,7 +126,7 @@ describe('Add affordance (transactions header FAB + bottom nav)', () => {
     await TestBed.configureTestingModule({
       imports: [TransactionsComponent, MainLayoutComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
         // A phone: the user agent says mobile at every width. Kept
         // deliberately — the page must never consult it again, and this is

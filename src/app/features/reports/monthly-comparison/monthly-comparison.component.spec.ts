@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { Timestamp } from '@angular/fire/firestore';
@@ -25,6 +24,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 
 function breakpointState(matches: boolean): BreakpointState {
@@ -180,11 +180,12 @@ describe('MonthlyComparisonComponent', () => {
     breakpoint$ = new BehaviorSubject<BreakpointState>(breakpointState(false));
 
     await TestBed.configureTestingModule({
-      imports: [MonthlyComparisonComponent, NoopAnimationsModule],
+      imports: [MonthlyComparisonComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } }
+        { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -517,7 +518,7 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     breakpoint$ = new BehaviorSubject<BreakpointState>(breakpointState(false));
 
     await TestBed.configureTestingModule({
-      imports: [MonthlyComparisonComponent, NoopAnimationsModule],
+      imports: [MonthlyComparisonComponent],
       providers: [
         provideAppCharts(),
         {
@@ -536,6 +537,7 @@ describe('MonthlyComparisonComponent, through its own template', () => {
         },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

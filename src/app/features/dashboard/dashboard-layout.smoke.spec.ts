@@ -13,7 +13,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAppCharts } from '../../core/config/chart.config';
@@ -36,7 +35,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { TransactionService } from '../../core/services/transaction.service';
 import { FirestoreService } from '../../core/services/firestore.service';
 import { addDays, budgetPeriodWindow, dayKey, startOfDay } from '../../core/utils/transaction-date.utils';
-import { MockAuthService, createMockUser } from '../../core/services/testing';
+import { MockAuthService, createMockUser, provideNoMotion } from '../../core/services/testing';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { dashboardGridAreas } from './dashboard-layout.utils';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
@@ -182,7 +181,7 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),

@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
@@ -31,6 +30,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 import { ThemeService } from '../../../../core/services/theme.service';
 import type { Rgb } from '../../../../core/utils/color-contrast.utils';
@@ -105,7 +105,7 @@ describe('TransactionPreviewTableComponent', () => {
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
+      imports: [TransactionPreviewTableComponent],
       schemas: [NO_ERRORS_SCHEMA],
       providers: [
         {
@@ -134,6 +134,7 @@ describe('TransactionPreviewTableComponent', () => {
         },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
         { provide: NotificationService, useValue: notifications },
+        provideNoMotion(),
       ],
     })
       .overrideComponent(TransactionPreviewTableComponent, {
@@ -1207,7 +1208,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
+      imports: [TransactionPreviewTableComponent],
       providers: [
         {
           // Echoes the key and its params, as the first describe does, so a
@@ -1234,6 +1235,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         // the real service's own announce call to land on this spy, so a
         // second one from this component's own code would be caught.
         { provide: AnnouncerService, useValue: mockAnnouncer },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

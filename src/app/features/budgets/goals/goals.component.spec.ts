@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { of, EMPTY } from 'rxjs';
@@ -14,6 +13,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CreateGoalDTO, Goal } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('GoalsComponent', () => {
   let fixture: ComponentFixture<GoalsComponent>;
@@ -61,14 +61,15 @@ describe('GoalsComponent', () => {
     router.navigate.and.resolveTo(true);
 
     await TestBed.configureTestingModule({
-      imports: [GoalsComponent, NoopAnimationsModule],
+      imports: [GoalsComponent],
       providers: [
         { provide: GoalService, useValue: mockGoalService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: NotificationService, useValue: notifications },
         { provide: TranslationService, useValue: mockTranslation },
         { provide: PendingFiltersService, useValue: pendingFilters },
-        { provide: Router, useValue: router }
+        { provide: Router, useValue: router },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -188,14 +189,15 @@ describe('GoalsComponent empty state CTA', () => {
     const router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     await TestBed.configureTestingModule({
-      imports: [GoalsComponent, NoopAnimationsModule],
+      imports: [GoalsComponent],
       providers: [
         { provide: GoalService, useValue: mockGoalService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: NotificationService, useValue: notifications },
         { provide: TranslationService, useValue: mockTranslation },
         { provide: PendingFiltersService, useValue: pendingFilters },
-        { provide: Router, useValue: router }
+        { provide: Router, useValue: router },
+        provideNoMotion()
       ]
     })
       .compileComponents();

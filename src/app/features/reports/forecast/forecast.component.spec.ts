@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { provideAppCharts } from '../../../core/config/chart.config';
@@ -10,7 +9,12 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringOccurrence, RecurringTransaction } from '../../../models';
 import { MAX_FORECAST_POINTS } from '../../../core/utils/forecast-series.utils';
-import { AUDIT_SCHEMES, createTranslationStub, withScheme } from '../../../core/services/testing';
+import {
+  AUDIT_SCHEMES,
+  createTranslationStub,
+  provideNoMotion,
+  withScheme,
+} from '../../../core/services/testing';
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { ThemeService } from '../../../core/services/theme.service';
 
@@ -89,12 +93,13 @@ describe('ForecastComponent', () => {
     mockTranslation.getIntlLocale.and.returnValue('en-US');
 
     await TestBed.configureTestingModule({
-      imports: [ForecastComponent, NoopAnimationsModule],
+      imports: [ForecastComponent],
       providers: [
         provideAppCharts(),
         { provide: RecurringService, useValue: mockRecurring },
         { provide: CurrencyService, useValue: mockCurrency },
-        { provide: TranslationService, useValue: mockTranslation }
+        { provide: TranslationService, useValue: mockTranslation },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -265,7 +270,7 @@ describe('ForecastComponent, through its own template', () => {
     currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
 
     await TestBed.configureTestingModule({
-      imports: [ForecastComponent, NoopAnimationsModule],
+      imports: [ForecastComponent],
       providers: [
         provideAppCharts(),
         { provide: RecurringService, useValue: recurring },
@@ -274,6 +279,7 @@ describe('ForecastComponent, through its own template', () => {
           provide: TranslationService,
           useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
         },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

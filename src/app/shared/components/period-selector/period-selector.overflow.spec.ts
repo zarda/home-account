@@ -1,10 +1,10 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { PeriodSelectorComponent } from './period-selector.component';
 import { TranslationService } from '../../../core/services/translation.service';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /** Real en.json dashboard.* strings — the short labels below the tablet breakpoint. */
 const LABELS: Record<string, string> = {
@@ -45,7 +45,7 @@ describe('overflow guard: the period selector', () => {
     await TestBed.configureTestingModule({
       imports: [PeriodSelectorOverflowProbeComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: TranslationService, useValue: mockTranslationService },
       ],
     }).compileComponents();

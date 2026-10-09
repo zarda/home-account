@@ -1,11 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef } from '@angular/material/dialog';
 
 import { FeedbackDialogComponent } from './feedback-dialog.component';
 import { FeedbackService } from '../../../core/services/feedback.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('FeedbackDialogComponent', () => {
   let component: FeedbackDialogComponent;
@@ -27,12 +27,13 @@ describe('FeedbackDialogComponent', () => {
     ]);
 
     await TestBed.configureTestingModule({
-      imports: [FeedbackDialogComponent, NoopAnimationsModule],
+      imports: [FeedbackDialogComponent],
       providers: [
         { provide: FeedbackService, useValue: mockFeedback },
         { provide: NotificationService, useValue: mockNotification },
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: TranslationService, useValue: translation },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

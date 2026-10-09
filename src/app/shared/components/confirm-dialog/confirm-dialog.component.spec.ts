@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from './confirm-dialog.component';
 import {
@@ -8,6 +7,7 @@ import {
   iconSquare,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   withTheme,
 } from '../../../core/services/testing';
@@ -31,10 +31,11 @@ describe('ConfirmDialogComponent', () => {
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
 
     await TestBed.configureTestingModule({
-      imports: [ConfirmDialogComponent, NoopAnimationsModule],
+      imports: [ConfirmDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: data },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -81,10 +82,11 @@ describe('ConfirmDialogComponent', () => {
       TestBed.resetTestingModule();
       const bareData: ConfirmDialogData = { title: 'T', message: 'M' };
       await TestBed.configureTestingModule({
-        imports: [ConfirmDialogComponent, NoopAnimationsModule],
+        imports: [ConfirmDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: dialogRef },
           { provide: MAT_DIALOG_DATA, useValue: bareData },
+          provideNoMotion(),
         ],
       }).compileComponents();
       const bareFixture = TestBed.createComponent(ConfirmDialogComponent);
@@ -104,10 +106,11 @@ describe('ConfirmDialogComponent', () => {
     ): Promise<ComponentFixture<ConfirmDialogComponent>> {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [ConfirmDialogComponent, NoopAnimationsModule],
+        imports: [ConfirmDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: dialogRef },
           { provide: MAT_DIALOG_DATA, useValue: { title: 'T', message: 'M', ...overrides } },
+          provideNoMotion(),
         ],
       }).compileComponents();
       const created = TestBed.createComponent(ConfirmDialogComponent);
@@ -170,10 +173,11 @@ describe('ConfirmDialogComponent', () => {
     async function render(overrides: Partial<ConfirmDialogData>): Promise<HTMLElement> {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [ConfirmDialogComponent, NoopAnimationsModule],
+        imports: [ConfirmDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: dialogRef },
           { provide: MAT_DIALOG_DATA, useValue: { title: 'T', message: 'M', ...overrides } },
+          provideNoMotion(),
         ],
       }).compileComponents();
       const created = TestBed.createComponent(ConfirmDialogComponent);

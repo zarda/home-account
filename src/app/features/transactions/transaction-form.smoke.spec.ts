@@ -3,7 +3,6 @@
 // the two produces instances that do not interoperate.
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { of } from 'rxjs';
@@ -40,6 +39,7 @@ import { TagSuggestionService } from '../../core/services/tag-suggestion.service
 import { GroundingHistoryService } from '../../core/services/grounding-history.service';
 import { Transaction } from '../../models';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
+import { provideNoMotion } from '../../core/services/testing';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
 /**
@@ -138,7 +138,7 @@ describe('TransactionFormComponent tags and location (emulator smoke test)', () 
       imports: [TransactionFormComponent],
       providers: [
         provideHttpClient(),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideNativeDateAdapter(),
         TransactionService,
         FirestoreService,

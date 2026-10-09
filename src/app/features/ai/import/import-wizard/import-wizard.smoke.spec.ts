@@ -47,7 +47,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -69,7 +68,11 @@ import {
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
 import { ImportWizardComponent } from './import-wizard.component';
 import { AuthService } from '../../../../core/services/auth.service';
-import { MockAuthService, createMockUser } from '../../../../core/services/testing';
+import {
+  MockAuthService,
+  createMockUser,
+  provideNoMotion,
+} from '../../../../core/services/testing';
 import { AIImportService } from '../../../../core/services/ai-import.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { AIStrategyService } from '../../../../core/services/ai-strategy.service';
@@ -264,7 +267,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         { provide: Firestore, useValue: firestore },

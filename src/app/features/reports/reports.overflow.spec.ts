@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { EMPTY, of } from 'rxjs';
 
@@ -20,6 +19,7 @@ import { PendingFiltersService } from '../../core/services/pending-filters.servi
 import { TranslationService } from '../../core/services/translation.service';
 import { AccessibilityService } from '../../core/services/accessibility.service';
 import { Transaction } from '../../models';
+import { provideNoMotion } from '../../core/services/testing';
 
 /**
  * The reports tab strip: five tabs, more than a phone can show even after the
@@ -111,7 +111,7 @@ describe('overflow guard: the reports tab strip', () => {
     const accessibility = { tabAnimationDuration: signal('0ms') };
 
     await TestBed.configureTestingModule({
-      imports: [ReportsStripOverflowProbeComponent, NoopAnimationsModule],
+      imports: [ReportsStripOverflowProbeComponent],
       providers: [
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },
@@ -128,6 +128,7 @@ describe('overflow guard: the reports tab strip', () => {
         },
         { provide: TranslationService, useValue: translation },
         { provide: AccessibilityService, useValue: accessibility },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })

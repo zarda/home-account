@@ -30,7 +30,6 @@ import { Injector, Provider, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAppCharts } from '../../core/config/chart.config';
@@ -54,7 +53,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { StorageService } from '../../core/services/storage.service';
 import { ReceiptTranslationService } from '../../core/services/receipt-translation.service';
-import { MockAuthService, createMockUser } from '../../core/services/testing';
+import { MockAuthService, createMockUser, provideNoMotion } from '../../core/services/testing';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
@@ -190,7 +189,7 @@ describe('Receipt viewer doors and lens (emulator smoke test)', () => {
         // Fake the OS-level matcher, never BreakpointObserver itself: the
         // observer's own logic is part of what these specs are checking.
         { provide: MediaMatcher, useValue: new FakeMediaMatcher(width$) },
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),

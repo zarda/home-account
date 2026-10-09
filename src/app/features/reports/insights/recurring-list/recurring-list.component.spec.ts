@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { of } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -15,7 +14,11 @@ import {
   StorableRecurringGroup,
   StorableRecurringSummary
 } from '../../../../models';
-import { createCategory, createTranslationStub } from '../../../../core/services/testing';
+import {
+  createCategory,
+  createTranslationStub,
+  provideNoMotion,
+} from '../../../../core/services/testing';
 
 function groupFor(overrides: Partial<StorableRecurringGroup> = {}): StorableRecurringGroup {
   return {
@@ -73,13 +76,14 @@ describe('RecurringListComponent', () => {
     mockTranslation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [RecurringListComponent, NoopAnimationsModule],
+      imports: [RecurringListComponent],
       providers: [
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: TranslationService, useValue: mockTranslation },
         { provide: RecurringService, useValue: mockRecurringService },
         { provide: NotificationService, useValue: notifications },
-        { provide: MatDialog, useValue: mockDialog }
+        { provide: MatDialog, useValue: mockDialog },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -215,7 +219,7 @@ describe('RecurringListComponent, through its own template', () => {
     recurring.createRecurring.and.resolveTo('new-rule-id');
 
     await TestBed.configureTestingModule({
-      imports: [RecurringListComponent, NoopAnimationsModule],
+      imports: [RecurringListComponent],
       providers: [
         {
           provide: CategoryService,
@@ -234,6 +238,7 @@ describe('RecurringListComponent, through its own template', () => {
         { provide: RecurringService, useValue: recurring },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
         { provide: MatDialog, useValue: dialog },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

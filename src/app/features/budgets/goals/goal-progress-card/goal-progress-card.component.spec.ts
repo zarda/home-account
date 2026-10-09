@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -14,6 +13,7 @@ import {
   createTranslationStub,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -62,8 +62,8 @@ describe('GoalProgressCardComponent', () => {
     );
 
     await TestBed.configureTestingModule({
-      imports: [GoalProgressCardComponent, NoopAnimationsModule],
-      providers: [{ provide: CurrencyService, useValue: mockCurrency }],
+      imports: [GoalProgressCardComponent],
+      providers: [{ provide: CurrencyService, useValue: mockCurrency }, provideNoMotion()],
       schemas: [NO_ERRORS_SCHEMA]
     })
       .overrideComponent(GoalProgressCardComponent, { set: { template: '<div></div>' } })
@@ -185,11 +185,12 @@ describe('GoalProgressCardComponent, through its own template', () => {
     mockCurrency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
 
     await TestBed.configureTestingModule({
-      imports: [GoalProgressCardComponent, NoopAnimationsModule],
+      imports: [GoalProgressCardComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrency },
         { provide: TranslationService, useValue: createTranslationStub() },
-        { provide: LocaleFormatService, useValue: createLocaleFormatStub() }
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        provideNoMotion()
       ]
     }).compileComponents();
 

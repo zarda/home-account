@@ -1,6 +1,5 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { DashboardLayoutSettingsComponent } from './dashboard-layout-settings.component';
 import { AnnouncerService } from '../../../core/services/announcer.service';
@@ -8,6 +7,7 @@ import { AuthService, withPreferenceFields } from '../../../core/services/auth.s
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { DashboardCardId, DashboardLayout, User, UserPreferences } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('DashboardLayoutSettingsComponent', () => {
   let fixture: ComponentFixture<DashboardLayoutSettingsComponent>;
@@ -100,7 +100,7 @@ describe('DashboardLayoutSettingsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [DashboardLayoutSettingsComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: AuthService, useValue: auth },
         { provide: NotificationService, useValue: notifications },
         { provide: AnnouncerService, useValue: announcer },

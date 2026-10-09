@@ -24,7 +24,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { Capacitor } from '@capacitor/core';
@@ -53,7 +52,7 @@ import {
 } from '../../core/plugins/biometric-auth.plugin';
 import { APP_LOCK_STORAGE_PREFIX } from '../../core/utils/app-lock.utils';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
-import { MockAuthService, createMockUser } from '../../core/services/testing';
+import { MockAuthService, createMockUser, provideNoMotion } from '../../core/services/testing';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
@@ -197,7 +196,7 @@ describe('App lock biometric door (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),

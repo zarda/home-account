@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { DuplicateWarningComponent, DuplicateInfo } from './duplicate-warning.component';
@@ -14,6 +13,7 @@ import {
   createTranslationStub,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -50,7 +50,8 @@ describe('DuplicateWarningComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [DuplicateWarningComponent, NoopAnimationsModule],
+      imports: [DuplicateWarningComponent],
+      providers: [provideNoMotion()],
       schemas: [NO_ERRORS_SCHEMA]
     })
       .overrideComponent(DuplicateWarningComponent, {
@@ -208,10 +209,11 @@ describe('DuplicateWarningComponent, through its own template', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [DuplicateWarningComponent, NoopAnimationsModule],
+      imports: [DuplicateWarningComponent],
       providers: [
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

@@ -9,9 +9,9 @@ import {
   ratio,
   settleAnimations,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { of } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -152,7 +152,7 @@ describe('DataManagementComponent', () => {
     mockReceiptQuota.imageLimit.and.returnValue(200);
 
     await TestBed.configureTestingModule({
-      imports: [DataManagementComponent, NoopAnimationsModule],
+      imports: [DataManagementComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
         { provide: ExportService, useValue: mockExportService },
@@ -175,7 +175,8 @@ describe('DataManagementComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: AnnouncerService, useValue: mockAnnouncer },
-        { provide: ReceiptQuotaService, useValue: mockReceiptQuota }
+        { provide: ReceiptQuotaService, useValue: mockReceiptQuota },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -985,7 +986,7 @@ describe('DataManagementComponent, through its own template', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [DataManagementComponent, NoopAnimationsModule],
+      imports: [DataManagementComponent],
       providers: [
         provideRouter([]),
         { provide: NotificationService, useValue: spy('NotificationService', ['success', 'error', 'info']) },
@@ -1011,6 +1012,7 @@ describe('DataManagementComponent, through its own template', () => {
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         { provide: ReceiptQuotaService, useValue: quota },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

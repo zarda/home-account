@@ -21,7 +21,6 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, EMPTY } from 'rxjs';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
@@ -41,6 +40,7 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ImportHistory } from '../../../../models';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
+import { provideNoMotion } from '../../../../core/services/testing';
 
 jasmine.getEnv().configure({ random: false });
 silenceFirebaseWarnings();
@@ -177,7 +177,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     await TestBed.configureTestingModule({
       imports: [ImportHistoryComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         FirestoreService,
         { provide: Firestore, useValue: firestore },
         { provide: AuthService, useValue: { userId: () => uid, currentUser: () => null } },

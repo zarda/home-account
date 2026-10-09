@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -29,7 +28,12 @@ import { NoteTranslationComponent } from '../../../shared/components/note-transl
 import { PwaService } from '../../../core/services/pwa.service';
 import { FirestoreService } from '../../../core/services/firestore.service';
 import { Category, Goal, Transaction, User } from '../../../models';
-import { createCategory, createTransaction, createUser } from '../../../core/services/testing';
+import {
+  createCategory,
+  createTransaction,
+  createUser,
+  provideNoMotion,
+} from '../../../core/services/testing';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 
 function attemptStub() {
@@ -121,7 +125,7 @@ describe('TransactionFormComponent suggestion chips', () => {
     await TestBed.configureTestingModule({
       imports: [TransactionFormComponent, ReactiveFormsModule],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },

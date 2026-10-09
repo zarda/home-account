@@ -3,14 +3,13 @@ import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { MatDialog } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BehaviorSubject } from 'rxjs';
 
 import { HeaderComponent } from './header.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
-import { createTranslationStub } from '../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
 import { User } from '../../../models';
 import en from '../../../../assets/i18n/en.json';
 import ja from '../../../../assets/i18n/ja.json';
@@ -43,13 +42,14 @@ describe('overflow guard: the header avatar', () => {
     translation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [HeaderComponent, NoopAnimationsModule],
+      imports: [HeaderComponent],
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: mockAuth },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
         { provide: TranslationService, useValue: translation },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -118,7 +118,7 @@ describe('overflow guard: the header with the ? hint at 1024 px', () => {
     const narrower = { matches: false, breakpoints: {} };
 
     await TestBed.configureTestingModule({
-      imports: [HeaderComponent, NoopAnimationsModule],
+      imports: [HeaderComponent],
       providers: [
         provideRouter([]),
         {
@@ -140,6 +140,7 @@ describe('overflow guard: the header with the ? hint at 1024 px', () => {
             currentLocale: signal<string>(locale),
           }),
         },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

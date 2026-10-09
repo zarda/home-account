@@ -1,11 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef } from '@angular/material/dialog';
 
 import { CurrencyCodeDialogComponent } from './currency-code-dialog.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { createTranslationStub } from '../../../core/services/testing/translation-stub';
+import { provideNoMotion } from '../../../core/services/testing';
 
 // Rendered from the start (ADR 0144): the refusals are template facts — a
 // mat-error only shows once the field is in its error state — so a suite
@@ -37,11 +37,12 @@ describe('CurrencyCodeDialogComponent', () => {
     canRepresentCurrency = jasmine.createSpy('canRepresentCurrency').and.returnValue(true);
 
     await TestBed.configureTestingModule({
-      imports: [CurrencyCodeDialogComponent, NoopAnimationsModule],
+      imports: [CurrencyCodeDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: CurrencyService, useValue: { canRepresentCurrency } },
         { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

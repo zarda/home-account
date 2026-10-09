@@ -2,14 +2,19 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Subject, EMPTY } from 'rxjs';
 
 import { CommandPaletteComponent } from './command-palette.component';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AUDIT_SCHEMES, runAxe, summarizeViolations, withTheme } from '../../../core/services/testing';
+import {
+  AUDIT_SCHEMES,
+  provideNoMotion,
+  runAxe,
+  summarizeViolations,
+  withTheme,
+} from '../../../core/services/testing';
 import { NAV_ITEMS, PALETTE_ONLY_ITEMS } from '../../layout/nav-items';
 
 /**
@@ -71,13 +76,14 @@ describe('CommandPaletteComponent', () => {
     });
 
     await TestBed.configureTestingModule({
-      imports: [CommandPaletteComponent, NoopAnimationsModule],
+      imports: [CommandPaletteComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: Router, useValue: router },
         { provide: QuickAddService, useValue: quickAdd },
         { provide: AnnouncerService, useValue: announcer },
         { provide: TranslationService, useValue: translation },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -398,7 +404,7 @@ describe('CommandPaletteComponent, Shortcuts section (#446)', () => {
     translation.t.and.callFake((key: string) => EN_LABELS[key] ?? key);
 
     await TestBed.configureTestingModule({
-      imports: [CommandPaletteComponent, NoopAnimationsModule],
+      imports: [CommandPaletteComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: Router, useValue: router },
@@ -409,6 +415,7 @@ describe('CommandPaletteComponent, Shortcuts section (#446)', () => {
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         { provide: TranslationService, useValue: translation },
         ...(data === undefined ? [] : [{ provide: MAT_DIALOG_DATA, useValue: data }]),
+        provideNoMotion(),
       ],
     }).compileComponents();
 

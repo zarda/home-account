@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal } from '@angular/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { of } from 'rxjs';
@@ -24,6 +23,7 @@ import {
   ratio,
   settleAnimations,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 
@@ -315,7 +315,7 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
     dialogSpy.open.and.returnValue({ afterClosed: () => of(true) } as never);
 
     await TestBed.configureTestingModule({
-      imports: [ReceiptImageManagerComponent, NoopAnimationsModule],
+      imports: [ReceiptImageManagerComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRefSpy },
         { provide: MatDialog, useValue: dialogSpy },
@@ -325,6 +325,7 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        provideNoMotion(),
       ],
     }).compileComponents();
   });

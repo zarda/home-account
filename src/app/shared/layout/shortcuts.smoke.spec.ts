@@ -22,7 +22,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MediaMatcher } from '@angular/cdk/layout';
@@ -43,6 +42,7 @@ import {
   runAxe,
   summarizeViolations,
   withScheme,
+  provideNoMotion,
 } from '../../core/services/testing';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
@@ -160,7 +160,7 @@ describe('Shortcuts (emulator smoke test)', () => {
         // The OS-level matcher is faked, never BreakpointObserver itself, so
         // the shell's own breakpoint logic decides it is on a desktop.
         { provide: MediaMatcher, useValue: new FakeMediaMatcher(new BehaviorSubject<number>(1440)) },
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),

@@ -1,13 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { DashboardCardMenuComponent } from './dashboard-card-menu.component';
 import { DashboardLayoutService } from '../dashboard-layout.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { DASHBOARD_CARD_IDS, DashboardCardId, DashboardLayout } from '../../../models';
-import { createTranslationStub } from '../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
 
 // The cards' own titles, so a name or an announcement reads as the card.
 const TITLES: Record<string, string> = {
@@ -62,7 +61,7 @@ describe('DashboardCardMenuComponent', () => {
     await TestBed.configureTestingModule({
       imports: [DashboardCardMenuComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: DashboardLayoutService, useValue: layout },
         { provide: AnnouncerService, useValue: announcer },
         {

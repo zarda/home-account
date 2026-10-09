@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 
 import {
@@ -12,6 +11,7 @@ import { ReceiptTranslationService } from '../../../core/services/receipt-transl
 import { TranslationService } from '../../../core/services/translation.service';
 import { NoteTranslation } from '../../../core/services/llm-provider.interface';
 import { createTransaction } from '../../../core/services/testing/test-data';
+import { provideNoMotion } from '../../../core/services/testing';
 import { Transaction } from '../../../models';
 
 describe('ReceiptViewerDialogComponent', () => {
@@ -103,7 +103,7 @@ describe('ReceiptViewerDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ReceiptViewerDialogComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useFactory: () => dialogData },
         {

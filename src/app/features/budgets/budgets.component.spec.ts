@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -28,6 +27,7 @@ import {
   createTranslationStub,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -230,7 +230,7 @@ describe('BudgetsComponent, through its own template', () => {
     dialogSpy.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
 
     await TestBed.configureTestingModule({
-      imports: [BudgetsComponent, NoopAnimationsModule],
+      imports: [BudgetsComponent],
       providers: [
         { provide: ActivatedRoute, useValue: { get snapshot() { return { queryParamMap: convertToParamMap(budgetQueryParams.value) }; } } },
         {
@@ -251,6 +251,7 @@ describe('BudgetsComponent, through its own template', () => {
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: MatDialog, useValue: dialogSpy },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })

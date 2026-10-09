@@ -20,7 +20,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAppCharts } from '../../core/config/chart.config';
@@ -39,7 +38,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { routes } from '../../app.routes';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
-import { MockAuthService, createMockUser } from '../../core/services/testing';
+import { MockAuthService, createMockUser, provideNoMotion } from '../../core/services/testing';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 
@@ -169,7 +168,7 @@ describe('Transaction overflow (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),

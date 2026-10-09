@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, Signal, computed, inject, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router, provideRouter } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 import { Subject } from 'rxjs';
@@ -26,7 +25,7 @@ import { PwaService } from '../../core/services/pwa.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
-import { createTranslationStub } from '../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../core/services/testing';
 import { planWindow } from '../../core/utils/household-plans.utils';
 import { Household, HouseholdBudget, HouseholdMember, HouseholdMembership } from '../../models';
 import { HouseholdPageFocus } from './household-focus';
@@ -262,7 +261,7 @@ describe('HouseholdComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [HouseholdComponent, NoopAnimationsModule],
+      imports: [HouseholdComponent],
       providers: [
         provideRouter(ROUTES),
         { provide: HouseholdService, useValue: service },
@@ -282,7 +281,8 @@ describe('HouseholdComponent', () => {
         },
         { provide: AuthService, useValue: { userId: signal('owner-1'), currentUser: signal(null) } },
         { provide: CurrencyService, useValue: { convert: (amount: number) => amount } },
-        { provide: LedgerShareService, useValue: sharing }
+        { provide: LedgerShareService, useValue: sharing },
+        provideNoMotion()
       ]
     })
       .overrideComponent(HouseholdComponent, {

@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -14,6 +13,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -104,13 +104,14 @@ describe('ExportDialogComponent', () => {
     mockCurrencyService.amountInBase.and.callFake((t: Transaction) => t.amount);
 
     await TestBed.configureTestingModule({
-      imports: [ExportDialogComponent, NoopAnimationsModule],
+      imports: [ExportDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: mockDialogData },
         { provide: ExportService, useValue: mockExportService },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -431,7 +432,7 @@ describe('ExportDialogComponent', () => {
       snapshotCurrencyService.amountInBase.and.callFake((t: Transaction) => t.amountInBaseCurrency);
 
       await TestBed.configureTestingModule({
-        imports: [ExportDialogComponent, NoopAnimationsModule],
+        imports: [ExportDialogComponent],
         providers: [
           { provide: MatDialogRef, useValue: snapshotDialogRef },
           {
@@ -446,6 +447,7 @@ describe('ExportDialogComponent', () => {
           { provide: ExportService, useValue: snapshotExportService },
           { provide: TranslationService, useValue: mockTranslationService },
           { provide: CurrencyService, useValue: snapshotCurrencyService },
+          provideNoMotion(),
         ],
         schemas: [NO_ERRORS_SCHEMA],
       }).compileComponents();

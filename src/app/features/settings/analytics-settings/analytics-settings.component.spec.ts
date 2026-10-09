@@ -1,12 +1,12 @@
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { AnalyticsSettingsComponent } from './analytics-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { SubscriptionTier, User, UserPreferences } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('AnalyticsSettingsComponent', () => {
   let fixture: ComponentFixture<AnalyticsSettingsComponent>;
@@ -36,11 +36,12 @@ describe('AnalyticsSettingsComponent', () => {
     notifications = jasmine.createSpyObj('NotificationService', ['error']);
 
     await TestBed.configureTestingModule({
-      imports: [AnalyticsSettingsComponent, NoopAnimationsModule],
+      imports: [AnalyticsSettingsComponent],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: NotificationService, useValue: notifications },
         { provide: TranslationService, useValue: { t: (key: string) => key } },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

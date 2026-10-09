@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA, WritableSignal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of, Subject, EMPTY } from 'rxjs';
@@ -27,7 +26,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { TranslationService } from '../../core/services/translation.service';
-import { createTranslationStub } from '../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../core/services/testing';
 
 /** Query params the sibling rendering describe re-points between cases. */
 const queryParamsFor: { value: Record<string, string> } = { value: {} };
@@ -106,7 +105,7 @@ describe('ReportsComponent', () => {
     mockRouter.navigate.and.returnValue(Promise.resolve(true));
 
     await TestBed.configureTestingModule({
-      imports: [ReportsComponent, NoopAnimationsModule],
+      imports: [ReportsComponent],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: CategoryService, useValue: mockCategoryService },
@@ -114,7 +113,8 @@ describe('ReportsComponent', () => {
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: PendingFiltersService, useValue: mockPendingFilters },
         { provide: Router, useValue: mockRouter },
-        { provide: ActivatedRoute, useValue: activatedRouteStub }
+        { provide: ActivatedRoute, useValue: activatedRouteStub },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -453,7 +453,7 @@ describe('ReportsComponent, through its own template', () => {
     queryParamsFor.value = {};
 
     await TestBed.configureTestingModule({
-      imports: [ReportsComponent, NoopAnimationsModule],
+      imports: [ReportsComponent],
       providers: [
         {
           provide: TransactionService,
@@ -493,6 +493,7 @@ describe('ReportsComponent, through its own template', () => {
         },
         { provide: ActivatedRoute, useValue: { get snapshot() { return { queryParamMap: convertToParamMap(queryParamsFor.value) }; } } },
         { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })

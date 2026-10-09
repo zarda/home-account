@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
@@ -10,6 +9,7 @@ import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /**
  * The component spec blanks its own template (monthly-comparison.component.
@@ -53,12 +53,13 @@ describe('overflow guard: monthly-comparison grid tracks (#450)', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [MonthlyComparisonComponent, NoopAnimationsModule],
+      imports: [MonthlyComparisonComponent],
       providers: [
         provideAppCharts(),
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: BreakpointObserver, useValue: { observe: () => of(breakpointState(false)) } },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

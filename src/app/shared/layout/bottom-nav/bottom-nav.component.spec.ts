@@ -1,12 +1,11 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BottomNavComponent } from './bottom-nav.component';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { navItemFor } from '../nav-items';
-import { channels, withTheme } from '../../../core/services/testing';
+import { channels, provideNoMotion, withTheme } from '../../../core/services/testing';
 
 const LABELS: Record<string, string> = {
   'nav.dashboard': 'Dashboard',
@@ -36,7 +35,7 @@ describe('BottomNavComponent', () => {
     mockTranslationService.t.and.callFake((key: string) => LABELS[key] ?? key);
 
     await TestBed.configureTestingModule({
-      imports: [BottomNavComponent, NoopAnimationsModule],
+      imports: [BottomNavComponent],
       providers: [
         provideRouter([
           { path: 'dashboard', component: StubPage },
@@ -48,6 +47,7 @@ describe('BottomNavComponent', () => {
         ]),
         { provide: QuickAddService, useValue: mockQuickAdd },
         { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

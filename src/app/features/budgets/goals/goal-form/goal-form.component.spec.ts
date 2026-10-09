@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -13,6 +12,7 @@ import {
   createTranslationStub,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -58,13 +58,14 @@ describe('GoalFormComponent', () => {
     mockTranslation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [GoalFormComponent, NoopAnimationsModule],
+      imports: [GoalFormComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: AuthService, useValue: mockAuth },
         { provide: CurrencyService, useValue: mockCurrency },
-        { provide: TranslationService, useValue: mockTranslation }
+        { provide: TranslationService, useValue: mockTranslation },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -259,7 +260,7 @@ describe('GoalFormComponent, through its own template', () => {
     ]);
 
     await TestBed.configureTestingModule({
-      imports: [GoalFormComponent, NoopAnimationsModule],
+      imports: [GoalFormComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: data },
@@ -269,6 +270,7 @@ describe('GoalFormComponent, through its own template', () => {
         },
         { provide: CurrencyService, useValue: currency },
         { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

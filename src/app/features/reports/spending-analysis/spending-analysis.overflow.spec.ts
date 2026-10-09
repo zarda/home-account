@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { SpendingAnalysisComponent } from './spending-analysis.component';
@@ -7,6 +6,7 @@ import { provideAppCharts } from '../../../core/config/chart.config';
 import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /**
  * The component spec blanks its own template (spending-analysis.component.
@@ -46,11 +46,12 @@ describe('overflow guard: spending-analysis grid tracks (#450)', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [SpendingAnalysisComponent, NoopAnimationsModule],
+      imports: [SpendingAnalysisComponent],
       providers: [
         provideAppCharts(),
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

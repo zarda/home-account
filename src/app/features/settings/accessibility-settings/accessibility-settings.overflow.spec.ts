@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { AccessibilitySettingsComponent } from './accessibility-settings.component';
 import { AccessibilityService } from '../../../core/services/accessibility.service';
@@ -9,6 +8,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { User, UserPreferences } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /**
  * The font-size toggle at the Extra large font scale on a phone.
@@ -89,13 +89,14 @@ describe('overflow guard: the font-size toggle', () => {
     });
 
     await TestBed.configureTestingModule({
-      imports: [FontScaleToggleOverflowProbeComponent, NoopAnimationsModule],
+      imports: [FontScaleToggleOverflowProbeComponent],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: AccessibilityService, useValue: mockAccessibilityService },
         { provide: NotificationService, useValue: notifications },
         { provide: AnalyticsService, useValue: analytics },
         { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

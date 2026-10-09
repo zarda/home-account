@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSelect } from '@angular/material/select';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
@@ -28,6 +27,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 
 describe('BudgetFormComponent', () => {
@@ -161,7 +161,7 @@ describe('BudgetFormComponent', () => {
     });
 
     return TestBed.configureTestingModule({
-      imports: [BudgetFormComponent, NoopAnimationsModule],
+      imports: [BudgetFormComponent],
       providers: [
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: dialogData },
@@ -173,7 +173,8 @@ describe('BudgetFormComponent', () => {
         {
           provide: NotificationService,
           useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
-        }
+        },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

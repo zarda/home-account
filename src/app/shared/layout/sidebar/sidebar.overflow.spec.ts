@@ -1,9 +1,9 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { SidebarComponent } from './sidebar.component';
 import { TranslationService } from '../../../core/services/translation.service';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /** Somewhere for the test router to land; the nav is what is under test. */
 @Component({ standalone: true, template: '' })
@@ -28,7 +28,7 @@ describe('overflow guard: the sidebar nav', () => {
     mockTranslationService.t.and.callFake((key: string) => `t:${key}`);
 
     await TestBed.configureTestingModule({
-      imports: [SidebarComponent, NoopAnimationsModule],
+      imports: [SidebarComponent],
       providers: [
         provideRouter([
           { path: 'dashboard', component: StubPage },
@@ -38,6 +38,7 @@ describe('overflow guard: the sidebar nav', () => {
           { path: 'data', component: StubPage },
         ]),
         { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

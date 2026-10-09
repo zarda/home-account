@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { of, EMPTY } from 'rxjs';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -26,6 +25,7 @@ import {
   ratio,
   settleAnimations,
   withTheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
 import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
@@ -181,7 +181,7 @@ describe('ImportWizardComponent', () => {
     routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
 
     await TestBed.configureTestingModule({
-      imports: [ImportWizardComponent, NoopAnimationsModule],
+      imports: [ImportWizardComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
         { provide: AIImportService, useValue: mockImportService },
@@ -198,7 +198,8 @@ describe('ImportWizardComponent', () => {
         // constructor. The code-and-figure shape is what the assertions read:
         // the app's own formatter is the thing under test only in that it is
         // asked once per currency.
-        { provide: CurrencyService, useValue: { formatCurrency: (a: number, c: string) => `${c} ${a}` } }
+        { provide: CurrencyService, useValue: { formatCurrency: (a: number, c: string) => `${c} ${a}` } },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -2616,7 +2617,7 @@ describe('ImportWizardComponent', () => {
     beforeEach(async () => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [ImportWizardComponent, NoopAnimationsModule],
+        imports: [ImportWizardComponent],
         providers: [
           { provide: NotificationService, useValue: notifications },
           { provide: AIImportService, useValue: mockImportService },
@@ -2645,7 +2646,8 @@ describe('ImportWizardComponent', () => {
           // The real template builds every step, including the review card,
           // whose currency memory reaches AuthService and from there the
           // Firebase Auth token the unit run has no provider for.
-          { provide: AuthService, useValue: new MockAuthService() }
+          { provide: AuthService, useValue: new MockAuthService() },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       }).compileComponents();

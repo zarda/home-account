@@ -1,11 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { EmptyStateComponent } from './empty-state.component';
 import {
   iconBox,
   iconSquare,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   withTheme,
 } from '../../../core/services/testing';
@@ -16,7 +16,8 @@ describe('EmptyStateComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [EmptyStateComponent, NoopAnimationsModule],
+      imports: [EmptyStateComponent],
+      providers: [provideNoMotion()],
     }).compileComponents();
 
     fixture = TestBed.createComponent(EmptyStateComponent);

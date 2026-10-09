@@ -19,7 +19,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAppCharts } from '../config/chart.config';
@@ -43,7 +42,7 @@ import { WidgetSnapshotService } from './widget-snapshot.service';
 import { WIDGET_SNAPSHOT_PLUGIN } from '../plugins/widget-snapshot.plugin';
 import { APP_LOCK_STORAGE_PREFIX } from '../utils/app-lock.utils';
 import { addDays, budgetPeriodWindow, dayKey } from '../utils/transaction-date.utils';
-import { MockAuthService, createMockUser } from './testing';
+import { MockAuthService, createMockUser, provideNoMotion } from './testing';
 import { DEFAULT_USER_PREFERENCES, User, WidgetSnapshot } from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { stripProviderKeys } from './testing/provider-keys';
@@ -248,7 +247,7 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),

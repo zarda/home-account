@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { Chart } from 'chart.js';
@@ -15,6 +14,7 @@ import {
   AUDIT_SCHEMES,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withScheme,
@@ -133,10 +133,11 @@ describe('SpendingAnalysisComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [SpendingAnalysisComponent, NoopAnimationsModule],
+      imports: [SpendingAnalysisComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrencyService },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -593,11 +594,12 @@ describe('SpendingAnalysisComponent', () => {
     beforeEach(async () => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [SpendingAnalysisComponent, NoopAnimationsModule],
+        imports: [SpendingAnalysisComponent],
         providers: [
           provideAppCharts(),
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ]
       })
         .overrideComponent(SpendingAnalysisComponent, {
@@ -682,11 +684,12 @@ describe('SpendingAnalysisComponent', () => {
     beforeEach(async () => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [SpendingAnalysisComponent, NoopAnimationsModule],
+        imports: [SpendingAnalysisComponent],
         providers: [
           provideAppCharts(),
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ]
       }).compileComponents();
 

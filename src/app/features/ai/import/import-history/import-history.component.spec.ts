@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Router } from '@angular/router';
 import { of, EMPTY } from 'rxjs';
@@ -20,6 +19,7 @@ import {
   channels,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -109,7 +109,7 @@ describe('ImportHistoryComponent', () => {
     mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
         { provide: ImportHistoryService, useValue: mockImportHistoryService },
@@ -119,7 +119,8 @@ describe('ImportHistoryComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: Router, useValue: mockRouter },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -514,7 +515,7 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
@@ -523,7 +524,8 @@ describe('ImportHistoryComponent transaction shortcut', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: router },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ]
     }).compileComponents();
 
@@ -604,7 +606,7 @@ describe('ImportHistoryComponent overflow', () => {
     translation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
@@ -613,7 +615,8 @@ describe('ImportHistoryComponent overflow', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ]
     }).compileComponents();
 
@@ -734,7 +737,7 @@ describe('ImportHistoryComponent, colours as painted', () => {
     translation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
@@ -743,7 +746,8 @@ describe('ImportHistoryComponent, colours as painted', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ]
     }).compileComponents();
 

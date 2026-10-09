@@ -1,11 +1,11 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
 
 import { SwitchOnChoiceDirective } from './switch-on-choice.directive';
+import { provideNoMotion } from '../../core/services/testing';
 
 /**
  * A switcher with a choice either side of the one selected, so that any key a
@@ -68,7 +68,8 @@ describe('SwitchOnChoiceDirective', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [SwitcherProbeComponent, NoopAnimationsModule]
+      imports: [SwitcherProbeComponent],
+      providers: [provideNoMotion()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(SwitcherProbeComponent);

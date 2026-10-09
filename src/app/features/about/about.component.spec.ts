@@ -1,6 +1,5 @@
 import { WritableSignal, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Capacitor } from '@capacitor/core';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -18,6 +17,7 @@ import {
   AUDIT_SCHEMES,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   runAxe,
   settleAnimations,
@@ -68,7 +68,7 @@ describe('AboutComponent', () => {
     mockPwa.promptInstall.and.callFake(async () => mockPwa.canPromptInstall.set(false));
 
     await TestBed.configureTestingModule({
-      imports: [AboutComponent, NoopAnimationsModule],
+      imports: [AboutComponent],
       providers: [
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: mockDialog },
@@ -77,6 +77,7 @@ describe('AboutComponent', () => {
         { provide: OnboardingService, useValue: mockOnboarding },
         { provide: AuthService, useValue: { userId: () => 'user-1' } },
         { provide: PwaService, useValue: mockPwa },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

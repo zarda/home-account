@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { FinancialSummaryComponent } from './financial-summary.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('FinancialSummaryComponent', () => {
   let component: FinancialSummaryComponent;
@@ -18,10 +18,11 @@ describe('FinancialSummaryComponent', () => {
     translation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [FinancialSummaryComponent, NoopAnimationsModule],
+      imports: [FinancialSummaryComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: TranslationService, useValue: translation },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

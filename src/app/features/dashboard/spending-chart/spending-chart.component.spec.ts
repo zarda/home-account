@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { Component, signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { BaseChartDirective } from 'ng2-charts';
@@ -21,6 +20,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   textLines,
@@ -108,12 +108,13 @@ describe('SpendingChartComponent', () => {
     });
 
     await TestBed.configureTestingModule({
-      imports: [SpendingChartComponent, NoopAnimationsModule],
+      imports: [SpendingChartComponent],
       providers: [
         provideAppCharts(),
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: CurrencyService, useValue: mockCurrencyService },
-        { provide: AuthService, useValue: mockAuthService }
+        { provide: AuthService, useValue: mockAuthService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -395,12 +396,13 @@ describe('SpendingChartComponent', () => {
     beforeEach(async () => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [SpendingChartComponent, NoopAnimationsModule],
+        imports: [SpendingChartComponent],
         providers: [
           provideAppCharts(),
           { provide: TranslationService, useValue: mockTranslationService },
           { provide: CurrencyService, useValue: mockCurrencyService },
-          { provide: AuthService, useValue: mockAuthService }
+          { provide: AuthService, useValue: mockAuthService },
+          provideNoMotion()
         ]
       }).compileComponents();
 

@@ -1,7 +1,6 @@
 import { computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 
@@ -17,7 +16,7 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub } from '../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { HouseholdInvite, HouseholdMembership, LEDGER_COPY_FIELDS, MAX_HOUSEHOLDS_PER_ACCOUNT } from '../../../models';
 import { HouseholdPageFocus } from '../household-focus';
@@ -111,7 +110,7 @@ describe('HouseholdSetupComponent', () => {
     online = signal(true);
 
     await TestBed.configureTestingModule({
-      imports: [HouseholdSetupComponent, NoopAnimationsModule],
+      imports: [HouseholdSetupComponent],
       providers: [
         {
           provide: HouseholdService,
@@ -129,7 +128,8 @@ describe('HouseholdSetupComponent', () => {
         { provide: DateFormatService, useValue: { formatDate } },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: PwaService, useValue: { isOnline: online } },
-        HouseholdPageFocus
+        HouseholdPageFocus,
+        provideNoMotion()
       ]
     }).compileComponents();
 
