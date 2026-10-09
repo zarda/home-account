@@ -7,6 +7,7 @@ import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { addDays, dateAtClampedDay, endOfDay, startOfDay, toDate } from '../utils/transaction-date.utils';
+import { opaqueRowId } from '../utils/opaque-id.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -595,19 +596,13 @@ export class RecurringService {
       const endDatePassed = endDate !== null && endDate < now;
       const postUntil = endDatePassed ? endDate : now;
 
-      const postedIds: string[] = [];
+      const occurrenceDates: Date[] = [];
 
       // Catch up every occurrence that came due since the last run, bounded
       // by the per-claim cap so the transaction stays under Firestore's
       // 500-write limit however long the rule was dormant.
-      while (occurrenceDate <= postUntil && postedIds.length < MAX_OCCURRENCES_PER_CLAIM) {
-        // Deterministic id keeps posting idempotent across repeated runs
-        const transactionId = `rec-${rule.id}-${occurrenceDate.getTime()}`;
-        const transactionRef = this.firestoreService.getDocRef(
-          `users/${userId}/transactions/${transactionId}`
-        );
-        tx.set(transactionRef, this.buildOccurrenceDocument(rule, occurrenceDate, userId));
-        postedIds.push(transactionId);
+      while (occurrenceDate <= postUntil && occurrenceDates.length < MAX_OCCURRENCES_PER_CLAIM) {
+        occurrenceDates.push(occurrenceDate);
 
         const next = this.calculateNextOccurrenceFromDate(occurrenceDate, rule.frequency, anchor);
         // Safety: a non-advancing frequency must not spin forever. The test is
@@ -617,6 +612,22 @@ export class RecurringService {
         if (!(next.getTime() > occurrenceDate.getTime())) break;
         occurrenceDate = next;
       }
+
+      // A digest of the rule and the occurrence time: deterministic, so a
+      // repeated run or a retried callback writes the same documents, and
+      // opaque, because a shared row's household copy carries this id and it
+      // must name neither the rule nor the day the row fell due (#466). The
+      // claim's only read is the rule above, so every write still follows
+      // every read, as a Firestore transaction requires.
+      const postedIds = await Promise.all(
+        occurrenceDates.map(date => opaqueRowId('rec', rule.id, date.getTime()))
+      );
+      postedIds.forEach((transactionId, i) => {
+        const transactionRef = this.firestoreService.getDocRef(
+          `users/${userId}/transactions/${transactionId}`
+        );
+        tx.set(transactionRef, this.buildOccurrenceDocument(rule, occurrenceDates[i], userId));
+      });
 
       // Advance the pointer (and pause an ended rule) in the SAME
       // transaction so posting and claim commit atomically. After a capped

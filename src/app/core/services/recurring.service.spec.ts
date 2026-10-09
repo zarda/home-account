@@ -16,6 +16,7 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
+import { opaqueRowId } from '../utils/opaque-id.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -79,6 +80,10 @@ describe('RecurringService', () => {
 
   const txSetPaths = (): string[] =>
     txSet.calls.allArgs().map(args => (args[0] as FakeDocRef).path);
+
+  /** Where a claim posts the occurrence of `ruleId` falling due at `when`. */
+  const occurrencePath = async (ruleId: string, when: Date): Promise<string> =>
+    `users/user123/transactions/${await opaqueRowId('rec', ruleId, when.getTime())}`;
 
   const installTransactionStub = (): void => {
     serverDocs = new Map();
@@ -877,9 +882,7 @@ describe('RecurringService', () => {
       await service.processRecurringTransactions([rule]);
 
       // The occurrence at `due` came due BEFORE the end date: it must post.
-      expect(txSetPaths()).toEqual([
-        `users/user123/transactions/rec-ended-${due.getTime()}`
-      ]);
+      expect(txSetPaths()).toEqual([await occurrencePath('ended', due)]);
       const [ref, data] = txUpdate.calls.mostRecent().args;
       expect((ref as FakeDocRef).path).toBe('users/user123/recurring/ended');
       const record = data as Record<string, unknown>;
@@ -912,9 +915,9 @@ describe('RecurringService', () => {
       await service.processRecurringTransactions([rule]);
 
       expect(txSetPaths()).toEqual([
-        `users/user123/transactions/rec-weekly1-${first.getTime()}`,
-        `users/user123/transactions/rec-weekly1-${second.getTime()}`,
-        `users/user123/transactions/rec-weekly1-${third.getTime()}`
+        await occurrencePath('weekly1', first),
+        await occurrencePath('weekly1', second),
+        await occurrencePath('weekly1', third)
       ]);
       const [, data] = txUpdate.calls.mostRecent().args;
       const record = data as { isActive: boolean; nextOccurrence: Timestamp };
@@ -1050,7 +1053,7 @@ describe('RecurringService', () => {
       expect((data as Record<string, unknown>)['lastProcessed']).toBeDefined();
       // The created transaction is fetched back and returned
       expect(mockFirestoreService.getDocument).toHaveBeenCalledWith(
-        `users/user123/transactions/rec-due1-${due.getTime()}`
+        await occurrencePath('due1', due)
       );
       expect(result.length).toBe(1);
       expect(result[0]).toBe(createdTxn);
@@ -1151,9 +1154,7 @@ describe('RecurringService', () => {
       await service.processRecurringTransactions([rule]);
 
       expect(txSet).toHaveBeenCalledTimes(1);
-      expect(txSetPaths()).toEqual([
-        `users/user123/transactions/rec-rec1-${due.getTime()}`
-      ]);
+      expect(txSetPaths()).toEqual([await occurrencePath('rec1', due)]);
       const doc = txSet.calls.mostRecent().args[1] as { date: Timestamp };
       expect(doc.date.toDate()).toEqual(due);
 
@@ -1163,6 +1164,27 @@ describe('RecurringService', () => {
       const record = data as { nextOccurrence: Timestamp; lastProcessed: Timestamp };
       expect(record.nextOccurrence.toDate().getTime()).toBeGreaterThan(Date.now());
       expect(record.lastProcessed).toBeDefined();
+    });
+
+    // A shared row's household copy carries the row's id, so the id must not
+    // tell a member which rule posted it or when it fell due (#466).
+    it('posts at an opaque id that names neither the rule nor the due time, the same on every claim', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      const rule = createRecurring({ id: 'rent-rule', nextOccurrence: Timestamp.fromDate(due) });
+      seedServerRule(rule);
+
+      // The default stub never commits the advanced pointer, so the second run
+      // claims the same occurrence again, as a racing or retried claim would.
+      await service.processRecurringTransactions([rule]);
+      await service.processRecurringTransactions([rule]);
+
+      const ids = txSetPaths().map(path => path.split('/').pop()!);
+      expect(ids.length).toBe(2);
+      expect(new Set(ids).size).toBe(1);
+      expect(ids[0]).toBe(await opaqueRowId('rec', 'rent-rule', due.getTime()));
+      expect(ids[0]).toMatch(/^[0-9a-f]{32}$/);
+      expect(ids[0]).not.toContain('rent-rule');
+      expect(ids[0]).not.toContain(String(due.getTime()));
     });
 
     it('should post one transaction per missed period and advance the rule once atomically', async () => {
@@ -1184,9 +1206,9 @@ describe('RecurringService', () => {
 
       // 2.5 days late on a daily rule => the 3 occurrences at due, due+1d, due+2d
       expect(txSetPaths()).toEqual([
-        `users/user123/transactions/rec-daily1-${due.getTime()}`,
-        `users/user123/transactions/rec-daily1-${second.getTime()}`,
-        `users/user123/transactions/rec-daily1-${third.getTime()}`
+        await occurrencePath('daily1', due),
+        await occurrencePath('daily1', second),
+        await occurrencePath('daily1', third)
       ]);
       expect(result.length).toBe(3);
 
@@ -1221,8 +1243,8 @@ describe('RecurringService', () => {
         await service.processRecurringTransactions([rule]);
 
         expect(txSetPaths()).toEqual([
-          `users/user123/transactions/rec-anchored-${february.getTime()}`,
-          `users/user123/transactions/rec-anchored-${march.getTime()}`
+          await occurrencePath('anchored', february),
+          await occurrencePath('anchored', march)
         ]);
       } finally {
         jasmine.clock().uninstall();
@@ -1367,7 +1389,7 @@ describe('RecurringService', () => {
         // The bad rule never reaches a claim: it used to pass the due filter
         // and spend a whole server transaction discovering nothing to do.
         expect(mockFirestoreService.runTransaction).toHaveBeenCalledTimes(1);
-        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-ok-${due.getTime()}`]);
+        expect(txSetPaths()).toEqual([await occurrencePath('ok', due)]);
         expect(warn).toHaveBeenCalledWith(jasmine.stringContaining('[Recurring]'), 'bad');
         // The anchor is never invented (ADR 0014), so nothing is written.
         expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
@@ -1386,7 +1408,7 @@ describe('RecurringService', () => {
 
         await expectAsync(service.processRecurringTransactions([bad, ok])).toBeResolved();
 
-        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-ok-${due.getTime()}`]);
+        expect(txSetPaths()).toEqual([await occurrencePath('ok', due)]);
       });
 
       it('repairs a malformed pointer to the first future occurrence without claiming it', async () => {
@@ -1551,7 +1573,7 @@ describe('RecurringService', () => {
 
         await expectAsync(service.processRecurringTransactions([rule])).toBeResolved();
 
-        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-bad-end-${due.getTime()}`]);
+        expect(txSetPaths()).toEqual([await occurrencePath('bad-end', due)]);
         expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
       });
 
@@ -1571,7 +1593,7 @@ describe('RecurringService', () => {
 
         await expectAsync(service.processRecurringTransactions([bad, ok])).toBeResolved();
 
-        expect(txSetPaths()).toEqual([`users/user123/transactions/rec-ok-${due.getTime()}`]);
+        expect(txSetPaths()).toEqual([await occurrencePath('ok', due)]);
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.calls.mostRecent().args.slice(0, 2))
           .toEqual([jasmine.stringContaining('[Recurring]'), 'bad']);
@@ -1705,9 +1727,7 @@ describe('RecurringService', () => {
       // The signal was empty before the run — the cold-start shape that
       // used to make the engine decide there was nothing to do.
       expect(service.recurringTransactions()).toEqual([]);
-      expect(txSetPaths()).toEqual([
-        `users/user123/transactions/rec-cold1-${due.getTime()}`
-      ]);
+      expect(txSetPaths()).toEqual([await occurrencePath('cold1', due)]);
       expect(result.length).toBe(0); // getDocument default resolves null
     });
 
