@@ -157,8 +157,8 @@ holds it, active, on the row's own side. One it does not hold — deleted since
 the backup, from another account, or on the other side — and one the backup
 did **not** record are filed under the row's own catch-all and graded 0.3,
 the grade 0045 gives a default nobody answered for — the shared mapper's, not
-the categorization ladder's own unanswered floor of 0.1 — so the chip's dot
-and the low-confidence tally see it
+the categorization ladder's own unanswered floor of 0.1 — so the chip wears
+the low-confidence dot
 ([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md),
 [ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
 While the account's categories have not loaded, the file's id is kept at 0.3:
@@ -211,8 +211,11 @@ See [receipt-import.md](receipt-import.md#failure-surfacing).
 
 A grade says what the door that produced the row can vouch for, and no more
 ([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
-The review card colours the category chip from `categoryConfidence`, and the
-`low_confidence` tally counts rows under 0.5:
+The review card colours the category chip from `categoryConfidence`, and a
+row under 0.5 wears the low-confidence dot. The dot on each card is the whole
+of it: the `low_confidence` warning that counted those rows for the batch was
+read by nothing, and it is gone
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
 
 | Door | A category the source named | A category nobody named, or nobody could place |
 |---|---|---|

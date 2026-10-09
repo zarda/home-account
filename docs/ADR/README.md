@@ -13,7 +13,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0006](0006-multi-image-receipt-storage.md) | Receipt images are addressed by slot; removal tombstones, never renames | Accepted; concurrent-edit gap closed by 0007; quota gap narrowed by 0094 | 2026-07-29 |
 | [0007](0007-transactional-receipt-edits.md) | Receipt slot edits commit through Firestore transactions; storage deletes stay first | Accepted; closes a gap of 0006 | 2026-07-30 |
 | [0008](0008-universal-receipt-language-support.md) | The app never narrows what the model can read | Accepted; diagnostic-channel gap closed by 0065 | 2026-07-31 |
-| [0009](0009-shared-state-publishing-and-lifecycle.md) | One publisher for shared account state; owners reset it, holders release it | Accepted; amended by 0163 | 2026-08-02 |
+| [0009](0009-shared-state-publishing-and-lifecycle.md) | One publisher for shared account state; owners reset it, holders release it | Accepted; amended by 0163; monthly-totals gap closed by 0170 | 2026-08-02 |
 | [0010](0010-nothing-truncates.md) | Nothing truncates: text reflows, values scale | Accepted; amended by 0012 | 2026-08-03 |
 | [0011](0011-the-csv-file-is-a-contract.md) | The CSV file is a contract, and every cell in it is untrusted | Accepted; amended by 0059; period-and-recurrence gap closed by 0059, Category gap by 0150 | 2026-08-03 |
 | [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted; row anatomy revised by 0017 | 2026-08-03 |
@@ -27,7 +27,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0020](0020-detected-groups-convert-through-the-prefilled-form.md) | Detected groups convert through the prefilled form | Accepted; closes a gap of 0002 | 2026-08-07 |
 | [0021](0021-one-goal-model-carries-savings-and-projects.md) | One goal model carries savings and projects | Accepted | 2026-08-07 |
 | [0022](0022-the-forecast-baselines-at-zero-today.md) | The forecast baselines at zero today | Accepted | 2026-08-07 |
-| [0023](0023-the-initial-bundle-carries-only-the-entry-route.md) | The initial bundle carries only the entry route | Accepted | 2026-08-08 |
+| [0023](0023-the-initial-bundle-carries-only-the-entry-route.md) | The initial bundle carries only the entry route | Accepted; prefetch gap corrected by 0170 | 2026-08-08 |
 | [0024](0024-every-component-checks-with-onpush.md) | Every component checks with OnPush | Accepted | 2026-08-08 |
 | [0025](0025-provider-variation-lives-in-the-transport-seam.md) | Provider variation lives in the transport seam | Accepted; amended by 0043 | 2026-08-08 |
 | [0026](0026-every-period-window-comes-from-one-helper.md) | Every period window comes from one helper | Accepted | 2026-08-08 |
@@ -40,7 +40,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0033](0033-a-stored-figure-is-re-taken-only-when-its-input-moved.md) | A stored figure is re-taken only when its input moved, and its unit never moves under it | Accepted; amends 0027 | 2026-08-11 |
 | [0034](0034-a-correctness-read-enumerates-the-collection.md) | A correctness-bearing read enumerates the collection, never a listener's first emission | Accepted | 2026-08-11 |
 | [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted; the deploy gap closed by 0077 | 2026-08-12 |
-| [0036](0036-a-user-facing-string-lives-in-the-catalog.md) | A user-facing string lives in the catalog, and only English declines | Accepted | 2026-08-12 |
+| [0036](0036-a-user-facing-string-lives-in-the-catalog.md) | A user-facing string lives in the catalog, and only English declines | Accepted; unreferenced-key gap closed by 0170 | 2026-08-12 |
 | [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted; lastUpdated gap closed by 0127; rate-validation and retry gaps closed by 0148 | 2026-08-12 |
 | [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
 | [0039](0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md) | A share arrives typed, and the stash answers only to its owner | Accepted; amends 0019 | 2026-08-14 |
@@ -49,13 +49,13 @@ reverse — why a thing is the way it is, not how to use it.
 | [0042](0042-a-derived-figure-agrees-with-the-set-that-produced-it.md) | A derived figure agrees with the set that produced it, and a cached one keys on all of it | Accepted; catch-up-read gap closed by 0044, cache-key gap by 0148 | 2026-08-14 |
 | [0043](0043-a-declared-setting-reaches-every-transport-that-accepts-it.md) | A declared generation setting reaches every transport that accepts it | Accepted; amends 0025 | 2026-08-14 |
 | [0044](0044-the-catch-up-work-list-comes-from-the-server.md) | The catch-up work list is answered by the server or not at all | Accepted; extends 0034; closes a gap of 0042 | 2026-08-15 |
-| [0045](0045-a-confidence-grade-names-its-source.md) | A confidence grade names its source, and the CSV import asks the real categorizer | Accepted; unresolved-name gap closed by 0046, status-string gap by 0118, precedence gap by 0147, Settings-CSV gap by 0150 | 2026-08-15 |
+| [0045](0045-a-confidence-grade-names-its-source.md) | A confidence grade names its source, and the CSV import asks the real categorizer | Accepted; unresolved-name gap closed by 0046, status-string gap by 0118, precedence gap by 0147, Settings-CSV gap by 0150, unread-warning gap by 0170 | 2026-08-15 |
 | [0046](0046-an-unrecognized-category-name-is-not-a-category.md) | An unrecognized category name is not a category | Accepted; closes a gap of 0045; keyword-fallback gap closed by 0147 | 2026-08-15 |
 | [0047](0047-feedback-is-a-stored-record-first-and-a-mail-second.md) | Feedback is a stored record first and a mail second | Accepted | 2026-08-15 |
 | [0048](0048-a-dead-capability-is-removed-not-guarded.md) | A dead capability is removed, not guarded | Accepted | 2026-08-16 |
 | [0049](0049-the-model-never-sees-an-i18n-key.md) | The model never sees an i18n key | Accepted; unresolved-category gap closed by 0051, income-category gap by 0147 | 2026-08-16 |
 | [0050](0050-a-spec-that-claims-a-zone-runs-under-it.md) | A spec that claims a zone runs under it | Accepted; closes a gap of 0032 | 2026-08-16 |
-| [0051](0051-an-uncategorized-row-is-graded-where-it-is-coerced.md) | An uncategorized row is graded where it is coerced | Accepted; closes a gap of 0049; two resolver gaps closed by 0053 | 2026-08-17 |
+| [0051](0051-an-uncategorized-row-is-graded-where-it-is-coerced.md) | An uncategorized row is graded where it is coerced | Accepted; closes a gap of 0049; two resolver gaps closed by 0053, unread-warning gap by 0170 | 2026-08-17 |
 | [0052](0052-a-profile-read-may-only-write-to-the-session-that-started-it.md) | A profile read may only write to the session that started it | Accepted; amended by 0163; re-arm gap narrowed by 0142 | 2026-08-17 |
 | [0053](0053-a-resolver-answers-with-a-category-that-still-exists.md) | A resolver answers with a category that still exists | Accepted; closes two gaps of 0051; keyword gap closed by 0147 | 2026-08-17 |
 | [0054](0054-a-forecast-tick-spans-a-fixed-duration.md) | A forecast tick spans a fixed duration | Accepted; year-picker gap closed by 0165 | 2026-08-17 |
@@ -63,7 +63,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0056](0056-a-permission-the-rules-grant-has-a-door-in-the-ui.md) | A permission the rules grant has a door in the UI | Accepted | 2026-08-17 |
 | [0057](0057-a-replayed-answer-enumerates-and-reports.md) | A replayed answer enumerates, and reports | Accepted | 2026-08-19 |
 | [0058](0058-a-formatted-date-follows-the-chosen-language.md) | A formatted date follows the chosen language | Accepted; pipe-ban gap closed by 0145 | 2026-08-19 |
-| [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 and closes a gap of it; Category and tag-separator gaps closed by 0150 | 2026-08-20 |
+| [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 and closes a gap of it; Category and tag-separator gaps closed by 0150, originalText gap by 0170 | 2026-08-20 |
 | [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted; split parts excepted by 0106; provenance extended by 0065; offline-queue gap closed by 0142 | 2026-08-20 |
 | [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted; inline-retry gap closed by 0165 | 2026-08-21 |
 | [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted; amended by 0099; third-currency gap closed and bulk-apply gap narrowed by 0149 | 2026-08-22 |
@@ -109,18 +109,18 @@ reverse — why a thing is the way it is, not how to use it.
 | [0102](0102-the-review-card-adds-a-tag-and-edits-a-location.md) | The review card adds a tag and edits a location | Accepted; closes a gap of 0068; extends 0099; keeps 0063's ladder; hit-box gap closed by 0110, unannounced-commit gap by 0149 | 2026-09-06 |
 | [0103](0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md) | The review step adds a row, and the wizard is sealed while it writes | Accepted; extends 0100; amended for #371; removal gap closed by 0108, progress gap by 0114, JSON-door gap by 0113, held-gate and seal gaps by 0149 | 2026-09-06 |
 | [0104](0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md) | A web reminder is raised through the worker the app already registers | Accepted; extends 0092; closes a gap of 0092; a second job for 0019's worker; three gaps closed by 0167 | 2026-09-08 |
-| [0105](0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md) | The cache-size card is removed, and the dead worker with it | Accepted; applies 0048 and 0097; install-surface gap closed by 0112 | 2026-09-08 |
+| [0105](0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md) | The cache-size card is removed, and the dead worker with it | Accepted; applies 0048 and 0097; install-surface gap closed by 0112, sync-message gap by 0170 | 2026-09-08 |
 | [0106](0106-the-review-step-splits-a-row-and-merges-two.md) | The review step splits a row, and merges two | Accepted; extends 0099 and 0103; excepts 0060; widens 0101; Remove gap closed by 0108; decimal gap closed by 0109; the dead helper it deferred is recorded by 0111; merged-count gap closed by 0116; double-upload gap closed by 0142 | 2026-09-08 |
 | [0107](0107-the-review-card-has-one-editing-machine.md) | The review card has one editing machine | Accepted; extends 0099 and 0102; unannounced-removal gap closed by 0149 | 2026-09-10 |
 | [0108](0108-the-review-step-removes-a-row.md) | The review step removes a row | Accepted; extends 0103 and 0106; closes a gap of each; amended for #400 and #415; one-press removal narrowed and announcement gap closed by 0149 | 2026-09-10 |
 | [0109](0109-a-hand-typed-amount-is-whole-in-its-currency.md) | A hand-typed amount is whole in its currency | Accepted; extends 0099; closes a gap of 0106; the two follow-up gaps closed by 0117 | 2026-09-10 |
 | [0110](0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md) | The probe measures the card at phone width, and in both directions | Accepted; extends 0010 and 0071; closes a gap of 0102; caret follow-up closed by 0122 | 2026-09-10 |
-| [0111](0111-the-position-overlap-pass-is-removed.md) | The position-overlap pass is removed | Accepted; applies 0048; records a helper 0106 deferred; merged-count figure removed by 0116; wasMerged gap closed by 0147 | 2026-09-10 |
-| [0112](0112-pwaservice-keeps-only-the-surface-something-calls.md) | PwaService keeps only the surface something calls | Accepted; applies 0048 and 0105; closes a gap of 0105; amended by 0168, which closes two of its gaps | 2026-09-10 |
-| [0113](0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md) | The wizard's picker takes a backup, and grades the category it defaulted | Accepted; applies 0045; extends 0062 and 0074; closes a gap of 0103; stale-id gap closed by 0147, lost-fields gap narrowed by it | 2026-09-11 |
+| [0111](0111-the-position-overlap-pass-is-removed.md) | The position-overlap pass is removed | Accepted; applies 0048; records a helper 0106 deferred; merged-count figure removed by 0116; wasMerged gap closed by 0147, positionInImage gap by 0170 | 2026-09-10 |
+| [0112](0112-pwaservice-keeps-only-the-surface-something-calls.md) | PwaService keeps only the surface something calls | Accepted; applies 0048 and 0105; closes a gap of 0105; amended by 0168 and 0170; two gaps closed by 0168, unregistered-worker gap by 0170 | 2026-09-10 |
+| [0113](0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md) | The wizard's picker takes a backup, and grades the category it defaulted | Accepted; applies 0045; extends 0062 and 0074; closes a gap of 0103; stale-id gap closed by 0147, lost-fields gap narrowed by it; unread-warning gap closed by 0170 | 2026-09-11 |
 | [0114](0114-the-confirm-step-reads-the-writes-progress-from-the-service.md) | The confirm step reads the write's progress from the service | Accepted; extends 0103; closes a gap of 0103; three gaps closed by 0118; its rule applied to a run's end by 0125 | 2026-09-11 |
-| [0115](0115-a-failed-row-is-named-by-its-id.md) | A failed row is named by its id | Accepted; extends 0103; restates a boundary of 0060; deselected-rows gap closed by 0120 | 2026-09-11 |
-| [0116](0116-the-merged-count-has-one-producer.md) | The merged count has one producer | Accepted; applies 0048; closes a gap of 0106; narrows one of 0111; merged-count gaps closed by 0147 | 2026-09-11 |
+| [0115](0115-a-failed-row-is-named-by-its-id.md) | A failed row is named by its id | Accepted; extends 0103; restates a boundary of 0060; deselected-rows gap closed by 0120, row-number gap by 0170 | 2026-09-11 |
+| [0116](0116-the-merged-count-has-one-producer.md) | The merged count has one producer | Accepted; applies 0048; closes a gap of 0106; narrows one of 0111; merged-count gaps closed by 0147, deduplication-fields gap by 0170 | 2026-09-11 |
 | [0117](0117-every-doors-figure-is-whole-in-its-currency.md) | Every door's figure is whole in its currency | Accepted; extends 0109; closes two gaps of 0109; bulk-switch gap closed by 0121, offline-drain gap by 0142 | 2026-09-11 |
 | [0118](0118-the-processing-step-names-its-step-and-the-write-owns-its-signals.md) | The processing step names its step, and the write owns its signals | Accepted; extends 0114; closes three gaps of 0114 and one of 0045; first gap closed by 0124, second by 0126, fourth by 0125, third still open | 2026-09-11 |
 | [0119](0119-a-batchs-totals-are-per-currency.md) | A batch's totals are per currency | Accepted; extends 0117 and 0059 | 2026-09-11 |
@@ -128,7 +128,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0121](0121-a-bulk-currency-switch-says-how-many-rows-it-blanked.md) | A bulk currency switch says how many rows it blanked | Accepted; extends 0117; closes a gap of 0117; amends 0108; unannounced-edit gap closed by 0149 | 2026-09-11 |
 | [0122](0122-the-chips-caret-trails-the-name-and-drops-at-phone-width.md) | The chip's caret trails the name, and drops at phone width | Accepted; extends 0010 and 0110; closes a note of 0110; unused-module gap closed by 0128 | 2026-09-11 |
 | [0123](0123-the-unit-sweep-is-silent-on-a-normal-path.md) | The unit sweep is silent on a normal path | Accepted; corrects 0088; applies 0037; console-gate gap closed by 0145 | 2026-09-11 |
-| [0124](0124-the-camera-door-names-its-step-and-a-status-nobody-could-see-is-deleted.md) | The camera door names its step, and a status nobody could see is deleted | Accepted; applies 0036 and 0048; closes a gap of 0118 | 2026-09-12 |
+| [0124](0124-the-camera-door-names-its-step-and-a-status-nobody-could-see-is-deleted.md) | The camera door names its step, and a status nobody could see is deleted | Accepted; applies 0036 and 0048; closes a gap of 0118; unreferenced-key gap closed by 0170 | 2026-09-12 |
 | [0125](0125-a-run-that-has-ended-owns-no-bar.md) | A run that has ended owns no bar | Accepted; applies 0114 and 0048; closes a gap of 0118; removes a field of 0065 | 2026-09-12 |
 | [0126](0126-a-step-no-door-can-paint-comes-off-the-type.md) | A step no door can paint comes off the type | Accepted; closes a gap of 0118; rests on another | 2026-09-12 |
 | [0127](0127-a-figure-the-app-cannot-vouch-for-says-so.md) | A figure the app cannot vouch for says so | Accepted; applies 0037; closes a gap of 0037; extends 0119; retry and line-time gaps closed by 0148 | 2026-09-12 |
@@ -174,6 +174,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0167](0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md) | A notification carries its route and a tap lands on it, and the recap nudge needs a week with news | Accepted; closes gaps of 0096 and 0104 | 2026-10-08 |
 | [0168](0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md) | The palette lists the shortcuts and the header opens it, and About offers to install the app | Accepted; closes gaps of 0073 and 0112; amends 0112 | 2026-10-08 |
 | [0169](0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md) | A category's colour is drawn through the chip or a pipe that knows its surface, and the axe pass sweeps both themes below the fold | Accepted; closes three gaps of 0151 and two of accessibility.md | 2026-10-08 |
+| [0170](0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md) | The animations runtime, the unregistered worker and nine dead items come out | Accepted; applies 0048; amends 0112; closes gaps of 0009, 0036, 0045, 0051, 0059, 0105, 0111, 0112, 0113, 0115, 0116 and 0124; corrects a gap of 0023 | 2026-10-10 |
 
 ## What belongs here
 

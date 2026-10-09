@@ -2,10 +2,10 @@
 
 `PwaService` (`core/services/pwa.service.ts`, root) is the app's one view of
 the browser around it: whether the connection actually carries traffic,
-whether the app is running installed, whether the device is iOS, the
-browser's install prompt, background sync, and the messages the service
-worker posts back. This document owns the service. The worker itself, and
-the share target it exists for, are in [share-import.md](share-import.md);
+whether the app is running installed, whether the device is iOS, and the
+browser's install prompt. It reads nothing the service worker posts and asks
+the worker for nothing. This document owns the service. The worker itself,
+and the share target it exists for, are in [share-import.md](share-import.md);
 what reminders raise through it is in [reminders.md](reminders.md).
 
 Why the surface is only what something calls is in
@@ -13,7 +13,10 @@ Why the surface is only what something calls is in
 Why the install prompt is held, never suppressed, and offered from About is
 in
 [ADR 0168](ADR/0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md),
-which amends it.
+which amends it. Why there is no background sync, and no Angular service
+worker, is in
+[ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md),
+which amends it again.
 
 ## The surface
 
@@ -25,7 +28,6 @@ which amends it.
 | `isIOS` | Whether the device is an iPhone, iPod or iPad, iPadOS included | The camera capture, About |
 | `canPromptInstall` | Whether the browser has handed over an install prompt not yet spent | About |
 | `promptInstall()` | Raises that prompt, once | About |
-| `registerBackgroundSync(tag)` | Registers a background sync tag with the worker | The offline queue |
 
 A member joins this table when something calls it, and leaves when nothing
 does (ADR 0112). The `createSpyObj('PwaService', …)` stubs in the specs name
@@ -126,34 +128,30 @@ card, and the button with focus, leave on the next render; moving focus
 first keeps a keyboard user where Tab would have taken them, and does not
 spend the user activation `prompt()` needs.
 
-## Background sync and the worker's messages
+## No background sync, and no messages from the worker
 
-`registerBackgroundSync(tag)` registers the tag on the worker's registration
-once `navigator.serviceWorker.ready` resolves, where the browser supports
-sync at all. The offline queue calls it. The share-target worker has no
-`sync` handler, so the event is inert by design
-([share-import.md](share-import.md)).
+The service registers no `message` listener on `navigator.serviceWorker`.
+The worker's one message, `notification-route`, belongs to
+`NotificationTapService` ([reminders.md](reminders.md#where-a-tap-lands)).
 
-The service listens to `navigator.serviceWorker`'s `message` event and acts
-on one type, `SYNC_OFFLINE_QUEUE`, by dispatching a window
-`sync-offline-queue` event the offline queue listens for. Nothing posts that
-type today (ADR 0105, ADR 0112). The worker's one message,
-`notification-route`, belongs to `NotificationTapService`
-([reminders.md](reminders.md#where-a-tap-lands)) and is ignored here. A
-message whose data is not an object is ignored before the type is read: the
-channel is shared, and a listener that threw would be reported once per
-message by every instance still listening (pinned by "ignores a message
-whose data is not an object, through the real container").
+There is no background sync. The share-target worker has no `sync` handler
+([share-import.md](share-import.md)), so the `sync-offline-queue` tag the
+service used to register was never answered, and the `SYNC_OFFLINE_QUEUE`
+message it used to re-dispatch as a window event was never posted. Both
+went (ADR 0170). The offline queue drains on the browser's `online` event
+and on **Sync Now** on the AI settings page
+([receipt-import.md](receipt-import.md#offline-capture-and-the-queue)).
 
 ## Verifying it
 
 - `pwa.service.spec.ts`: the online state and the reachability probe,
-  standalone and the native app, the worker's messages, background sync, the
-  install prompt ("captures beforeinstallprompt without preventDefault, so
-  the browser keeps its own install UI", "prompts once, then has nothing left
-  to offer", "never offers it on native"), and iPadOS ("counts a Mac user
-  agent with touch points as iOS: an iPad", with a Mac without them as the
-  pin).
+  standalone and the native app, the worker's channel ("registers no message
+  listener on the service worker container", "has no background-sync
+  registration"), the install prompt ("captures beforeinstallprompt without
+  preventDefault, so the browser keeps its own install UI", "prompts once,
+  then has nothing left to offer", "never offers it on native"), and iPadOS
+  ("counts a Mac user agent with touch points as iOS: an iPad", with a Mac
+  without them as the pin).
 - `about.component.spec.ts`, describe `install card`, renders the real
   template: each state, the card leaving once the prompt is spent, the focus
   hand-off, and an axe pass over both visible states in both schemes.
@@ -182,5 +180,3 @@ whose data is not an object, through the real container").
 - **In the native app the probe only confirms.** It fetches a path relative
   to the page, which the app's bundled web server answers whatever the radio
   is doing, so there `isOnline` follows `navigator.onLine`.
-- **The `production` build still emits an Angular service worker nobody
-  registers** (ADR 0105, ADR 0112).

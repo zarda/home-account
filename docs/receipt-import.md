@@ -659,13 +659,16 @@ announcements would be placed in the live region in turn — whether a screen
 reader finishes the first before it speaks the second is the reader's own
 policy ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)'s known
 gaps). The failed rows it offers back are the
-ones the record **names by id**, not by position: the record's `row` number
-counts the submitted subset, which is not what the reviewer is looking at once
+ones the record **names by id**, with no row number: a position would count
+the submitted subset, which is not what the reviewer is looking at once
 anything has been deselected
-([ADR 0115](ADR/0115-a-failed-row-is-named-by-its-id.md)). While the write
-runs, the confirm step's bar and the line under it are the import service's
-own progress — the row being written out of the total — rather than figures
-the wizard keeps
+([ADR 0115](ADR/0115-a-failed-row-is-named-by-its-id.md)). The `row` number
+the record once carried beside the id was read by nothing and is no longer
+written; a record stored before keeps it, harmlessly
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
+While the write runs, the confirm step's bar and the line under it are the
+import service's own progress — the row being written out of the total —
+rather than figures the wizard keeps
 ([ADR 0114](ADR/0114-the-confirm-step-reads-the-writes-progress-from-the-service.md)).
 The processing step's line is the same arrangement one step earlier: the
 service names the step it is on and the wizard renders that name through the
@@ -794,6 +797,22 @@ failure is classed `incomplete` and shown as its own error card; the JSON
 parser's own wording never reaches a screen. The in-form scan keeps the
 salvaged rows too, but has no review table on which to explain them.
 
+**A PDF read only in part says so.** A bank PDF becomes one image per page,
+and only the first fifteen are read (`MAX_PDF_PAGES`): each page is a
+full-size canvas and another image in the request, and on iOS an over-long
+document kills the WebView rather than throwing. `importFromPDF` reports a
+longer document as a `pages_truncated` warning carrying the figures, and the
+review step says *Only the first {read} of {total} pages of the PDF were
+read*, in a `role="status"` notice beside the cut-off one. When a batch holds
+more than one such PDF, the first is named by its figures and a second line
+counts the rest: *Other PDFs also read only in part: {others}*. A warning
+carries no file name, so the others are counted rather than named. The
+wizard gathers every result's warnings in a batch and maps them once
+(`reviewNoticesFrom`), so a CSV that had nothing to say cannot lower a
+notice the photos or a PDF raised. Until this notice existed the cut was
+dropped silently: the service wrote an English sentence nothing read
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
+
 That notice used to end "add anything that is not here" with nothing on the
 step that could. It now points at **Add a row**, under the whole list rather
 than in any card: it appends a blank row taking the day and the currency of
@@ -863,6 +882,26 @@ batch's size, and the same diagnostics as optional slots (`door`, `engine`,
 writes the same slots on its record at confirm time. Import History renders
 them as chips, with the error class on a failed record, and subscribes to
 the newest 200 records.
+
+**A record's error lines are in the reader's language**, not the text it
+stored. A failed attempt that stored one of the app's own sentences, the
+classifier's line for a failure the app raised itself (no provider, cloud AI
+out of reach, a queue write refused in whole or in part), is read back to
+that sentence's own key, the one the wizard and the camera showed: a drain
+that failed online with no provider says to add a key
+(`import.errorCloudUnavailable`), not to check a connection that works. Any
+other failed attempt's line is a catalog sentence for its error class:
+`errors.network` for a connection failure, `import.errorHintQuota` for a
+spent quota, and so on, reusing a sentence the catalogs already had wherever
+there was one, with two new ones for `server` and `timeout`. A row the
+confirm loop refused is read by its reason through `importFailureKey`, the
+wizard's own reading: a refused amount, a connection failure, or a reason it
+cannot name. Such a row is recognised by its id, on every record since rows
+were matched by id, or by its description, which the loop has always
+written, so older records translate too. The first three lines show, and
+the rest fold into *+{others} more* (`import.moreErrors`). A line that is
+neither shape, a whole-import failure or a record restored in some other
+shape, falls back to its stored text (see *What still bounds coverage*).
 
 **A completed import names the transactions it created.** A success record
 carries `transactionIds` — the ids of the rows that landed, in selected-row
@@ -947,11 +986,12 @@ surfaced only to the account that was signed in when it arrived, with a bounded
 claim window for shares made signed out (see
 [share-import.md](share-import.md)).
 
-The queue drains when the browser reports the connection back and when you
-press **Sync Now** on the AI settings page. It also listens for a
-`sync-offline-queue` event that nothing produces — no registered worker
-carries a `sync` handler
-([ADR 0105](ADR/0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md)).
+The queue drains when the browser reports the connection back (`online`)
+and when you press **Sync Now** on the AI settings page, and on nothing else.
+No worker wakes it: the share-target worker has no `sync` handler, so the
+background-sync tag the app once registered, and the `sync-offline-queue`
+event it listened for, were never answered and are gone
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
 Draining is unattended by definition — a reconnect with no dialog
 open and possibly nobody looking — so there is no review step: what the model
 read goes straight into the ledger. They are ordinary transactions afterwards,
@@ -1032,6 +1072,9 @@ names the image and the status it dropped, with the drain's warning beside it.
 - **Connectivity**, for the cloud path. Images captured offline are queued
   instead — see *Offline capture and the queue* above.
 - **The receipt image quota**, which is a tier limit rather than a technical one.
+- **The PDF page cap.** A bank PDF is read to its fifteenth page and no
+  further. The review step says how many pages of how many were read, so the
+  missing rows are known to be missing, but they are not read.
 - **The 2 MB ceiling on a stored image**, which the app now meets by compressing
   rather than by refusing: a photo is redrawn at 2000px on its longest edge and
   re-encoded only as far as it must be. An image the browser cannot decode at
@@ -1072,6 +1115,13 @@ names the image and the status it dropped, with the drain's warning beside it.
   captured after another tab has taken the database to a newer version is met
   as an ordinary could-not-store failure rather than as the closed-queue state
   the AI settings page names; the page has to be reloaded first.
+- **A whole-import failure reads as its stored English in Import History.**
+  When a confirm fails outright, `failImport` writes the thrown error's own
+  message, or *Import failed*, with no error class and no row, so the
+  history has nothing to translate it from and shows the text as stored.
+  Every line from a failed attempt or a refused row reads in the reader's
+  language. Giving that path a class of its own is a follow-up
+  ([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
 
 If a receipt fails for any other reason, that is a bug rather than a
 limitation. Diagnosing one starts on the Import History page: the failed

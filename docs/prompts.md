@@ -80,7 +80,7 @@ A prompt asks for what the paper says, not for a conclusion the app draws for it
 |---|---|---|---|---|
 | `receiptParse` | receiptScanning | claude, gemini, openai | 1.17.93 | One receipt photo → one transaction, with `receiptCount` so several receipts in one photo are noticed; reports the issuing country as an alpha-2 code |
 | `receiptSummary` | receiptScanning | gemini | 1.17.93 | One receipt photo → one summary row carrying the full receipt body as notes; reports the issuing country as an alpha-2 code |
-| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total, with position metadata for overlap detection; reports the issuing country as an alpha-2 code |
+| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total; reports the issuing country as an alpha-2 code |
 | `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item; reports the issuing country as an alpha-2 code |
 | `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges, one printed total per group; reports the issuing country as an alpha-2 code. The only prompt whose `maxOutputTokens` is computed rather than fixed — the answer grows with the photo count, so the budget does too (ADR 0066) |
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row; sent in chunks of 25 rows so every answer fits the declared 800-token budget |
@@ -107,7 +107,7 @@ An exemption names concrete provider files, so an exempted prompt has to be rend
 | Prompt | Sent by | Gap |
 |---|---|---|
 | `receiptSummary` | gemini | The other two go straight to statement extraction |
-| `receiptItems` | gemini | Position-aware single-image itemization has no OpenAI/Claude counterpart yet |
+| `receiptItems` | gemini | Single-image itemization has no OpenAI/Claude counterpart yet |
 
 ## What the check cannot see
 

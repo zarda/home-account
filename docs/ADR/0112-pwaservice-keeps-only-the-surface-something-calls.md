@@ -2,6 +2,8 @@
 
 **Status:** Accepted, implemented; amended by
 [0168](0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md)
+and
+[0170](0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)
 · **Date:** 2026-09-10 · **Issues:** #390
 
 No reference document owns the service. What the app's PWA support actually
@@ -23,6 +25,25 @@ spec case cited below as *ignores beforeinstallprompt* is now *captures
 beforeinstallprompt without preventDefault, so the browser keeps its own
 install UI*, with the same assertion. The service's reference document is
 now [../pwa.md](../pwa.md).
+
+**Amended by
+[0170](0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md).**
+The rule below stands, and 0170 applies it twice more.
+`registerBackgroundSync` leaves the surface named under *Decision*: the
+share-target worker has no `sync` handler, so the tag it registered was never
+answered. The `message` listener on `navigator.serviceWorker` goes with it,
+along with its `SYNC_OFFLINE_QUEUE` case, which nothing ever posted. So the
+consequence that the message "is still the one message with a listener and no
+sender" no longer holds: neither the listener nor the message exists, and the
+offline queue drains on `online` and on **Sync Now**. The decision under *The
+package, the build option and `ngsw-config.json` stay* does not stand. The
+`production` configuration no longer builds the Angular worker,
+`ngsw-config.json` and its spec are deleted, and `@angular/service-worker` is
+no longer a dependency. The analytics pin moved to `share-target-sw.spec.ts`,
+against the worker the app does register. The rejected alternative *Dropping
+`@angular/service-worker`* called that a build-configuration decision rather
+than a dead-code one; 0170 is where it was made. With it goes the last of the
+Known gaps below, the worker nobody registers.
 
 Applies [0048](0048-a-dead-capability-is-removed-not-guarded.md) and
 [0105](0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md),

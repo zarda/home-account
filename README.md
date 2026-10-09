@@ -282,7 +282,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/smart-search.md](docs/smart-search.md) | Natural-language search: one interpretation call, local aggregation, keyword fallback, and the persisted answer history |
 | [docs/account-deletion.md](docs/account-deletion.md) | Account deletion: the client-side cascade, its ordering, partial-failure semantics, and the rules it needed |
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |
-| [docs/pwa.md](docs/pwa.md) | The PWA layer: reachability, running installed, iOS and iPadOS detection, the install prompt and the About page's card, background sync and the worker's messages |
+| [docs/pwa.md](docs/pwa.md) | The PWA layer: reachability, running installed, iOS and iPadOS detection, the install prompt and the About page's card, and why there is no background sync |
 | [docs/widget.md](docs/widget.md) | The iOS home-screen widget: the snapshot contract, when it is written and deduplicated, the four states, the plugin and target, and verifying it on the simulator |
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
 | [docs/household.md](docs/household.md) | Households: what a shared row reveals and what stays private, sharing, the household's own budgets and goals, the flows, the invite callable's answers, the data model and rules, the cleanup triggers, and the operator runbook for the callable, its invoker grant and its mail |
