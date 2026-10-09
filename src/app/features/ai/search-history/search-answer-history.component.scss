@@ -65,7 +65,7 @@
 
 .history-meta {
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 .history-detail {

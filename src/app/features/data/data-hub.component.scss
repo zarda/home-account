@@ -56,7 +56,9 @@
     font-size: var(--text-2xl);
     width: 1em;
     height: 1em;
-    color: var(--color-primary);
+    // The text step: --color-primary on its own tint fell to 2.68:1 in dark
+    // once the row's hover surface lightened what is under it.
+    color: var(--color-primary-text);
   }
 }
 

@@ -10,6 +10,15 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { Category, Goal, SavedSearch, TransactionFilters } from '../../../models';
+import {
+  channels,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('TransactionFiltersComponent', () => {
   let component: TransactionFiltersComponent;
@@ -1139,6 +1148,31 @@ describe('TransactionFiltersComponent', () => {
 
       host.remove();
     });
+
+    describe('the month and year pickers\' bounds', () => {
+      const year = new Date().getFullYear();
+      const endOfNextYear = new Date(year + 1, 11, 31, 23, 59, 59, 999);
+
+      const boundedInputs = () => [component.monthPicker, component.yearPicker]
+        .map(picker => picker.datepickerInput);
+
+      it('gives both the floor\'s month and 31 December next year', () => {
+        fixture.componentRef.setInput('floor', new Date(year - 2, 5, 15, 9));
+        fixture.detectChanges();
+
+        for (const input of boundedInputs()) {
+          expect(input.min).toEqual(new Date(year - 2, 5, 1));
+          expect(input.max).toEqual(endOfNextYear);
+        }
+      });
+
+      it('caps both and leaves the floor open with no floor input', () => {
+        for (const input of boundedInputs()) {
+          expect(input.min).toBeNull();
+          expect(input.max).toEqual(endOfNextYear);
+        }
+      });
+    });
   });
 
   describe('presetFilters input', () => {
@@ -1272,4 +1306,102 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  // Not the calendar's income and expense marks, which are the type colours.
+  describe('colours', () => {
+    /** What `color: var(token)` computes to under the theme on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function expectAA(el: Element, label: string): void {
+      expect(ratio(paintedColor(el), paintedBackground(el)))
+        .withContext(`${label} at AA on what is under it`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    it('paints the toolbar and the search box in their tokens, at AA, in both themes', () => {
+      component.expanded.set(true);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      const quick = root.querySelector('.quick-btn:not(.active)') as HTMLElement;
+      const toggle = root.querySelector('.filter-toggle') as HTMLElement;
+      const panel = root.querySelector('.filter-panel') as HTMLElement;
+      const input = root.querySelector('.search-input') as HTMLInputElement;
+      const icon = root.querySelector('.search-icon') as HTMLElement;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          // The quick filters carry `transition: all`, which would hold the
+          // other theme's colours for as long as the spec runs.
+          settleAnimations(document);
+          const border = tokenColour('--border-primary');
+          expect(getComputedStyle(quick).color).withContext(`${theme} quick filter`).toBe(tokenColour('--text-muted'));
+          expectAA(quick, `${theme} quick filter`);
+          expect(getComputedStyle(quick).borderBlockStartColor).withContext(`${theme} quick filter border`).toBe(border);
+          expect(getComputedStyle(toggle).borderBlockStartColor).withContext(`${theme} toggle border`).toBe(border);
+          expect(getComputedStyle(panel).borderBlockStartColor).withContext(`${theme} panel rule`).toBe(border);
+
+          expect(getComputedStyle(input).color).withContext(`${theme} query`).toBe(tokenColour('--text-primary'));
+          expectAA(input, `${theme} query`);
+          const placeholder = getComputedStyle(input, '::placeholder').color;
+          expect(placeholder).withContext(`${theme} placeholder`).toBe(tokenColour('--text-muted'));
+          expect(ratio(channels(placeholder).rgb, paintedBackground(input)))
+            .withContext(`${theme} placeholder at AA on the search box`)
+            .toBeGreaterThanOrEqual(4.5);
+          expect(getComputedStyle(icon).color).withContext(`${theme} search icon`).toBe(tokenColour('--text-muted'));
+          expectAA(icon, `${theme} search icon`);
+        });
+      }
+    });
+
+    it("strengthens a quick filter's border on hover to --border-strong, in both themes", () => {
+      const quick = (fixture.nativeElement as HTMLElement).querySelector('.quick-btn:not(.active)') as HTMLElement;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          try {
+            quick.style.borderColor = hoverValue(quick, '.quick-btn', 'border-color');
+            settleAnimations(document);
+            expect(getComputedStyle(quick).borderBlockStartColor)
+              .withContext(`${theme} hovered border`)
+              .toBe(tokenColour('--border-strong'));
+          } finally {
+            quick.style.removeProperty('border-color');
+          }
+        });
+      }
+    });
+
+    it('paints the suggestion heading and its icons in --text-muted, at AA, in both themes', fakeAsync(() => {
+      mockSearchHistory.savedSearches.set([savedSearch('s1', 'coffee')]);
+      component.expanded.set(true);
+      fixture.detectChanges();
+      tick();
+      const root = fixture.nativeElement as HTMLElement;
+      root.querySelector<HTMLInputElement>('.search-input')!.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      const heading = root.querySelector('.suggestion-heading') as HTMLElement;
+      const icon = root.querySelector('.suggestion-icon') as HTMLElement;
+      expect(heading).withContext('the saved-search heading').toBeTruthy();
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [label, el] of [['heading', heading], ['icon', icon]] as const) {
+            expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenColour('--text-muted'));
+            expectAA(el, `${theme} ${label}`);
+          }
+        });
+      }
+      flush();
+    }));
+  });
 });

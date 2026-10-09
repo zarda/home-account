@@ -83,13 +83,55 @@ describe('NoteTranslationComponent', () => {
     expect(component.showingTranslation()).toBeFalse();
   });
 
-  it('offers the disabled button and names the fix when no provider is configured', () => {
+  it('keeps the unavailable button in the tab order, described by the fix, and asks for nothing on a press', () => {
     available.set(false);
     fixture.detectChanges();
 
+    // A natively disabled button leaves the tab order, so a keyboard reader
+    // never reaches it, nor the hint that says why it does nothing.
     const button = query('.translate-button') as HTMLButtonElement;
-    expect(button.disabled).toBeTrue();
-    expect(query('.no-provider-hint')?.textContent).toContain('noteTranslation.noProvider');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.disabled).withContext('not natively disabled').toBeFalse();
+    const hint = query('.no-provider-hint')!;
+    expect(hint.textContent).toContain('noteTranslation.noProvider');
+    expect(hint.id).withContext('the hint carries an id').not.toBe('');
+    expect(button.getAttribute('aria-describedby')).toBe(hint.id);
+
+    button.click();
+    fixture.detectChanges();
+
+    expect(translate).not.toHaveBeenCalled();
+    expect(query('app-loading-spinner')).toBeNull();
+    expect(query('.translate-button')).not.toBeNull();
+  });
+
+  it('drops the description and the disabled state once a provider can answer', () => {
+    available.set(false);
+    fixture.detectChanges();
+    available.set(true);
+    fixture.detectChanges();
+
+    const button = query('.translate-button') as HTMLButtonElement;
+    expect(button.getAttribute('aria-disabled')).toBeNull();
+    expect(button.getAttribute('aria-describedby')).toBeNull();
+    expect(query('.no-provider-hint')).toBeNull();
+  });
+
+  it('gives every lens its own hint id', () => {
+    // The list, the detail dialog and the edit form can each hold a lens at
+    // once, and a description pointing at a shared id reads whichever hint
+    // the document finds first.
+    available.set(false);
+    fixture.detectChanges();
+    const other = TestBed.createComponent(NoteTranslationComponent);
+    other.componentRef.setInput('note', 'お茶 120');
+    other.detectChanges();
+
+    const first = query('.no-provider-hint')!.id;
+    const second = (other.nativeElement as HTMLElement).querySelector('.no-provider-hint')!.id;
+    expect(second).not.toBe('');
+    expect(second).not.toBe(first);
+    other.destroy();
   });
 
   it('spins while the model answers, then shows the marked-up translation', async () => {
@@ -220,6 +262,33 @@ describe('NoteTranslationComponent', () => {
     expect(translate).toHaveBeenCalledTimes(2);
     expect(query('.translation-error')).toBeNull();
     expect(query('.translated-text')?.textContent).toContain('Rice ball 150');
+  });
+
+  it('holds Retry too when no provider can answer, reachable and described by the fix', async () => {
+    translate.and.rejectWith(new Error('offline'));
+    fixture.detectChanges();
+
+    (query('.translate-button') as HTMLButtonElement).click();
+    await settle();
+    expect(query('.no-provider-hint')).withContext('no hint while a provider can answer').toBeNull();
+    expect(query('.retry-button')?.getAttribute('aria-describedby')).toBeNull();
+
+    available.set(false);
+    fixture.detectChanges();
+
+    const retry = query('.retry-button') as HTMLButtonElement;
+    expect(retry.getAttribute('aria-disabled')).toBe('true');
+    expect(retry.disabled).withContext('not natively disabled').toBeFalse();
+    const hint = query('.no-provider-hint')!;
+    expect(hint.textContent).toContain('noteTranslation.noProvider');
+    expect(hint.id).withContext('the hint carries an id').not.toBe('');
+    expect(retry.getAttribute('aria-describedby')).toBe(hint.id);
+    expect(query('.translation-error')).withContext('the failure stays on screen').not.toBeNull();
+
+    retry.click();
+    await settle();
+
+    expect(translate).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a showingTranslation the host bound before the first change detection', () => {

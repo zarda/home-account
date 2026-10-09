@@ -21,15 +21,17 @@
       <span class="section-label">{{ 'settings.icon' | translate }}</span>
       <div
         class="icons-grid"
-        role="radiogroup"
+        role="group"
         [attr.aria-label]="'settings.iconSelection' | translate"
       >
         @for (icon of icons; track icon) {
           <button
             type="button"
             class="icon-btn"
+            [attr.aria-label]="iconNameKeys[icon] | translate"
+            [attr.aria-pressed]="selectedIcon === icon"
             [class.selected]="selectedIcon === icon"
-            [style.color]="selectedIcon === icon ? selectedColor : ''"
+            [style.color]="(selectedIcon === icon ? selectedColor : '') | categoryGlyph:'iconGrid'"
             (click)="selectIcon(icon)"
           >
             <mat-icon>{{ icon }}</mat-icon>
@@ -43,21 +45,25 @@
       <span class="section-label">{{ 'settings.color' | translate }}</span>
       <div
         class="colors-grid"
-        role="radiogroup"
+        role="group"
         [attr.aria-label]="'settings.colorSelection' | translate"
       >
-        @for (color of colors; track color) {
+        @for (color of colors; track color; let i = $index) {
+          <!-- colors:allow-start(category-data) each swatch is filled with the colour it offers -->
           <button
             type="button"
             class="color-btn"
+            [attr.aria-label]="colorNameKeys[i] | translate"
+            [attr.aria-pressed]="selectedColor === color"
             [class.selected]="selectedColor === color"
             [style.background-color]="color"
             (click)="selectColor(color)"
           >
             @if (selectedColor === color) {
-              <mat-icon>check</mat-icon>
+              <mat-icon [style.color]="color | readableOn">check</mat-icon>
             }
           </button>
+          <!-- colors:allow-end -->
         }
       </div>
     </div>
@@ -66,9 +72,7 @@
     <div class="preview-section">
       <span class="section-label">{{ 'settings.preview' | translate }}</span>
       <div class="preview-item">
-        <div class="preview-icon" [style.background-color]="selectedColor + '20'">
-          <mat-icon [style.color]="selectedColor">{{ selectedIcon }}</mat-icon>
-        </div>
+        <app-category-chip appearance="tile" [icon]="selectedIcon" [color]="selectedColor" />
         <span class="preview-name">{{ name || ('settings.categoryName' | translate) }}</span>
       </div>
     </div>

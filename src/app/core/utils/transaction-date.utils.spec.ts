@@ -25,6 +25,7 @@ import {
   parseDayKey,
   parseMonthKey,
   periodWindow,
+  pickerBounds,
   previousPeriodWindow,
   startOfDay,
   startOfMonth,
@@ -547,6 +548,57 @@ describe('transaction-date.utils', () => {
       const march31 = new Date(2026, 2, 31, 9, 0);
       expect(monthKey(periodWindow('lastMonth', march31).start)).toBe('2026-02');
       expect(monthKey(periodWindow('lastMonth', march31).end)).toBe('2026-02');
+    });
+  });
+
+  describe('pickerBounds', () => {
+    const now = new Date(2026, 7, 10, 14, 30);
+
+    it('runs from the month of the oldest row to 31 December next year', () => {
+      expect(pickerBounds(new Date(2024, 5, 18, 9, 15), now)).toEqual({
+        min: new Date(2024, 5, 1),
+        max: new Date(2027, 11, 31, 23, 59, 59, 999),
+      });
+    });
+
+    it('leaves the floor open without an oldest row, and still caps', () => {
+      expect(pickerBounds(null, now)).toEqual({
+        min: null,
+        max: new Date(2027, 11, 31, 23, 59, 59, 999),
+      });
+    });
+
+    // Both edges sit within a few hours of a year boundary, so reading UTC
+    // parts lands them in the neighbouring year: the first east of UTC
+    // (Tokyo), the second west of it (New York).
+    it('floors a row half an hour into the year in that year', () => {
+      const { min } = pickerBounds(new Date(2025, 0, 1, 0, 30), now);
+      expect(min?.getFullYear()).toBe(2025);
+      expect(min?.getMonth()).toBe(0);
+      expect(dayKey(min!)).toBe('2025-01-01');
+    });
+
+    it('floors a row half an hour before the year ends in that year', () => {
+      const { min } = pickerBounds(new Date(2024, 11, 31, 23, 30), now);
+      expect(min?.getFullYear()).toBe(2024);
+      expect(min?.getMonth()).toBe(11);
+      expect(dayKey(min!)).toBe('2024-12-01');
+    });
+
+    it('reads next year from local parts at either edge of a year', () => {
+      expect(pickerBounds(null, new Date(2025, 11, 31, 23, 30)).max.getFullYear()).toBe(2026);
+      expect(pickerBounds(null, new Date(2026, 0, 1, 0, 30)).max.getFullYear()).toBe(2027);
+    });
+
+    it('keeps the current month on offer when the oldest row is still to come', () => {
+      expect(pickerBounds(new Date(2027, 2, 14), now).min).toEqual(new Date(2026, 7, 1));
+      expect(pickerBounds(new Date(2026, 7, 25), now).min).toEqual(new Date(2026, 7, 1));
+    });
+
+    it('never puts the floor past the cap', () => {
+      const { min, max } = pickerBounds(new Date(2031, 3, 2), now);
+      expect(min).toEqual(new Date(2026, 7, 1));
+      expect(min!.getTime()).toBeLessThanOrEqual(max.getTime());
     });
   });
 

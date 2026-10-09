@@ -1,6 +1,15 @@
 import { provideRouter } from '@angular/router';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
-import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
+import {
+  createTranslationStub,
+  createLocaleFormatStub,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
@@ -1179,5 +1188,225 @@ describe('DataManagementComponent, through its own template', () => {
     button('receiptImages.manage')?.click();
 
     expect(open).toHaveBeenCalled();
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `<property>: <value>` computes to under the theme on <html> now. */
+    function computedAs(value: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, value);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    const tokenValue = (token: string, property = 'color') => computedAs(`var(${token})`, property);
+
+    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      settleAnimations(document);
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    /** Runs `fn` with `value` laid inline on `node` as `property`, then takes it off again. */
+    function withInline(node: HTMLElement, property: string, value: string, fn: () => void): void {
+      node.style.setProperty(property, value);
+      try {
+        settleAnimations(document);
+        fn();
+      } finally {
+        node.style.removeProperty(property);
+      }
+    }
+
+    // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11); text owes 4.5.
+    it('paints the danger zone as an error tint on the card, its items on the card, and its copy at AA, in both themes', () => {
+      fixture.detectChanges();
+      const zone = el().querySelector('.danger-zone') as HTMLElement;
+      const items = Array.from(zone.querySelectorAll('.danger-item')) as HTMLElement[];
+      expect(items.length).withContext('the two danger items').toBe(2);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          const zoneStyle = getComputedStyle(zone);
+          expect(zoneStyle.backgroundColor)
+            .withContext(`${theme} zone fill`)
+            .toBe(computedAs('color-mix(in srgb, var(--color-error) 8%, var(--surface-card))', 'background-color'));
+          expect(zoneStyle.borderTopColor)
+            .withContext(`${theme} zone edge`)
+            .toBe(computedAs('color-mix(in srgb, var(--color-error) 30%, transparent)', 'border-top-color'));
+
+          expectPainted(zone.querySelector('.section-header h3'), '--text-primary', `${theme} heading`);
+          expectPainted(zone.querySelector('.section-description'), '--text-muted', `${theme} description`);
+          expectPainted(zone.querySelector('.section-icon.danger'), '--color-error', `${theme} warning glyph`, 3);
+
+          items.forEach((item, i) => {
+            expect(getComputedStyle(item).backgroundColor)
+              .withContext(`${theme} item ${i} fill`)
+              .toBe(tokenValue('--surface-card', 'background-color'));
+            expectPainted(item.querySelector('.danger-title'), '--text-primary', `${theme} item ${i} title`);
+            expectPainted(item.querySelector('.danger-desc'), '--text-muted', `${theme} item ${i} description`);
+          });
+        });
+      }
+    });
+
+    /**
+     * The painted helpers do not see a gradient, so each end of it is laid
+     * under the section in turn as a flat fill, and the copy is measured on
+     * both.
+     */
+    it('tints Smart Import from accent to AI over the page, with its AI glyphs in --color-ai and its copy at AA at both ends, in both themes', () => {
+      fixture.detectChanges();
+      const section = el().querySelector('.smart-import-section') as HTMLElement;
+      const features = Array.from(section.querySelectorAll('.feature-item')) as HTMLElement[];
+      expect(features.length).withContext('the four features').toBe(4);
+      const ends = {
+        start: 'color-mix(in srgb, var(--color-accent) 10%, var(--surface-background))',
+        end: 'color-mix(in srgb, var(--color-ai) 10%, var(--surface-background))',
+      };
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          const style = getComputedStyle(section);
+          expect(style.backgroundImage)
+            .withContext(`${theme} tint`)
+            .toBe(computedAs(`linear-gradient(to right, ${ends.start}, ${ends.end})`, 'background-image'));
+          expect(style.borderTopColor)
+            .withContext(`${theme} edge`)
+            .toBe(computedAs('color-mix(in srgb, var(--color-accent) 30%, transparent)', 'border-top-color'));
+
+          for (const [name, end] of Object.entries(ends)) {
+            withInline(section, 'background', end, () => {
+              const at = `${theme}, at the ${name}`;
+              expectPainted(section.querySelector('.section-header h3'), '--text-primary', `${at}: heading`);
+              expectPainted(section.querySelector('.section-description'), '--text-muted', `${at}: description`);
+              expectPainted(section.querySelector('.section-icon.ai-icon'), '--color-ai', `${at}: AI glyph`, 3);
+              features.forEach((feature, i) => {
+                expectPainted(feature.querySelector('span'), '--text-secondary', `${at}: feature ${i}`);
+                expectPainted(feature.querySelector('mat-icon'), '--color-ai', `${at}: feature ${i} glyph`, 3);
+              });
+            });
+          }
+        });
+      }
+    });
+
+    it('paints the export buttons in the text tokens on the page, edged in --border-primary, in both themes', () => {
+      fixture.detectChanges();
+      const buttons = Array.from(el().querySelectorAll('.export-btn')) as HTMLElement[];
+      expect(buttons.length).withContext('the two exports').toBe(2);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          buttons.forEach((exportButton, i) => {
+            settleAnimations(document);
+            expect(getComputedStyle(exportButton).borderTopColor)
+              .withContext(`${theme} export ${i} edge`)
+              .toBe(tokenValue('--border-primary', 'border-top-color'));
+            expectPainted(exportButton.querySelector('.btn-title'), '--text-primary', `${theme} export ${i} title`);
+            expectPainted(exportButton.querySelector('.btn-subtitle'), '--text-muted', `${theme} export ${i} subtitle`);
+          });
+        });
+      }
+    });
+
+    it('tints a hovered export button with the primary over the page, its copy still at AA, in both themes', () => {
+      fixture.detectChanges();
+      const exportButton = el().querySelector('.export-btn') as HTMLElement;
+      const fill = hoverValue(exportButton, '.export-btn', 'background-color');
+      const edge = hoverValue(exportButton, '.export-btn', 'border-color');
+      expect(fill).withContext('the hover fill').toBe('color-mix(in srgb, var(--color-primary) 10%, var(--surface-background))');
+      expect(edge).withContext('the hover edge').toBe('color-mix(in srgb, var(--color-primary) 40%, transparent)');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          withInline(exportButton, 'background-color', fill, () => {
+            expectPainted(exportButton.querySelector('.btn-title'), '--text-primary', `${theme} hovered title`);
+            expectPainted(exportButton.querySelector('.btn-subtitle'), '--text-muted', `${theme} hovered subtitle`);
+          });
+        });
+      }
+    });
+
+    it('paints the dropzone in the text tokens on its subtle fill, at rest and hovered, in both themes', () => {
+      fixture.detectChanges();
+      const zone = el().querySelector('.import-dropzone') as HTMLElement;
+      const glyph = zone.querySelector('mat-icon') as HTMLElement;
+      const fill = hoverValue(zone, '.import-dropzone', 'background');
+      const edge = hoverValue(zone, '.import-dropzone', 'border-color');
+      const hoveredGlyph = hoverValue(glyph, '.import-dropzone', 'color');
+      expect(fill).withContext('the hover fill').toBe('color-mix(in srgb, var(--color-primary) 10%, var(--surface-subtle))');
+      expect(edge).withContext('the hover edge').toBe('color-mix(in srgb, var(--color-primary) 40%, transparent)');
+      expect(hoveredGlyph).withContext('the hovered glyph').toBe('var(--color-primary)');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          const style = getComputedStyle(zone);
+          expect(style.borderTopColor).withContext(`${theme} edge`).toBe(tokenValue('--border-primary', 'border-top-color'));
+          expect(style.borderTopStyle).withContext(`${theme} edge style`).toBe('dashed');
+          expect(style.backgroundColor).withContext(`${theme} fill`).toBe(tokenValue('--surface-subtle', 'background-color'));
+          expectPainted(glyph, '--text-muted', `${theme} glyph`, 3);
+          expectPainted(zone.querySelector('.dropzone-text'), '--text-secondary', `${theme} prompt`);
+          expectPainted(zone.querySelector('.dropzone-hint'), '--text-muted', `${theme} hint`);
+
+          withInline(zone, 'background', fill, () => {
+            // The hovered glyph's colour is the CSSOM rule read above; laid
+            // inline, only its contrast on the hovered fill is left to measure.
+            withInline(glyph, 'color', hoveredGlyph, () => {
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${theme} hovered glyph on the hovered fill`)
+                .toBeGreaterThanOrEqual(3);
+            });
+            expectPainted(zone.querySelector('.dropzone-text'), '--text-secondary', `${theme} hovered prompt`);
+            expectPainted(zone.querySelector('.dropzone-hint'), '--text-muted', `${theme} hovered hint`);
+          });
+        });
+      }
+    });
+
+    it('paints a CSV preview in the text tokens, divided from its actions by --border-primary, in both themes', () => {
+      fixture.detectChanges();
+      component.importedTransactions.set(
+        Array.from({ length: 6 }, (_, i) => ({
+          date: new Date('2026-03-04T00:00:00Z'),
+          description: `Row ${i}`,
+          amount: 10 + i,
+          type: 'expense' as const,
+          currency: 'USD',
+        })) as never
+      );
+      component.showImportPreview.set(true);
+      fixture.detectChanges();
+      const row = el().querySelector('.preview-item') as HTMLElement;
+      const actions = el().querySelector('.preview-actions') as HTMLElement;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(el().querySelector('.preview-header'), '--text-secondary', `${theme} header`);
+          expectPainted(row.querySelector('.preview-date'), '--text-muted', `${theme} date`);
+          expectPainted(row.querySelector('.preview-desc'), '--text-secondary', `${theme} description`);
+          expectPainted(el().querySelector('.preview-more'), '--text-muted', `${theme} the rest`);
+          expect(getComputedStyle(actions).borderTopColor)
+            .withContext(`${theme} actions divider`)
+            .toBe(tokenValue('--border-primary', 'border-top-color'));
+        });
+      }
+    });
   });
 });

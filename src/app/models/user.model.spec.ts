@@ -4,10 +4,10 @@ import {
   DEFAULT_LLM_PROVIDER_PREFERENCES,
   DEFAULT_USER_PREFERENCES,
   DashboardCardId,
-  DashboardLayout,
   RAG_INSIGHTS_LEVELS,
   RAG_TIER_CONFIGS,
   RagInsightsLevel,
+  StoredDashboardLayout,
   User,
   UserPreferences,
   baseCurrencyOf,
@@ -111,25 +111,25 @@ describe('effectiveDashboardLayout', () => {
   });
 
   it('drops an unknown id and a duplicate from the stored order', () => {
-    const corrupt = {
+    const corrupt: StoredDashboardLayout = {
       order: ['chart', 'bogus', 'chart', 'recent'],
       hidden: []
-    } as unknown as DashboardLayout;
+    };
     const layout = effectiveDashboardLayout(prefs({ dashboardLayout: corrupt }));
     expect(layout.order).toEqual(['chart', 'recent', 'upcoming', 'insights', 'budgets']);
   });
 
   it('falls back to the default order when the stored order is not an array', () => {
-    const corrupt = { order: 'nonsense', hidden: [] } as unknown as DashboardLayout;
+    const corrupt = { order: 'nonsense', hidden: [] } as unknown as StoredDashboardLayout;
     const layout = effectiveDashboardLayout(prefs({ dashboardLayout: corrupt }));
     expect(layout.order).toEqual(defaultOrder);
   });
 
   it('drops an unknown id and a duplicate from hidden', () => {
-    const corrupt = {
+    const corrupt: StoredDashboardLayout = {
       order: [],
       hidden: ['insights', 'x', 'insights']
-    } as unknown as DashboardLayout;
+    };
     const layout = effectiveDashboardLayout(prefs({ dashboardLayout: corrupt }));
     expect(layout.hidden).toEqual(['insights']);
   });
@@ -139,6 +139,21 @@ describe('effectiveDashboardLayout', () => {
     layout.order.push('recent');
     layout.hidden.push('chart');
     expect(DASHBOARD_CARD_IDS).toEqual(['recent', 'upcoming', 'chart', 'insights', 'budgets']);
+  });
+
+  it('resolves the default order for a stored hidden with no order', () => {
+    const layout = effectiveDashboardLayout(prefs({ dashboardLayout: { hidden: ['chart'] } }));
+    expect(layout).toEqual({ order: defaultOrder, hidden: ['chart'] });
+  });
+
+  it('never renders a card this build does not know, and leaves the stored value as it was', () => {
+    const stored: StoredDashboardLayout = { order: ['goals', 'chart'], hidden: ['savings', 'recent'] };
+    const layout = effectiveDashboardLayout(prefs({ dashboardLayout: stored }));
+    expect(layout).toEqual({
+      order: ['chart', 'recent', 'upcoming', 'insights', 'budgets'],
+      hidden: ['recent']
+    });
+    expect(stored).toEqual({ order: ['goals', 'chart'], hidden: ['savings', 'recent'] });
   });
 });
 

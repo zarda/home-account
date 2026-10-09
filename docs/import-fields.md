@@ -328,7 +328,7 @@ runs again, and whether anything is remembered past the wizard.
 
 | Field | Control | What a correction clears | Detection re-runs | Remembered |
 |---|---|---|---|---|
-| Date | the date button opens a modal picker seeded on the row's own day; the question chip's **Keep** accepts it as read | `dateAssumed`, `dateImplausible` and `fieldConfidence.date`; sets `dateReviewed` | yes | no |
+| Date | the date button, and the question chip's change button beside **Keep**, open a modal picker seeded on the row's own day, and both say so with `aria-haspopup="dialog"`; **Keep** accepts the date as read | `dateAssumed`, `dateImplausible` and `fieldConfidence.date`; sets `dateReviewed` | yes | no |
 | Amount | inline editor — Enter or blur commits, Escape cancels. The figure is rounded to the currency's minor unit before it is compared or written (¥179 for 179.33 on a JPY row), and one that rounds to nothing is refused: the editor is held open, marked invalid, and says the minimum the row's currency can hold. The doors already round what they read to the same unit, so this is the same rule applied to a figure the reviewer typed rather than a different one ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)) | `fieldConfidence.amount` | yes | no |
 | Type | the income/expense toggle; a type the reader doubted swaps the toggle's icon for the verification flag, and its sentence leads the button's name | `fieldConfidence.type`; a category the new side cannot hold moves to that side's catch-all at no more than 0.3, and the move is announced | yes | no |
 | Description | inline editor, same commit rules; an emptied field is a cancel | nothing | yes | it becomes the key the category is remembered under |

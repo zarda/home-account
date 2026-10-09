@@ -1,4 +1,18 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  OnDestroy,
+  OnInit,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked
+} from '@angular/core';
 
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,7 +30,7 @@ import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, TransactionFilters, Category, baseCurrencyOf } from '../../models';
 import { injectIsMobileViewport } from '../../core/layout/viewport';
-import { parseDayKey } from '../../core/utils/transaction-date.utils';
+import { parseDayKey, yearWindow } from '../../core/utils/transaction-date.utils';
 import { pinLeadingMinus, snapDisplayZero } from '../../core/utils/money-display.utils';
 import { FitTextDirective } from '../../shared/directives/fit-text.directive';
 import { TransactionListComponent } from './transaction-list/transaction-list.component';
@@ -76,6 +90,9 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
   private pendingFilters = inject(PendingFiltersService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private injector = inject(Injector);
+  private destroyRef = inject(DestroyRef);
 
   // The layout gate for both the add affordance and the totals. The
   // bottom-nav "+" that replaces the header FAB binds to this same query,
@@ -179,6 +196,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   initialDate = signal<Date | undefined>(undefined);
   showAll = signal<boolean>(false);
+  pickerFloor = signal<Date | null>(null);
 
   // Filters pushed from outside the filters panel (insight chips, smart
   // search). Always set with a fresh object so the panel's ngOnChanges fires
@@ -280,6 +298,8 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     // Load categories (only once)
     this.categoriesSub = this.categoryService.loadCategories().subscribe();
 
+    this.loadPickerFloor();
+
     // No transaction load here: the filters component always emits its initial
     // filter set (thisMonth / cleared / initialDate) right after init, and
     // onFiltersChanged seeds the window from it. isInitialLoading starts true
@@ -296,6 +316,16 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.categoriesSub?.unsubscribe();
+  }
+
+  // Read once: a filter change does not move the oldest row. An account with
+  // no rows still gets this year, so the pickers are not left without a floor.
+  private loadPickerFloor(): void {
+    this.transactionService.getEarliestTransactionDateFromServer().then(
+      earliest => this.pickerFloor.set(earliest ?? yearWindow(new Date().getFullYear()).start),
+      // Offline or refused: no floor, rather than one read from a partial cache.
+      () => undefined,
+    );
   }
 
   // One-shot action params perform their action once; leaving them in the
@@ -347,6 +377,27 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     if (!(await this.periodTotals.calculate())) return;
     // Figures, like the reset's count: a state message, not an event.
     this.announcer.announce(this.totalsAnnouncementText(), 'polite', 'replace');
+  }
+
+  async onRetryTotals(): Promise<void> {
+    // False means superseded or nothing to retry: another path owns the next
+    // announcement. The page may also have gone while the recount was out, and
+    // a render hook registered on a destroyed injector throws (NG0911).
+    if (!(await this.periodTotals.retry()) || this.destroyRef.destroyed) return;
+    this.announcer.announce(this.totalsAnnouncementText(), 'polite', 'replace');
+    // The Retry button left with the state it sat in, dropping focus on the
+    // document. Focus lands on the settled line once it renders, unless the
+    // viewer has put it somewhere else meanwhile.
+    afterNextRender(
+      () => {
+        const active = document.activeElement;
+        if (active && active !== document.body) return;
+        this.host.nativeElement
+          .querySelector<HTMLElement>('.period-totals-slot, .period-totals-line')
+          ?.focus();
+      },
+      { injector: this.injector }
+    );
   }
 
   // The totals as translated prose. Amounts are spoken without the WORD

@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatSelect } from '@angular/material/select';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form.component';
@@ -10,8 +12,23 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { ThemeService } from '../../../core/services/theme.service';
 import { Budget, Category, User } from '../../../models';
 import { of } from 'rxjs';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  chooseOption,
+  eachOptionState,
+  iconBox,
+  iconSquare,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withScheme,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('BudgetFormComponent', () => {
   let component: BudgetFormComponent;
@@ -547,6 +564,158 @@ describe('BudgetFormComponent', () => {
 
       const spinner = fixture.nativeElement.querySelector('mat-spinner');
       expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    describe('the category options', () => {
+      const categorySelect = () =>
+        fixture.debugElement.queryAll(By.directive(MatSelect))
+          .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!;
+
+      afterEach(() => {
+        document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+      });
+
+      // The viewValue is what typeahead matches; an icon nested in a wrapper
+      // put its ligature in front of every name.
+      it('names each option by its category alone', () => {
+        expect(categorySelect().injector.get(MatSelect).options.map(option => option.viewValue))
+          .toEqual(['Food & Drinks', 'Transportation']);
+      });
+
+      it('sizes each option icon at --text-lg, a square of it', () => {
+        // A pin: `mat-option > mat-icon` keeps the size the icon's old important large-text utility gave it.
+        (categorySelect().nativeElement.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
+        fixture.detectChanges();
+
+        const icons = Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-select-panel mat-option mat-icon'));
+        expect(icons.length).toBe(2);
+        const probe = document.createElement('span');
+        probe.style.fontSize = 'var(--text-lg)';
+        document.body.appendChild(probe);
+        const expected = getComputedStyle(probe).fontSize;
+        probe.remove();
+        for (const icon of icons) {
+          const style = getComputedStyle(icon);
+          expect(style.fontSize).toBe(expected);
+          expect(style.width).toBe(expected);
+          expect(style.height).toBe(expected);
+        }
+      });
+
+      it("sizes the closed select's icon at --text-lg, its box and line box the same", () => {
+        chooseOption(categorySelect().injector.get(MatSelect), 'cat1', () => fixture.detectChanges());
+
+        const icon = fixture.nativeElement.querySelector('mat-select-trigger mat-icon') as HTMLElement;
+        expect(icon?.textContent?.trim()).toBe('restaurant');
+        expect(iconBox(icon)).toEqual(iconSquare('--text-lg'));
+      });
+    });
+  });
+
+  describe('colours (real template)', () => {
+    const THEMES = ['light', 'dark'] as const;
+    const el = () => fixture.nativeElement as HTMLElement;
+
+    /**
+     * The form, painted with the surface Material gives the dialog container
+     * (`dialog-container-color` is `surface` in M3), which is what it sits on
+     * in the app.
+     */
+    beforeEach(async () => {
+      await setupTestBed({ mode: 'add' });
+      fixture = TestBed.createComponent(BudgetFormComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+      el().style.display = 'block';
+      el().style.background = 'var(--mat-sys-surface)';
+    });
+
+    // The category select's panel renders into the CDK overlay.
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    it('paints the threshold label, its value and the scale ends in the theme text tokens at AA, in both themes', () => {
+      const label = el().querySelector('#threshold-label') as HTMLElement;
+      const ends = Array.from(el().querySelectorAll('.slider-container > div > span')) as HTMLElement[];
+      expect(ends.map(end => end.textContent?.trim())).toEqual(['50%', '100%']);
+      const lines = [
+        ['label', label, '--text-muted'],
+        ['value', label.querySelector('strong') as HTMLElement, '--text-secondary'],
+        ['scale start', ends[0], '--text-muted'],
+        ['scale end', ends[1], '--text-muted'],
+      ] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [name, node, token] of lines) {
+            expect(getComputedStyle(node).color).withContext(`${theme} ${name}`).toBe(tokenValue(token));
+            expect(ratio(paintedColor(node), paintedBackground(node)))
+              .withContext(`${theme} ${name} on the dialog`)
+              .toBeGreaterThanOrEqual(4.5);
+          }
+        });
+      }
+    });
+
+    // A category's glyph is drawn on the dialog in the closed select, and in
+    // the panel on an option at rest, active and selected; it is corrected
+    // for each. Each probe is chosen in turn, so each is seen selected.
+    it('draws each category glyph at AA or better in the closed select and on its panel at rest, active and selected, in both themes', () => {
+      const probes: Category[] = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color], i) => ({
+        ...mockCategories[0],
+        id: `probe-${scheme}`,
+        name: `probe-${scheme}`,
+        color,
+        order: 10 + i,
+      }));
+      mockCategoryService.expenseCategories.set(probes);
+      fixture.detectChanges();
+      const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!
+        .injector.get(MatSelect);
+      const flush = () => fixture.detectChanges();
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const probe of probes) {
+            chooseOption(select, probe.id, flush);
+            const closed = el().querySelector('mat-select[formControlName="categoryId"] mat-select-trigger mat-icon') as HTMLElement;
+            expect(closed?.textContent?.trim()).withContext(`${scheme} ${probe.id} in the closed select`).toBe(probe.icon);
+            expect(ratio(paintedColor(closed), paintedBackground(closed)))
+              .withContext(`${scheme} ${probe.color} in the closed select`)
+              .toBeGreaterThanOrEqual(4.5);
+            eachOptionState(select, flush, (option, state) => {
+              const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${probe.id} chosen, ${option.value} ${state}`)
+                .toBeGreaterThanOrEqual(4.5);
+            });
+          }
+        });
+      }
+    });
+
+    it('colours the actions rule with --border-primary, in both themes', () => {
+      const actions = getComputedStyle(el().querySelector('mat-dialog-actions') as HTMLElement);
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expect(actions.borderTopColor).withContext(`${theme} actions rule`).toBe(tokenValue('--border-primary'));
+        });
+      }
     });
   });
 });

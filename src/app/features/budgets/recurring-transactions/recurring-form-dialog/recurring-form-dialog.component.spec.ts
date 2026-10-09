@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed, fakeAsync, flush } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
+import { MatSelect } from '@angular/material/select';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
@@ -13,7 +15,19 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { ThemeService } from '../../../../core/services/theme.service';
 import { Category, MAX_REMINDER_LEAD_DAYS, RecurringTransaction } from '../../../../models';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  chooseOption,
+  createCategory,
+  eachOptionState,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withScheme,
+} from '../../../../core/services/testing';
 
 describe('RecurringFormDialogComponent', () => {
   let component: RecurringFormDialogComponent;
@@ -803,6 +817,11 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
   let component: RecurringFormDialogComponent;
   let mockDialogRef: jasmine.SpyObj<MatDialogRef<RecurringFormDialogComponent>>;
 
+  /** The rule's side offers a category of each probe colour. */
+  const probes = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color]) =>
+    createCategory({ id: `probe-${scheme}`, name: `probe-${scheme}`, color, type: 'expense' })
+  );
+
   const editedRule = {
     id: 'rec1',
     name: 'Test',
@@ -832,7 +851,7 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
             })
           }
         },
-        { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+        { provide: CategoryService, useValue: { loadCategories: () => of(probes) } },
         { provide: CurrencyService, useValue: { currencies: signal([]) } },
         {
           // Echoes the key, so the null option's text is its own catalog key —
@@ -873,4 +892,38 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
 
     expect(component.dayOfMonth).toBeNull();
   }));
+
+  describe('its category select', () => {
+    // The panel renders into the CDK overlay, outside the fixture.
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    // A category's glyph is drawn in the panel on an option at rest, active
+    // and selected, and is corrected for each. Each probe is chosen in turn,
+    // so each is seen selected.
+    it("draws each category's glyph at AA or better on its option at rest, active and selected, in both themes", () => {
+      const select = fixture.debugElement
+        .queryAll(By.directive(MatSelect))
+        .map(node => node.injector.get(MatSelect))
+        .find(each => each.options.some(option => option.value === probes[0].id))!;
+      expect(select.options.map(option => option.value)).toEqual(probes.map(probe => probe.id));
+      const flush = () => fixture.detectChanges();
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const probe of probes) {
+            chooseOption(select, probe.id, flush);
+            expect(component.categoryId).withContext(`${scheme} ${probe.id} chosen`).toBe(probe.id);
+            eachOptionState(select, flush, (option, state) => {
+              const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${probe.id} chosen, ${option.value} ${state}`)
+                .toBeGreaterThanOrEqual(4.5);
+            });
+          }
+        });
+      }
+    });
+  });
 });

@@ -19,6 +19,9 @@ recap's own opt-in, card and figures are in
 Why the record of what has already been raised lives on the device rather than
 in Firestore, and what was rejected on the way, is in
 [ADR 0092](ADR/0092-a-reminder-fires-once-and-the-record-of-it-lives-on-the-device.md).
+Why each notification carries the path its tap opens, and why the recap nudge
+waits for a week with news, is in
+[ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md).
 This document is the part you need when turning them on, working out why one
 did or did not arrive, or changing the service.
 
@@ -43,6 +46,10 @@ ahead of time, no bill sweep runs once the preference is off to retire them,
 and without the cancel the switch would leave them arriving for weeks with
 nothing in the app able to stop them. Cancelling before the write rather than
 after it means a write that fails still leaves the user's "stop" acted on.
+The cancel first stands down every pass still running: the preference only
+reads "off" once the server acknowledges the write, so a pass that woke from
+the recap gate's read in between would otherwise book again what the cancel
+retired.
 Signing out cancels the same way, under the departing account — otherwise
 "Rent is due in 3 days" fires on a device nobody is signed into, naming its
 bill.
@@ -178,13 +185,30 @@ by any separate path would be retired by the next bill sweep.
   only what the pass produced. Closing Monday's card at 08:30 therefore
   cancels that morning's notification — the card was read, and the
   notification would point at a card that is gone.
+- **A week with nothing to say is not announced either.** On the installed
+  app the pass first asks `recapWeekHasNews` whether the card would show:
+  the card's own `hasSomethingToSay`, over the announced week so far and the
+  week before, both read from the server with
+  `getTransactionsInRangeFromServer`. A quiet fortnight produces no nudge, and
+  so retires one already booked. A failed read books it, and the failure is
+  not remembered. A yes is remembered per account and week for the session;
+  a quiet answer is asked again on the next pass. The web never books the
+  nudge, so it never asks ([one-shot-reads.md](one-shot-reads.md)).
 - 09:00 is built from that Monday's own local parts, so a week spanning a DST
   change still lands at nine.
 
 Note the asymmetry with bills: a bill reminder is produced only when
 **reminders** are on, and the nudge only when the **recap** is on. An account
-with just the recap sweeps, books one notification a week, and touches nothing
-else.
+with just the recap sweeps, books at most one notification a week, and touches
+nothing else.
+
+**The read sits inside the pass, so the pass guards it.** A sweep closes any
+listener an earlier pass left open and numbers itself before the gate reads.
+When the read comes back, a pass that a later pass or a cancel has overtaken
+stands down and resolves with the later pass's run, so `await sweep()` still
+means "booked", and a pass whose account has changed delivers nothing. A pass
+overtaken later, while its listener waits for a first snapshot, is settled as
+the listener is closed and resolves with the later run the same way.
 
 ## What counts as "already sent"
 
@@ -235,6 +259,51 @@ removes it: the `reminders` step of the erasure cascade drops this key on this
 device, beside the `weeklyRecap` step that drops the recap's two
 ([account-deletion.md](account-deletion.md)).
 
+## Where a tap lands
+
+Every prepared reminder carries a `route`, the in-app path its tap opens,
+built in `core/utils/notification-route.utils.ts`:
+
+| Kind | Route | What the page does with it |
+|---|---|---|
+| Bill | `/dashboard?bill={recurringId}` | Brings the rule's row on the Upcoming card into view and focuses it, or opens the recurring rules when the card is hidden or has no row for it ([dashboard.md](dashboard.md#links-from-a-notification-bill-and-recap)) |
+| Budget | `/budgets?tab=budgets` | Opens the budgets tab, where the alert's budget is listed |
+| Recap | `/dashboard?recap={week key}` | Focuses the recap card when it shows that week ([weekly-recap.md](weekly-recap.md#the-monday-nudge)) |
+
+The recap's key is the week the nudge announces, fixed when it is booked, so
+the route reads the same in whatever zone the tap lands.
+
+A route comes back from the worker or the operating system as plain data, so
+everything that reads one passes it through `safeAppRoute` first. It admits a
+string that starts with exactly one `/` and carries no backslash and no
+control character, and refuses everything else: `//host` is
+protocol-relative, a URL parser reads `\` as `/`, and it drops tabs and
+newlines before parsing, so `/\t/host` would open `//host`. The worker carries
+a copy, because it cannot import the module; `share-target-sw.spec.ts` runs
+one table of candidates through both.
+
+How the route travels, and who opens it:
+
+| Raised by | The route rides in | The tap is handled by |
+|---|---|---|
+| The worker's registration (web) | `data: { route }` | The worker's `notificationclick`: it focuses the first open tab and posts it `{ type: 'notification-route', route }`, or opens a tab at the route when there is none or `focus()` is refused. A missing or refused route becomes `/` |
+| The page's constructor (web) | The page's own `onclick` | That page: `window.focus()`, `notification.close()`, then `router.navigateByUrl(route)` |
+| The plugin (iOS) | `extra: { route }` | `NotificationTapService`, listening for `localNotificationActionPerformed`; the plugin holds a tap that launched the app until the listener attaches |
+
+`NotificationTapService` (`core/services/notification-tap.service.ts`) is the
+page's half on both platforms. On the web it listens for the worker's message
+on `navigator.serviceWorker`; in the iOS app it listens to the plugin, acting
+only on the `tap` action. It is loaded by dynamic import,
+`armNotificationTaps` in `app.config.ts`, so it stays out of the initial
+bundle: from an idle task on the web, and at once in the iOS app, where a
+listener attached seconds after launch would open the held tap over wherever
+the user had gone meanwhile. A route `safeAppRoute` refuses is ignored and
+the app stays where it is. Before the router has completed its first
+navigation, the service waits for it to settle, because the start-up
+navigation, or the lock screen's redirect, would otherwise replace the tap's.
+A tap that reaches a locked app goes through the lock screen and comes back
+with its query intact.
+
 ## The two delivery paths
 
 They share no API. The installed iOS app has no `Notification` constructor, and
@@ -243,16 +312,19 @@ is fenced off from the other's.
 
 **Web** — raised immediately, **only while the page is open**, through the
 service-worker registration the app already holds: `showWebNotification` asks
-`navigator.serviceWorker.getRegistration()` and calls that registration's
-`showNotification`, and constructs a page `Notification` only where no
-registration exists. The registration comes first everywhere, not only where
-the constructor is known to fail — Android Chrome and Firefox refuse
-`new Notification()` with a `TypeError` at construction, which no feature test
-can see coming — and it is what gives the notification a click behaviour at
-all: the worker's `notificationclick` focuses an open tab or opens one at `/`,
-while a constructor-raised notification never reaches the worker and does
-nothing when tapped. The `tag` is the dedup key, so the browser coalesces a
-repeat rather than stacking it. The permission is read once per pass and
+`navigator.serviceWorker.getRegistration()` and, when that registration has an
+active worker, calls its
+`showNotification(title, { body, tag, data: { route } })`. It constructs a
+page `Notification` only where there is no registration, or where the
+registration has no active worker yet because its first one is still
+installing, when `showNotification` would refuse the call; that page sets the
+notification's `onclick` itself, since the worker's click never sees it. The
+registration comes first everywhere, not only where the constructor is known
+to fail — Android Chrome and Firefox refuse `new Notification()` with a
+`TypeError` at construction, which no feature test can see coming. Either way
+the tap opens the reminder's route ([Where a tap lands](#where-a-tap-lands)).
+The `tag` is the dedup key, so the browser coalesces a repeat rather than
+stacking it. The permission is read once per pass and
 tested only after the sent-log read that prunes stale keys — a refused device
 must still prune — and a call the browser refuses skips that reminder alone:
 its key is not marked, the batch goes on, and the next sweep tries again.
@@ -269,7 +341,8 @@ silently failing to ask.
 
 **Native** — `@capacitor/local-notifications`. Immediate reminders are
 scheduled with no `at`; ahead-of-time ones carry 09:00 local on their reminder
-day, and the OS raises them whether or not the app is running.
+day, and the OS raises them whether or not the app is running. Each carries
+`extra: { route }`, which the plugin hands back with the tap.
 
 - **Only the nearest future reminder per rule is scheduled.** iOS silently
   drops pending local notifications past **64 per app**, and one daily rule
@@ -307,14 +380,21 @@ convenience.
   raises the notification, but nothing wakes it: a scheduled web reminder has
   nowhere to be scheduled, so a closed tab raises nothing and the ahead-of-time
   reminders are dropped rather than booked.
-- **A tap opens the app, not the bill.** The worker's click handler focuses an
-  open tab or opens one at `/`, where the Upcoming card is; the reminder names
-  the bill, and there is no deep link to it.
-- **The constructor fallback's click is silent.** Where no registration exists
-  the notification is raised through the page constructor, which the worker's
-  click handler never sees, so tapping it does nothing. No web session lacks
-  the registration today — the share-target worker is registered on every
-  boot — so the fallback is for a registration that failed.
+- **A web tap in the first idle window after load only focuses the tab.**
+  `NotificationTapService` is armed from an idle task: an idle callback with a
+  ten-second timeout, or a three-second delay where the browser has none. A
+  worker message that reaches a tab before then is dropped. A tap with no tab
+  open is not affected: the new tab opens at the route.
+- **A mounted `/budgets` keeps its tab.** The budgets page reads `?tab=` from
+  the route snapshot when it is created, so a budget alert tapped while it
+  shows Recurring or Goals leaves the tab where it was.
+- **A notification raised before routes were carried opens `/`.** On the web
+  the worker posts `/` to an open tab, which navigates there; on iOS such a
+  tap carries no route and is ignored.
+- **The iOS half ships with a native build.** The installed app runs the web
+  bundle it was built with, so the routes in `extra`, the tap listener and the
+  recap nudge's gate reach an iPhone only with a new native build. They are
+  proven by unit specs only.
 - **A budget reminder needs a page to have loaded budgets.** In practice the
   dashboard always has; a Settings-only session would raise none.
 - **Nothing checks the pending count against the 64 cap.** Scheduling only the
@@ -336,6 +416,15 @@ convenience.
   not open the app for a fortnight gets no Monday notification about either
   week. The same limit as every other reminder here, and the reason
   [weekly-recap.md](weekly-recap.md) lists it as a gap of the recap too.
+- **A week that gains news after the last sweep is not nudged.** A quiet
+  fortnight books nothing, and an expense recorded afterwards, on another
+  device or on this one with no sweep after it, books nothing until the next
+  sweep runs. If none runs before Monday at nine, there is no nudge.
+- **A week that loses its news keeps its nudge for the session.** A yes is
+  remembered per account and week, so deleting the only expense of the
+  fortnight leaves the booked nudge in place until a later session asks
+  again. Offline the gate cannot tell at all: the read rejects, and the nudge
+  is booked.
 
 ## What push would add
 

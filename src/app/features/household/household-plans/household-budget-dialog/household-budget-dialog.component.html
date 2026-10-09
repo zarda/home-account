@@ -19,11 +19,14 @@
       <mat-select formControlName="categoryIds" multiple>
         <mat-select-trigger>{{ chosenNames() }}</mat-select-trigger>
         @for (option of categories; track option.id) {
-          <mat-option [value]="option.id" [class.category-sub]="!option.group">
-            <span class="category-option" [class.category-group]="option.group">
-              <mat-icon [style.color]="option.color">{{ option.icon }}</mat-icon>
-              <span>{{ names().get(option.id) }}</span>
-            </span>
+          <mat-option
+            [value]="option.id"
+            class="category-option"
+            [class.category-group]="option.group"
+            [class.category-sub]="!option.group"
+          >
+            <mat-icon [style.color]="option.color | categoryGlyph:'panel'">{{ option.icon }}</mat-icon>
+            {{ names().get(option.id) }}
           </mat-option>
         }
       </mat-select>

@@ -1,9 +1,24 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 
 import { CategorySuggestionComponent } from './category-suggestion.component';
-import { Category } from '../../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category } from '../../../../models';
+import { EffectiveTheme, ThemeService } from '../../../../core/services/theme.service';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withScheme,
+  withTheme,
+} from '../../../../core/services/testing';
+import { CategorySurface, Rgb, categoryGlyphColor } from '../../../../core/utils/color-contrast.utils';
 
 const mockCategories: Category[] = [
   {
@@ -227,7 +242,7 @@ describe('CategorySuggestionComponent', () => {
       fixture.componentRef.setInput('suggestedCategoryId', 'nonexistent');
       fixture.detectChanges();
 
-      expect(component.categoryColor()).toBe('#9e9e9e');
+      expect(component.categoryColor()).toBe(CATEGORY_FALLBACK_COLOR);
     });
   });
 
@@ -396,10 +411,30 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
     fixture.detectChanges();
   });
 
+  /**
+   * The inline colour a glyph of `color` is given on `surface` in `scheme`:
+   * the category's own colour, corrected to read on that surface.
+   */
+  function glyphColour(color: string, surface: CategorySurface, scheme: EffectiveTheme): string {
+    const probe = document.createElement('span');
+    probe.style.color = categoryGlyphColor(color, surface, scheme);
+    return probe.style.color;
+  }
+
+  /** The chip's glyph is drawn in `color`, corrected for the review card, in both themes. */
+  function expectGlyphIn(color: string): void {
+    for (const scheme of AUDIT_SCHEMES) {
+      withScheme(TestBed.inject(ThemeService), scheme, () => {
+        fixture.detectChanges();
+        expect(icon().style.color).withContext(scheme).toBe(glyphColour(color, 'reviewCard', scheme));
+      });
+    }
+  }
+
   it('renders the suggested category', () => {
     expect(name()).toBe('Food & Dining');
     expect(icon().textContent?.trim()).toBe('restaurant');
-    expect(icon().style.color).toBe('rgb(255, 87, 34)');
+    expectGlyphIn('#FF5722');
   });
 
   it('moves the rendered name, icon and colour to a corrected category', () => {
@@ -408,7 +443,7 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
 
     expect(name()).toBe('Transportation');
     expect(icon().textContent?.trim()).toBe('directions_car');
-    expect(icon().style.color).toBe('rgb(33, 150, 243)');
+    expectGlyphIn('#2196F3');
   });
 
   it('turns the dot green once the reviewer has confirmed the category', () => {
@@ -423,11 +458,162 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
     expect(dot().getAttribute('aria-label')).toContain('confidenceHigh');
   });
 
+  // The dot is a graphic with a name of its own, not decoration beside a
+  // label that says the same, so it owes 3:1 to the review card around it
+  // (WCAG 1.4.11). The success and warning fills measure about 2.1:1 and
+  // 1.8:1 on the light cards, so those two levels draw in their text steps.
+  // An unchecked card is the page's own fill; a checked or flagged one has a
+  // surface of its own.
+  it('draws each confidence level\'s dot in its token at 3:1 or better on an unchecked, a checked and a flagged card, in both themes', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    const levels = [
+      [0.9, 'high-confidence', '--color-success-text'],
+      [0.6, 'medium-confidence', '--color-warning-text'],
+      [0.4, 'low-confidence', '--color-error'],
+    ] as const;
+    const cards = ['--surface-background', '--surface-review-selected', '--surface-review-duplicate'];
+
+    /** What `background-color: var(token)` computes to under the theme on <html> now. */
+    const fill = (token: string) => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).backgroundColor;
+      } finally {
+        probe.remove();
+      }
+    };
+
+    for (const [confidence, level, token] of levels) {
+      fixture.componentRef.setInput('confidence', confidence);
+      fixture.detectChanges();
+      expect(dot().classList.contains(level)).withContext(level).toBeTrue();
+      for (const card of cards) {
+        host.style.backgroundColor = `var(${card})`;
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            settleAnimations(document);
+            expect(getComputedStyle(dot()).backgroundColor).withContext(`${theme} ${level}`).toBe(fill(token));
+            expect(ratio(paintedBackground(dot()), paintedBackground(dot().parentElement!)))
+              .withContext(`${theme} ${level} dot on ${card}`)
+              .toBeGreaterThanOrEqual(3);
+          });
+        }
+      }
+    }
+  });
+
   it('projects the caret after the name', () => {
     const follows = (a: Element, b: Element) =>
       !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
     expect(follows(icon(), label())).withContext('label after the category icon').toBeTrue();
     expect(follows(label(), caret())).withContext('caret after the label').toBeTrue();
+  });
+
+  describe('the open menu', () => {
+    // The panel renders in the CDK overlay, outside the fixture.
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    /** What `background-color: var(token)` computes to under the theme on <html> now. */
+    function surface(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).backgroundColor;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** A computed colour as the whole channels it is painted in. */
+    function rounded(computed: string): Rgb {
+      const [r, g, b] = channels(computed).rgb;
+      return [Math.round(r), Math.round(g), Math.round(b)];
+    }
+
+    // A category's glyph owes contrast to the surface it sits on, so the
+    // current item has to paint a surface the stylesheet declares. The menu
+    // focuses its first item on opening, whose state layer would cover the
+    // fill under test, so the current category here is the last one.
+    it('marks the current category on --surface-menu-current, in both themes', () => {
+      fixture.componentRef.setInput('suggestedCategoryId', 'transport');
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.category-button') as HTMLElement).click();
+      fixture.detectChanges();
+
+      const items = Array.from(
+        document.querySelectorAll('.category-menu .mat-mdc-menu-item')
+      ) as HTMLElement[];
+      const current = items.find(item => item.classList.contains('selected'));
+      expect(current?.textContent).withContext('the current item').toContain('Transportation');
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(getComputedStyle(current!).backgroundColor)
+            .withContext(`${theme} the item's own fill`)
+            .toBe(surface('--surface-menu-current'));
+          expect(paintedBackground(current!))
+            .withContext(`${theme} the item as painted`)
+            .toEqual(rounded(surface('--surface-menu-current')));
+        });
+      }
+    });
+
+    // Every item's glyph is corrected for the menu, so it reads on an item at
+    // rest, on the current item and on the item the keyboard is on, whichever
+    // category is current. Each item is focused from the keyboard in turn.
+    it('draws each glyph at AA or better on an item at rest, on the current item and on a keyboard-focused item, in both themes', () => {
+      const probes: Category[] = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color], i) => ({
+        ...mockCategories[0],
+        id: `probe-${scheme}`,
+        name: `Probe ${scheme}`,
+        color,
+        order: 10 + i,
+      }));
+      fixture.componentRef.setInput('categories', [...mockCategories, ...probes]);
+      const trigger = fixture.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const current of probes) {
+            fixture.componentRef.setInput('suggestedCategoryId', current.id);
+            fixture.detectChanges();
+            trigger.openMenu();
+            fixture.detectChanges();
+            const items = fixture.debugElement
+              .queryAll(By.directive(MatMenuItem))
+              .map(node => node.injector.get(MatMenuItem));
+            expect(items.length).withContext('one item per top-level active category').toBe(5);
+
+            for (const focused of items) {
+              focused.focus('keyboard');
+              fixture.detectChanges();
+              expect(focused._getHostElement().classList.contains('cdk-keyboard-focused'))
+                .withContext(`${scheme} the keyboard is on ${focused.getLabel()}`)
+                .toBeTrue();
+              for (const item of items) {
+                const host = item._getHostElement();
+                const glyph = host.querySelector('mat-icon') as HTMLElement;
+                const state =
+                  item === focused ? 'keyboard-focused' : host.classList.contains('selected') ? 'current' : 'at rest';
+                expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                  .withContext(`${scheme} ${current.color} current, ${item.getLabel()} ${state}`)
+                  .toBeGreaterThanOrEqual(4.5);
+              }
+            }
+            trigger.closeMenu();
+            fixture.detectChanges();
+          }
+        });
+      }
+    });
   });
 });

@@ -46,9 +46,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import {
@@ -2709,6 +2711,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // receipt dated on another day carries.
       expect(chip!.querySelector('.extra-text')?.textContent?.trim())
         .toBe(translation.t('import.dateAssumedKeep'));
+      // Its Change opens the same touch dialog the date button does, and
+      // says so before the press.
+      expect(chip!.querySelector('.extra-change')?.getAttribute('aria-haspopup'))
+        .withContext('the question\'s Change announces its dialog')
+        .toBe('dialog');
       expect(cards[1].querySelector('.date-chip')?.textContent)
         .toContain(localeFormat.formatDate(new Date()));
 
@@ -3663,6 +3670,55 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       service.isProcessing.set(false);
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    "says a lost share and takes the worker's flags off the URL",
+    async () => {
+      // The URL the share-target worker redirects to when stashing the POST
+      // threw. Karma is not a native platform, so the real ShareIntakeService
+      // drains the real IndexedDB stash: the web share path end to end, with
+      // the real snackbar and the real router. Only the cloud provider and
+      // the rate fetch are stubbed, to keep the page off the network.
+      stubReceiptSeams();
+      history.replaceState({}, '');
+
+      const router = TestBed.inject(Router);
+      router.resetConfig([{ path: 'import/file', component: ImportWizardComponent }]);
+      const translation = TestBed.inject(TranslationService);
+      const harness = await RouterTestingHarness.create();
+
+      await harness.navigateByUrl('/import/file?source=share&error=1');
+      const wizard = harness.routeDebugElement?.componentInstance;
+      expect(wizard).toEqual(jasmine.any(ImportWizardComponent));
+
+      const notice = (): string =>
+        document.querySelector('.snackbar-error')?.textContent ?? '';
+      const deadline = Date.now() + 10000;
+      while (router.url !== '/import/file' || !notice()) {
+        if (Date.now() > deadline) {
+          throw new Error(`the share never settled: ${router.url}, notice "${notice()}"`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+        harness.detectChanges();
+      }
+
+      // Karma loads no catalog: the line is the bare key on both sides.
+      expect(notice()).toContain(translation.t('import.shareLost'));
+      expect(document.querySelectorAll('.snackbar-error').length)
+        .withContext('one notice for one lost share')
+        .toBe(1);
+      expect(router.url).toBe('/import/file');
+      // The strip changes query params only: the same wizard stays, so
+      // nothing runs its share intake a second time.
+      expect(harness.routeDebugElement?.componentInstance).toBe(wizard);
+
+      TestBed.inject(MatSnackBar).dismiss();
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+      document.querySelector('.cdk-overlay-container')?.remove();
     },
     30000
   );

@@ -27,6 +27,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { DateFormatService } from '../../core/services/date-format.service';
 import { FeedbackService } from '../../core/services/feedback.service';
 import { OnboardingService } from '../../core/services/onboarding.service';
+import { PwaService } from '../../core/services/pwa.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackCategory, FeedbackEntry } from '../../models';
 import { environment } from '../../../environments/environment';
@@ -59,6 +60,7 @@ export class AboutComponent implements OnInit, OnDestroy {
   private dateFormat = inject(DateFormatService);
   private translationService = inject(TranslationService);
   private onboarding = inject(OnboardingService);
+  private pwa = inject(PwaService);
 
   currentYear = new Date().getFullYear();
   appVersion = packageJson.version;
@@ -71,6 +73,20 @@ export class AboutComponent implements OnInit, OnDestroy {
 
   // Hide donate link on native apps (iOS/Android) - only show on web
   showDonateSection = computed(() => !Capacitor.isNativePlatform());
+
+  /**
+   * The install offer this browser can take: the prompt it handed over
+   * (Chromium), the Home Screen steps on iOS, which never hands one over, or
+   * none. Firefox and desktop Safari offer neither, so they get no card.
+   * The native shell is installed by definition; PwaService already reports
+   * it standalone, and it is named here too because a store build must
+   * never carry a web install offer.
+   */
+  installOffer = computed<'prompt' | 'ios' | null>(() => {
+    if (Capacitor.isNativePlatform() || this.pwa.isStandalone()) return null;
+    if (this.pwa.canPromptInstall()) return 'prompt';
+    return this.pwa.isIOS() ? 'ios' : null;
+  });
 
   // This page is the stored kind's door (see STORED_DATA_KINDS), so the
   // user's own sent feedback is listed here, live from the subscription.
@@ -97,6 +113,11 @@ export class AboutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.feedbackSubscription?.unsubscribe();
+  }
+
+  /** Never rejects; a spent or refused prompt takes the card with it. */
+  onInstall(): void {
+    void this.pwa.promptInstall();
   }
 
   openFeedbackDialog(): void {

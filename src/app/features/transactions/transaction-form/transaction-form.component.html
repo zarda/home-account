@@ -213,17 +213,15 @@
           <mat-select-trigger>
             @if (selectedCategory(); as cat) {
               <div class="category-option">
-                <mat-icon [style.color]="cat.color">{{ cat.icon }}</mat-icon>
+                <mat-icon [style.color]="cat.color | categoryGlyph:'dialog'">{{ cat.icon }}</mat-icon>
                 <span>{{ cat.name | translate }}</span>
               </div>
             }
           </mat-select-trigger>
           @for (cat of filteredCategories(); track cat.id) {
             <mat-option [value]="cat.id">
-              <div class="category-option">
-                <mat-icon [style.color]="cat.color">{{ cat.icon }}</mat-icon>
-                <span>{{ cat.name | translate }}</span>
-              </div>
+              <mat-icon [style.color]="cat.color | categoryGlyph:'panel'">{{ cat.icon }}</mat-icon>
+              {{ cat.name | translate }}
             </mat-option>
           }
         </mat-select>
@@ -305,7 +303,7 @@
               (click)="acceptSuggestion()"
             >
               <mat-icon class="ai-icon" aria-hidden="true">auto_awesome</mat-icon>
-              <mat-icon [style.color]="category.color" aria-hidden="true">{{ category.icon }}</mat-icon>
+              <mat-icon [style.color]="category.color | categoryGlyph:'suggestionChip'" aria-hidden="true">{{ category.icon }}</mat-icon>
               <span>{{ category.name | translate }}</span>
             </button>
           }

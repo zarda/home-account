@@ -22,19 +22,24 @@
   } @else {
     <div class="recurring-grid">
       @for (recurring of recurringTransactions(); track recurring.id) {
-        <div class="recurring-card" [class.paused]="!recurring.isActive">
+        <div class="recurring-card">
           <!-- Card Header -->
           <div class="card-header">
-            <div class="recurring-icon" [style.background-color]="getCategoryColor(recurring.categoryId) + '20'">
-              <mat-icon [style.color]="getCategoryColor(recurring.categoryId)">
-                {{ getCategoryIcon(recurring.categoryId) }}
-              </mat-icon>
-            </div>
+            <app-category-chip
+              appearance="tile"
+              [icon]="getCategoryIcon(recurring.categoryId)"
+              [color]="getCategoryColor(recurring.categoryId)"
+            />
             <div class="header-content">
               <span class="recurring-name">{{ recurring.name }}</span>
               <span class="recurring-category">{{ getCategoryName(recurring.categoryId) }}</span>
             </div>
-            <button mat-icon-button [matMenuTriggerFor]="actionMenu" class="action-btn" [attr.aria-label]="'common.moreActions' | translate">
+            <button
+              mat-icon-button
+              [matMenuTriggerFor]="actionMenu"
+              class="action-btn"
+              [attr.aria-label]="'common.moreActionsFor' | translate: { description: recurring.name }"
+            >
               <mat-icon>more_vert</mat-icon>
             </button>
           </div>
@@ -87,7 +92,7 @@
                 <span>{{ 'settings.resume' | translate }}</span>
               </button>
             }
-            <button mat-menu-item (click)="deleteRecurring(recurring)" class="delete-action">
+            <button mat-menu-item (click)="deleteRecurring(recurring)" class="menu-item-destructive">
               <mat-icon>delete</mat-icon>
               <span>{{ 'common.delete' | translate }}</span>
             </button>

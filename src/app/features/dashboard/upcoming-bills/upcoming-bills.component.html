@@ -2,10 +2,13 @@
   <!-- Header -->
   <div class="card-header">
     <h3 class="card-title">{{ 'dashboard.upcomingBills' | translate }}</h3>
-    <a routerLink="/budgets" [queryParams]="{ tab: 'recurring' }" class="view-all-link">
-      {{ 'dashboard.viewAll' | translate }}
-      <mat-icon class="view-all-icon">chevron_right</mat-icon>
-    </a>
+    <div class="header-actions">
+      <a routerLink="/budgets" [queryParams]="{ tab: 'recurring' }" class="view-all-link">
+        {{ 'dashboard.viewAll' | translate }}
+        <mat-icon class="view-all-icon">chevron_right</mat-icon>
+      </a>
+      <ng-content select="[card-actions]" />
+    </div>
   </div>
 
   <!-- Content -->
@@ -32,15 +35,20 @@
             <!-- A rule advances by at least a day each step, so its id is
                  unique inside one day group. -->
             @for (occurrence of day.occurrences; track occurrence.recurringId) {
-              <div class="bill-row">
-                <div
-                  class="bill-icon"
-                  [style.background-color]="getCategoryColor(occurrence.categoryId) + '20'"
-                >
-                  <mat-icon [style.color]="getCategoryColor(occurrence.categoryId)">
-                    {{ getCategoryIcon(occurrence.categoryId) }}
-                  </mat-icon>
-                </div>
+              <!-- Focusable from script only: a bill reminder's link lands here. -->
+              <div
+                class="bill-row"
+                tabindex="-1"
+                [attr.data-day]="day.key"
+                [attr.data-rule-id]="occurrence.recurringId"
+                [class.bill-row-highlight]="highlightedRow() === day.key + '|' + occurrence.recurringId"
+              >
+                <app-category-chip
+                  appearance="tile"
+                  size="sm"
+                  [icon]="getCategoryIcon(occurrence.categoryId)"
+                  [color]="getCategoryColor(occurrence.categoryId)"
+                />
                 <div class="bill-text">
                   <span class="bill-name">{{ occurrence.name }}</span>
                   <span class="bill-category">{{ getCategoryName(occurrence.categoryId) }}</span>
@@ -69,9 +77,9 @@
           <span class="rate-caption">{{ 'common.atTodaysRate' | translate }}</span>
         </span>
         <app-amount-display
-          [amount]="net()"
+          [amount]="netDisplay()"
           [currency]="baseCurrency()"
-          [type]="net() >= 0 ? 'income' : 'expense'"
+          [type]="netDisplay() > 0 ? 'income' : netDisplay() < 0 ? 'expense' : 'neutral'"
           [showSign]="true"
           [bold]="true"
           size="sm"

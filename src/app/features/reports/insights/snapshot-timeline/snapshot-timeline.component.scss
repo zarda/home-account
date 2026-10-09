@@ -60,12 +60,14 @@
   gap: 10px;
   padding: 12px;
   border-radius: var(--radius-sm);
-  @apply bg-amber-50 dark:bg-amber-900/20;
-  @apply border border-amber-200 dark:border-amber-800;
+  // Mixed into the expansion panel's own surface, which the strip sits on, so
+  // the tint is opaque and the lines on it are measured against it.
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--mat-sys-surface));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
 
   mat-icon {
     flex-shrink: 0;
-    @apply text-amber-600 dark:text-amber-400;
+    color: var(--color-warning-text);
     font-size: var(--text-lg);
     width: 1em;
     height: 1em;

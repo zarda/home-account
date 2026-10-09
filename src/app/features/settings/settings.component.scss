@@ -32,7 +32,8 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: var(--surface-hover);
+  // The empty states' circle and glyph, the pair held to 4.5:1 in both themes.
+  background: var(--surface-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -41,7 +42,7 @@
     font-size: var(--text-3xl);
     width: 1em;
     height: 1em;
-    color: var(--text-disabled);
+    color: var(--text-muted);
   }
 }
 
@@ -161,6 +162,7 @@
     transform: translateY(0);
   }
 
+  // colors:allow-start(brand) each settings area's own colour tile, with a white glyph on it
   .link-card-icon {
     width: 48px;
     height: 48px;
@@ -189,6 +191,7 @@
       background: linear-gradient(135deg, #2e7d32, #1b5e20);
     }
   }
+  // colors:allow-end
 
   .link-card-content {
     flex: 1;

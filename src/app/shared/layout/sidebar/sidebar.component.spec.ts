@@ -4,6 +4,13 @@ import { Router, provideRouter } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { SidebarComponent } from './sidebar.component';
 import { TranslationService } from '../../../core/services/translation.service';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 /** Somewhere for the test router to land; the nav is what is under test. */
 @Component({ standalone: true, template: '' })
@@ -66,6 +73,14 @@ describe('SidebarComponent', () => {
     expect(component.navItems().map((i) => i.route)).toContain('/data');
   });
 
+  // The phone layout renders the bottom nav beside this one, and two
+  // unnamed navigation landmarks announce identically in a landmark list.
+  it('names its landmark, apart from the bottom nav', () => {
+    const nav = fixture.nativeElement.querySelector('nav') as HTMLElement;
+    expect(nav.getAttribute('aria-label')).toBe('t:nav.landmarkMain');
+    expect(mockTranslationService.t).toHaveBeenCalledWith('nav.landmarkMain');
+  });
+
   /**
    * The active route reached assistive tech as a CSS class and nothing else,
    * so every link announced identically (#274, ADR 0055). Here the attribute
@@ -107,6 +122,47 @@ describe('SidebarComponent', () => {
       await goTo('/reports');
       const active = fixture.nativeElement.querySelector('a.nav-item[aria-current]') as HTMLElement;
       expect(active.getAttribute('aria-current')).toBe('page');
+    });
+  });
+
+  // The current page's row is the marker on every desktop route: its label
+  // and icon sit on --surface-active, a mid indigo in dark.
+  describe('colours, as painted', () => {
+    /** What `color: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      settleAnimations(document);
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    it("paints the current page's label and icon in --color-primary-text, the label at AA and the icon at 3:1 on its row, in both themes", async () => {
+      await TestBed.inject(Router).navigateByUrl('/budgets');
+      fixture.detectChanges();
+      const row = fixture.nativeElement.querySelector('a.nav-item.active') as HTMLElement | null;
+      expect(row).withContext('the current page row').toBeTruthy();
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          expectPainted(row?.querySelector('span[matListItemTitle]') ?? null, '--color-primary-text', `${theme} current page label`);
+          expectPainted(row?.querySelector('mat-icon') ?? null, '--color-primary-text', `${theme} current page icon`, 3);
+        });
+      }
     });
   });
 

@@ -6,9 +6,9 @@ import {
   signal
 } from '@angular/core';
 import { Auth, User as FirebaseUser } from '@angular/fire/auth';
-import { Firestore, Timestamp } from '@angular/fire/firestore';
+import { FieldValue, Firestore, Timestamp, deleteField } from '@angular/fire/firestore';
 import { AuthService, buildNewUserProfile } from './auth.service';
-import { User, DEFAULT_USER_PREFERENCES } from '../../models';
+import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService } from './theme.service';
 import { AccessibilityService } from './accessibility.service';
@@ -270,6 +270,296 @@ describe('AuthService', () => {
 
       expect(service.currentUser()).toEqual(before);
     });
+  });
+
+  /**
+   * The write crosses an await, and the signal can move underneath it. The
+   * module-level @angular/fire write cannot be spied on, so the one write the
+   * method makes is held open through its private seam and released by hand;
+   * the emulator suite checks the same paths against a real document.
+   */
+  describe('updatePreferenceFields', () => {
+    const UID = 'test-user-123';
+    const ORDER = ['budgets', 'chart', 'recent', 'upcoming', 'insights'];
+    let write: jasmine.Spy;
+    let land: () => void;
+
+    const signIn = (preferences: Record<string, unknown> = {}, id = UID) =>
+      service.currentUser.set({
+        id,
+        email: 'test@example.com',
+        displayName: 'Test User',
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        preferences: { ...DEFAULT_USER_PREFERENCES, ...preferences } as UserPreferences
+      });
+
+    const layout = () =>
+      service.currentUser()!.preferences.dashboardLayout as unknown as Record<string, unknown>;
+
+    beforeEach(() => {
+      write = spyOn(
+        service as unknown as {
+          writeUserFields: (uid: string, fields: Record<string, unknown>) => Promise<void>;
+        },
+        'writeUserFields'
+      ).and.callFake(() => new Promise<void>(resolve => (land = resolve)));
+    });
+
+    it('rejects when no user is signed in', async () => {
+      await expectAsync(
+        service.updatePreferenceFields('dashboardLayout', { hidden: { set: ['insights'] } })
+      ).toBeRejectedWithError('No authenticated user');
+
+      expect(write).not.toHaveBeenCalled();
+    });
+
+    it('makes no write for an empty field set', async () => {
+      signIn();
+      const before = service.currentUser();
+
+      await expectAsync(service.updatePreferenceFields('dashboardLayout', {})).toBeResolved();
+
+      expect(write).not.toHaveBeenCalled();
+      expect(service.currentUser()).toBe(before);
+    });
+
+    it('writes each field on its own nested path, and a delete as a field delete', async () => {
+      signIn();
+
+      const pending = service.updatePreferenceFields('dashboardLayout', {
+        hidden: { set: ['insights'] },
+        order: { delete: true }
+      });
+
+      expect(write).toHaveBeenCalledOnceWith(UID, {
+        'preferences.dashboardLayout.hidden': ['insights'],
+        'preferences.dashboardLayout.order': jasmine.anything()
+      });
+      const sent = write.calls.mostRecent().args[1] as Record<string, FieldValue>;
+      // Made in an injector, as the zone wrapper otherwise warns.
+      const fieldDelete = TestBed.runInInjectionContext(() => deleteField());
+      expect(sent['preferences.dashboardLayout.order'].isEqual(fieldDelete)).toBeTrue();
+      land();
+      await pending;
+    });
+
+    it('re-reads the signal after the write, so a theme changed meanwhile survives', async () => {
+      signIn({ theme: 'system', dashboardLayout: { order: ORDER, hidden: ['chart'] } });
+
+      const pending = service.updatePreferenceFields('dashboardLayout', {
+        hidden: { set: ['insights'] }
+      });
+      // The theme switch saved while this write was still out.
+      service.currentUser.update(user => user && {
+        ...user,
+        preferences: { ...user.preferences, theme: 'dark' }
+      });
+      land();
+      await pending;
+
+      expect(service.currentUser()!.preferences.theme).toBe('dark');
+      expect(layout()).toEqual({ order: ORDER, hidden: ['insights'] });
+    });
+
+    it('merges into the map as it stands after the write, keeping a sibling field changed meanwhile', async () => {
+      signIn({ dashboardLayout: { hidden: ['chart'] } });
+
+      const pending = service.updatePreferenceFields('dashboardLayout', {
+        hidden: { set: ['insights'] }
+      });
+      service.currentUser.update(user => user && {
+        ...user,
+        preferences: { ...user.preferences, dashboardLayout: { order: ORDER, hidden: ['chart'] } }
+      });
+      land();
+      await pending;
+
+      expect(layout()).toEqual({ order: ORDER, hidden: ['insights'] });
+    });
+
+    it('drops only the deleted field from the signal', async () => {
+      signIn({ dashboardLayout: { order: ORDER, hidden: ['chart'] } });
+
+      const pending = service.updatePreferenceFields('dashboardLayout', { hidden: { delete: true } });
+      land();
+      await pending;
+
+      expect(layout()).toEqual({ order: ORDER });
+    });
+
+    it('replaces a local value that is not a map', async () => {
+      signIn({ dashboardLayout: 'not-a-map' });
+
+      const pending = service.updatePreferenceFields('dashboardLayout', {
+        hidden: { set: ['insights'] }
+      });
+      land();
+      await pending;
+
+      expect(layout()).toEqual({ hidden: ['insights'] });
+    });
+
+    it('leaves the signal alone when the session ended during the write', async () => {
+      signIn();
+
+      const pending = service.updatePreferenceFields('dashboardLayout', {
+        hidden: { set: ['insights'] }
+      });
+      service.currentUser.set(null);
+      land();
+      await pending;
+
+      expect(service.currentUser()).toBeNull();
+    });
+
+    it('leaves the signal alone when another account signed in during the write', async () => {
+      signIn();
+
+      const pending = service.updatePreferenceFields('dashboardLayout', {
+        hidden: { set: ['insights'] }
+      });
+      signIn({}, 'user-2');
+      const next = service.currentUser();
+      land();
+      await pending;
+
+      expect(service.currentUser()).toBe(next);
+    });
+  });
+
+  /**
+   * Every profile and preference write crosses an await, and another write
+   * can land while it is out: a card hidden while a theme switch is saving.
+   * Each write here is held open through the private seam and released in
+   * the order the case names.
+   */
+  describe('a write that lands after the signal moved', () => {
+    const UID = 'test-user-123';
+    let seam: jasmine.Spy;
+    let writes: (() => void)[];
+
+    const signIn = (preferences: Record<string, unknown>, id = UID) =>
+      service.currentUser.set({
+        id,
+        email: 'test@example.com',
+        displayName: 'Test User',
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        preferences: { ...DEFAULT_USER_PREFERENCES, ...preferences } as UserPreferences
+      });
+
+    const prefs = () => service.currentUser()!.preferences as unknown as Record<string, unknown>;
+
+    const hideChart = () =>
+      service.updatePreferenceFields('dashboardLayout', { hidden: { set: ['chart'] } });
+
+    interface Writer {
+      name: string;
+      seed: Record<string, unknown>;
+      write: () => Promise<void>;
+      sends: Record<string, unknown>;
+      /** Another write sent after this one, which lands first. */
+      meanwhile: () => Promise<void>;
+      applied: () => void;
+      kept: () => void;
+    }
+
+    const writers: Writer[] = [
+      {
+        name: 'updateUserPreferences',
+        seed: { theme: 'light' },
+        write: () => service.updateUserPreferences({ theme: 'dark' }),
+        sends: { 'preferences.theme': 'dark' },
+        meanwhile: hideChart,
+        applied: () => expect(prefs()['theme']).toBe('dark'),
+        kept: () => expect(prefs()['dashboardLayout']).toEqual({ hidden: ['chart'] })
+      },
+      {
+        name: 'clearUserPreferences',
+        seed: { theme: 'light', dashboardLayout: { hidden: ['insights'] } },
+        write: () => service.clearUserPreferences(['dashboardLayout']),
+        sends: { 'preferences.dashboardLayout': jasmine.anything() },
+        meanwhile: () => service.updateUserPreferences({ theme: 'dark' }),
+        applied: () => expect('dashboardLayout' in prefs()).toBeFalse(),
+        kept: () => expect(prefs()['theme']).toBe('dark')
+      },
+      {
+        name: 'updateUserProfile',
+        seed: {},
+        write: () => service.updateUserProfile({ displayName: 'Renamed' }),
+        sends: { displayName: 'Renamed' },
+        meanwhile: hideChart,
+        applied: () => expect(service.currentUser()!.displayName).toBe('Renamed'),
+        kept: () => expect(prefs()['dashboardLayout']).toEqual({ hidden: ['chart'] })
+      },
+      {
+        name: 'clearStoredProviderApiKeys',
+        seed: { geminiApiKey: 'g', openaiApiKey: 'o', claudeApiKey: 'c' },
+        write: () => service.clearStoredProviderApiKeys(),
+        sends: {
+          'preferences.geminiApiKey': jasmine.anything(),
+          'preferences.openaiApiKey': jasmine.anything(),
+          'preferences.claudeApiKey': jasmine.anything()
+        },
+        meanwhile: hideChart,
+        applied: () =>
+          expect(Object.keys(prefs()).filter(key => key.endsWith('ApiKey'))).toEqual([]),
+        kept: () => expect(prefs()['dashboardLayout']).toEqual({ hidden: ['chart'] })
+      }
+    ];
+
+    beforeEach(() => {
+      writes = [];
+      seam = spyOn(
+        service as unknown as {
+          writeUserFields: (uid: string, fields: Record<string, unknown>) => Promise<void>;
+        },
+        'writeUserFields'
+      ).and.callFake(() => new Promise<void>(resolve => writes.push(resolve)));
+    });
+
+    for (const writer of writers) {
+      describe(writer.name, () => {
+        it('keeps what another write changed meanwhile, and applies its own change', async () => {
+          signIn(writer.seed);
+
+          const pending = writer.write();
+          const other = writer.meanwhile();
+          writes[1]();
+          await other;
+          writes[0]();
+          await pending;
+
+          expect(seam.calls.first().args).toEqual([UID, writer.sends]);
+          writer.applied();
+          writer.kept();
+        });
+
+        it('leaves the signal alone when the session ended during the write', async () => {
+          signIn(writer.seed);
+
+          const pending = writer.write();
+          service.currentUser.set(null);
+          writes[0]();
+          await pending;
+
+          expect(service.currentUser()).toBeNull();
+        });
+
+        it('leaves the signal alone when another account signed in during the write', async () => {
+          signIn(writer.seed);
+
+          const pending = writer.write();
+          signIn(writer.seed, 'user-2');
+          const next = service.currentUser();
+          writes[0]();
+          await pending;
+
+          expect(service.currentUser()).toBe(next);
+        });
+      });
+    }
   });
 
   describe('signed-out guards', () => {

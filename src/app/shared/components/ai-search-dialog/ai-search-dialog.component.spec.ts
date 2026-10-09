@@ -18,6 +18,13 @@ import { SearchAnswerHistoryService } from '../../../core/services/search-answer
 import { TranslationService } from '../../../core/services/translation.service';
 import { Goal, NlSearchResult, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
 import { createCategory, createTransaction } from '../../../core/services/testing/test-data';
+import {
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
+} from '../../../core/services/testing/painted-contrast';
 
 describe('AiSearchDialogComponent', () => {
   let fixture: ComponentFixture<AiSearchDialogComponent>;
@@ -509,5 +516,112 @@ describe('AiSearchDialogComponent', () => {
       expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'reopen' });
     });
   });
+  });
+
+  describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      host = fixture.nativeElement as HTMLElement;
+      // The dialog container's surface (`dialog-container-color` is
+      // `surface` in M3), which is what this component sits on in the app.
+      host.style.display = 'block';
+      host.style.background = 'var(--mat-sys-surface)';
+    });
+
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function expectReadable(el: Element, context: string): void {
+      expect(ratio(paintedColor(el), paintedBackground(el)))
+        .withContext(context)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    it('paints the hint, the interpreting line and the interpreted-as label at AA or better, in both themes', async () => {
+      component.isLoading.set(true);
+      fixture.detectChanges();
+      const interpreting = host.querySelector('.loading span') as HTMLElement;
+      for (const theme of THEMES) {
+        withTheme(theme, () => expectReadable(interpreting, `${theme} interpreting line`));
+      }
+
+      component.isLoading.set(false);
+      await searchWith({ kind: 'filter', filters: { type: 'expense' } });
+      const hint = host.querySelector('.hint') as HTMLElement;
+      const label = host.querySelector('.result-block .result-label') as HTMLElement;
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectReadable(hint, `${theme} hint on the dialog`);
+          expectReadable(label, `${theme} interpreted-as label on its block`);
+        });
+      }
+    });
+
+    it('edges each interpreted-filter chip in the theme line colour, in both themes', async () => {
+      await searchWith({ kind: 'filter', filters: { type: 'expense' } });
+      const chip = host.querySelector('.summary-chip') as HTMLElement;
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expect(getComputedStyle(chip).borderTopColor)
+            .withContext(`${theme} chip edge`)
+            .toBe(tokenColour('--border-primary'));
+        });
+      }
+    });
+
+    it('paints the fallback notice at AA or better on its block, in both themes', async () => {
+      await searchWith({ kind: 'keywordFallback', filters: { searchQuery: 'coffee' }, reason: 'offline' });
+      const notice = host.querySelector('.fallback-notice') as HTMLElement;
+      for (const theme of THEMES) {
+        withTheme(theme, () => expectReadable(notice, `${theme} fallback notice on its block`));
+      }
+    });
+
+    it("paints a history row's meta line at AA or better, at rest and hovered, in both themes", () => {
+      storedAnswers.set([{
+        id: 'a-1',
+        userId: 'user123',
+        schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+        kind: 'aggregate',
+        query: 'question a-1',
+        operation: 'sum',
+        limit: 3,
+        scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+        baseCurrency: 'USD',
+        value: 421.5,
+        currency: 'USD',
+        transactionCount: 17,
+        computedAt: Timestamp.fromMillis(1_000_000),
+        lastUsedAt: Timestamp.fromMillis(1_000_000),
+      }]);
+      fixture.detectChanges();
+      const open = host.querySelector('.history-open') as HTMLElement;
+      const meta = host.querySelector('.history-meta') as HTMLElement;
+      // Karma cannot hover, so the hover rule is read and applied by hand.
+      const hovered = hoverValue(open, '.history-open', 'background');
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectReadable(meta, `${theme} meta line at rest`);
+          open.style.background = hovered;
+          try {
+            expectReadable(meta, `${theme} meta line hovered`);
+          } finally {
+            open.style.background = '';
+          }
+        });
+      }
+    });
   });
 });

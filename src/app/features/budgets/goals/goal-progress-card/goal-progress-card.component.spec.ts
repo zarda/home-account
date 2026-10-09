@@ -8,7 +8,16 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { Goal } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
-import { createTranslationStub, createLocaleFormatStub } from '../../../../core/services/testing';
+import {
+  channels,
+  createLocaleFormatStub,
+  createTranslationStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
 
 function goalOf(overrides: Partial<Goal> = {}): Goal {
   return {
@@ -316,5 +325,72 @@ describe('GoalProgressCardComponent, through its own template', () => {
     const done = el().querySelector<HTMLElement>('.item-label.done')!;
     expect(getComputedStyle(done).textDecorationLine).toBe('line-through');
     expect(getComputedStyle(done).opacity).toBe('1');
+  });
+
+  // Material paints the indicator as the inner bar's top border, from
+  // --mat-progress-bar-active-indicator-color alone. It is a graphic, so its
+  // floor is 3:1 (WCAG 1.4.11), against the track it runs along and the card
+  // around it.
+  it("draws a reached goal's bar apart from one in progress, at 3:1 or better on its track and the card, in both themes", () => {
+    const part = (selector: string) => el().querySelector<HTMLElement>(selector)!;
+    const tokenValue = (name: string) => {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${name})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    };
+    const states = [
+      { name: 'in progress', contributedAmount: 750, token: '--mat-sys-primary' },
+      { name: 'reached', contributedAmount: 3000, token: '--color-success-text' },
+    ];
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const painted = new Map<string, string>();
+        for (const state of states) {
+          card({ contributedAmount: state.contributedAmount });
+          settleAnimations(document);
+          const label = `${theme} ${state.name} bar`;
+          const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
+          painted.set(state.name, indicator);
+          expect(indicator).withContext(label).toBe(tokenValue(state.token));
+          expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
+            .withContext(`${label} on its track`)
+            .toBeGreaterThanOrEqual(3);
+          expect(ratio(channels(indicator).rgb, paintedBackground(part('.goal-card'))))
+            .withContext(`${label} on the card`)
+            .toBeGreaterThanOrEqual(3);
+        }
+        expect(painted.get('reached'))
+          .withContext(`${theme} a reached bar paints apart from one in progress`)
+          .not.toBe(painted.get('in progress'));
+      });
+    }
+  });
+
+  // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
+  it("paints the kind icon in the theme's primary, at 3:1 or better on the card, in both themes", () => {
+    card();
+    const icon = el().querySelector<HTMLElement>('.kind-icon')!;
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mat-sys-primary)';
+        document.body.appendChild(probe);
+        try {
+          settleAnimations(document);
+          expect(getComputedStyle(icon).color).withContext(theme).toBe(getComputedStyle(probe).color);
+        } finally {
+          probe.remove();
+        }
+        expect(ratio(paintedColor(icon), paintedBackground(icon)))
+          .withContext(`${theme} on the card`)
+          .toBeGreaterThanOrEqual(3);
+      });
+    }
   });
 });

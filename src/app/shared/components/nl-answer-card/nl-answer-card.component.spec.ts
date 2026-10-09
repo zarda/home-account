@@ -7,6 +7,12 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AggregateAnswer, TransactionFilters } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { createCategory, createTransaction } from '../../../core/services/testing/test-data';
+import {
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
+} from '../../../core/services/testing/painted-contrast';
 
 describe('NlAnswerCardComponent', () => {
   let fixture: ComponentFixture<NlAnswerCardComponent>;
@@ -124,5 +130,42 @@ describe('NlAnswerCardComponent', () => {
     (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
 
     expect(emitted).toBe(answer.scope);
+  });
+
+  it('paints every secondary line at AA or better on the answer block, in both themes', () => {
+    render(sumAnswer({
+      operation: 'max',
+      extremeTransaction: createTransaction({ description: 'Flight home' }),
+    }), new Date(2026, 7, 6));
+    const host = fixture.nativeElement as HTMLElement;
+    const block = host.querySelector('.result-block') as HTMLElement;
+    const lines = Array.from(
+      host.querySelectorAll<HTMLElement>('.result-label, .answer-detail, .answer-scope, .answer-computed-at'));
+    expect(lines.length).withContext('label, two details, scope and computed-at').toBe(5);
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        for (const line of lines) {
+          expect(ratio(paintedColor(line), paintedBackground(block)))
+            .withContext(`${theme} .${line.className} on the answer block`)
+            .toBeGreaterThanOrEqual(4.5);
+        }
+      });
+    }
+  });
+
+  it('paints the empty answer at AA or better on the answer block, in both themes', () => {
+    render(sumAnswer({ transactionCount: 0 }));
+    const host = fixture.nativeElement as HTMLElement;
+    const block = host.querySelector('.result-block') as HTMLElement;
+    const empty = host.querySelector('.answer-empty') as HTMLElement;
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        expect(ratio(paintedColor(empty), paintedBackground(block)))
+          .withContext(`${theme} empty answer on the answer block`)
+          .toBeGreaterThanOrEqual(4.5);
+      });
+    }
   });
 });

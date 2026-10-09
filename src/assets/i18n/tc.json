@@ -73,7 +73,9 @@
     "add": "新增",
     "searchHistory": "搜尋紀錄",
     "importFile": "匯入照片",
-    "importHistory": "匯入歷史"
+    "importHistory": "匯入歷史",
+    "landmarkMain": "主要",
+    "landmarkQuick": "快速存取"
   },
   "dashboard": {
     "title": "儀表板",
@@ -108,7 +110,14 @@
     "noUpcomingBillsHint": "即將到期的定期收入與支出會顯示於此。請在預算 → 定期建立規則。",
     "upcomingOlderHidden": "另有 {{count}} 筆逾期項目未顯示",
     "customize": "自訂儀表板",
-    "noCardsShown": "儀表板上沒有顯示任何卡片。"
+    "noCardsShown": "儀表板上沒有顯示任何卡片。",
+    "cardMenuHide": "隱藏",
+    "cardMenuMoveUp": "上移",
+    "cardMenuMoveDown": "下移",
+    "cardHidden": "已隱藏{{card}}。可從「自訂儀表板」重新顯示。",
+    "cardHideReverted": "無法儲存。{{card}}已回到儀表板。",
+    "billLinkCardHidden": "「近期排程」已在儀表板上隱藏，因此改為顯示定期交易。",
+    "billLinkNotUpcoming": "這筆帳單目前不在「近期排程」中，因此改為顯示定期交易。"
   },
   "transactions": {
     "title": "交易紀錄",
@@ -505,6 +514,50 @@
     "iconSelection": "選擇圖示",
     "color": "顏色",
     "colorSelection": "選擇顏色",
+    "categoryIconNames": {
+      "restaurant": "餐廳",
+      "local_cafe": "咖啡廳",
+      "fastfood": "速食",
+      "shopping_cart": "購物車",
+      "shopping_bag": "購物袋",
+      "local_gas_station": "加油站",
+      "directions_car": "汽車",
+      "flight": "飛機",
+      "hotel": "飯店",
+      "home": "住家",
+      "apartment": "公寓",
+      "payments": "付款",
+      "attach_money": "金錢",
+      "credit_card": "信用卡",
+      "account_balance": "銀行",
+      "medical_services": "醫療",
+      "fitness_center": "健身",
+      "school": "學校",
+      "work": "工作",
+      "movie": "電影",
+      "sports_esports": "遊戲",
+      "pets": "寵物",
+      "child_care": "育兒",
+      "card_giftcard": "禮物",
+      "celebration": "慶祝"
+    },
+    "categoryColorNames": {
+      "red": "紅色",
+      "orange": "橙色",
+      "yellow": "黃色",
+      "green": "綠色",
+      "teal": "藍綠色",
+      "cyan": "青色",
+      "blue": "藍色",
+      "indigo": "靛藍色",
+      "violet": "紫羅蘭色",
+      "purple": "紫色",
+      "pink": "粉紅色",
+      "rose": "玫瑰色",
+      "slate": "石板灰",
+      "gray": "灰色",
+      "stone": "岩灰色"
+    },
     "preview": "預覽",
     "saveChanges": "儲存變更",
     "createCategory": "建立類別",
@@ -1133,6 +1186,7 @@
     "importPhotosSkipped": "交易已儲存，但已達圖片儲存上限，{{count}} 張收據照片未附加",
     "importPhotosFailed": "交易已儲存，但有 {{count}} 張收據照片無法上傳，可從該筆交易再次附加。",
     "importSavedHistoryUnavailable": "匯入已完成，但無法載入摘要。詳情請見匯入紀錄。",
+    "shareLost": "無法接收分享的檔案。請再分享一次以匯入。",
     "noTransactionsFound": "未找到交易",
     "noTransactionsFoundDescription": "無法從此檔案擷取任何交易。請嘗試使用其他檔案或確保圖片清晰可讀。",
     "noTransactionsInImages": "無法從圖片中偵測到任何交易。請使用更清晰的照片再試一次。",
@@ -1396,6 +1450,15 @@
       "cardDescription": "再次查看一開始顯示的歡迎畫面，了解家庭記帳能做什麼，以及記錄支出的三種方式。",
       "replayButton": "查看歡迎畫面"
     },
+    "install": {
+      "cardTitle": "安裝應用程式",
+      "promptDescription": "在這部裝置上安裝家庭記帳，即可從專屬圖示在獨立視窗中開啟。",
+      "button": "安裝",
+      "iosDescription": "將家庭記帳加入主畫面，即可從專屬圖示以全螢幕開啟：",
+      "iosStepShare": "點一下「分享」按鈕（位於 Safari 的工具列，或「⋯」選單中）。",
+      "iosStepAdd": "選擇「加入主畫面」。",
+      "iosStepConfirm": "點一下「加入」。"
+    },
     "feedback": {
       "cardTitle": "傳送意見回饋",
       "cardDescription": "無論是錯誤、想法或任何建議，都歡迎告訴開發者。訊息會儲存在您的帳號中，並以電子郵件寄給開發者。",
@@ -1639,7 +1702,15 @@
     "noResults": "沒有符合的項目",
     "sectionNavigate": "前往",
     "sectionActions": "操作",
+    "sectionShortcuts": "鍵盤快捷鍵",
     "resultCount": "{{count}} 個結果"
+  },
+  "shortcuts": {
+    "addTransaction": "新增交易",
+    "openPalette": "開啟或關閉此面板",
+    "showShortcuts": "顯示這份快捷鍵列表",
+    "hint": "按 ? 鍵即可查看鍵盤快捷鍵",
+    "hintDismiss": "關閉此提示"
   },
   "widget": {
     "spent": "支出",

@@ -77,11 +77,12 @@ describe('overflow guard: the reports tab strip', () => {
   async function setUp(tab?: string): Promise<void> {
     const transactionService = jasmine.createSpyObj(
       'TransactionService',
-      ['getByDateRange', 'getTransactionsInRange'],
+      ['getByDateRange', 'getTransactionsInRange', 'getEarliestTransactionDateFromServer'],
       { transactions: signal<Transaction[]>([]) }
     );
     transactionService.getByDateRange.and.returnValue(of([]));
     transactionService.getTransactionsInRange.and.returnValue(of([]));
+    transactionService.getEarliestTransactionDateFromServer.and.returnValue(Promise.resolve(null));
 
     const categoryService = jasmine.createSpyObj('CategoryService', ['loadCategories'], {
       categories: signal([]),

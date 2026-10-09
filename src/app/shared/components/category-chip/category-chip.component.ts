@@ -12,6 +12,7 @@ import {
   toHexColor,
 } from '../../../core/utils/color-contrast.utils';
 
+// colors:allow-start(token-mirror) --surface-card's two values, which the chip spec holds to the stylesheet
 /**
  * The surface a chip's tint is composited over: the stylesheet's
  * --surface-card in each theme (the spec reads the stylesheet to hold the two
@@ -31,6 +32,7 @@ export const CHIP_SURFACE: Readonly<Record<EffectiveTheme, string>> = {
   light: '#ffffff',
   dark: '#1e1e1e',
 };
+// colors:allow-end
 
 /** The tint's strength, heavier in dark so the tile still reads as coloured. */
 const TINT_ALPHA: Readonly<Record<EffectiveTheme, number>> = {
@@ -69,9 +71,7 @@ const TINT_ALPHA: Readonly<Record<EffectiveTheme, number>> = {
           [style.background-color]="getBackgroundColor(color)"
           [style.color]="getTextColor(color)"
         >
-          <!-- Box sizing comes from the global mat-icon 1em rule, so the
-               glyph stays contained at any browser font size -->
-          <mat-icon class="!text-base">{{ resolvedIcon() }}</mat-icon>
+          <mat-icon class="pill-icon">{{ resolvedIcon() }}</mat-icon>
           @if (showLabel && resolvedLabel(); as chipLabel) {
             <span class="font-medium">{{ chipLabel | translate }}</span>
           }
@@ -82,6 +82,16 @@ const TINT_ALPHA: Readonly<Record<EffectiveTheme, number>> = {
   styles: `
     :host {
       display: inline-flex;
+    }
+
+    /* Each glyph is sized by font size alone, its box and line box tracking
+       it: a type utility ships a line height taller than its font size,
+       which drops the glyph low in its box. */
+    .pill-icon {
+      font-size: var(--text-base);
+      width: 1em;
+      height: 1em;
+      line-height: 1;
     }
 
     .tile {

@@ -19,7 +19,7 @@ import { MatButtonModule } from '@angular/material/button';
       aria-live="polite"
     >
       <div
-        class="rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center"
+        class="rounded-full bg-surface-muted flex items-center justify-center"
         [class.w-16]="size === 'md'"
         [class.h-16]="size === 'md'"
         [class.mb-4]="size === 'md'"
@@ -27,16 +27,7 @@ import { MatButtonModule } from '@angular/material/button';
         [class.h-12]="size === 'sm'"
         [class.mb-3]="size === 'sm'"
       >
-        <mat-icon
-          class="text-gray-400 dark:text-gray-500"
-          [class.!text-4xl]="size === 'md'"
-          [class.!w-10]="size === 'md'"
-          [class.!h-10]="size === 'md'"
-          [class.!text-2xl]="size === 'sm'"
-          [class.!w-8]="size === 'sm'"
-          [class.!h-8]="size === 'sm'"
-          >{{ icon }}</mat-icon
-        >
+        <mat-icon class="empty-icon text-fg-muted" [class.empty-icon-sm]="size === 'sm'">{{ icon }}</mat-icon>
       </div>
 
       @switch (headingLevel) {
@@ -53,7 +44,7 @@ import { MatButtonModule } from '@angular/material/button';
 
       @if (description) {
         <p
-          class="text-gray-500 dark:text-gray-400 max-w-sm"
+          class="text-fg-muted max-w-sm"
           [class.text-sm]="size === 'md'"
           [class.text-xs]="size === 'sm'"
           [class.mb-6]="size === 'md' && actionLabel"
@@ -73,6 +64,21 @@ import { MatButtonModule } from '@angular/material/button';
       }
     </div>
   `,
+  styles: `
+    /* Font size alone, the box and line box tracking it, so the circle that
+       centres the box centres the glyph: a type utility ships a line height
+       taller than its font size, which drops the glyph low in its box. */
+    .empty-icon {
+      font-size: var(--text-4xl);
+      width: 1em;
+      height: 1em;
+      line-height: 1;
+    }
+
+    .empty-icon-sm {
+      font-size: var(--text-2xl);
+    }
+  `,
 })
 export class EmptyStateComponent {
   @Input() icon = 'inbox';
@@ -90,6 +96,6 @@ export class EmptyStateComponent {
   @Output() action = new EventEmitter<void>();
 
   get headingClass(): string {
-    return `font-medium text-gray-900 dark:text-gray-100 mb-1 ${this.size === 'md' ? 'text-lg' : 'text-base'}`;
+    return `font-medium text-fg mb-1 ${this.size === 'md' ? 'text-lg' : 'text-base'}`;
   }
 }

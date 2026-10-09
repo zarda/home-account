@@ -1668,6 +1668,56 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('getEarliestTransactionDateFromServer', () => {
+    const path = 'users/test-user-123/transactions';
+
+    it('asks the server for one row, oldest first', async () => {
+      mockFirestore.setMockCollection(path, []);
+
+      await service.getEarliestTransactionDateFromServer();
+
+      const call = mockFirestore.getCollectionFromServerSpy.mostRecent();
+      expect(call?.args[0]).toBe(path);
+      expect(call?.args[1]).toEqual({
+        orderBy: [{ field: 'date', direction: 'asc' }],
+        limit: 1,
+      });
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
+      expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBe(0);
+    });
+
+    it('converts the oldest row\'s Timestamp to a Date', async () => {
+      const oldest = new Date(2024, 11, 5, 12);
+      mockFirestore.setMockCollection(path, [
+        createTransaction({ id: 'txn-oldest', date: Timestamp.fromDate(oldest) }),
+      ]);
+
+      const result = await service.getEarliestTransactionDateFromServer();
+
+      expect(result).toEqual(oldest);
+    });
+
+    it('resolves null for an account with no rows', async () => {
+      mockFirestore.setMockCollection(path, []);
+
+      expect(await service.getEarliestTransactionDateFromServer()).toBeNull();
+    });
+
+    it('resolves null signed out without touching the database', async () => {
+      mockAuth.setMockUser(null);
+
+      expect(await service.getEarliestTransactionDateFromServer()).toBeNull();
+      expect(mockFirestore.getCollectionFromServerSpy.calls.length).toBe(0);
+    });
+
+    it('rejects offline rather than answering from the cache', async () => {
+      spyOn(mockFirestore, 'getCollectionFromServer')
+        .and.rejectWith(new Error('unavailable'));
+
+      await expectAsync(service.getEarliestTransactionDateFromServer()).toBeRejected();
+    });
+  });
+
   describe('goal links', () => {
     const TX = 'users/test-user-123/transactions';
     const GOALS = 'users/test-user-123/goals';

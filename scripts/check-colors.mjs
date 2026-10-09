@@ -1,0 +1,2174 @@
+#!/usr/bin/env node
+/**
+ * Fails a colour that does not come from the theme's tokens.
+ *
+ * src/styles.scss declares every colour the app paints as a custom property,
+ * and the dark theme and the two high-contrast blocks redeclare them. A
+ * colour written anywhere else — `#9ca3af` in a component stylesheet,
+ * `text-gray-400` in an `@apply` or a template, `'rgba(34, 197, 94, 0.1)'` in
+ * a chart dataset — is painted the same in every one of those modes, and
+ * nothing in the build notices. It renders, no spec measures it, and a
+ * screenshot taken in the author's own theme looks right. That is how the
+ * tree came to hold hundreds of them, many of them under AA in one theme or
+ * the other: gray-400 meta text at 2.29:1 on the light card, a primary icon
+ * at 2.72:1 on the dark dialog. check-contrast.mjs scores the pairs somebody
+ * listed; this gate is what keeps a colour from being painted outside them.
+ *
+ * Four rules, over `src/app/**` (`.scss`, `.html`, `.ts`; specs and
+ * `testing/` helpers excluded) and src/styles.scss. A component's inline
+ * `styles:` is read as the stylesheet it is, so every rule a `.scss` file
+ * meets applies to it:
+ *
+ *   - **Palette utilities.** A Tailwind colour utility — a prefix (`text`,
+ *     `bg`, `border`, `ring`, `from`, `fill`, …), a palette name, an optional
+ *     shade and an optional `/alpha`, behind any variant chain — in an
+ *     `@apply` or a stylesheet value, in a template's `class`, `[class]`,
+ *     `[ngClass]` or `[class.<utility>]`, and in any TypeScript string. The
+ *     theme's own aliases (`text-fg-muted`, `bg-surface-card`, …) are read
+ *     from tailwind.config.js and pass, but not with an `/alpha`: a var()
+ *     cannot be split into channels, so Tailwind silently generates nothing
+ *     for `bg-brand/12`.
+ *   - **Literals.** A hex, `rgb()`/`hsl()` or named colour in a stylesheet
+ *     value; a hex or functional colour anywhere in an `@apply`, and a named
+ *     one inside its arbitrary values (`text-[red]`), as in a class list; and
+ *     any colour literal quoted in TypeScript or in a template attribute or
+ *     binding, including Tailwind's arbitrary `bg-[#…]`. A
+ *     `--mat-*`/`--mdc-*` token given a literal, and white on a rule whose
+ *     fill is a token, are named as such because each has a token answer.
+ *   - **Fallbacks and mixes.** `var(--declared, #literal)` is dead code that
+ *     reads as if it mattered; `var(--undeclared, #literal)` always paints its
+ *     fallback, whatever the theme. A `color-mix()` passes only when every
+ *     operand is a declared var(), `transparent` or `currentColor`.
+ *   - **Bound colours (#461).** A binding to any colour property —
+ *     `[style.color]`, `[style.background]`, `[style.border]`,
+ *     `[style.borderTopColor]`, `[style.outline-color]`, `[style.fill]`,
+ *     `[style.background-image]`, `[style.filter]`,
+ *     `[style.webkitTextFillColor]`, …, the list inline styles are read with
+ *     — or to a colour attribute (`[attr.fill]`, `[attr.stroke]`, …), and a
+ *     whole bound style (`[style]`, `[ngStyle]`, `[attr.style]`), puts a
+ *     colour on screen that no stylesheet can see. Each is read in every
+ *     spelling Angular compiles to the same binding: `bind-style.color="c"`,
+ *     an interpolated `style.color="{{ c }}"` or `attr.fill="{{ c }}"`, and
+ *     an interpolated `style="color: {{ c }}"`, which binds the whole style.
+ *     An interpolation is the binding's expression only when it is the whole
+ *     value; text beside it is joined on. The category chip corrects its own
+ *     glyph, so its bindings are exempt; so is a string-literal
+ *     `'var(--token)'`; and so is a one-property binding whose outermost pipe
+ *     is `categoryGlyph:'<surface>'`, naming a surface CATEGORY_SURFACES
+ *     lists (read from color-contrast.utils.ts), or `readableOn`. Each
+ *     corrects the colour last, against what it is painted on, so a `+ '20'`
+ *     after it, or a conditional branch it does not reach, is still a hit. So
+ *     is a literal joined on before it (`c + '80'`, `c + 80`,
+ *     `` `${c}80` ``): neither pipe can read a translucent colour, and each
+ *     passes it over. A whole bound style is never exempt by a pipe, since it
+ *     carries more than one colour. A category's own colour that is meant to
+ *     fill something — a bar, a swatch — is marked `category-data`, so a
+ *     category colour reaches a template only through the chip, the pipes or
+ *     a marker that says why.
+ *
+ * Decisions worth stating, because each has a cheaper alternative that is
+ * worse:
+ *
+ *   - **Counts are per file and per token**, not per file. A per-file number
+ *     lets a slice swap `text-gray-500` for `text-slate-500` and pass; keyed
+ *     by the matched text, the swap is a new token above the baseline and a
+ *     stale one below it, and both fail.
+ *   - **One baseline, held both ways.** BASELINE is generated by
+ *     `--print-baseline` and fails stale in both directions: above is a new
+ *     colour, below is a ratchet that stopped ratcheting. A bound colour
+ *     and a literal that is the fallback of a `.color` read
+ *     (`category?.color || '#9E9E9E'`) count in it like any other hit; the
+ *     fallback is named as one, because its answer is
+ *     CATEGORY_FALLBACK_COLOR rather than a token.
+ *   - **Allow markers carry a reason, and a table carries a count.** Some
+ *     colours are meant to be literal: a provider's logo, a scrim over a
+ *     photo, the category data itself. They are marked where they stand —
+ *     `colors:allow(<kind>) <reason>` on the line (or, in a template, alone
+ *     on the line before a tag, covering that tag up to its `>`), or
+ *     `colors:allow-start(<kind>) <reason>` … `colors:allow-end` around a
+ *     block. ALLOWED records, per file, the kind and how many hits its
+ *     markers exempt, with a reason — a row per kind when a file marks two.
+ *     The count goes stale in both directions, a marker that exempts nothing
+ *     fails, and an empty reason fails, so a marker cannot quietly widen to
+ *     cover a new colour.
+ *   - **Declared means declared in a stylesheet.** Every `--*` declared in a
+ *     `src` stylesheet, every `--mat-sys-*` (emitted by `mat.theme()`), and
+ *     the two set at runtime, listed in RUNTIME_DECLARED with where they are
+ *     set. Only the fallback and color-mix rules ask.
+ *
+ * Exemptions, precisely:
+ *   - In src/styles.scss, a declaration of a theme token
+ *     (`--surface-* --border-* --text-* --color-* --scrollbar-* --shadow-*
+ *     --overlay-*`): that is where the literals belong.
+ *   - A system colour (`CanvasText`, `Highlight`, …) inside a
+ *     `@media (forced-colors: …)` block, where it is the only right answer.
+ *   - Comments, blanked before scanning with offsets kept, so prose about a
+ *     colour is not a colour. Markers are read from the raw text for that
+ *     reason, and only where it was a comment: a string or an attribute
+ *     value that spells one exempts nothing. An inline template is a string
+ *     to the lexer, so it is marked by a `//` block around its property.
+ *
+ * What it deliberately cannot see:
+ *   - A colour assembled at runtime from parts (`'#' + hex`, a computed
+ *     `rgb()` built from numbers) or read from data. Category colours are
+ *     data; the binding rule is what holds them to the chip and the pipes.
+ *   - Whether a token is the *right* token. `color: var(--text-muted)` on a
+ *     tinted fill passes here and may fail AA; that is check-contrast.mjs's
+ *     question, and the rendered specs'.
+ *   - A named colour in a TypeScript string that is neither the whole string
+ *     nor the value of a colour property in an inline style.
+ *   - Which part of an inline template is a comment. A `template:` is one
+ *     string to the lexer, so a hex in its `<!-- -->` is read as a colour.
+ *     An inline `styles:` value is read as a stylesheet, its comments masked.
+ *   - A colour set outside a template's own attributes: a host binding
+ *     (`host: { '[style.color]': … }`, `@HostBinding`), `Renderer2` or an
+ *     element's `style` in code, or a custom property bound as
+ *     `[style.--name]` that a stylesheet then reads. The binding rule reads
+ *     template attributes, and a custom property's name says nothing of
+ *     what it carries.
+ *   - Whether a `categoryGlyph` binding names the surface its glyph really
+ *     sits on. The surface has to be one CATEGORY_SURFACES lists; that it
+ *     is the right one is for the component's rendered spec to measure.
+ *   - Whether a glyph pipe is given an opaque hex colour. Each passes over
+ *     what it cannot read (categoryGlyph hands it back as given, readableOn
+ *     answers white), so a var(), or an alpha that a variable or the data
+ *     already carries, reaches the screen uncorrected. Only a literal
+ *     joined on in the binding itself is a hit (a string or a number after
+ *     a `+`, or a template literal that interpolates); the rest is for the
+ *     component's rendered spec to measure.
+ *   - Material's own stylesheets, which are not ours to police here.
+ *
+ * `--print-baseline` prints the baseline for the current tree, sorted and
+ * copy-pasteable, and the per-file marker counts ALLOWED must match.
+ * `--self-test` runs the scanners over embedded must-hit and must-not-hit
+ * fixtures; colors:check chains it ahead of the live scan. As with the other
+ * gate scripts there is no .spec.ts: the self-test is the spec.
+ *
+ * Reference documentation lives in docs/accessibility.md.
+ */
+
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const SOURCE_DIR = 'src/app';
+const GLOBAL_STYLESHEET = 'src/styles.scss';
+const STYLESHEET_ROOT = 'src';
+const DOC = 'docs/accessibility.md';
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.angular', 'coverage', 'testing']);
+
+/** The chip corrects its glyph against its own tint (#460), so its bindings are the fix, not the defect. */
+const CHIP_FILE = 'src/app/shared/components/category-chip/category-chip.component.ts';
+
+/** Where CATEGORY_SURFACES lists the surfaces the categoryGlyph pipe corrects a glyph for. */
+const SURFACES_FILE = 'src/app/core/utils/color-contrast.utils.ts';
+
+/**
+ * The theme's debt, per file and per matched token, in the shape
+ * `--print-baseline` prints. Empty: every colour the scan reaches follows
+ * the theme, so a new one has no row to sit under and fails.
+ */
+const BASELINE = {};
+
+/**
+ * Colours that are meant to be literal, per file: the kind of marker, how
+ * many hits that file's markers exempt, and why.
+ */
+const ALLOWED = {
+  'src/app/core/services/chart-theme.service.ts': {
+    kind: 'token-fallback',
+    count: 8,
+    reason: "a canvas reads computed values; each token it reads falls back to light's value before the stylesheet loads",
+  },
+  'src/app/core/services/theme.service.ts': {
+    kind: 'browser-chrome',
+    count: 2,
+    reason: 'the theme-color meta takes a literal, the same pair index.html carries',
+  },
+  'src/app/core/utils/color-contrast.utils.ts': {
+    kind: 'token-mirror',
+    count: 44,
+    reason: "CATEGORY_SURFACES lists every tone a category glyph sits on, as the stylesheet paints it, so the glyph pipe can correct against them; the pipe's spec holds each tone to its token or Material state",
+  },
+  'src/app/features/ai/import/import-wizard/import-wizard.component.scss': {
+    kind: 'scrim',
+    count: 2,
+    reason: 'the caption under a receipt thumbnail sits on the photo, which has no theme',
+  },
+  'src/app/features/auth/login/login.component.html': {
+    kind: 'brand',
+    count: 4,
+    reason: "Google's four-colour mark on the sign-in button",
+  },
+  'src/app/features/auth/login/login.component.scss': {
+    kind: 'brand',
+    count: 20,
+    reason: "the sign-in page's gradient, glass card and app mark, the same in every theme",
+  },
+  'src/app/features/dashboard/spending-chart/spending-chart.component.html': {
+    kind: 'category-data',
+    count: 2,
+    reason: "the legend tile and the legend's share bar are filled with the category's own colour, as the slice is; the tile's glyph is black or white through readableOn, and the bar carries no text",
+  },
+  'src/app/features/reports/category-breakdown/category-breakdown.component.html': {
+    kind: 'category-data',
+    count: 2,
+    reason: "the share bar on each category's row and the one in its details are filled with the category's own colour, as its slice is; neither carries text",
+  },
+  'src/app/features/reports/spending-analysis/spending-analysis.component.html': {
+    kind: 'category-data',
+    count: 1,
+    reason: "each top category's share bar is filled with the category's own colour; it carries no text",
+  },
+  'src/app/features/settings/ai-settings-page/ai-settings-page.component.scss': {
+    kind: 'brand',
+    count: 13,
+    reason: "each AI provider's own colours on its avatar, in light and a lighter dark step",
+  },
+  'src/app/features/settings/category-manager/category-form-dialog/category-form-dialog.component.html': {
+    kind: 'category-data',
+    count: 1,
+    reason: 'each swatch is filled with the colour it offers; the check on the chosen one is black or white through readableOn',
+  },
+  'src/app/features/settings/category-manager/category-form-dialog/category-form-dialog.component.ts': {
+    kind: 'category-data',
+    count: 1,
+    reason: 'the colour a new category starts with until one is picked',
+  },
+  'src/app/features/settings/settings.component.scss': {
+    kind: 'brand',
+    count: 7,
+    reason: "each settings area's colour tile and the white glyph on it",
+  },
+  'src/app/features/transactions/camera-capture/camera-capture.component.scss': {
+    kind: 'scrim',
+    count: 2,
+    reason: 'the drag handle sits on a receipt photo, which has no theme',
+  },
+  'src/app/features/transactions/transaction-form/transaction-form.component.scss': {
+    kind: 'scrim',
+    count: 2,
+    reason: 'the scanning veil and its label sit on the receipt photo, which has no theme',
+  },
+  'src/app/models/category.model.ts': {
+    kind: 'category-data',
+    count: 37,
+    reason: "the seeded categories' colours, the fifteen a category can be given, and the grey a missing one falls back to, each the same in every theme",
+  },
+  'src/app/shared/components/category-chip/category-chip.component.ts': {
+    kind: 'token-mirror',
+    count: 2,
+    reason: "CHIP_SURFACE mirrors --surface-card's two values so the chip can composite its tint; its spec holds them to the stylesheet",
+  },
+};
+
+/** The marker kinds, each a reason a colour may stay literal. */
+const KINDS = new Set([
+  'brand', // a provider's or the product's own mark, painted the same in every theme
+  'scrim', // a fixed dark veil over a photo or a camera feed, which has no theme
+  'category-data', // a category's colour as data: the seeded defaults, the picker's palette, a bar of that colour
+  'token-mirror', // a TS constant a spec holds to the stylesheet's value
+  'token-fallback', // what a canvas reads when the stylesheet has not loaded
+  'browser-chrome', // the <meta name="theme-color"> the browser paints its own toolbar with
+]);
+
+/** Theme tokens whose declarations in src/styles.scss are the literals' home. */
+const TOKEN_PREFIXES = ['--surface-', '--border-', '--text-', '--color-', '--scrollbar-', '--shadow-', '--overlay-'];
+
+/** Custom properties declared by Material rather than by a stylesheet in src. */
+const DECLARED_PREFIXES = ['--mat-sys-'];
+
+/** Custom properties set at runtime, so no stylesheet declares them. */
+const RUNTIME_DECLARED = {
+  '--app-font-scale': 'written on <html> by accessibility.service.ts',
+  '--dashboard-areas': 'bound on the grid in dashboard.component.html',
+};
+
+/**
+ * Tailwind's own palette, and `primary`. tailwind.config.js defines no
+ * `primary` ramp — the brand is the `brand` alias — so `text-primary-600`
+ * generates nothing and paints whatever it inherits; the name is listed so
+ * that it fails here rather than passing as a class nothing styles. Any ramp
+ * the config defines is added from the config.
+ */
+const TAILWIND_PALETTE = [
+  'slate', 'gray', 'zinc', 'neutral', 'stone', 'red', 'orange', 'amber', 'yellow', 'lime', 'green',
+  'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose',
+  'white', 'black', 'primary',
+];
+
+/** The utilities that take a colour. */
+const UTILITY_PREFIXES = [
+  'text', 'bg', 'border', 'border-x', 'border-y', 'border-t', 'border-r', 'border-b', 'border-l',
+  'border-s', 'border-e', 'ring', 'ring-offset', 'divide', 'from', 'via', 'to', 'fill', 'stroke',
+  'outline', 'placeholder', 'shadow', 'decoration', 'caret', 'accent',
+];
+
+/** CSS Color 4's named colours. */
+const NAMED_COLOURS = [
+  'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
+  'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
+  'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson', 'cyan', 'darkblue', 'darkcyan',
+  'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta', 'darkolivegreen',
+  'darkorange', 'darkorchid', 'darkred', 'darksalmon', 'darkseagreen', 'darkslateblue',
+  'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet', 'deeppink', 'deepskyblue',
+  'dimgray', 'dimgrey', 'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen', 'fuchsia',
+  'gainsboro', 'ghostwhite', 'gold', 'goldenrod', 'gray', 'green', 'greenyellow', 'grey', 'honeydew',
+  'hotpink', 'indianred', 'indigo', 'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen',
+  'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan', 'lightgoldenrodyellow', 'lightgray',
+  'lightgreen', 'lightgrey', 'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue',
+  'lightslategray', 'lightslategrey', 'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen',
+  'magenta', 'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid', 'mediumpurple',
+  'mediumseagreen', 'mediumslateblue', 'mediumspringgreen', 'mediumturquoise', 'mediumvioletred',
+  'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive',
+  'olivedrab', 'orange', 'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise',
+  'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'pink', 'plum', 'powderblue', 'purple',
+  'rebeccapurple', 'red', 'rosybrown', 'royalblue', 'saddlebrown', 'salmon', 'sandybrown',
+  'seagreen', 'seashell', 'sienna', 'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey',
+  'snow', 'springgreen', 'steelblue', 'tan', 'teal', 'thistle', 'tomato', 'turquoise', 'violet',
+  'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen',
+];
+
+/** CSS system colours: right inside forced-colors, a fixed colour anywhere else. */
+const SYSTEM_COLOURS = [
+  'accentcolor', 'accentcolortext', 'activetext', 'buttonborder', 'buttonface', 'buttontext',
+  'canvas', 'canvastext', 'field', 'fieldtext', 'graytext', 'highlight', 'highlighttext',
+  'linktext', 'mark', 'marktext', 'selecteditem', 'selecteditemtext', 'visitedtext',
+];
+
+/**
+ * Properties whose values are identifiers that are not colours — an
+ * animation called `snow`, a grid area called `tan`, a font family. A named
+ * colour is not looked for in these.
+ */
+const IDENTIFIER_PROPERTIES = /^(?:animation(?:-name)?|transition(?:-property)?|will-change|grid(?:-[\w-]+)?|font(?:-family|-feature-settings)?|content|counter-(?:reset|increment|set)|list-style(?:-type)?|view-transition-name|container(?:-name)?|quotes|src|mask(?:-image)?)$/i;
+
+/**
+ * The CSS properties that take a colour, longhand or shorthand, in kebab
+ * case: a gradient, a border image and a `drop-shadow()` filter carry one as
+ * much as a background colour does, and so do the `-webkit-` text colours.
+ */
+const COLOUR_PROPERTY =
+  '(?:(?:background|border(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?|outline|text-decoration|column-rule)(?:-color)?|background-image|border-image(?:-source)?|color|fill|stroke|box-shadow|text-shadow|caret-color|accent-color|stop-color|flood-color|filter|text-emphasis(?:-color)?|scrollbar-color|-webkit-(?:text-fill-color|text-stroke(?:-color)?|tap-highlight-color|text-emphasis(?:-color)?))';
+
+/** Colour properties, for the inline styles that live in a template or a TS string. */
+const INLINE_COLOUR_DECLARATION = new RegExp(`(?<![\\w-])(${COLOUR_PROPERTY})\\s*:\\s*([^;{}"'\`]*)`, 'gi');
+
+/** Static template attributes whose whole value is a colour. */
+const COLOUR_ATTRIBUTES = new Set(['fill', 'stroke', 'color', 'stop-color', 'flood-color', 'lighting-color', 'bgcolor']);
+
+/** Template attributes whose value is a class list. */
+const CLASS_ATTRIBUTES = new Set(['class', '[class]', '[ngClass]', '[className]', '[attr.class]']);
+
+/** Bindings that set a whole style, which can carry any colour property. */
+const BOUND_STYLES = new Set(['[style]', '[ngStyle]', '[attr.style]']);
+
+const BOUND_COLOUR_PROPERTY = new RegExp(`^${COLOUR_PROPERTY}$`);
+
+/**
+ * The binding rule (#461): `'property'` for a binding that sets one colour —
+ * `[style.<colour property>]`, in kebab or camel case, or
+ * `[attr.<colour attribute>]` — `'style'` for one that sets a whole style,
+ * and null for any other. A unit suffix (`[style.border-width.px]`) binds a
+ * number, and a custom property (`[style.--name]`) is not a colour property.
+ */
+function boundColour(name) {
+  if (BOUND_STYLES.has(name)) return 'style';
+  const style = /^\[style\.([\w-]+)\]$/.exec(name);
+  if (style) {
+    // `webkitTextFillColor` and `WebkitTextFillColor` both name `-webkit-text-fill-color`.
+    const property = style[1]
+      .replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+      .replace(/^webkit-/, '-webkit-');
+    return BOUND_COLOUR_PROPERTY.test(property) ? 'property' : null;
+  }
+  const attribute = /^\[attr\.([\w-]+)\]$/.exec(name);
+  return attribute !== null && COLOUR_ATTRIBUTES.has(attribute[1].toLowerCase()) ? 'property' : null;
+}
+
+/**
+ * An attribute under the bracketed name of the binding Angular compiles it
+ * to, or as written. `bind-x="e"` is `[x]="e"`. An interpolated
+ * `style.<property>="{{ e }}"` or `attr.<attribute>="{{ e }}"` binds that
+ * property or attribute, and an interpolated `style="… {{ e }} …"` binds the
+ * whole style; without an interpolation each is a plain attribute.
+ */
+function bindingName(name, value) {
+  if (/^bind-./.test(name)) return `[${name.slice('bind-'.length)}]`;
+  if (!value.includes('{{')) return name;
+  if (/^(?:style|attr)\.[\w-]+$/.test(name)) return `[${name}]`;
+  return name === 'style' ? '[style]' : name;
+}
+
+/**
+ * The expression a binding's value carries: the value itself, or the one
+ * interpolation that is the whole of it. null when text sits beside an
+ * interpolation, since that text is joined on to what the expression gives.
+ */
+function boundExpression(value) {
+  if (!value.includes('{{')) return value;
+  const whole = /^\s*\{\{([\s\S]*)\}\}\s*$/.exec(value);
+  return whole !== null && !/\{\{|\}\}/.test(whole[1]) ? whole[1] : null;
+}
+
+/** A string-literal var() expression, which reads a token and so follows the theme. */
+const LITERAL_VAR_EXPRESSION = /^\s*'var\(--[\w-]+\)'\s*$/;
+
+/** A single- or double-quoted name, the only argument the categoryGlyph exemption accepts. */
+const QUOTED_NAME = /^(?:'([\w$]+)'|"([\w$]+)")$/;
+
+/** The text before a literal that makes it the fallback of a category's colour. */
+const CATEGORY_FALLBACK = /color(?:\(\))?\s*(?:\|\||\?\?)\s*$/i;
+
+const HEX = /(?<![\w&#$-])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![\w-])/g;
+const COLOUR_FUNCTION = /(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/gi;
+const NAMED = new RegExp(
+  `(?<![\\w.#$@%&-])(?:${[...NAMED_COLOURS, ...SYSTEM_COLOURS].sort((a, b) => b.length - a.length).join('|')})(?![\\w(-])`,
+  'gi'
+);
+const SYSTEM = new Set(SYSTEM_COLOURS);
+
+/**
+ * The theme's own colour names, from tailwind.config.js: an entry whose value
+ * is a var() is an alias that follows the theme, and an entry whose shades
+ * are literals is a ramp that does not. Read rather than copied, so a new
+ * alias passes and a new ramp fails without an edit here.
+ */
+function tailwindColours() {
+  const config = createRequire(import.meta.url)('../tailwind.config.js');
+  const colours = config.theme?.extend?.colors ?? {};
+  const aliases = [];
+  const ramps = [];
+  for (const [name, value] of Object.entries(colours)) {
+    if (typeof value === 'string') {
+      if (value.startsWith('var(')) aliases.push(name);
+      continue;
+    }
+    const shades = Object.entries(value);
+    if (shades.every(([, shade]) => typeof shade === 'string' && shade.startsWith('var('))) {
+      for (const [shade] of shades) aliases.push(shade === 'DEFAULT' ? name : `${name}-${shade}`);
+    } else {
+      ramps.push(name);
+    }
+  }
+  return { aliases, ramps };
+}
+
+const alternation = (words) => [...words].sort((a, b) => b.length - a.length).join('|');
+const { aliases: ALIASES, ramps: RAMPS } = tailwindColours();
+const VARIANTS = '((?:[\\w-]+:)*!?-?)';
+const ALPHA = '(?:\\/(?:\\d{1,3}|\\[[^\\]\\s]+\\]))';
+const PALETTE_UTILITY = new RegExp(
+  `(?<![\\w-])${VARIANTS}(?:${alternation(UTILITY_PREFIXES)})-(?:${alternation(new Set([...TAILWIND_PALETTE, ...RAMPS]))})(?:-\\d{2,3})?${ALPHA}?(?![\\w-])`,
+  'g'
+);
+const ALIAS_ALPHA = new RegExp(
+  `(?<![\\w-])${VARIANTS}(?:${alternation(UTILITY_PREFIXES)})-(?:${alternation(ALIASES)})${ALPHA}(?![\\w-])`,
+  'g'
+);
+
+/**
+ * Blanks comments while preserving every byte offset, so a line number taken
+ * from the masked text still points at the real line. (Copied from
+ * check-direction.mjs, which copied it from check-truncation.mjs — each gate
+ * script stays runnable on its own.)
+ */
+export function maskComments(source) {
+  const out = source.split('');
+  let i = 0;
+  let state = 'code'; // code | line | block | single | double | template
+  while (i < source.length) {
+    const c = source[i];
+    const next = source[i + 1];
+    if (state === 'code') {
+      if (c === '/' && next === '*') { state = 'block'; out[i] = out[i + 1] = ' '; i += 2; continue; }
+      if (c === '/' && next === '/') { state = 'line'; out[i] = out[i + 1] = ' '; i += 2; continue; }
+      if (c === "'") state = 'single';
+      else if (c === '"') state = 'double';
+      else if (c === '`') state = 'template';
+    } else if (state === 'block') {
+      if (c === '*' && next === '/') { state = 'code'; out[i] = out[i + 1] = ' '; i += 2; continue; }
+      if (c !== '\n') out[i] = ' ';
+    } else if (state === 'line') {
+      if (c === '\n') state = 'code';
+      else out[i] = ' ';
+    } else if (state === 'single' && c === "'" && source[i - 1] !== '\\') state = 'code';
+    else if (state === 'double' && c === '"' && source[i - 1] !== '\\') state = 'code';
+    else if (state === 'template' && c === '`' && source[i - 1] !== '\\') state = 'code';
+    i += 1;
+  }
+  return out.join('');
+}
+
+/** `<!-- -->` blanked the same way. (Copied from check-direction.mjs.) */
+export function maskHtmlComments(source) {
+  const out = source.split('');
+  let i = 0;
+  let inComment = false;
+  while (i < source.length) {
+    if (!inComment && source.startsWith('<!--', i)) {
+      inComment = true;
+      for (let k = i; k < i + 4; k += 1) out[k] = ' ';
+      i += 4;
+      continue;
+    }
+    if (inComment && source.startsWith('-->', i)) {
+      inComment = false;
+      for (let k = i; k < i + 3; k += 1) out[k] = ' ';
+      i += 3;
+      continue;
+    }
+    if (inComment && source[i] !== '\n') out[i] = ' ';
+    i += 1;
+  }
+  return out.join('');
+}
+
+const REGEX_KEYWORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do',
+  'else', 'yield', 'await',
+]);
+
+/**
+ * TypeScript, lexed far enough to know what is a string: comments blanked
+ * with offsets kept, and the [start, end) of every top-level string literal's
+ * contents. Unlike maskComments it knows a regex literal — `/['"]/` would
+ * otherwise open a string, and the comment after it would read as code — and
+ * a template literal's `${…}`, whose own strings belong to the template.
+ */
+export function lexTs(source) {
+  const out = source.split('');
+  const strings = [];
+  let i = 0;
+
+  const blank = (from, to) => {
+    for (let k = from; k < to; k += 1) if (out[k] !== '\n') out[k] = ' ';
+  };
+
+  const regexAllowed = () => {
+    let k = i - 1;
+    while (k >= 0 && /\s/.test(out[k])) k -= 1;
+    if (k < 0) return true;
+    if (/[\w$]/.test(out[k])) {
+      let s = k;
+      while (s > 0 && /[\w$]/.test(out[s - 1])) s -= 1;
+      return REGEX_KEYWORDS.has(out.slice(s, k + 1).join(''));
+    }
+    return !/[)\]'"`]/.test(out[k]);
+  };
+
+  const readQuoted = (quote, record) => {
+    const start = i + 1;
+    i += 1;
+    while (i < source.length && source[i] !== quote && source[i] !== '\n') i += source[i] === '\\' ? 2 : 1;
+    if (record) strings.push([start, Math.min(i, source.length)]);
+    if (source[i] === quote) i += 1;
+  };
+
+  const readRegex = () => {
+    const start = i;
+    let inClass = false;
+    i += 1;
+    while (i < source.length) {
+      const c = source[i];
+      if (c === '\n') { i = start + 1; return; } // a division after all
+      if (c === '\\') { i += 2; continue; }
+      if (c === '[') inClass = true;
+      else if (c === ']') inClass = false;
+      else if (c === '/' && !inClass) {
+        i += 1;
+        while (/[a-z]/i.test(source[i] ?? '')) i += 1;
+        return;
+      }
+      i += 1;
+    }
+  };
+
+  // Declarations, not arrows: a template's `${…}` is code, and code holds templates.
+  function readTemplate(record) {
+    const start = i + 1;
+    i += 1;
+    while (i < source.length && source[i] !== '`') {
+      if (source[i] === '\\') { i += 2; continue; }
+      if (source[i] === '$' && source[i + 1] === '{') { i += 2; readCode(true, false); continue; }
+      i += 1;
+    }
+    if (record) strings.push([start, Math.min(i, source.length)]);
+    i += 1;
+  }
+
+  function readCode(untilBrace, record) {
+    let depth = 0;
+    while (i < source.length) {
+      const c = source[i];
+      const next = source[i + 1];
+      if (c === '/' && next === '/') {
+        const s = i;
+        while (i < source.length && source[i] !== '\n') i += 1;
+        blank(s, i);
+        continue;
+      }
+      if (c === '/' && next === '*') {
+        const s = i;
+        const e = source.indexOf('*/', i + 2);
+        i = e === -1 ? source.length : e + 2;
+        blank(s, i);
+        continue;
+      }
+      if (c === "'" || c === '"') { readQuoted(c, record); continue; }
+      if (c === '`') { readTemplate(record); continue; }
+      if (c === '/' && regexAllowed()) { readRegex(); continue; }
+      if (untilBrace) {
+        if (c === '{') depth += 1;
+        else if (c === '}') {
+          if (depth === 0) { i += 1; return; }
+          depth -= 1;
+        }
+      }
+      i += 1;
+    }
+  }
+
+  readCode(false, true);
+  return { masked: out.join(''), strings };
+}
+
+/** The 1-based line of each offset, from a table of line starts. */
+function lineIndex(text) {
+  const starts = [0];
+  for (let i = 0; i < text.length; i += 1) if (text[i] === '\n') starts.push(i + 1);
+  return (offset) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+}
+
+/** The index just past the `)` that closes the `(` at `open`, quotes respected. */
+function closeParen(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      const end = text.indexOf(c, i + 1);
+      if (end === -1) return text.length;
+      i = end;
+    } else if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return text.length;
+}
+
+/** Splits a function's argument text at its top-level commas. */
+function topLevelArguments(text) {
+  const parts = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === '(') depth += 1;
+    else if (text[i] === ')') depth -= 1;
+    else if (text[i] === ',' && depth === 0) {
+      parts.push(text.slice(from, i));
+      from = i + 1;
+    }
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
+
+/**
+ * A token with its case and its spacing around commas and parentheses
+ * folded, so a formatter's reformat is not read as a swap. Nothing else is
+ * folded: `#fff` and `#ffffff`, or `.5` and `0.5`, stay two tokens, which
+ * keeps every baseline key the text a search of the source finds.
+ */
+function normalise(text) {
+  const spaced = text
+    .replace(/\s+/g, ' ')
+    .replace(/ ?, ?/g, ', ')
+    .replace(/\( /g, '(')
+    .replace(/ \)/g, ')')
+    .trim();
+  return /^#|^[a-z]+$/i.test(spaced) || /^[a-z][\w-]*\(/i.test(spaced) ? spaced.toLowerCase() : spaced;
+}
+
+/** Ranges of `text` that are quoted strings or url() bodies, where a word is not a colour. */
+function quotedRanges(text) {
+  const ranges = [];
+  const pattern = /'[^']*'|"[^"]*"|url\([^)]*\)/gi;
+  let match;
+  while ((match = pattern.exec(text)) !== null) ranges.push([match.index, match.index + match[0].length]);
+  return ranges;
+}
+
+const inside = (ranges, at) => ranges.some(([from, to]) => at >= from && at < to);
+
+/** Every palette utility, and every alias given an alpha it cannot take, in `text`. */
+function paletteHits(text, offset) {
+  const hits = [];
+  for (const [pattern, rule] of [[PALETTE_UTILITY, 'palette'], [ALIAS_ALPHA, 'alias-alpha']]) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      hits.push({ start: offset + match.index, end: offset + match.index + match[0].length, token: match[0], rule });
+    }
+  }
+  return hits;
+}
+
+/** Hex and functional colours in `text`; a hex inside an `rgba()` is that call. */
+function literalHits(text, offset, skip = []) {
+  const hits = [];
+  const taken = [...skip];
+  COLOUR_FUNCTION.lastIndex = 0;
+  let match;
+  while ((match = COLOUR_FUNCTION.exec(text)) !== null) {
+    if (inside(taken, match.index)) continue;
+    const end = closeParen(text, match.index + match[0].length - 1);
+    hits.push({ start: offset + match.index, end: offset + end, token: normalise(text.slice(match.index, end)), rule: 'literal' });
+    taken.push([match.index, end]);
+  }
+  HEX.lastIndex = 0;
+  while ((match = HEX.exec(text)) !== null) {
+    if (inside(taken, match.index)) continue;
+    hits.push({ start: offset + match.index, end: offset + match.index + match[0].length, token: normalise(match[0]), rule: 'literal' });
+  }
+  return hits;
+}
+
+/** Named colours in a value, outside strings and url(); system colours pass inside forced-colors. */
+function namedHits(text, offset, { forced = false } = {}) {
+  const hits = [];
+  const quoted = quotedRanges(text);
+  NAMED.lastIndex = 0;
+  let match;
+  while ((match = NAMED.exec(text)) !== null) {
+    if (inside(quoted, match.index)) continue;
+    const token = match[0].toLowerCase();
+    if (forced && SYSTEM.has(token)) continue;
+    hits.push({ start: offset + match.index, end: offset + match.index + match[0].length, token, rule: 'literal' });
+  }
+  return hits;
+}
+
+/**
+ * Named colours inside Tailwind's arbitrary values, `text-[red]`, in a class
+ * list or an `@apply`. Anywhere else in a class list a word like `red` is
+ * part of a utility's name, not a colour.
+ */
+function arbitraryNamedHits(text, offset) {
+  const hits = [];
+  for (const match of text.matchAll(/-\[([^\]\s]+)\]/g)) hits.push(...namedHits(match[1], offset + match.index + 2));
+  return hits;
+}
+
+/** Named colours in the colour properties of an inline style. */
+function inlineStyleHits(text, offset) {
+  const hits = [];
+  INLINE_COLOUR_DECLARATION.lastIndex = 0;
+  let match;
+  while ((match = INLINE_COLOUR_DECLARATION.exec(text)) !== null) {
+    const valueAt = match.index + match[0].length - match[2].length;
+    hits.push(...namedHits(match[2], offset + valueAt));
+  }
+  return hits;
+}
+
+/** Whether a fallback or an operand carries a colour of its own. */
+function hasColourLiteral(text) {
+  return literalHits(text, 0).length > 0 || namedHits(text, 0).length > 0;
+}
+
+/** Whether a custom property is declared somewhere the cascade can see it. */
+function isDeclared(name, declared) {
+  return (
+    declared.has(name) ||
+    Object.hasOwn(RUNTIME_DECLARED, name) ||
+    DECLARED_PREFIXES.some((prefix) => name.startsWith(prefix))
+  );
+}
+
+let treeDeclaredCache = null;
+
+/** Every custom property declared in a stylesheet under src. */
+function treeDeclared() {
+  if (treeDeclaredCache) return treeDeclaredCache;
+  const declared = new Set();
+  for (const file of walk(STYLESHEET_ROOT, ['.scss'])) {
+    const masked = maskComments(readFileSync(file, 'utf8'));
+    for (const match of masked.matchAll(/(?<![\w-])(--[\w-]+)\s*:/g)) declared.add(match[1]);
+  }
+  treeDeclaredCache = declared;
+  return declared;
+}
+
+/**
+ * A stylesheet value: var() fallbacks, color-mix() operands, literals and
+ * named colours, each hit once. A fallback or a mix that is a hit covers
+ * the literals inside it.
+ */
+function valueHits(value, offset, { declared, named, forced }) {
+  const hits = [];
+  const covered = [];
+
+  for (const match of value.matchAll(/var\(\s*(--[\w-]+)\s*,/g)) {
+    if (inside(covered, match.index)) continue;
+    const end = closeParen(value, match.index + 3);
+    const fallback = value.slice(match.index + match[0].length, end - 1);
+    if (!hasColourLiteral(fallback)) continue;
+    hits.push({
+      start: offset + match.index,
+      end: offset + end,
+      token: normalise(value.slice(match.index, end)),
+      rule: isDeclared(match[1], declared) ? 'dead-fallback' : 'undeclared-fallback',
+    });
+    covered.push([match.index, end]);
+  }
+
+  for (const match of value.matchAll(/color-mix\(/gi)) {
+    if (inside(covered, match.index)) continue;
+    const end = closeParen(value, match.index + match[0].length - 1);
+    const operands = topLevelArguments(value.slice(match.index + match[0].length, end - 1)).slice(1);
+    const bad = operands.some((operand) => {
+      const colour = operand.replace(/(?<![\w-])\d+(?:\.\d+)?%/g, '').trim();
+      if (/^(?:transparent|currentcolor)$/i.test(colour)) return false;
+      const plainVar = colour.match(/^var\(\s*(--[\w-]+)\s*(?:,[\s\S]*)?\)$/);
+      if (plainVar) return !isDeclared(plainVar[1], declared) && !hasColourLiteral(colour);
+      if (/^color-mix\(/i.test(colour)) return false; // judged on its own
+      return !hasColourLiteral(colour); // a literal is its own hit
+    });
+    if (!bad) continue;
+    hits.push({ start: offset + match.index, end: offset + end, token: normalise(value.slice(match.index, end)), rule: 'color-mix' });
+    covered.push([match.index, end]);
+  }
+
+  const quoted = quotedRanges(value);
+  hits.push(...literalHits(value, offset, [...covered, ...quoted]));
+  if (named) {
+    hits.push(...namedHits(value, offset, { forced }).filter((hit) => !inside(covered, hit.start - offset)));
+  }
+  hits.push(...paletteHits(value, offset));
+  return hits;
+}
+
+/**
+ * A stylesheet cut into statements: each prelude (ending in `{`) and each
+ * declaration or at-statement (ending in `;` or `}`), with the block it sits
+ * in. `#{…}` interpolation and parentheses do not cut.
+ */
+function statements(masked) {
+  const out = [];
+  const stack = [0];
+  let nextBlock = 1;
+  let start = 0;
+  let paren = 0;
+  const push = (end, terminator) => {
+    const raw = masked.slice(start, end);
+    const text = raw.trim();
+    if (text) {
+      out.push({ start: start + (raw.length - raw.trimStart().length), text, block: stack.at(-1), terminator, opens: terminator === '{' ? nextBlock : null });
+    }
+  };
+  for (let i = 0; i < masked.length; i += 1) {
+    const c = masked[i];
+    if (c === '"' || c === "'") {
+      const end = masked.indexOf(c, i + 1);
+      i = end === -1 ? masked.length : end;
+    } else if (c === '#' && masked[i + 1] === '{') {
+      const end = masked.indexOf('}', i);
+      i = end === -1 ? masked.length : end;
+    } else if (c === '(') paren += 1;
+    else if (c === ')') paren = Math.max(0, paren - 1);
+    else if (paren === 0 && c === '{') {
+      push(i, '{');
+      stack.push(nextBlock);
+      nextBlock += 1;
+      start = i + 1;
+    } else if (paren === 0 && (c === ';' || c === '}')) {
+      push(i, c);
+      if (c === '}' && stack.length > 1) stack.pop();
+      start = i + 1;
+    }
+  }
+  push(masked.length, '');
+  return out;
+}
+
+/**
+ * Every hit in a stylesheet, before markers, at its offset in `source`.
+ * `global` is src/styles.scss, where the theme tokens' own declarations are
+ * exempt.
+ */
+function stylesheetHits(source, { global, declared }) {
+  const masked = maskComments(source);
+  const forcedBlocks = new Set();
+  const byBlock = new Map();
+  const hits = [];
+
+  for (const statement of statements(masked)) {
+    if (statement.terminator === '{') {
+      if (forcedBlocks.has(statement.block) || /^@media[^{]*forced-colors/.test(statement.text)) {
+        forcedBlocks.add(statement.opens);
+      }
+      continue;
+    }
+    const forced = forcedBlocks.has(statement.block);
+    const found = [];
+    let property = null;
+    let value = null;
+    if (statement.text.startsWith('@apply')) {
+      found.push(...paletteHits(statement.text, statement.start));
+      found.push(...literalHits(statement.text, statement.start));
+      found.push(...arbitraryNamedHits(statement.text, statement.start));
+    } else if (/^@(?:use|forward|import)\b/.test(statement.text)) {
+      continue;
+    } else if (statement.text.startsWith('@')) {
+      found.push(...literalHits(statement.text, statement.start, quotedRanges(statement.text)));
+    } else {
+      const colon = statement.text.indexOf(':');
+      if (colon === -1) continue;
+      property = statement.text.slice(0, colon).trim();
+      value = statement.text.slice(colon + 1);
+      if (global && TOKEN_PREFIXES.some((prefix) => property.startsWith(prefix))) continue;
+      const named =
+        /^(?:--|\$|-)?[a-zA-Z][\w-]*$/.test(property) &&
+        !IDENTIFIER_PROPERTIES.test(property.replace(/^-[a-z]+-/i, ''));
+      found.push(...valueHits(value, statement.start + colon + 1, { declared, named, forced }));
+      if (/^--(?:mat|mdc)-/.test(property)) {
+        for (const hit of found) if (hit.rule === 'literal') hit.rule = 'material-token';
+      }
+    }
+    if (!byBlock.has(statement.block)) byBlock.set(statement.block, []);
+    byBlock.get(statement.block).push({ property, value, found });
+    hits.push(...found);
+  }
+
+  // White on a fill that is a token: --text-inverse is the token that turns
+  // with it.
+  for (const declarations of byBlock.values()) {
+    const tokenFill = declarations.some(
+      (d) => /^background(?:-color)?$/.test(d.property ?? '') && /var\(--/.test(d.value)
+    );
+    if (!tokenFill) continue;
+    for (const d of declarations) {
+      if (d.property !== 'color') continue;
+      for (const hit of d.found) if (['white', '#fff', '#ffffff'].includes(hit.token)) hit.rule = 'white-on-token-fill';
+    }
+  }
+
+  return hits;
+}
+
+/** Every hit in a stylesheet, before markers. */
+export function scanScss(source, { global = false, declared = treeDeclared() } = {}) {
+  const lineAt = lineIndex(source);
+  return stylesheetHits(source, { global, declared })
+    .sort((a, b) => a.start - b.start)
+    .map((hit) => ({ line: lineAt(hit.start), token: hit.token, rule: hit.rule }));
+}
+
+/**
+ * The keys of the CATEGORY_SURFACES object literal in `source`, in order, or
+ * none when it declares no such table. Only the table's own keys count:
+ * nested objects, arrays and calls are skipped, and comments are masked.
+ */
+export function categorySurfaceKeys(source) {
+  const masked = maskComments(source);
+  const head = /export\s+const\s+CATEGORY_SURFACES\b[^=]*=\s*\{/.exec(masked);
+  if (!head) return [];
+  let depth = 1;
+  let top = '';
+  for (let i = head.index + head[0].length; i < masked.length && depth > 0; i += 1) {
+    const c = masked[i];
+    if (c === "'" || c === '"' || c === '`') {
+      const end = masked.indexOf(c, i + 1);
+      const close = end === -1 ? masked.length : end;
+      top += depth === 1 ? masked.slice(i, close + 1) : ' '.repeat(close + 1 - i);
+      i = close;
+      continue;
+    }
+    if (c === '{' || c === '[' || c === '(') depth += 1;
+    else if (c === '}' || c === ']' || c === ')') depth -= 1;
+    top += depth === 1 && c !== '{' && c !== '[' && c !== '(' ? c : ' ';
+  }
+  return [...top.matchAll(/(?:^|,)\s*(?:'([\w$]+)'|"([\w$]+)"|([A-Za-z_$][\w$]*))\s*:/g)].map(
+    (match) => match[1] ?? match[2] ?? match[3]
+  );
+}
+
+let surfaceKeysCache = null;
+
+/** The surfaces CATEGORY_SURFACES lists in the tree, which a categoryGlyph binding may name. */
+function surfaceKeys() {
+  if (surfaceKeysCache) return surfaceKeysCache;
+  surfaceKeysCache = new Set(categorySurfaceKeys(readFileSync(SURFACES_FILE, 'utf8')));
+  return surfaceKeysCache;
+}
+
+/**
+ * The pipe an Angular binding expression ends in, as its name, its argument
+ * texts and the text of its input, or null when the expression's outermost
+ * step is not a pipe.
+ *
+ * A pipe binds looser than any operator, so the last top-level `|` is the
+ * outermost pipe and everything before it is its input:
+ * `(c | categoryGlyph:'panel') + '20'` has none, and
+ * `c | categoryGlyph:'panel' | lowercase` ends in `lowercase`. The one
+ * exception is a conditional, whose branches Angular parses as pipes of
+ * their own: `a ? b : c | categoryGlyph:'panel'` pipes `c` alone, so a
+ * top-level `?` means no pipe has the last word. `||`, `??` and `?.` are
+ * neither; parentheses, brackets, braces and quotes are skipped whole.
+ */
+export function outermostPipe(expression) {
+  const cuts = [];
+  let depth = 0;
+  for (let i = 0; i < expression.length; i += 1) {
+    const c = expression[i];
+    if (c === "'" || c === '"' || c === '`') {
+      let end = i + 1;
+      while (end < expression.length && expression[end] !== c) end += expression[end] === '\\' ? 2 : 1;
+      i = end;
+    } else if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') depth -= 1;
+    else if (depth !== 0) continue;
+    else if (c === '|') {
+      if (expression[i + 1] === '|') i += 1;
+      else cuts.push(i);
+    } else if (c === '?') {
+      if (expression[i + 1] === '?' || expression[i + 1] === '.') i += 1;
+      else return null;
+    } else if (c === ':') cuts.push(i);
+  }
+  const pipeAt = cuts.filter((at) => expression[at] === '|').pop();
+  if (pipeAt === undefined) return null;
+  const bounds = [pipeAt, ...cuts.filter((at) => at > pipeAt), expression.length];
+  const parts = bounds.slice(0, -1).map((from, k) => expression.slice(from + 1, bounds[k + 1]).trim());
+  return { name: parts[0], args: parts.slice(1), input: expression.slice(0, pipeAt).trim() };
+}
+
+/** A numeric literal on either side of a `+`, as in `c + 80`. */
+const NUMBER_LITERAL = String.raw`(?<![\w$.])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?(?![\w$.])`;
+const NUMERIC_JOIN = new RegExp(String.raw`(?<!\+)\+\s*${NUMBER_LITERAL}|${NUMBER_LITERAL}\s*\+(?!\+)`);
+
+/**
+ * Whether an expression joins a literal on, at any depth: a string with `+`
+ * (`c + '80'`, `'#' + hex`), a number with `+` (`c + 80`), or a template
+ * literal that interpolates (`` `${c}80` ``). Both glyph pipes pass over a
+ * colour they cannot read: categoryGlyph hands a translucent `#rrggbb80`
+ * back as given and readableOn answers white for it, so an alpha joined on
+ * before the pipe reaches the screen uncorrected. A sum inside an index,
+ * `rows[i + 1]`, picks a row and joins nothing on.
+ */
+function joinsLiteral(expression) {
+  const templates = expression.match(/`(?:\\.|[^`\\])*`/g) ?? [];
+  if (templates.some((template) => template.includes('${'))) return true;
+  let masked = expression.replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`/g, '\0');
+  if (/\0\s*\+|\+\s*\0/.test(masked)) return true;
+  for (let previous = ''; previous !== masked; ) {
+    previous = masked;
+    masked = masked.replace(/\[[^[\]]*\]/g, (index) => ' '.repeat(index.length));
+  }
+  return NUMERIC_JOIN.test(masked);
+}
+
+/**
+ * Whether a bound colour comes out of one of the glyph pipes as the
+ * outermost step: `categoryGlyph` naming, as a literal, a surface that
+ * CATEGORY_SURFACES lists, or `readableOn`. Either one is the last word on
+ * the colour, so nothing can be appended to what it answered; nor may a
+ * literal be joined on to what it is given (a string or a number with a
+ * `+`, or a template literal that interpolates). Only a binding that sets
+ * one colour qualifies: a whole style is not a colour a pipe can correct.
+ */
+function glyphPiped(name, value, surfaces) {
+  if (boundColour(name) !== 'property') return false;
+  const pipe = outermostPipe(value);
+  if (pipe === null || joinsLiteral(pipe.input)) return false;
+  if (pipe.name === 'readableOn') return pipe.args.length === 0;
+  if (pipe.name !== 'categoryGlyph' || pipe.args.length !== 1) return false;
+  const key = QUOTED_NAME.exec(pipe.args[0]);
+  return key !== null && surfaces.has(key[1] ?? key[2]);
+}
+
+/** Whether the quoted string holding [from, to) in `text` is the fallback of a colour read. */
+function categoryFallback(text, from, to) {
+  const quote = text[from - 1];
+  if (quote !== "'" && quote !== '"' && quote !== '`') return false;
+  if (text[to] !== quote) return false;
+  return CATEGORY_FALLBACK.test(text.slice(Math.max(0, from - 120), from - 1));
+}
+
+/**
+ * Hits in markup — a template file, or an inline template inside a TS
+ * string. `literals` is false for the inline case, where the whole string
+ * has already been read for literals and utilities.
+ */
+function markupHits(text, offset, { file, literals, surfaces }) {
+  const hits = [];
+  const attribute = /(?<=[\s<])([^\s"'<>/=]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let match;
+  while ((match = attribute.exec(text)) !== null) {
+    const name = match[1];
+    const value = match[2] ?? match[3];
+    const valueAt = match.index + match[0].length - value.length - 1;
+    const binding = bindingName(name, value);
+    const bound = /^(?:\[|bind-)/.test(name);
+    const expression = boundExpression(value);
+
+    if (
+      boundColour(binding) !== null &&
+      file !== CHIP_FILE &&
+      !(expression !== null && LITERAL_VAR_EXPRESSION.test(expression)) &&
+      !(expression !== null && glyphPiped(binding, expression, surfaces))
+    ) {
+      hits.push({ start: offset + match.index, token: name, rule: 'binding' });
+    }
+    if (bound) {
+      for (const quoted of value.matchAll(/'([^']*)'/g)) {
+        const inner = quoted[1].trim().toLowerCase();
+        if (NAMED_COLOURS.includes(inner)) {
+          hits.push({ start: offset + valueAt + quoted.index + 1, token: inner, rule: 'literal' });
+        }
+      }
+    } else if (COLOUR_ATTRIBUTES.has(name.toLowerCase()) && NAMED_COLOURS.includes(value.trim().toLowerCase())) {
+      hits.push({ start: offset + valueAt, token: value.trim().toLowerCase(), rule: 'literal' });
+    }
+    if (!literals) continue;
+
+    if (CLASS_ATTRIBUTES.has(binding)) {
+      hits.push(...paletteHits(value, offset + valueAt), ...arbitraryNamedHits(value, offset + valueAt));
+    }
+    const classBinding = binding.match(/^\[class\.(.+)\]$/);
+    if (classBinding) {
+      const at = offset + match.index + name.indexOf(classBinding[1]);
+      hits.push(...paletteHits(classBinding[1], at), ...arbitraryNamedHits(classBinding[1], at));
+    }
+    if (name === 'style') hits.push(...inlineStyleHits(value, offset + valueAt));
+    for (const hit of literalHits(value, offset + valueAt)) {
+      const from = hit.start - offset - valueAt;
+      hits.push(categoryFallback(value, from, hit.end - offset - valueAt) ? { ...hit, rule: 'category-fallback' } : hit);
+    }
+  }
+  if (literals) {
+    for (const interpolation of text.matchAll(/\{\{([\s\S]*?)\}\}/g)) {
+      hits.push(...literalHits(interpolation[1], offset + interpolation.index + 2));
+    }
+  }
+  return hits;
+}
+
+/** Every hit in a template, before markers. */
+export function scanHtml(source, { file = '', surfaces = surfaceKeys() } = {}) {
+  const masked = maskHtmlComments(source);
+  const lineAt = lineIndex(masked);
+  return markupHits(masked, 0, { file, literals: true, surfaces })
+    .sort((a, b) => a.start - b.start)
+    .map((hit) => ({ line: lineAt(hit.start), token: hit.token, rule: hit.rule }));
+}
+
+/**
+ * The start of every string that is a component's `styles:` value, on its
+ * own or in an array: `styles: \`…\`` or `styles: [\`…\`, '…']`.
+ */
+function styleStrings(masked, strings) {
+  const starts = new Set();
+  for (const match of masked.matchAll(/(?<![\w$.])styles\s*:\s*(\[\s*)?/g)) {
+    let quoteAt = match.index + match[0].length;
+    for (const [start, end] of strings) {
+      if (start <= quoteAt) continue;
+      if (start !== quoteAt + 1) break;
+      starts.add(start);
+      const next = match[1] === undefined ? null : /^\s*,\s*/.exec(masked.slice(end + 1));
+      if (next === null) break;
+      quoteAt = end + 1 + next[0].length;
+    }
+  }
+  return starts;
+}
+
+/**
+ * Every hit in TypeScript, before markers: any string's utilities and
+ * literals, an inline template's bindings, and a component's inline styles
+ * read as the stylesheet they are, so every stylesheet rule applies to them
+ * and a comment in them is a comment.
+ */
+export function scanTs(source, { file = '', surfaces = surfaceKeys(), declared = treeDeclared() } = {}) {
+  const { masked, strings } = lexTs(source);
+  const lineAt = lineIndex(masked);
+  const styles = styleStrings(masked, strings);
+  const hits = [];
+  for (const [start, end] of strings) {
+    const text = source.slice(start, end);
+    if (styles.has(start)) {
+      const css = text.replace(/\$\{[^}]*\}/g, (code) => ' '.repeat(code.length)); // `${…}` is code, not CSS
+      hits.push(...stylesheetHits(css, { global: false, declared }).map((hit) => ({ ...hit, start: start + hit.start })));
+      continue;
+    }
+    hits.push(...paletteHits(text, start));
+    for (const hit of literalHits(text, start)) {
+      hits.push(categoryFallback(masked, hit.start, hit.end) ? { ...hit, rule: 'category-fallback' } : hit);
+    }
+    const whole = text.trim().toLowerCase();
+    if (NAMED_COLOURS.includes(whole)) hits.push({ start, token: whole, rule: 'literal' });
+    hits.push(...inlineStyleHits(text, start));
+    if (text.includes('<')) hits.push(...markupHits(text, start, { file, literals: false, surfaces }));
+  }
+  return hits
+    .sort((a, b) => a.start - b.start)
+    .map((hit) => ({ line: lineAt(hit.start), token: hit.token, rule: hit.rule }));
+}
+
+const MARKER = /colors:allow(?:-(start|end))?(?:\(([^)]*)\))?(.*)$/;
+
+/**
+ * The column of the first marker on a line that sits in a comment, or -1.
+ * The masker keeps every byte outside a comment, so a marker it blanked is a
+ * comment and one it kept is a string or an attribute value.
+ */
+function markerColumn(rawLine, maskedLine) {
+  for (let at = rawLine.indexOf('colors:allow'); at !== -1; at = rawLine.indexOf('colors:allow', at + 1)) {
+    if (maskedLine[at] === ' ') return at;
+  }
+  return -1;
+}
+
+/** The line its `>` closes on, for a tag opening on line `index` (0-based), or null. */
+function tagEnd(maskedLines, index) {
+  let k = index;
+  while (k < maskedLines.length && maskedLines[k].trim() === '') k += 1;
+  if (k >= maskedLines.length || !/^\s*<[a-zA-Z]/.test(maskedLines[k])) return null;
+  let quote = null;
+  for (let line = k; line < maskedLines.length; line += 1) {
+    const text = maskedLines[line];
+    for (let i = line === k ? text.indexOf('<') + 1 : 0; i < text.length; i += 1) {
+      const c = text[i];
+      if (quote) {
+        if (c === quote) quote = null;
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === '>') return line + 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * The markers in a file's comments, read from the raw text, as 1-based line
+ * ranges with their kind and reason, and every marker that is malformed.
+ */
+export function parseMarkers(raw, masked, flavour) {
+  const rawLines = raw.split('\n');
+  const maskedLines = masked.split('\n');
+  const markers = [];
+  const errors = [];
+  let open = null;
+
+  rawLines.forEach((line, index) => {
+    const column = markerColumn(line, maskedLines[index] ?? '');
+    if (column === -1) return;
+    const match = line.slice(column).match(MARKER);
+    const at = index + 1;
+    const [, edge, kindText, rest] = match;
+    if (edge === 'end') {
+      if (open === null) errors.push(`line ${at}: colors:allow-end with no colors:allow-start before it`);
+      else markers.push({ ...open, to: at });
+      open = null;
+      return;
+    }
+    const kind = (kindText ?? '').trim();
+    const spelled = `colors:allow${edge ? `-${edge}` : ''}(${kind})`;
+    const reason = (rest ?? '').replace(/\*\/.*$/, '').replace(/-->.*$/, '').trim();
+    if (!KINDS.has(kind)) {
+      errors.push(`line ${at}: ${spelled} — the kind must be one of ${[...KINDS].join(', ')}`);
+      return;
+    }
+    if (reason === '') {
+      errors.push(`line ${at}: ${spelled} gives no reason`);
+      return;
+    }
+    if (edge === 'start') {
+      if (open !== null) errors.push(`line ${at}: ${spelled} opens inside the block opened on line ${open.from}`);
+      open = { kind, reason, from: at };
+      return;
+    }
+    const tagLine = flavour === 'html' && maskedLines[index].trim() === '' ? tagEnd(maskedLines, index + 1) : null;
+    markers.push({ kind, reason, from: at, to: tagLine ?? at });
+  });
+
+  if (open !== null) errors.push(`line ${open.from}: colors:allow-start(${open.kind}) is never closed by colors:allow-end`);
+  return { markers, errors };
+}
+
+/**
+ * One file's verdict: the hits no marker exempts, how many each kind of
+ * marker exempts, and every malformed or idle marker.
+ */
+export function review(
+  flavour,
+  source,
+  { file = '', declared = undefined, global = false, surfaces = surfaceKeys() } = {}
+) {
+  let hits;
+  let masked;
+  if (flavour === 'scss') {
+    hits = scanScss(source, { global, declared: declared ?? treeDeclared() });
+    masked = maskComments(source);
+  } else if (flavour === 'html') {
+    hits = scanHtml(source, { file, surfaces });
+    masked = maskHtmlComments(source);
+  } else {
+    hits = scanTs(source, { file, surfaces, declared: declared ?? treeDeclared() });
+    masked = lexTs(source).masked;
+  }
+
+  const { markers, errors } = parseMarkers(source, masked, flavour);
+  const used = new Set();
+  const kept = [];
+  const exempted = {};
+  for (const hit of hits) {
+    const marker = markers.find((m) => hit.line >= m.from && hit.line <= m.to);
+    if (marker === undefined) {
+      kept.push(hit);
+      continue;
+    }
+    used.add(marker);
+    exempted[marker.kind] = (exempted[marker.kind] ?? 0) + 1;
+  }
+  for (const marker of markers) {
+    if (!used.has(marker)) errors.push(`line ${marker.from}: colors:allow(${marker.kind}) exempts nothing — remove it`);
+  }
+  return { kept, exempted, errors };
+}
+
+/**
+ * Where a file's counts part from its baseline: each token above it (or not
+ * in it at all) and each below it, as [token, actual, frozen].
+ */
+export function tokenDrift(actual, frozen = {}) {
+  const over = [];
+  const under = [];
+  for (const token of Object.keys(actual).sort()) {
+    if (actual[token] > (frozen[token] ?? 0)) over.push([token, actual[token], frozen[token] ?? 0]);
+  }
+  for (const token of Object.keys(frozen).sort()) {
+    if ((actual[token] ?? 0) < frozen[token]) under.push([token, actual[token] ?? 0, frozen[token]]);
+  }
+  return { over, under };
+}
+
+/** A row in ALLOWED: a known kind, a positive hit count and a non-empty reason. */
+export function allowedRowValid(row) {
+  return (
+    row !== null &&
+    typeof row === 'object' &&
+    KINDS.has(row.kind) &&
+    Number.isInteger(row.count) &&
+    row.count > 0 &&
+    typeof row.reason === 'string' &&
+    row.reason.trim().length > 0
+  );
+}
+
+/** A file's ALLOWED entry as rows: one row, or an array when the file marks more than one kind. */
+function rowsOf(entry) {
+  if (entry === undefined) return [];
+  return Array.isArray(entry) ? entry : [entry];
+}
+
+/**
+ * Where a file's markers part from its ALLOWED entry, in either direction: a
+ * kind with no row, a row whose count is above or below what its markers
+ * exempt (a row for markers that are gone included), or a malformed row.
+ */
+export function allowedDrift(exempted, entry) {
+  const problems = [];
+  const kinds = new Set();
+  for (const row of rowsOf(entry)) {
+    if (!allowedRowValid(row)) {
+      problems.push('an ALLOWED row needs a known kind, a positive count and a reason');
+      continue;
+    }
+    if (kinds.has(row.kind)) {
+      problems.push(`ALLOWED has two ${row.kind} rows; one row per kind`);
+      continue;
+    }
+    kinds.add(row.kind);
+    const count = exempted[row.kind] ?? 0;
+    if (count !== row.count) {
+      problems.push(`${row.kind} markers exempt ${count} hit(s) but ALLOWED says ${row.count}; edit the row to match`);
+    }
+  }
+  for (const kind of Object.keys(exempted).sort()) {
+    if (!kinds.has(kind) && !rowsOf(entry).some((row) => row?.kind === kind)) {
+      problems.push(`${kind} markers exempt ${exempted[kind]} hit(s) but ALLOWED has no ${kind} row for the file`);
+    }
+  }
+  return problems;
+}
+
+function walk(dir, extensions, found = []) {
+  for (const entry of readdirSync(dir)) {
+    if (SKIP_DIRS.has(entry)) continue;
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) walk(path, extensions, found);
+    else if (extensions.some((ext) => entry.endsWith(ext)) && !entry.endsWith('.spec.ts')) found.push(path);
+  }
+  return found;
+}
+
+function posix(path) {
+  return path.split(sep).join('/');
+}
+
+function flavourOf(file) {
+  if (file.endsWith('.scss')) return 'scss';
+  if (file.endsWith('.html')) return 'html';
+  return 'ts';
+}
+
+/** Every file in scope, reviewed, keyed by repo-relative path. */
+function collect() {
+  const files = [GLOBAL_STYLESHEET, ...walk(SOURCE_DIR, ['.scss', '.html', '.ts']).map(posix)];
+  const declared = treeDeclared();
+  const reviewed = new Map();
+  for (const file of files) {
+    const verdict = review(flavourOf(file), readFileSync(file, 'utf8'), {
+      file,
+      declared,
+      global: file === GLOBAL_STYLESHEET,
+    });
+    const counts = {};
+    for (const hit of verdict.kept) counts[hit.token] = (counts[hit.token] ?? 0) + 1;
+    reviewed.set(file, { ...verdict, counts });
+  }
+  return { files, reviewed };
+}
+
+/** A key or token, single-quoted for pasting into this file. */
+function quote(text) {
+  return `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+}
+
+function printTable(name, files) {
+  console.log(`const ${name} = {`);
+  for (const [file, counts] of files) {
+    console.log(`  ${quote(file)}: {`);
+    for (const token of Object.keys(counts).sort()) console.log(`    ${quote(token)}: ${counts[token]},`);
+    console.log('  },');
+  }
+  console.log('};');
+}
+
+function printBaseline() {
+  const { reviewed } = collect();
+  const paths = [...reviewed.keys()].sort();
+  const listed = paths.filter((p) => Object.keys(reviewed.get(p).counts).length > 0);
+  printTable('BASELINE', listed.map((p) => [p, reviewed.get(p).counts]));
+
+  const sum = listed.reduce((total, p) => total + sumOf(reviewed.get(p).counts), 0);
+  console.error(`\nBASELINE: ${listed.length} file(s), ${sum} hit(s).`);
+  const marked = paths.filter((p) => Object.keys(reviewed.get(p).exempted).length > 0);
+  if (marked.length > 0) {
+    console.error('Marker counts ALLOWED must match (each row also needs a reason):');
+    for (const p of marked) {
+      for (const [kind, count] of Object.entries(reviewed.get(p).exempted)) console.error(`  ${p}  ${kind}: ${count}`);
+    }
+  }
+}
+
+function sumOf(counts) {
+  return Object.values(counts).reduce((a, b) => a + b, 0);
+}
+
+function describe(hit, file) {
+  return `    ${file}:${hit.line}  ${hit.token}  (${hit.rule})`;
+}
+
+const ADVICE = {
+  palette: 'a palette utility paints the same in every theme — use a theme alias (text-fg-muted, bg-surface-card, border-line, …)',
+  'alias-alpha': 'an alias takes no /alpha — Tailwind generates nothing; mix it in the stylesheet with color-mix()',
+  literal: 'read a token from src/styles.scss instead',
+  'material-token': 'give the Material token a var() of a theme token',
+  'white-on-token-fill': 'white on a token fill — use --text-inverse, which turns with the fill',
+  'dead-fallback': 'the token is declared, so the fallback never paints — drop it',
+  'undeclared-fallback': 'the token is declared nowhere, so the fallback always paints — use a declared token',
+  'color-mix': 'every color-mix() operand must be a declared var(), transparent or currentColor',
+  binding:
+    "a bound colour bypasses every stylesheet — draw a category colour through the chip, or end the binding in | categoryGlyph:'<surface>' or | readableOn",
+  'category-fallback': "a missing category's colour is CATEGORY_FALLBACK_COLOR, from src/app/models/category.model.ts",
+};
+
+function run() {
+  const { files, reviewed } = collect();
+  const problems = [];
+
+  for (const [file, verdict] of [...reviewed.entries()].sort()) {
+    const { over, under } = tokenDrift(verdict.counts, BASELINE[file]);
+    if (over.length > 0) {
+      const tokens = new Set(over.map(([token]) => token));
+      const lines = verdict.kept.filter((hit) => tokens.has(hit.token));
+      problems.push(
+        `${file} — ${over.map(([t, a, f]) => `${t} ×${a} (BASELINE ${f})`).join(', ')}:\n` +
+          lines.map((hit) => `${describe(hit, file)}\n      ${ADVICE[hit.rule]}`).join('\n')
+      );
+    }
+    if (under.length > 0) {
+      problems.push(
+        `${file} — ${under.map(([t, a]) => `${t} ×${a}`).join(', ')} but BASELINE still says ` +
+          `${under.map(([t, , f]) => `${t} ×${f}`).join(', ')}; the ratchet is stale — lower or remove the entry.`
+      );
+    }
+  }
+  for (const file of Object.keys(BASELINE).sort()) {
+    if (reviewed.has(file)) continue;
+    problems.push(`${file} — BASELINE lists ${sumOf(BASELINE[file])} hit(s) but the file is ${existsSync(file) ? 'out of scope' : 'gone'}; remove the entry.`);
+  }
+
+  if (surfaceKeys().size === 0) {
+    problems.push(
+      `${SURFACES_FILE} — no CATEGORY_SURFACES table was found, so no categoryGlyph binding can name a surface; ` +
+        'restore the table or point SURFACES_FILE at it.'
+    );
+  }
+
+  for (const [file, verdict] of [...reviewed.entries()].sort()) {
+    for (const error of verdict.errors) problems.push(`${file} — ${error}`);
+    for (const drift of allowedDrift(verdict.exempted, ALLOWED[file])) problems.push(`${file} — ${drift}.`);
+  }
+  for (const file of Object.keys(ALLOWED).sort()) {
+    if (!reviewed.has(file)) problems.push(`${file} — ALLOWED has a row but the file is ${existsSync(file) ? 'out of scope' : 'gone'}.`);
+  }
+
+  const counts = { scss: 0, html: 0, ts: 0 };
+  for (const file of files) counts[flavourOf(file)] += 1;
+  console.log(
+    `Checked ${counts.scss} stylesheets, ${counts.html} templates and ${counts.ts} TypeScript sources for colours outside the theme tokens.`
+  );
+
+  if (problems.length > 0) {
+    console.error(`\n${problems.length} colour problem(s):\n`);
+    for (const problem of problems) console.error(`  ${problem}\n`);
+    console.error(
+      `A colour outside the tokens in src/styles.scss paints the same in light, dark and high\n` +
+        `contrast. BASELINE in scripts/check-colors.mjs freezes any that are already here and\n` +
+        `may only shrink; a slice that clears a hit lowers or removes its row in the same\n` +
+        `commit. A category's own colour reaches a template through the category chip or a\n` +
+        `glyph pipe. A colour that is meant to be literal is marked where it stands,\n` +
+        `colors:allow(<kind>) <reason>, and counted in ALLOWED; a marker that is added,\n` +
+        `removed or widened edits its file's row in the same commit.\n` +
+        `\`node scripts/check-colors.mjs --print-baseline\` prints the baseline and the marker\n` +
+        `counts for the current tree. Reference: ${DOC}.\n`
+    );
+    process.exit(1);
+  }
+
+  const frozen = (table) => Object.values(table).reduce((total, row) => total + sumOf(row), 0);
+  const allowed = Object.values(ALLOWED).flatMap(rowsOf).reduce((total, row) => total + row.count, 0);
+  console.log(
+    `Colours are where the baseline says: ${frozen(BASELINE)} frozen in ${Object.keys(BASELINE).length} file(s), ` +
+      `${allowed} marked in ${Object.keys(ALLOWED).length}.`
+  );
+}
+
+function selfTest() {
+  const results = [];
+  const check = (name, actual, expected) => {
+    results.push({
+      name,
+      ok: JSON.stringify(actual) === JSON.stringify(expected),
+      actual,
+      expected,
+    });
+  };
+
+  // A fixed declared set, so the fixtures do not depend on the tree's
+  // stylesheets. `--mat-sys-*` and the runtime names are declared by rule.
+  const declared = new Set([
+    '--text-primary',
+    '--text-muted',
+    '--border-primary',
+    '--color-primary',
+    '--color-error',
+    '--surface-card',
+  ]);
+  // A fixed pair of surface keys, for the same reason.
+  const surfaces = new Set(['panel', 'iconGrid']);
+  const kept = (flavour, source, options = {}) =>
+    review(flavour, source, { declared, ...options }).kept;
+  const tokens = (flavour, source, options) => kept(flavour, source, options).map((hit) => hit.token);
+  const rules = (flavour, source, options) => kept(flavour, source, options).map((hit) => hit.rule);
+  const scss = (source, options) => tokens('scss', source, options);
+  const html = (source, options) => tokens('html', source, options);
+  const ts = (source, options) => tokens('ts', source, options);
+
+  // --- must hit -----------------------------------------------------------
+  check('a hex colour', scss('.a { color: #abc; }'), ['#abc']);
+  check('a functional colour', scss('.a { background: rgba(0, 0, 0, 0.5); }'), ['rgba(0, 0, 0, 0.5)']);
+  check('a named colour', scss('.a { border-color: red; }'), ['red']);
+  check(
+    'white on a token fill',
+    rules('scss', '.a {\n  background: var(--color-primary);\n  color: white;\n}'),
+    ['white-on-token-fill']
+  );
+  check(
+    'a fallback for an undeclared token always renders',
+    kept('scss', '.a { color: var(--color-warn, #d32f2f); }').map((hit) => [hit.rule, hit.token]),
+    [['undeclared-fallback', 'var(--color-warn, #d32f2f)']]
+  );
+  check(
+    'a fallback for a declared token is dead',
+    kept('scss', '.a { color: var(--text-muted, #666); }').map((hit) => [hit.rule, hit.token]),
+    [['dead-fallback', 'var(--text-muted, #666)']]
+  );
+  check('palette utilities inside @apply', scss('.a { @apply text-gray-500 dark:text-gray-400; }'), [
+    'text-gray-500',
+    'dark:text-gray-400',
+  ]);
+  check('a palette utility named by a class binding', html('<div [class.dark:bg-red-900]="on"></div>'), [
+    'dark:bg-red-900',
+  ]);
+  check('a palette utility in a class attribute', html('<p class="mb-1 text-gray-600">x</p>'), ['text-gray-600']);
+  check('a palette utility in [ngClass]', html(`<p [ngClass]="{ 'text-red-500': bad }">x</p>`), ['text-red-500']);
+  check(
+    'a primary-ramp utility, which the config does not define',
+    html('<p class="text-primary-600 dark:bg-primary-900/50">x</p>'),
+    ['text-primary-600', 'dark:bg-primary-900/50']
+  );
+  check('a palette utility in a TypeScript string', ts("function f() { return 'text-red-600 font-semibold'; }"), [
+    'text-red-600',
+  ]);
+  check('a Tailwind arbitrary colour', html('<div class="bg-[#fff]"></div>'), ['#fff']);
+  check('an arbitrary hex inside @apply', scss('.a { @apply bg-[#123456]; }'), ['#123456']);
+  check('an arbitrary functional colour inside @apply', scss('.a { @apply text-[rgb(1,2,3)]; }'), ['rgb(1, 2, 3)']);
+  check('an arbitrary named colour inside @apply', scss('.a { @apply text-[red]; }'), ['red']);
+  check('an arbitrary named colour in a class attribute', html('<p class="text-[red]">x</p>'), ['red']);
+  check('an alias given an alpha it cannot take', html('<div class="bg-brand/12"></div>'), ['bg-brand/12']);
+  check('an alias given an alpha inside @apply', scss('.a { @apply bg-error/10; }'), ['bg-error/10']);
+  check('a colour literal in a binding', html(`<mat-icon [color]="x || '#666'"></mat-icon>`), ['#666']);
+  check('a bound background colour', html('<div [style.background-color]="c"></div>'), ['[style.background-color]']);
+  check('a bound colour', html('<mat-icon [style.color]="c"></mat-icon>'), ['[style.color]']);
+  check('a bound style object', html('<div [ngStyle]="styles"></div>'), ['[ngStyle]']);
+  check('a bound border shorthand', html(`<div [style.border]="'1px solid ' + c"></div>`), ['[style.border]']);
+  check('a bound background shorthand', html('<div [style.background]="c"></div>'), ['[style.background]']);
+  check('a bound colour property in camel case', html('<div [style.borderTopColor]="c"></div>'), [
+    '[style.borderTopColor]',
+  ]);
+  check('a bound [style] object', html(`<div [style]="{ 'background-color': c }"></div>`), ['[style]']);
+  check('a bound style string', html(`<div [attr.style]="'color: ' + c"></div>`), ['[attr.style]']);
+  check('a bound SVG fill and stroke', html('<svg><rect [attr.fill]="c"></rect><path [attr.stroke]="c"></path></svg>'), [
+    '[attr.fill]',
+    '[attr.stroke]',
+  ]);
+  // Angular compiles each of the four below as the bracketed binding it spells.
+  check('an interpolated style property', html('<div style.color="{{ cat.color }}"></div>'), ['style.color']);
+  check('an interpolated colour attribute', html('<svg><rect attr.fill="{{ cat.color }}"></rect></svg>'), ['attr.fill']);
+  check('a bind- colour binding', html('<div bind-style.background-color="cat.color"></div>'), [
+    'bind-style.background-color',
+  ]);
+  check('an interpolated style', html('<div style="background-color: {{ cat.color }}"></div>'), ['style']);
+  check('a bind- class list', html(`<p bind-ngClass="{ 'text-red-500': bad }">x</p>`), ['text-red-500']);
+  // An interpolation is converted to a string, so text beside it is joined on.
+  check(
+    'text beside an interpolated glyph pipe',
+    html(`<mat-icon style.color="{{ c | categoryGlyph:'panel' }}80"></mat-icon>`, { surfaces }),
+    ['style.color']
+  );
+  check(
+    'a bound gradient and a bound shadow filter',
+    html(
+      `<div [style.background-image]="'linear-gradient(' + c + ', transparent)'"` +
+        ` [style.filter]="'drop-shadow(0 0 2px ' + c + ')'"></div>`
+    ),
+    ['[style.background-image]', '[style.filter]']
+  );
+  check(
+    'the other colour properties a binding can set',
+    html(
+      '<p [style.borderImage]="c" [style.scrollbar-color]="c" [style.textEmphasisColor]="c"' +
+        ' [style.webkitTextFillColor]="c" [style.-webkit-text-stroke-color]="c">x</p>'
+    ),
+    [
+      '[style.borderImage]',
+      '[style.scrollbar-color]',
+      '[style.textEmphasisColor]',
+      '[style.webkitTextFillColor]',
+      '[style.-webkit-text-stroke-color]',
+    ]
+  );
+  check('a named colour in an inline gradient', html('<div style="background-image: linear-gradient(white, black)"></div>'), [
+    'white',
+    'black',
+  ]);
+  check('a named colour in an inline vendor colour', html('<span style="-webkit-text-fill-color: white">x</span>'), [
+    'white',
+  ]);
+  check('a named colour on a vendor-prefixed property', scss('.a { -webkit-text-fill-color: white; }'), ['white']);
+  check('a [style] object is not a glyph', html('<div [style]="c | readableOn"></div>', { surfaces }), ['[style]']);
+  // Pins, the seven below: each was a hit before the pipe exemption existed; they keep it narrow, not show it.
+  check(
+    'a glyph pipe that is not the outermost',
+    html(`<mat-icon [style.color]="(c | categoryGlyph:'panel') + '20'"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check(
+    'a glyph pipe under another pipe',
+    html(`<mat-icon [style.color]="c | categoryGlyph:'panel' | lowercase"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check(
+    'a glyph pipe for a surface CATEGORY_SURFACES does not list',
+    html(`<mat-icon [style.color]="c | categoryGlyph:'sidebar'"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check(
+    'a glyph pipe whose surface is not a literal',
+    html(`<mat-icon [style.color]="c | categoryGlyph:surface"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check('an or is not a pipe', html('<mat-icon [style.color]="c || d"></mat-icon>', { surfaces }), ['[style.color]']);
+  // A conditional's branches are pipes of their own: only `d` is corrected.
+  check(
+    'a glyph pipe on one branch of a conditional',
+    html(`<mat-icon [style.color]="on ? c : d | categoryGlyph:'panel'"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check('a style object is not a glyph', html('<div [ngStyle]="c | readableOn"></div>', { surfaces }), ['[ngStyle]']);
+  // Neither pipe can read `#rrggbb80`: categoryGlyph hands it back as given, readableOn answers white.
+  check(
+    'an alpha joined on before the glyph pipe',
+    html(`<mat-icon [style.color]="c + '80' | categoryGlyph:'panel'"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check(
+    'an alpha joined on by a template literal before the glyph pipe',
+    html("<mat-icon [style.color]=\"`${c}80` | categoryGlyph:'panel'\"></mat-icon>", { surfaces }),
+    ['[style.color]']
+  );
+  check(
+    'an alpha joined on as a number before the glyph pipe',
+    html(`<mat-icon [style.color]="c + 80 | categoryGlyph:'panel'"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check(
+    'an alpha joined on in parentheses before readableOn',
+    html(`<mat-icon [style.color]="(c + '80') | readableOn"></mat-icon>`, { surfaces }),
+    ['[style.color]']
+  );
+  check('a Material token given a literal', scss('.dark-theme {\n  --mdc-x-color: #111;\n}'), ['#111']);
+  check(
+    'a Material token given a literal in the global stylesheet',
+    rules('scss', '.dark-theme {\n  --mdc-x-color: #111;\n}', { global: true }),
+    ['material-token']
+  );
+  check(
+    'a color-mix() over an undeclared token',
+    scss('.a { background: color-mix(in srgb, var(--color-warn) 10%, transparent); }'),
+    ['color-mix(in srgb, var(--color-warn) 10%, transparent)']
+  );
+  check(
+    'a flagged color-mix() is one hit, literals and all',
+    scss('.a { border-color: color-mix(in srgb, var(--color-warn) 30%, white); }'),
+    ['color-mix(in srgb, var(--color-warn) 30%, white)']
+  );
+  // `#{` must not open a block, or the statement it ends is read as a selector.
+  check('a palette utility before an interpolated !important', scss('.a { @apply text-gray-500 #{!important}; }'), [
+    'text-gray-500',
+  ]);
+  check(
+    'a color-mix() over a literal is the literal',
+    scss('.a { background: color-mix(in srgb, #3f51b5 10%, var(--surface-card)); }'),
+    ['#3f51b5']
+  );
+  check('a system colour outside forced-colors', scss('.a { outline: 2px solid CanvasText; }'), ['canvastext']);
+  check('a chart dataset literal', ts("const d = { backgroundColor: 'rgba(34, 197, 94, 0.1)' };"), [
+    'rgba(34, 197, 94, 0.1)',
+  ]);
+  check('a named colour as a whole TypeScript string', ts("const c = { color: 'white' };"), ['white']);
+  check('a named colour in an inline style', html('<span style="color: white">x</span>'), ['white']);
+  check('a literal fill', html('<path fill="#4285F4" d="M0 0"/>'), ['#4285f4']);
+  check(
+    'a binding in an inline template',
+    ts('@Component({ template: `<mat-icon [style.color]="c">x</mat-icon>` })\nclass A {}'),
+    ['[style.color]']
+  );
+  // A component's inline styles are a stylesheet, and are read as one.
+  check(
+    'a color-mix() over an undeclared token in inline styles',
+    ts('@Component({ styles: `.a { background: color-mix(in srgb, var(--nope) 10%, transparent); }` })\nclass A {}'),
+    ['color-mix(in srgb, var(--nope) 10%, transparent)']
+  );
+  check(
+    'a Material token given a named colour in inline styles',
+    rules('ts', '@Component({ styles: `.a { --mat-foo-color: white; }` })\nclass A {}'),
+    ['material-token']
+  );
+  check(
+    'a fallback in an inline styles array',
+    kept(
+      'ts',
+      "@Component({\n  styles: [\n    `.a { color: var(--text-primary); }`,\n    '.b { outline-color: var(--color-warn, #d32f2f); }',\n  ],\n})\nclass A {}"
+    ).map((hit) => [hit.rule, hit.token, hit.line]),
+    [['undeclared-fallback', 'var(--color-warn, #d32f2f)', 4]]
+  );
+  check(
+    'a swap inside one file is a new token and a stale one',
+    tokenDrift({ '#abd': 1 }, { '#abc': 1 }),
+    { over: [['#abd', 1, 0]], under: [['#abc', 0, 1]] }
+  );
+  check('one more of a frozen token', tokenDrift({ '#abc': 2 }, { '#abc': 1 }), {
+    over: [['#abc', 2, 1]],
+    under: [],
+  });
+  // A formatter's spacing is not a swap; a hex keeps the length it was written in.
+  check(
+    'a reformat keeps its token',
+    scss('.a { background: RGBA( 0,0 ,0,0.5 ); border-color: var(--text-muted,#666); }'),
+    ['rgba(0, 0, 0, 0.5)', 'var(--text-muted, #666)']
+  );
+  check('a hex keeps its length', scss('.a { color: #FFF; background: #ffffff; }'), ['#fff', '#ffffff']);
+
+  // --- must not hit -------------------------------------------------------
+  // The load-bearing half: each shape below is a token, a utility that
+  // follows the theme, or a value that is not a colour. A gate that fired on
+  // these would be switched off.
+  check('a token', scss('.a { color: var(--text-primary); }'), []);
+  check('a token in a shorthand', scss('.a { border: 1px solid var(--border-primary); }'), []);
+  check(
+    'a marked token read',
+    ts(
+      'const p = {\n' +
+        "  grid: read('--border-primary', '#e5e7eb'), // colors:allow(token-fallback) the canvas cannot read a var()\n" +
+        '};'
+    ),
+    []
+  );
+  check('a token declaration in the global stylesheet', scss(':root {\n  --text-primary: #111827;\n}', { global: true }), []);
+  check(
+    'utilities that are not palette colours',
+    html('<p class="text-xs text-center bg-transparent border border-current text-fg-muted text-income-text">x</p>'),
+    []
+  );
+  check('the same utilities inside @apply', scss('.a { @apply text-xs bg-transparent border-current text-fg-muted; }'), []);
+  // Pins, the two below: neither was a hit before arbitrary values were scanned, and both keep that scan narrow.
+  check(
+    'arbitrary values that are not colours',
+    scss(".a { @apply w-[calc(100%-1rem)] grid-cols-[repeat(2,minmax(0,1fr))] bg-[var(--surface-card)] font-['Tan'] data-[state=open]:text-fg; }"),
+    []
+  );
+  check(
+    'arbitrary values that are not colours in a class attribute',
+    html('<p class="w-[calc(100%-2rem)] grid-cols-[1fr_auto] bg-[var(--surface-card)] [&>svg]:text-fg-muted">x</p>'),
+    []
+  );
+  check('an alias without an alpha', html('<p class="bg-brand text-fg-secondary border-line-strong">x</p>'), []);
+  check('a font size with a line height', html('<p class="text-sm/6">x</p>'), []);
+  check('a var() is not a palette utility', scss('.a { color: var(--text-gray-500); }'), []);
+  check(
+    'a color-mix() over declared tokens',
+    scss('.a { background: color-mix(in srgb, var(--color-error) 8%, var(--surface-card)); }'),
+    []
+  );
+  check(
+    'a color-mix() over a Material system token',
+    scss('.a { background: color-mix(in srgb, var(--color-primary) 30%, var(--mat-sys-surface)); }'),
+    []
+  );
+  check('a color-mix() with currentColor', scss('.a { border-color: color-mix(in srgb, currentColor 20%, transparent); }'), []);
+  check('a non-colour fallback', scss('html { font-size: calc(100% * var(--app-font-scale, 1)); }'), []);
+  check('a Material token given a length', scss('.a { --mat-icon-button-state-layer-size: 40px; }'), []);
+  check('an interpolated !important', scss('.a { @apply text-fg #{!important}; color: var(--text-primary) #{!important}; }'), []);
+  // Inside a block and after a colon, where an unmasked comment would read as
+  // a declaration's value; before a rule it would only be a selector.
+  check(
+    'an issue number on a block-comment continuation line',
+    scss('.a {\n  /* the swatch used to be\n     white: issue #219 */\n  color: var(--text-primary);\n}'),
+    []
+  );
+  check('a line comment naming a hex', scss('.a {\n  // was: #fff before the sweep\n  color: var(--text-primary);\n}'), []);
+  check('white-space', scss('.a { white-space: nowrap; }'), []);
+  check('transparent and currentColor', scss('.a { background: transparent; color: currentColor; }'), []);
+  check('a named colour inside a font family', scss(".a { font-family: 'Tan', sans-serif; transition: color 0.2s; }"), []);
+  check(
+    'a system colour inside forced-colors',
+    scss('@media (forced-colors: active) {\n  .a { outline: 2px solid CanvasText; }\n}'),
+    []
+  );
+  check(
+    'a marked brand block',
+    scss('/* colors:allow-start(brand) the provider\'s own mark */\n.google { color: #4285f4; }\n/* colors:allow-end */'),
+    []
+  );
+  check(
+    'a marker before a multi-line tag covers the tag',
+    html('<!-- colors:allow(brand) the provider\'s own logo -->\n<path\n  fill="#4285F4"\n  d="M0 0"/>'),
+    []
+  );
+  check('a template comment naming a colour', html('<!-- was <p style="color: red"> -->\n<p class="text-fg">x</p>'), []);
+  check('a template reference is not a hex', html('<input #abc #face (keyup)="go(abc)">'), []);
+  check('an href fragment is not a hex', html('<a href="#main-content">x</a>'), []);
+  check('a string-literal var() binding', html(`<mat-icon [style.color]="'var(--text-primary)'"></mat-icon>`), []);
+  check(
+    'a category glyph through its pipe',
+    html(`<mat-icon [style.color]="cat.color | categoryGlyph:'panel'"></mat-icon>`, { surfaces }),
+    []
+  );
+  check(
+    'a chosen icon through the glyph pipe',
+    html(`<mat-icon [style.color]="(sel === i ? c : '') | categoryGlyph:'iconGrid'"></mat-icon>`, { surfaces }),
+    []
+  );
+  // The pipe binds loosest, so it takes the whole `c || d` to its left.
+  check(
+    'an or under the glyph pipe',
+    html(`<mat-icon [style.color]="c || d | categoryGlyph : 'panel'"></mat-icon>`, { surfaces }),
+    []
+  );
+  check(
+    'safe navigation and a nullish default under the glyph pipe',
+    html(`<mat-icon [style.color]="category()?.color ?? '' | categoryGlyph:'panel'"></mat-icon>`, { surfaces }),
+    []
+  );
+  // A pin: a sum inside an index picks a row and joins nothing on.
+  check(
+    'an index sum under the glyph pipe',
+    html(`<mat-icon [style.color]="rows[i + 1].color | categoryGlyph:'panel'"></mat-icon>`, { surfaces }),
+    []
+  );
+  check('a glyph on its fill through readableOn', html('<mat-icon [style.color]="cat.color | readableOn"></mat-icon>', { surfaces }), []);
+  // Pins, the eight below: none was a hit before the rules widened, and all eight keep them narrow.
+  check(
+    'an interpolated glyph pipe',
+    html(`<mat-icon style.color="{{ c | categoryGlyph:'panel' }}"></mat-icon>`, { surfaces }),
+    []
+  );
+  check('a bind- glyph pipe', html('<mat-icon bind-style.color="c | readableOn"></mat-icon>', { surfaces }), []);
+  check(
+    'an interpolated length or label is not a colour',
+    html('<div style.width="{{ w }}px" attr.aria-label="{{ l }}" title="{{ t }}"></div>'),
+    []
+  );
+  check('a static style is not a binding', html('<p style="color: var(--text-primary)">x</p>'), []);
+  check(
+    'a bound background position, size or backdrop is not a colour',
+    html('<div [style.background-position]="p" [style.backgroundSize]="s" [style.backdrop-filter]="b"></div>'),
+    []
+  );
+  check(
+    'a vendor-prefixed identifier is not a colour',
+    scss('.a { -webkit-animation-name: snow; -webkit-font-smoothing: antialiased; }'),
+    []
+  );
+  check('an SVG glyph through its pipe', html(`<path [attr.fill]="c | categoryGlyph:'panel'"></path>`, { surfaces }), []);
+  check(
+    'a bound length, a unit or a label is not a colour',
+    html('<div [style.width.%]="p" [style.border-radius.px]="r" [style.outline-offset.px]="o" [attr.aria-label]="l"></div>'),
+    []
+  );
+  check(
+    'a glyph pipe in an inline template',
+    ts("@Component({ template: `<mat-icon [style.color]=\"c | categoryGlyph:'panel'\">x</mat-icon>` })\nclass A {}", {
+      surfaces,
+    }),
+    []
+  );
+  check(
+    'a binding in the category chip',
+    ts('@Component({ template: `<span [style.color]="getTextColor(c)">x</span>` })\nclass C {}', {
+      file: 'src/app/shared/components/category-chip/category-chip.component.ts',
+    }),
+    []
+  );
+  check(
+    'a binding inside an allow block',
+    html(
+      '<!-- colors:allow-start(category-data) the bar is the category\'s own fill -->\n' +
+        '<div [style.background-color]="c"></div>\n' +
+        '<!-- colors:allow-end -->'
+    ),
+    []
+  );
+  check('a hex inside a TypeScript comment', ts('// see #219\n/* and #abc */\nconst a = 1;'), []);
+  check(
+    'a quote inside a regex literal does not open a string',
+    ts("const re = /'/g; // was #abc\nconst ok = 'fine';"),
+    []
+  );
+  check('a template interpolation inside a string', ts('const s = `${a ? "x" : "y"} text-fg`;'), []);
+  check(
+    'a comment and a mix of declared tokens in inline styles',
+    ts(
+      '@Component({\n  styles: `\n    /* was #fff */\n' +
+        '    .a { background: color-mix(in srgb, var(--color-error) 8%, var(--surface-card)); }\n  `,\n})\nclass A {}'
+    ),
+    []
+  );
+  // Pins, the two below: only a component's styles are read as a stylesheet.
+  check('a color-mix() in any other string', ts("const s = 'color-mix(in srgb, var(--nope) 10%, transparent)';"), []);
+  check('a styles object is not a stylesheet', ts("const t = { styles: { font: fontName, fontStyle: 'normal' } };"), []);
+
+  // --- category -----------------------------------------------------------
+  check(
+    'a category colour fallback is named as one',
+    kept('ts', "return category?.color || '#9E9E9E';").map((hit) => [hit.token, hit.rule]),
+    [['#9e9e9e', 'category-fallback']]
+  );
+  check(
+    'a nullish category colour fallback is named as one',
+    rules('html', `<app-x [color]="category()?.color ?? '#666'"></app-x>`),
+    ['category-fallback']
+  );
+  check('a bound colour is a binding', rules('html', '<div [style.color]="c"></div>'), ['binding']);
+  check('any other literal is a literal', rules('ts', "const c = { borderColor: '#22c55e' };"), ['literal']);
+
+  // --- markers ------------------------------------------------------------
+  check(
+    'a marker counts what it exempts, by kind',
+    review('ts', "const T = {\n  light: '#3F51B5', // colors:allow(browser-chrome) the browser paints it\n};", { declared })
+      .exempted,
+    { 'browser-chrome': 1 }
+  );
+  check(
+    'a block counts every hit inside it',
+    review(
+      'ts',
+      '// colors:allow-start(category-data) the seeded categories\nconst C = [\n  \'#ef4444\',\n  \'#f97316\',\n];\n// colors:allow-end',
+      { declared }
+    ).exempted,
+    { 'category-data': 2 }
+  );
+  check(
+    'an empty reason fails',
+    review('scss', '.a { color: #abc; } /* colors:allow(brand) */', { declared }).errors.length > 0,
+    true
+  );
+  check(
+    'an empty reason on a block fails',
+    review('scss', '/* colors:allow-start(brand) */\n.a { color: #abc; }\n/* colors:allow-end */', { declared })
+      .errors.length > 0,
+    true
+  );
+  check(
+    'an unknown kind fails',
+    review('scss', '.a { color: #abc; } /* colors:allow(pretty) it looks nice */', { declared }).errors.length > 0,
+    true
+  );
+  check(
+    'a block that never closes fails',
+    review('scss', '/* colors:allow-start(brand) the mark */\n.a { color: #abc; }', { declared }).errors.length > 0,
+    true
+  );
+  check(
+    'a marker that exempts nothing fails',
+    review('scss', '.a { color: var(--text-primary); } /* colors:allow(brand) the mark */', { declared }).errors
+      .length > 0,
+    true
+  );
+  // A marker is a comment. Text that spells one in a string or an attribute
+  // value is data, and exempts nothing.
+  check(
+    'a marker spelled inside a TypeScript string',
+    ts("const s = 'colors:allow(brand) because'; const c = '#fff';"),
+    ['#fff']
+  );
+  check(
+    'a marker spelled inside a stylesheet string',
+    scss(".a { content: 'colors:allow(brand) the mark'; color: #abc; }"),
+    ['#abc']
+  );
+  check(
+    'a marker spelled inside a template attribute',
+    html('<p title="colors:allow(brand) the mark" style="color: red">x</p>'),
+    ['red']
+  );
+  check(
+    'a comment marker after a string that spells one',
+    review('ts', "const c = '#fff'; const s = 'colors:allow(brand) x'; // colors:allow(brand) the mark", { declared })
+      .exempted,
+    { brand: 1 }
+  );
+  // An inline template is a string to the lexer, so it is marked from outside.
+  check(
+    'a block around an inline template',
+    review(
+      'ts',
+      '@Component({\n  // colors:allow-start(category-data) the bar is the category\'s own fill\n' +
+        '  template: `<div [style.background-color]="c"></div>`,\n  // colors:allow-end\n})\nclass A {}',
+      { declared }
+    ).exempted,
+    { 'category-data': 1 }
+  );
+
+  // --- the surface table --------------------------------------------------
+  check(
+    'the surface keys are the table\'s own',
+    categorySurfaceKeys(
+      '/** dialog: not a key */\n' +
+        'const SELECT_PANEL = { light: [], dark: [] };\n' +
+        'export const CATEGORY_SURFACES: Readonly<Record<CategorySurface, Tones>> = {\n' +
+        "  dialog: { light: ['#fbf8ff'], dark: ['#121319'] },\n" +
+        '  panel: SELECT_PANEL,\n' +
+        "  menu: { light: [...SELECT_PANEL.light, '#ddddf0'], dark: f(a, b) }, // hover: not a key\n" +
+        "  'iconGrid': { light: ['#f0f1f9'], dark: ['#2b2d36'] },\n" +
+        '};\n' +
+        'const other = { notAKey: 1 };'
+    ),
+    ['dialog', 'panel', 'menu', 'iconGrid']
+  );
+  check('a file with no surface table', categorySurfaceKeys('export const CHIP_SURFACE = { light: 1 };'), []);
+  check('outermost pipe and its arguments', outermostPipe("a || b | categoryGlyph : 'panel'"), {
+    name: 'categoryGlyph',
+    args: ["'panel'"],
+    input: 'a || b',
+  });
+  check('no outermost pipe', outermostPipe("(c | categoryGlyph:'panel') + '20'"), null);
+
+  // --- reporting ----------------------------------------------------------
+  check('line numbers survive masking', scanScss('/* one\n   two */\n.a { color: #abc; }', { declared })[0]?.line, 3);
+  check('line numbers survive masking in a template', scanHtml('<!--\n-->\n<p style="color: red">x</p>')[0]?.line, 3);
+  check('a valid allowed row', allowedRowValid({ kind: 'brand', count: 2, reason: 'the provider mark' }), true);
+  check('an allowed row with an empty reason', allowedRowValid({ kind: 'brand', count: 2, reason: '' }), false);
+  check('an allowed row with an unknown kind', allowedRowValid({ kind: 'pretty', count: 2, reason: 'x' }), false);
+  check('an allowed row with no hits', allowedRowValid({ kind: 'brand', count: 0, reason: 'x' }), false);
+  const row = (kind, count) => ({ kind, count, reason: 'the provider mark' });
+  check('an allowed row that matches its markers', allowedDrift({ brand: 3 }, row('brand', 3)), []);
+  check('a marker that widened', allowedDrift({ brand: 4 }, row('brand', 3)).length, 1);
+  check('a marker that narrowed', allowedDrift({ brand: 2 }, row('brand', 3)).length, 1);
+  check('a row whose markers are gone', allowedDrift({}, row('brand', 3)).length, 1);
+  check('markers with no row', allowedDrift({ scrim: 2 }, undefined).length, 1);
+  check('a file that marks two kinds', allowedDrift({ brand: 6, scrim: 2 }, [row('brand', 6), row('scrim', 2)]), []);
+  check('a second kind with no row', allowedDrift({ brand: 6, scrim: 2 }, row('brand', 6)).length, 1);
+  check('a row with an empty reason drifts', allowedDrift({ brand: 1 }, { kind: 'brand', count: 1, reason: ' ' }).length, 1);
+  check('every allowed row is valid', Object.values(ALLOWED).flatMap(rowsOf).every(allowedRowValid), true);
+
+  let failed = 0;
+  for (const result of results) {
+    if (result.ok) {
+      console.log(`  ok  ${result.name}`);
+    } else {
+      failed += 1;
+      console.error(`  FAIL ${result.name}`);
+      console.error(`       expected ${JSON.stringify(result.expected)}`);
+      console.error(`       actual   ${JSON.stringify(result.actual)}`);
+    }
+  }
+
+  if (failed > 0) {
+    console.error(`\n${failed} self-test failure(s) — the checker itself is broken.`);
+    process.exit(1);
+  }
+  console.log(`check-colors self-test: ${results.length} passed`);
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv.includes('--self-test')) selfTest();
+  else if (process.argv.includes('--print-baseline')) printBaseline();
+  else run();
+}

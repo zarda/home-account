@@ -71,14 +71,17 @@
     color: var(--mat-sys-on-error-container);
   }
 
+  // A scored pair each, so the label reads at AA in every mode. The cloud
+  // badge names whichever provider reads the receipt, so it wears the app's
+  // own colour rather than any one provider's.
   &.native {
-    background: linear-gradient(135deg, #34c759, #30d158);
-    color: white;
+    background: var(--color-success-light);
+    color: var(--color-success-text);
   }
 
   &.cloud {
-    background: linear-gradient(135deg, #4285f4, #34a853);
-    color: white;
+    background: var(--color-primary-light);
+    color: var(--color-primary-text);
   }
 }
 
@@ -190,20 +193,18 @@
   }
 }
 
+// A receipt is white paper, so the veil alone has to hold the glyph at AA
+// over white: 0.6 black there makes a mid grey, and white on it is 5.74:1.
+// It never fades at rest, because a phone has no hover to bring it back.
+// colors:allow-start(scrim) a dark veil and a white glyph over a receipt photo, which has no theme
 .drag-handle {
   position: absolute;
   top: 8px;
   right: 8px;
   padding: 4px;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.6);
   border-radius: var(--radius-xs);
   cursor: grab;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-
-  &:hover {
-    opacity: 1;
-  }
 
   mat-icon {
     color: white;
@@ -212,6 +213,7 @@
     height: 1em;
   }
 }
+// colors:allow-end
 
 .add-more-area {
   display: flex;

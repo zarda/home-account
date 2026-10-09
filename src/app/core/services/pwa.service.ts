@@ -13,13 +13,20 @@ const REACHABILITY_TIMEOUT_MS = 4000;
 const REACHABILITY_RETRY_MIN_MS = 5000;
 const REACHABILITY_RETRY_MAX_MS = 60000;
 
+/** Chromium's install prompt event, which lib.dom does not declare. */
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<unknown>;
+}
+
 /**
- * Reachability, platform detection and the service worker's messages.
+ * Reachability, platform detection, the install prompt and the service
+ * worker's messages.
  *
  * Confirms the connection actually carries traffic (not just that the OS
  * reports an interface), detects standalone/iOS so callers can adapt their
- * UI, registers background sync for the offline queue, and relays the
- * message types the service worker posts back to the running app.
+ * UI, holds the browser's install prompt so the app can offer it, registers
+ * background sync for the offline queue, and relays the message types the
+ * service worker posts back to the running app.
  */
 @Injectable({ providedIn: 'root' })
 export class PwaService {
@@ -27,6 +34,7 @@ export class PwaService {
   private _isOnline = signal<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   private _isStandalone = signal<boolean>(false);
   private _isIOS = signal<boolean>(false);
+  private _installPrompt = signal<BeforeInstallPromptEvent | null>(null);
 
   // Reachability probe state
   private probeInFlight: Promise<boolean> | null = null;
@@ -37,6 +45,7 @@ export class PwaService {
   isOnline = computed(() => this._isOnline());
   isStandalone = computed(() => this._isStandalone());
   isIOS = computed(() => this._isIOS());
+  canPromptInstall = computed(() => this._installPrompt() !== null);
 
   constructor() {
     // Initialize browser-only features
@@ -72,12 +81,22 @@ export class PwaService {
     });
 
     // App installed: the one moment standalone flips without a reload, and
-    // the camera capture reads it. Nothing reads an install state, and no
-    // listener claims beforeinstallprompt — the browser's own install
-    // prompt is left to the browser.
+    // the camera capture reads it. A held install prompt has nothing left to
+    // offer once the app is installed.
     window.addEventListener('appinstalled', () => {
       this._isStandalone.set(true);
+      this._installPrompt.set(null);
     });
+
+    // Held so the app can offer it, but never preventDefault()ed: that would
+    // hide the browser's own install UI on every visit, while the app offers
+    // the prompt in one place only (ADR 0112). The native shell is installed
+    // by definition, so it never holds one.
+    if (!Capacitor.isNativePlatform()) {
+      window.addEventListener('beforeinstallprompt', (event) => {
+        this._installPrompt.set(event as BeforeInstallPromptEvent);
+      });
+    }
 
     // Listen for messages from service worker
     if ('serviceWorker' in navigator) {
@@ -87,8 +106,11 @@ export class PwaService {
     }
   }
 
-  private handleServiceWorkerMessage(data: { type: string; payload?: unknown }): void {
-    switch (data.type) {
+  // The channel is shared (the share-target worker posts notification routes
+  // on it), so a message is not assumed to be one of this service's.
+  private handleServiceWorkerMessage(data: unknown): void {
+    if (typeof data !== 'object' || data === null) return;
+    switch ((data as { type?: unknown }).type) {
       case 'SYNC_OFFLINE_QUEUE':
         // Trigger offline queue sync (will be handled by offline-queue service)
         window.dispatchEvent(new CustomEvent('sync-offline-queue'));
@@ -113,7 +135,12 @@ export class PwaService {
 
   private checkIsIOS(): boolean {
     const userAgent = window.navigator.userAgent.toLowerCase();
-    return /iphone|ipad|ipod/.test(userAgent) && !(window as Window & { MSStream?: unknown }).MSStream;
+    if (/iphone|ipad|ipod/.test(userAgent) && !(window as Window & { MSStream?: unknown }).MSStream) {
+      return true;
+    }
+    // iPadOS Safari asks for the desktop site, so its user agent reads as a
+    // Mac's. Touch tells them apart: no Mac reports touch points.
+    return userAgent.includes('macintosh') && window.navigator.maxTouchPoints > 1;
   }
 
   /**
@@ -213,6 +240,25 @@ export class PwaService {
       this.retryTimer = null;
     }
     this.retryDelayMs = 0;
+  }
+
+  /**
+   * Show the install prompt the browser handed over, if it handed one over.
+   *
+   * Never rejects. An event prompts once (a second `prompt()` on it is
+   * refused), so it is let go before prompting; the browser sends a new
+   * `beforeinstallprompt` when it is willing to ask again.
+   */
+  async promptInstall(): Promise<void> {
+    const event = this._installPrompt();
+    if (!event) return;
+    this._installPrompt.set(null);
+    try {
+      // Called before any await: prompt() needs the click's user activation.
+      await event.prompt();
+    } catch (error) {
+      console.warn('[PWA] The install prompt was refused:', error);
+    }
   }
 
   /**

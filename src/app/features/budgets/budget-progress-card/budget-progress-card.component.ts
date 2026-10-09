@@ -8,7 +8,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 
 import { Budget, BudgetPeriod } from '../../../models';
-import { Category } from '../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category } from '../../../models';
 import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -42,6 +42,8 @@ export class BudgetProgressCardComponent {
   budget = input.required<Budget>();
   category = input<Category | undefined>();
 
+  protected readonly fallbackColor = CATEGORY_FALLBACK_COLOR;
+
   edit = output<void>();
   delete = output<void>();
 
@@ -71,29 +73,32 @@ export class BudgetProgressCardComponent {
   );
 
   // Bar, percentage text and status chip all derive from the one severity
-  // above so the card can never send mixed signals for a single state.
-  progressColor = computed((): 'primary' | 'accent' | 'warn' => {
+  // above so the card can never send mixed signals for a single state. The
+  // bar's tone is a class the stylesheet colours, and none under the
+  // threshold.
+  barTone = computed((): 'near' | 'over' | null => {
     switch (this.alertSeverity()) {
       case 'exceeded':
-        return 'warn';
+        return 'over';
       case 'critical':
       case 'warning':
-        return 'accent';
+        return 'near';
       default:
-        return 'primary';
+        return null;
     }
   });
 
+  // Critical shares the warning colour, as the bar does: the theme has no
+  // orange text token, and the alert's own words name the severity.
   statusClass = computed(() => {
     switch (this.alertSeverity()) {
       case 'exceeded':
-        return 'text-red-600 font-semibold';
+        return 'text-error-text font-semibold';
       case 'critical':
-        return 'text-orange-500';
       case 'warning':
-        return 'text-yellow-600';
+        return 'text-warning-text';
       default:
-        return 'text-green-600';
+        return 'text-success-text';
     }
   });
 
@@ -109,32 +114,6 @@ export class BudgetProgressCardComponent {
         return this.translationService.t('budget.approachingLimit');
       default:
         return this.translationService.t('budget.approachingLimit');
-    }
-  });
-
-  alertChipClass = computed(() => {
-    switch (this.alertSeverity()) {
-      case 'exceeded':
-        return 'bg-red-100 text-red-700';
-      case 'critical':
-        return 'bg-orange-100 text-orange-700';
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-700';
-      default:
-        return 'bg-yellow-100 text-yellow-700';
-    }
-  });
-
-  alertTextClass = computed(() => {
-    switch (this.alertSeverity()) {
-      case 'exceeded':
-        return 'text-red-600';
-      case 'critical':
-        return 'text-orange-500';
-      case 'warning':
-        return 'text-yellow-600';
-      default:
-        return 'text-yellow-600';
     }
   });
 

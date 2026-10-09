@@ -21,6 +21,7 @@ import { PendingFiltersService } from '../../../core/services/pending-filters.se
 import { ReminderService } from '../../../core/services/reminder.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { WeeklyRecapService } from '../../../core/services/weekly-recap.service';
+import { snapDisplayZero } from '../../../core/utils/money-display.utils';
 import { roundMoney } from '../../../core/utils/transaction-aggregation.utils';
 import { addDays, endOfDay, startOfDay } from '../../../core/utils/transaction-date.utils';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
@@ -169,6 +170,13 @@ export class WeeklyRecapComponent implements OnInit {
     }, 0);
     return roundMoney(net);
   });
+
+  /**
+   * The net as the card shows it, sign and tone included. A week with nothing
+   * due, or a net that formats as zero in the base currency, moves no money
+   * either way, so it is neither income-green nor expense-red.
+   */
+  readonly billsDueDisplay = computed(() => snapDisplayZero(this.billsDueNet(), this.baseCurrency()));
 
   /** One sentence for assistive technology, not the card read out in full. */
   private readonly announcement = computed(() => {

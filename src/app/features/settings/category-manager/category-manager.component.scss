@@ -54,7 +54,7 @@
 
 .drag-handle {
   cursor: grab;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
 
@@ -78,7 +78,7 @@
 
   .category-name {
     font-weight: 500;
-    @apply text-gray-800 dark:text-gray-100;
+    color: var(--text-primary);
     overflow-wrap: anywhere;
   }
 
@@ -87,18 +87,10 @@
     text-transform: uppercase;
     padding: 2px 6px;
     background: var(--surface-strong);
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
     border-radius: var(--radius-xs);
     font-weight: 500;
     letter-spacing: 0.5px;
-  }
-}
-
-.delete-option {
-  color: #ef4444 !important;
-
-  mat-icon {
-    color: #ef4444;
   }
 }
 

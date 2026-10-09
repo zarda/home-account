@@ -16,11 +16,20 @@ as if the file had been dropped on the dropzone
    would 404 before the app loads. This is the first — and only — service
    worker the app registers, and it has two jobs and no more:
    - It handles `POST /share-target`, and it raises the app's reminders:
-     `ReminderService` calls this registration's `showNotification`, because
-     Android Chrome and Firefox refuse the page's `Notification` constructor
-     and a second worker registered at the same scope would replace this one
+     `ReminderService` calls this registration's `showNotification` once its
+     worker is active, because Android Chrome and Firefox refuse the page's
+     `Notification` constructor and a second worker registered at the same
+     scope would replace this one
      ([ADR 0104](ADR/0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md)).
-     Its `notificationclick` handler focuses an open tab or opens one at `/`.
+     Its `notificationclick` handler reads the route the reminder carries in
+     `data.route`, admitting it only through a copy of the app's
+     `safeAppRoute` and falling back to `/`. It focuses the first open tab
+     and posts it `{ type: 'notification-route', route }`, which the page's
+     `NotificationTapService` opens with the router; with no open tab, or
+     when `focus()` is refused, it opens a new one at the route
+     ([reminders.md](reminders.md#where-a-tap-lands),
+     [ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md)).
+     It never navigates an open tab itself, which would reload the app.
    - Every other fetch passes through untouched; there is no caching and no
      offline shell. The Angular `ngsw` build artifacts remain unactivated,
      and the hand-written caching worker that once sat dead in `src/` is gone
@@ -32,13 +41,26 @@ as if the file had been dropped on the dropzone
    `pending` — schema duplicated in `ShareStashStore`, which the worker
    cannot import; the two must ship together, since a worker pinned at an
    older version than the database cannot open it) and answers with a `303`
-   redirect to `/import/file?source=share`. Each row is stamped with the
+   redirect to `/import/file?source=share`. When it could not read the
+   POST or stash its files, it adds `&error=1`. Each row is stamped with the
    signed-in account, read from the `session` store the app publishes on
    every auth change; with nobody signed in the row is written ownerless.
 4. The wizard, arriving with `?source=share`, drains the stash through
    `ShareIntakeService.consumeAll()` and hands the files to its normal
    intake. Files that are oversized (>10 MB), empty, or of an unaccepted
    type are dropped at this gate.
+5. **The wizard takes both flags off its URL as it reads them**, so a
+   reload or Back does not enter the share path again. Its own
+   `stripShareParams` navigates with `replaceUrl`, keeping every other
+   param, in the shape
+   [ADR 0082](ADR/0082-one-shot-query-params-leave-the-url-once-consumed.md)
+   gave the transactions page.
+   - With `error=1` it says the share was lost (`import.shareLost`: *The
+     shared files couldn't be received. Share them again to import them.*)
+     and still drains the stash, since an earlier share may be waiting.
+   - A stash it cannot read raises the same notice, and a visit that has
+     already said it does not say it twice
+     ([ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
 
 ## Who a stashed share belongs to
 
@@ -113,8 +135,8 @@ cannot install a share target — so after touching it, verify by hand:
    localhost, and install the PWA in Chrome.
 2. Share an image to "Home Account" from another app (or use Chrome's
    share-target testing in devtools).
-3. The browser opens `/import/file?source=share` and the wizard lists the
-   file.
+3. The browser opens `/import/file?source=share`, the wizard lists the
+   file, and the address settles on `/import/file`.
 
 For iOS: build in Xcode, share a photo from Photos to Home Account, open
 the app, and the wizard should offer the file. **After any local Xcode
@@ -137,5 +159,17 @@ gitignored Google client id into it.
   Photos-style shares transcode.
 - The worker and the stash schema are version-locked: a stale cached
   worker still pinned at v1 cannot open the v2 database, and that share is
-  lost with the `error=1` redirect. The window lasts until the browser
-  re-fetches the worker, roughly one navigation.
+  lost. The worker redirects with `error=1`, and the wizard says the share
+  was lost and asks for it again; the files themselves cannot be recovered.
+  The window lasts until the browser re-fetches the worker, roughly one
+  navigation.
+- The share flag can come back, and the lost-share notice can be dropped.
+  This is read from the code, not driven. On a cold load,
+  `ShareIntakeService`'s sign-in effect counts the stash and navigates to
+  `/import/file?source=share` when it holds rows. That count can resolve
+  after the wizard has drained the stash and stripped its URL, and the
+  wizard, reused for a change of query params alone, does not strip the
+  flag again; the next reload drains an empty stash. The same navigation
+  passes no `queryParamsHandling`, so when it replaces the worker's redirect
+  it drops `error=1`, and a share lost beside an earlier one still waiting
+  brings no notice.

@@ -24,15 +24,25 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { FirestoreService } from './firestore.service';
+import { ReceiptQuotaService } from './receipt-quota.service';
 import { RecurringService } from './recurring.service';
+import { StorageService } from './storage.service';
+import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import { createMockUser } from './testing/mock-auth.service';
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import {
   clearWeeklyRecapDeviceState,
-  nextRecapMoment
+  nextRecapMoment,
+  recapWindow
 } from '../utils/weekly-recap.utils';
-import { BudgetAlert, DEFAULT_USER_PREFERENCES, User, UserPreferences } from '../../models';
+import {
+  BudgetAlert,
+  DEFAULT_USER_PREFERENCES,
+  Transaction,
+  User,
+  UserPreferences
+} from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -46,6 +56,11 @@ silenceFirebaseWarnings();
  * occurrence through a stored document, the horizon is computed from real
  * `Timestamp`s, and a lead that never arrives on the occurrence looks exactly
  * like a rule with no reminder. Only a real read shows the two halves agree.
+ *
+ * The same holds for the recap nudge's gate: the unit suite answers its two
+ * window reads from rows keyed by the day each window opens on, and only the
+ * server-only range read shows a stored expense counted in the week the
+ * nudge announces.
  *
  * It lives in `test:smoke:dates` because the recap nudge lands on a local
  * Monday at 09:00, which is a different instant in every zone.
@@ -63,6 +78,8 @@ describe('ReminderService sweep (emulator smoke test)', () => {
   const DUE_ID = 'smoke-reminder-due';
   /** Beyond its lead window, so the sweep books 09:00 on its reminder day. */
   const AHEAD_ID = 'smoke-reminder-ahead';
+  /** The expense that gives the week the nudge announces something to say. */
+  const EXPENSE_ID = 'smoke-reminder-recap-expense';
 
   let app: FirebaseApp;
   let auth: Auth;
@@ -75,6 +92,7 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     title: string;
     body: string;
     tag: string;
+    route: string;
   }
 
   /**
@@ -98,9 +116,10 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     protected override async showWebNotification(
       title: string,
       body: string,
-      tag: string
+      tag: string,
+      route: string
     ): Promise<boolean> {
-      this.webNotifications.push({ title, body, tag });
+      this.webNotifications.push({ title, body, tag, route });
       return true;
     }
 
@@ -162,9 +181,35 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     });
   };
 
+  /**
+   * The first millisecond of the week the next nudge announces. Should the
+   * nudge hour pass before the case reads it, the announced week moves on and
+   * this lands in the week before it, which the card compares against and
+   * which is news as well.
+   */
+  const seedExpense = (): Promise<void> => {
+    const date = recapWindow(nextRecapMoment(new Date())).start;
+    // `amountInBaseCurrency` and `exchangeRate` are what firestore.rules asks
+    // of a create, and the snapshot is the figure the CurrencyService double
+    // folds.
+    return setDoc(doc(firestore, `users/${uid}/transactions/${EXPENSE_ID}`), {
+      userId: uid,
+      type: 'expense',
+      amount: 42,
+      amountInBaseCurrency: 42,
+      exchangeRate: 1,
+      currency: 'USD',
+      categoryId: 'food',
+      description: EXPENSE_ID,
+      date: Timestamp.fromDate(date),
+      isRecurring: false
+    });
+  };
+
   beforeEach(async () => {
     await seedRule(DUE_ID, 3, 7);
     await seedRule(AHEAD_ID, 20, 3);
+    await seedExpense();
 
     localStorage.removeItem(reminderSentStorageKey(uid));
     clearWeeklyRecapDeviceState(uid);
@@ -175,6 +220,7 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         RecurringService,
+        TransactionService,
         FirestoreService,
         { provide: Firestore, useValue: firestore },
         {
@@ -186,10 +232,12 @@ describe('ReminderService sweep (emulator smoke test)', () => {
         },
         // The recurring walk loads rates and budgets on its way; the reminder
         // sweep reads only the alert signal, and neither plays a part in which
-        // reminders a rule produces.
+        // reminders a rule produces. The recap gate converts each row from its
+        // own snapshot, so its answer is the sum of what was seeded.
         {
           provide: CurrencyService,
           useValue: {
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency ?? t.amount,
             ensureRatesLoaded: () => Promise.resolve(),
             getExchangeRate: () => 1
           }
@@ -202,7 +250,10 @@ describe('ReminderService sweep (emulator smoke test)', () => {
             recalculateBudgetsForCategory: () => Promise.resolve()
           }
         },
-        { provide: TranslationService, useValue: { t: (key: string) => key } }
+        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        // Neither is reachable from the one-shot range read the gate makes.
+        { provide: StorageService, useValue: {} },
+        { provide: ReceiptQuotaService, useValue: { invalidateCount: () => undefined } }
       ]
     });
     recurring = TestBed.inject(RecurringService);
@@ -213,6 +264,9 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     clearWeeklyRecapDeviceState(uid);
     await deleteDoc(doc(firestore, `users/${uid}/recurring/${DUE_ID}`)).catch(() => undefined);
     await deleteDoc(doc(firestore, `users/${uid}/recurring/${AHEAD_ID}`)).catch(() => undefined);
+    await deleteDoc(doc(firestore, `users/${uid}/transactions/${EXPENSE_ID}`)).catch(
+      () => undefined
+    );
   });
 
   /** The account's preferences decide the pass, so they are set before it. */
@@ -279,6 +333,33 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     expect(recurring.recurringTransactions()).toEqual([]);
   }, 30000);
 
+  it('books the nudge for a week with an expense, and retires it once the expense is gone', async () => {
+    const service = createService({ enableReminders: false, enableWeeklyRecap: true });
+
+    await service.sweep();
+
+    const [request] = service.plugin.schedule.calls.mostRecent().args;
+    const nudge = request.notifications.find(n => n.body === 'reminders.recapReady');
+    expect(nudge?.schedule?.at as Date).toEqual(nextRecapMoment(service.at));
+    const nudgeId = nudge?.id ?? -1;
+
+    // A later session: the first one trusts its yes for the rest of the week,
+    // so only a fresh one asks the server again.
+    await deleteDoc(doc(firestore, `users/${uid}/transactions/${EXPENSE_ID}`));
+    const later = createService({ enableReminders: false, enableWeeklyRecap: true });
+    later.plugin.getPending.and.resolveTo({
+      notifications: [{ id: nudgeId, title: 'app.title', body: 'reminders.recapReady' }]
+    });
+
+    await later.sweep();
+
+    expect(later.plugin.schedule).not.toHaveBeenCalled();
+    expect(later.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id: nudgeId }] });
+    // The cancel takes the log entry with it, so a week that has news again
+    // is booked again.
+    expect(sentKeys()).toEqual([]);
+  }, 30000);
+
   it('retires what is pending and books nothing once both preferences are off', async () => {
     const service = createService({ enableReminders: false, enableWeeklyRecap: false });
     service.plugin.getPending.and.resolveTo({
@@ -305,7 +386,10 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     expect(sentKeys()).toEqual([dueKey]);
     expect(service.plugin.schedule).not.toHaveBeenCalled();
     // Not toEqual: the service's own effect may have swept once already, and
-    // deliveredThisSession only stops that pass repeating, not appearing.
-    expect(service.webNotifications).toContain(jasmine.objectContaining({ tag: dueKey }));
+    // deliveredThisSession only stops that pass repeating, not appearing. The
+    // route is the stored rule's own id, which is what the dashboard looks up.
+    expect(service.webNotifications).toContain(
+      jasmine.objectContaining({ tag: dueKey, route: '/dashboard?bill=smoke-reminder-due' })
+    );
   }, 30000);
 });

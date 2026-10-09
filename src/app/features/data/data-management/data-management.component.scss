@@ -18,7 +18,7 @@
   h3 {
     font-size: var(--text-base);
     font-weight: 600;
-    @apply text-gray-800 dark:text-gray-100;
+    color: var(--text-primary);
     margin: 0;
   }
 }
@@ -37,7 +37,7 @@
 
 .section-description {
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   margin: 4px 0 0 0;
 }
 
@@ -56,7 +56,10 @@
   height: auto;
   text-align: left;
   border-radius: var(--radius-md);
-  @apply border-gray-200 dark:border-gray-700;
+  // Through Material's own token: its outlined-button rule sets the edge at
+  // the same specificity as this one, so a plain border-color would win or
+  // lose by the order the two stylesheets reach the page.
+  --mat-button-outlined-outline-color: var(--border-primary);
 
   mat-icon {
     color: var(--color-primary);
@@ -73,30 +76,38 @@
 
   .btn-title {
     font-weight: 500;
-    @apply text-gray-800 dark:text-gray-100;
+    color: var(--text-primary);
   }
 
   .btn-subtitle {
     font-size: var(--text-xs);
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
     font-weight: 400;
   }
 
+  // Mixed into the page the button stands on, so the copy is measured
+  // against one opaque colour.
   &:hover:not(:disabled) {
-    @apply border-indigo-200 dark:border-indigo-600;
-    @apply bg-indigo-50 dark:bg-indigo-900/30;
+    border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+    background-color: color-mix(in srgb, var(--color-primary) 10%, var(--surface-background));
   }
 }
 
 // Smart Import Section
+// Each end is mixed into the page the section stands on, so the copy is
+// measured against opaque colours from one end to the other.
 .smart-import-section {
-  @apply bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--color-accent) 10%, var(--surface-background)),
+    color-mix(in srgb, var(--color-ai) 10%, var(--surface-background))
+  );
   border-radius: var(--radius-md);
   padding: 20px;
-  @apply border border-indigo-200 dark:border-indigo-800;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
 
   .section-icon.ai-icon {
-    color: #8b5cf6;
+    color: var(--color-ai);
   }
 }
 
@@ -115,10 +126,10 @@
   background: color-mix(in srgb, var(--surface-card) 80%, transparent);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  @apply text-gray-700 dark:text-gray-300;
+  color: var(--text-secondary);
 
   mat-icon {
-    color: #8b5cf6;
+    color: var(--color-ai);
     font-size: var(--text-lg);
     width: 1em;
     height: 1em;
@@ -143,7 +154,7 @@
   justify-content: center;
   gap: 12px;
   padding: 32px;
-  @apply border-2 border-dashed border-gray-200 dark:border-gray-700;
+  border: 2px dashed var(--border-primary);
   border-radius: var(--radius-md);
   background: var(--surface-subtle);
   cursor: pointer;
@@ -153,12 +164,13 @@
     font-size: 40px;
     width: 1em;
     height: 1em;
-    @apply text-gray-400 dark:text-gray-500;
+    color: var(--text-muted);
   }
 
+  // Mixed into the zone's own fill, so it stays opaque under its copy.
   &:hover {
-    @apply border-indigo-200 dark:border-indigo-600;
-    @apply bg-indigo-50 dark:bg-indigo-900/30;
+    border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--surface-subtle));
 
     mat-icon {
       color: var(--color-primary);
@@ -168,12 +180,12 @@
 
 .dropzone-text {
   font-weight: 500;
-  @apply text-gray-700 dark:text-gray-300;
+  color: var(--text-secondary);
 }
 
 .dropzone-hint {
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 // Import Preview
@@ -191,7 +203,7 @@
   align-items: center;
   gap: 8px;
   font-weight: 500;
-  @apply text-gray-700 dark:text-gray-300;
+  color: var(--text-secondary);
 
   mat-icon {
     color: var(--color-primary);
@@ -215,7 +227,7 @@
 }
 
 .preview-date {
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   width: 90px;
   flex-shrink: 0;
 }
@@ -226,7 +238,7 @@
 .preview-desc {
   flex: 1;
   min-width: 0;
-  @apply text-gray-700 dark:text-gray-300;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -246,7 +258,7 @@
 .preview-more {
   text-align: center;
   font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   padding: 8px;
 }
 
@@ -267,15 +279,17 @@
   justify-content: flex-end;
   gap: 12px;
   padding-top: 8px;
-  @apply border-t border-gray-200 dark:border-gray-700;
+  border-block-start: 1px solid var(--border-primary);
 }
 
 // Danger Zone
+// Mixed into the card rather than into transparent, so the copy on the zone
+// is measured against one opaque colour.
 .danger-zone {
-  @apply border border-red-200 dark:border-red-900;
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
   border-radius: var(--radius-md);
   padding: 16px;
-  @apply bg-red-50 dark:bg-red-950;
+  background: color-mix(in srgb, var(--color-error) 8%, var(--surface-card));
 }
 
 .danger-actions {
@@ -290,13 +304,11 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px;
-  // Lift the item off the zone in dark mode — red-950 on red-950 blended into
-  // one flat block before.
-  @apply bg-white dark:bg-red-900/40;
+  // The untinted card on the zone's tint, so each item stands off the zone in
+  // either theme.
+  background: var(--surface-card);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-
-  @apply dark:border-red-900;
 }
 
 .danger-info {
@@ -307,12 +319,12 @@
 
 .danger-title {
   font-weight: 500;
-  @apply text-gray-800 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 .danger-desc {
   font-size: var(--text-xs);
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }
 
 // Receipt images section

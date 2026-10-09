@@ -6,16 +6,19 @@
           <mat-icon class="ai-icon">auto_awesome</mat-icon>
           <span class="title">{{ 'ai.insights' | translate }}</span>
         </div>
-        <button
-          mat-icon-button
-          class="refresh-btn"
-          (click)="refresh()"
-          [disabled]="isLoading() || !hasEnoughData()"
-          [title]="'ai.refresh' | translate"
-          [attr.aria-label]="'ai.refresh' | translate"
-        >
-          <mat-icon [class.spinning]="isLoading()">refresh</mat-icon>
-        </button>
+        <div class="header-actions">
+          <button
+            mat-icon-button
+            class="refresh-btn"
+            (click)="refresh()"
+            [disabled]="isLoading() || !hasEnoughData()"
+            [title]="'ai.refresh' | translate"
+            [attr.aria-label]="'ai.refresh' | translate"
+          >
+            <mat-icon [class.spinning]="isLoading()">refresh</mat-icon>
+          </button>
+          <ng-content select="[card-actions]" />
+        </div>
       </div>
     </mat-card-header>
 

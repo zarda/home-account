@@ -84,6 +84,19 @@ case in the code, just the ladder's first rung.
 
 When a point spans more than a day the chart says so beneath it.
 
+**The pickers are bounded.** The period selector's month and year pickers
+run from the month of the account's oldest row, never later than the
+current month, to 31 December next year
+([ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+The chart opens on the period's start, so it now spans at most the
+account's own history and the horizon, well inside the top rung's reach of
+roughly two centuries. There are two exceptions. A row dated centuries back
+by mistake takes the floor with it: the transaction form takes any year,
+and the floor follows the oldest row wherever it is. And offline, or when
+the read of the oldest row fails, the pickers keep the cap but have no
+floor, so the year picker pages back to any year and a period past the top
+rung's reach can be picked again.
+
 **What this does not fix.** One granularity is used on both sides of
 today, so the projection's share of the width is `horizon / span`
 whichever rung is picked — a period that closed years ago still spends
@@ -113,9 +126,6 @@ tab does. The subscription closes on horizon change and on destroy.
   (see [recurring.md](recurring.md), "From detection to a rule") brings it
   into the forecast.
 - No persistence: there is no history of what past forecasts predicted.
-- The period selector's year picker has no `min` or `max`, so any year is
-  selectable. The rungs bound the chart for anything under roughly two
-  centuries; past that the top rung stops holding the ceiling.
 - A period that has already closed still pairs stale actuals with a
   projection that starts today. Bucketing makes that readable rather than
   resolving it.

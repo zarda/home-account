@@ -1,11 +1,28 @@
 # 112. PwaService keeps only the surface something calls
 
-**Status:** Accepted, implemented · **Date:** 2026-09-10 · **Issues:** #390
+**Status:** Accepted, implemented; amended by
+[0168](0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md)
+· **Date:** 2026-09-10 · **Issues:** #390
 
 No reference document owns the service. What the app's PWA support actually
 is — an offline queue and a share-target worker — is in
 [../../README.md](../../README.md) and
 [../share-import.md](../share-import.md).
+
+**Amended by
+[0168](0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md).**
+The rule below stands, and 0168 applies it again: a member belongs on the
+surface once something calls it, and the About page's install card now
+calls `canPromptInstall` and `promptInstall()`. The decision under
+*`beforeinstallprompt` is not listened to* does not stand. `PwaService`
+holds the event so the card can raise it once, and still never calls
+`preventDefault`, so the browser keeps its own install UI; `appinstalled`
+now clears the held event as well. That supersedes the heading and the two
+sentences below that say no listener claims `beforeinstallprompt`. The
+spec case cited below as *ignores beforeinstallprompt* is now *captures
+beforeinstallprompt without preventDefault, so the browser keeps its own
+install UI*, with the same assertion. The service's reference document is
+now [../pwa.md](../pwa.md).
 
 Applies [0048](0048-a-dead-capability-is-removed-not-guarded.md) and
 [0105](0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md),

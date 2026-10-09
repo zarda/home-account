@@ -745,11 +745,13 @@ receipt row dated on any day but today — whether it was read that way or
 assumed onto today by the rule above — carries a question chip, *Dated {date}
 — keep it?*, with two halves: **Keep** accepts the day, and the calendar
 button opens a picker already on the row's own month and day. The date beside
-the row is a button that opens the same picker. Answering either way clears
-`dateAssumed`, `dateImplausible` and the date's grade together and turns the
-button green, so the row is asked once and not again. **Keep all dates** in the
-card header answers every outstanding row at once, and is on screen only while
-a question is.
+the row is a button that opens the same picker. The picker opens as a dialog,
+and both buttons say so before they are pressed (`aria-haspopup="dialog"`,
+[ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+Answering either way clears `dateAssumed`, `dateImplausible` and the date's
+grade together and turns the button green, so the row is asked once and not
+again. **Keep all dates** in the card header answers every outstanding row at
+once, and is on screen only while a question is.
 
 Until every asked row is answered, **Continue and Import are both disabled**
 and a hint counts what is outstanding; the confirm step carries the same count

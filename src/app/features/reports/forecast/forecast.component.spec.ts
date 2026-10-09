@@ -10,7 +10,9 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringOccurrence, RecurringTransaction } from '../../../models';
 import { MAX_FORECAST_POINTS } from '../../../core/utils/forecast-series.utils';
-import { createTranslationStub } from '../../../core/services/testing';
+import { AUDIT_SCHEMES, createTranslationStub, withScheme } from '../../../core/services/testing';
+import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
+import { ThemeService } from '../../../core/services/theme.service';
 
 function tomorrowFor(): Date {
   const now = new Date();
@@ -177,6 +179,30 @@ describe('ForecastComponent', () => {
     fixture.detectChanges();
 
     expect(component.bucketDays()).toBe(1);
+  });
+
+  it('draws the actual balance in the accent and the projection in the income colours of the theme on screen', () => {
+    const chartTheme = TestBed.inject(ChartThemeService);
+    const drawn = new Set<unknown>();
+    for (const scheme of AUDIT_SCHEMES) {
+      withScheme(TestBed.inject(ThemeService), scheme, () => {
+        const palette = chartTheme.palette();
+        const [actual, projected] = component.chartData().datasets;
+
+        expect(actual.borderColor).withContext(`${scheme} actual edge`).toBe(palette.accentEdge);
+        expect(actual.backgroundColor)
+          .withContext(`${scheme} actual fill`)
+          .toBe(hexToRgba(palette.accent, 0.1));
+        expect(projected.borderColor).withContext(`${scheme} projected edge`).toBe(palette.incomeEdge);
+        expect(projected.backgroundColor)
+          .withContext(`${scheme} projected fill`)
+          .toBe(hexToRgba(palette.income, 0.1));
+        drawn.add(actual.borderColor);
+      });
+    }
+    // One edge for both schemes would mean the palette never moved, and the
+    // loop above proved nothing about following a flip.
+    expect(drawn.size).withContext('actual edges drawn across the schemes').toBe(AUDIT_SCHEMES.length);
   });
 
   it('sums the projected net at the horizon', () => {

@@ -37,7 +37,7 @@ import {
   groupExpensesByCategory,
   sumByType,
 } from '../../core/utils/transaction-aggregation.utils';
-import { addMonths, clampToEndOfToday } from '../../core/utils/transaction-date.utils';
+import { addMonths, clampToEndOfToday, yearWindow } from '../../core/utils/transaction-date.utils';
 import { tabIndexFromParam } from '../../core/utils/tab-query-param.utils';
 
 /** The tab strip's sections, in the order the template lays them out. */
@@ -103,6 +103,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   selectedPeriod = signal<PeriodSelection>(defaultPeriodSelection());
 
+  // The oldest month the selector's pickers offer; null until read, and for
+  // good when the read fails.
+  pickerFloor = signal<Date | null>(null);
+
   // Date range for child components; the shared period selector drives it.
   dateRange = computed<{ start: Date; end: Date }>(() => {
     const selection = this.selectedPeriod();
@@ -156,6 +160,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // lifetime, not one per period change inside loadData().
     this.categoriesSub = this.categoryService.loadCategories().subscribe();
     this.loadData();
+    this.loadPickerFloor();
   }
 
   ngOnDestroy(): void {
@@ -209,6 +214,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
   onPeriodSelection(selection: PeriodSelection): void {
     this.selectedPeriod.set(selection);
     this.loadData();
+  }
+
+  // Read once: a period change does not move the oldest row. An account with
+  // no rows still gets this year, so the pickers are not left without a floor.
+  private loadPickerFloor(): void {
+    this.transactionService.getEarliestTransactionDateFromServer().then(
+      earliest => this.pickerFloor.set(earliest ?? yearWindow(new Date().getFullYear()).start),
+      // Offline or refused: no floor, rather than one read from a partial cache.
+      () => undefined,
+    );
   }
 
   /**

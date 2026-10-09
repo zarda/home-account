@@ -1,14 +1,28 @@
-// Manage link dark mode styling
-:host ::ng-deep .mat-mdc-button.mat-primary {
-  @apply dark:text-indigo-400;
+// Manage and the card's menu stay one line together, and drop below the
+// title when the rail is too narrow for both on one row (about 229 px at
+// 1024).
+mat-card-header {
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 4px;
 }
 
-::ng-deep .mat-mdc-progress-bar {
-  --mdc-linear-progress-track-color: rgba(0, 0, 0, 0.08);
+.header-actions {
+  display: flex;
+  align-items: center;
+  margin-inline-start: auto;
+  white-space: nowrap;
 }
 
-:host-context(.dark-theme) ::ng-deep .mat-mdc-progress-bar {
-  --mdc-linear-progress-track-color: rgba(255, 255, 255, 0.12);
+// The Manage link's arrow, a size under Material's button icon. The
+// attribute selector outranks Material's own `.mat-mdc-button > .mat-icon`,
+// which sets the size and box this replaces; a type utility would also bring
+// a line height taller than the font size and drop the glyph low.
+a[mat-button] > mat-icon {
+  font-size: var(--text-base);
+  width: 1em;
+  height: 1em;
+  line-height: 1;
 }
 
 .budget-item {
@@ -32,7 +46,8 @@
       }
 
       .budget-name {
-        @apply text-sm font-medium text-gray-800 dark:text-gray-100 truncate;
+        @apply text-sm font-medium truncate;
+        color: var(--text-primary);
       }
 
       .budget-period {
@@ -50,9 +65,22 @@
     }
   }
 
+  // The indicator reads in the colour of its percentage. Material paints it
+  // from this token alone: [color] only adds a .mat-accent or .mat-warn
+  // class, and mat.theme() gives those no colours. The -text tokens, because
+  // the fills measure under 3:1 on Material's track in light.
   mat-progress-bar {
     @apply rounded-full;
     height: 5px;
+    --mat-progress-bar-active-indicator-color: var(--color-success-text);
+
+    &.near {
+      --mat-progress-bar-active-indicator-color: var(--color-warning-text);
+    }
+
+    &.over {
+      --mat-progress-bar-active-indicator-color: var(--color-error-text);
+    }
   }
 
   ::ng-deep .mdc-linear-progress {
@@ -61,18 +89,11 @@
   }
 
   .budget-footer {
-    @apply flex items-center justify-between mt-1 text-xs text-gray-500 dark:text-gray-400;
+    @apply flex items-center justify-between mt-1 text-xs;
+    color: var(--text-muted);
 
     .budget-amounts {
       @apply truncate;
-    }
-
-    .budget-remaining {
-      @apply flex-shrink-0 ms-2;
-
-      &.over-budget {
-        @apply text-red-500 dark:text-red-400 font-medium;
-      }
     }
   }
 }

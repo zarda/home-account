@@ -11,7 +11,10 @@
 }
 
 // Confidence dot: a quick-scan traffic light for how much to trust the
-// AI's category guess. Tooltip carries the full explanation.
+// AI's category guess. Tooltip carries the full explanation. The dot is a
+// graphic with its own name, so it owes 3:1 to the card under it: the
+// success and warning fills are about 2:1 there in light, so those levels
+// draw in their text steps. The error fill clears 3.4:1 on every card.
 .confidence-dot {
   flex-shrink: 0;
   width: 10px;
@@ -21,11 +24,11 @@
   cursor: help;
 
   &.high-confidence {
-    background: var(--color-success);
+    background: var(--color-success-text);
   }
 
   &.medium-confidence {
-    background: var(--color-warning);
+    background: var(--color-warning-text);
   }
 
   &.low-confidence {
@@ -125,8 +128,11 @@
   max-height: 300px;
 }
 
+// A named surface rather than a tint of the panel: a category's glyph on the
+// current item owes contrast to the colour it sits on, and only a declared
+// colour can be measured.
 ::ng-deep .category-menu .mat-mdc-menu-item.selected {
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  background: var(--surface-menu-current);
 }
 
 ::ng-deep .category-menu .mat-mdc-menu-item mat-icon {

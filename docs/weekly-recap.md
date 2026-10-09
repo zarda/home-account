@@ -12,6 +12,9 @@ independently.
 Why the reads are one-shot, why the dismissal lives on the device rather than
 on the account, and what was rejected on the way, is in
 [ADR 0096](ADR/0096-the-weekly-recap-is-composed-on-open-and-nudged-ahead.md).
+Why the nudge waits for a week with news, and why its tap opens the card it
+announces, is in
+[ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md).
 This document is the part you need when turning it on, working out why a card
 or a notification did or did not appear, or changing the service.
 
@@ -96,6 +99,15 @@ Its window is the seven days ahead, not the fortnight the Upcoming card shows
 — a week's story reads beside a week — and occurrences already past are left
 to that card rather than counted here as money still to move.
 
+**An empty week's bills are neither income nor expense.** The net is snapped
+at the base currency's display precision first (`snapDisplayZero`), and the
+snapped value sets both the figure and its tone: income above zero, expense
+below, neutral and unsigned at zero. A net that rounds to zero at the
+currency's precision, under half its smallest unit (JPY −0.4 say), is that
+neutral zero too. The Upcoming card's net footer follows the same rule
+([recurring.md](recurring.md#the-upcoming-card),
+[ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+
 **The composition is memoised per account per week**, behind a single-flight
 promise. A finished week's figures do not change, so a second dashboard visit,
 or two surfaces asking at once, costs nothing. Only a completed composition is
@@ -139,7 +151,8 @@ A local notification: *Your weekly recap is ready*.
 | Key | `recap \| {day key of the Monday it fires on}` |
 | Moment | 09:00 local on Monday, always scheduled ahead |
 | Platform | The installed app only |
-| Skipped when | That week's card was already dismissed on this device |
+| Skipped when | That week's card was already dismissed on this device, or the week has nothing to say |
+| Opens | `/dashboard?recap={key of the week it announces}` |
 
 **It is produced by the reminder sweep**, as one more prepared reminder in the
 set the pass produces. That is what makes the sweep's own stale-prune spare
@@ -162,6 +175,31 @@ nine rather than an hour out.
 the recap and not for reminders would otherwise refresh shared state from a
 background path, and read a month of occurrences, for a pass that cannot
 produce a single bill.
+
+**It is booked only for a week the card would show.** Before producing the
+nudge, the sweep asks `recapWeekHasNews` the card's own question,
+`hasSomethingToSay`, about the week the nudge announces and the week before
+it. From Monday at nine to Sunday the announced week is the one in progress,
+so the question is about the week so far. Both weeks are read from the server
+(`getTransactionsInRangeFromServer`): a cache that never held them would
+answer with no rows, and a quiet fortnight read that way would retire a nudge
+the account has news for ([one-shot-reads.md](one-shot-reads.md)). So:
+
+- a quiet fortnight books nothing, and retires a nudge already booked;
+- a failed read, offline say, books it, and the failure is not remembered;
+- a yes is remembered per account and week for the session, and a quiet
+  answer is asked again on the next pass, since the next expense makes it
+  news;
+- the web never books the nudge, so it never asks.
+
+**Its tap opens the card.** The route is `/dashboard?recap={week key}`, the
+key of the week it announces, fixed when it is booked. The dashboard takes
+`?recap` off the URL as it reads it, waits for the recap's load (the same
+single-flight load the card makes), and focuses the card's region when the
+card shows that week. A link to another week, or to a week the card does not
+show, is only taken off the URL. The region carries `tabindex="-1"` so it can
+take that focus ([dashboard.md](dashboard.md#links-from-a-notification-bill-and-recap),
+[reminders.md](reminders.md#where-a-tap-lands)).
 
 ## The narrative
 
@@ -251,11 +289,16 @@ narrative is bounded by its key.
   between the two leaves the nudge unbooked until the next sweep runs.
 - **An empty pair of weeks shows nothing**, so a quiet fortnight looks
   identical to the feature being off.
-- **The nudge doesn't know if there is anything to say.** It comes from the
-  reminder sweep, built from the preference and the dismissed week alone; the
-  sweep has no figures to evaluate, so a quiet fortnight on the installed app
-  still books the Monday notification, and tapping it lands on a dashboard
-  with no card.
+- **A week that gains news after the last sweep is not nudged.** The gate is
+  asked by a sweep. An expense recorded after a quiet answer, on another
+  device or on this one with no sweep after it, books nothing until the next
+  sweep runs; if none runs before Monday at nine, there is no nudge.
+- **A week that loses its news keeps its nudge for the session.** A yes is
+  remembered per account and week, so deleting the only expense of the
+  fortnight leaves the booked nudge in place until a later session asks
+  again.
+- **Offline, the gate cannot tell.** The read rejects and the nudge is
+  booked, quiet fortnight or not.
 - **A narrative already in flight when its gate closes still lands.** Turning
   a provider off, or grounding to `off`, blanks the on-screen paragraph and
   stops the next request — it does not touch what is already cached, and it
@@ -268,5 +311,3 @@ narrative is bounded by its key.
 - **The bills line reads the clock once per computation.** A tab left open
   across midnight keeps yesterday's seven-day window until something
   recomputes it.
-- **Zero bills due renders `0` in the income colour.** The line signs its net
-  and treats non-negative as income, which for an empty week is a green zero.

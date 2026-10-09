@@ -70,7 +70,7 @@ import {
   applyClientTransactionFilters,
   buildTransactionWhere
 } from '../utils/transaction-query.utils';
-import { endOfDay, monthWindow } from '../utils/transaction-date.utils';
+import { endOfDay, monthWindow, toDate } from '../utils/transaction-date.utils';
 import { TransactionSnapshot } from '../utils/import-dto.utils';
 
 /**
@@ -2010,6 +2010,27 @@ export class TransactionService {
       this.userTransactionsPath,
       this.transactionsInRangeOptions(start, end)
     );
+  }
+
+  /**
+   * The date of the account's oldest row, or null when it has none: the floor
+   * of the month and year pickers in the period selector and the transaction
+   * filters.
+   *
+   * Asked of the server, because a warm cache's oldest row is only the oldest
+   * of whatever windows this session browsed, and a floor read from it would
+   * hide every month before them. Offline it rejects, and the caller shows
+   * the pickers with no floor rather than a wrong one.
+   */
+  async getEarliestTransactionDateFromServer(): Promise<Date | null> {
+    const userId = this.authService.userId();
+    if (!userId) return null;
+
+    const [oldest] = await this.firestoreService.getCollectionFromServer<Transaction>(
+      this.userTransactionsPath,
+      { orderBy: [{ field: 'date', direction: 'asc' }], limit: 1 }
+    );
+    return oldest ? toDate(oldest.date) : null;
   }
 
   // Shared by the live and one-shot variants so the three queries cannot drift.

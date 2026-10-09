@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { AiSummaryComponent } from './ai-summary.component';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
@@ -12,7 +12,8 @@ import { RagContextService } from '../../../core/services/rag-context.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
 import {
-  createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
+  channels, createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
+  hoverValue, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
 } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
@@ -484,6 +485,19 @@ describe('AiSummaryComponent', () => {
   });
 });
 
+// The card as the dashboard renders it: what carries `card-actions` is the
+// card's own menu.
+@Component({
+  standalone: true,
+  imports: [AiSummaryComponent],
+  template: `
+    <app-ai-summary>
+      <span card-actions class="projected-action"></span>
+    </app-ai-summary>
+  `,
+})
+class AiSummaryWithActionHostComponent {}
+
 /**
  * Every case above compiles the card with `{ imports: [], template: '' }`, so
  * the four-arm body chain — loading, not-enough-data, error, content — has
@@ -618,6 +632,19 @@ describe('AiSummaryComponent, through its own template', () => {
     expect(el().querySelector('.advice-section')).toBeNull();
   });
 
+  it('projects the card actions into its header, after refresh', () => {
+    const hostFixture = TestBed.createComponent(AiSummaryWithActionHostComponent);
+    hostFixture.detectChanges();
+
+    const header = hostFixture.nativeElement.querySelector('.header-content') as HTMLElement;
+    const action = header.querySelector('.projected-action');
+    expect(action).withContext('in the header').not.toBeNull();
+    const refresh = header.querySelector('.refresh-btn') as HTMLElement;
+    expect(refresh.compareDocumentPosition(action!) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .withContext('after refresh')
+      .toBeTruthy();
+  });
+
   it('reaches refresh from its own button once there is enough data', () => {
     render();
     component.isLoading.set(false);
@@ -627,5 +654,284 @@ describe('AiSummaryComponent, through its own template', () => {
     (el().querySelector('.refresh-btn') as HTMLButtonElement).click();
 
     expect(refreshed).toHaveBeenCalled();
+  });
+
+  describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function showContent(): void {
+      render();
+      component.isLoading.set(false);
+      component.hasError.set(false);
+      component.summary.set('Groceries are **up** 18%.');
+      component.advice.set('Try a weekly cap.');
+      fixture.detectChanges();
+    }
+
+    function find(selector: string): HTMLElement {
+      const found = el().querySelector(selector) as HTMLElement | null;
+      expect(found).withContext(selector).toBeTruthy();
+      return found as HTMLElement;
+    }
+
+    /**
+     * The colours of the card's gradient, as computed. Each top-level
+     * argument that is a colour once its stop position is dropped counts,
+     * so a `color-mix()` stop is read whole rather than as its operands.
+     */
+    function gradientStops(card: HTMLElement): string[] {
+      const image = getComputedStyle(card).backgroundImage;
+      const body = /^linear-gradient\((.*)\)$/.exec(image)?.[1] ?? '';
+      const parts: string[] = [];
+      let depth = 0;
+      let start = 0;
+      for (let i = 0; i < body.length; i++) {
+        if (body[i] === '(') depth++;
+        else if (body[i] === ')') depth--;
+        else if (body[i] === ',' && depth === 0) {
+          parts.push(body.slice(start, i).trim());
+          start = i + 1;
+        }
+      }
+      parts.push(body.slice(start).trim());
+      return parts
+        .map(part => part.replace(/\s+-?[\d.]+(?:%|px)$/, ''))
+        .filter(part => CSS.supports('color', part));
+    }
+
+    /**
+     * Runs `check` once per stop of the card's gradient, with that stop laid
+     * flat under the card's content. The painted-contrast walk reads
+     * background colours, not images, and the gradient is painted over the
+     * card's own background colour, so that colour goes one level down.
+     */
+    function overEveryStop(theme: string, check: (stop: string) => void): void {
+      const card = find('.ai-summary-card');
+      const host = el();
+      const stops = gradientStops(card);
+      expect(stops.length).withContext(`${theme} gradient stops on the card`).toBeGreaterThanOrEqual(2);
+      host.style.backgroundColor = getComputedStyle(card).backgroundColor;
+      card.style.backgroundImage = 'none';
+      try {
+        for (const stop of stops) {
+          card.style.backgroundColor = stop;
+          check(stop);
+        }
+      } finally {
+        card.style.removeProperty('background-color');
+        card.style.removeProperty('background-image');
+        host.style.removeProperty('background-color');
+      }
+    }
+
+    function expectOnItsBackground(target: HTMLElement, floor: number, context: string): void {
+      expect(ratio(paintedColor(target), paintedBackground(target)))
+        .withContext(context)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    it('paints the advice header, its icon and its body in the warning text on an opaque warning tint, at AA or better, in both themes', () => {
+      showContent();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const advice = find('.advice-section');
+          expect(channels(getComputedStyle(advice).backgroundColor).alpha)
+            .withContext(`${theme} advice tint is opaque`)
+            .toBe(1);
+          const parts = [
+            ['header', '.advice-header span', 4.5],
+            ['icon', '.advice-header mat-icon', 3],
+            ['body', '.advice-text', 4.5],
+          ] as const;
+          for (const [label, selector, floor] of parts) {
+            const part = find(selector);
+            expectOnItsBackground(part, floor, `${theme} advice ${label} on its tint`);
+            expect(getComputedStyle(part).color)
+              .withContext(`${theme} advice ${label}`)
+              .toBe(tokenColour('--color-warning-text'));
+          }
+        });
+      }
+    });
+
+    it('paints the failure in the error text on an opaque error tint, at AA or better, in both themes', () => {
+      render();
+      component.isLoading.set(false);
+      component.hasError.set(true);
+      fixture.detectChanges();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const state = find('.error-state');
+          expect(channels(getComputedStyle(state).backgroundColor).alpha)
+            .withContext(`${theme} error tint is opaque`)
+            .toBe(1);
+          const parts = [
+            ['text', '.error-state span', 4.5],
+            ['icon', '.error-state mat-icon', 3],
+          ] as const;
+          for (const [label, selector, floor] of parts) {
+            const part = find(selector);
+            expectOnItsBackground(part, floor, `${theme} error ${label} on its tint`);
+            expect(getComputedStyle(part).color)
+              .withContext(`${theme} error ${label}`)
+              .toBe(tokenColour('--color-error-text'));
+          }
+        });
+      }
+    });
+
+    it('paints the title and the AI icon in the brand text over every stop of the gradient, in both themes', () => {
+      showContent();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const title = find('.title');
+          const icon = find('.ai-icon');
+          overEveryStop(theme, stop => {
+            expectOnItsBackground(title, 4.5, `${theme} title on ${stop}`);
+            expectOnItsBackground(icon, 3, `${theme} AI icon on ${stop}`);
+          });
+          expect(getComputedStyle(title).color).withContext(`${theme} title`).toBe(tokenColour('--color-primary-text'));
+          expect(getComputedStyle(icon).color).withContext(`${theme} AI icon`).toBe(tokenColour('--color-primary-text'));
+        });
+      }
+    });
+
+    it('paints the summary at AA or better over every stop of the gradient, in both themes', () => {
+      showContent();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const paragraph = find('.structured-content p');
+          const emphasis = find('.structured-content strong');
+          overEveryStop(theme, stop => {
+            expectOnItsBackground(paragraph, 4.5, `${theme} summary on ${stop}`);
+            expectOnItsBackground(emphasis, 4.5, `${theme} summary emphasis on ${stop}`);
+          });
+        });
+      }
+    });
+
+    /**
+     * The summary reaches the card through [innerHTML], so its elements carry
+     * no encapsulation attribute and a plain component rule never matches
+     * them. The fixture has the shape the summary prompt asks for: sections
+     * under `## ` headings, prose with emphasis, and a bullet list.
+     */
+    it('styles the summary\'s headings, lists and emphasis in the text tokens, at AA or better over every stop, in both themes', () => {
+      render();
+      component.isLoading.set(false);
+      component.hasError.set(false);
+      component.summary.set([
+        '## Spending Pattern',
+        'Groceries are **up** 18%.',
+        '## Actionable Insights',
+        '- Cap dining out',
+        '- Batch the weekly shop',
+        '- Review subscriptions',
+      ].join('\n'));
+      component.advice.set('');
+      fixture.detectChanges();
+
+      const box = find('.structured-content');
+      const headings = Array.from(box.querySelectorAll<HTMLElement>('h2'));
+      const paragraph = find('.structured-content p');
+      const emphasis = find('.structured-content strong');
+      const list = find('.structured-content ul');
+      const items = Array.from(list.querySelectorAll<HTMLElement>('li'));
+      expect(headings.length).withContext('headings').toBe(2);
+      expect(items.length).withContext('list items').toBe(3);
+      // A heading sits in no paragraph, so the parser leaves none empty
+      // beside it.
+      expect(box.querySelectorAll('p').length).withContext('paragraphs').toBe(1);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const primary = tokenColour('--text-primary');
+          const secondary = tokenColour('--text-secondary');
+          const bodySize = parseFloat(getComputedStyle(paragraph).fontSize);
+
+          for (const heading of headings) {
+            const style = getComputedStyle(heading);
+            expect(style.color).withContext(`${theme} heading colour`).toBe(primary);
+            expect(parseFloat(style.fontSize)).withContext(`${theme} heading size over body ${bodySize}px`)
+              .toBeGreaterThan(bodySize);
+            expect(Number(style.fontWeight)).withContext(`${theme} heading weight`).toBeGreaterThanOrEqual(600);
+          }
+          // The first section opens flush under the card header; later ones
+          // are set off from the section above. Where the heading lands is
+          // what counts, not only its own margin: a margin on any box in
+          // front of it would collapse onto it and move it down.
+          expect(getComputedStyle(headings[0]).marginBlockStart).withContext(`${theme} first heading`).toBe('0px');
+          const content = find('mat-card-content');
+          const contentStyle = getComputedStyle(content);
+          const contentTop = content.getBoundingClientRect().top
+            + parseFloat(contentStyle.borderBlockStartWidth) + parseFloat(contentStyle.paddingBlockStart);
+          expect(headings[0].getBoundingClientRect().top)
+            .withContext(`${theme} first heading against the card content's top`).toBeCloseTo(contentTop, 1);
+          expect(parseFloat(getComputedStyle(headings[1]).marginBlockStart))
+            .withContext(`${theme} later heading`).toBeGreaterThan(0);
+
+          expect(getComputedStyle(paragraph).color).withContext(`${theme} body colour`).toBe(secondary);
+          expect(getComputedStyle(emphasis).color).withContext(`${theme} emphasis colour`).toBe(primary);
+          expect(Number(getComputedStyle(emphasis).fontWeight)).withContext(`${theme} emphasis weight`)
+            .toBeGreaterThanOrEqual(600);
+
+          const listStyle = getComputedStyle(list);
+          expect(listStyle.listStyleType).withContext(`${theme} list marker`).toBe('disc');
+          expect(parseFloat(listStyle.paddingInlineStart)).withContext(`${theme} list indent`).toBeGreaterThan(0);
+          for (const item of items) {
+            expect(getComputedStyle(item).color).withContext(`${theme} list item colour`).toBe(secondary);
+          }
+          for (let i = 1; i < items.length; i++) {
+            const gap = items[i].getBoundingClientRect().top - items[i - 1].getBoundingClientRect().bottom;
+            expect(gap).withContext(`${theme} gap above list item ${i + 1}`).toBeGreaterThan(0);
+          }
+
+          overEveryStop(theme, stop => {
+            headings.forEach((heading, i) =>
+              expectOnItsBackground(heading, 4.5, `${theme} heading ${i + 1} on ${stop}`));
+            expectOnItsBackground(paragraph, 4.5, `${theme} body on ${stop}`);
+            expectOnItsBackground(emphasis, 4.5, `${theme} emphasis on ${stop}`);
+            items.forEach((item, i) =>
+              expectOnItsBackground(item, 4.5, `${theme} list item ${i + 1} on ${stop}`));
+          });
+        });
+      }
+    });
+
+    it('paints the refresh icon in the muted text at rest and the primary text hovered, over every stop, in both themes', () => {
+      showContent();
+      const button = find('.refresh-btn');
+      const icon = find('.refresh-btn mat-icon');
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          try {
+            const rest = getComputedStyle(icon).color;
+            expect(rest).withContext(`${theme} refresh at rest`).toBe(tokenColour('--text-muted'));
+            overEveryStop(theme, stop => expectOnItsBackground(icon, 3, `${theme} refresh at rest on ${stop}`));
+
+            button.style.color = hoverValue(button, '.refresh-btn', 'color');
+            const hovered = getComputedStyle(icon).color;
+            expect(hovered).withContext(`${theme} refresh hovered`).toBe(tokenColour('--text-primary'));
+            expect(hovered).withContext(`${theme} refresh hover differs from rest`).not.toBe(rest);
+            overEveryStop(theme, stop => expectOnItsBackground(icon, 3, `${theme} refresh hovered on ${stop}`));
+          } finally {
+            button.style.removeProperty('color');
+          }
+        });
+      }
+    });
   });
 });

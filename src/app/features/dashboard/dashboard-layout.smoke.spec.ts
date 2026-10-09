@@ -11,7 +11,7 @@
 //   npm run smoke
 // (CI wraps `npm run test:smoke` with `firebase emulators:exec --only auth,storage,firestore`.)
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
@@ -24,6 +24,9 @@ import {
   connectFirestoreEmulator,
   collection,
   addDoc,
+  deleteDoc,
+  doc,
+  setDoc,
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
@@ -31,6 +34,8 @@ import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/stora
 import { routes } from '../../app.routes';
 import { AuthService } from '../../core/services/auth.service';
 import { TransactionService } from '../../core/services/transaction.service';
+import { FirestoreService } from '../../core/services/firestore.service';
+import { addDays, budgetPeriodWindow, dayKey, startOfDay } from '../../core/utils/transaction-date.utils';
 import { MockAuthService, createMockUser } from '../../core/services/testing';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { dashboardGridAreas } from './dashboard-layout.utils';
@@ -145,6 +150,26 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
       createdAt: now,
       updatedAt: now
     });
+
+    // Over its threshold, so the alert banner has something to say. Stamped
+    // with the current period: BudgetService.freshenSpent shows an unstamped
+    // `spent` as 0 and recalculates it, which would clear the alert.
+    const budgetStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    await addDoc(collection(firestore, `users/${uid}/budgets`), {
+      userId: uid,
+      categoryId: categoryRef.id,
+      name: 'Dining Out Budget',
+      amount: 100,
+      currency: 'USD',
+      period: 'monthly',
+      startDate: Timestamp.fromDate(budgetStart),
+      spent: 95,
+      spentPeriod: dayKey(budgetPeriodWindow('monthly', budgetStart, new Date()).start),
+      isActive: true,
+      alertThreshold: 80,
+      createdAt: now,
+      updatedAt: now
+    });
   });
 
   afterAll(async () => {
@@ -168,7 +193,7 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
       ],
       // Kept alive after each case (destroyed by hand below instead): a
       // Firestore timer that fires into a torn-down injector crashes with
-      // NG0205, and this file shares one Firebase app across both cases.
+      // NG0205, and this file shares one Firebase app across its cases.
       teardown: { destroyAfterEach: false }
     });
     harness = await RouterTestingHarness.create();
@@ -285,4 +310,238 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
     },
     CASE_TIMEOUT
   );
+
+  // #442 AC 2, through the real editor and layout service: a toggle sends the
+  // hidden field alone, so no order is pinned on an account that never moved
+  // a card.
+  it(
+    'saves an editor toggle as the hidden field alone',
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid, {
+        preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+      }));
+
+      await harness.navigateByUrl('/settings?panel=dashboard');
+      await waitForDom(
+        'the dashboard layout editor rows',
+        () => (harness.routeNativeElement?.ownerDocument.querySelectorAll('.card-row').length ?? 0) === 5
+      );
+
+      const settingsDoc = harness.routeNativeElement!.ownerDocument;
+      const insightsSwitch = (): HTMLButtonElement | null =>
+        settingsDoc.querySelector<HTMLButtonElement>(
+          'button[role="switch"][aria-labelledby="dashboard-card-insights-title"]'
+        );
+      expect(insightsSwitch()?.getAttribute('aria-checked')).toBe('true');
+
+      insightsSwitch()!.click();
+      await waitForDom(
+        'the insights switch saved as off',
+        () =>
+          mockAuth.updatePreferenceFieldsSpy.calls.count() > 0 &&
+          insightsSwitch()?.getAttribute('aria-checked') === 'false'
+      );
+
+      expect(mockAuth.updatePreferenceFieldsSpy).toHaveBeenCalledOnceWith('dashboardLayout', {
+        hidden: { set: ['insights'] }
+      });
+      const wholeLayoutWrites = mockAuth.updateUserPreferencesSpy.calls
+        .allArgs()
+        .filter(([prefs]) => 'dashboardLayout' in prefs);
+      expect(wholeLayoutWrites).toEqual([]);
+      expect(mockAuth.currentUser()?.preferences.dashboardLayout).toEqual({ hidden: ['insights'] });
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #442: a hidden card opens no listener that nothing else on the page reads.
+  // Budgets is hidden too, yet keeps its one listener: the banner, which
+  // cannot be hidden, reads it.
+  it(
+    'opens no recent or upcoming listener for hidden cards, and one budgets listener for the banner',
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid, {
+        preferences: {
+          ...DEFAULT_USER_PREFERENCES,
+          onboardingCompleted: true,
+          enableWeeklyRecap: false,
+          dashboardLayout: { hidden: ['recent', 'upcoming', 'budgets'] }
+        }
+      }));
+
+      const subscribeSpy = spyOn(TestBed.inject(FirestoreService), 'subscribeToCollection').and.callThrough();
+      const listenersOn = (path: string, limit?: number): number =>
+        subscribeSpy.calls.allArgs()
+          .filter(([p, options]) => p === path && (limit === undefined || options?.limit === limit))
+          .length;
+
+      await harness.navigateByUrl('/dashboard');
+      const doc = harness.routeNativeElement!.ownerDocument;
+      await waitForDom(
+        'the budget alert banner beside the rendered grid',
+        () =>
+          doc.querySelector('app-budget-alert-banner .alert-banner') !== null &&
+          doc.querySelector('.dashboard-grid') !== null
+      );
+
+      const childTags = Array.from(doc.querySelector('.dashboard-grid')!.children).map(el => el.tagName);
+      expect(childTags).toEqual(['APP-SPENDING-CHART', 'APP-AI-SUMMARY']);
+      expect(doc.querySelector('app-budget-progress')).toBeNull();
+
+      expect(listenersOn(`users/${uid}/transactions`, 5)).withContext('recent transactions').toBe(0);
+      expect(listenersOn(`users/${uid}/recurring`)).withContext('recurring rules').toBe(0);
+      expect(listenersOn(`users/${uid}/budgets`)).withContext('budgets').toBe(1);
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #442 AC 4: a card hidden from its own menu on the dashboard, through the
+  // real layout service, and the editor shows the same state.
+  it(
+    "hides a card from the dashboard's own menu, and the editor shows it hidden",
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid, {
+        preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+      }));
+
+      await harness.navigateByUrl('/dashboard');
+      const doc = harness.routeNativeElement!.ownerDocument;
+      const chartTrigger = (): HTMLButtonElement | null =>
+        doc.querySelector<HTMLButtonElement>('app-spending-chart .card-menu-trigger');
+      const hideItem = (): HTMLButtonElement | null =>
+        doc.querySelector<HTMLButtonElement>('.mat-mdc-menu-panel [data-action="hide"]');
+      await waitForDom('the spending chart card and its menu', () => chartTrigger() !== null);
+
+      chartTrigger()!.click();
+      await waitForDom('the open card menu', () => hideItem() !== null);
+      hideItem()!.click();
+
+      await waitForDom(
+        'the chart hidden and its hide saved',
+        () => doc.querySelector('app-spending-chart') === null && mockAuth.updatePreferenceFieldsSpy.calls.count() > 0
+      );
+      expect(mockAuth.updatePreferenceFieldsSpy).toHaveBeenCalledOnceWith('dashboardLayout', {
+        hidden: { set: ['chart'] }
+      });
+      expect(mockAuth.currentUser()?.preferences.dashboardLayout).toEqual({ hidden: ['chart'] });
+
+      await harness.navigateByUrl('/settings?panel=dashboard');
+      await waitForDom(
+        'the dashboard layout editor rows',
+        () => (harness.routeNativeElement?.ownerDocument.querySelectorAll('.card-row').length ?? 0) === 5
+      );
+
+      const settingsDoc = harness.routeNativeElement!.ownerDocument;
+      const ariaCheckedFor = (titleId: string): string | null =>
+        settingsDoc
+          .querySelector<HTMLButtonElement>(`button[role="switch"][aria-labelledby="${titleId}"]`)
+          ?.getAttribute('aria-checked') ?? null;
+      expect(ariaCheckedFor('dashboard-card-chart-title')).toBe('false');
+      for (const card of ['recent', 'upcoming', 'insights', 'budgets']) {
+        expect(ariaCheckedFor(`dashboard-card-${card}-title`)).withContext(card).toBe('true');
+      }
+
+      harness.fixture.destroy();
+      // The menu rendered into the CDK overlay, outside the routed view.
+      doc.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #446: a bill reminder's link, /dashboard?bill=<rule id>, through the real
+  // router, the recurring listener and the card.
+  describe('a bill link', () => {
+    const RULE_ID = 'smoke-bill-link';
+
+    // Three days ahead, so the catch-up the dashboard runs posts nothing and
+    // the row stays on the Upcoming card.
+    beforeEach(async () => {
+      const due = addDays(startOfDay(new Date()), 3);
+      await setDoc(doc(firestore, `users/${uid}/recurring/${RULE_ID}`), {
+        userId: uid,
+        name: 'Smoke Rent',
+        type: 'expense',
+        amount: 42,
+        currency: 'USD',
+        categoryId: 'housing_rent',
+        description: 'Smoke Rent',
+        frequency: { type: 'yearly', interval: 1 },
+        startDate: Timestamp.fromDate(due),
+        nextOccurrence: Timestamp.fromDate(due),
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+    });
+
+    afterEach(async () => {
+      harness.fixture.destroy();
+      await deleteDoc(doc(firestore, `users/${uid}/recurring/${RULE_ID}`)).catch(() => undefined);
+      await new Promise(resolve => setTimeout(resolve, 200));
+    });
+
+    it(
+      'focuses the rule on the Upcoming card, and takes the link off the URL',
+      async () => {
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+        }));
+        const router = TestBed.inject(Router);
+
+        await harness.navigateByUrl(`/dashboard?bill=${RULE_ID}`);
+        const page = harness.routeNativeElement!.ownerDocument;
+        await waitForDom(
+          'the bill row focused',
+          () => page.activeElement?.matches(`app-upcoming-bills .bill-row[data-rule-id="${RULE_ID}"]`) ?? false
+        );
+
+        expect(page.activeElement?.textContent).toContain('Smoke Rent');
+        expect(router.url).toBe('/dashboard');
+      },
+      CASE_TIMEOUT
+    );
+
+    it(
+      'opens the recurring rules while Upcoming is hidden',
+      async () => {
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: {
+            ...DEFAULT_USER_PREFERENCES,
+            onboardingCompleted: true,
+            dashboardLayout: { hidden: ['upcoming'] }
+          }
+        }));
+        const router = TestBed.inject(Router);
+
+        await harness.navigateByUrl(`/dashboard?bill=${RULE_ID}`);
+        await waitForDom('the recurring rules', () => router.url === '/budgets?tab=recurring');
+
+        expect(harness.routeNativeElement?.ownerDocument.querySelector('app-upcoming-bills')).toBeNull();
+      },
+      CASE_TIMEOUT
+    );
+
+    // The card has no row for it, so the server is asked before the user is
+    // sent away; the emulator answers that read here.
+    it(
+      'opens the recurring rules for a rule the server does not list in the fortnight',
+      async () => {
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+        }));
+        const router = TestBed.inject(Router);
+
+        await harness.navigateByUrl('/dashboard?bill=smoke-no-such-rule');
+        await waitForDom('the recurring rules', () => router.url === '/budgets?tab=recurring');
+      },
+      CASE_TIMEOUT
+    );
+  });
 });

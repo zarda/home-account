@@ -45,7 +45,7 @@
 
 .row-icon {
   flex: 0 0 auto;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
 
   &.recurring {
     color: var(--color-primary);
@@ -57,18 +57,18 @@
   min-width: 0;
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-gray-800 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 .row-count {
   font-weight: 400;
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
 }
 
 .row-amount {
   font-weight: 600;
   font-size: var(--text-sm);
-  @apply text-gray-800 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 .row-percentage {
@@ -79,5 +79,5 @@
   font-weight: 500;
   min-width: 36px;
   text-align: center;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
 }

@@ -21,7 +21,17 @@ import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { BudgetFormComponent } from './budget-form/budget-form.component';
 import { Budget } from '../../models';
-import { createBudget, createCategory, createTranslationStub } from '../../core/services/testing';
+import {
+  channels,
+  createBudget,
+  createCategory,
+  createTranslationStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../core/services/testing';
 
 /** Query params the sibling rendering describe re-points between cases. */
 const budgetQueryParams: { value: Record<string, string> } = { value: {} };
@@ -285,6 +295,49 @@ describe('BudgetsComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(el().querySelector('.tab-badge')).toBeNull();
+  });
+
+  // The count is text, so it owes 4.5:1 to the tint it is painted on. The
+  // tint is opaque, mixed into the page the strip sits on, so that ratio is a
+  // property of two declared colours, not of whatever shows through. The pill
+  // itself is not a boundary the badge is recognised by: the digits carry it,
+  // so WCAG 1.4.11's 3:1 asks nothing of the tint against the strip, and the
+  // badge draws no edge that would owe it. It still has to read as a pill,
+  // which a tint within a few hundredths of the page does not.
+  it('paints the budgets tab badge in --color-primary-text on an opaque primary tint of the page, a visible pill at 4.5:1 or better with no edge, in both themes', () => {
+    render();
+    const badge = el().querySelector<HTMLElement>('.tab-badge')!;
+
+    /** What `prop: value` computes to under the theme on <html> now. */
+    const computed = (value: string, prop: 'color' | 'backgroundColor') => {
+      const probe = document.createElement('span');
+      probe.style[prop] = value;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe)[prop];
+      } finally {
+        probe.remove();
+      }
+    };
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        settleAnimations(document);
+        const painted = getComputedStyle(badge);
+        expect(painted.color).withContext(`${theme} count`).toBe(computed('var(--color-primary-text)', 'color'));
+        expect(painted.backgroundColor)
+          .withContext(`${theme} tint`)
+          .toBe(computed('color-mix(in srgb, var(--color-primary) 16%, var(--surface-background))', 'backgroundColor'));
+        expect(channels(painted.backgroundColor).alpha).withContext(`${theme} tint is opaque`).toBe(1);
+        expect(ratio(paintedBackground(badge), paintedBackground(badge.parentElement!)))
+          .withContext(`${theme} pill against the strip behind it`)
+          .toBeGreaterThanOrEqual(1.2);
+        expect(ratio(paintedColor(badge), paintedBackground(badge)))
+          .withContext(`${theme} count on its tint`)
+          .toBeGreaterThanOrEqual(4.5);
+        expect(painted.borderWidth).withContext(`${theme} edge`).toBe('0px');
+      });
+    }
   });
 
   it('shows the spinner while the first read is open', () => {

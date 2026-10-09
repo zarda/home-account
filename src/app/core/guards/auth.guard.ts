@@ -74,7 +74,8 @@ export const lockGuard: CanActivateFn = () => {
       return false;
     }
     if (!appLock.isLocked()) {
-      router.navigate([appLock.consumeRedirect()]);
+      // A remembered URL may carry a query; navigate() would escape it into the path.
+      router.navigateByUrl(appLock.consumeRedirect());
       return false;
     }
     return true;

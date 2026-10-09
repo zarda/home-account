@@ -200,6 +200,12 @@ consecutive periods cannot overlap or leave a gap.
 - `weekly-recap.smoke.spec.ts` — those bounds against stored `Timestamp`s,
   seeded on the first and last milliseconds of the recapped week and one
   millisecond outside each.
+- `upcoming-bills.component.spec.ts` — the Upcoming card's days, keyed by
+  local day. Two occurrences an hour apart across local midnight are two
+  days. A UTC-keyed grouping folds them into one at any offset but zero, so
+  on a UTC runner the case could not fail. The spec joined `test:dates` with
+  the card's bill links, whose cases date every row at noon so that no
+  zone's midnight or DST change moves it to another day.
 - `household-ledger.service.smoke.spec.ts` — the rows two members shared
   into their household, read back as copies through each member's
   generation-filtered query of the household's ledger, with the rules live,

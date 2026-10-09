@@ -3,17 +3,13 @@
     <div class="flex justify-center mb-4">
       <div
         class="w-12 h-12 rounded-full flex items-center justify-center"
-        [class.bg-red-100]="data.confirmColor === 'warn'"
-        [class.dark:bg-red-900]="data.confirmColor === 'warn'"
-        [class.bg-primary-100]="data.confirmColor !== 'warn'"
-        [class.dark:bg-primary-900]="data.confirmColor !== 'warn'"
+        [class.bg-error-soft]="data.confirmColor === 'warn'"
+        [class.icon-circle-brand]="data.confirmColor !== 'warn'"
       >
         <mat-icon
-          class="!text-2xl"
-          [class.text-red-600]="data.confirmColor === 'warn'"
-          [class.dark:text-red-400]="data.confirmColor === 'warn'"
-          [class.text-primary-600]="data.confirmColor !== 'warn'"
-          [class.dark:text-primary-400]="data.confirmColor !== 'warn'"
+          class="dialog-icon"
+          [class.text-error-text]="data.confirmColor === 'warn'"
+          [class.text-brand-text]="data.confirmColor !== 'warn'"
         >
           {{ data.icon }}
         </mat-icon>
@@ -21,22 +17,23 @@
     </div>
   }
 
-  <h2 mat-dialog-title class="text-lg font-semibold text-gray-900 dark:text-gray-100 text-center mb-2">
+  <h2 mat-dialog-title class="text-lg font-semibold text-center mb-2">
     {{ data.title }}
   </h2>
 
   <mat-dialog-content>
-    <p class="text-sm text-gray-600 dark:text-gray-300 text-center">{{ data.message }}</p>
+    <p class="text-sm text-fg-secondary text-center">{{ data.message }}</p>
     @if (data.requireText) {
-      <input
-        class="mt-4 w-full rounded border border-gray-300 dark:border-gray-600 bg-transparent px-3 py-2 text-sm text-center text-gray-900 dark:text-gray-100"
-        [placeholder]="data.requireText"
-        [attr.aria-label]="data.requireText"
-        autocomplete="off"
-        autocapitalize="off"
-        spellcheck="false"
-        (input)="onTyped($any($event.target).value)"
-      />
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="mt-4 w-full">
+        <mat-label>{{ data.requireText }}</mat-label>
+        <input
+          matInput
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          (input)="onTyped($any($event.target).value)"
+        />
+      </mat-form-field>
     }
   </mat-dialog-content>
 

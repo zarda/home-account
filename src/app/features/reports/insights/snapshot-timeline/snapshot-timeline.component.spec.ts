@@ -7,7 +7,9 @@ import { InsightSnapshot, SnapshotStaleness } from '../../../../models';
 import en from '../../../../../assets/i18n/en.json';
 import ja from '../../../../../assets/i18n/ja.json';
 import tc from '../../../../../assets/i18n/tc.json';
-import { createTranslationStub } from '../../../../core/services/testing';
+import {
+  channels, createTranslationStub, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
+} from '../../../../core/services/testing';
 
 /**
  * Every reason the staleness comparison can produce. Built dynamically as
@@ -343,5 +345,57 @@ describe('SnapshotTimelineComponent, through its own template', () => {
 
     render([snap('2026-06')], '2026-06', stale(['transactionsChanged'], true), true);
     expect((el().querySelector('.stale-strip button') as HTMLButtonElement).disabled).toBeTrue();
+  });
+
+  describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function find(selector: string): HTMLElement {
+      const found = el().querySelector(selector) as HTMLElement | null;
+      expect(found).withContext(selector).toBeTruthy();
+      return found as HTMLElement;
+    }
+
+    function expectOnItsBackground(target: HTMLElement, floor: number, context: string): void {
+      expect(ratio(paintedColor(target), paintedBackground(target)))
+        .withContext(context)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    it('paints the stale warning icon in the warning text on an opaque warning tint, with its lines at AA, in both themes', () => {
+      render([snap('2026-06')], '2026-06', stale(['transactionsChanged'], true));
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const strip = find('.stale-strip');
+          expect(channels(getComputedStyle(strip).backgroundColor).alpha)
+            .withContext(`${theme} stale tint is opaque`)
+            .toBe(1);
+
+          const icon = find('.stale-strip mat-icon');
+          expect(getComputedStyle(icon).color)
+            .withContext(`${theme} stale icon`)
+            .toBe(tokenColour('--color-warning-text'));
+          expectOnItsBackground(icon, 3, `${theme} stale icon on its tint`);
+
+          expectOnItsBackground(find('.stale-title'), 4.5, `${theme} stale title on its tint`);
+          expectOnItsBackground(find('.stale-reason'), 4.5, `${theme} stale reason on its tint`);
+          expectOnItsBackground(
+            find('.stale-strip button .mdc-button__label'), 4.5, `${theme} regenerate label on its tint`);
+        });
+      }
+    });
   });
 });

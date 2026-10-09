@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { provideNativeDateAdapter } from '@angular/material/core';
+import { MatSelect } from '@angular/material/select';
 import { Timestamp } from '@angular/fire/firestore';
 import { firstValueFrom } from 'rxjs';
 
@@ -14,7 +16,18 @@ import { HouseholdError } from '../../../../core/services/household.service';
 import { HouseholdBudgetInput } from '../../../../core/services/household-plans.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub } from '../../../../core/services/testing';
+import { ThemeService } from '../../../../core/services/theme.service';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  chooseOption,
+  createTranslationStub,
+  eachOptionState,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withScheme,
+} from '../../../../core/services/testing';
 import { defaultCategories } from '../../../../core/utils/category-merge.utils';
 import { defaultBudgetStart } from '../../../../core/utils/transaction-date.utils';
 import { HouseholdBudget } from '../../../../models';
@@ -162,6 +175,100 @@ describe('HouseholdBudgetDialogComponent', () => {
       const hints = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-hint'))
         .map(each => each.textContent?.trim());
       expect(hints).toContain('household.planForm.thresholdHint:{"default":80}');
+    });
+  });
+
+  describe('its category options', () => {
+    const categorySelect = (): MatSelect =>
+      fixture.debugElement.queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryIds')!
+        .injector.get(MatSelect);
+
+    /** The element that paints an option's name: the parent of its text. */
+    function nameNode(option: HTMLElement, name: string): HTMLElement {
+      const walker = document.createTreeWalker(option, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.textContent?.trim() === name) return node.parentElement!;
+      }
+      throw new Error(`no text "${name}" in the option`);
+    }
+
+    function openPanel(): void {
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLElement>('mat-select[formControlName="categoryIds"] .mat-mdc-select-trigger')!
+        .click();
+      fixture.detectChanges();
+    }
+
+    beforeEach(() => create());
+
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    // The viewValue is what typeahead matches in the open list; an icon nested
+    // in a wrapper put its ligature in front of every name.
+    it('names each option by its category alone', () => {
+      const options = categorySelect().options.toArray();
+      expect(options.length).toBe(EXPENSE_IDS.length);
+      expect(options.map(option => option.viewValue))
+        .toEqual(options.map(option => component.names().get(option.value as string)!));
+    });
+
+    it('sets a group in bold and its categories in the regular weight', () => {
+      // A pin: `.category-group` still bolds the name now that it sits on the option, not the wrapper.
+      openPanel();
+      const option = (id: string): HTMLElement =>
+        categorySelect().options.find(each => each.value === id)!._getHostElement();
+
+      const group = nameNode(option('food'), component.names().get('food')!);
+      const category = nameNode(option('food_groceries'), component.names().get('food_groceries')!);
+      expect(getComputedStyle(group).fontWeight).toBe('600');
+      expect(getComputedStyle(category).fontWeight).not.toBe('600');
+    });
+
+    // Every built-in expense category is offered, so every glyph is measured
+    // at rest and active, and is corrected for both. Education wears the
+    // darkest colour a category can take; it is chosen, though a multiple
+    // select paints no selected fill under a chosen option.
+    it("draws each category's glyph at AA or better on its option at rest, active and chosen, in both themes", () => {
+      const select = categorySelect();
+      const flush = () => fixture.detectChanges();
+      expect(component.categories.find(option => option.id === 'education')?.color)
+        .withContext("education's colour")
+        .toBe(GLYPH_PROBE_COLOURS.dark);
+      chooseOption(select, 'education', flush);
+      expect(component.form.controls.categoryIds.value).toEqual(['education']);
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          eachOptionState(select, flush, (option, state) => {
+            const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${scheme} ${option.value} ${state}`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        });
+      }
+    });
+
+    it('sizes each option icon at --text-lg, a square of it', () => {
+      // A pin: `mat-option > mat-icon` keeps the size the icon had inside its old wrapper.
+      openPanel();
+      const probe = document.createElement('span');
+      probe.style.fontSize = 'var(--text-lg)';
+      document.body.appendChild(probe);
+      const expected = getComputedStyle(probe).fontSize;
+      probe.remove();
+
+      const icons = Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-select-panel mat-option mat-icon'));
+      expect(icons.length).toBe(EXPENSE_IDS.length);
+      for (const icon of icons) {
+        const style = getComputedStyle(icon);
+        expect(style.fontSize).toBe(expected);
+        expect(style.width).toBe(expected);
+        expect(style.height).toBe(expected);
+      }
     });
   });
 

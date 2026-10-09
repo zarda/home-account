@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Subject, EMPTY } from 'rxjs';
 
@@ -9,6 +9,7 @@ import { CommandPaletteComponent } from './command-palette.component';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AUDIT_SCHEMES, runAxe, summarizeViolations, withTheme } from '../../../core/services/testing';
 import { NAV_ITEMS, PALETTE_ONLY_ITEMS } from '../../layout/nav-items';
 
 /**
@@ -31,6 +32,12 @@ const EN_LABELS: Record<string, string> = {
   'nav.importHistory': 'Import History',
   'transactions.addTransaction': 'Add Transaction',
   'ai.scanReceipt': 'Scan Receipt',
+  'palette.sectionNavigate': 'Go to',
+  'palette.sectionActions': 'Actions',
+  'palette.sectionShortcuts': 'Keyboard shortcuts',
+  'shortcuts.addTransaction': 'Add a transaction',
+  'shortcuts.openPalette': 'Open or close this palette',
+  'shortcuts.showShortcuts': 'Show these shortcuts',
 };
 
 describe('CommandPaletteComponent', () => {
@@ -362,5 +369,237 @@ describe('CommandPaletteComponent', () => {
 
       expect(document.activeElement).toBe(searchInput());
     });
+  });
+});
+
+/**
+ * The Shortcuts section (#446): reference, not a command. It renders through
+ * the real template, as the describe above does, and is driven by the
+ * dialog's data the way KeyboardShortcutService opens it: `?` passes
+ * `{section: 'shortcuts'}`, Ctrl/Cmd+K passes no data at all, so the token
+ * has to be optional. `create` awaits nothing once the palette exists: the
+ * section is part of the palette's own template, so it is there after the
+ * first render, with no chunk that could arrive late or not at all.
+ */
+describe('CommandPaletteComponent, Shortcuts section (#446)', () => {
+  let fixture: ComponentFixture<CommandPaletteComponent>;
+  let component: CommandPaletteComponent;
+  let closed$: Subject<undefined>;
+  let dialogRef: jasmine.SpyObj<MatDialogRef<CommandPaletteComponent>>;
+  let router: jasmine.SpyObj<Router>;
+
+  async function create(data?: unknown): Promise<void> {
+    closed$ = new Subject<undefined>();
+    dialogRef = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
+    dialogRef.afterClosed.and.returnValue(closed$.asObservable());
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    (translation as unknown as { translationsVersion: unknown }).translationsVersion = signal(0);
+    translation.t.and.callFake((key: string) => EN_LABELS[key] ?? key);
+
+    await TestBed.configureTestingModule({
+      imports: [CommandPaletteComponent, NoopAnimationsModule],
+      providers: [
+        { provide: MatDialogRef, useValue: dialogRef },
+        { provide: Router, useValue: router },
+        {
+          provide: QuickAddService,
+          useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction', 'openScanReceipt']),
+        },
+        { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
+        { provide: TranslationService, useValue: translation },
+        ...(data === undefined ? [] : [{ provide: MAT_DIALOG_DATA, useValue: data }]),
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(CommandPaletteComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    TestBed.tick();
+  }
+
+  const el = () => fixture.nativeElement as HTMLElement;
+  const section = () => el().querySelector<HTMLElement>('.palette-shortcuts');
+  const sectionTitles = () =>
+    Array.from(el().querySelectorAll('.palette-section-title'), title => title.textContent?.trim());
+  const rows = () => Array.from(el().querySelectorAll<HTMLButtonElement>('.palette-item'));
+  const searchInput = () => el().querySelector('input') as HTMLInputElement;
+
+  function type(text: string): void {
+    searchInput().value = text;
+    searchInput().dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  function keydown(element: HTMLElement, key: string): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    fixture.detectChanges();
+    return event;
+  }
+
+  it('renders without dialog data, after the commands while nothing is typed', async () => {
+    await create();
+
+    expect(section()).withContext('the section').not.toBeNull();
+    expect(sectionTitles()).toEqual(['Go to', 'Actions', 'Keyboard shortcuts']);
+  });
+
+  it('opens on the section when the dialog data names it', async () => {
+    await create({ section: 'shortcuts' });
+
+    expect(sectionTitles()).toEqual(['Keyboard shortcuts', 'Go to', 'Actions']);
+  });
+
+  // A section loaded from a chunk pops in a moment after the palette on the
+  // first open, and is missing from a first open made offline.
+  it('is in the DOM on the very first open, after one render and nothing awaited, and stays', async () => {
+    await create({ section: 'shortcuts' });
+
+    expect(section()).withContext('the section, synchronously').not.toBeNull();
+    expect(section()!.querySelectorAll('dl kbd').length).withContext('its keys').toBeGreaterThan(0);
+
+    await fixture.whenStable();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    expect(section()).withContext('once every pending task has run').not.toBeNull();
+  });
+
+  it('lists each shortcut as its keys in <kbd> beside what it does', async () => {
+    await create({ section: 'shortcuts' });
+
+    const list = section()!.querySelector('dl');
+    expect(list).withContext('a description list').not.toBeNull();
+    const entries = Array.from(list!.querySelectorAll('dt'), term => ({
+      keys: Array.from(term.querySelectorAll('kbd'), key => key.textContent?.trim()),
+      label: term.nextElementSibling?.tagName === 'DD' ? term.nextElementSibling.textContent?.trim() : null,
+    }));
+    expect(entries).toEqual([
+      { keys: ['n'], label: 'Add a transaction' },
+      // Both modifiers: there is no platform detection to pick one.
+      { keys: ['Ctrl', 'K', '⌘', 'K'], label: 'Open or close this palette' },
+      { keys: ['?'], label: 'Show these shortcuts' },
+    ]);
+  });
+
+  // Enter runs filtered()[0] and the arrows rove `.palette-item`: a shortcut
+  // row in either would be "run" or focused as if it were a command.
+  it('is never a command: no row of it is a .palette-item, focusable, or in filtered()', async () => {
+    await create({ section: 'shortcuts' });
+
+    expect(section()!.querySelectorAll('.palette-item, button, a, input, [tabindex]').length).toBe(0);
+    expect(component.filtered().length).toBe(NAV_ITEMS.length + PALETTE_ONLY_ITEMS.length + 2);
+    expect(component.filtered().some(command => command.labelKey.startsWith('shortcuts.'))).toBeFalse();
+    expect(rows().length).toBe(component.filtered().length);
+  });
+
+  it('leaves while a query is typed and comes back when it is cleared', async () => {
+    await create({ section: 'shortcuts' });
+
+    type('budget');
+    expect(section()).toBeNull();
+
+    type('  ');
+    expect(section()).not.toBeNull();
+  });
+
+  it('leaves Enter in the search box running the first command', async () => {
+    await create({ section: 'shortcuts' });
+
+    const event = keydown(searchInput(), 'Enter');
+    closed$.next(undefined);
+
+    expect(event.defaultPrevented).toBeTrue();
+    expect(router.navigate).toHaveBeenCalledOnceWith(['/dashboard']);
+  });
+
+  it('leaves the arrows roving the command rows only', async () => {
+    await create({ section: 'shortcuts' });
+
+    keydown(searchInput(), 'ArrowDown');
+    expect(document.activeElement).toBe(rows()[0]);
+
+    keydown(rows()[0], 'ArrowUp');
+    expect(document.activeElement).toBe(rows()[0]);
+  });
+
+  // A pin, not a behaviour: the section is the palette's own markup on the
+  // palette's own classes, so both sides read one rule. It fails only if a
+  // restyled copy of the title or the section gap comes back and drifts.
+  it("titles and spaces the section the way the palette does its own", async () => {
+    await create();
+
+    const [goTo, , shortcuts] = Array.from(
+      el().querySelectorAll<HTMLElement>('.palette-section-title'),
+      title => getComputedStyle(title)
+    );
+    for (const property of [
+      'font-size', 'font-weight', 'text-transform', 'letter-spacing', 'color',
+      'margin-block-start', 'margin-block-end',
+    ]) {
+      expect(shortcuts.getPropertyValue(property))
+        .withContext(property)
+        .toBe(goTo.getPropertyValue(property));
+    }
+    const sectionGap = (node: Element | null) => getComputedStyle(node!).marginBlockStart;
+    expect(sectionGap(section()))
+      .toBe(sectionGap(el().querySelector('.palette-section')));
+  });
+
+  // The keys sit in a fixed column, so a row with two chords wraps. A wrap
+  // inside a chord leaves "⌘" at the end of one line and its "K" alone on the
+  // next, which reads as two shortcuts.
+  for (const width of [520, 288]) {
+    it(`never splits a chord across lines at ${width} px`, async () => {
+      await create({ section: 'shortcuts' });
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${width}px`;
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-medium-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      document.body.appendChild(host);
+      try {
+        for (const term of Array.from(section()!.querySelectorAll('dt'))) {
+          const chords: HTMLElement[][] = [[]];
+          for (const node of Array.from(term.querySelectorAll<HTMLElement>('kbd, .shortcut-or'))) {
+            if (node.tagName === 'KBD') chords[chords.length - 1].push(node);
+            else chords.push([]);
+          }
+          for (const chord of chords) {
+            const tops = chord.map(key => Math.round(key.getBoundingClientRect().top));
+            expect(new Set(tops).size)
+              .withContext(`${chord.map(key => key.textContent).join(' ')} at ${width} px`)
+              .toBe(1);
+          }
+          const column = term.getBoundingClientRect();
+          for (const key of Array.from(term.querySelectorAll('kbd'))) {
+            expect(key.getBoundingClientRect().right)
+              .withContext(`${key.textContent} inside its column`)
+              .toBeLessThanOrEqual(column.right + 0.5);
+          }
+        }
+      } finally {
+        host.remove();
+      }
+    });
+  }
+
+  it('passes the axe sweep in both schemes', async () => {
+    await create({ section: 'shortcuts' });
+
+    for (const scheme of AUDIT_SCHEMES) {
+      await withTheme(scheme, async () => {
+        expect(summarizeViolations(await runAxe(el())))
+          .withContext(`${scheme} scheme`)
+          .toEqual([]);
+      });
+    }
   });
 });

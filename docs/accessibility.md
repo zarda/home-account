@@ -33,6 +33,16 @@ gets Material's own forced-colors marker for the row.
 non-anchor list item, `[activated]` gives the visual treatment and no attribute
 at all.
 
+**Each surface is a named landmark.** The sidebar's `nav` is *Main*
+(`nav.landmarkMain`) and the bottom nav's is *Quick access*
+(`nav.landmarkQuick`). A phone has both, the bottom nav on screen and the
+sidebar in its drawer, and unnamed, each was announced only as *navigation*,
+so a landmark list could not tell one from the other. The names are short
+because a screen reader says *navigation* after them. The sidebar builds its
+name with a `computed` over `TranslationService.t`, as it does its link
+labels, and the bottom nav uses the translate pipe
+([ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+
 ## Active state is never conveyed by colour alone
 
 Both navigation surfaces originally expressed "active" as colour plus a font
@@ -65,6 +75,14 @@ silently.
 appending to it would break the match between accessible name and visible text.
 That is what `aria-current` is for.
 
+**A button that shows only a glyph or a colour is named for what it picks.**
+The category dialog's icon grid and colour swatches show no text: each
+button carries its icon's or colour's name from the catalog, and
+`aria-pressed` says which one is picked, the selection its ring and fill
+show. They are toggle buttons in a named `group`, not radios, which would
+ask for arrow-key roving and one tab stop
+([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
+
 ### A progress indicator is named, or hidden inside the control that names it
 
 Material renders `mat-spinner`, `mat-progress-bar` and `mat-progress-spinner`
@@ -87,17 +105,39 @@ process button). Idle, the visible text names it.
 npm run icon-labels:check
 ```
 
-`scripts/check-icon-labels.mjs` holds two rules over every template: a
-`mat-icon` carrying `role="img"` or a label also carries a literal
-`aria-hidden` ([ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md)),
-and every progress indicator carries an `aria-label` in any form, an
-`aria-labelledby`, or a literal `aria-hidden="true"` — `"false"` and a bound
-value hide nothing
-([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+`scripts/check-icon-labels.mjs` holds four rules over every template:
+
+- a `mat-icon` carrying `role="img"` or a label also carries a literal
+  `aria-hidden` ([ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md));
+- every progress indicator carries an `aria-label` in any form, an
+  `aria-labelledby`, or a literal `aria-hidden="true"` — `"false"` and a
+  bound value hide nothing
+  ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md));
+- inside a `mat-option`, a `mat-icon` is a direct child of the option. The
+  option projects such an icon into a slot beside its label and everything
+  else into the label, whose text is the option's `viewValue`: what the
+  closed select shows, what typeahead matches and what the trigger
+  announces. An icon wrapped with the name in a `<div>` or `<span>` puts its
+  ligature at the front of the name, while the open list, drawing the
+  ligature as a glyph, looks right. Control-flow blocks are not elements
+  and do not count; an `ng-container` does
+  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md));
+- a menu button stamped once per item does not take its name from
+  `common.moreActions`, which names no item, so every copy down a list
+  would say the same. It names its item with `common.moreActionsFor`, as
+  *More actions for {description}*. "Once per item" is an `@for`, an
+  element under `*ngFor`, `*cdkVirtualFor` or a table's cell or row
+  definition, or a component that another template stamps that way: the
+  budget card's button sits in no repeat of its own, and the overview's
+  `@for` repeats it
+  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
+
 It reads the markup, so it cannot tell a useful label from a useless one, nor
 whether the control a hidden indicator sits in really announces the state;
 and it reads each tag alone, so an indicator under a hidden parent repeats the
-attribute.
+attribute. Nor can it see a block that holds an option's icon beside other
+nodes, which Angular projects whole into the label, or a menu button's name
+built in TypeScript. The script's header lists the rest.
 
 ## A transaction row is a button beside its controls
 
@@ -144,7 +184,10 @@ for the optimistic-write pattern this follows.
 
 The rule generalizes beyond that one control: anywhere an announcement is
 made ahead of a write rather than after it, a failure path needs its own
-announcement, not only its own visual notification.
+announcement, not only its own visual notification. The dashboard's card
+menu is the second instance: its Hide and its moves announce before the
+save settles, and a failed save is followed by where the card really is
+([docs/dashboard.md](dashboard.md#the-card-menu)).
 
 **One voice per event.** `NotificationService` already announces every
 snackbar it shows, so a change a snackbar reports is never announced a second
@@ -255,10 +298,11 @@ stays in control.
 ### High contrast is not a second theme
 
 It moves legibility tokens only — `--border-primary`, `--border-secondary`,
-`--text-secondary`, `--text-muted`, `--text-disabled` — each further along the
-ramp its own theme already uses, plus a 3px focus ring. Surfaces and brand
-colours are untouched, and a `.dark-theme.high-contrast` block continues the
-dark-neutral ramp, so contrast and theme multiply rather than fight.
+`--border-strong`, `--text-secondary`, `--text-muted`, `--text-disabled` —
+each further along the ramp its own theme already uses, plus a 3px focus
+ring. Surfaces and brand colours are untouched, and a
+`.dark-theme.high-contrast` block continues the dark-neutral ramp, so
+contrast and theme multiply rather than fight.
 
 It is unrelated to forced-colors mode, which replaces author colours with
 system ones regardless of this setting.
@@ -343,16 +387,32 @@ dark + high contrast. Three things about that are worth knowing:
   fails 14 of 20 in light, and nearly all of those are false positives: a
   chart bar owes nothing to a card it never sits on.
 
-Rows come in three kinds: **required** (must clear 4.5:1 in every mode),
-**exempt** (recorded with the reason it is not a rule — a disabled control,
-a divider, a combination nothing paints), and **frozen** (fails today, pinned
-at the ratio it measures, may only improve; when one reaches its threshold the
-script asks to have it promoted). `--self-test` asserts that every `--color-*`
-token the light palette declares appears in one of those tables or in a named
-`NOT_PAINTED` list, so a new token cannot be added unaudited, and runs the
-frozen-row ratchet, `frozenRowFinding`, over a synthetic row — at its floor,
-worse than it, and clearing its threshold — since the real frozen table is
-empty.
+Rows come in three kinds: **required** (must clear its threshold in every
+mode), **exempt** (recorded with the reason it is not a rule — a disabled
+control, a divider, a combination nothing paints), and **frozen** (fails
+today, pinned at the ratio it measures, may only improve; when one reaches
+its threshold the script asks to have it promoted).
+
+A required row's threshold is 4.5:1, the bar for text, unless the row names
+3:1, the bar WCAG 1.4.11 sets for a graphic that carries meaning. Five rows
+do, because what they hold is a glyph or a dot, never a word:
+
+| Pair | What it holds |
+|---|---|
+| `--color-ai` on `--surface-card` | the AI features' icons |
+| `--color-error` on `--surface-card` | the exact-duplicate mark and the dropzone's hovered remove; the dropzone's banner icon and the data page's danger icon, on their error tints, are measured in the row's reason |
+| `--color-error` on `--surface-background` | the import wizard's failure icons, and the low-confidence dot on an unchecked review card |
+| `--color-warning-text` on `--surface-background` | the review card's amount and type flags, and the medium-confidence dot |
+| `--color-success-text` on `--surface-background` | the wizard's success glyph, and the high-confidence dot |
+
+A row at 3:1 says nothing about text in the same colour: `--color-error`
+is 3.76:1 on the light card, so error text reads in `--color-error-text`.
+
+`--self-test` asserts that every `--color-*` token the light palette declares
+appears in `PAIRS`, `EXEMPT` or `KNOWN_FAILURES`, or in a named `NOT_PAINTED`
+list, so a new token cannot be added unaudited. It also runs the frozen-row
+ratchet, `frozenRowFinding`, over a synthetic row — at its floor, worse than
+it, and clearing its threshold — since the real frozen table is empty.
 
 The first run fixed four pairs — `--text-muted` moved to gray-600 (it measured
 4.39 and 4.43 against `--surface-muted` and `--surface-background`), and the
@@ -370,6 +430,12 @@ route the walkthrough renders fails the smoke walkthrough instead, and is
 frozen, if at all, in `axe.ts`'s `KNOWN_VIOLATIONS`, by rule id per route with
 its reason — never in `KNOWN_FAILURES`. `--color-income` and `--color-expense`
 are named as fills in `NOT_PAINTED`: nothing paints either as text.
+
+Dark `--text-muted` is not a Tailwind gray. Gray-400 measured 4.28:1 on
+`--surface-hover`, where muted copy sits on the review card's resting chips
+and under every hover, so the token is gray-400 lifted towards white along
+its own hue to `#a3a9b5`, 4.60:1 there
+([ADR 0164](ADR/0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md)).
 
 **A category's colour is not a token.** The category chip paints a
 category's icon, and as a pill its label, in the category's own colour on a
@@ -389,6 +455,225 @@ ones, in both themes, and holds the composited surface to the stylesheet's
 `--surface-card`
 ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
 
+A category's colour reaches a template in one of three ways, and
+`colors:check` fails any other
+([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)):
+
+- **The chip**, `<app-category-chip>`, wherever a tile or a pill fits. Its
+  tile is opaque, so the surface under it does not matter.
+- **A glyph through `categoryGlyph`**, named for the surface it sits on:
+  `cat.color | categoryGlyph:'panel'`. Anywhere else, a glyph in the
+  category's colour sits on whatever is beneath it, and that is rarely one
+  colour: a select option is painted at rest, hovered, active and selected.
+  `CATEGORY_SURFACES`, beside `ensureContrast` in
+  `core/utils/color-contrast.utils.ts`, lists every tone each surface takes
+  in each theme. `categoryGlyphColor` moves the colour against the hardest
+  of them, the darkest in light and the lightest in dark, the same way the
+  chip moves its own glyph, so the glyph clears 4.5:1 on every tone. The
+  pipe reads `ThemeService.effectiveTheme()`, so a theme switch repaints
+  it. The surfaces are:
+
+  | Key | What the glyph sits on |
+  |---|---|
+  | `dialog` | a dialog's surface, under a closed select |
+  | `panel` | a select panel's option at rest, hovered, active and selected |
+  | `menu` | the same four, and a menu's current item on `--surface-menu-current` |
+  | `subtle` | `--surface-subtle`, under each budget in the dashboard's Budget Progress widget |
+  | `reviewCard` | the import review card checked, unchecked, hovered and flagged as a duplicate, each at rest and under the category button's hover and keyboard-focus layers |
+  | `suggestionChip` | the transaction form's suggested category, `--surface-suggestion` and its hover |
+  | `iconGrid` | the category dialog's chosen icon, on `--surface-icon-selected` |
+
+- **A fill of the colour itself**, which keeps it: the spending legend's
+  tile matches its chart segment, and the category dialog's swatch is the
+  colour on offer. Its glyph goes through `readableOn`, black or white,
+  whichever contrasts more. One of the two always reaches at least √21,
+  about 4.58:1, so the pipe needs no theme. A fill sits inside a
+  `colors:allow-start(category-data)` block with its reason. The bars of
+  the spending legend and of the reports' category breakdown and spending
+  analysis are fills too: graphics beside a printed amount or percentage,
+  held to no contrast.
+
+**Adding a site.** Use the chip where a tile fits. Otherwise pipe the
+colour through `categoryGlyph` with the key of the surface the glyph sits
+on. A surface the table lacks gets a key, its tones in both themes, and a
+case in `category-glyph.pipe.spec.ts` that holds those tones to what paints
+them. The gate checks that the key exists, not that it names the right
+surface, so the site's own spec measures the painted glyph in each state
+the site paints and in both themes. A missing category's colour is
+`CATEGORY_FALLBACK_COLOR`, `#9E9E9E`, and the category dialog offers
+`CATEGORY_PALETTE`; both live in `category.model.ts`.
+
+**The gate is the specs.** `category-glyph.pipe.spec.ts` measures the 31
+colours a category can carry (the seeded colours, `CATEGORY_PALETTE` and
+the fallback) and fourteen hostile ones on every tone of every surface, and
+holds each surface's tones to the stylesheet: Material's own expressions
+for the dialog, the select panel and the menu, the named `--surface-*`
+tokens, and a rendered stroked button's state layers.
+`readable-on.pipe.spec.ts` paints the glyph on every one of the 31 fills.
+Each site renders its real template and measures its glyph in both
+themes, a select's options through `eachOptionState`
+([testing.md](testing.md#colour-as-painted)).
+
+### Colours come from tokens
+
+**Check:**
+
+```bash
+npm run colors:check
+```
+
+Every colour the app paints is a token declared in `src/styles.scss`, which
+the dark theme and the two high-contrast blocks redeclare. A colour written
+anywhere else — a hex in a component stylesheet, `text-gray-400` in an
+`@apply` or a template, a colour string in a chart dataset — paints the same
+in all four rendered modes, so neither dark mode nor high contrast reaches
+it, and `contrast:check`, which scores token pairs, never sees it. When
+`scripts/check-colors.mjs` landed it counted 612 such colours in 53 files,
+many of them under AA in one theme or the other. None is left, apart from
+the literals marked below with their reasons
+([ADR 0164](ADR/0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md)).
+
+| Where the colour is painted | How it names the colour |
+|---|---|
+| A component stylesheet | `var(--token)`, or a `color-mix()` of tokens for a tint (below) |
+| A template, or a class string in TypeScript | a theme alias from `tailwind.config.js` |
+| A Material component | the component's own `--mat-*` token, set to a `var()` (below) |
+| A Chart.js canvas | `ChartThemeService.palette()`, re-read when the theme or high contrast changes |
+| A category's colour | the category chip, or the `categoryGlyph` and `readableOn` pipes |
+
+**The aliases name roles, not shades**, and each is a `var()`, so it follows
+the theme and high contrast, which no `gray-*` or `indigo-*` utility did:
+
+| Aliases | Tokens |
+|---|---|
+| `fg`, `fg-secondary`, `fg-muted`, `fg-disabled`, `fg-inverse` | `--text-primary`, `-secondary`, `-muted`, `-disabled`, `-inverse` |
+| `surface-background`, `surface-card`, `surface-elevated`, `surface-hover`, `surface-hover-active`, `surface-active`, `surface-subtle`, `surface-muted`, `surface-strong`, `surface-sunken` | the `--surface-*` token of the same name |
+| `line`, `line-subtle`, `line-strong` | `--border-primary`, `--border-secondary`, `--border-strong` |
+| `brand`, `brand-soft`, `brand-text` | `--color-primary`, `--color-primary-light`, `--color-primary-text` |
+| `accent`, `accent-light` | `--color-accent`, `--color-accent-light` |
+| `error-text`, `warning-text`, `success-text`, `ai` | `--color-error-text`, `--color-warning-text`, `--color-success-text`, `--color-ai` |
+| `income`, `expense`, `success`, `error`, `warning`, `info`, each with `-soft`; `income-text`, `expense-text` | the `--color-*` fill, its `-light` tint, its `-text` foreground |
+
+A gray picks a role by what it was for. Text in gray-900 or 800 is `fg`,
+gray-700 or 600 is `fg-secondary`, and gray-500 or 400 is `fg-muted`.
+`fg-disabled` is for a disabled control only: it is gray-400 in light, which
+measures 2.29:1 as running text on the Material card. A mark that says
+something, however quiet it looks (a row's receipt or split mark, a summary
+icon), is information and reads in `fg-muted`, so nothing paints
+`fg-disabled` today. A gray-100 or 200 border is `line`, and a gray-300 one
+is `line-strong`.
+
+**No `/alpha` on an alias.** A `var()` cannot be split into channels, so
+Tailwind generates nothing for `bg-brand/12`, and says nothing. The gate
+flags it. A translucent colour is a `color-mix()` in the component's
+stylesheet.
+
+**A tint mixes with what it replaces.** A tint that carries text is
+`color-mix(in srgb, var(--color-X) N%, <the background it replaces>)`:
+`--surface-card`, `--surface-background`, or a dialog's `--mat-sys-surface`.
+It is opaque, so the text on it is a pair of two known colours rather than
+of whatever lies underneath. A border or a glow mixes with `transparent`.
+The six tints that a category glyph or a review card sits on are named
+surfaces in `styles.scss`, mixed the same way: `--surface-suggestion` and
+`--surface-suggestion-hover`, `--surface-icon-selected`,
+`--surface-review-selected`, `--surface-review-duplicate` and
+`--surface-menu-current`.
+
+**A fill token is not a foreground.** Text reads in `-text`. A glyph may
+read in the fill only where a 3:1 row in `contrast:check` holds it (above).
+A label on solid red sits on `--color-error-strong`, since white on
+`--color-error` is 3.76:1.
+
+**Material is coloured through its tokens.** A host `color` or a utility on
+a Material element mostly paints nothing. Material colours a menu item's
+label and icon, a chip's label, a button's label and edge and a progress
+bar's indicator from its own `--mat-*` tokens, in rules that outrank a
+component's class or tie with it and win on stylesheet order. Set the token:
+
+| To colour | Set |
+|---|---|
+| A destructive menu item | the global `.menu-item-destructive` class, which sets `--mat-menu-item-label-text-color` and `--mat-menu-item-icon-color` to `--color-error-text` |
+| A chip | `--mat-chip-label-text-color` and `--mat-chip-elevated-container-color` |
+| An outlined button's edge | `--mat-button-outlined-outline-color` |
+| A text button's label | `--mat-button-text-label-text-color` |
+| A progress bar's indicator | `--mat-progress-bar-active-indicator-color`; under `mat.theme()` a `[color]` input stamps a class that paints nothing |
+
+A colour rule nested under a component's own class never reaches a menu
+item at all, because the menu renders in the overlay.
+
+**A literal that has to stay is marked where it stands**, with
+`colors:allow(<kind>) <reason>` on its line, or
+`colors:allow-start(<kind>) <reason>` … `colors:allow-end` around a block.
+In a template, a marker alone on the line before a tag covers that tag up to
+its `>`. An inline template is a string to the script, so it is marked by a
+`//` block around its property. A marker counts only inside a comment.
+
+| Kind | For |
+|---|---|
+| `brand` | the login gradients and glass, the Google logo, the AI provider avatars and the settings link tiles |
+| `scrim` | a veil over a photo, which is the same in every theme |
+| `category-data` | a category's colour, as the default palette or as a fill: a bar, a swatch, a legend tile |
+| `token-mirror` | a TypeScript constant that a spec holds to the stylesheet (`CHIP_SURFACE`, `CATEGORY_SURFACES`) |
+| `token-fallback` | the chart palette's values for a canvas drawn before the stylesheet loads |
+| `browser-chrome` | the `theme-color` meta, which the browser reads as a literal |
+
+The script's `ALLOWED` table records, per file and kind, how many hits the
+markers exempt, and why. The count fails when it is stale in either
+direction, and so does a marker that exempts nothing, so a block cannot
+quietly widen. Adding, removing or moving a marker edits that row in the
+same commit.
+
+**What the gate fails**, over `src/app/**/*.{scss,html,ts}` (specs and
+`testing/` helpers aside) and `src/styles.scss` (a theme token's own
+declaration aside). A component's inline `styles:` is read as the
+stylesheet it is, so every rule below applies to it:
+
+- a Tailwind palette utility, in an `@apply`, a stylesheet value, a
+  template's class bindings or any TypeScript string, and an alias given an
+  `/alpha`;
+- a hex, `rgb()`/`hsl()` or named colour in a stylesheet value, or quoted in
+  TypeScript or in a template attribute or binding, `bg-[#…]` included; a
+  hex or functional colour anywhere in an `@apply`; and a named colour
+  inside an arbitrary value, `text-[red]`, in an `@apply` or a class list. A
+  system colour such as `CanvasText` passes inside a `forced-colors` block;
+- `var(--declared, <colour>)`, a fallback that can never paint, and
+  `var(--undeclared, <colour>)`, which always does; and a `color-mix()`
+  with an operand that is not a declared `var()`, `transparent` or
+  `currentColor`;
+- a colour bound in a template (`[style.color]`, `[style.background]`,
+  `[style.background-image]`, `[style.filter]`, `[style]`, `[attr.fill]`,
+  …), in any spelling Angular compiles to the same binding:
+  `bind-style.color="c"`, an interpolated `style.color="{{ c }}"` or
+  `attr.fill="{{ c }}"`, and an interpolated `style="color: {{ c }}"`. It
+  passes only as the category chip's own, as a string-literal
+  `'var(--token)'`, when `categoryGlyph` or `readableOn` corrects it last
+  with nothing joined on before the pipe (a string or a number after a `+`,
+  or a template literal that interpolates), or when it is marked.
+
+It counts per file and per matched token, so swapping one colour for
+another is a new token and a stale one, and both fail. Its `BASELINE` is
+empty and stays so: the answer to a new colour is a token, or a marker with
+its reason. What it cannot see is listed in the script's header. The largest
+items are a colour assembled at runtime or read from data, a colour set from
+code (a host binding, `Renderer2`, a custom property bound as
+`[style.--name]`), and whether a token is the right one:
+`var(--text-muted)` on a tint passes here and may still fail AA.
+
+**How a colour is tested.** A spec that holds a colour renders the real
+template and measures what is painted, in both themes, through
+`core/services/testing/painted-contrast.ts`. `paintedColor` and
+`paintedBackground` composite translucent fills and faded ancestors, and
+`ratio` scores the pair. `withTheme` stamps one theme class for a token
+probe; anything that reads `ThemeService.effectiveTheme()` is driven
+through the service instead, with `withScheme` from `axe.ts`. `hoverValue`
+reads a `:hover` rule from the CSSOM, because Karma cannot hover. Read the
+element Material paints, not the host: a chip's label is
+`.mdc-evolution-chip__text-label`, and a progress bar's indicator is the top
+border of `.mdc-linear-progress__bar-inner`. `theme-aliases.spec.ts` holds
+every alias to its token in all four modes. [testing.md](testing.md#colour-as-painted)
+has the helpers in full, and how a spec puts a select's options or a menu's
+items into each state it measures.
+
 ## What is tested
 
 - `sidebar.component.spec.ts` and `bottom-nav.component.spec.ts` register real
@@ -404,6 +689,16 @@ ones, in both themes, and holds the composited surface to the stylesheet's
   `/about` have no link there. The gate tests for the anchor, not the
   attribute, so a regression that drops `aria-current` still fails every route
   that has a link.
+- `sidebar.component.spec.ts` ("names its landmark, apart from the bottom
+  nav") and `bottom-nav.component.spec.ts` ("names its landmark, apart from
+  the sidebar") pin each surface's name. `app.smoke.spec.ts` checks the pair
+  in the real shell with `expectLandmarksNamed`, on its first `/dashboard`
+  visit. Karma's frame is below the desktop breakpoint, so the sidebar is in
+  the overlay drawer: the helper opens it through the header's menu button,
+  asserts exactly two `nav` elements in the shell, each named and no two the
+  same, and closes it again, so no later axe pass audits a page behind the
+  drawer's backdrop. The walkthrough serves no i18n, so "no two the same"
+  compares keys; the catalogs are `i18n:check`'s.
 - `user.model.spec.ts` pins the three resolvers against absent, null,
   off-list and wrongly-typed input.
 - `accessibility.service.spec.ts` drives the service against a faked document,
@@ -454,93 +749,66 @@ ones, in both themes, and holds the composited surface to the stylesheet's
   selector express selection visually and have not been; the tab strips are
   audited for reachability and keyboard travel only, not for how selection is
   announced.
-- **No landmark structure beyond `nav`.** The two navigation surfaces are
-  indistinguishable to a user listing landmarks.
-- **The automated pass is a phone audit of eight routes, in one theme.**
+- **The automated pass is a phone audit of eight routes.**
   `app.smoke.spec.ts` runs axe-core (WCAG 2.1 A and AA, `color-contrast`
-  included) inside `expectPage`, so every page the walkthrough opens is swept,
-  and nothing it has found is frozen any more. What it cannot see is stated in
+  included) inside `expectPage`, so every page the walkthrough opens is
+  swept, once in each scheme, forced through `ThemeService`: a pair that
+  fails in only one theme fails on any host. Nothing it has found is frozen
+  any more. What it cannot see is stated in
   [emulator-blind-spots.md](emulator-blind-spots.md): i18n is not served,
-  Karma's window is 756px, eight page-level rules are disabled because the run
-  is scoped to the routed element, four routes (`/ai`, `/search-history`,
-  `/import/file`, `/import/history`) are never opened, and `color-contrast`
-  reports nothing below the fold of Karma's frame (the next gap). Each run
-  renders the one theme the host's `prefers-color-scheme` resolves — light on
-  the CI runner, dark on a Mac in dark mode — so a failure that exists only in
-  the other theme is seen only where that theme renders, and nothing committed
-  pins it; the same page says how to run the other. The dashboard's subtitle
-  failed in light only, at 4.43:1, and was found by reading. The category chip
-  failed in both themes — thirteen of the sixteen default colours in light,
-  four in dark, `#E91E63` in both — and CI's light run was the first to report
-  it: the walkthrough's rows and budget use one category, orange, which failed
-  in light at 1.95:1 and passed in dark at 5.85:1, and the default colours,
-  the ones that failed in dark among them, render only in the Categories panel
-  on `/settings`, which the walkthrough leaves collapsed and axe does not
-  measure. Everything outside that is still a hand-written spec, and nothing
-  sweeps for the next instance of a class nobody has met.
-- **The axe pass measures only the top 413px of a page.** Karma's frame is
-  756px wide and 413px tall and scrolls inside its own body, and axe's
-  `color-contrast` rule cannot measure a node below that fold: it leaves the
-  node incomplete rather than failing it, the harness reads violations only,
-  and scrolled into the frame the node is measured like any other. On
-  `/transactions` the seeded rows' chips sit inside the frame. On `/budgets`
-  the budget card's chip starts 445px down, and on `/dashboard` the two
-  recent-transaction chips start at 591px and 675px, the spending chart's
-  legend at 1426px and the budget card's icon at 1602px, so none of those is
-  measured. Two of them fail on the walkthrough's own orange category — the
-  budget card's orange icon at 2.06:1 in light, and the legend's white glyph
-  at 2.16:1 in both themes, both among the sites listed below that paint a
-  category's colour without the chip — and the smoke walkthrough passes
-  regardless.
+  Karma's window is 756px, eight page-level rules are disabled because the
+  run is scoped to the routed element, and `color-contrast` scores nothing
+  below the fold of Karma's frame but the five nodes the walkthrough
+  scrolls into view (the next gap). `/login` is opened by the redirect case
+  and never audited; `/lock`, `/ai`, `/search-history`, `/import/file` and
+  `/import/history` are never opened. Nor does it open a dialog, a
+  category select or a menu, so the pickers, the import review's category
+  menu and the category dialog are held by their component specs alone.
+  axe's `incomplete` results are not read, so a one-character text, or a
+  label axe finds overlapped by another element, is scored by no pass.
+  Everything outside that is still a hand-written spec, and nothing sweeps
+  for the next instance of a class nobody has met.
+- **The axe pass scores only what starts in Karma's frame, and five nodes
+  below it.** Every page renders inside the shell's fixed scroller,
+  `.main-container`, and axe counts a node under a fixed ancestor as
+  offscreen once its top passes the viewport's bottom. An offscreen node is
+  skipped outright: it appears in no result, not even `incomplete`. A node
+  in plain flow would be scored at any depth. Karma's frame is 756px wide
+  and 413px tall. `auditInView` (`core/services/testing/axe.ts`) scrolls a
+  node into the band between the header and the frame's bottom before it
+  audits, and the walkthrough uses it, in both schemes, on five nodes: the
+  spending chart's legend list and the Budget Progress widget on
+  `/dashboard`, the overview on `/budgets`, the rules grid on the Recurring
+  tab, with an active rule and a paused one, and Upcoming Bills. Everything
+  else that starts below the frame is never scored. In the run that
+  measured it, that was: on `/dashboard`, Recent Transactions (its top at
+  521px), the chart's card around its legend list and AI Insights; on
+  `/settings`, all but the top of the profile section and every section
+  after it; on `/data`, everything past the first 413px of a page 2687px
+  tall; on `/household`'s member view, the second row of figures, the
+  member chips, the shared rows, the plans and the members; and on
+  `/about`, every card after the first. A node taller than about 285px
+  cannot be centred inside the band, so a tall card is audited as its
+  parts
+  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
 - **Contrast is measured for the pairs somebody listed.** `npm run
   contrast:check` scores a hand-written table of the pairs the app actually
   paints, in all four rendered modes, and every failure it has found is fixed.
-  What it cannot see is a colour that is not a token — a hex literal in a
-  component stylesheet, a Material default, a Tailwind utility class, a
-  category's own colour — or a pair nobody added a row for. The category
-  chip's spec measures that colour; the axe pass is the other half of the
-  rest: it measures what a rendered page paints, above the fold, in its one
-  theme.
-- **Ten components paint a category's colour without the chip**, so the
-  correction the chip applies never reaches them. Figures are for the sixteen
-  default colours. *On a tint of itself*, in both themes: the dashboard's
-  upcoming bills (`upcoming-bills.component.html`), the recurring rules page
-  (`recurring-transactions.component.html`) and the category dialog's preview
-  (`category-form-dialog.component.html`) paint the raw colour on the icon
-  over the colour with `20` appended, which takes on the surface beneath — the
-  Material card's `#f4f2fc` / `#1a1b22`, `--surface-card` and
-  `--surface-subtle` respectively, and a paused rule's card is drawn at 70%
-  opacity besides. Thirteen colours fail there in light, down to 1.75:1
-  (`#8BC34A`), and six to eight in dark, down to 2.08:1 (`#3F51B5`). *On the
-  surface beneath, with no tint of its own*: the dashboard's budget card icon
-  on `--surface-subtle` (`budget-progress.component.html`, `#FF9800` at 2.06:1
-  in light); the import review's category button and its menu
-  (`category-suggestion.component.html`); the category pickers of the
-  transaction form — its options, the field showing the choice, and its
-  suggestion chip — of the split parts, the budget form and the recurring
-  dialog, whose select panel is `#efedf6` / `#1f1f26`; and the category
-  dialog's icon grid, on its selected icon. Thirteen fail in light, down to
-  1.75:1, and five in dark — `#9C27B0`, `#E91E63`, `#607D8B`, `#3F51B5` and
-  `#795548` — down to 2.26:1. *White on the colour*, the same in both themes:
-  the dashboard spending chart's legend tile (`spending-chart.component.html`,
-  its glyph white in `spending-chart.component.scss`) and the category
-  dialog's selected swatch. On the legend, which draws the account's
-  categories, `#FF9800` measures 2.16:1, `#4CAF50` 2.78:1 and the `#9E9E9E`
-  fallback 2.68:1; all of the sixteen default colours but `#9C27B0`, `#3F51B5`
-  and `#795548` fail. The swatch grid draws only the dialog's own palette,
-  fifteen Tailwind 500s, and twelve of them fail under the white glyph; the
-  same palette fails the preview too, all fifteen in light and ten in dark.
-  Each site is left for a follow-up, which can put the chip there or pass the
-  colour through `ensureContrast` against the surface it sits on. The bars and
-  chart segments filled with a category's colour are graphics beside a printed
-  amount or percentage, not text, and are not counted
-  ([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
-- **Eighteen places paint `--color-error` as a foreground on the card**, where
-  it measures 3.76:1 in light and passes in dark. The table scores
-  `--color-error` on its own tint only, and the axe pass measures only what is
-  on screen, in its one theme. They are listed in
-  [ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md);
-  `--color-error-text` is the token to reach for.
+  A colour that is not a token can no longer reach the screen unseen:
+  `npm run colors:check` fails a hex, a named colour, a palette utility, a
+  `var()` fallback or a bound colour outside a reasoned marker (see
+  *Colours come from tokens*). What neither script sees is a token on the
+  wrong surface. `colors:check` passes any token, and `contrast:check` scores
+  only the pairs its table names. It cannot read a pair at all when the
+  surface is Material's (the card, a dialog, a menu, a progress track, all
+  `light-dark()` pairs that `mat.theme()` emits) or one of the
+  `color-mix()` surfaces. Those pairs are held only by the rendered spec of
+  the component that paints them, and their ratios are written into the
+  table rows' reasons. The sweep that found ten fill tokens painted as
+  foregrounds under their bar, after every gate had passed, was a reading,
+  and nothing repeats it. A category's own colour is data; the chip's spec
+  and the pipes' specs hold it. The axe pass is the other half: it measures
+  what a rendered page paints.
 - **Nothing sweeps for the next animation CSS cannot reach.** Chart.js and the
   Material tab strips were found by reading the code; a new WAAPI duration or
   canvas animation will honour neither kill-switch and no gate will say so.
@@ -555,4 +823,4 @@ ones, in both themes, and holds the composited surface to the stylesheet's
   ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 - **RTL layout is groundwork only** (#86). Direction follows the locale and the
   physical CSS that remains is frozen per file, but no right-to-left locale
-  ships and 107 hits are still unconverted — see [rtl.md](rtl.md).
+  ships and 98 hits are still unconverted — see [rtl.md](rtl.md).

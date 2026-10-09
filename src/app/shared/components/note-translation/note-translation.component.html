@@ -20,15 +20,24 @@
       </div>
     } @else if (errorKey(); as key) {
       <p class="translation-error" role="alert">{{ key | translate }}</p>
+      <!-- disabledInteractive rather than disabled, here and on Translate:
+           a natively disabled button leaves the tab order, and the keyboard
+           never reaches it or the hint saying why it does nothing. -->
       <button
         #retryButton
         mat-button
         type="button"
         class="retry-button"
+        [disabled]="!available()"
+        disabledInteractive
+        [attr.aria-describedby]="available() ? null : hintId"
         (click)="translateNote()"
       >
         {{ 'noteTranslation.retry' | translate }}
       </button>
+      @if (!available()) {
+        <p class="no-provider-hint" [id]="hintId">{{ 'noteTranslation.noProvider' | translate }}</p>
+      }
     } @else {
       <button
         #translateButton
@@ -36,13 +45,15 @@
         type="button"
         class="translate-button"
         [disabled]="!available()"
+        disabledInteractive
+        [attr.aria-describedby]="available() ? null : hintId"
         (click)="translateNote()"
       >
         <mat-icon>translate</mat-icon>
         {{ 'noteTranslation.translate' | translate }}
       </button>
       @if (!available()) {
-        <p class="no-provider-hint">{{ 'noteTranslation.noProvider' | translate }}</p>
+        <p class="no-provider-hint" [id]="hintId">{{ 'noteTranslation.noProvider' | translate }}</p>
       }
     }
   </div>

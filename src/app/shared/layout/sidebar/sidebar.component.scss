@@ -41,17 +41,19 @@ nav {
   background-color: var(--surface-active);
 }
 
+// The accent reads 3.01:1 on --surface-active in dark; -text is the indigo
+// meant to sit on the primary's tint.
 .nav-item.active mat-icon {
-  color: var(--color-accent);
+  color: var(--color-primary-text);
 }
 
 .nav-item.active span {
-  color: var(--color-accent);
+  color: var(--color-primary-text);
   font-weight: 500;
 }
 
 // Forced colors discards every author colour, so the active row's background
-// and accent text both go and only the 500 weight is left to tell it apart.
+// and its indigo text both go and only the 500 weight is left to tell it apart.
 // Material already draws a trailing dash for a.mdc-list-item--activated in
 // this mode, which is a second reason [activated] is the right input here —
 // the marker arrives with the attribute. Kept as an explicit outline as well,

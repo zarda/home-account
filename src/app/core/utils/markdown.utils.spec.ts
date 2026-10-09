@@ -43,6 +43,18 @@ describe('markdown.utils', () => {
       expect(markdownToHtml('### Three')).toContain('<h3 class="markdown-h3">Three</h3>');
     });
 
+    // A heading is a block of its own. Inside a <p> the HTML parser closes the
+    // paragraph before it, leaving an empty <p> on either side.
+    it('leaves a heading line out of any paragraph, and still wraps the prose around it', () => {
+      expect(markdownToHtml('# One')).toBe('<h1 class="markdown-h1">One</h1>');
+      expect(markdownToHtml('## Two')).toBe('<h2 class="markdown-h2">Two</h2>');
+      expect(markdownToHtml('### Three')).toBe('<h3 class="markdown-h3">Three</h3>');
+      expect(markdownToHtml('## Spending\nGroceries are **up** 18%.\n## Next')).toBe(
+        '<h2 class="markdown-h2">Spending</h2><p>Groceries are <strong>up</strong> 18%.</p>' +
+          '<h2 class="markdown-h2">Next</h2>'
+      );
+    });
+
     it('converts bold and italic', () => {
       expect(markdownToHtml('**bold**')).toContain('<strong>bold</strong>');
       expect(markdownToHtml('*italic*')).toContain('<em>italic</em>');

@@ -1,7 +1,8 @@
 // Entry-point smoke test: proves the capture flow is reachable from both the
 // desktop transactions page (header add menu) and the mobile bottom nav
 // (center action menu), with the real router, real Material overlays, and the
-// Firebase emulators behind the page's Firestore reads.
+// Firebase emulators behind the page's Firestore reads. The shell's one-time
+// '?' hint rides along: shown at the desktop width, gone at the other two.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -40,7 +41,15 @@ import { BehaviorSubject } from 'rxjs';
 import { routes } from '../../app.routes';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
-import { MockAuthService, createMockUser } from '../../core/services/testing';
+import { ThemeService } from '../../core/services/theme.service';
+import {
+  AUDIT_SCHEMES,
+  MockAuthService,
+  createMockUser,
+  runAxe,
+  summarizeViolations,
+  withScheme
+} from '../../core/services/testing';
 import { BottomNavComponent } from '../../shared/layout/bottom-nav/bottom-nav.component';
 import { DeviceService } from '../../core/services/device.service';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
@@ -105,6 +114,10 @@ describe('Add entry points (emulator smoke test)', () => {
   let uid: string;
   let mockAuth: MockAuthService;
   let width$: BehaviorSubject<number>;
+
+  const HINT_KEY = 'homeaccount.shortcuts-hint-dismissed';
+  const shortcutsHint = (): HTMLElement | null =>
+    document.querySelector<HTMLElement>('app-header .shortcuts-hint');
 
   function bodyText(): string {
     return document.body.textContent ?? '';
@@ -180,6 +193,9 @@ describe('Add entry points (emulator smoke test)', () => {
   });
 
   beforeEach(() => {
+    // The header's one-time '?' hint is per device: a key another smoke file
+    // wrote would hide it here.
+    localStorage.removeItem(HINT_KEY);
     mockAuth = new MockAuthService();
     width$ = new BehaviorSubject<number>(1440);
     TestBed.configureTestingModule({
@@ -276,6 +292,7 @@ describe('Add entry points (emulator smoke test)', () => {
       harness.detectChanges();
       await waitFor('portrait bottom nav', bottomNavShown, () => harness.detectChanges());
       expect(headerFab()).withContext('portrait: no header FAB').toBeNull();
+      expect(shortcutsHint()).withContext('portrait: no ? hint').toBeNull();
 
       // Rotate. The bottom bar leaves at this width — something must replace it.
       width$.next(932);
@@ -284,6 +301,7 @@ describe('Add entry points (emulator smoke test)', () => {
         harness.detectChanges()
       );
       expect(bottomNavShown()).withContext('landscape: bottom nav is gone').toBeFalse();
+      expect(shortcutsHint()).withContext('landscape: no ? hint at a tablet width').toBeNull();
 
       const fab = headerFab()!;
       expect(fab.getBoundingClientRect().width)
@@ -322,6 +340,30 @@ describe('Add entry points (emulator smoke test)', () => {
         () => bodyText().includes('transactions.title') && bodyText().includes('Blue Bottle Coffee'),
         () => harness.detectChanges()
       );
+
+      // The shell's one-time '?' hint (#446) at a desktop width. It stays in
+      // the header's band, so the page's own Add button below it is never
+      // covered, and ends at the palette button it points to. It passes the
+      // axe sweep in both schemes, forced through the real ThemeService.
+      const hint = shortcutsHint();
+      expect(hint).withContext('the ? hint at 1440').not.toBeNull();
+      const band = document.querySelector<HTMLElement>('app-header .header-toolbar')!.getBoundingClientRect();
+      const box = hint!.getBoundingClientRect();
+      const paletteButton = document
+        .querySelector<HTMLElement>('app-header .palette-button')!
+        .getBoundingClientRect();
+      expect(box.top).withContext('hint top vs the header band').toBeGreaterThanOrEqual(band.top - 1);
+      expect(box.bottom).withContext('hint bottom vs the header band').toBeLessThanOrEqual(band.bottom + 1);
+      expect(box.right).withContext('hint end vs the palette button').toBeLessThanOrEqual(paletteButton.left + 1);
+      const header = document.querySelector('app-header')!;
+      for (const scheme of AUDIT_SCHEMES) {
+        await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+          harness.detectChanges();
+          expect(summarizeViolations(await runAxe(header)))
+            .withContext(`axe-core (wcag2a, wcag2aa) violations in the header with the ? hint in the ${scheme} scheme`)
+            .toEqual([]);
+        });
+      }
 
       // The header menu is gated on the viewport, and this suite's fake
       // matcher reports a desktop width by default, so it renders. The gate

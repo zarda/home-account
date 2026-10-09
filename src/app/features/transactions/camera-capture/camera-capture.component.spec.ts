@@ -14,6 +14,13 @@ import { ImportResult } from '../../../models';
 import { ProcessingResult } from '../../../core/services/ai-strategy.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
+import {
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withTheme,
+} from '../../../core/services/testing';
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -505,13 +512,14 @@ describe('CameraCaptureComponent processing overlay', () => {
     translationService.t.and.callFake((key: string) => key);
 
     const strategyService = jasmine.createSpyObj('AIStrategyService', [
-      'canUseNative', 'canUseCloud', 'processReceipt', 'processMultipleImages', 'platform',
+      'canUseNative', 'canUseCloud', 'processReceipt', 'processMultipleImages', 'platform', 'receiptProvider',
     ]);
-    // Neither provider available: the mode-indicator falls to its "configure
-    // AI" branch, which is the only one that skips cloudProviderLabel() —
-    // this suite has no reason to stub what that computed reads.
+    // Neither provider available: the mode indicator falls to its "configure
+    // AI" branch. The scan-badge cases switch one on before the first render,
+    // since each computed reads its spy once and keeps the answer.
     strategyService.canUseNative.and.returnValue(false);
     strategyService.canUseCloud.and.returnValue(false);
+    strategyService.receiptProvider.and.returnValue('openai');
 
     const pwaService = jasmine.createSpyObj('PwaService', ['isIOS', 'isStandalone', 'isOnline']);
     pwaService.isIOS.and.returnValue(false);
@@ -619,5 +627,60 @@ describe('CameraCaptureComponent processing overlay', () => {
     // app is installed. The defect was PwaService never saying so inside the
     // native app, which its own spec now covers.
     expect(installHintOnIPhone(true)).toBeNull();
+  });
+
+  // The badge says where the receipt is read: on the device, or by the cloud
+  // provider it names, whichever that is. Its label is 14px text, so it
+  // reads at 4.5:1, on one opaque fill of the badge's own, since
+  // painted-contrast cannot composite a gradient.
+  for (const mode of ['native', 'cloud'] as const) {
+    it(`holds the ${mode} scan badge's label at AA on a fill of its own, in both themes`, () => {
+      const strategyService = TestBed.inject(AIStrategyService) as jasmine.SpyObj<AIStrategyService>;
+      strategyService.canUseNative.and.returnValue(mode === 'native');
+      strategyService.canUseCloud.and.returnValue(true);
+      fixture.detectChanges();
+
+      const badge = fixture.nativeElement.querySelector(`.mode-indicator.${mode}`) as HTMLElement | null;
+      expect(badge).withContext(`the ${mode} badge renders`).not.toBeNull();
+      const label = badge!.querySelector('span') as HTMLElement;
+      const glyph = badge!.querySelector('mat-icon') as HTMLElement;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          const style = getComputedStyle(badge!);
+          expect(style.backgroundImage).withContext(`${theme} no gradient`).toBe('none');
+          expect(channels(style.backgroundColor).alpha).withContext(`${theme} an opaque fill`).toBe(1);
+          expect(ratio(paintedColor(label), paintedBackground(label)))
+            .withContext(`${theme} ${mode} label on its badge`)
+            .toBeGreaterThanOrEqual(4.5);
+          expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+            .withContext(`${theme} ${mode} glyph on its badge`)
+            .toBeGreaterThanOrEqual(3);
+        });
+      }
+    });
+  }
+
+  // The handle sits on the photo, and a receipt is white paper: the veil
+  // under the glyph has to hold the glyph at AA over white by itself, at
+  // rest, since nothing hovers on a phone.
+  it("holds the drag handle's glyph at AA over a white receipt, on a veil with no rest fade, in both themes", () => {
+    fixture.detectChanges();
+    const item = fixture.nativeElement.querySelector('.image-item') as HTMLElement;
+    const handle = item.querySelector('.drag-handle') as HTMLElement;
+    const glyph = handle.querySelector('mat-icon') as HTMLElement;
+    item.style.background = 'rgb(255, 255, 255)';
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const veil = channels(getComputedStyle(handle).backgroundColor);
+        expect(veil.rgb).withContext(`${theme} the veil is black`).toEqual([0, 0, 0]);
+        expect(veil.alpha).withContext(`${theme} the veil's strength`).toBeGreaterThanOrEqual(0.6);
+        expect(getComputedStyle(handle).opacity).withContext(`${theme} no rest fade`).toBe('1');
+        expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+          .withContext(`${theme} glyph over white paper`)
+          .toBeGreaterThanOrEqual(4.5);
+      });
+    }
   });
 });

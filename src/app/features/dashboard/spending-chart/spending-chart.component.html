@@ -1,6 +1,7 @@
 <mat-card class="card">
   <div class="card-header">
     <h3 class="card-title">{{ 'dashboard.spendingByCategory' | translate }}</h3>
+    <ng-content select="[card-actions]" />
   </div>
 
   <div class="card-content">
@@ -34,12 +35,16 @@
                   [attr.aria-label]="legendAriaLabel(item)"
                   (click)="onLegendActivate(item.categoryId)"
                 >
+                  <!-- colors:allow-start(category-data) the tile is filled with the category's own colour, as its slice is -->
                   <span
                     class="legend-icon"
                     [style.background-color]="getCategoryColor(item.categoryId)"
                   >
-                    <mat-icon>{{ getCategoryIcon(item.categoryId) }}</mat-icon>
+                    <mat-icon [style.color]="getCategoryColor(item.categoryId) | readableOn">{{
+                      getCategoryIcon(item.categoryId)
+                    }}</mat-icon>
                   </span>
+                  <!-- colors:allow-end -->
                   <div class="legend-content">
                     <div class="legend-row">
                       <span class="legend-name">{{ getCategoryName(item.categoryId) }}</span>
@@ -47,11 +52,13 @@
                     </div>
                     <div class="legend-progress-row">
                       <div class="legend-progress">
+                        <!-- colors:allow-start(category-data) the share bar is filled with the category's own colour, as its slice is, and carries no text -->
                         <div
                           class="legend-progress-bar"
                           [style.width.%]="getPercentage(item.total)"
                           [style.background-color]="getCategoryColor(item.categoryId)"
                         ></div>
+                        <!-- colors:allow-end -->
                       </div>
                       <span class="legend-percentage">{{ getPercentage(item.total).toFixed(0) }}%</span>
                     </div>

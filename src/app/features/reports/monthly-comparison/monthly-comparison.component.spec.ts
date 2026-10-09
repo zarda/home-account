@@ -4,6 +4,7 @@ import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { Timestamp } from '@angular/fire/firestore';
 import { BehaviorSubject } from 'rxjs';
+import { Chart } from 'chart.js';
 
 import { MonthlyComparisonComponent } from './monthly-comparison.component';
 import { Transaction } from '../../../models';
@@ -12,7 +13,19 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { provideAppCharts } from '../../../core/config/chart.config';
-import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
+import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
+import { ThemeService } from '../../../core/services/theme.service';
+import {
+  AUDIT_SCHEMES,
+  createTranslationStub,
+  createLocaleFormatStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withScheme,
+  withTheme,
+} from '../../../core/services/testing';
 
 function breakpointState(matches: boolean): BreakpointState {
   return { matches, breakpoints: { [APP_BREAKPOINTS.mobile]: matches } };
@@ -325,6 +338,27 @@ describe('MonthlyComparisonComponent', () => {
       expect(data.datasets[0].data[0]).toBe(4500); // May income
       expect(data.datasets[1].data[0]).toBe(300); // May expense
     });
+
+    it('fills each bar from the chart palette and edges it in the series edge', () => {
+      const palette = TestBed.inject(ChartThemeService).palette();
+      const [income, expense] = component.chartData().datasets;
+
+      expect(income.borderColor).toBe(palette.incomeEdge);
+      expect(income.backgroundColor).toBe(hexToRgba(palette.income, 0.8));
+      expect(expense.borderColor).toBe(palette.expenseEdge);
+      expect(expense.backgroundColor).toBe(hexToRgba(palette.expense, 0.8));
+    });
+
+    it('re-reads the palette when ThemeService flips the theme', () => {
+      const chartTheme = TestBed.inject(ChartThemeService);
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          const [income, expense] = component.chartData().datasets;
+          expect(income.borderColor).withContext(`${scheme} income`).toBe(chartTheme.palette().incomeEdge);
+          expect(expense.borderColor).withContext(`${scheme} expense`).toBe(chartTheme.palette().expenseEdge);
+        });
+      }
+    });
   });
 
   describe('year-over-year comparison', () => {
@@ -388,6 +422,16 @@ describe('MonthlyComparisonComponent', () => {
       // May had no prior-year expense bucket entry, June had 160.
       expect(data.datasets[3].data).toEqual([0, 160]);
       expect(data.datasets[2].data).toEqual([3000, 4000]);
+    });
+
+    it('mutes last year in the fill alone, so its bars keep the opaque series edge', () => {
+      const palette = TestBed.inject(ChartThemeService).palette();
+      const [, , incomeLastYear, expensesLastYear] = component.chartData().datasets;
+
+      expect(incomeLastYear.borderColor).toBe(palette.incomeEdge);
+      expect(incomeLastYear.backgroundColor).toBe(hexToRgba(palette.income, 0.35));
+      expect(expensesLastYear.borderColor).toBe(palette.expenseEdge);
+      expect(expensesLastYear.backgroundColor).toBe(hexToRgba(palette.expense, 0.35));
     });
 
     it('should keep the chart at two datasets without prior-year data', () => {
@@ -646,5 +690,65 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     const balance = bodyRows()[0].querySelectorAll('td[mat-cell]')[3] as HTMLElement;
     expect(balance.textContent?.trim().startsWith('+')).toBeTrue();
     expect(balance.classList).toContain('positive');
+  });
+
+  it('draws the bars in the palette of the theme on screen, and redraws them when it flips', () => {
+    render(mockTransactionSet);
+    const chartTheme = TestBed.inject(ChartThemeService);
+
+    for (const scheme of AUDIT_SCHEMES) {
+      withScheme(TestBed.inject(ThemeService), scheme, () => {
+        fixture.detectChanges();
+        const chart = Chart.getChart(el().querySelector('canvas') as HTMLCanvasElement) as Chart<'bar'>;
+        const palette = chartTheme.palette();
+        expect(chart.data.datasets.map(d => d.borderColor))
+          .withContext(`${scheme} edges`)
+          .toEqual([palette.incomeEdge, palette.expenseEdge]);
+        expect(chart.data.datasets.map(d => d.backgroundColor))
+          .withContext(`${scheme} fills`)
+          .toEqual([hexToRgba(palette.income, 0.8), hexToRgba(palette.expense, 0.8)]);
+      });
+    }
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement | null, token: string, label: string): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node!).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node!), paintedBackground(node!)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    it('paints the column headers and the dash of the first month in --text-muted at AA or better on the table, in both themes', () => {
+      render(mockTransactionSet);
+      const columns = Array.from(el().querySelectorAll('th[mat-header-cell]')) as HTMLElement[];
+      expect(columns.length).withContext('the header cells').toBe(5);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          columns.forEach(th =>
+            expectPainted(th, '--text-muted', `${theme} ${th.textContent?.trim()} header`)
+          );
+          expectPainted(bodyRows()[0].querySelector('.no-data'), '--text-muted', `${theme} dash`);
+        });
+      }
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Capacitor } from '@capacitor/core';
 import { FirebaseApp } from '@angular/fire/app';
 import {
   Auth,
@@ -25,14 +26,17 @@ import {
   LEDGER_SWEEP_IDLE_FALLBACK_MS,
   LEDGER_SWEEP_IDLE_TIMEOUT_MS,
   LedgerSweeper,
+  NotificationTapArmer,
   appAnalyticsFactory,
   appAuthFactory,
   appFirestoreFactory,
   appStorageFactory,
   armLedgerSweep,
+  armNotificationTaps,
   firestoreCacheTabManager,
   firestorePersistentCacheSettings,
   ledgerSweepHooks,
+  notificationTapLoader,
   provideAppAnalytics,
   provideAppRemoteConfig,
   whenBrowserIdle,
@@ -40,6 +44,7 @@ import {
 import { AuthService } from './core/services/auth.service';
 import { PwaService } from './core/services/pwa.service';
 import { LedgerShareService } from './core/services/ledger-share.service';
+import { NotificationTapService } from './core/services/notification-tap.service';
 // The hosts the `emulators` build configuration swaps in; imported directly
 // because the unit build compiles the committed, null EMULATOR_HOSTS.
 import { EMULATOR_HOSTS as EMULATOR_BUILD_HOSTS } from '../environments/emulators.on';
@@ -614,6 +619,98 @@ describe('ledgerSweepHooks', () => {
 
     expect(await hooks.load()).toBe(sweep as unknown as LedgerSweeper);
     expect(get.calls.allArgs().some(([token]) => token === LedgerShareService)).toBeTrue();
+  });
+});
+
+describe('armNotificationTaps', () => {
+  interface Armed {
+    /** Tasks handed to the idle scheduler and not run yet. */
+    idle: (() => void)[];
+    load: jasmine.Spy<() => Promise<NotificationTapArmer>>;
+    taps: jasmine.SpyObj<NotificationTapArmer>;
+  }
+
+  function arm(): Armed {
+    const idle: (() => void)[] = [];
+    const taps = jasmine.createSpyObj<NotificationTapArmer>('NotificationTapArmer', ['arm']);
+    taps.arm.and.resolveTo();
+    const load = jasmine.createSpy<() => Promise<NotificationTapArmer>>('load').and.resolveTo(taps);
+    armNotificationTaps(load, task => idle.push(task));
+    return { idle, load, taps };
+  }
+
+  async function runIdle(armed: Armed): Promise<void> {
+    for (const task of armed.idle.splice(0)) task();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  }
+
+  it('loads the tap service only from an idle task on the web, never while the app starts', () => {
+    const armed = arm();
+
+    expect(armed.idle.length).toBe(1);
+    expect(armed.load).not.toHaveBeenCalled();
+  });
+
+  it('loads and arms it at once in the iOS app, where the plugin holds a tap that launched the app', async () => {
+    // An idle task attaches the listener seconds after launch, and the held
+    // tap would then navigate over wherever the user had gone meanwhile.
+    spyOn(Capacitor, 'isNativePlatform').and.returnValue(true);
+    const armed = arm();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(armed.idle.length).toBe(0);
+    expect(armed.load).toHaveBeenCalledTimes(1);
+    expect(armed.taps.arm).toHaveBeenCalledTimes(1);
+  });
+
+  it('arms the service once the idle task has loaded it', async () => {
+    const armed = arm();
+    await runIdle(armed);
+
+    expect(armed.load).toHaveBeenCalledTimes(1);
+    expect(armed.taps.arm).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a service that does not load or arm, and lets nothing reach the error handler', async () => {
+    const warn = spyOn(console, 'warn');
+    const notLoaded = arm();
+    notLoaded.load.and.rejectWith(new Error('the chunk did not load'));
+    await runIdle(notLoaded);
+    const notArmed = arm();
+    notArmed.taps.arm.and.rejectWith(new Error('the listener was refused'));
+    await runIdle(notArmed);
+
+    expect(warn.calls.allArgs().map(args => [String(args[0]).startsWith('[NotificationTapService]'), String(args[1])]))
+      .toEqual([[true, 'Error: the chunk did not load'], [true, 'Error: the listener was refused']]);
+  });
+
+  it('never throws, whatever its collaborators do', () => {
+    const warn = spyOn(console, 'warn');
+
+    expect(() => armNotificationTaps(
+      () => Promise.reject(new Error('unused')),
+      () => {
+        throw new Error('no scheduler');
+      },
+    )).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+  });
+});
+
+describe('notificationTapLoader', () => {
+  it('holds no reference to the tap service until its load runs, and then reaches it through the injector', async () => {
+    const taps = { arm: () => Promise.resolve() };
+    TestBed.configureTestingModule({
+      providers: [{ provide: NotificationTapService, useValue: taps }],
+    });
+    const injector = TestBed.inject(Injector);
+    const get = spyOn(injector, 'get').and.callThrough();
+
+    const load = notificationTapLoader(injector);
+    expect(get).not.toHaveBeenCalled();
+
+    expect(await load()).toBe(taps);
+    expect(get.calls.allArgs().some(([token]) => token === NotificationTapService)).toBeTrue();
   });
 });
 

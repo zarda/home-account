@@ -22,11 +22,13 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 
+  // Each icon names what its line counts, so it is information and takes
+  // the line's ink: it owes a graphic's 3:1, which --text-disabled, kept for
+  // a control nobody can operate, does not give on this panel.
   mat-icon {
     font-size: var(--text-lg);
     width: 1em;
     height: 1em;
-    color: var(--text-disabled);
   }
 }
 
@@ -117,6 +119,13 @@
   color: var(--text-muted);
 }
 
+// On the --color-primary-light tint, which one option always wears, muted
+// copy reads 3.81:1 in dark.
+.option-content:hover .option-description,
+.format-option.mat-mdc-radio-checked .option-description {
+  color: var(--text-secondary);
+}
+
 // Export Options
 .export-options {
   display: flex;
@@ -140,9 +149,11 @@ mat-dialog-actions {
   display: inline-block;
   margin-right: 8px;
 
+  // The button is disabled while it exports, so the stroke follows the
+  // label's disabled ink rather than a fixed colour.
   ::ng-deep {
     circle {
-      stroke: white;
+      stroke: currentColor;
     }
   }
 }

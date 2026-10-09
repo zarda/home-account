@@ -73,7 +73,9 @@
     "add": "Add",
     "searchHistory": "Search History",
     "importFile": "Import photos",
-    "importHistory": "Import History"
+    "importHistory": "Import History",
+    "landmarkMain": "Main",
+    "landmarkQuick": "Quick access"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -111,7 +113,14 @@
       "other": "{{count}} older occurrences are overdue and not shown"
     },
     "customize": "Customize dashboard",
-    "noCardsShown": "No cards are shown on the dashboard."
+    "noCardsShown": "No cards are shown on the dashboard.",
+    "cardMenuHide": "Hide",
+    "cardMenuMoveUp": "Move up",
+    "cardMenuMoveDown": "Move down",
+    "cardHidden": "{{card}} hidden. Show it again from Customize dashboard.",
+    "cardHideReverted": "Couldn't save. {{card}} is back on the dashboard.",
+    "billLinkCardHidden": "Upcoming Bills is hidden on the dashboard, so here are your recurring transactions instead.",
+    "billLinkNotUpcoming": "That bill isn't in Upcoming Bills right now, so here are your recurring transactions instead."
   },
   "transactions": {
     "title": "Transactions",
@@ -559,6 +568,50 @@
     "iconSelection": "Icon selection",
     "color": "Color",
     "colorSelection": "Color selection",
+    "categoryIconNames": {
+      "restaurant": "Restaurant",
+      "local_cafe": "Café",
+      "fastfood": "Fast food",
+      "shopping_cart": "Shopping cart",
+      "shopping_bag": "Shopping bag",
+      "local_gas_station": "Fuel",
+      "directions_car": "Car",
+      "flight": "Flight",
+      "hotel": "Hotel",
+      "home": "Home",
+      "apartment": "Apartment",
+      "payments": "Payments",
+      "attach_money": "Money",
+      "credit_card": "Credit card",
+      "account_balance": "Bank",
+      "medical_services": "Medical",
+      "fitness_center": "Fitness",
+      "school": "School",
+      "work": "Work",
+      "movie": "Movies",
+      "sports_esports": "Games",
+      "pets": "Pets",
+      "child_care": "Childcare",
+      "card_giftcard": "Gift",
+      "celebration": "Celebration"
+    },
+    "categoryColorNames": {
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "teal": "Teal",
+      "cyan": "Cyan",
+      "blue": "Blue",
+      "indigo": "Indigo",
+      "violet": "Violet",
+      "purple": "Purple",
+      "pink": "Pink",
+      "rose": "Rose",
+      "slate": "Slate",
+      "gray": "Gray",
+      "stone": "Stone"
+    },
     "preview": "Preview",
     "saveChanges": "Save Changes",
     "createCategory": "Create Category",
@@ -1242,6 +1295,7 @@
       "other": "The transactions were saved, but {{count}} receipt photos could not be uploaded. You can attach them from the transaction."
     },
     "importSavedHistoryUnavailable": "Import finished, but the summary could not be loaded. See Import History for details.",
+    "shareLost": "The shared files couldn't be received. Share them again to import them.",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "duplicatesSkipped": "Duplicates skipped",
@@ -1531,6 +1585,15 @@
       "cardDescription": "Missed something the first time, or just want to see it again? Replay the welcome and the three ways to record what you spend.",
       "replayButton": "Replay welcome"
     },
+    "install": {
+      "cardTitle": "Install the app",
+      "promptDescription": "Install Home Account on this device to open it from its own icon, in a window of its own.",
+      "button": "Install",
+      "iosDescription": "Add Home Account to your Home Screen to open it from its own icon, full screen:",
+      "iosStepShare": "Tap the Share button, in Safari's toolbar or under the ⋯ menu.",
+      "iosStepAdd": "Choose Add to Home Screen.",
+      "iosStepConfirm": "Tap Add."
+    },
     "feedback": {
       "cardTitle": "Send feedback",
       "cardDescription": "Found a bug, have an idea, or just want to say something? Your message is stored with your account and mailed to the developer.",
@@ -1795,10 +1858,18 @@
     "noResults": "Nothing matches that",
     "sectionNavigate": "Go to",
     "sectionActions": "Actions",
+    "sectionShortcuts": "Keyboard shortcuts",
     "resultCount": {
       "one": "{{count}} result",
       "other": "{{count}} results"
     }
+  },
+  "shortcuts": {
+    "addTransaction": "Add a transaction",
+    "openPalette": "Open or close this palette",
+    "showShortcuts": "Show these shortcuts",
+    "hint": "Press ? to see the keyboard shortcuts",
+    "hintDismiss": "Dismiss this tip"
   },
   "widget": {
     "spent": "Spent",

@@ -31,6 +31,13 @@ export function containsPotentialXSS(text: string): boolean {
 }
 
 /**
+ * A line markdownToHtml's heading replacements have made a block of its own.
+ * Wrapped in a <p>, it would be split by the HTML parser into an empty
+ * paragraph on either side of the heading.
+ */
+const HEADING_LINE = /^<h[1-3][\s>]/;
+
+/**
  * The small markdown subset the models are asked for: headings, bold, italic,
  * bullet lists and paragraphs.
  *
@@ -62,7 +69,9 @@ export function markdownToHtml(markdown: string): string {
         processed.push('</ul>');
         inList = false;
       }
-      if (line.trim()) {
+      if (HEADING_LINE.test(line)) {
+        processed.push(line);
+      } else if (line.trim()) {
         processed.push(`<p>${line}</p>`);
       }
     }

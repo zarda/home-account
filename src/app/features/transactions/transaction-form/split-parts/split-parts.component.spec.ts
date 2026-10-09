@@ -1,12 +1,25 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, flush } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MatSelect } from '@angular/material/select';
 
 import { SplitPartsComponent } from './split-parts.component';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { ThemeService } from '../../../../core/services/theme.service';
 import { Category, SplitPart } from '../../../../models';
-import { createCategory } from '../../../../core/services/testing';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  chooseOption,
+  createCategory,
+  eachOptionState,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  withScheme,
+} from '../../../../core/services/testing';
 
 /** What formatCurrency answers here, so a footer assertion pins the call, not Intl. */
 const FORMATTED = '<money>';
@@ -55,6 +68,27 @@ describe('SplitPartsComponent', () => {
   const footer = (): HTMLElement | null => element().querySelector<HTMLElement>('[data-split-footer]');
   const amountInput = (index: number): HTMLInputElement =>
     rows()[index].querySelector<HTMLInputElement>('input[type="number"]')!;
+  const select = (index: number): MatSelect =>
+    fixture.debugElement.queryAll(By.directive(MatSelect))[index].injector.get(MatSelect);
+
+  /** Call inside fakeAsync: the panel opens on the overlay's own schedule. */
+  function openPanel(index: number): void {
+    rows()[index].querySelector<HTMLElement>('.mat-mdc-select-trigger')!.click();
+    fixture.detectChanges();
+    flush();
+  }
+
+  /** What `font-size: var(token)` computes to. */
+  function tokenSize(token: string): string {
+    const probe = document.createElement('span');
+    probe.style.fontSize = `var(${token})`;
+    document.body.appendChild(probe);
+    try {
+      return getComputedStyle(probe).fontSize;
+    } finally {
+      probe.remove();
+    }
+  }
 
   function render(): void {
     fixture = TestBed.createComponent(HostComponent);
@@ -76,6 +110,10 @@ describe('SplitPartsComponent', () => {
         { provide: CurrencyService, useValue: { formatCurrency } },
       ],
     }).compileComponents();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
   });
 
   describe('with no parts', () => {
@@ -117,21 +155,80 @@ describe('SplitPartsComponent', () => {
       expect(document.activeElement).toBe(rows()[0].querySelector('mat-select'));
     });
 
-    it('lists only the categories it was handed', fakeAsync(() => {
+    // An option's viewValue is the name the closed field shows, typeahead
+    // matches and the trigger announces. An icon nested in a wrapper lands in
+    // it too, so the field read "restaurantFood" once a part was picked.
+    it('lists only the categories it was handed, each by its name alone', () => {
       render();
       addButton().click();
       fixture.detectChanges();
 
-      rows()[0].querySelector<HTMLElement>('.mat-mdc-select-trigger')!.click();
+      expect(select(0).options.map(option => option.viewValue))
+        .toEqual(['categoryNames.food', 'categoryNames.home']);
+    });
+
+    it('reads only the picked name in the closed field', fakeAsync(() => {
+      render();
+      addButton().click();
+      fixture.detectChanges();
+
+      openPanel(0);
+      // Options render into the overlay container, outside the fixture.
+      document.querySelectorAll<HTMLElement>('mat-option')[0].click();
       fixture.detectChanges();
       flush();
 
-      // Options render into the overlay container, outside the fixture; the
-      // name is read past the icon the option also carries.
-      const options = Array.from(document.querySelectorAll<HTMLElement>('mat-option'));
-      expect(options.map(option => option.querySelector('.category-option span')?.textContent?.trim()))
-        .toEqual(['categoryNames.food', 'categoryNames.home']);
+      expect(host.parts()).toEqual([{ categoryId: 'cat-food', amount: 0 }]);
+      expect(rows()[0].querySelector('.mat-mdc-select-value-text')?.textContent?.trim())
+        .toBe('categoryNames.food');
     }));
+
+    it('sizes each option icon at --text-xl, a square of it', fakeAsync(() => {
+      // A pin: `mat-option > mat-icon` keeps the size the icon had inside its old wrapper.
+      render();
+      addButton().click();
+      fixture.detectChanges();
+
+      openPanel(0);
+
+      const icons = Array.from(document.querySelectorAll<HTMLElement>('mat-option mat-icon'));
+      expect(icons.length).toBe(2);
+      for (const icon of icons) {
+        const style = getComputedStyle(icon);
+        expect(style.fontSize).toBe(tokenSize('--text-xl'));
+        expect(style.width).toBe(style.fontSize);
+        expect(style.height).toBe(style.fontSize);
+      }
+    }));
+  });
+
+  // A category's glyph is drawn in the panel on an option at rest, active
+  // and selected, and is corrected for each. Each probe is picked in turn, so
+  // each is seen selected.
+  it("draws each category's glyph at AA or better on its option at rest, active and selected, in both themes", () => {
+    render();
+    const probes = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color]) =>
+      createCategory({ id: `probe-${scheme}`, name: `probe-${scheme}`, color, type: 'expense' })
+    );
+    host.categories.set(probes);
+    addButton().click();
+    fixture.detectChanges();
+    const flush = () => fixture.detectChanges();
+
+    for (const scheme of AUDIT_SCHEMES) {
+      withScheme(TestBed.inject(ThemeService), scheme, () => {
+        for (const probe of probes) {
+          chooseOption(select(0), probe.id, flush);
+          expect(host.parts()[0].categoryId).withContext(`${scheme} ${probe.id} picked`).toBe(probe.id);
+          eachOptionState(select(0), flush, (option, state) => {
+            const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${scheme} ${probe.id} picked, ${option.value} ${state}`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        }
+      });
+    }
   });
 
   describe('removing a part', () => {

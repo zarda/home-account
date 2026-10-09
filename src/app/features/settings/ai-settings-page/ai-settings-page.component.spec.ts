@@ -16,6 +16,7 @@ import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { settleAnimations, withTheme } from '../../../core/services/testing';
 import { DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
 
 describe('AiSettingsPageComponent', () => {
@@ -869,6 +870,42 @@ describe('AiSettingsPageComponent', () => {
       await component.onProviderPreferenceChange();
 
       expect(notifications.error).toHaveBeenCalledWith('common.error');
+    });
+  });
+
+  describe('colours, as painted', () => {
+    /** What `box-shadow: <value>` computes to under the theme on <html> now. */
+    function shadowOf(value: string): string {
+      const probe = document.createElement('div');
+      probe.style.boxShadow = value;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).boxShadow;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    it("rings a configured provider card in --mat-sys-primary, and in dark lifts it with the theme's --shadow-md", () => {
+      cloudLLMProviderMock.isProviderAvailable.and.callFake(provider => provider === 'gemini');
+      const configured = TestBed.createComponent(AiSettingsPageComponent);
+      configured.detectChanges();
+      const card = (configured.nativeElement as HTMLElement).querySelector('.provider-card.configured') as HTMLElement;
+      expect(card).withContext('the Gemini card is the configured one').toBeTruthy();
+
+      withTheme('light', () => {
+        settleAnimations(document);
+        expect(getComputedStyle(card).boxShadow)
+          .withContext('light')
+          .toBe(shadowOf('0 0 0 1px var(--mat-sys-primary)'));
+      });
+      withTheme('dark', () => {
+        settleAnimations(document);
+        expect(getComputedStyle(card).boxShadow)
+          .withContext('dark')
+          .toBe(shadowOf('0 0 0 1px var(--mat-sys-primary), var(--shadow-md)'));
+      });
     });
   });
 });

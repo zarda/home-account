@@ -92,23 +92,17 @@
 }
 
 // An option in the category list: its icon and name. A group leads its own
-// categories, which sit indented under it.
+// categories, which sit indented under it. The icon stays the option's direct
+// child: MatOption puts anything else into the label, whose text is the name
+// typeahead matches.
 .category-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
-  mat-icon {
-    flex-shrink: 0;
-    font-size: var(--text-lg);
-    width: 1em;
-    height: 1em;
-  }
-
-  > span {
-    overflow-wrap: anywhere;
-  }
+mat-option > mat-icon {
+  font-size: var(--text-lg);
+  width: 1em;
+  height: 1em;
 }
 
 .category-group {

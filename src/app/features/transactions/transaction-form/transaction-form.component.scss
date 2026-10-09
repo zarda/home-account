@@ -8,28 +8,39 @@
   margin-bottom: 20px;
 }
 
+// Material colours a stroked button's edge in a rule that a component rule
+// does not reliably outrank, so the resting edge goes through Material's own
+// token; the hover edge outranks it by the :hover.
 .scan-receipt-btn {
   width: 100%;
   height: 56px;
-  @apply border-2 border-dashed border-gray-300 dark:border-gray-600;
+  border-width: 2px;
+  border-style: dashed;
+  --mat-button-outlined-outline-color: var(--border-strong);
   background: var(--surface-subtle);
-  @apply hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20;
+  @apply hover:border-brand;
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
 
+  // Mixed into the resting fill rather than into transparent, so it stays
+  // opaque under the state layer Material adds on hover.
+  &:hover {
+    background-color: color-mix(in srgb, var(--color-primary) 10%, var(--surface-subtle));
+  }
+
   mat-icon {
     margin-right: 8px;
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
   }
 
   span {
-    @apply text-gray-600 dark:text-gray-300;
+    color: var(--text-secondary);
     font-weight: 500;
   }
 
   &:hover mat-icon,
   &:hover span {
-    @apply text-primary-600 dark:text-primary-400;
+    color: var(--color-primary-text);
   }
 }
 
@@ -38,7 +49,7 @@
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface-muted);
-  @apply border border-gray-200 dark:border-gray-700;
+  border: 1px solid var(--border-primary);
 
   img {
     width: 100%;
@@ -59,6 +70,7 @@
     }
   }
 
+  // colors:allow-start(scrim) a dark veil and a white label over the receipt photo while it scans, which has no theme
   .scanning-overlay {
     position: absolute;
     inset: 0;
@@ -74,6 +86,7 @@
       font-weight: 500;
     }
   }
+  // colors:allow-end
 }
 
 // Several receipts side by side: queued additions or the stored strip.
@@ -103,7 +116,10 @@
 .add-receipt-tile {
   width: 132px;
   height: 132px;
-  @apply border-2 border-dashed border-gray-300 dark:border-gray-600;
+  border-width: 2px;
+  border-style: dashed;
+  // The same edge as the scan button, set the same way.
+  --mat-button-outlined-outline-color: var(--border-strong);
   background: var(--surface-subtle);
   border-radius: var(--radius-md);
 
@@ -117,11 +133,11 @@
   }
 
   mat-icon {
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
   }
 
   span {
-    @apply text-gray-600 dark:text-gray-300;
+    color: var(--text-secondary);
     font-size: 12px;
   }
 }
@@ -148,7 +164,7 @@
   }
 
   .remove-receipt-btn {
-    @apply text-red-600 dark:text-red-400;
+    color: var(--color-error-text);
   }
 }
 
@@ -179,12 +195,12 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   cursor: pointer;
-  @apply bg-primary-50 dark:bg-primary-900/30;
-  @apply border border-primary-200 dark:border-primary-700;
+  background-color: var(--surface-suggestion);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
   transition: all 0.2s ease;
 
   &:hover {
-    @apply bg-primary-100 dark:bg-primary-900/50;
+    background-color: var(--surface-suggestion-hover);
     transform: scale(1.02);
   }
 
@@ -196,7 +212,7 @@
   &.loading {
     cursor: default;
     background: var(--surface-muted);
-    @apply border-gray-200 dark:border-gray-700;
+    border-color: var(--border-primary);
 
     mat-spinner {
       margin-right: 8px;
@@ -210,7 +226,7 @@
     height: 1em;
     margin-right: 4px;
     flex-shrink: 0;
-    @apply text-primary-500;
+    color: var(--color-primary-text);
   }
 
   mat-icon:not(.ai-icon) {
@@ -222,7 +238,7 @@
   }
 
   span {
-    @apply text-gray-700 dark:text-gray-300;
+    color: var(--text-secondary);
     font-weight: 500;
     // Nothing truncates (ADR 0010): a long suggestion wraps onto another line
     // rather than being clipped or pushing the Dismiss button off the row.
@@ -238,11 +254,9 @@
     min-width: 0;
     overflow-wrap: anywhere;
 
-    // Nested under .suggestion-text (three classes) rather than a sibling of
-    // it, so this outranks the dark-theme variant of the `span` rule above
-    // (`.dark-theme .suggestion-chip span`, two classes plus a type
-    // selector) — otherwise the reason line renders in the same colour as
-    // the offer text in dark theme and the two are indistinguishable.
+    // The reason line is a `span` too, so this has to outrank the chip's
+    // `span` rule above, or it renders in the offer's colour and the two
+    // lines read as one.
     .suggestion-reason {
       font-size: var(--text-xs);
       font-weight: 400;
@@ -333,17 +347,23 @@
   gap: 12px;
 }
 
-.category-option mat-icon {
+// An option's icon stays its direct child: MatOption puts anything else into
+// the label, whose text is the name typeahead matches.
+.category-option mat-icon,
+mat-option > mat-icon {
   font-size: var(--text-xl);
   width: 1em;
   height: 1em;
 }
 
+// Material's dialog container gives every actions row a transparent top
+// border from a stylesheet that lands after styles.scss, so the app-wide rule
+// there never paints and the divider has to be drawn here.
 .dialog-actions {
   display: flex;
   gap: 12px;
   padding: 16px 24px !important;
-  @apply border-t border-gray-200 dark:border-gray-700;
+  border-top: 1px solid var(--border-primary);
   margin: 0 !important;
   flex-shrink: 0;
 }
@@ -436,16 +456,18 @@
 
 // Location suffix icon once coordinates are attached
 .coords-attached {
-  @apply text-primary-600 dark:text-primary-400;
+  color: var(--color-primary-text);
 }
 
 // Scanned field the model was unsure of. Same treatment as the import
-// preview's flag, so the two places that raise this read as one thing.
+// preview's flag, so the two places that raise this read as one thing: the
+// warning family's text step, since its amber fill is under 2:1 on the light
+// dialog.
 .verify-flag {
   font-size: 16px;
   width: 16px;
   height: 16px;
-  color: var(--color-warning);
+  color: var(--color-warning-text);
   cursor: help;
   flex-shrink: 0;
 }
@@ -453,7 +475,7 @@
 // Dismiss control beside a suggestion chip. The chip itself accepts, so the
 // two actions need to look different from each other.
 .suggestion-dismiss {
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   width: 32px;
   height: 32px;
   line-height: 32px;
@@ -476,7 +498,7 @@
 .split-offline-hint {
   margin: 0 0 16px;
   font-size: var(--text-sm);
-  color: var(--color-error);
+  color: var(--color-error-text);
 }
 
 .share-field {

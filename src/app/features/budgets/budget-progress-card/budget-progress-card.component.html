@@ -4,7 +4,7 @@
     <app-category-chip
       appearance="tile"
       [icon]="category()?.icon || 'category'"
-      [color]="category()?.color || '#666'"
+      [color]="category()?.color || fallbackColor"
     />
 
     <div class="header-content">
@@ -12,7 +12,12 @@
       <span class="budget-meta">{{ getPeriodLabel(budget().period) }}</span>
     </div>
 
-    <button mat-icon-button [matMenuTriggerFor]="menu" class="menu-btn" [attr.aria-label]="'common.moreActions' | translate">
+    <button
+      mat-icon-button
+      [matMenuTriggerFor]="menu"
+      class="menu-btn"
+      [attr.aria-label]="'common.moreActionsFor' | translate: { description: budget().name }"
+    >
       <mat-icon>more_vert</mat-icon>
     </button>
     <mat-menu #menu="matMenu">
@@ -20,7 +25,7 @@
         <mat-icon>edit</mat-icon>
         <span>{{ 'common.edit' | translate }}</span>
       </button>
-      <button mat-menu-item (click)="delete.emit()" class="delete-item">
+      <button mat-menu-item (click)="delete.emit()" class="menu-item-destructive">
         <mat-icon>delete</mat-icon>
         <span>{{ 'common.delete' | translate }}</span>
       </button>
@@ -38,7 +43,8 @@
     </div>
     <mat-progress-bar
       [value]="barValue()"
-      [color]="progressColor()"
+      [class.near]="barTone() === 'near'"
+      [class.over]="barTone() === 'over'"
       [attr.aria-label]="'budgets.progressLabel' | translate: { name: budget().name, percent: percentage().toFixed(0) }"
     ></mat-progress-bar>
     <div class="status-row">

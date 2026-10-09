@@ -25,6 +25,9 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 /** Marks the reset effect's first pass, before any note has been observed. */
 const NOTE_UNSEEN = Symbol('note not yet observed');
 
+/** One hint id per lens: the list, a dialog and the form can each hold one at once. */
+let hintSeq = 0;
+
 /**
  * The translation lens for one note: a button that reads the note back in the
  * app's language, and the panel showing what came back.
@@ -71,6 +74,9 @@ export class NoteTranslationComponent {
 
   readonly available = this.noteTranslation.available;
 
+  /** What a held Translate or Retry points its description at. */
+  readonly hintId = `note-translation-hint-${++hintSeq}`;
+
   /** A note with no text in it has nothing to translate, so the lens stays away. */
   readonly hasNote = computed(() => this.note().trim().length > 0);
 
@@ -116,7 +122,10 @@ export class NoteTranslationComponent {
    * flipping between the note and its translation worth offering at all.
    */
   async translateNote(): Promise<void> {
-    if (this.isLoading()) {
+    // The held Translate and Retry stay focusable and clickable
+    // (disabledInteractive), so a press with no provider still lands here and
+    // has to stop here.
+    if (this.isLoading() || !this.available()) {
       return;
     }
     if (this.translation()) {

@@ -84,11 +84,13 @@
               </div>
               <div class="category-percentage">
                 <div class="progress-bar">
+                  <!-- colors:allow-start(category-data) the share bar is filled with the category's own colour and carries no text -->
                   <div
                     class="progress-fill"
                     [style.width.%]="category.percentage"
                     [style.background-color]="category.color"
                   ></div>
+                  <!-- colors:allow-end -->
                 </div>
                 <span class="percentage-text">{{ category.percentage | localeNumber:'1.1-1' }}%</span>
               </div>

@@ -1,8 +1,30 @@
 // Header chrome lives in app-dialog-header; no fixed min-width here so the
 // dialog respects the global maxWidth on narrow phones.
 
+// Material's dialog container draws the actions row's top border in
+// transparent, from a stylesheet that lands after styles.scss; this rule
+// outranks it, so it is the one that colours that edge.
 mat-dialog-actions {
-  @apply flex justify-end gap-2 border-gray-200 dark:border-gray-700;
+  @apply flex justify-end gap-2;
+  border-color: var(--border-primary);
+}
+
+// A category option's icon stays its direct child: MatOption puts anything
+// else into the label, whose text is the name typeahead matches.
+mat-option > mat-icon {
+  font-size: var(--text-lg);
+  width: 1em;
+  height: 1em;
+}
+
+// The closed select shows the chosen category's icon at the same size. Its
+// line box is its font size: a type utility ships a taller one, which drops
+// the glyph below the middle of its box.
+mat-select-trigger mat-icon {
+  font-size: var(--text-lg);
+  width: 1em;
+  height: 1em;
+  line-height: 1;
 }
 
 .threshold-section {

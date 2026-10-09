@@ -13,13 +13,6 @@
   align-items: center;
   gap: 16px;
   margin-bottom: 24px;
-
-  h1 {
-    margin: 0;
-    font-size: var(--text-2xl);
-    font-weight: 500;
-    @apply text-gray-900 dark:text-gray-100;
-  }
 }
 
 // History List
@@ -30,7 +23,7 @@
 }
 
 .history-item {
-  @apply border border-gray-100 dark:border-gray-700;
+  border: 1px solid var(--border-primary);
   background: var(--surface-card);
 
   // The status mat-icon doubles as the card avatar: keep Material's 40px
@@ -45,25 +38,27 @@
     height: 40px;
     font-size: var(--text-2xl);
 
+    // The text step of each status, not its fill: a glyph owes 3:1, and the
+    // green and amber fills measure under it on the light card.
     &.completed {
-      @apply text-green-500;
+      color: var(--color-success-text);
     }
 
     &.partial {
-      @apply text-amber-500;
+      color: var(--color-warning-text);
     }
 
     &.failed {
-      @apply text-red-500;
+      color: var(--color-error-text);
     }
   }
 
   mat-card-title {
-    @apply text-gray-900 dark:text-gray-100;
+    color: var(--text-primary);
   }
 
   mat-card-subtitle {
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
   }
 
   // fileName is a share-sheet attachment id: one unbroken run with no space to wrap at (G3).
@@ -91,25 +86,25 @@
 
   .label {
     font-size: var(--text-xs);
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
   }
 
   .value {
     font-size: var(--text-lg);
     font-weight: 600;
-    @apply text-gray-900 dark:text-gray-100;
+    color: var(--text-primary);
   }
 
   &.income .value {
-    @apply text-green-600 dark:text-green-400;
+    color: var(--color-income-text);
   }
 
   &.expense .value {
-    @apply text-red-600 dark:text-red-400;
+    color: var(--color-expense-text);
   }
 
   &.skipped .value {
-    @apply text-amber-600 dark:text-amber-400;
+    color: var(--color-warning-text);
   }
 }
 
@@ -129,21 +124,28 @@
 }
 
 .failure-class {
-  @apply text-sm text-red-700 dark:text-red-300;
+  @apply text-sm;
+  color: var(--color-error-text);
   margin: 4px 0 0;
 }
 
+// Through Material's own tokens: the chip paints its fill from the first and
+// its label, an inner span, from the second, so a colour set on the chip
+// itself never reaches the text.
 mat-chip {
   &.completed {
-    @apply bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 #{!important};
+    --mat-chip-elevated-container-color: var(--color-success-light);
+    --mat-chip-label-text-color: var(--color-success-text);
   }
 
   &.partial {
-    @apply bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 #{!important};
+    --mat-chip-elevated-container-color: var(--color-warning-light);
+    --mat-chip-label-text-color: var(--color-warning-text);
   }
 
   &.failed {
-    @apply bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 #{!important};
+    --mat-chip-elevated-container-color: var(--color-error-light);
+    --mat-chip-label-text-color: var(--color-error-text);
   }
 }
 
@@ -152,24 +154,27 @@ mat-chip {
   border-radius: var(--radius-sm);
   padding: 12px;
   margin-top: 12px;
-  @apply bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800;
+  // Mixed into the card it covers rather than into transparent, so the text
+  // on it is measured against one opaque colour.
+  background: color-mix(in srgb, var(--color-error) 8%, var(--surface-card));
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
   // a thrown message can carry a URL or a bare code with no space to break on (G3)
   overflow-wrap: anywhere;
 
   .error-title {
     font-weight: 500;
     margin: 0 0 8px;
-    @apply text-red-700 dark:text-red-400;
+    color: var(--color-error-text);
   }
 
   ul {
     margin: 0;
     padding-left: 20px;
-    @apply text-red-600 dark:text-red-300;
+    color: var(--color-error-text);
   }
 
   .more {
     font-style: italic;
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--text-muted);
   }
 }

@@ -7,6 +7,16 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Budget, Category } from '../../../models';
 import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
+import {
+  channels,
+  iconBox,
+  iconSquare,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('BudgetProgressCardComponent', () => {
   let component: BudgetProgressCardComponent;
@@ -61,6 +71,7 @@ describe('BudgetProgressCardComponent', () => {
         'budget.approachingLimit': 'Approaching limit',
         'budget.amountLeft': `${params?.['amount']} left`,
         'budget.amountOver': `${params?.['amount']} over`,
+        'common.moreActionsFor': `More actions for ${params?.['description']}`,
         'transactions.weekly': 'Weekly',
         'transactions.monthly': 'Monthly',
         'transactions.yearly': 'Yearly'
@@ -164,52 +175,52 @@ describe('BudgetProgressCardComponent', () => {
     });
   });
 
-  describe('progressColor', () => {
-    it('should return primary for under 50%', () => {
+  describe('barTone', () => {
+    it('should return none for under 50%', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 40 }));
-      expect(component.progressColor()).toBe('primary');
+      expect(component.barTone()).toBeNull();
     });
 
-    it('should return primary while under the alert threshold', () => {
+    it('should return none while under the alert threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 60 }));
-      expect(component.progressColor()).toBe('primary');
+      expect(component.barTone()).toBeNull();
     });
 
-    it('should return accent from the warning threshold', () => {
+    it('should return near from the warning threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
-      expect(component.progressColor()).toBe('accent');
+      expect(component.barTone()).toBe('near');
     });
 
-    it('should return warn for over budget', () => {
+    it('should return over for over budget', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 150 }));
-      expect(component.progressColor()).toBe('warn');
+      expect(component.barTone()).toBe('over');
     });
   });
 
   describe('statusClass', () => {
-    it('should return green class for under 50%', () => {
+    it('should return the success text class for under 50%', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 40 }));
-      expect(component.statusClass()).toBe('text-green-600');
+      expect(component.statusClass()).toBe('text-success-text');
     });
 
-    it('should return green class while under the alert threshold', () => {
+    it('should return the success text class while under the alert threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 60 }));
-      expect(component.statusClass()).toBe('text-green-600');
+      expect(component.statusClass()).toBe('text-success-text');
     });
 
-    it('should return yellow class in the warning band', () => {
+    it('should return the warning text class in the warning band', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
-      expect(component.statusClass()).toBe('text-yellow-600');
+      expect(component.statusClass()).toBe('text-warning-text');
     });
 
-    it('should return orange class in the critical band', () => {
+    it('should return the warning text class in the critical band too', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 92 }));
-      expect(component.statusClass()).toBe('text-orange-500');
+      expect(component.statusClass()).toBe('text-warning-text');
     });
 
-    it('should return red class with semibold for 100% and over', () => {
+    it('should return the error text class with semibold for 100% and over', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 110 }));
-      expect(component.statusClass()).toBe('text-red-600 font-semibold');
+      expect(component.statusClass()).toBe('text-error-text font-semibold');
     });
   });
 
@@ -217,16 +228,192 @@ describe('BudgetProgressCardComponent', () => {
     it('bar, percentage text and chip all agree in the warning band', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
       expect(component.alertSeverity()).toBe('warning');
-      expect(component.progressColor()).toBe('accent');
-      expect(component.statusClass()).toBe('text-yellow-600');
+      expect(component.barTone()).toBe('near');
+      expect(component.statusClass()).toBe('text-warning-text');
     });
 
     it('bar, percentage text and chip all agree when exceeded', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 300, spent: 350.49 }));
       expect(component.alertSeverity()).toBe('exceeded');
-      expect(component.progressColor()).toBe('warn');
-      expect(component.statusClass()).toBe('text-red-600 font-semibold');
+      expect(component.barTone()).toBe('over');
+      expect(component.statusClass()).toBe('text-error-text font-semibold');
       expect(component.percentage()).toBeGreaterThan(100);
+    });
+  });
+
+  describe('colours, as painted on the card', () => {
+    const THEMES = ['light', 'dark'] as const;
+    const el = () => fixture.nativeElement as HTMLElement;
+    const part = (selector: string) => el().querySelector(selector) as HTMLElement;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function render(overrides: Partial<Budget> = {}): void {
+      fixture.componentRef.setInput('budget', createMockBudget(overrides));
+      fixture.componentRef.setInput('category', mockCategory);
+      fixture.detectChanges();
+    }
+
+    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on the card`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    // The menu renders in the CDK overlay, outside the fixture.
+    afterEach(() => {
+      document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+    });
+
+    // Each severity at a spend that reaches it under the budget's 80%
+    // threshold. Critical shares the warning colour, as the bar does: there
+    // is no orange token, and the alert's own words name the severity.
+    const SEVERITIES = [
+      { name: 'within budget', spent: 40, token: '--color-success-text', alert: false },
+      { name: 'warning', spent: 85, token: '--color-warning-text', alert: true },
+      { name: 'critical', spent: 92, token: '--color-warning-text', alert: true },
+      { name: 'exceeded', spent: 110, token: '--color-error-text', alert: true },
+    ] as const;
+
+    it('sits on the M3 card surface, in both themes', () => {
+      render();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expect(paintedBackground(part('.budget-card')))
+            .withContext(`${theme} card`)
+            .toEqual(channels(tokenValue('--mat-sys-surface-container-low')).rgb);
+        });
+      }
+    });
+
+    it('reads the percentage and the alert of every severity at AA or better, in both themes', () => {
+      for (const severity of SEVERITIES) {
+        render({ amount: 100, spent: severity.spent });
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expectPainted(part('.percentage'), severity.token, `${theme} ${severity.name} percentage`);
+            if (severity.alert) {
+              expectPainted(part('.alert'), severity.token, `${theme} ${severity.name} alert`);
+              expectPainted(part('.alert-text'), severity.token, `${theme} ${severity.name} alert text`);
+            } else {
+              expect(part('.alert')).withContext(`${theme} ${severity.name} has no alert`).toBeNull();
+            }
+          });
+        }
+      }
+    });
+
+    // Material paints the indicator as the inner bar's top border. It is a
+    // graphic, so its floor is 3:1 (WCAG 1.4.11), against the track it runs
+    // along and the card around it.
+    it("draws each severity's bar in the colour its percentage reads in, at 3:1 or better on its track and the card, in both themes", () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const painted = new Map<string, string>();
+          for (const severity of SEVERITIES) {
+            render({ amount: 100, spent: severity.spent });
+            settleAnimations(document);
+            const label = `${theme} ${severity.name} bar`;
+            const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
+            painted.set(severity.name, indicator);
+            expect(indicator).withContext(label).toBe(tokenValue(severity.token));
+            expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
+              .withContext(`${label} on its track`)
+              .toBeGreaterThanOrEqual(3);
+            expect(ratio(channels(indicator).rgb, paintedBackground(part('.budget-card'))))
+              .withContext(`${label} on the card`)
+              .toBeGreaterThanOrEqual(3);
+          }
+          expect(painted.get('warning'))
+            .withContext(`${theme} a warning bar paints apart from one within budget`)
+            .not.toBe(painted.get('within budget'));
+          expect(painted.get('exceeded'))
+            .withContext(`${theme} an exceeded bar paints apart from a warning one`)
+            .not.toBe(painted.get('warning'));
+        });
+      }
+    });
+
+    it('paints the name, the figures, the meta, limit and remaining lines in the theme text tokens, in both themes', () => {
+      render({ amount: 1000, spent: 300 });
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.budget-name'), '--text-primary', `${theme} name`);
+          expectPainted(part('.spent'), '--text-primary', `${theme} spent`);
+          expectPainted(part('.budget-meta'), '--text-muted', `${theme} meta`);
+          expectPainted(part('.limit'), '--text-muted', `${theme} limit`);
+          expectPainted(part('.remaining'), '--text-muted', `${theme} remaining`);
+        });
+      }
+    });
+
+    it('paints an overspend in the error text colour, at AA or better, in both themes', () => {
+      render({ amount: 100, spent: 150 });
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.spent.over-budget'), '--color-error-text', `${theme} spent over`);
+          expectPainted(part('.remaining.over-budget'), '--color-error-text', `${theme} remaining over`);
+        });
+      }
+    });
+
+    // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
+    it('paints the menu button in --text-muted, its glyph at 3:1 or better, in both themes', () => {
+      render();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(part('.menu-btn mat-icon'), '--text-muted', `${theme} menu glyph`, 3);
+        });
+      }
+    });
+
+    it('draws the card edge in --border-primary, in both themes', () => {
+      render();
+      const card = getComputedStyle(part('.budget-card'));
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expect(card.borderTopStyle).withContext(`${theme} the edge is drawn`).toBe('solid');
+          expect(card.borderTopColor).withContext(`${theme} edge`).toBe(tokenValue('--border-primary'));
+        });
+      }
+    });
+
+    /**
+     * The menu renders in the overlay, outside the card, so nothing scoped to
+     * the card reaches it; and Material paints an item's label and icon from
+     * its own tokens. Both are read where they are painted.
+     */
+    it('paints the delete item of its menu red, label and icon, at AA or better on the menu, in both themes', () => {
+      render();
+      part('.menu-btn').click();
+      fixture.detectChanges();
+
+      const items = Array.from(document.querySelectorAll('.mat-mdc-menu-panel .mat-mdc-menu-item')) as HTMLElement[];
+      expect(items.length).withContext('edit and delete').toBe(2);
+      const [edit, remove] = items;
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(remove.querySelector('.mat-mdc-menu-item-text') as HTMLElement, '--color-error-text', `${theme} delete label`);
+          expectPainted(remove.querySelector('mat-icon') as HTMLElement, '--color-error-text', `${theme} delete icon`);
+          expect(getComputedStyle(edit.querySelector('.mat-mdc-menu-item-text') as HTMLElement).color)
+            .withContext(`${theme} edit stays as Material paints it`)
+            .not.toBe(tokenValue('--color-error-text'));
+        });
+      }
     });
   });
 
@@ -402,6 +589,20 @@ describe('BudgetProgressCardComponent', () => {
       const menuButton = fixture.nativeElement.querySelector('[mat-icon-button]');
       expect(menuButton).toBeTruthy();
     });
+
+    // The Budgets page renders one card per budget, so a menu button named
+    // only "More actions" would repeat down the grid with nothing to tell
+    // one card's menu from the next.
+    it("names its menu button after its own budget, so two cards' menus differ", () => {
+      const other = TestBed.createComponent(BudgetProgressCardComponent);
+      other.componentRef.setInput('budget', createMockBudget({ id: 'budget2', name: 'Rent Budget' }));
+      other.detectChanges();
+
+      const names = [fixture, other].map(card =>
+        (card.nativeElement as HTMLElement).querySelector('.menu-btn')?.getAttribute('aria-label')
+      );
+      expect(names).toEqual(['More actions for Food Budget', 'More actions for Rent Budget']);
+    });
   });
 
   // The Budgets page lists the cards under the page's own heading.
@@ -438,6 +639,64 @@ describe('BudgetProgressCardComponent', () => {
       const rect = menuButton.getBoundingClientRect();
       expect(rect.width).withContext('menu button width vs the 40px floor').toBeGreaterThanOrEqual(40);
       expect(rect.height).withContext('menu button height vs the 40px floor').toBeGreaterThanOrEqual(40);
+    });
+  });
+
+  // A glyph fills its box only when its line box is its font size, so the
+  // row that centres the box centres the glyph.
+  describe('icon sizes', () => {
+    const icon = (selector: string) => fixture.nativeElement.querySelector(selector) as HTMLElement;
+
+    it('sizes the menu glyph at --text-base, and --text-lg from 640px, its box and line box the same', () => {
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.detectChanges();
+      const token = matchMedia('(min-width: 640px)').matches ? '--text-lg' : '--text-base';
+      expect(iconBox(icon('.menu-btn mat-icon'))).toEqual(iconSquare(token));
+    });
+
+    // The measurement sees only the branch the Karma window falls in, so
+    // both branches are read from the stylesheet: the declarations of every
+    // rule naming `.menu-btn` that matches the glyph, by media condition.
+    it('declares the menu glyph --text-base below 640px and --text-lg from it, its box and line box in em', () => {
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.detectChanges();
+      const glyph = icon('.menu-btn mat-icon');
+      const declared: Record<string, Record<string, string>> = {};
+      const visit = (rules: CSSRuleList, media: string) => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSMediaRule) {
+            visit(rule.cssRules, rule.conditionText);
+          } else if (
+            rule instanceof CSSStyleRule &&
+            rule.selectorText.includes('.menu-btn') &&
+            glyph.matches(rule.selectorText)
+          ) {
+            for (const prop of ['font-size', 'width', 'height', 'line-height']) {
+              const value = rule.style.getPropertyValue(prop);
+              if (value) (declared[media] ??= {})[prop] = value;
+            }
+          }
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue; // cross-origin sheet; nothing this app injects is one
+        }
+        visit(rules, '');
+      }
+      expect(declared).toEqual({
+        '': { 'font-size': 'var(--text-base)', width: '1em', height: '1em', 'line-height': '1' },
+        '(min-width: 640px)': { 'font-size': 'var(--text-lg)' },
+      });
+    });
+
+    it("sizes the alert's glyph at --text-sm, its box and line box the same", () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
+      fixture.detectChanges();
+      expect(iconBox(icon('.alert mat-icon'))).toEqual(iconSquare('--text-sm'));
     });
   });
 

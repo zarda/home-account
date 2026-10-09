@@ -11,6 +11,12 @@ import {
   createCategory,
   createUser,
   createTranslationStub,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
 } from '../../../core/services/testing';
 
 describe('TransactionRowComponent', () => {
@@ -391,6 +397,83 @@ describe('TransactionRowComponent', () => {
 
     (root.querySelector('.row-date') as HTMLElement).click();
     expect(emitted.length).withContext('a click opens the row').toBe(1);
+  });
+
+  // A row sits on a list card and lifts to --surface-hover under the
+  // pointer, so whatever is hovered inside it is read on that lift.
+  describe('colours, as painted', () => {
+    /** What `color: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
+    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+      expect(node).withContext(label).toBeTruthy();
+      if (!node) return;
+      settleAnimations(document);
+      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node), paintedBackground(node)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    beforeEach(() => {
+      (fixture.nativeElement as HTMLElement).style.backgroundColor = 'var(--surface-card)';
+    });
+
+    it('paints a hovered location link in --color-primary-text at AA on the hovered row, in both themes', () => {
+      setTransaction({ location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 } } as Partial<Transaction>);
+      const row = fixture.nativeElement.querySelector('.transaction-row') as HTMLElement;
+      const link = fixture.nativeElement.querySelector('.location-link') as HTMLElement;
+      const lift = hoverValue(row, '.transaction-row', 'background-color');
+      const ink = hoverValue(link, '.location-link', 'color');
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          row.style.backgroundColor = lift;
+          link.style.color = ink;
+          try {
+            expectPainted(link, '--color-primary-text', `${theme} hovered location link`);
+          } finally {
+            row.style.backgroundColor = '';
+            link.style.color = '';
+          }
+        });
+      }
+    });
+
+    // The split mark is the only way the row says it is one part of a larger
+    // purchase, and the receipt mark that a photo is attached: information,
+    // so each owes a graphic's 3:1, at rest and on the hovered row.
+    it('paints the split and receipt marks in --text-muted at 3:1 or better, at rest and hovered, in both themes', () => {
+      setTransaction({ splitGroupId: 'group-1', receiptUrl: 'https://example.com/r.png' } as Partial<Transaction>);
+      const row = fixture.nativeElement.querySelector('.transaction-row') as HTMLElement;
+      const lift = hoverValue(row, '.transaction-row', 'background-color');
+      const marks = ['split', 'receipt'].map(name => [name, fixture.nativeElement.querySelector(`.${name}-indicator`)] as const);
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          for (const state of ['at rest', 'hovered']) {
+            row.style.backgroundColor = state === 'hovered' ? lift : '';
+            try {
+              for (const [name, mark] of marks) {
+                expectPainted(mark, '--text-muted', `${theme} ${name} mark ${state}`, 3);
+              }
+            } finally {
+              row.style.backgroundColor = '';
+            }
+          }
+        });
+      }
+    });
   });
 });
 
@@ -891,6 +974,29 @@ describe('TransactionRowComponent with swipe actions', () => {
 
     enter();
     expect(component.activated).withContext('the second Enter opens it').toEqual([component.transaction]);
+  });
+
+  it('paints each swipe label at AA or better on its fill at a phone width, in both themes', () => {
+    // The row a 375px phone renders, opened the way a thumb opens it.
+    host.style.width = '375px';
+    const surface = host.querySelector('.row-surface') as HTMLElement;
+    const row = host.querySelector('.transaction-row') as HTMLElement;
+    pointer(host.querySelector('.row-description') as HTMLElement, 'pointerdown', 300, 20);
+    pointer(surface, 'pointermove', 288, 21);
+    pointer(surface, 'pointermove', 140, 22);
+    pointer(surface, 'pointerup', 140, 22);
+    expect(row.classList).withContext('swipe opened the drawer').toContain('swipe-open');
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        for (const action of ['edit', 'delete']) {
+          const label = host.querySelector(`.swipe-action-${action} span`) as HTMLElement;
+          expect(ratio(paintedColor(label), paintedBackground(label)))
+            .withContext(`${theme} ${action} label on its fill`)
+            .toBeGreaterThanOrEqual(4.5);
+        }
+      });
+    }
   });
 
   it('opens on a left swipe and closes on Escape', () => {

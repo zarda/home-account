@@ -9,7 +9,15 @@ import ja from '../../../../../assets/i18n/ja.json';
 import tc from '../../../../../assets/i18n/tc.json';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
-import { createTranslationStub, createLocaleFormatStub } from '../../../../core/services/testing';
+import {
+  createLocaleFormatStub,
+  createTranslationStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
 
 const mockDuplicateCheck: DuplicateCheck = {
   transactionId: 'txn1',
@@ -284,4 +292,61 @@ describe('DuplicateWarningComponent, through its own template', () => {
 
     expect(seen).toEqual(['exclude', 'include']);
   });
+
+  // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11). The amber the
+  // warning family is named for is a fill: on a white row it measures under
+  // 2:1, so a match the reader is asked to weigh is drawn in its text step.
+  it('paints a likely and a possible match\'s icon in --color-warning-text at 3:1 or better on its row, in both themes', () => {
+    render([
+      { transaction: txn({ id: 'a' }), check: { ...mockDuplicateCheck, transactionId: 'a', matchType: 'likely' } },
+      { transaction: txn({ id: 'b' }), check: { ...mockDuplicateCheck, transactionId: 'b', matchType: 'possible' } },
+    ]);
+    (el().querySelector('mat-expansion-panel-header') as HTMLElement).click();
+    fixture.detectChanges();
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const warningText = tokenValue('--color-warning-text');
+        for (const [index, kind] of (['likely', 'possible'] as const).entries()) {
+          const icon = items()[index].querySelector(`mat-icon.match-${kind}`) as HTMLElement;
+          expect(icon).withContext(`${theme} ${kind} icon`).toBeTruthy();
+          expect(getComputedStyle(icon).color).withContext(`${theme} ${kind} icon`).toBe(warningText);
+          expect(ratio(paintedColor(icon), paintedBackground(icon)))
+            .withContext(`${theme} ${kind} icon on its row`)
+            .toBeGreaterThanOrEqual(3);
+        }
+      });
+    }
+  });
+
+  // The amber fill measures under 2:1 on the panel's own 5% tint of it in
+  // light, so the glyph that heads the warning takes the text step too.
+  it('paints the panel header\'s glyph in --color-warning-text at 3:1 or better on the panel, in both themes', () => {
+    render([{ transaction: txn(), check: mockDuplicateCheck }]);
+    const icon = el().querySelector('.warning-panel .warning-icon') as HTMLElement;
+    expect(icon).withContext('the header icon').toBeTruthy();
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        const warningText = tokenValue('--color-warning-text');
+        expect(getComputedStyle(icon).color).withContext(`${theme} header icon`).toBe(warningText);
+        expect(ratio(paintedColor(icon), paintedBackground(icon)))
+          .withContext(`${theme} header icon on the panel`)
+          .toBeGreaterThanOrEqual(3);
+      });
+    }
+  });
+
+  /** What `color: var(token)` computes to under the theme on <html> now. */
+  function tokenValue(token: string): string {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${token})`;
+    document.body.appendChild(probe);
+    try {
+      settleAnimations(document);
+      return getComputedStyle(probe).color;
+    } finally {
+      probe.remove();
+    }
+  }
 });

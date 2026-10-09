@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
+import { Timestamp } from '@angular/fire/firestore';
+import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import type { LocalNotificationsPlugin } from '@capacitor/local-notifications';
 import { Subject, of } from 'rxjs';
@@ -11,7 +13,9 @@ import {
 } from './reminder.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
+import { CurrencyService } from './currency.service';
 import { RecurringService } from './recurring.service';
+import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import { createMockUser } from './testing/mock-auth.service';
 import {
@@ -19,10 +23,11 @@ import {
   BudgetAlertSeverity,
   DEFAULT_USER_PREFERENCES,
   RecurringOccurrence,
+  Transaction,
   User,
   UserPreferences,
 } from '../../models';
-import { addDays, startOfDay } from '../utils/transaction-date.utils';
+import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import {
   clearWeeklyRecapDeviceState,
   writeDismissedRecapWeek,
@@ -34,6 +39,7 @@ interface WebNotification {
   title: string;
   body: string;
   tag: string;
+  route: string;
 }
 
 /**
@@ -56,13 +62,25 @@ class TestReminderService extends ReminderService {
   webPermitted = true;
   webDisplays: boolean | ((tag: string) => boolean) = true;
   webPermissionReads = 0;
+  /**
+   * What the recap gate answers. Defaults to `'news'` so cases about
+   * scheduling, dedup and pruning are not also about the gate's read;
+   * `'read'` hands the question to the real seam, which reads through the
+   * TransactionService and CurrencyService doubles.
+   */
+  recapGate: 'news' | 'read' = 'news';
+
+  protected override recapWeekHasNews(at: Date): Promise<boolean> {
+    return this.recapGate === 'read' ? super.recapWeekHasNews(at) : Promise.resolve(true);
+  }
 
   protected override async showWebNotification(
     title: string,
     body: string,
-    tag: string
+    tag: string,
+    route: string
   ): Promise<boolean> {
-    this.webNotifications.push({ title, body, tag });
+    this.webNotifications.push({ title, body, tag, route });
     return typeof this.webDisplays === 'function' ? this.webDisplays(tag) : this.webDisplays;
   }
 
@@ -99,8 +117,8 @@ class RealWebSeamService extends ReminderService {
     return 'granted';
   }
 
-  raiseWebNotification(title: string, body: string, tag: string): Promise<boolean> {
-    return this.showWebNotification(title, body, tag);
+  raiseWebNotification(title: string, body: string, tag: string, route: string): Promise<boolean> {
+    return this.showWebNotification(title, body, tag, route);
   }
 }
 
@@ -397,6 +415,69 @@ describe('ReminderService', () => {
     });
   });
 
+  describe('the route a tap opens', () => {
+    it('hands the web seam the dashboard row for a bill', async () => {
+      occurrences = [occurrence({ date: daysOut(3), remindDaysBefore: 3 })];
+      const service = createService();
+
+      await sweep();
+
+      expect(service.webNotifications.map(n => n.route)).toEqual(['/dashboard?bill=rule-1']);
+    });
+
+    it('hands the web seam the budgets tab for a budget alert', async () => {
+      budgetAlerts.set([alert()]);
+      const service = createService();
+
+      await sweep();
+
+      expect(service.webNotifications.map(n => n.route)).toEqual(['/budgets?tab=budgets']);
+    });
+
+    it('books every native bill, due now or ahead, with its row', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [
+        occurrence({ date: daysOut(3), remindDaysBefore: 3 }),
+        occurrence({ recurringId: 'rule-2', name: 'Gym', date: daysOut(10), remindDaysBefore: 3 }),
+      ];
+      const service = createService();
+
+      await sweep();
+
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.map(n => [Boolean(n.schedule), n.extra])).toEqual([
+        [false, { route: '/dashboard?bill=rule-1' }],
+        [true, { route: '/dashboard?bill=rule-2' }],
+      ]);
+    });
+
+    it('books a native budget alert with the budgets tab', async () => {
+      isNative.and.returnValue(true);
+      budgetAlerts.set([alert()]);
+      const service = createService();
+
+      await sweep();
+
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.map(n => n.extra)).toEqual([{ route: '/budgets?tab=budgets' }]);
+    });
+
+    it('books the recap nudge with the week it announces', async () => {
+      isNative.and.returnValue(true);
+      setPreferences({ enableWeeklyRecap: true });
+      const service = createService();
+
+      await sweep();
+
+      // NOW is Tuesday 1 September; the nudge on Monday the 7th announces
+      // the week that opened on 31 August.
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.map(n => n.extra)).toEqual([
+        { route: '/dashboard?recap=2026-08-31' },
+      ]);
+    });
+  });
+
   describe('gating', () => {
     it('is inert while the preference is off', async () => {
       setPreferences({ enableReminders: false });
@@ -506,6 +587,48 @@ describe('ReminderService', () => {
 
       expect(service.plugin.schedule).not.toHaveBeenCalled();
       expect(readSentLog()).toEqual({});
+    });
+
+    it('settles a pass a later pass closed before its first snapshot, once that pass has delivered', async () => {
+      const first = new Subject<RecurringOccurrence[]>();
+      const second = new Subject<RecurringOccurrence[]>();
+      const listeners = [first, second];
+      recurring.getNextOccurrences.and.callFake(() => listeners.shift() ?? of(occurrences));
+      const service = createService();
+      let settled = false;
+      const swept = service.sweep().then(() => (settled = true));
+      await settle();
+      expect(first.observed).withContext('the first pass waits on its listener').toBeTrue();
+
+      // The toggle's next pass closes that listener before anything reaches it.
+      void service.sweep();
+      await settle();
+      expect(first.observed).withContext('closed by the pass that took over').toBeFalse();
+      expect(settled).withContext('before the pass that took over has delivered').toBeFalse();
+
+      second.next([occurrence({ date: daysOut(3), remindDaysBefore: 3 })]);
+      await settle();
+
+      expect(settled).withContext('once it has').toBeTrue();
+      await swept;
+      expect(service.webNotifications.length).toBe(1);
+    });
+
+    it('settles a pass whose listener the both-off cancel closed before its first snapshot', async () => {
+      const waiting = new Subject<RecurringOccurrence[]>();
+      recurring.getNextOccurrences.and.returnValue(waiting);
+      const service = createService();
+      let settled = false;
+      const swept = service.sweep().then(() => (settled = true));
+      await settle();
+      expect(waiting.observed).toBeTrue();
+
+      setPreferences({ enableReminders: false, enableWeeklyRecap: false });
+      await service.sweep();
+      await settle();
+
+      expect(settled).toBeTrue();
+      await swept;
     });
   });
 
@@ -658,6 +781,272 @@ describe('ReminderService', () => {
       expect(service.plugin.schedule).not.toHaveBeenCalled();
       expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id: 4242 }] });
     });
+
+    describe('the gate on what the announced week has to say', () => {
+      /** The week before the announced one, which the card compares against. */
+      const WEEK_BEFORE = '2026-08-24';
+
+      let transactions: jasmine.SpyObj<TransactionService>;
+
+      /** Rows each window read answers with, keyed by the day it opens on. */
+      let rowsByWeek: Map<string, Transaction[]>;
+
+      function expense(date: Date): Transaction {
+        return {
+          id: `tx-${dayKey(date)}`,
+          userId: USER_ID,
+          type: 'expense',
+          amount: 20,
+          currency: 'USD',
+          amountInBaseCurrency: 20,
+          exchangeRate: 1,
+          categoryId: 'cat-food',
+          description: 'Lunch',
+          isRecurring: false,
+          date: Timestamp.fromDate(date),
+          createdAt: Timestamp.fromDate(date),
+          updatedAt: Timestamp.fromDate(date),
+        };
+      }
+
+      function answerReads(): void {
+        transactions.getTransactionsInRangeFromServer.and.callFake(
+          async (start: Date) => rowsByWeek.get(dayKey(start)) ?? []
+        );
+      }
+
+      /** Hold every read until the returned release is called, for the races. */
+      function holdReads(): () => void {
+        let release!: () => void;
+        const landed = new Promise<void>(resolve => (release = resolve));
+        transactions.getTransactionsInRangeFromServer.and.callFake(async (start: Date) => {
+          await landed;
+          return rowsByWeek.get(dayKey(start)) ?? [];
+        });
+        return release;
+      }
+
+      /** The windows the gate read, as `start..end` day keys. */
+      function readWindows(): string[] {
+        return transactions.getTransactionsInRangeFromServer.calls
+          .allArgs()
+          .map(([start, end]) => `${dayKey(start)}..${dayKey(end)}`);
+      }
+
+      function bookedNudges(service: TestReminderService): number {
+        return service.plugin.schedule.calls
+          .allArgs()
+          .flatMap(([request]) => request.notifications)
+          .filter(notification => notification.body === 'reminders.recapReady').length;
+      }
+
+      function createReadingService(): TestReminderService {
+        const service = createService();
+        service.recapGate = 'read';
+        return service;
+      }
+
+      beforeEach(() => {
+        rowsByWeek = new Map();
+        transactions = jasmine.createSpyObj<TransactionService>('TransactionService', [
+          'getTransactionsInRangeFromServer',
+        ]);
+        answerReads();
+
+        TestBed.configureTestingModule({
+          providers: [
+            { provide: TransactionService, useValue: transactions },
+            // Answers from the row's own snapshot, as the recap's smoke does.
+            {
+              provide: CurrencyService,
+              useValue: {
+                amountInBase: (transaction: Transaction) =>
+                  transaction.amountInBaseCurrency ?? transaction.amount,
+              },
+            },
+          ],
+        });
+
+        // Recap only, so the nudge is the whole of what a pass books.
+        setPreferences({ enableWeeklyRecap: true });
+      });
+
+      it('books nothing for a quiet fortnight, and retires the nudge already booked', async () => {
+        const service = createReadingService();
+        service.plugin.getPending.and.resolveTo({
+          notifications: [{ id: 4242, title: 'app.title', body: 'reminders.recapReady' }],
+        });
+
+        await sweep();
+
+        // The week Monday's nudge announces, so far, and the one before it.
+        expect(readWindows()).toEqual(['2026-08-31..2026-09-06', '2026-08-24..2026-08-30']);
+        expect(service.plugin.schedule).not.toHaveBeenCalled();
+        expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id: 4242 }] });
+        expect(readSentLog()).toEqual({});
+      });
+
+      it('books it for spending in the announced week so far', async () => {
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        const service = createReadingService();
+
+        await sweep();
+
+        const [request] = service.plugin.schedule.calls.mostRecent().args;
+        expect(request.notifications.map(n => n.schedule?.at as Date)).toEqual([NEXT_MONDAY_NINE]);
+        expect(Object.keys(readSentLog())).toEqual(['recap|2026-09-07']);
+      });
+
+      it('books it for spending in the week before alone', async () => {
+        // An empty week after a week of spending is the story the card tells.
+        rowsByWeek.set(WEEK_BEFORE, [expense(new Date(2026, 7, 25, 12))]);
+        const service = createReadingService();
+
+        await sweep();
+
+        expect(bookedNudges(service)).toBe(1);
+      });
+
+      it('books it when the read fails', async () => {
+        transactions.getTransactionsInRangeFromServer.and.rejectWith(new Error('unavailable'));
+        const service = createReadingService();
+
+        await sweep();
+
+        expect(bookedNudges(service)).toBe(1);
+      });
+
+      it('reads nothing on the web, where the nudge is never booked', async () => {
+        isNative.and.returnValue(false);
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        const service = createReadingService();
+
+        await sweep();
+
+        expect(transactions.getTransactionsInRangeFromServer).not.toHaveBeenCalled();
+        expect(service.plugin.schedule).not.toHaveBeenCalled();
+      });
+
+      it('publishes nothing for an account the session left while the gate was reading', async () => {
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        const release = holdReads();
+        const service = createReadingService();
+        await sweep();
+        expect(transactions.getTransactionsInRangeFromServer).toHaveBeenCalled();
+
+        currentUser.set(createMockUser('user-2', { preferences: { ...DEFAULT_USER_PREFERENCES } }));
+        await sweep();
+        release();
+        await settle();
+
+        expect(service.plugin.schedule).not.toHaveBeenCalled();
+        expect(readSentLog()).toEqual({});
+      });
+
+      it('delivers once when an explicit sweep overlaps the pass the effect started', async () => {
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        const release = holdReads();
+        const service = createReadingService();
+
+        // The effect's pass is waiting on the read when the settings toggle
+        // asks for its own.
+        TestBed.tick();
+        const swept = service.sweep();
+        release();
+        await swept;
+        await settle();
+
+        expect(bookedNudges(service)).toBe(1);
+        // One read of each week, shared by both passes.
+        expect(transactions.getTransactionsInRangeFromServer).toHaveBeenCalledTimes(2);
+      });
+
+      it('holds an explicit sweep the effect took over until the effect has booked', async () => {
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        const release = holdReads();
+        const service = createReadingService();
+        let grant!: () => void;
+        const granted = new Promise<void>(resolve => (grant = resolve));
+        service.plugin.checkPermissions.and.callFake(async () => {
+          await granted;
+          return { display: 'granted' as const };
+        });
+
+        // The toggle's pass first, then the effect's first run: meeting the
+        // account resets the debounce, so it starts a pass of its own.
+        let resolved = false;
+        const swept = service.sweep().then(() => (resolved = true));
+        TestBed.tick();
+        release();
+        await settle();
+
+        // The effect's pass is the one booking, and it is still asking.
+        expect(resolved).toBeFalse();
+
+        grant();
+        await swept;
+
+        expect(bookedNudges(service)).toBe(1);
+        expect(Object.keys(readSentLog())).toEqual(['recap|2026-09-07']);
+      });
+
+      it('books nothing when both preferences go off while the gate is reading', async () => {
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        const release = holdReads();
+        const service = createReadingService();
+        await sweep();
+
+        setPreferences({ enableReminders: false, enableWeeklyRecap: false });
+        await service.sweep();
+        release();
+        await settle();
+
+        expect(service.plugin.schedule).not.toHaveBeenCalled();
+        expect(readSentLog()).toEqual({});
+      });
+
+      it('books nothing when the switch cancels while the gate is reading, before its write lands', async () => {
+        occurrences = [occurrence({ date: daysOut(0), remindDaysBefore: 0 })];
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        setPreferences({ enableReminders: true, enableWeeklyRecap: true });
+        const release = holdReads();
+        const service = createReadingService();
+        await sweep();
+        expect(transactions.getTransactionsInRangeFromServer).toHaveBeenCalled();
+
+        // The switch cancels before it writes the preference, and the account
+        // document moves only once the server acknowledges that write, so the
+        // pass wakes with reminders still on.
+        await service.cancelScheduled();
+        expect(service.enabled()).toBeTrue();
+        release();
+        await settle();
+
+        expect(service.plugin.schedule).not.toHaveBeenCalled();
+        expect(readSentLog()).toEqual({});
+      });
+
+      it('asks again after a quiet answer, and not again once the week has news', async () => {
+        const service = createReadingService();
+        await sweep();
+        expect(bookedNudges(service)).toBe(0);
+
+        rowsByWeek.set(ANNOUNCED_WEEK, [expense(new Date(2026, 7, 31, 12))]);
+        jasmine.clock().tick(5 * 60_000);
+        document.dispatchEvent(new Event('visibilitychange'));
+        await settle();
+        expect(bookedNudges(service)).toBe(1);
+
+        jasmine.clock().tick(5 * 60_000);
+        document.dispatchEvent(new Event('visibilitychange'));
+        await settle();
+
+        // Three passes, and only the first two read: a week found to have news
+        // is not asked about again.
+        expect(service.plugin.getPending.calls.count()).toBe(3);
+        expect(transactions.getTransactionsInRangeFromServer).toHaveBeenCalledTimes(4);
+      });
+    });
   });
 
   describe('the sent log', () => {
@@ -782,6 +1171,7 @@ describe('ReminderService', () => {
   });
 
   describe('the web seam', () => {
+    const ROUTE = '/dashboard?bill=rule-1';
     let service: RealWebSeamService;
 
     beforeEach(() => {
@@ -793,6 +1183,7 @@ describe('ReminderService', () => {
 
     it('raises through the registered worker rather than the constructor', async () => {
       const fakeRegistration = {
+        active: {},
         showNotification: jasmine.createSpy().and.resolveTo(),
       } as unknown as ServiceWorkerRegistration;
       const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
@@ -802,7 +1193,7 @@ describe('ReminderService', () => {
       // forever (nothing controls this origin), and this must fail fast on
       // that rather than ride out Jasmine's async timeout. Two microtask
       // turns are enough for the real seam's `getRegistration()` call.
-      const pending = service.raiseWebNotification('title', 'b', 't');
+      const pending = service.raiseWebNotification('title', 'b', 't', ROUTE);
       await Promise.resolve();
       await Promise.resolve();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
@@ -811,9 +1202,12 @@ describe('ReminderService', () => {
 
       expect(result).toBeTrue();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
+      // The route rides in `data`, which is all the worker's click handler
+      // can read back.
       expect(fakeRegistration.showNotification).toHaveBeenCalledWith('title', {
         body: 'b',
         tag: 't',
+        data: { route: ROUTE },
       });
       expect(notificationSpy).not.toHaveBeenCalled();
     });
@@ -822,7 +1216,7 @@ describe('ReminderService', () => {
       const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(undefined);
       const notificationSpy = spyOn(window, 'Notification');
 
-      const result = await service.raiseWebNotification('title', 'b', 't');
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
 
       expect(result).toBeTrue();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
@@ -830,13 +1224,53 @@ describe('ReminderService', () => {
       expect(notificationSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('falls back to the constructor while the registration has no active worker', async () => {
+      // A worker still installing: showNotification rejects until one is
+      // active, so the first visit after a deploy would raise nothing.
+      const fakeRegistration = {
+        active: null,
+        showNotification: jasmine.createSpy().and.rejectWith(new TypeError('No active registration')),
+      } as unknown as ServiceWorkerRegistration;
+      spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
+      const notificationSpy = spyOn(window, 'Notification');
+
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
+
+      expect(result).toBeTrue();
+      expect(fakeRegistration.showNotification).not.toHaveBeenCalled();
+      expect(notificationSpy).toHaveBeenCalledOnceWith('title', { body: 'b', tag: 't' });
+    });
+
+    it('opens the route in this page when a constructor-raised notification is clicked', async () => {
+      spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(undefined);
+      const raised = {
+        onclick: null as ((event: Event) => unknown) | null,
+        close: jasmine.createSpy('close'),
+      };
+      spyOn(window, 'Notification').and.callFake(function () {
+        return raised;
+      } as unknown as () => Notification);
+      const focus = spyOn(window, 'focus');
+      const navigate = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+      await service.raiseWebNotification('title', 'b', 't', ROUTE);
+      expect(navigate).not.toHaveBeenCalled();
+
+      raised.onclick?.(new Event('click'));
+
+      expect(focus).toHaveBeenCalled();
+      expect(navigate).toHaveBeenCalledOnceWith(ROUTE);
+      expect(raised.close).toHaveBeenCalled();
+    });
+
     it('reports false when the registration refuses to display', async () => {
       const fakeRegistration = {
+        active: {},
         showNotification: jasmine.createSpy().and.rejectWith(new Error('refused')),
       } as unknown as ServiceWorkerRegistration;
       const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
 
-      const result = await service.raiseWebNotification('title', 'b', 't');
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
 
       expect(result).toBeFalse();
       expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
@@ -848,7 +1282,7 @@ describe('ReminderService', () => {
         throw new TypeError('Notification is not allowed');
       });
 
-      const result = await service.raiseWebNotification('title', 'b', 't');
+      const result = await service.raiseWebNotification('title', 'b', 't', ROUTE);
 
       expect(result).toBeFalse();
       expect(notificationSpy).toHaveBeenCalled();

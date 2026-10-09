@@ -87,6 +87,17 @@ export interface DashboardLayout {
   hidden: DashboardCardId[];
 }
 
+/**
+ * The arrangement as stored. Ids stay raw strings, because a later build's
+ * card must survive a write from this one; effectiveDashboardLayout() filters
+ * them for rendering. Each field is written or deleted on its own, so either
+ * may be absent: no `order` is the default order, no `hidden` hides nothing.
+ */
+export interface StoredDashboardLayout {
+  order?: string[];
+  hidden?: string[];
+}
+
 export interface UserPreferences {
   baseCurrency: string;          // ISO 4217 code (e.g., 'USD', 'THB')
   language: string;              // 'en', 'zh-Hant', 'ja'
@@ -115,7 +126,7 @@ export interface UserPreferences {
                                   // generated for it are per-device, so each
                                   // device gets its own look at the same week.
   onboardingCompleted?: boolean;  // Absent = not yet completed; the first-run welcome is offered.
-  dashboardLayout?: DashboardLayout; // Absent = the default order, nothing hidden.
+  dashboardLayout?: StoredDashboardLayout; // Absent = the default order, nothing hidden.
 }
 
 /** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */
@@ -159,7 +170,7 @@ export function effectiveFontScale(prefs: UserPreferences | null | undefined): n
   return DEFAULT_FONT_SCALE;
 }
 
-function isDashboardCardId(id: unknown): id is DashboardCardId {
+export function isDashboardCardId(id: unknown): id is DashboardCardId {
   return typeof id === 'string' && (DASHBOARD_CARD_IDS as readonly string[]).includes(id);
 }
 
@@ -186,15 +197,18 @@ function knownDashboardCardIds(ids: unknown): DashboardCardId[] {
  */
 export function effectiveDashboardLayout(prefs: UserPreferences | null | undefined): DashboardLayout {
   const stored = prefs?.dashboardLayout;
+  return { order: resolveDashboardOrder(stored?.order), hidden: knownDashboardCardIds(stored?.hidden) };
+}
 
-  const order = knownDashboardCardIds(stored?.order);
+/** A stored order's known ids, then every known card it lacks, in default order. */
+export function resolveDashboardOrder(ids: unknown): DashboardCardId[] {
+  const order = knownDashboardCardIds(ids);
   for (const id of DASHBOARD_CARD_IDS) {
     if (!order.includes(id)) {
       order.push(id);
     }
   }
-
-  return { order, hidden: knownDashboardCardIds(stored?.hidden) };
+  return order;
 }
 
 /** Whether the account asked for a higher-contrast palette. Absent means off. */

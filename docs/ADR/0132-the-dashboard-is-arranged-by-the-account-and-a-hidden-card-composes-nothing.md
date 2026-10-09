@@ -1,8 +1,25 @@
 # 132. The dashboard is arranged by the account, and a hidden card composes nothing
 
-**Status:** Accepted, implemented · **Date:** 2026-09-16 · **Issues:** #87
+**Status:** Accepted, implemented; amended by
+[0166](0166-a-hidden-card-closes-what-nothing-else-reads-the-layout-stores-only-what-changed-and-each-card-has-a-menu.md)
+· **Date:** 2026-09-16 · **Issues:** #87
 
 Reference documentation lives in [../dashboard.md](../dashboard.md).
+
+**Amended by
+[0166](0166-a-hidden-card-closes-what-nothing-else-reads-the-layout-stores-only-what-changed-and-each-card-has-a-menu.md).**
+The arrangement below stands — five cards, an order and a hidden set on the
+account, one DOM order for both breakpoints, a reset that deletes the key —
+and so does what a hidden card composes: nothing renders, and AI Insights'
+trailing-window query is released. Two things change. The stored shape is
+no longer the resolved layout written whole on every change: each field is
+written or deleted on its own, ids a build does not know are kept, and a
+field that says nothing its absence would not is deleted. And the listener
+rules: a hidden Recent Transactions card closes its listener, a hidden
+Upcoming Bills card closes its own unless the weekly recap reads the window
+or the build carries the widget plugin, and the budgets stream stays open
+whatever is hidden. The save loop described below moved from the editor
+into a root service that the dashboard's new per-card menu shares.
 
 ## Context
 

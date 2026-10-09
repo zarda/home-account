@@ -13,6 +13,7 @@ import {
 import { TranslationService } from '../../core/services/translation.service';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { hoverValue, paintedBackground, paintedColor, ratio, withTheme } from '../../core/services/testing';
 
 describe('DataHubComponent', () => {
   let fixture: ComponentFixture<DataHubComponent>;
@@ -56,6 +57,30 @@ describe('DataHubComponent', () => {
 
     fixture = TestBed.createComponent(DataHubComponent);
     fixture.detectChanges();
+  });
+
+  // A kind's glyph is a graphic beside its label, so its floor is 3:1 (WCAG
+  // 1.4.11), on the row at rest and as hovering repaints the row under it.
+  it('paints each kind glyph at 3:1 or better at rest and on hover, in both themes', () => {
+    const link = fixture.nativeElement.querySelector('.kind-link') as HTMLElement;
+    const icon = link.querySelector('.kind-icon mat-icon') as HTMLElement;
+    const hovered = hoverValue(link, '.kind-link', 'background');
+
+    for (const theme of ['light', 'dark'] as const) {
+      withTheme(theme, () => {
+        expect(ratio(paintedColor(icon), paintedBackground(icon)))
+          .withContext(`${theme} at rest`)
+          .toBeGreaterThanOrEqual(3);
+        link.style.background = hovered;
+        try {
+          expect(ratio(paintedColor(icon), paintedBackground(icon)))
+            .withContext(`${theme} on hover`)
+            .toBeGreaterThanOrEqual(3);
+        } finally {
+          link.style.background = '';
+        }
+      });
+    }
   });
 
   it('asks for the counts once on open', () => {

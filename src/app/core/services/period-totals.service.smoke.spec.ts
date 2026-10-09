@@ -252,6 +252,22 @@ describe('PeriodTotalsService sweep (emulator smoke test)', () => {
     expect(service.totals()!.expense).toBe(10);
   });
 
+  it('recounts and sweeps again on retry after a failed count', async () => {
+    const count = spyOn(firestoreService, 'countDocuments').and.rejectWith(new Error('unavailable'));
+    await service.reset({});
+    expect(service.status().kind).toBe('unavailable');
+    expect(service.totals()).toBeNull();
+
+    // The emulator answers the second count: the retry reads the real set.
+    count.and.callThrough();
+    await expectAsync(service.retry()).toBeResolvedTo(true);
+
+    expect(count).toHaveBeenCalledTimes(2);
+    expect(service.status().kind).toBe('ready');
+    expect(service.totals()!.count).toBe(160);
+    expect(service.totals()).toEqual(expectedTotals(SEEDED));
+  });
+
   it('scopes a server-side date range exactly', async () => {
     const startDate = new Date(BASE - 30 * 24 * HOUR);
     const endDate = new Date(BASE - 10 * 24 * HOUR);

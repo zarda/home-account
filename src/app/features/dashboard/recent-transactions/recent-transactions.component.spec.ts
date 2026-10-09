@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter, Router } from '@angular/router';
 import { By } from '@angular/platform-browser';
@@ -13,9 +13,32 @@ import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { DashboardLayoutService } from '../dashboard-layout.service';
+import { DashboardCardMenuComponent } from '../dashboard-card-menu/dashboard-card-menu.component';
 import { Transaction } from '../../../models';
-import { createUser } from '../../../core/services/testing';
+import {
+  createUser,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  textLines,
+  withTheme,
+} from '../../../core/services/testing';
 import { parseDayKey } from '../../../core/utils/transaction-date.utils';
+
+// The card as the dashboard renders it, with its own menu in the header slot.
+@Component({
+  standalone: true,
+  imports: [RecentTransactionsComponent, DashboardCardMenuComponent],
+  template: `
+    <app-recent-transactions>
+      <app-dashboard-card-menu card-actions [card]="'recent'" [visible]="['recent']" />
+    </app-recent-transactions>
+  `,
+})
+class RecentWithMenuHostComponent {}
 
 describe('RecentTransactionsComponent', () => {
   let component: RecentTransactionsComponent;
@@ -57,6 +80,8 @@ describe('RecentTransactionsComponent', () => {
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
         { provide: FirestoreService, useValue: { subscribeToCollection: () => households } },
+        // The menu the rail describe projects; nothing there presses it.
+        { provide: DashboardLayoutService, useValue: {} },
       ],
     }).compileComponents();
 
@@ -140,6 +165,126 @@ describe('RecentTransactionsComponent', () => {
     const txn = { date: new Date(2026, 0, 5) } as unknown as Transaction;
     component.onTransactionClick(txn);
     expect(navSpy).toHaveBeenCalledWith(['/transactions'], { queryParams: { date: '2026-01-05' } });
+  });
+
+  describe('colours', () => {
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    it('paints the title in the primary text token, at AA or better on the card, in both themes', () => {
+      const title = fixture.nativeElement.querySelector('.card-title') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          expect(ratio(paintedColor(title), paintedBackground(title)))
+            .withContext(`${theme} title on the card`)
+            .toBeGreaterThanOrEqual(4.5);
+          expect(getComputedStyle(title).color)
+            .withContext(`${theme} title`)
+            .toBe(tokenColour('--text-primary'));
+        });
+      }
+    });
+
+    it('paints View all in the accent at rest, and a different AA colour hovered, in both themes', () => {
+      const link = fixture.nativeElement.querySelector('.view-all-link') as HTMLElement;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          try {
+            expect(ratio(paintedColor(link), paintedBackground(link)))
+              .withContext(`${theme} link at rest on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            const rest = getComputedStyle(link).color;
+            expect(rest).withContext(`${theme} link at rest`).toBe(tokenColour('--color-accent'));
+
+            link.style.color = hoverValue(link, '.view-all-link', 'color');
+            expect(ratio(paintedColor(link), paintedBackground(link)))
+              .withContext(`${theme} link hovered on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(link).color).withContext(`${theme} hover differs from rest`).not.toBe(rest);
+          } finally {
+            link.style.removeProperty('color');
+          }
+        });
+      }
+    });
+  });
+
+  // At 1024 px the dashboard's rail is about 229 px wide, too narrow for the
+  // title, View all and the menu on one line. The title may wrap; the link
+  // and the menu stay one line, together.
+  describe('header beside its menu, at the rail width', () => {
+    const COPY: Record<string, string> = {
+      'dashboard.recentTransactions': 'Recent Transactions',
+      'dashboard.viewAll': 'View All',
+    };
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      const translation = TestBed.inject(TranslationService) as unknown as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake((key: string) => COPY[key] ?? key);
+      const railFixture = TestBed.createComponent(RecentWithMenuHostComponent);
+      host = railFixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = '229px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      document.body.appendChild(host);
+      railFixture.detectChanges();
+    });
+
+    afterEach(() => host.remove());
+
+    it('keeps View all on one line, with the menu trigger on its row, inside the card', () => {
+      const link = host.querySelector('.view-all-link') as HTMLElement;
+      const trigger = host.querySelector('.card-menu-trigger') as HTMLElement | null;
+      expect(trigger).withContext('the projected menu trigger').not.toBeNull();
+
+      expect(textLines(link)).withContext('View all lines').toBe(1);
+      const linkBox = link.getBoundingClientRect();
+      const triggerBox = trigger!.getBoundingClientRect();
+      expect(Math.abs((triggerBox.top + triggerBox.bottom) / 2 - (linkBox.top + linkBox.bottom) / 2))
+        .withContext('trigger centred on the link row')
+        .toBeLessThanOrEqual(1);
+      expect(triggerBox.left).withContext('trigger after the link').toBeGreaterThanOrEqual(linkBox.right);
+      expect(triggerBox.right)
+        .withContext('trigger inside the card')
+        .toBeLessThanOrEqual(host.querySelector('mat-card')!.getBoundingClientRect().right);
+    });
+
+    // Three cards stack in the rail, and Budget Progress keeps its title whole
+    // and drops its actions to the row below. A title broken to keep the
+    // actions beside it reads as a different header, so at every width the
+    // actions share a row only with a title on one line. Swept, because where
+    // the break falls depends on the font, and Karma serves none of the app's.
+    it('never breaks the title to keep the actions beside it, at any rail width', () => {
+      const title = host.querySelector('.card-title') as HTMLElement;
+      const link = host.querySelector('.view-all-link') as HTMLElement;
+      let beside = 0;
+
+      for (let width = 200; width <= 420; width += 10) {
+        host.style.width = `${width}px`;
+        if (link.getBoundingClientRect().top >= title.getBoundingClientRect().bottom - 1) continue;
+        beside++;
+        expect(textLines(title)).withContext(`title lines beside the actions at ${width} px`).toBe(1);
+      }
+      expect(beside).withContext('widths with the actions beside the title').toBeGreaterThan(0);
+    });
   });
 
   /**

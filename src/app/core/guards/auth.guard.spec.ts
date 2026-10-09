@@ -15,7 +15,7 @@ describe('Auth Guards', () => {
     rememberRedirect: jasmine.Spy;
     consumeRedirect: jasmine.Spy;
   };
-  let mockRouter: { navigate: jasmine.Spy };
+  let mockRouter: { navigate: jasmine.Spy; navigateByUrl: jasmine.Spy };
   let mockRoute: ActivatedRouteSnapshot;
   let mockState: RouterStateSnapshot;
 
@@ -32,7 +32,8 @@ describe('Auth Guards', () => {
     };
 
     mockRouter = {
-      navigate: jasmine.createSpy('navigate')
+      navigate: jasmine.createSpy('navigate'),
+      navigateByUrl: jasmine.createSpy('navigateByUrl')
     };
 
     mockRoute = {} as ActivatedRouteSnapshot;
@@ -233,7 +234,23 @@ describe('Auth Guards', () => {
       );
 
       expect(result).toBe(false);
-      expect(mockRouter.navigate).toHaveBeenCalledWith(['/dashboard']);
+      expect(mockRouter.navigateByUrl).toHaveBeenCalledWith('/dashboard');
+    });
+
+    // A notification tap remembers /dashboard?bill=x; as a path segment the
+    // query would be escaped to %3F and the bill would never be focused.
+    it('returns to a remembered link with its query intact', () => {
+      mockAuthService.isAuthenticated.set(true);
+      mockAppLock.isLocked.set(false);
+      mockAppLock.consumeRedirect.and.returnValue('/dashboard?bill=x');
+
+      const result = TestBed.runInInjectionContext(() =>
+        lockGuard(mockRoute, mockState)
+      );
+
+      expect(result).toBe(false);
+      expect(mockRouter.navigateByUrl).toHaveBeenCalledOnceWith('/dashboard?bill=x');
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
     it('sends a signed-out user to login', () => {

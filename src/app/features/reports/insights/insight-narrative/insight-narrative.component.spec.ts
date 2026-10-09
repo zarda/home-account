@@ -7,7 +7,9 @@ import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-pro
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightFacts, User } from '../../../../models';
 import { createUser } from '../../../../core/services/testing/test-data';
-import { createTranslationStub } from '../../../../core/services/testing';
+import {
+  channels, createTranslationStub, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
+} from '../../../../core/services/testing';
 
 function factsFor(overrides: Partial<InsightFacts> = {}): InsightFacts {
   return {
@@ -416,5 +418,140 @@ describe('InsightNarrativeComponent, through its own template', () => {
     refresh.click();
 
     expect(regenerate).toHaveBeenCalled();
+  });
+
+  describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `color: var(token)` computes to under the palette on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function find(selector: string): HTMLElement {
+      const found = el().querySelector(selector) as HTMLElement | null;
+      expect(found).withContext(selector).toBeTruthy();
+      return found as HTMLElement;
+    }
+
+    /**
+     * The colours of the card's gradient, as computed. Each top-level
+     * argument that is a colour once its stop position is dropped counts,
+     * so a `color-mix()` stop is read whole rather than as its operands.
+     */
+    function gradientStops(card: HTMLElement): string[] {
+      const image = getComputedStyle(card).backgroundImage;
+      const body = /^linear-gradient\((.*)\)$/.exec(image)?.[1] ?? '';
+      const parts: string[] = [];
+      let depth = 0;
+      let start = 0;
+      for (let i = 0; i < body.length; i++) {
+        if (body[i] === '(') depth++;
+        else if (body[i] === ')') depth--;
+        else if (body[i] === ',' && depth === 0) {
+          parts.push(body.slice(start, i).trim());
+          start = i + 1;
+        }
+      }
+      parts.push(body.slice(start).trim());
+      return parts
+        .map(part => part.replace(/\s+-?[\d.]+(?:%|px)$/, ''))
+        .filter(part => CSS.supports('color', part));
+    }
+
+    /**
+     * Runs `check` once per stop of the card's gradient, with that stop laid
+     * flat under the card's content. The painted-contrast walk reads
+     * background colours, not images, and the gradient is painted over the
+     * card's own background colour, so that colour goes one level down.
+     */
+    function overEveryStop(theme: string, check: (stop: string) => void): void {
+      const card = find('.narrative-card');
+      const host = el();
+      const stops = gradientStops(card);
+      expect(stops.length).withContext(`${theme} gradient stops on the card`).toBeGreaterThanOrEqual(2);
+      host.style.backgroundColor = getComputedStyle(card).backgroundColor;
+      card.style.backgroundImage = 'none';
+      try {
+        for (const stop of stops) {
+          card.style.backgroundColor = stop;
+          check(stop);
+        }
+      } finally {
+        card.style.removeProperty('background-color');
+        card.style.removeProperty('background-image');
+        host.style.removeProperty('background-color');
+      }
+    }
+
+    function expectOnItsBackground(target: HTMLElement, floor: number, context: string): void {
+      expect(ratio(paintedColor(target), paintedBackground(target)))
+        .withContext(context)
+        .toBeGreaterThanOrEqual(floor);
+    }
+
+    async function showNarrative(): Promise<void> {
+      render(factsFor());
+      resolveNarrative('Your **groceries** rose 18%.');
+      await drain();
+    }
+
+    it('lays an opaque gradient under the card, with every line on it at AA or better, in both themes', async () => {
+      await showNarrative();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const card = find('.narrative-card');
+          const lines = [
+            ['title', 'mat-card-title', 4.5],
+            ['icon', '.card-icon', 3],
+            ['refresh', '.refresh mat-icon', 3],
+            ['body', '.narrative-body p', 4.5],
+            ['emphasis', '.narrative-body strong', 4.5],
+            ['note', '.narrative-note', 4.5],
+          ] as const;
+          overEveryStop(theme, stop => {
+            expect(channels(getComputedStyle(card).backgroundColor).alpha)
+              .withContext(`${theme} gradient stop ${stop} is opaque`)
+              .toBe(1);
+            for (const [label, selector, floor] of lines) {
+              expectOnItsBackground(find(selector), floor, `${theme} ${label} on ${stop}`);
+            }
+          });
+        });
+      }
+    });
+
+    it('paints the failure in the error text on an opaque error tint, at AA or better, in both themes', async () => {
+      cloud.generatePatternNarrative.and.returnValue(Promise.reject(new Error('boom')));
+      render(factsFor());
+      await drain();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          const state = find('.error-state');
+          expect(channels(getComputedStyle(state).backgroundColor).alpha)
+            .withContext(`${theme} error tint is opaque`)
+            .toBe(1);
+          const parts = [
+            ['text', '.error-state span', 4.5],
+            ['icon', '.error-state mat-icon', 3],
+          ] as const;
+          for (const [label, selector, floor] of parts) {
+            const part = find(selector);
+            expectOnItsBackground(part, floor, `${theme} error ${label} on its tint`);
+            expect(getComputedStyle(part).color)
+              .withContext(`${theme} error ${label}`)
+              .toBe(tokenColour('--color-error-text'));
+          }
+        });
+      }
+    });
   });
 });

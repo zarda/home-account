@@ -124,9 +124,27 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --surface-strong: #e5e7eb;  // gray-200 — progress tracks
   --surface-sunken: #f5f5f5;  // recessed inset below the card
 
+  // The tinted surfaces a category's colour is painted on. Each mixes its
+  // tint into the surface it covers rather than into transparent, so it is
+  // opaque, and a glyph's contrast on it is a property of two declared
+  // colours rather than of whatever happens to sit behind.
+  // The transaction form's category suggestion, on the dialog:
+  --surface-suggestion: color-mix(in srgb, var(--color-primary) 10%, var(--mat-sys-surface));
+  --surface-suggestion-hover: color-mix(in srgb, var(--color-primary) 28%, var(--mat-sys-surface));
+  // The chosen icon in the category form's picker, on the card:
+  --surface-icon-selected: color-mix(in srgb, var(--color-primary) 8%, var(--surface-card));
+  // An import review card that is checked, or flagged as a duplicate:
+  --surface-review-selected: color-mix(in srgb, var(--color-primary) 6%, var(--surface-card));
+  --surface-review-duplicate: color-mix(in srgb, var(--color-warning) 6%, var(--surface-card));
+  // The current category in the import review's menu, on the menu panel:
+  --surface-menu-current: color-mix(in srgb, var(--color-primary) 10%, var(--mat-sys-surface-container));
+
   // Border colors
   --border-primary: #e5e7eb;
   --border-secondary: #f3f4f6;
+  // One step past --border-primary, for the edge of a control that carries
+  // its own label: a hover outline, the dashed edge of the receipt buttons.
+  --border-strong: #d1d5db; // gray-300
 
   // Text colors. --text-muted is gray-600, not the gray-500 it started as:
   // muted text sits on --surface-muted and --surface-background as often as
@@ -200,15 +218,24 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --color-primary-text: #3F51B5;
   --color-accent: #4f46e5;
   --color-accent-light: #818cf8;
+  // The app's AI features (suggestions, multi-image scans): violet, so they
+  // read apart from the brand indigo beside them.
+  --color-ai: #7c3aed; // violet-600
 
   // Semantic colors
   --color-success: #22c55e;
   --color-success-light: #dcfce7;
+  // The readable success colour, same idea as --color-income-text below:
+  // the base token is a fill, ~2.28:1 on white.
+  --color-success-text: #15803d;
   --color-error: #ef4444;
   --color-error-light: #fee2e2;
   // -text is the AA-corrected foreground for --color-error on its own -light
   // tint (the base token is only ~3.08:1 there in light).
   --color-error-text: #b91c1c;
+  // A solid red that carries --text-inverse. --color-error is too light for
+  // it: white on #ef4444 is 3.76:1.
+  --color-error-strong: #b91c1c;
   --color-warning: #eab308;
   --color-warning-light: #fef9c3;
   --color-warning-text: #b45309;
@@ -256,12 +283,28 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --surface-strong: #383838;
   --surface-sunken: #161616;
 
+  // Four tinted surfaces set their own shares for dark, where the primary is
+  // a lighter indigo and the same share reads differently on the dark dialog
+  // and card. --surface-review-duplicate and --surface-menu-current keep
+  // light's share: their operands are theme tokens, so the :root declaration
+  // already mixes the dark colours, and a copy here would only add bytes to
+  // the initial bundle.
+  --surface-suggestion: color-mix(in srgb, var(--color-primary) 14%, var(--mat-sys-surface));
+  --surface-suggestion-hover: color-mix(in srgb, var(--color-primary) 24%, var(--mat-sys-surface));
+  --surface-icon-selected: color-mix(in srgb, var(--color-primary) 14%, var(--surface-card));
+  --surface-review-selected: color-mix(in srgb, var(--color-primary) 12%, var(--surface-card));
+
   --border-primary: #3d3d3d;
   --border-secondary: #2d2d2d;
+  --border-strong: #545454;
 
   --text-primary: #ffffff;
   --text-secondary: #e5e7eb;
-  --text-muted: #9ca3af;
+  // gray-400 lifted 7% towards white along its own hue: muted copy sits on
+  // --surface-hover as well as on the card, on resting chips and under every
+  // hover, and gray-400 measured 4.28:1 there. This is the smallest such
+  // lift that reads 4.6:1 on it, a margin over AA rather than a tie.
+  --text-muted: #a3a9b5;
   --text-disabled: #6b7280;
   --text-inverse: #111827;
 
@@ -276,14 +319,19 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   --color-primary-text: #c5cae9;
   --color-accent: #818cf8;
   --color-accent-light: #a5b4fc;
+  --color-ai: #a78bfa; // violet-400
 
   --color-success: #4ade80;
   --color-success-light: #166534;
+  --color-success-text: #86efac;
   --color-error: #f87171;
   --color-error-light: #991b1b;
   // #f87171 on #991b1b measures under AA; -text is lightened to clear it,
   // same idea as --color-income-text/--color-expense-text above.
   --color-error-text: #fecaca;
+  // Dark's --text-inverse is near-black, which reads on the light red fill:
+  // #111827 on #f87171 is 6.41:1.
+  --color-error-strong: #f87171;
   --color-warning: #facc15;
   --color-warning-light: #854d0e;
   // One step lighter than the -400 the dark chips started on. A tinted chip
@@ -328,6 +376,7 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
 .high-contrast {
   --border-primary: #6b7280;   // gray-500 (was gray-200)
   --border-secondary: #9ca3af; // gray-400 (was gray-100)
+  --border-strong: #4b5563;    // gray-600 (was gray-300)
   --text-secondary: #1f2937;   // gray-800 (was gray-700)
   --text-muted: #374151;       // gray-700 (was gray-600)
   --text-disabled: #4b5563;    // gray-600 (was gray-400)
@@ -336,6 +385,7 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
 .dark-theme.high-contrast {
   --border-primary: #5a5a5a;   // continues the dark-neutral ramp (was #3d3d3d)
   --border-secondary: #4a4a4a; // continues the dark-neutral ramp (was #2d2d2d)
+  --border-strong: #717171;    // continues the dark-neutral ramp (was #545454)
   --text-secondary: #f3f4f6;   // gray-100 (was gray-200)
   --text-muted: #e5e7eb;       // gray-200 (was gray-400)
   --text-disabled: #d1d5db;    // gray-300 (was gray-500)
@@ -353,6 +403,14 @@ html, body {
   font-family: 'PT Sans', system-ui, sans-serif;
   background-color: var(--surface-background);
   color: var(--text-primary);
+}
+
+/* Tailwind's preflight paints a placeholder gray-400 in every theme: 2.54:1
+   on white. A form field's placeholder is Material's, in a more specific
+   rule, so this reaches only the inputs that are not form fields. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
 }
 
 /* Keyboard focus: one visible, token-driven ring app-wide. Material
@@ -480,12 +538,12 @@ html, body {
   min-height: 0;
 }
 
-/* Dark mode: the default outlined form-field border is barely visible against
-   the dark surface. Raise the resting/hover outline to a legible contrast;
-   focus and error states keep their own accent colors. */
-.dark-theme {
-  --mdc-outlined-text-field-outline-color: #52525b;
-  --mdc-outlined-text-field-hover-outline-color: #7d7d87;
+/* A destructive menu item (Delete) in the error colour. Material colours a
+   menu item's label and icon from these two tokens, in rules that outrank a
+   colour utility on the item, so the tokens are what has to change. */
+.menu-item-destructive {
+  --mat-menu-item-label-text-color: var(--color-error-text);
+  --mat-menu-item-icon-color: var(--color-error-text);
 }
 
 /* Snackbar tone accents (NotificationService panelClass hooks). A leading

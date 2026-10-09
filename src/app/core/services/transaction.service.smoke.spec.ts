@@ -220,6 +220,19 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
   }, 20000);
 
   /**
+   * The pickers' floor. The unit suite's mock ignores the query options, so
+   * only a real query proves the ascending order and the limit pick the oldest
+   * row rather than whichever one comes first. Every row the describes below
+   * write is dated 2026, so the seeded December 2024 row stays the oldest
+   * under any order.
+   */
+  it('getEarliestTransactionDateFromServer resolves to the oldest row\'s date', async () => {
+    const earliest = await service.getEarliestTransactionDateFromServer();
+
+    expect(earliest).toEqual(new Date(2024, 11, 5, 12));
+  }, 20000);
+
+  /**
    * A receipt's date arrives as `YYYY-MM-DD` and has to survive being parsed,
    * converted to a Timestamp, stored, and matched by a range query. Every step
    * of that is a chance to lose a day, and the unit suite sees none of it: it

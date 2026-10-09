@@ -403,6 +403,34 @@ export function periodWindow(
   }
 }
 
+/** What the custom month and year pickers may offer. A null `min` is no floor. */
+export interface PickerBounds {
+  min: Date | null;
+  max: Date;
+}
+
+/**
+ * The pickers run from the month of the account's oldest row to 31 December
+ * next year. Before the oldest row there is nothing to report, and an
+ * unbounded picker let a period reach centuries away, past what the
+ * forecast's tick ladder can hold (ADR 0054).
+ *
+ * A null `earliest` leaves the floor open, because only the caller knows
+ * whether it means an empty account or a read that failed. The floor never
+ * passes the current month: when every row is still to come, the This Month
+ * and This Year toggles reach the current period, so the pickers offer it
+ * too. That also keeps the floor under the cap.
+ */
+export function pickerBounds(earliest: Date | null, now: Date): PickerBounds {
+  const max = yearWindow(now.getFullYear() + 1).end;
+  if (!earliest) {
+    return { min: null, max };
+  }
+  const oldest = startOfMonth(earliest);
+  const current = startOfMonth(now);
+  return { min: oldest > current ? current : oldest, max };
+}
+
 /** Narrow a window so it never claims to cover the future. */
 export function clampWindowToNow(window: DateWindow, now: Date): DateWindow {
   return { start: window.start, end: clampToEndOfToday(window.end, now) };

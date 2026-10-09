@@ -8,7 +8,15 @@ import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
-import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing';
+import {
+  createTranslationStub,
+  createLocaleFormatStub,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 function expenseTxn(overrides: Partial<Transaction> = {}): Transaction {
   // The snapshot tracks an overridden `amount` by default — a fixture that
@@ -282,5 +290,71 @@ describe('RecurringBreakdownComponent, through its own template', () => {
     render([expenseTxn({ id: 'b', amount: 100 })], 'JPY');
 
     expect(cell(rows()[0], '.row-amount')).toBe('¥100.00');
+  });
+
+  describe('colours, as painted', () => {
+    const THEMES = ['light', 'dark'] as const;
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
+    function expectPainted(node: HTMLElement | null, token: string, label: string): void {
+      expect(node).withContext(label).toBeTruthy();
+      expect(getComputedStyle(node!).color).withContext(label).toBe(tokenValue(token));
+      expect(ratio(paintedColor(node!), paintedBackground(node!)))
+        .withContext(`${label} on what it sits on`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+
+    beforeEach(() => {
+      render([
+        expenseTxn({ id: 'a', amount: 300, recurringId: 'r1' }),
+        expenseTxn({ id: 'b', amount: 100 }),
+      ]);
+    });
+
+    it('paints the one-off icon and both counts in --text-muted at AA or better on the card, in both themes', () => {
+      const [recurring, oneOff] = rows();
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(oneOff.querySelector('.row-icon'), '--text-muted', `${theme} one-off icon`);
+          expectPainted(recurring.querySelector('.row-count'), '--text-muted', `${theme} recurring count`);
+          expectPainted(oneOff.querySelector('.row-count'), '--text-muted', `${theme} one-off count`);
+        });
+      }
+    });
+
+    it('keeps the recurring icon in --color-primary, at AA or better on the card, in both themes', () => {
+      const icon = rows()[0].querySelector('.row-icon') as HTMLElement;
+      expect(icon.classList).toContain('recurring');
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          expectPainted(icon, '--color-primary', `${theme} recurring icon`);
+        });
+      }
+    });
+
+    it('paints the labels and amounts in --text-primary and the shares on their pills in --text-muted, in both themes', () => {
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          rows().forEach((row, i) => {
+            expectPainted(row.querySelector('.row-label'), '--text-primary', `${theme} row ${i} label`);
+            expectPainted(row.querySelector('.row-amount'), '--text-primary', `${theme} row ${i} amount`);
+            expectPainted(row.querySelector('.row-percentage'), '--text-muted', `${theme} row ${i} share`);
+          });
+        });
+      }
+    });
   });
 });

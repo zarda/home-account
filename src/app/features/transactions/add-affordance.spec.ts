@@ -143,6 +143,7 @@ describe('Add affordance (transactions header FAB + bottom nav)', () => {
             isLoading: signal(false),
             lastMutation: signal(null),
             deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
+            getEarliestTransactionDateFromServer: () => Promise.resolve(null),
           },
         },
         {

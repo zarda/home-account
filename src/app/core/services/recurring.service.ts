@@ -693,6 +693,23 @@ export class RecurringService {
   }
 
   /**
+   * The same walk over what the server holds, for a bill link the card says
+   * it has no row for. That answer sends the user away once, and the
+   * listener's first emission can be this device's cache from before the rule
+   * existed, so it is checked here rather than trusted (ADR 0139,
+   * docs/one-shot-reads.md). Offline it rejects.
+   */
+  async getUpcomingScheduleFromServer(days: number): Promise<UpcomingSchedule> {
+    const userId = this.authService.userId();
+    if (!userId) return { occurrences: [], olderCount: 0 };
+    const rules = await this.firestoreService.getCollectionFromServer<RecurringTransaction>(
+      this.userRecurringPath,
+      this.recurringQueryOptions()
+    );
+    return this.walkSchedule(rules, days, new Date());
+  }
+
+  /**
    * Walk every active rule across the window and split what it finds.
    *
    * The window has a floor as well as a horizon, and the floor mirrors it:

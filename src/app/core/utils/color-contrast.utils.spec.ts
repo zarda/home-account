@@ -1,9 +1,20 @@
 import {
+  CATEGORY_FALLBACK_COLOR,
+  CATEGORY_PALETTE,
+  DEFAULT_EXPENSE_GROUPS,
+  DEFAULT_INCOME_GROUPS,
+} from '../../models';
+import {
+  CATEGORY_SURFACES,
+  CategorySurface,
   WCAG_AA_TEXT,
+  categoryGlyphColor,
   compositeOver,
   contrastRatio,
   ensureContrast,
+  hardestTone,
   parseHexColor,
+  readableOn,
   relativeLuminance,
   toHexColor,
 } from './color-contrast.utils';
@@ -167,5 +178,181 @@ describe('ensureContrast', () => {
     expect(ensureContrast('rebeccapurple', '#ffffff', WCAG_AA_TEXT, 'darken')).toBe('rebeccapurple');
     expect(ensureContrast('#ff980080', '#ffffff', WCAG_AA_TEXT, 'darken')).toBe('#ff980080');
     expect(ensureContrast('#ff9800', 'transparent', WCAG_AA_TEXT, 'darken')).toBe('#ff9800');
+  });
+});
+
+describe('readableOn', () => {
+  const BLACK = '#000000';
+  const WHITE = '#ffffff';
+
+  function ratioOn(fill: string): number {
+    return contrastRatio(parseHexColor(readableOn(fill))!, parseHexColor(fill)!);
+  }
+
+  it('puts black or white at 4.58:1 or more on every colour a category can carry', () => {
+    const seeded = [...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color);
+    const fills = [...new Set([...seeded, ...CATEGORY_PALETTE, CATEGORY_FALLBACK_COLOR].map(c => c.toLowerCase()))];
+
+    // Sixteen seeded colours, the fallback grey among them, and the picker's fifteen.
+    expect(fills.length).toBe(31);
+    expect(seeded.map(c => c.toLowerCase())).toContain(CATEGORY_FALLBACK_COLOR.toLowerCase());
+    expect(CATEGORY_PALETTE.length).toBe(15);
+    for (const fill of fills) {
+      expect([BLACK, WHITE]).withContext(fill).toContain(readableOn(fill));
+      expect(ratioOn(fill)).withContext(fill).toBeGreaterThanOrEqual(4.58);
+    }
+  });
+
+  it('flips from white to black where the two meet at sqrt(21)', () => {
+    // On a fill of luminance L, black scores (L + 0.05) / 0.05 and white
+    // 1.05 / (L + 0.05). The two multiply to 21, so the better of them is
+    // never under sqrt(21) ≈ 4.583, and they cross at L ≈ 0.179: between
+    // #757575 and #767676 on the grey axis.
+    expect(readableOn('#757575')).toBe(WHITE);
+    expect(readableOn('#767676')).toBe(BLACK);
+    for (const fill of ['#757575', '#767676']) {
+      const rgb = parseHexColor(fill)!;
+      expect(contrastRatio([0, 0, 0], rgb) * contrastRatio([255, 255, 255], rgb)).withContext(fill).toBeCloseTo(21, 9);
+      expect(ratioOn(fill)).withContext(fill).toBeGreaterThan(Math.sqrt(21));
+      expect(ratioOn(fill)).withContext(fill).toBeLessThan(4.63);
+    }
+  });
+
+  it('never drops under sqrt(21) on any grey', () => {
+    for (let value = 0; value < 256; value++) {
+      const fill = toHexColor([value, value, value]);
+      expect(ratioOn(fill)).withContext(fill).toBeGreaterThan(Math.sqrt(21));
+    }
+  });
+
+  it('is white on a fill it cannot read', () => {
+    for (const fill of ['', 'rebeccapurple', 'transparent', '#ff980080', 'var(--color-primary)', 'rgb(0, 0, 0)']) {
+      expect(readableOn(fill)).withContext(fill).toBe(WHITE);
+    }
+  });
+
+  it('is the fallback ensureContrast reaches when no shade of the colour can', () => {
+    // A pin: ensureContrast's unreachable-target answer was already black or
+    // white by contrast; this holds it to readableOn after the factoring.
+    expect(ensureContrast('#ffff00', '#ffffff', WCAG_AA_TEXT, 'lighten')).toBe(readableOn('#ffffff'));
+    expect(ensureContrast('#0000ff', '#000000', WCAG_AA_TEXT, 'darken')).toBe(readableOn('#000000'));
+    expect(ensureContrast('#ff9800', '#767676', 22, 'lighten')).toBe(readableOn('#767676'));
+    expect(ensureContrast('#ff9800', '#757575', 22, 'darken')).toBe(readableOn('#757575'));
+  });
+});
+
+describe('hardestTone', () => {
+  it('is the darkest tone in light, where a glyph is darkened against all of them', () => {
+    expect(hardestTone(['#efedf6', '#d5d4dd', '#dee0ff', '#ffffff'], 'light')).toBe('#d5d4dd');
+  });
+
+  it('is the lightest tone in dark, where a glyph is lightened against all of them', () => {
+    expect(hardestTone(['#1f1f26', '#3e446b', '#37363e', '#000000'], 'dark')).toBe('#3e446b');
+  });
+
+  it('weighs luminance, not channel sums', () => {
+    // Magenta has twice green's channel sum and well under half its
+    // luminance, so it is the darker of the two.
+    expect(hardestTone(['#00ff00', '#ff00ff'], 'light')).toBe('#ff00ff');
+    expect(hardestTone(['#00ff00', '#ff00ff'], 'dark')).toBe('#00ff00');
+  });
+
+  it('answers a surface with one tone with that tone, as written', () => {
+    expect(hardestTone(['#F9FAFB'], 'light')).toBe('#F9FAFB');
+    expect(hardestTone(['#242424'], 'dark')).toBe('#242424');
+  });
+
+  it('refuses a surface with no tone, or a tone it cannot measure', () => {
+    expect(() => hardestTone([], 'light')).toThrowError(/no tone/);
+    expect(() => hardestTone(['#ffffff', 'transparent'], 'dark')).toThrowError(/transparent/);
+  });
+});
+
+describe('categoryGlyphColor', () => {
+  const SURFACES = Object.keys(CATEGORY_SURFACES) as CategorySurface[];
+
+  function ratioOn(glyph: string, tone: string): number {
+    return contrastRatio(parseHexColor(glyph)!, parseHexColor(tone)!);
+  }
+
+  it('is the colour moved against the hardest tone of its surface: darker in light, lighter in dark', () => {
+    for (const surface of SURFACES) {
+      for (const theme of ['light', 'dark'] as const) {
+        for (const color of ['#8BC34A', '#3F51B5', '#FF9800', '#9E9E9E']) {
+          expect(categoryGlyphColor(color, surface, theme))
+            .withContext(`${color} ${surface} ${theme}`)
+            .toBe(
+              ensureContrast(
+                color,
+                hardestTone(CATEGORY_SURFACES[surface][theme], theme),
+                WCAG_AA_TEXT,
+                theme === 'dark' ? 'lighten' : 'darken'
+              )
+            );
+        }
+      }
+    }
+  });
+
+  it('answers these fixed cases', () => {
+    const cases: [string, CategorySurface, 'light' | 'dark', string][] = [
+      ['#8BC34A', 'panel', 'light', '#486526'],
+      ['#3F51B5', 'panel', 'dark', '#abb2de'],
+      ['#FF9800', 'reviewCard', 'light', '#915700'],
+      ['#3F51B5', 'reviewCard', 'dark', '#b6bde3'],
+      ['#9E9E9E', 'suggestionChip', 'light', '#555555'],
+    ];
+    for (const [color, surface, theme, glyph] of cases) {
+      expect(categoryGlyphColor(color, surface, theme)).withContext(`${color} ${surface} ${theme}`).toBe(glyph);
+    }
+  });
+
+  it('clears AA by a hair at the closest calls, and still clears it', () => {
+    // The closest on any surface: rose on the dark Budget Progress rows, and
+    // purple on the dark icon picker, the least margin over the whole table.
+    for (const [color, surface, glyph, tone] of [
+      ['#f43f5e', 'subtle', '#f54b68', '#242424'],
+      ['#a855f7', 'iconGrid', '#b874f8', '#2b2d36'],
+    ] as const) {
+      expect(categoryGlyphColor(color, surface, 'dark')).withContext(color).toBe(glyph);
+      expect(ratioOn(glyph, tone)).withContext(color).toBeGreaterThanOrEqual(WCAG_AA_TEXT);
+      expect(ratioOn(glyph, tone)).withContext(color).toBeLessThan(4.501);
+    }
+  });
+
+  it('keeps a colour that already clears every tone, normalised', () => {
+    expect(categoryGlyphColor('#3F51B5', 'dialog', 'light')).toBe('#3f51b5');
+    expect(categoryGlyphColor('#FFFFFF', 'panel', 'dark')).toBe('#ffffff');
+  });
+
+  it('darkens a light green on a light select panel until its hardest tone clears AA, and no further', () => {
+    const glyph = categoryGlyphColor('#8BC34A', 'panel', 'light');
+    const tones = CATEGORY_SURFACES.panel.light;
+    const ratios = tones.map(tone => ratioOn(glyph, tone));
+    expect(Math.min(...ratios)).toBeGreaterThanOrEqual(WCAG_AA_TEXT);
+    expect(Math.min(...ratios)).toBeLessThan(WCAG_AA_TEXT + 0.2);
+    const [r, g, b] = parseHexColor(glyph)!;
+    expect(g).toBeLessThan(0xc3);
+    expect(g).toBeGreaterThan(r);
+    expect(r).toBeGreaterThan(b);
+  });
+
+  it('lightens the brand indigo on a dark select panel until its hardest tone clears AA, and no further', () => {
+    const glyph = categoryGlyphColor('#3F51B5', 'panel', 'dark');
+    const tones = CATEGORY_SURFACES.panel.dark;
+    const ratios = tones.map(tone => ratioOn(glyph, tone));
+    expect(Math.min(...ratios)).toBeGreaterThanOrEqual(WCAG_AA_TEXT);
+    expect(Math.min(...ratios)).toBeLessThan(WCAG_AA_TEXT + 0.2);
+    const [r, g, b] = parseHexColor(glyph)!;
+    expect(b).toBeGreaterThan(0xb5);
+    expect(b).toBeGreaterThan(g);
+    expect(g).toBeGreaterThan(r);
+  });
+
+  it('passes a colour it cannot read through unchanged, an empty one included', () => {
+    for (const color of ['', 'rebeccapurple', '#ff980080', 'var(--color-primary)']) {
+      expect(categoryGlyphColor(color, 'panel', 'light')).withContext(color).toBe(color);
+      expect(categoryGlyphColor(color, 'subtle', 'dark')).withContext(color).toBe(color);
+    }
   });
 });

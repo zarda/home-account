@@ -4,11 +4,13 @@ import { DOCUMENT } from '@angular/common';
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type EffectiveTheme = 'light' | 'dark';
 
+// colors:allow-start(browser-chrome) a theme-color meta takes a literal, and index.html carries the same pair
 /** Browser-chrome colors matching the app's surfaces (see index.html). */
 const THEME_COLOR: Record<EffectiveTheme, string> = {
   light: '#3F51B5',
   dark: '#121212',
 };
+// colors:allow-end
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {

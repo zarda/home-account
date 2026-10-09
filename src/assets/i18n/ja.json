@@ -73,7 +73,9 @@
     "add": "追加",
     "searchHistory": "検索履歴",
     "importFile": "写真をインポート",
-    "importHistory": "インポート履歴"
+    "importHistory": "インポート履歴",
+    "landmarkMain": "メイン",
+    "landmarkQuick": "クイックアクセス"
   },
   "dashboard": {
     "title": "ダッシュボード",
@@ -108,7 +110,14 @@
     "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。",
     "upcomingOlderHidden": "{{count}}件の期限切れの予定は表示されていません",
     "customize": "ダッシュボードをカスタマイズ",
-    "noCardsShown": "ダッシュボードに表示するカードがありません。"
+    "noCardsShown": "ダッシュボードに表示するカードがありません。",
+    "cardMenuHide": "非表示にする",
+    "cardMenuMoveUp": "上へ移動",
+    "cardMenuMoveDown": "下へ移動",
+    "cardHidden": "「{{card}}」を非表示にしました。「ダッシュボードをカスタマイズ」から再表示できます。",
+    "cardHideReverted": "保存できませんでした。「{{card}}」をダッシュボードに戻しました。",
+    "billLinkCardHidden": "「今後の予定」はダッシュボードで非表示のため、代わりに定期取引を表示します。",
+    "billLinkNotUpcoming": "この予定は現在「今後の予定」にないため、代わりに定期取引を表示します。"
   },
   "transactions": {
     "title": "取引履歴",
@@ -505,6 +514,50 @@
     "iconSelection": "アイコンの選択",
     "color": "色",
     "colorSelection": "色の選択",
+    "categoryIconNames": {
+      "restaurant": "レストラン",
+      "local_cafe": "カフェ",
+      "fastfood": "ファストフード",
+      "shopping_cart": "ショッピングカート",
+      "shopping_bag": "ショッピングバッグ",
+      "local_gas_station": "ガソリンスタンド",
+      "directions_car": "車",
+      "flight": "飛行機",
+      "hotel": "ホテル",
+      "home": "家",
+      "apartment": "アパート",
+      "payments": "支払い",
+      "attach_money": "お金",
+      "credit_card": "クレジットカード",
+      "account_balance": "銀行",
+      "medical_services": "医療",
+      "fitness_center": "フィットネス",
+      "school": "学校",
+      "work": "仕事",
+      "movie": "映画",
+      "sports_esports": "ゲーム",
+      "pets": "ペット",
+      "child_care": "育児",
+      "card_giftcard": "ギフト",
+      "celebration": "お祝い"
+    },
+    "categoryColorNames": {
+      "red": "赤",
+      "orange": "オレンジ",
+      "yellow": "黄",
+      "green": "緑",
+      "teal": "ティール",
+      "cyan": "シアン",
+      "blue": "青",
+      "indigo": "インディゴ",
+      "violet": "バイオレット",
+      "purple": "紫",
+      "pink": "ピンク",
+      "rose": "ローズ",
+      "slate": "スレート",
+      "gray": "グレー",
+      "stone": "ストーン"
+    },
     "preview": "プレビュー",
     "saveChanges": "変更を保存",
     "createCategory": "カテゴリを作成",
@@ -1133,6 +1186,7 @@
     "importPhotosSkipped": "取引は保存されましたが、画像の保存上限に達したため、レシート写真{{count}}枚は添付されませんでした",
     "importPhotosFailed": "取引は保存されましたが、レシート写真{{count}}枚をアップロードできませんでした。取引の画面から添付し直せます。",
     "importSavedHistoryUnavailable": "インポートは完了しましたが、概要を読み込めませんでした。詳細はインポート履歴をご覧ください。",
+    "shareLost": "共有されたファイルを受け取れませんでした。もう一度共有してインポートしてください。",
     "noTransactionsFound": "取引が見つかりません",
     "noTransactionsFoundDescription": "このファイルから取引を抽出できませんでした。別のファイルを試すか、画像が鮮明であることを確認してください。",
     "noTransactionsInImages": "画像から取引を検出できませんでした。より鮮明な写真でもう一度お試しください。",
@@ -1396,6 +1450,15 @@
       "cardDescription": "最初に表示されたようこそ画面を、もう一度ご覧いただけます。家計簿でできることと、支出を記録する3つの方法を紹介します。",
       "replayButton": "ようこそ画面を見る"
     },
+    "install": {
+      "cardTitle": "アプリをインストール",
+      "promptDescription": "このデバイスに家計簿をインストールすると、専用のアイコンから専用のウインドウで開けます。",
+      "button": "インストール",
+      "iosDescription": "家計簿をホーム画面に追加すると、専用のアイコンから全画面で開けます。",
+      "iosStepShare": "共有ボタンをタップします（Safari のツールバー、または「⋯」メニューの中にあります）。",
+      "iosStepAdd": "「ホーム画面に追加」を選びます。",
+      "iosStepConfirm": "「追加」をタップします。"
+    },
     "feedback": {
       "cardTitle": "フィードバックを送る",
       "cardDescription": "不具合やアイデアなど、開発者に伝えたいことをお送りください。メッセージはアカウントに保存され、開発者にメールで届きます。",
@@ -1639,7 +1702,15 @@
     "noResults": "一致するものはありません",
     "sectionNavigate": "移動先",
     "sectionActions": "操作",
+    "sectionShortcuts": "キーボードショートカット",
     "resultCount": "{{count}} 件の結果"
+  },
+  "shortcuts": {
+    "addTransaction": "取引を追加",
+    "openPalette": "このパレットを開く／閉じる",
+    "showShortcuts": "このショートカット一覧を表示",
+    "hint": "? キーを押すとキーボードショートカットを表示します",
+    "hintDismiss": "このヒントを閉じる"
   },
   "widget": {
     "spent": "支出",

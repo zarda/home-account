@@ -4,7 +4,11 @@
       {{ 'common.welcome' | translate }}, {{ userName() }}
     </p>
 
-    <app-period-selector header-actions (selectionChange)="onPeriodSelection($event)" />
+    <app-period-selector
+      header-actions
+      [floor]="pickerFloor()"
+      (selectionChange)="onPeriodSelection($event)"
+    />
   </app-page-header>
 
   <!-- Budget threshold alerts: inline + dismissible, not a standing snackbar -->
@@ -45,7 +49,9 @@
          breakpoint via grid-template-areas computed from that same order:
          desktop pairs a main column (chart, insights) against a rail
          (recent, upcoming, budgets); mobile stacks them in DOM order, so
-         reading and focus order match what is on screen. -->
+         reading and focus order match what is on screen. Each card's menu
+         is projected into its header (#442), so the grid's children stay
+         the cards the areas place. -->
     @if (arrangedCards().length > 0) {
       <div class="dashboard-grid" [style.--dashboard-areas]="gridAreas()">
         @for (card of arrangedCards(); track card) {
@@ -61,7 +67,16 @@
                 [historicalExpenses]="historicalExpenses()"
                 [budgets]="activeBudgets()"
                 [goals]="activeGoals()"
-              />
+              >
+                @if (insightsHasContent()) {
+                  <app-dashboard-card-menu
+                    card-actions
+                    [card]="card"
+                    [visible]="menuCardsFor(card)"
+                    (cardHidden)="focusAfterHide(card)"
+                  />
+                }
+              </app-ai-summary>
             }
             @case ('chart') {
               <app-spending-chart
@@ -69,14 +84,28 @@
                 [categoryTotals]="categoryTotals()"
                 [categories]="categories()"
                 (categoryActivated)="onCategoryActivated($event)"
-              />
+              >
+                <app-dashboard-card-menu
+                  card-actions
+                  [card]="card"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
+                />
+              </app-spending-chart>
             }
             @case ('recent') {
               <app-recent-transactions
                 class="area-recent"
                 [transactions]="recentTransactions()"
                 [categories]="categoriesMap()"
-              />
+              >
+                <app-dashboard-card-menu
+                  card-actions
+                  [card]="card"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
+                />
+              </app-recent-transactions>
             }
             @case ('upcoming') {
               <app-upcoming-bills
@@ -86,14 +115,30 @@
                 [baseCurrency]="baseCurrency()"
                 [net]="upcomingNet()"
                 [olderCount]="upcomingSchedule().olderCount"
-              />
+                [focusRuleId]="billInFocus()"
+                (ruleFocus)="onBillFocus($event)"
+              >
+                <app-dashboard-card-menu
+                  card-actions
+                  [card]="card"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
+                />
+              </app-upcoming-bills>
             }
             @case ('budgets') {
               <app-budget-progress
                 class="area-budgets"
                 [budgets]="activeBudgets()"
                 [categories]="categoriesMap()"
-              />
+              >
+                <app-dashboard-card-menu
+                  card-actions
+                  [card]="card"
+                  [visible]="menuCardsFor(card)"
+                  (cardHidden)="focusAfterHide(card)"
+                />
+              </app-budget-progress>
             }
           }
         }
@@ -105,7 +150,7 @@
       </a>
     } @else {
       <div class="dashboard-empty">
-        <p class="text-gray-500 dark:text-gray-400 text-sm">{{ 'dashboard.noCardsShown' | translate }}</p>
+        <p class="text-fg-muted text-sm">{{ 'dashboard.noCardsShown' | translate }}</p>
         <a mat-button routerLink="/settings" [queryParams]="{ panel: 'dashboard' }" class="customize-link">
           <mat-icon>tune</mat-icon>
           {{ 'dashboard.customize' | translate }}

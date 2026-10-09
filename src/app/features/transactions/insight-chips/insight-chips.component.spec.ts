@@ -4,6 +4,14 @@ import { InsightChipsComponent } from './insight-chips.component';
 import { InsightChip, InsightChipsService } from '../../../core/services/insight-chips.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TransactionFilters } from '../../../models';
+import {
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../core/services/testing';
 
 describe('InsightChipsComponent', () => {
   let fixture: ComponentFixture<InsightChipsComponent>;
@@ -104,5 +112,64 @@ describe('InsightChipsComponent', () => {
       .toBe('12px');
 
     host.remove();
+  });
+
+  describe('colours', () => {
+    /** What `color: var(token)` computes to under the theme on <html> now. */
+    function tokenColour(token: string): string {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.appendChild(probe);
+      try {
+        settleAnimations(document);
+        return getComputedStyle(probe).color;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function renderChip(): HTMLElement {
+      chipsSignal.set([chip()]);
+      fixture.detectChanges();
+      return fixture.nativeElement.querySelector('.insight-chip') as HTMLElement;
+    }
+
+    it('paints the label in --text-muted at AA and the border in --border-primary, in both themes', () => {
+      const button = renderChip();
+      const label = button.querySelector('span') as HTMLElement;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          // The chip carries `transition: all`, which would hold the other
+          // theme's colours for as long as the spec runs.
+          settleAnimations(document);
+          expect(getComputedStyle(label).color).withContext(`${theme} label`).toBe(tokenColour('--text-muted'));
+          expect(ratio(paintedColor(label), paintedBackground(label)))
+            .withContext(`${theme} label on the chip`)
+            .toBeGreaterThanOrEqual(4.5);
+          expect(getComputedStyle(button).borderBlockStartColor)
+            .withContext(`${theme} border`)
+            .toBe(tokenColour('--border-primary'));
+        });
+      }
+    });
+
+    it('strengthens the border on hover to --border-strong, in both themes', () => {
+      const button = renderChip();
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          try {
+            button.style.borderColor = hoverValue(button, '.insight-chip', 'border-color');
+            settleAnimations(document);
+            expect(getComputedStyle(button).borderBlockStartColor)
+              .withContext(`${theme} hovered border`)
+              .toBe(tokenColour('--border-strong'));
+          } finally {
+            button.style.removeProperty('border-color');
+          }
+        });
+      }
+    });
   });
 });

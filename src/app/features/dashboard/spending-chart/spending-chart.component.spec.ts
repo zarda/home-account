@@ -1,14 +1,45 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
-import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { BaseChartDirective } from 'ng2-charts';
 import { provideAppCharts } from '../../../core/config/chart.config';
 import { SpendingChartComponent } from './spending-chart.component';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { Category } from '../../../models';
+import { ThemeService } from '../../../core/services/theme.service';
+import {
+  CATEGORY_FALLBACK_COLOR,
+  CATEGORY_PALETTE,
+  Category,
+  DEFAULT_EXPENSE_GROUPS,
+  DEFAULT_INCOME_GROUPS,
+} from '../../../models';
+import {
+  AUDIT_SCHEMES,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  textLines,
+  withScheme,
+  withTheme,
+} from '../../../core/services/testing';
+
+// The card as the dashboard renders it: what carries `card-actions` is the
+// card's own menu, whose trigger is a 40 px box.
+@Component({
+  standalone: true,
+  imports: [SpendingChartComponent],
+  template: `
+    <app-spending-chart>
+      <span card-actions class="projected-action" style="display: inline-block; inline-size: 40px; block-size: 40px"></span>
+    </app-spending-chart>
+  `,
+})
+class SpendingChartWithActionHostComponent {}
 
 describe('SpendingChartComponent', () => {
   let component: SpendingChartComponent;
@@ -381,6 +412,45 @@ describe('SpendingChartComponent', () => {
 
     afterEach(() => realFixture.destroy());
 
+    // At 229 px the title wraps, and the action stays on its row: centred on
+    // the title, after it, and inside the header.
+    it('projects the card actions into its header, on the title row', () => {
+      mockTranslationService.t.and.callFake((key: string) =>
+        key === 'dashboard.spendingByCategory' ? 'Spending by Category' : key
+      );
+      const hostFixture = TestBed.createComponent(SpendingChartWithActionHostComponent);
+      const host = hostFixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = '229px';
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback; the title inherits this one. The Linux runner's DejaVu
+      // Sans matches Verdana to within a few pixels.
+      host.style.fontFamily = "Verdana, 'DejaVu Sans', sans-serif";
+      document.body.appendChild(host);
+      try {
+        hostFixture.detectChanges();
+
+        const header = hostFixture.nativeElement.querySelector('.card-header') as HTMLElement;
+        const action = header.querySelector('.projected-action') as HTMLElement | null;
+        expect(action).withContext('in the header').not.toBeNull();
+
+        const titleElement = header.querySelector('.card-title') as HTMLElement;
+        expect(textLines(titleElement)).withContext('title lines').toBeGreaterThan(1);
+        const title = titleElement.getBoundingClientRect();
+        const box = action!.getBoundingClientRect();
+        const content = header.getBoundingClientRect();
+        const padEnd = parseFloat(getComputedStyle(header).paddingInlineEnd);
+        expect(Math.abs((box.top + box.bottom) / 2 - (title.top + title.bottom) / 2))
+          .withContext('centred on the title row')
+          .toBeLessThanOrEqual(1);
+        expect(box.left).withContext('after the title').toBeGreaterThanOrEqual(title.right);
+        expect(box.right).withContext('inside the header').toBeLessThanOrEqual(content.right - padEnd + 0.5);
+      } finally {
+        hostFixture.destroy();
+        host.remove();
+      }
+    });
+
     it('should render each legend row as a real button', () => {
       const buttons = realFixture.debugElement.queryAll(By.css('button.legend-item'));
       expect(buttons.length).toBe(3);
@@ -415,6 +485,147 @@ describe('SpendingChartComponent', () => {
       chart.chartClick.emit({ active: [{ index: 1 }] });
 
       expect(activated).toEqual(['cat2']);
+    });
+
+    // The progress bar is not measured: it is a graphic filled with the
+    // category's own colour, beside the share printed as text.
+    describe('colours', () => {
+      /** What `color: var(token)` computes to under the palette on <html> now. */
+      function tokenColour(token: string): string {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        document.body.appendChild(probe);
+        try {
+          settleAnimations(document);
+          return getComputedStyle(probe).color;
+        } finally {
+          probe.remove();
+        }
+      }
+
+      /** `value` as the browser computes a background colour. */
+      function computedBackground(value: string): string {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = value;
+        document.body.appendChild(probe);
+        try {
+          return getComputedStyle(probe).backgroundColor;
+        } finally {
+          probe.remove();
+        }
+      }
+
+      /**
+       * Every colour a legend tile can be filled with: the seeded categories',
+       * the fifteen a category can be given and the grey a missing one falls
+       * back to.
+       */
+      const everyCategoryColour = (): string[] => [
+        ...new Set(
+          [
+            ...[...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].map(group => group.color),
+            ...CATEGORY_PALETTE,
+            CATEGORY_FALLBACK_COLOR,
+          ].map(color => color.toLowerCase())
+        ),
+      ];
+
+      it('fills each legend tile as its slice is and draws its glyph at AA or better on it, for every colour a category can carry, in both themes', () => {
+        const colours = everyCategoryColour();
+        expect(colours.length).toBe(31);
+        const categories: Category[] = colours.map((color, i) => ({
+          ...mockCategories[0],
+          id: `c${i}`,
+          name: `category ${i}`,
+          color,
+        }));
+        // A total whose category is gone reaches the fallback the way the app does.
+        const totals = [
+          ...categories.map((category, i) => ({ categoryId: category.id, total: 100 - i, count: 1 })),
+          { categoryId: 'gone', total: 1, count: 1 },
+        ];
+        realFixture.componentRef.setInput('categories', categories);
+
+        const filled: string[] = [];
+        let measured = 0;
+        // topCategories() shows six, so the rows are fed six at a time.
+        for (let start = 0; start < totals.length; start += 6) {
+          const batch = totals.slice(start, start + 6);
+          realFixture.componentRef.setInput('categoryTotals', batch);
+          realFixture.detectChanges();
+          const fills = realFixture.componentInstance.chartData().datasets[0].backgroundColor as string[];
+          expect(fills.length).withContext(`rows from ${start}`).toBe(batch.length);
+          filled.push(...fills);
+
+          for (const scheme of AUDIT_SCHEMES) {
+            withScheme(TestBed.inject(ThemeService), scheme, () => {
+              realFixture.detectChanges();
+              const tiles = Array.from(realFixture.nativeElement.querySelectorAll('.legend-icon')) as HTMLElement[];
+              expect(tiles.length).withContext(`${scheme} rows from ${start}`).toBe(batch.length);
+              tiles.forEach((tile, i) => {
+                const label = `${scheme} ${fills[i]}`;
+                expect(getComputedStyle(tile).backgroundColor)
+                  .withContext(`${label} tile filled as its slice`)
+                  .toBe(computedBackground(fills[i]));
+                const glyph = tile.querySelector('mat-icon') as HTMLElement;
+                expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                  .withContext(`${label} glyph on its tile`)
+                  .toBeGreaterThanOrEqual(4.5);
+                measured += 1;
+              });
+            });
+          }
+        }
+
+        expect(new Set(filled.map(color => color.toLowerCase())))
+          .withContext('every colour reached a tile')
+          .toEqual(new Set(colours));
+        expect(filled[filled.length - 1]).withContext('the missing category').toBe(CATEGORY_FALLBACK_COLOR);
+        expect(measured).withContext('every row, in both schemes').toBe(totals.length * AUDIT_SCHEMES.length);
+      });
+
+      it('paints the title in the primary text token, at AA or better on the card, in both themes', () => {
+        const title = realFixture.nativeElement.querySelector('.card-title') as HTMLElement;
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            expect(ratio(paintedColor(title), paintedBackground(title)))
+              .withContext(`${theme} title on the card`)
+              .toBeGreaterThanOrEqual(4.5);
+            expect(getComputedStyle(title).color)
+              .withContext(`${theme} title`)
+              .toBe(tokenColour('--text-primary'));
+          });
+        }
+      });
+
+      it('paints each legend line in its text token, at AA or better on the row at rest and hovered, in both themes', () => {
+        const row = realFixture.nativeElement.querySelector('.legend-item') as HTMLElement;
+        const lines = [
+          ['name', '.legend-name', '--text-primary'],
+          ['amount', '.legend-amount', '--text-primary'],
+          ['percentage', '.legend-percentage', '--text-muted'],
+        ] as const;
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            try {
+              for (const state of ['at rest', 'hovered'] as const) {
+                if (state === 'hovered') row.style.background = hoverValue(row, '.legend-item', 'background');
+                for (const [label, selector, token] of lines) {
+                  const el = row.querySelector(selector) as HTMLElement;
+                  expect(ratio(paintedColor(el), paintedBackground(el)))
+                    .withContext(`${theme} ${label} on the row ${state}`)
+                    .toBeGreaterThanOrEqual(4.5);
+                  expect(getComputedStyle(el).color)
+                    .withContext(`${theme} ${label}`)
+                    .toBe(tokenColour(token));
+                }
+              }
+            } finally {
+              row.style.removeProperty('background');
+            }
+          });
+        }
+      });
     });
   });
 });

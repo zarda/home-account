@@ -63,7 +63,7 @@ export class PeriodTotalsService {
   sweepPageSize = SWEEP_PAGE;
 
   // Supersedes in-flight work: every async op captures the generation at
-  // start and discards its result if a reset/refresh/calculate bumped it.
+  // start and discards its result if a reset/refresh/calculate/retry bumped it.
   private generation = 0;
 
   private filters = signal<TransactionFilters>({});
@@ -140,6 +140,19 @@ export class PeriodTotalsService {
     this.manualSweepArmed = true;
     await this.recompute(gen, this.whereKeyOf(), false);
     return gen === this.generation && this.status().kind === 'ready';
+  }
+
+  /**
+   * The unavailable state's ask to try again: a recount under the same
+   * filters, keeping any over-cap consent already given. Resolves true iff
+   * this recount settled (ready, over-cap or unavailable again) without being
+   * superseded; the caller announces the settled line only on true.
+   */
+  async retry(): Promise<boolean> {
+    if (this.status().kind !== 'unavailable') return false;
+    const gen = ++this.generation;
+    await this.recompute(gen, this.whereKeyOf(), !this.manualSweepArmed);
+    return gen === this.generation;
   }
 
   private async recompute(gen: number, whereKey: string, honourCap: boolean): Promise<void> {

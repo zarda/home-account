@@ -1,5 +1,6 @@
 @if (week(); as figures) {
-  <mat-card class="card recap-card" role="region" [attr.aria-labelledby]="'weekly-recap-title'">
+  <!-- Focusable from script only: a recap reminder's link lands here. -->
+  <mat-card class="card recap-card" role="region" tabindex="-1" [attr.aria-labelledby]="'weekly-recap-title'">
     <!-- Header -->
     <div class="card-header">
       <div class="header-text">
@@ -60,9 +61,9 @@
       <div class="fact recap-bills">
         <span class="fact-text">{{ billsLabel() }}</span>
         <app-amount-display
-          [amount]="billsDueNet()"
+          [amount]="billsDueDisplay()"
           [currency]="baseCurrency()"
-          [type]="billsDueNet() >= 0 ? 'income' : 'expense'"
+          [type]="billsDueDisplay() > 0 ? 'income' : billsDueDisplay() < 0 ? 'expense' : 'neutral'"
           [showSign]="true"
           size="sm"
         />

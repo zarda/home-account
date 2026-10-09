@@ -30,6 +30,11 @@ const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
     // platform: Ctrl+K is the Windows/Linux chord, Cmd+K the macOS one.
     '(document:keydown.control.k)': 'onPaletteHotkey($event)',
     '(document:keydown.meta.k)': 'onPaletteHotkey($event)',
+    // Two lines for '?' too: Angular folds Shift into the matched key, so
+    // the US layout's Shift+/ arrives as "shift.?", while layouts with an
+    // unshifted '?' send it bare.
+    '(document:keydown.?)': 'onHelpHotkey($event)',
+    '(document:keydown.shift.?)': 'onHelpHotkey($event)',
   },
 })
 export class MainLayoutComponent {
@@ -131,6 +136,10 @@ export class MainLayoutComponent {
 
   onPaletteHotkey(event: Event): void {
     this.keyboardShortcuts.handlePaletteHotkey(event as KeyboardEvent);
+  }
+
+  onHelpHotkey(event: Event): void {
+    this.keyboardShortcuts.handleHelpHotkey(event as KeyboardEvent);
   }
 
   onNavItemClicked(): void {

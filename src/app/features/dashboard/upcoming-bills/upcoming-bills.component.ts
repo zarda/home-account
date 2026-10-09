@@ -1,12 +1,28 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
 
 import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { Category, RecurringOccurrence } from '../../../models';
-import { dayKey } from '../../../core/utils/transaction-date.utils';
+import { dayKey, wholeDaysBetween } from '../../../core/utils/transaction-date.utils';
+import { snapDisplayZero } from '../../../core/utils/money-display.utils';
+import { AccessibilityService } from '../../../core/services/accessibility.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
@@ -17,6 +33,12 @@ export interface UpcomingBillDay {
   date: Date;
   occurrences: RecurringOccurrence[];
 }
+
+/** What the card found for a rule it was asked to bring into view. */
+export type RuleFocusOutcome = 'focused' | 'absent';
+
+/** How long the row a link landed on stays marked. */
+const HIGHLIGHT_MS = 2000;
 
 /**
  * The scheduled half of the dashboard: what the recurring rules will move in
@@ -37,6 +59,7 @@ export interface UpcomingBillDay {
     MatCardModule,
     MatIconModule,
     AmountDisplayComponent,
+    CategoryChipComponent,
     EmptyStateComponent,
     TranslatePipe,
     LocaleDatePipe,
@@ -57,8 +80,32 @@ export class UpcomingBillsComponent {
    * note entirely; there is no "all caught up" to announce.
    */
   olderCount = input<number>(0);
+  /**
+   * A rule a bill reminder's link names (#446). Its row nearest today is
+   * scrolled to, focused and marked, and `ruleFocus` says whether there was
+   * one. The page clears it once answered, so a second link to the same rule
+   * is a change.
+   */
+  focusRuleId = input<string | null>(null);
+  readonly ruleFocus = output<RuleFocusOutcome>();
+
+  /** `day|rule` of the row a link landed on, for `HIGHLIGHT_MS`. */
+  readonly highlightedRow = signal<string | null>(null);
 
   private categoryHelperService = inject(CategoryHelperService);
+  private accessibility = inject(AccessibilityService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private injector = inject(Injector);
+
+  constructor() {
+    // Looked up after the render the same change detection carries, so a
+    // window and a link that arrive together find the window's rows.
+    effect(() => {
+      const ruleId = this.focusRuleId();
+      if (!ruleId) return;
+      untracked(() => afterNextRender(() => this.focusRule(ruleId), { injector: this.injector }));
+    });
+  }
 
   /**
    * Occurrences arrive sorted by date, so first-seen order is date order and
@@ -84,6 +131,13 @@ export class UpcomingBillsComponent {
     return [...days.values()];
   });
 
+  /**
+   * The net as the footer shows it, sign and tone included. A window that
+   * cancels out, or nets below the base currency's smallest unit, moves no
+   * money either way, so it is neither income-green nor expense-red.
+   */
+  readonly netDisplay = computed(() => snapDisplayZero(this.net(), this.baseCurrency()));
+
   getCategoryName(categoryId: string): string {
     return this.categoryHelperService.getCategoryName(categoryId, this.categories());
   }
@@ -94,5 +148,46 @@ export class UpcomingBillsComponent {
 
   getCategoryColor(categoryId: string): string {
     return this.categoryHelperService.getCategoryColor(categoryId, this.categories());
+  }
+
+  private focusRule(ruleId: string): void {
+    const day = this.nearestDay(ruleId);
+    const row = day === null
+      ? null
+      : this.host.nativeElement.querySelector<HTMLElement>(
+        `.bill-row[data-day="${day}"][data-rule-id="${CSS.escape(ruleId)}"]`
+      );
+    if (!row) {
+      this.ruleFocus.emit('absent');
+      return;
+    }
+
+    row.scrollIntoView({ block: 'center', behavior: this.accessibility.reducedMotion() ? 'auto' : 'smooth' });
+    // Without preventScroll, focus would jump to the row at once and the
+    // smooth scroll above would never be seen.
+    row.focus({ preventScroll: true });
+    const key = `${day}|${ruleId}`;
+    this.highlightedRow.set(key);
+    setTimeout(() => {
+      if (this.highlightedRow() === key) this.highlightedRow.set(null);
+    }, HIGHLIGHT_MS);
+    this.ruleFocus.emit('focused');
+  }
+
+  /**
+   * The key of the day, among this rule's, nearest today. A rule can have a
+   * past-due row and upcoming ones at once; days run in date order, so an
+   * equal distance goes to the later day, since a reminder only ever names an
+   * occurrence today or after.
+   */
+  private nearestDay(ruleId: string): string | null {
+    const today = new Date();
+    let nearest: { key: string; distance: number } | null = null;
+    for (const day of this.days()) {
+      if (!day.occurrences.some(occurrence => occurrence.recurringId === ruleId)) continue;
+      const distance = Math.abs(wholeDaysBetween(today, day.date));
+      if (nearest === null || distance <= nearest.distance) nearest = { key: day.key, distance };
+    }
+    return nearest?.key ?? null;
   }
 }

@@ -13,6 +13,38 @@
 
   <span class="spacer"></span>
 
+  <!-- Command palette: the only way in on a touch screen. The one-time '?'
+       hint comes first, so focus meets it in the order it is drawn, and its
+       dismiss hands focus on to the button rather than dropping it. -->
+  <span class="palette-anchor">
+    @if (showShortcutsHint()) {
+      <div class="shortcuts-hint">
+        <mat-icon class="shortcuts-hint-icon">keyboard</mat-icon>
+        <p class="shortcuts-hint-text">{{ 'shortcuts.hint' | translate }}</p>
+        <button
+          mat-icon-button
+          type="button"
+          class="shortcuts-hint-dismiss"
+          (click)="dismissShortcutsHint(); paletteButton.focus()"
+          [attr.aria-label]="'shortcuts.hintDismiss' | translate"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    }
+    <button
+      #paletteButton="matButton"
+      mat-icon-button
+      class="palette-button"
+      aria-haspopup="dialog"
+      (click)="openPalette()"
+      [matTooltip]="'palette.title' | translate"
+      [attr.aria-label]="'palette.title' | translate"
+    >
+      <mat-icon>bolt</mat-icon>
+    </button>
+  </span>
+
   <!-- Smart search -->
   <button
     mat-icon-button

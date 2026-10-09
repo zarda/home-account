@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { Category } from '../../models';
+import { CATEGORY_FALLBACK_COLOR, Category } from '../../models';
 import { TranslationService } from './translation.service';
 
 @Injectable({ providedIn: 'root' })
@@ -25,7 +25,7 @@ export class CategoryHelperService {
    * Gets the category color from a categories map
    */
   getCategoryColor(categoryId: string, categories: Map<string, Category>): string {
-    return categories.get(categoryId)?.color || '#9E9E9E';
+    return categories.get(categoryId)?.color || CATEGORY_FALLBACK_COLOR;
   }
 
   /**
@@ -49,7 +49,7 @@ export class CategoryHelperService {
    */
   getCategoryColorFromArray(categoryId: string, categories: Category[]): string {
     const category = categories.find(c => c.id === categoryId);
-    return category?.color || '#9E9E9E';
+    return category?.color || CATEGORY_FALLBACK_COLOR;
   }
 
   /**

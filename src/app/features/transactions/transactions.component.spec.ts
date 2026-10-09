@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, NgZone, input, output } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { MatButtonModule } from '@angular/material/button';
@@ -28,7 +29,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
-import { Transaction, User } from '../../models';
+import { Category, Transaction, TransactionFilters, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import { createTransaction, createCategory, createTranslationStub } from '../../core/services/testing';
 
@@ -49,6 +50,21 @@ function createMockWindowSource() {
   };
 }
 
+/**
+ * The filters panel in the rendered describe: an empty template carrying the
+ * inputs the page binds, so what the page hands the panel can be read back.
+ */
+@Component({ selector: 'app-transaction-filters', standalone: true, template: '' })
+class TransactionFiltersStubComponent {
+  categories = input<Category[]>([]);
+  incomeCategories = input<Category[]>([]);
+  initialDate = input<Date | undefined>(undefined);
+  presetFilters = input<TransactionFilters | undefined>(undefined);
+  showAll = input(false);
+  floor = input<Date | null>(null);
+  filtersChanged = output<TransactionFilters>();
+}
+
 function createMockPeriodTotals() {
   return {
     status: signal<PeriodTotalsStatus>({ kind: 'idle' }),
@@ -56,6 +72,7 @@ function createMockPeriodTotals() {
     reset: jasmine.createSpy('reset').and.resolveTo(undefined),
     refresh: jasmine.createSpy('refresh').and.resolveTo(undefined),
     calculate: jasmine.createSpy('calculate').and.resolveTo(true),
+    retry: jasmine.createSpy('retry').and.resolveTo(true),
   };
 }
 
@@ -66,6 +83,7 @@ describe('TransactionsComponent', () => {
     lastMutation: ReturnType<typeof signal<TransactionMutation | null>>;
     deleteTransaction: jasmine.Spy;
     getTransactionOnce: jasmine.Spy;
+    getEarliestTransactionDateFromServer: jasmine.Spy;
   };
   let windowSource: ReturnType<typeof createMockWindowSource>;
   let periodTotals: ReturnType<typeof createMockPeriodTotals>;
@@ -100,6 +118,9 @@ describe('TransactionsComponent', () => {
       lastMutation: signal<TransactionMutation | null>(null),
       deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
       getTransactionOnce: jasmine.createSpy('getTransactionOnce').and.resolveTo(null),
+      getEarliestTransactionDateFromServer: jasmine
+        .createSpy('getEarliestTransactionDateFromServer')
+        .and.resolveTo(null),
     };
     windowSource = createMockWindowSource();
     periodTotals = createMockPeriodTotals();
@@ -254,6 +275,18 @@ describe('TransactionsComponent', () => {
     tick(100);
     expect(quickAdd.openAddTransaction).toHaveBeenCalled();
   }));
+
+  describe('the filters\' picker floor read', () => {
+    it('reads the oldest row\'s date once on init, not again on a filter change', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getEarliestTransactionDateFromServer).toHaveBeenCalledTimes(1);
+
+      fixture.componentInstance.onFiltersChanged({ type: 'expense' });
+
+      expect(transactionService.getEarliestTransactionDateFromServer).toHaveBeenCalledTimes(1);
+    });
+  });
 
   it('onFiltersChanged resets the window and the period totals with the same filters', () => {
     const component = build().componentInstance;
@@ -719,8 +752,9 @@ describe('TransactionsComponent', () => {
  * neither* (`transactions.component.html:65-68`). Nothing has ever checked
  * that contract holds.
  *
- * Partial render: the list, the filters and the insight chips are left
- * unresolved. Each has its own spec, and none is asserted about here.
+ * Partial render: the list and the insight chips are left unresolved, and
+ * the filters are a stub that only carries their inputs. Each has its own
+ * spec; of the three, only what the page hands the filters is asserted here.
  */
 describe('TransactionsComponent, through its own template', () => {
   let fixture: ComponentFixture<TransactionsComponent>;
@@ -729,6 +763,7 @@ describe('TransactionsComponent, through its own template', () => {
   let windowMock: ReturnType<typeof createMockWindowSource>;
   let quickAddSpy: jasmine.SpyObj<QuickAddService>;
   let viewport$: BehaviorSubject<BreakpointState>;
+  let earliestRead: jasmine.Spy;
 
   const el = () => fixture.nativeElement as HTMLElement;
   const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
@@ -761,6 +796,7 @@ describe('TransactionsComponent, through its own template', () => {
     quickAddSpy = jasmine.createSpyObj('QuickAddService', [
       'openAddTransaction', 'openScanReceipt', 'openImportPhotos',
     ]);
+    earliestRead = jasmine.createSpy('getEarliestTransactionDateFromServer').and.resolveTo(null);
 
     await TestBed.configureTestingModule({
       imports: [TransactionsComponent, NoopAnimationsModule],
@@ -773,6 +809,7 @@ describe('TransactionsComponent, through its own template', () => {
             lastMutation: signal<TransactionMutation | null>(null),
             deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
             getTransactionOnce: jasmine.createSpy('getTransactionOnce').and.resolveTo(null),
+            getEarliestTransactionDateFromServer: earliestRead,
           },
         },
         {
@@ -817,10 +854,11 @@ describe('TransactionsComponent, through its own template', () => {
             LoadingSpinnerComponent,
             FitTextDirective,
             TranslatePipe,
+            TransactionFiltersStubComponent,
           ],
           // A standalone component's template is governed by its own schemas,
-          // not the TestBed's: the list, the filters and the insight chips
-          // are left unresolved and are never asserted about here.
+          // not the TestBed's: the list and the insight chips are left
+          // unresolved and are never asserted about here.
           schemas: [NO_ERRORS_SCHEMA],
           // This override replaces the component's own providers array, so
           // every page-provided service needs its mock listed here.
@@ -974,6 +1012,199 @@ describe('TransactionsComponent, through its own template', () => {
     mobile(true);
 
     expect(el().querySelector('.period-totals-line')).toBeNull();
+  });
+
+  // The phone's two actions read as words in the subtitle line, so their box
+  // is the text's, about 21 px tall; a tap needs the app's 40 px floor.
+  const inlineActions: [PeriodTotalsStatus, string][] = [
+    [{ kind: 'unavailable' }, '.period-totals-retry-link'],
+    [{ kind: 'over-cap', serverCount: 1200 }, '.period-totals-calc-link'],
+  ];
+  for (const [status, selector] of inlineActions) {
+    it(`gives the phone's ${selector} a 40 px tap target without growing the line`, () => {
+      render();
+      totals.status.set(status);
+      mobile(true);
+
+      const action = el().querySelector(selector) as HTMLElement;
+      const box = action.getBoundingClientRect();
+      const overhang = getComputedStyle(action, '::after');
+      const px = (value: string) => parseFloat(value) || 0;
+      expect(overhang.position).withContext('an overhang laid over the link').toBe('absolute');
+      expect(box.height - px(overhang.top) - px(overhang.bottom)).toBeGreaterThanOrEqual(40);
+      expect(box.width - px(overhang.left) - px(overhang.right)).toBeGreaterThanOrEqual(40);
+      expect(box.height).withContext('the visible box stays the text\'s').toBeLessThan(40);
+    });
+  }
+
+  // A failed count or sweep is not the last word: Retry recounts in place, in
+  // whichever placement the width puts the totals.
+  for (const placement of ['desktop', 'phone'] as const) {
+    describe(`Retry on unavailable totals (${placement})`, () => {
+      const retryButton = () =>
+        el().querySelector(
+          placement === 'phone' ? '.period-totals-retry-link' : '.period-totals-retry'
+        ) as HTMLButtonElement | null;
+      const totalsLine = () =>
+        el().querySelector(
+          placement === 'phone' ? '.period-totals-line' : '.period-totals-slot'
+        ) as HTMLElement | null;
+      const announcer = () => TestBed.inject(AnnouncerService) as jasmine.SpyObj<AnnouncerService>;
+
+      function renderUnavailable(): void {
+        render();
+        totals.status.set({ kind: 'unavailable' });
+        mobile(placement === 'phone');
+      }
+
+      function settleReadyOnRetry(): void {
+        totals.retry.and.callFake(async () => {
+          totals.totals.set({ expense: 120, income: 400, balance: 280 } as TypeTotals);
+          totals.status.set({ kind: 'ready' });
+          return true;
+        });
+      }
+
+      // The page's effects run in the Angular zone. Ticked from outside it,
+      // leaving their run empties the zone and the zone scheduler starts a
+      // tick inside this one (NG0101, only logged); tickInZone in
+      // core/services/testing/axe.ts says the same.
+      const tickInZone = () => TestBed.inject(NgZone).run(() => TestBed.tick());
+
+      afterEach(() => (document.activeElement as HTMLElement | null)?.blur());
+
+      it('offers Retry beside the unavailable note', () => {
+        renderUnavailable();
+
+        expect(retryButton()?.textContent?.trim()).toBe('common.retry');
+        expect(totalsLine()?.textContent).toContain('transactions.totalsUnavailable');
+      });
+
+      it('calls onRetryTotals on a click', () => {
+        renderUnavailable();
+        const retry = spyOn(component, 'onRetryTotals');
+
+        retryButton()!.click();
+
+        expect(retry).toHaveBeenCalled();
+      });
+
+      it('announces the settled line once the recount lands', async () => {
+        renderUnavailable();
+        settleReadyOnRetry();
+
+        await component.onRetryTotals();
+
+        expect(totals.retry).toHaveBeenCalled();
+        expect(announcer().announce).toHaveBeenCalledOnceWith(
+          'transactions.totalsAnnouncement:{"spent":"USD 120","net":"USD 280"}',
+          'polite',
+          'replace'
+        );
+      });
+
+      it('moves focus to the totals line once the settled line renders', async () => {
+        renderUnavailable();
+        settleReadyOnRetry();
+        // The button the viewer pressed leaves with the unavailable state.
+        retryButton()!.focus();
+
+        await component.onRetryTotals();
+        tickInZone();
+
+        expect(retryButton()).toBeNull();
+        const line = totalsLine()!;
+        expect(line.getAttribute('tabindex')).toBe('-1');
+        expect(document.activeElement).toBe(line);
+      });
+
+      it('leaves focus where the viewer put it while the recount was out', async () => {
+        renderUnavailable();
+        settleReadyOnRetry();
+        const elsewhere = document.body.appendChild(document.createElement('button'));
+        try {
+          elsewhere.focus();
+
+          await component.onRetryTotals();
+          tickInZone();
+
+          expect(document.activeElement).toBe(elsewhere);
+        } finally {
+          elsewhere.remove();
+        }
+      });
+
+      it('stays silent and leaves focus alone when the recount was superseded', async () => {
+        renderUnavailable();
+        totals.retry.and.resolveTo(false);
+
+        await component.onRetryTotals();
+        tickInZone();
+
+        expect(announcer().announce).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(totalsLine());
+      });
+    });
+  }
+
+  it('says the totals are still unavailable when the recount fails again', async () => {
+    render();
+    totals.status.set({ kind: 'unavailable' });
+    fixture.detectChanges();
+    totals.retry.and.resolveTo(true);
+
+    await component.onRetryTotals();
+
+    expect((TestBed.inject(AnnouncerService) as jasmine.SpyObj<AnnouncerService>).announce)
+      .toHaveBeenCalledOnceWith('transactions.totalsUnavailable', 'polite', 'replace');
+  });
+
+  it('neither announces nor throws when the page goes before the recount lands', async () => {
+    render();
+    totals.status.set({ kind: 'unavailable' });
+    fixture.detectChanges();
+    let land!: (landed: boolean) => void;
+    totals.retry.and.returnValue(new Promise<boolean>(resolve => (land = resolve)));
+
+    const pending = component.onRetryTotals();
+    fixture.destroy();
+    land(true);
+
+    await expectAsync(pending).toBeResolved();
+    expect((TestBed.inject(AnnouncerService) as jasmine.SpyObj<AnnouncerService>).announce)
+      .not.toHaveBeenCalled();
+  });
+
+  describe('the filters\' picker floor', () => {
+    const filtersFloor = async () => {
+      render();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const filters = fixture.debugElement.query(By.directive(TransactionFiltersStubComponent))
+        .componentInstance as TransactionFiltersStubComponent;
+      return filters.floor();
+    };
+
+    it('hands the filters the date of the oldest row', async () => {
+      const oldest = new Date(2024, 11, 5, 12);
+      earliestRead.and.resolveTo(oldest);
+
+      expect(await filtersFloor()).toEqual(oldest);
+    });
+
+    it('floors an account with no rows at the current year', async () => {
+      earliestRead.and.resolveTo(null);
+
+      expect(await filtersFloor()).toEqual(new Date(new Date().getFullYear(), 0, 1));
+    });
+
+    it('gives the filters no floor when the read fails', async () => {
+      // A pin: null is also the floor the page and the stub hold before any
+      // read lands, so this only catches an error path that sets a floor.
+      earliestRead.and.rejectWith(new Error('unavailable'));
+
+      expect(await filtersFloor()).toBeNull();
+    });
   });
 
   it('offers all three add entries from the desktop menu', () => {

@@ -1,7 +1,12 @@
+// Both stops mix into the card rather than into transparent, so the gradient
+// is opaque and every line on it is measured against declared colours.
 .ai-summary-card {
-  @apply bg-gradient-to-br from-primary-50 to-indigo-50;
-  @apply dark:from-primary-900/20 dark:to-indigo-900/20;
-  @apply border border-primary-100 dark:border-primary-800;
+  background-image: linear-gradient(
+    to bottom right,
+    color-mix(in srgb, var(--color-primary) 12%, var(--surface-card)),
+    color-mix(in srgb, var(--color-accent) 10%, var(--surface-card))
+  );
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -14,7 +19,15 @@ mat-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   width: 100%;
+}
+
+// Refresh and the card's menu, together at the end of the title's row.
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .title-row {
@@ -24,7 +37,7 @@ mat-card-header {
 }
 
 .ai-icon {
-  @apply text-primary-500;
+  color: var(--color-primary-text);
   font-size: var(--text-xl);
   width: 1em;
   height: 1em;
@@ -33,13 +46,13 @@ mat-card-header {
 .title {
   font-size: var(--text-sm);
   font-weight: 600;
-  @apply text-primary-700 dark:text-primary-300;
+  color: var(--color-primary-text);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .refresh-btn {
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   width: 32px;
   height: 32px;
   display: flex;
@@ -56,7 +69,7 @@ mat-card-header {
   }
 
   &:hover:not(:disabled) {
-    @apply text-primary-600 dark:text-primary-400;
+    color: var(--text-primary);
   }
 
   &:disabled {
@@ -89,8 +102,8 @@ mat-card-content {
   gap: 8px;
   padding: 16px;
   border-radius: var(--radius-sm);
-  @apply bg-red-50 dark:bg-red-900/20;
-  @apply text-red-600 dark:text-red-400;
+  background: color-mix(in srgb, var(--color-error) 8%, var(--surface-card));
+  color: var(--color-error-text);
 
   mat-icon {
     font-size: var(--text-xl);
@@ -108,18 +121,83 @@ mat-card-content {
   margin-bottom: 16px;
 }
 
-.summary-text {
+// The summary is bound through [innerHTML], so its elements carry no
+// encapsulation attribute and only a ::ng-deep rule reaches them. :host keeps
+// these rules inside this card.
+:host ::ng-deep .structured-content {
   font-size: var(--text-base);
   line-height: 1.6;
-  @apply text-gray-700 dark:text-gray-300;
-  margin: 0;
+  color: var(--text-secondary);
+
+  h1,
+  h2,
+  h3 {
+    color: var(--text-primary);
+    font-weight: 600;
+    line-height: 1.4;
+    margin-block: 16px 8px;
+  }
+
+  // The opening section sits flush under the card header.
+  > :first-child {
+    margin-block-start: 0;
+  }
+
+  .markdown-h1 {
+    font-size: var(--text-xl);
+    padding-block-end: 8px;
+    border-block-end: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  }
+
+  .markdown-h2 {
+    font-size: var(--text-lg);
+    padding-block-end: 6px;
+    border-block-end: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  }
+
+  .markdown-h3 {
+    font-size: var(--text-base);
+  }
+
+  p {
+    margin-block: 0 8px;
+
+    &:last-child {
+      margin-block-end: 0;
+    }
+  }
+
+  strong {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .markdown-list {
+    list-style: disc;
+    padding-inline-start: 20px;
+    margin-block: 0 8px;
+
+    &:last-child {
+      margin-block-end: 0;
+    }
+  }
+
+  li {
+    margin-block-end: 6px;
+
+    &:last-child {
+      margin-block-end: 0;
+    }
+  }
 }
 
+// The header, its icon and the body all take the section's colour.
 .advice-section {
   padding: 12px;
   border-radius: var(--radius-md);
-  @apply bg-amber-50 dark:bg-amber-900/20;
-  @apply border border-amber-200 dark:border-amber-800;
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--surface-card));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  color: var(--color-warning-text);
 }
 
 .advice-header {
@@ -132,7 +210,6 @@ mat-card-content {
     font-size: var(--text-lg);
     width: 1em;
     height: 1em;
-    @apply text-amber-500;
   }
 
   span {
@@ -140,7 +217,6 @@ mat-card-content {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    @apply text-amber-700 dark:text-amber-400;
     flex-grow: 1;
     min-width: 0;
   }
@@ -149,72 +225,5 @@ mat-card-content {
 .advice-text {
   font-size: var(--text-sm);
   line-height: 1.5;
-  @apply text-amber-800 dark:text-amber-200;
   margin: 0;
-}
-
-// Markdown structured content styles
-.structured-content {
-  h1, h2, h3 {
-    @apply text-gray-900 dark:text-gray-100;
-    font-weight: 600;
-    margin: 16px 0 8px 0;
-
-    &:first-child {
-      margin-top: 0;
-    }
-  }
-
-  .markdown-h1 {
-    font-size: var(--text-xl);
-    border-bottom: 2px solid;
-    @apply border-primary-300 dark:border-primary-700;
-    padding-bottom: 8px;
-  }
-
-  .markdown-h2 {
-    font-size: var(--text-lg);
-    border-bottom: 1px solid;
-    @apply border-primary-200 dark:border-primary-800;
-    padding-bottom: 6px;
-  }
-
-  .markdown-h3 {
-    font-size: var(--text-base);
-  }
-
-  p {
-    font-size: var(--text-base);
-    line-height: 1.6;
-    @apply text-gray-700 dark:text-gray-300;
-    margin: 8px 0;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-
-  strong {
-    @apply font-semibold text-gray-900 dark:text-gray-100;
-  }
-
-  em {
-    @apply italic;
-  }
-
-  .markdown-list {
-    @apply list-disc ps-5;
-    margin: 8px 0;
-
-    li {
-      font-size: var(--text-base);
-      line-height: 1.6;
-      @apply text-gray-700 dark:text-gray-300;
-      margin-bottom: 6px;
-
-      &:last-child {
-        margin-bottom: 0;
-      }
-    }
-  }
 }

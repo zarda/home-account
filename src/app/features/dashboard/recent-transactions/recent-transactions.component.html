@@ -2,10 +2,13 @@
   <!-- Header -->
   <div class="card-header">
     <h3 class="card-title">{{ 'dashboard.recentTransactions' | translate }}</h3>
-    <a routerLink="/transactions" [queryParams]="{showAll: true}" class="view-all-link">
-      {{ 'dashboard.viewAll' | translate }}
-      <mat-icon class="view-all-icon">chevron_right</mat-icon>
-    </a>
+    <div class="header-actions">
+      <a routerLink="/transactions" [queryParams]="{showAll: true}" class="view-all-link">
+        {{ 'dashboard.viewAll' | translate }}
+        <mat-icon class="view-all-icon">chevron_right</mat-icon>
+      </a>
+      <ng-content select="[card-actions]" />
+    </div>
   </div>
 
   <!-- Content -->

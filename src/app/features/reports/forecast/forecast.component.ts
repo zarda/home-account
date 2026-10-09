@@ -7,7 +7,7 @@ import { MatCardModule } from '@angular/material/card';
 
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RecurringService } from '../../../core/services/recurring.service';
-import { ChartThemeService } from '../../../core/services/chart-theme.service';
+import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ForecastSeries, buildForecastSeries } from '../../../core/utils/forecast-series.utils';
@@ -200,14 +200,15 @@ export class ForecastComponent implements OnInit, OnDestroy {
 
   chartData = computed((): ChartData<'line'> => {
     const series = this.series();
+    const palette = this.chartTheme.palette();
     return {
       labels: this.bucketLabels(),
       datasets: [
         {
           label: this.translationService.t('reports.forecastActualSeries'),
           data: series.actualCumulative,
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          borderColor: palette.accentEdge,
+          backgroundColor: hexToRgba(palette.accent, 0.1),
           pointRadius: 0,
           tension: 0.25,
           fill: false
@@ -215,8 +216,8 @@ export class ForecastComponent implements OnInit, OnDestroy {
         {
           label: this.translationService.t('reports.forecastProjectedSeries'),
           data: series.projectedCumulative,
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+          borderColor: palette.incomeEdge,
+          backgroundColor: hexToRgba(palette.income, 0.1),
           borderDash: [6, 4],
           pointRadius: 0,
           tension: 0.25,

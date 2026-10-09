@@ -16,6 +16,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { paintedBackground, paintedColor, ratio, withTheme } from '../../core/services/testing';
 
 describe('SettingsComponent', () => {
   let component: SettingsComponent;
@@ -290,6 +291,23 @@ describe('SettingsComponent', () => {
 
       expect(avatarImg()).withContext('avatar img after a new photo URL arrives').toBeTruthy();
       expect(avatarPlaceholder()).withContext('placeholder after a new photo URL arrives').toBeFalsy();
+    });
+
+    // axe scores the glyph as text, and the empty states' icons are held to
+    // 4.5:1 the same way; in --text-disabled it measured 2.43:1 in light and
+    // 2.25:1 in dark on its circle.
+    it('paints the placeholder icon at 4.5:1 or better on its circle, in both themes', () => {
+      avatarImg()!.dispatchEvent(new Event('error'));
+      fixture.detectChanges();
+      const icon = avatarPlaceholder()!.querySelector('mat-icon')!;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          expect(ratio(paintedColor(icon), paintedBackground(icon)))
+            .withContext(`${theme} theme`)
+            .toBeGreaterThanOrEqual(4.5);
+        });
+      }
     });
   });
 

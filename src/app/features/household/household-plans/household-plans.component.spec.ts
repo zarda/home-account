@@ -23,7 +23,17 @@ import {
   HouseholdPlansService
 } from '../../../core/services/household-plans.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub, createUser, runAxe, summarizeViolations } from '../../../core/services/testing';
+import {
+  channels,
+  createTranslationStub,
+  createUser,
+  paintedBackground,
+  ratio,
+  runAxe,
+  settleAnimations,
+  summarizeViolations,
+  withTheme
+} from '../../../core/services/testing';
 import { defaultBudgetStart, startOfDay } from '../../../core/utils/transaction-date.utils';
 import {
   ConfirmDialogComponent,
@@ -278,41 +288,43 @@ describe('HouseholdPlansComponent', () => {
     });
 
     describe('warn as the budget asks', () => {
-      /** The card's bar colour, its percentage's tone and what its alert line says, in that order. */
-      function signals(): [string | undefined, string[], string] {
+      /** The card's bar tone, its percentage's tone and what its alert line says, in that order. */
+      function signals(): [string[], string[], string] {
         const card = element().querySelector('.plans-budgets .plan-card');
-        const bar = card?.querySelector('mat-progress-bar');
-        const colour = ['mat-primary', 'mat-accent', 'mat-warn'].find(name => bar?.classList.contains(name));
-        const tone = ['over', 'near'].filter(name => card?.querySelector('.plan-percent')?.classList.contains(name));
-        return [colour, tone, readAs(card?.querySelector('.plan-alert'))];
+        const toneOf = (node: Element | null | undefined) => ['over', 'near'].filter(name => node?.classList.contains(name));
+        return [
+          toneOf(card?.querySelector('mat-progress-bar')),
+          toneOf(card?.querySelector('.plan-percent')),
+          readAs(card?.querySelector('.plan-alert'))
+        ];
       }
 
       it('from its own threshold, with words beside the colour', () => {
         plans.budgets.set([budgetFigures({ alertThreshold: 70 }, { spent: 300 })]);
         render();
-        expect(signals()).withContext('75% of a budget that warns at 70%').toEqual(['mat-accent', ['near'], 'budget.approachingLimit']);
+        expect(signals()).withContext('75% of a budget that warns at 70%').toEqual([['near'], ['near'], 'budget.approachingLimit']);
 
         plans.budgets.set([budgetFigures({ alertThreshold: 80 }, { spent: 360 })]);
         render();
-        expect(signals()).withContext('90%').toEqual(['mat-accent', ['near'], 'budget.almostAtLimit']);
+        expect(signals()).withContext('90%').toEqual([['near'], ['near'], 'budget.almostAtLimit']);
 
         plans.budgets.set([budgetFigures({ alertThreshold: 95 }, { spent: 340 })]);
         render();
-        expect(signals()).withContext('85% of a budget that warns at 95%').toEqual(['mat-primary', [], '']);
+        expect(signals()).withContext('85% of a budget that warns at 95%').toEqual([[], [], '']);
       });
 
       it('from the default threshold when the budget names none', () => {
         plans.budgets.set([budgetFigures({}, { spent: 320 })]);
         render();
 
-        expect(signals()).withContext('80%').toEqual(['mat-accent', ['near'], 'budget.approachingLimit']);
+        expect(signals()).withContext('80%').toEqual([['near'], ['near'], 'budget.approachingLimit']);
       });
 
       it('as exceeded from the moment it reaches its limit', () => {
         plans.budgets.set([budgetFigures({}, { spent: 400 })]);
         render();
 
-        expect(signals()).toEqual(['mat-warn', ['over'], 'budget.budgetExceeded']);
+        expect(signals()).toEqual([['over'], ['over'], 'budget.budgetExceeded']);
         expect(element().querySelector('.plans-budgets .plan-amount')?.classList).toContain('over');
       });
 
@@ -320,7 +332,67 @@ describe('HouseholdPlansComponent', () => {
         plans.budgets.set([budgetFigures({}, { spent: 150 })]);
         render();
 
-        expect(signals()).toEqual(['mat-primary', [], '']);
+        expect(signals()).toEqual([[], [], '']);
+      });
+
+      /** What `color: var(token)` computes to under the theme on <html> now. */
+      function tokenColour(token: string): string {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        document.body.appendChild(probe);
+        try {
+          settleAnimations(document);
+          return getComputedStyle(probe).color;
+        } finally {
+          probe.remove();
+        }
+      }
+
+      // Each severity at a spend of the 400 limit that reaches it under the
+      // default threshold. Material paints the indicator as the inner bar's
+      // top border. It is a graphic, so its floor is 3:1 (WCAG 1.4.11),
+      // against the track it runs along and the card around it. Past its
+      // limit the card says so in one red: the bar, the amount, the
+      // percentage and the alert.
+      it("in the bar's own colour as well, at 3:1 or better on its track and the card, in both themes, and past its limit in the red its words read in", () => {
+        const SEVERITIES = [
+          { name: 'within budget', spent: 150, token: '--color-success-text' },
+          { name: 'warning', spent: 320, token: '--color-warning-text' },
+          { name: 'critical', spent: 360, token: '--color-warning-text' },
+          { name: 'exceeded', spent: 400, token: '--color-expense-text' },
+        ] as const;
+        const part = (selector: string) => element().querySelector<HTMLElement>(`.plans-budgets ${selector}`) as HTMLElement;
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            const painted = new Map<string, string>();
+            for (const severity of SEVERITIES) {
+              plans.budgets.set([budgetFigures({}, { spent: severity.spent })]);
+              render();
+              settleAnimations(document);
+              const label = `${theme} ${severity.name} bar`;
+              const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
+              painted.set(severity.name, indicator);
+              expect(indicator).withContext(label).toBe(tokenColour(severity.token));
+              expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
+                .withContext(`${label} on its track`)
+                .toBeGreaterThanOrEqual(3);
+              expect(ratio(channels(indicator).rgb, paintedBackground(part('.plan-card'))))
+                .withContext(`${label} on the card`)
+                .toBeGreaterThanOrEqual(3);
+              if (severity.name === 'exceeded') {
+                for (const words of ['.plan-amount', '.plan-percent', '.plan-alert']) {
+                  expect(indicator).withContext(`${label} in the red of ${words}`).toBe(getComputedStyle(part(words)).color);
+                }
+              }
+            }
+            expect(painted.get('warning'))
+              .withContext(`${theme} a warning bar paints apart from one within budget`)
+              .not.toBe(painted.get('within budget'));
+            expect(painted.get('exceeded'))
+              .withContext(`${theme} an exceeded bar paints apart from a warning one`)
+              .not.toBe(painted.get('warning'));
+          });
+        }
       });
     });
   });

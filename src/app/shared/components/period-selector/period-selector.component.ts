@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, input, output, signal } from '@angular/core';
 
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
@@ -9,7 +9,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { CustomPeriod, PeriodOption, PeriodSelection } from '../../../models';
-import { periodWindow } from '../../../core/utils/transaction-date.utils';
+import { periodWindow, pickerBounds } from '../../../core/utils/transaction-date.utils';
 
 // The period vocabulary lives in the models barrel so transaction-date.utils
 // can resolve a window without importing a component. Re-exported here because
@@ -55,6 +55,15 @@ export class PeriodSelectorComponent {
   private translationService = inject(TranslationService);
 
   selectionChange = output<PeriodSelection>();
+
+  /**
+   * The oldest month the pickers offer. Null leaves them capped at next year
+   * with no floor, which is what a failed read and a page with no single
+   * account behind it get.
+   */
+  floor = input<Date | null>(null);
+
+  bounds = computed(() => pickerBounds(this.floor(), new Date()));
 
   selectedPeriod = signal<PeriodOption>('thisMonth');
   private customPeriod = signal<CustomPeriod | null>(null);

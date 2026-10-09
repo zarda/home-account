@@ -44,14 +44,14 @@
   background: var(--surface-card);
   border: 1px solid var(--surface-muted);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-lg, 0 4px 16px rgba(0, 0, 0, 0.15));
+  box-shadow: var(--shadow-lg);
   padding: 4px 0;
   max-height: 280px;
   overflow-y: auto;
 }
 
 .suggestion-heading {
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -83,7 +83,7 @@
 }
 
 .suggestion-icon {
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
   font-size: var(--text-lg);
   width: 1em;
   height: 1em;
@@ -121,7 +121,7 @@
 }
 
 .search-icon {
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
   font-size: var(--text-xl);
   width: 1em;
   height: 1em;
@@ -135,11 +135,11 @@
   font-size: var(--text-sm);
   outline: none;
   min-width: 0;
-  @apply text-gray-900 dark:text-gray-100;
+  color: var(--text-primary);
 }
 
 .search-input::placeholder {
-  @apply text-gray-400 dark:text-gray-500;
+  color: var(--text-muted);
 }
 
 // The scrollbar stays. It is the only thing telling the reader that there
@@ -162,12 +162,12 @@
   // 40px min touch target (was ~28px).
   min-height: 40px;
   padding: 8px 14px;
-  @apply border border-gray-200 dark:border-gray-700;
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);
   background: var(--surface-card);
   font-size: var(--text-sm);
   font-weight: 500;
-  @apply text-gray-500 dark:text-gray-400;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
@@ -190,7 +190,7 @@
 
 .quick-btn:hover {
   background: var(--surface-muted);
-  @apply border-gray-300 dark:border-gray-600;
+  border-color: var(--border-strong);
 }
 
 .quick-btn.active {
@@ -205,7 +205,7 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  @apply border border-gray-200 dark:border-gray-700;
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);
   background: var(--surface-card);
   cursor: pointer;
@@ -244,38 +244,9 @@
   justify-content: center;
 }
 
-.add-btn {
-  display: none;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--color-primary);
-  color: white;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.add-btn:hover {
-  background: var(--color-primary-dark);
-}
-
-.add-btn mat-icon {
-  font-size: var(--text-xl);
-  width: 1em;
-  height: 1em;
-}
-
-.add-label {
-  display: none;
-}
-
 .filter-panel {
   padding: 12px;
-  @apply border-t border-gray-100 dark:border-gray-700;
+  border-block-start: 1px solid var(--border-primary);
   background: var(--surface-sunken);
 
   .search-wrapper {
@@ -316,7 +287,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-error);
+  color: var(--color-error-text);
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
@@ -324,7 +295,6 @@
 
 .clear-btn:hover {
   background: var(--color-error-light);
-  color: var(--color-error-text);
 }
 
 .clear-btn mat-icon {
@@ -336,14 +306,6 @@
 @media (min-width: 640px) {
   .toolbar {
     padding: 10px 16px;
-  }
-
-  .add-btn {
-    display: flex;
-  }
-
-  .add-label {
-    display: inline;
   }
 
   .filter-grid {

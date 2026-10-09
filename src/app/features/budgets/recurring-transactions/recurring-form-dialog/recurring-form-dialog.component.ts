@@ -20,6 +20,7 @@ import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category, MAX_
 import { RecurringPrefill } from '../../../../core/utils/recurring-conversion.utils';
 import { toDate } from '../../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
 export interface RecurringFormDialogData {
@@ -50,6 +51,7 @@ export interface RecurringFormDialogData {
     MatDatepickerModule,
     MatNativeDateModule,
     TranslatePipe,
+    CategoryGlyphPipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './recurring-form-dialog.component.html',

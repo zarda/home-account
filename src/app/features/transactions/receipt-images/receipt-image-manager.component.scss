@@ -16,9 +16,11 @@
   color: var(--text-secondary);
   font-size: var(--text-sm);
 
+  // Mixed into the dialog's surface rather than into transparent, so the
+  // tint is opaque and the text is measured against it alone.
   &.at-limit {
-    background: color-mix(in srgb, var(--color-warn, #d32f2f) 10%, transparent);
-    color: var(--color-warn, #d32f2f);
+    background: color-mix(in srgb, var(--color-error) 10%, var(--mat-sys-surface));
+    color: var(--color-error-text);
   }
 }
 
@@ -49,7 +51,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border-primary, rgba(0, 0, 0, 0.06));
+  border-bottom: 1px solid var(--border-primary);
 
   &:last-child {
     border-bottom: none;
@@ -63,7 +65,7 @@
 }
 
 .remove-all-btn {
-  color: var(--color-warn, #d32f2f);
+  color: var(--color-error-text);
   flex-shrink: 0;
 }
 
@@ -102,7 +104,7 @@
   height: 72px;
   object-fit: cover;
   border-radius: var(--radius-xs, 4px);
-  border: 1px solid var(--border-primary, rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--border-primary);
 }
 
 .item-info {
@@ -125,5 +127,5 @@
 }
 
 .remove-btn {
-  color: var(--color-warn, #d32f2f);
+  color: var(--color-error-text);
 }

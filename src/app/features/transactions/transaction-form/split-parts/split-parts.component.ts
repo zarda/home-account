@@ -20,6 +20,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { splitRemainder } from '../../../../core/utils/split-purchase.utils';
 import { Category, SplitPart, roundToMinorUnit } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 
 /**
  * The parts a purchase is taken apart into (#70).
@@ -44,6 +45,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
     MatInputModule,
     MatSelectModule,
     TranslatePipe,
+    CategoryGlyphPipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './split-parts.component.html',

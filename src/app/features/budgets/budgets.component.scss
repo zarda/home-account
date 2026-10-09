@@ -35,10 +35,13 @@
 
   .tab-badge {
     @apply ms-1 px-1.5 py-0.5 text-xs font-medium rounded-full;
-    // Primary-tinted, self-theming (was a raw indigo pair that drifted from
-    // the app primary and only guessed at a dark value).
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-primary);
+    // The count is 12px text: --color-primary itself measures 4.42:1 on this
+    // tint in dark, so it reads in --color-primary-text. The tint is mixed
+    // into the page the strip sits on rather than into transparent, so it is
+    // opaque; --color-primary-light, the scored pair's fill, is within 1.03:1
+    // of the light page and the pill all but vanishes on it.
+    background: color-mix(in srgb, var(--color-primary) 16%, var(--surface-background));
+    color: var(--color-primary-text);
     min-width: 20px;
     text-align: center;
   }

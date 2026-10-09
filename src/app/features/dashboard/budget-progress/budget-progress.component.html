@@ -1,10 +1,13 @@
 <mat-card class="!rounded-xl">
   <mat-card-header class="!px-4 !pt-3 !pb-0 flex justify-between items-center">
     <mat-card-title class="!text-base font-semibold">{{ 'dashboard.budgetProgress' | translate }}</mat-card-title>
-    <a mat-button color="primary" routerLink="/budgets" class="!-me-2 !text-sm">
-      {{ 'budget.manage' | translate }}
-      <mat-icon iconPositionEnd class="!text-base">arrow_forward</mat-icon>
-    </a>
+    <div class="header-actions">
+      <a mat-button color="primary" routerLink="/budgets" class="!text-sm">
+        {{ 'budget.manage' | translate }}
+        <mat-icon iconPositionEnd>arrow_forward</mat-icon>
+      </a>
+      <ng-content select="[card-actions]" />
+    </div>
   </mat-card-header>
 
   <mat-card-content class="!p-3">
@@ -13,7 +16,7 @@
         <div class="budget-item">
           <div class="budget-header">
             <div class="budget-info">
-              <mat-icon [style.color]="getCategoryColor(budget.categoryId)">
+              <mat-icon [style.color]="getCategoryColor(budget.categoryId) | categoryGlyph:'subtle'">
                 {{ getCategoryIcon(budget.categoryId) }}
               </mat-icon>
               <span class="budget-name">{{ budget.name }}</span>
@@ -26,7 +29,8 @@
 
           <mat-progress-bar
             [value]="getBarValue(budget)"
-            [color]="getProgressColor(budget)"
+            [class.near]="getBarTone(budget) === 'near'"
+            [class.over]="getBarTone(budget) === 'over'"
             [attr.aria-label]="'budgets.progressLabel' | translate: { name: budget.name, percent: getPercentage(budget).toFixed(0) }"
           />
 

@@ -18,7 +18,15 @@ import { ShareIntakeService } from '../../../../core/services/share-intake.servi
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
-import { MockAuthService } from '../../../../core/services/testing';
+import {
+  MockAuthService,
+  channels,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withTheme,
+} from '../../../../core/services/testing';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
 import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 
@@ -281,6 +289,72 @@ describe('ImportWizardComponent', () => {
     it('leaves the stash alone on a plain visit', () => {
       expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
     });
+
+    // The flags name something to do once: left on the URL, a reload or Back
+    // reads them again — a second drain of an emptied stash, or the same
+    // notice raised over a share that is long gone.
+    const expectFlagsStripped = () =>
+      expect(mockRouter.navigate).toHaveBeenCalledOnceWith([], {
+        relativeTo: routeStub as unknown as ActivatedRoute,
+        queryParams: { source: null, error: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      });
+
+    it('takes the share flag off the URL once it is read', fakeAsync(() => {
+      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
+
+      component.ngOnInit();
+      tick();
+
+      expectFlagsStripped();
+      expect(notifications.error).not.toHaveBeenCalled();
+    }));
+
+    it('says the share was lost when the worker could not keep it', fakeAsync(() => {
+      // The share-target worker's redirect when stashing the POST threw.
+      routeStub.snapshot = {
+        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
+      };
+
+      component.ngOnInit();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+      expectFlagsStripped();
+      // Anything an earlier share left in the stash is still picked up.
+      expect(mockShareIntake.consumeAll).toHaveBeenCalled();
+    }));
+
+    it('leaves the URL alone on a plain visit', () => {
+      // The outer beforeEach ran ngOnInit over a route with no params.
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      expect(notifications.error).not.toHaveBeenCalled();
+    });
+
+    it('says the share was lost when the stash cannot be read', fakeAsync(() => {
+      mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
+      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
+
+      component.ngOnInit();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+      expect(component.selectedFiles()).toEqual([]);
+      expectFlagsStripped();
+    }));
+
+    it('says it once when the worker and the stash both failed', fakeAsync(() => {
+      mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
+      routeStub.snapshot = {
+        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
+      };
+
+      component.ngOnInit();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+    }));
   });
 
   describe('shared images with a generic mime type', () => {
@@ -2630,5 +2704,295 @@ describe('ImportWizardComponent', () => {
       expect(card).withContext('the rows are offered').not.toBeNull();
       expect(card!.textContent).toContain('bad csv');
     }));
+
+    describe('colours, as painted', () => {
+      const THEMES = ['light', 'dark'] as const;
+      const el = () => realFixture.nativeElement as HTMLElement;
+      const part = (selector: string) => el().querySelector(selector) as HTMLElement | null;
+
+      /** What `<property>: var(token)` computes to under the theme on <html> now. */
+      function tokenValue(token: string, property = 'color'): string {
+        const probe = document.createElement('span');
+        probe.style.setProperty(property, `var(${token})`);
+        document.body.appendChild(probe);
+        try {
+          settleAnimations(document);
+          return getComputedStyle(probe).getPropertyValue(property);
+        } finally {
+          probe.remove();
+        }
+      }
+
+      /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
+      function expectPainted(node: HTMLElement | null, token: string, label: string, floor = 4.5): void {
+        expect(node).withContext(label).toBeTruthy();
+        if (!node) return;
+        expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
+        expect(ratio(paintedColor(node), paintedBackground(node)))
+          .withContext(`${label} on what it sits on`)
+          .toBeGreaterThanOrEqual(floor);
+      }
+
+      const merged = (id: string): CategorizedImportTransaction => ({
+        ...mockTransactions[0],
+        id,
+        imageMetadata: {
+          imageIndex: 0, imageId: 'image_0', positionInImage: 'middle', confidenceScore: 0.9,
+          receiptId: 1, wasMerged: true, mergedFromImages: [0, 1],
+        },
+      });
+
+      /** A batch that puts every summary card and the multi-image banner on screen. */
+      function landEveryCard(): void {
+        const real = realFixture.componentInstance;
+        real.multiImageMetadata.set({ totalImages: 2, deduplicationMethod: 'ai', imageIds: ['image_0', 'image_1'] });
+        real.receiptRowIds.set(new Set(['dated']));
+        real.extractedTransactions.set([
+          merged('merged'),
+          { ...mockTransactions[1], id: 'skipped', isDuplicate: true, selected: false },
+          { ...mockTransactions[0], id: 'dated', dateAssumed: true },
+          { ...mockTransactions[0], id: 'unfilled', description: '' },
+        ]);
+        realFixture.detectChanges();
+      }
+
+      // The wizard sits on the page itself.
+      beforeEach(() => {
+        el().style.backgroundColor = 'var(--surface-background)';
+      });
+
+      // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
+      it('paints each kind of failure in its own token, the icon at 3:1 or better on the page, in both themes', () => {
+        const kinds: readonly (readonly [string, string])[] = [
+          ['quota', '--color-warning-text'],
+          ['server', '--color-error-text'],
+          ['rate_limit', '--color-warning-text'],
+          ['timeout', '--color-warning-text'],
+          ['incomplete', '--color-warning-text'],
+          ['auth', '--color-error'],
+          ['network', '--color-info'],
+          ['unknown', '--color-error'],
+        ];
+        const real = realFixture.componentInstance;
+        real.processingError.set('the provider refused');
+
+        for (const [kind, token] of kinds) {
+          real.processingErrorType.set(kind);
+          realFixture.detectChanges();
+          for (const theme of THEMES) {
+            withTheme(theme, () => {
+              expectPainted(part(`.error-card.error-${kind} .error-icon`), token, `${theme} ${kind} icon`, 3);
+            });
+          }
+        }
+      });
+
+      // The active and finished circles are the primary fill; an upcoming
+      // step's number is text on the muted circle.
+      it("reads an upcoming step's number at AA on its circle, in both themes", () => {
+        const upcoming = part('.modern-stepper .mat-step-icon-state-number:not(.mat-step-icon-selected) .mat-step-icon-content');
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expectPainted(upcoming, '--text-muted', `${theme} upcoming step number`);
+          });
+        }
+      });
+
+      // The muted fill is all but the page itself in light (1.01:1), so a
+      // circle drawn by its fill alone leaves a bare number; 1.3:1 is about
+      // what the fill alone gives in dark, where the circle reads.
+      it("draws an upcoming step's circle apart from the page, by its fill or its edge, in both themes", () => {
+        const circle = part('.modern-stepper .mat-step-icon-state-number:not(.mat-step-icon-selected)');
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expect(circle).withContext(`${theme} upcoming circle`).toBeTruthy();
+            if (!circle) return;
+            settleAnimations(document);
+            const page = paintedBackground(el());
+            const shadow = getComputedStyle(circle).boxShadow;
+            const edge = shadow.includes('inset') ? /^(?:rgba?|color)\([^)]*\)/.exec(shadow) : null;
+            const tones = [paintedBackground(circle)];
+            if (edge) {
+              const [r, g, b] = channels(edge[0]).rgb.map(Math.round);
+              tones.push([r, g, b]);
+            }
+            expect(Math.max(...tones.map(tone => ratio(tone, page))))
+              .withContext(`${theme} the circle against the page`)
+              .toBeGreaterThanOrEqual(1.3);
+          });
+        }
+      });
+
+      it('reads the hint under a failure in --text-secondary at AA, in both themes', () => {
+        const real = realFixture.componentInstance;
+        real.processingError.set('slow down');
+        real.processingErrorType.set('rate_limit');
+        realFixture.detectChanges();
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expectPainted(part('.error-card .error-hint'), '--text-secondary', `${theme} hint`);
+          });
+        }
+      });
+
+      it('paints each summary card in its token, the icon at 3:1 on its tile and the figure at AA on the card, in both themes', () => {
+        landEveryCard();
+        // Figure, then icon. The figure is 18px bold below 768px, which is not
+        // large text, so it owes 4.5:1 there.
+        const cards: readonly (readonly [string, string, string])[] = [
+          ['.transactions-card', '--text-primary', '--color-primary'],
+          ['.income-card', '--color-income-text', '--color-income-text'],
+          ['.expense-card', '--color-expense-text', '--color-expense-text'],
+          ['.skipped-card', '--color-warning-text', '--color-warning-text'],
+          ['.dates-card', '--color-warning-text', '--color-warning-text'],
+          ['.rows-card', '--color-warning-text', '--color-warning-text'],
+          ['.multi-image-card', '--text-primary', '--color-ai'],
+          ['.merged-card', '--text-primary', '--color-info'],
+        ];
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            for (const [card, figure, icon] of cards) {
+              expectPainted(part(`${card} .card-value`), figure, `${theme} ${card} figure`);
+              expectPainted(part(`${card} mat-icon`), icon, `${theme} ${card} icon`, 3);
+            }
+          });
+        }
+      });
+
+      it('names the merged items on a badge in --text-primary on --color-info-light, at AA, in both themes', () => {
+        landEveryCard();
+        const banner = part('.success-card .multi-image-info');
+        const badge = banner?.querySelector('.merged-badge') as HTMLElement | null;
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expect(badge).withContext(`${theme} the badge`).toBeTruthy();
+            settleAnimations(document);
+            expect(getComputedStyle(badge!).backgroundColor)
+              .withContext(`${theme} badge fill`)
+              .toBe(tokenValue('--color-info-light', 'background-color'));
+            expectPainted(badge, '--text-primary', `${theme} badge`);
+            expectPainted(banner!.querySelector('mat-icon'), '--color-ai', `${theme} banner icon`, 3);
+            expectPainted(banner!.querySelector('span'), '--text-primary', `${theme} banner text`);
+          });
+        }
+      });
+
+      // The green the success family is named for is a fill, 2.1:1 on the
+      // light page, so a finished step reads in its text step. The step
+      // fades between its states, so it is settled before it is read.
+      it('paints each finished step in --color-success-text, its label at AA and its glyph at 3:1 on the step, in both themes', () => {
+        mockImportService.isProcessing.set(true);
+        mockImportService.processingProgress.set(100);
+        realFixture.detectChanges();
+        const steps = Array.from(el().querySelectorAll('.processing-steps .step-indicator.complete')) as HTMLElement[];
+        expect(steps.length).withContext('every step finished').toBe(3);
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            settleAnimations(document);
+            steps.forEach((step, i) => {
+              expectPainted(step.querySelector('span'), '--color-success-text', `${theme} step ${i + 1} label`);
+              expectPainted(step.querySelector('mat-icon'), '--color-success-text', `${theme} step ${i + 1} icon`, 3);
+            });
+          });
+        }
+      });
+
+      // Mid-way, one step is under way and not yet finished: its label and
+      // glyph are the indigo the active fill was given, on that fill.
+      it('paints the step under way in --color-primary-text, its label at AA and its glyph at 3:1 on the step, in both themes', () => {
+        mockImportService.isProcessing.set(true);
+        mockImportService.processingProgress.set(40);
+        realFixture.detectChanges();
+        const steps = Array.from(
+          el().querySelectorAll('.processing-steps .step-indicator.active:not(.complete)')
+        ) as HTMLElement[];
+        expect(steps.length).withContext('one step under way').toBe(1);
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            settleAnimations(document);
+            expectPainted(steps[0].querySelector('span'), '--color-primary-text', `${theme} step under way label`);
+            expectPainted(steps[0].querySelector('mat-icon'), '--color-primary-text', `${theme} step under way icon`, 3);
+          });
+        }
+      });
+
+      it('paints the success glyph in --color-success-text at 3:1 or better on the page, in both themes', () => {
+        realFixture.componentInstance.extractedTransactions.set([{ ...mockTransactions[0] }]);
+        realFixture.detectChanges();
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            settleAnimations(document);
+            expectPainted(part('.success-card .success-icon'), '--color-success-text', `${theme} success icon`, 3);
+          });
+        }
+      });
+
+      // The amber the warning family is named for is a fill, under 2:1 on the
+      // notice's own 5% tint of it in light.
+      it('paints the cut-off notice\'s glyph in --color-warning-text at 3:1 or better on the notice, in both themes', () => {
+        realFixture.componentInstance.answerIncomplete.set(true);
+        realFixture.detectChanges();
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            expectPainted(part('.incomplete-notice .incomplete-icon'), '--color-warning-text', `${theme} cut-off icon`, 3);
+          });
+        }
+      });
+
+      // The caption sits on the photo, and a receipt is white paper: the veil
+      // behind the text has to hold it at AA over white by itself.
+      it('holds a thumbnail caption at AA over a white receipt, on a veil of at least 0.6, in both themes', () => {
+        realFixture.componentInstance.imagePreviewUrls.set([{ name: 'receipt-0001.png', url: '' }]);
+        realFixture.detectChanges();
+        const item = part('.preview-item') as HTMLElement;
+        const caption = part('.preview-name') as HTMLElement;
+        item.style.background = 'rgb(255, 255, 255)';
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            const veil = channels(getComputedStyle(caption).backgroundColor);
+            expect(veil.rgb).withContext(`${theme} the veil is black`).toEqual([0, 0, 0]);
+            expect(veil.alpha).withContext(`${theme} the veil's strength`).toBeGreaterThanOrEqual(0.6);
+            expect(ratio(paintedColor(caption), paintedBackground(caption)))
+              .withContext(`${theme} caption over white paper`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        }
+      });
+
+      // The badge rides the filled button, whose label is white on the light
+      // theme's primary and navy on the dark theme's, and the count on it is
+      // 14px text.
+      it('tints the count on Continue with the label\'s own colour, the count at AA on it, in both themes', () => {
+        const real = realFixture.componentInstance;
+        real.extractedTransactions.set([{ ...mockTransactions[0] }, { ...mockTransactions[1] }]);
+        realFixture.detectChanges();
+        const badge = part('.count-badge') as HTMLElement;
+
+        for (const theme of THEMES) {
+          withTheme(theme, () => {
+            settleAnimations(document);
+            const label = channels(getComputedStyle(badge).color);
+            const tint = channels(getComputedStyle(badge).backgroundColor);
+            tint.rgb.forEach((channel, i) =>
+              expect(channel).withContext(`${theme} tint channel ${i}`).toBeCloseTo(label.rgb[i], 0)
+            );
+            expect(tint.alpha).withContext(`${theme} tint strength`).toBeCloseTo(0.12, 2);
+            expect(ratio(paintedColor(badge), paintedBackground(badge)))
+              .withContext(`${theme} count on its tint`)
+              .toBeGreaterThanOrEqual(4.5);
+          });
+        }
+      });
+    });
   });
 });

@@ -152,12 +152,75 @@ describe('PwaService', () => {
     expect(s.isStandalone()).toBeTrue();
   });
 
-  it('ignores beforeinstallprompt', () => {
-    make();
-    const event = new Event('beforeinstallprompt');
-    spyOn(event, 'preventDefault');
-    window.dispatchEvent(event);
-    expect(event.preventDefault).not.toHaveBeenCalled();
+  describe('install prompt (#446)', () => {
+    interface FakeInstallPrompt extends Event {
+      prompt: jasmine.Spy<() => Promise<void>>;
+    }
+
+    // Chrome's BeforeInstallPromptEvent cannot be constructed, so a plain
+    // event carries the one member the service calls.
+    function installPrompt(): FakeInstallPrompt {
+      return Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+        prompt: jasmine.createSpy('prompt').and.resolveTo(),
+      });
+    }
+
+    it('captures beforeinstallprompt without preventDefault, so the browser keeps its own install UI', () => {
+      // A pin (ADR 0112): preventDefault would hide Chrome's install UI on
+      // every visit, including the pages that never offer the prompt.
+      make();
+      const event = installPrompt();
+      spyOn(event, 'preventDefault');
+      window.dispatchEvent(event);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('can offer the prompt once the browser hands one over', () => {
+      const s = make();
+      expect(s.canPromptInstall()).toBeFalse();
+      window.dispatchEvent(installPrompt());
+      expect(s.canPromptInstall()).toBeTrue();
+    });
+
+    it('prompts once, then has nothing left to offer', async () => {
+      const s = make();
+      const event = installPrompt();
+      window.dispatchEvent(event);
+
+      await s.promptInstall();
+      expect(event.prompt).toHaveBeenCalledTimes(1);
+      expect(s.canPromptInstall()).toBeFalse();
+
+      // Chrome rejects a second prompt() on the same event.
+      await s.promptInstall();
+      expect(event.prompt).toHaveBeenCalledTimes(1);
+    });
+
+    it('settles when the browser refuses the prompt, and does not offer that event again', async () => {
+      const warn = spyOn(console, 'warn');
+      const s = make();
+      const event = installPrompt();
+      event.prompt.and.rejectWith(new DOMException('No user activation', 'NotAllowedError'));
+      window.dispatchEvent(event);
+
+      await expectAsync(s.promptInstall()).toBeResolved();
+      expect(warn).toHaveBeenCalled();
+      expect(s.canPromptInstall()).toBeFalse();
+    });
+
+    it('appinstalled clears it', () => {
+      const s = make();
+      window.dispatchEvent(installPrompt());
+      window.dispatchEvent(new Event('appinstalled'));
+      expect(s.canPromptInstall()).toBeFalse();
+    });
+
+    it('never offers it on native', () => {
+      spyOn(Capacitor, 'isNativePlatform').and.returnValue(true);
+      const s = make();
+      window.dispatchEvent(installPrompt());
+      expect(s.canPromptInstall()).toBeFalse();
+    });
   });
 
   describe('service worker messages', () => {
@@ -193,6 +256,29 @@ describe('PwaService', () => {
       window.removeEventListener('check-model-updates', onModel);
       expect(onModel).not.toHaveBeenCalled();
     });
+
+    // The channel is shared: the share-target worker posts notification
+    // routes on it, and anything else under this origin may post anything.
+    // A listener that throws is reported for every message, by every
+    // instance still listening.
+    it('ignores a message whose data is not an object, through the real container', () => {
+      make();
+      const thrown: unknown[] = [];
+      const onError = (event: ErrorEvent) => {
+        thrown.push(event.error);
+        event.preventDefault();
+      };
+      window.addEventListener('error', onError);
+      try {
+        for (const data of [null, undefined, 42, 'SYNC_OFFLINE_QUEUE']) {
+          navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data }));
+        }
+      } finally {
+        window.removeEventListener('error', onError);
+      }
+
+      expect(thrown).toEqual([]);
+    });
   });
 
   describe('platform detection', () => {
@@ -224,6 +310,33 @@ describe('PwaService', () => {
       spyOn(Capacitor, 'isNativePlatform').and.returnValue(false);
 
       expect(make().isStandalone()).toBeFalse();
+    });
+
+    describe('iPadOS (#446)', () => {
+      // What iPadOS Safari sends by default: it asks for the desktop site.
+      const MAC_SAFARI_UA =
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+
+      function withDevice(userAgent: string, maxTouchPoints: number): void {
+        Object.defineProperty(navigator, 'userAgent', { configurable: true, get: () => userAgent });
+        Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, get: () => maxTouchPoints });
+      }
+
+      afterEach(() => {
+        delete (navigator as unknown as Record<string, unknown>)['userAgent'];
+        delete (navigator as unknown as Record<string, unknown>)['maxTouchPoints'];
+      });
+
+      it('counts a Mac user agent with touch points as iOS: an iPad', () => {
+        withDevice(MAC_SAFARI_UA, 5);
+        expect(make().isIOS()).toBeTrue();
+      });
+
+      it('still finds a Mac, which has no touch points, not iOS', () => {
+        // A pin: the iPad answer must not reach a desktop Mac.
+        withDevice(MAC_SAFARI_UA, 0);
+        expect(make().isIOS()).toBeFalse();
+      });
     });
   });
 

@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with twelve permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, 79 and 80.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 86.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,13 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function.
+there too; neither touches a household or calls a function. Journeys 81 to 86
+need one account as well, and run there for what they write and what they need
+seeded: categories, rules, budgets and a household whose colours the seed
+fixes, a category made and deleted, a rule paused and resumed, rules due in the
+coming days written past the rules, a stored dashboard layout read back the
+same way, and the recap and a PIN switched on. None of them calls a function,
+and only 82 opens a household page, to read a dialog it cancels.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -138,8 +144,14 @@ store the session sits in:
 is defined on this branch and `undefined` on `e92c4df7`, and on a page that
 has loaded signed in,
 `Object.keys(localStorage).some(k => k.startsWith('firebase:authUser:'))` is
-`true`, where `e92c4df7` kept the session in IndexedDB. For another branch it is
-whatever that branch added. A
+`true`, where `e92c4df7` kept the session in IndexedDB. For the theme tokens,
+the category colours, the papercuts, the card menu and the notification taps
+it is the served catalog and the header:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).shortcuts` is
+defined on this branch and `undefined` on `c47d6f26`, and on any signed-in
+page `document.querySelector('app-header .palette-button') !== null` is
+`true`, where `c47d6f26`'s header has no palette button. For another branch it
+is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
 
@@ -203,15 +215,16 @@ full browser window.
   the page is reloaded. So run the phone journey at the pane's **own** width
   when it is already narrow enough, and reload before concluding that a
   control does nothing.
-- **A screenshot can freeze under a scaled emulation** — the image that comes
-  back is the one from before the last interaction, which reads exactly like a
+- **A screenshot can freeze under a scaled emulation** — the image captured
+  is the one from before the last interaction, which reads exactly like a
   control that did nothing. Confirm against the page's text, not the picture.
 - **A hidden pane stops painting, and the app's render scheduler with it.**
   Angular schedules a render on `requestAnimationFrame` raced against a
   timer, and a pane the host is not showing throttles both, so a click lands
   in the model while the view lags behind it — a control that did nothing,
   read from a screenshot that never updated, and focus that never arrived.
-  Front the pane before reading anything off it. Where it cannot be fronted,
+  Bring the pane into view before reading anything off it. Where it cannot
+  be,
   `ng.applyChanges(ng.getComponent(document.querySelector('app-import-wizard')))`
   after each action renders what the model already holds — state only, so it
   proves nothing about what the app would have painted — and everything
@@ -229,7 +242,7 @@ full browser window.
   `const d = ng.getDirectives(label).find(x => x.overflowRatio);
   d.registry.markDirty(d); d.registry.flush();` — and read the font-size
   after: state only, diagnostic-grade, as the render flush above is; a
-  fronted pane does this on its own. A card born after the last flush — a
+  pane in view does this on its own. A card born after the last flush — a
   split's part, a row added by hand — has a label no flush has reached, and
   it reads as the same overflow until it gets one of its own. The pane's
   390px emulation also raises the root font to 20.8px, so a label reads
@@ -241,7 +254,8 @@ full browser window.
   bottom navigation's active pill, whose background eases over 0.15s, read
   its dark fill behind the light glyph — 1.31:1 — where the settled pill reads
   6.15:1. Finish what is running before reading a computed colour,
-  `document.getAnimations().forEach(a => a.finish())`, or front the pane.
+  `document.getAnimations().forEach(a => a.finish())`, or bring the pane into
+  view.
 - **A desktop-only door needs a pane genuinely wide enough for the table.**
   The list swaps to the table at `min-width: 768px`, so below that the row's
   note icon does not exist and journey 2 silently becomes journey 4.
@@ -249,15 +263,15 @@ full browser window.
   to a third-party host and can be missing from the log entirely, so its
   absence proves nothing. The translated text on screen is the proof the
   provider answered.
-- **A pane's Escape key reaches no dialog.** The key tool's Escape lands
-  somewhere the CDK overlay's own keydown handler never sees: the receipt
-  viewer and the note dialog both stay open with focus inside and nothing in
-  the console, which reads exactly like a dialog that has stopped honouring
-  Escape. The app honours it — a synthetic `keydown` (`key: 'Escape'`,
-  `keyCode: 27`) dispatched on the open dialog closes it, which is how this
-  was settled — so close dialogs through their own Close or Cancel control,
-  which every journey does anyway, and never conclude an Escape defect from a
-  pane.
+- **A pane's Escape key reaches no dialog.** An Escape sent as synthetic key
+  input from outside the page lands somewhere the CDK overlay's own keydown
+  handler never sees: the receipt viewer and the note dialog both stay open
+  with focus inside and nothing in the console, which reads exactly like a
+  dialog that has stopped honouring Escape. The app honours it — a
+  synthetic `keydown` (`key: 'Escape'`, `keyCode: 27`) dispatched on the
+  open dialog closes it, which is how this was settled — so close dialogs
+  through their own Close or Cancel control, which every journey does
+  anyway, and never conclude an Escape defect from a pane.
 
   Two things about a key the run constructs itself, since the same trick is
   what drives the tab strips. The pane's Chromium leaves `keyCode` at 0 on a
@@ -267,14 +281,15 @@ full browser window.
   key dispatched on the header, or on the group, reaches no key manager and
   reads exactly like a strip that ignores the keyboard. Dispatch from the
   focused tab.
-- **A pane clears viewport emulation between turns.** A width set for a phone
-  journey is gone by the next turn, and any measurement that crosses that
-  boundary describes a layout that no longer exists — one run read a
-  zero-size box before the image had loaded and came back to find the dialog
-  apparently gone, which is the pane's reset and not the app. Set the width
-  and take every measurement of it inside one turn. The app is not upset by
-  the change either way: an open viewer watched through a mobile→desktop swap
-  stayed open while the table re-rendered underneath it.
+- **A pane can drop viewport emulation on its own.** A width set for a
+  phone journey can be gone a step later, and any measurement that crosses
+  that reset describes a layout that no longer exists — one run read a
+  zero-size box before the image had loaded and, reading again later, found
+  the dialog apparently gone, which is the pane's reset and not the app.
+  Set the width and take every measurement of it immediately, in the same
+  step. The app is not upset by the change either way: an open viewer
+  watched through a mobile→desktop swap stayed open while the table
+  re-rendered underneath it.
 - **The wizard's back arrow navigates asynchronously.** The click returns
   before the route has changed, so a file handed to the dropzone's input in
   the same breath goes to the wizard the run thought it had left and joins
@@ -329,6 +344,145 @@ full browser window.
 The console's own quirk is check 3 above: entries persist across reloads, so
 only the difference counts.
 
+## Switching the theme
+
+A journey that reads a page in both themes switches it through the app's own
+`ThemeService`, from the page console: the call the Settings theme control
+makes, without the write the control makes after it. Note the preference
+first, so the run can put it back:
+
+```js
+const themes = ng.getComponent(document.querySelector('app-header')).authService.themeService;
+themes.theme();          // 'light', 'dark' or 'system': note it
+themes.setTheme('dark'); // or 'light'
+```
+
+Then, as a separate console evaluation:
+
+```js
+const themes = ng.getComponent(document.querySelector('app-header')).authService.themeService;
+[themes.effectiveTheme(), document.documentElement.className];
+```
+
+It reads `'dark'`, with `dark-theme` on the root and no `light-theme`. The
+header is on every signed-in page, and `authService` and `themeService` are
+private, TypeScript's word, which the running page does not enforce, as
+journey 14 says.
+
+- **Never the root's classes alone.** Swapping `.light-theme` for
+  `.dark-theme` repaints every token, but three readers take the theme from
+  the service rather than the root. The category chip
+  (`CategoryChipComponent`) and the `categoryGlyph` pipe pick a glyph colour
+  for the theme `effectiveTheme()` names, and `ChartThemeService.palette`
+  reads the tokens again only when that changes. After a class swap the page
+  reads half one theme: a chip glyph chosen for light on a dark tile, and a
+  chart in the other theme's colours.
+- **Never the Settings control.** It calls the same `setTheme`, then writes
+  `preferences.theme` on the user document. That is an account write, which
+  no production journey makes ([What a run may touch](#what-a-run-may-touch)).
+  The console call writes nothing: the preference lives in the service's
+  signal, on this page.
+- **Wait for the classes.** The service stamps them from an effect, which
+  runs with the app's next change detection: at once in a pane in view, a
+  timer later in a hidden one ([Panes and viewports](#panes-and-viewports)).
+  Read them again in later evaluations until they show the theme, then
+  finish the page's transitions before reading a colour.
+- **The emulated scheme decides nothing** once a theme is named. The classes
+  set `color-scheme` on the root (`styles.scss`), every `light-dark()` pair
+  Material emits follows it, and nothing else in the app answers
+  `prefers-color-scheme`. Only a preference of `system` does.
+- **A page load ends it.** The switch lives in this page's memory, so a
+  reload, or an address typed into the bar, starts the page on the
+  account's stored theme. Move between pages through the app's own
+  navigation — at an emulated width, where a click can stall, the header's
+  router from the console,
+  `ng.getComponent(document.querySelector('app-header')).router.navigateByUrl('/budgets')`
+  — or switch again after each load.
+- **Putting it back.** `setTheme` with the preference noted first, or a
+  reload: the service starts on `system` and takes the account's stored
+  `preferences.theme` from its profile. A preference write the page makes
+  itself puts a stored theme back as well — any Settings control, the layout
+  editor, a card menu — because `AuthService` passes the `preferences.theme`
+  of each profile it sets to `ThemeService.init`. Read the classes again
+  after one.
+- **High contrast** is switched the same way, through the service beside it:
+  `…authService.accessibilityService.setHighContrast(true)` puts
+  `.high-contrast` on the root, and the chart palette follows it too. Note
+  `highContrast()` first, and put it back the same two ways.
+
+## Reading a painted colour
+
+A computed colour is not a painted one, which is what
+`core/services/testing/painted-contrast.ts` answers in the specs
+([testing.md](testing.md#colour-as-painted)). Chrome computes a
+`color-mix()` to `color(srgb … / a)`, with channels from 0 to 1 that a
+`[\d.]+` scrape reads as near black; a translucent fill takes on whatever
+is under it; and an ancestor's `opacity` fades everything inside it. The same
+arithmetic, for the page console, pasted at the top of every evaluation
+that measures — a helper left on `window` does not survive a navigation:
+
+```js
+document.getAnimations().forEach(a => { try { a.finish(); } catch {} });
+const ch = c => {
+  const m = /^(rgba?|color)\((?:srgb\s+)?(.*)\)$/i.exec(c.trim());
+  const n = m ? m[2].split(/[\s,\/]+/).filter(Boolean).map(Number) : [];
+  if (n.length < 3 || n.some(Number.isNaN)) throw new Error(`cannot read ${c}`);
+  const k = m[1].toLowerCase() === 'color' ? 255 : 1;
+  return { rgb: n.slice(0, 3).map(v => v * k), a: n[3] ?? 1 };
+};
+const over = (t, b) => {
+  const a = t.a + b.a * (1 - t.a);
+  return { rgb: t.rgb.map((v, i) => a ? (v * t.a + b.rgb[i] * b.a * (1 - t.a)) / a : 0), a };
+};
+const painted = (el, top = { rgb: [0, 0, 0], a: 0 }) => {
+  let p = top;
+  for (let n = el; n; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    p = over(p, ch(s.backgroundColor));
+    p = { rgb: p.rgb, a: p.a * Number(s.opacity) };
+  }
+  if (p.a < 1 - 1e-9) throw new Error('nothing opaque under it');
+  return p.rgb.map(v => Math.min(255, Math.max(0, Math.round(v))));
+};
+const lum = rgb => rgb.map(v => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+const ratio = (el, colour = getComputedStyle(el).color) => {
+  const [hi, lo] = [lum(painted(el, ch(colour))), lum(painted(el))].sort((x, y) => y - x);
+  return +((hi + 0.05) / (lo + 0.05)).toFixed(2);
+};
+const lowest = root => [...root.querySelectorAll('*')]
+  .filter(el => el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+    && [...el.childNodes].some(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim()))
+  .map(el => ({ ratio: ratio(el), tag: el.tagName.toLowerCase(), size: getComputedStyle(el).fontSize,
+    text: el.textContent.trim().slice(0, 40) }))
+  .sort((a, b) => a.ratio - b.ratio).slice(0, 3);
+```
+
+- `ratio(el)` scores an element's text, or a `mat-icon`'s glyph, against
+  everything painted under it. `ratio(el, colour)` scores another colour
+  over `el`'s chain. A progress bar's indicator is one: Material paints it
+  as the top border of `.mdc-linear-progress__bar-inner`, read as
+  `borderTopColor`, and runs it along the track,
+  `.mdc-linear-progress__buffer-bar`, which is the bar's sibling, not its
+  ancestor. So the indicator is read against the track's chain; its own
+  `bar-inner` chain sees only the card around it, a second reading and
+  never the only one. A ring outside a box is another, read against the
+  box's parent.
+- `lowest(root)` lists the three lowest-scoring texts under `root`, each with
+  its tag and size, for the run to judge against its bar.
+- **The bars.** 4.5:1 for text. 3:1 for large text (24px, or 18.66px
+  bold), and for a glyph, a bar's indicator or an edge, which WCAG holds to
+  the bar for a non-text graphic.
+- **Read the element that is painted.** Material paints a chip's label on
+  `.mdc-evolution-chip__text-label` and a menu item's icon from
+  `--mat-menu-item-icon-color`, whatever the host says.
+- **What the walk does not see**, as in the specs: background images and
+  gradients, a pseudo-element's state layer, and anything painted under the
+  element by a sibling rather than an ancestor. A select panel inside a
+  dialog is drawn in the top layer, where the dialog's opacity does not
+  apply, so read one only once its dialog carries `mdc-dialog--open`
+  ([In a hidden pane](#in-a-hidden-pane)).
+
 ## What a run may touch
 
 Twelve writes are authorised — eleven in the live project, one on the device
@@ -356,7 +510,7 @@ to be inferred.
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | The dashboard layout editor | `preferences.dashboardLayout` | Reset, then reloaded and read back absent |
 | A purchase split in the form | Three transaction documents — a remainder row and two parts, sharing one `splitGroupId` and one `createdAt` — where an unsplit add would have written one | Each of the three deleted through the list, and a search for the journey's own description confirmed to return none |
-| Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme classes it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the root element's classes restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
+| Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the theme preference restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
 | Scanning a receipt | Provider requests of up to three kinds under the account's own key, all before the review step. The extraction, always: one request, and on Gemini a second model only when the first was rate-limited. A categorization call, grounded in the account's recent corrections only where grounding is on, only for the rows the extraction named no category for on their own side and whose merchant the category memory does not answer on that side. A tag-suggestion call only for the rows the extraction and the tag memory left untagged, and only where the account's grounding is on and it has a vocabulary to offer. Either call goes as one request per 25 rows. When analytics consent is on, one `ai_assist_used` event (`receipt_scan`) as the scan starts and one `receipt_import` event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
 | Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
@@ -396,7 +550,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77, 79 and 80 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 86 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -646,6 +800,17 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
+Journeys 81 to 86 use the same seed as Alex alone, and drive the account's own
+pages: the theme tokens and a category's colour, measured where they are
+painted in both themes (81 and 82, whose last surface is Chen home's budget
+dialog); the papercuts of
+[ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)
+(83); the dashboard's card menu (84); the links a reminder opens (85); and
+the shortcuts and the install offer (86).
+[accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
+[reminders.md](reminders.md), [shortcuts.md](shortcuts.md) and
+[pwa.md](pwa.md) describe what they drive.
+
 The seed writes the households, their members and every shared row's copy
 past the rules, as the app's own commits leave them; nothing in this venue
 proves those commits pass the rules, which the rules smoke does. A seeded copy
@@ -655,7 +820,7 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
 
-Journeys 79 and 80 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 86 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -788,8 +953,8 @@ IndexedDB record, `{ fbase_key, value }`, so it can go into either store.
 
 **The first sign-in, on a clean origin,** can still put the record into
 IndexedDB and load the app: that load carries it across. Start the write,
-and read its flag in a **second** call — a pane script that awaits the
-IndexedDB transaction can hang:
+and read its flag in a **second** console evaluation — a pane script that
+awaits the IndexedDB transaction can hang:
 
 ```js
 const record = /* sessions.json's "alex", "sam" or "kai" object, pasted whole */;
@@ -829,15 +994,15 @@ and the guards move one that was signed out off `/login` onto the dashboard
 each to reload itself onto the account rather than navigating it there. The
 page that made the write is told nothing — a browser raises no storage event
 in the document that changed the store — and goes on as the account it was
-until the run reloads it: straight after the write, in a call of its own or
-with the browser's reload. The same write signs in a page that is signed
-out, and the run reloads that one the same way.
+until the run reloads it: straight after the write, as a separate console
+evaluation or with the browser's reload. The same write signs in a page
+that is signed out, and the run reloads that one the same way.
 
 A value the run needs after a reload goes in `sessionStorage`, which a
 reload of the same tab keeps; a `window` flag dies with the page it was set
-on. Front a tab before reading it: a background tab paints nothing and runs
-its timers late, so a page that has reloaded can hold its new account with
-none of it on screen ([In a hidden pane](#in-a-hidden-pane)). The console
+on. Switch to a tab before reading it: a background tab paints nothing and
+runs its timers late, so a page that has reloaded can hold its new account
+with none of it on screen ([In a hidden pane](#in-a-hidden-pane)). The console
 keeps its entries across reloads, and a swap reloads every page of the
 origin, so judge each tab's console by the difference, as check 3 of
 [Before every run](#before-every-run) says.
@@ -876,13 +1041,13 @@ every dialog's own component with `mat-mdc-dialog-component-host`, stacked
 ones included. A dialog also opens on an animation frame, which a hidden
 pane throttles: until its `mat-dialog-container` carries `mdc-dialog--open`,
 the surface is still at its opening `scale(0.8)` — a 320px dialog measures
-256 — and its content at opacity 0. Read the class in a call of its own,
-and again in later calls until it is there; then finish the animations and
-measure.
+256 — and its content at opacity 0. Read the class as a separate console
+evaluation, and again in later evaluations until it is there; then finish
+the animations and measure.
 
 State only, diagnostic-grade, and never a timer in a pane script. Inline every
-probe in the call that uses it: a helper left on `window` does not survive a
-navigation.
+probe in the evaluation that uses it: a helper left on `window` does not
+survive a navigation.
 
 ### Reading past the rules
 
@@ -918,7 +1083,8 @@ curl -s -H 'Authorization: Bearer owner' "$FS/households/<hid>/ledger?pageSize=3
 
 Close the tabs on both origins, stop the 4300 server and the emulators —
 nothing is imported or exported, so they keep nothing — delete the sessions
-file and the emulator log, and run the ports check again: it prints nothing.
+file, the note of journey 85's test PIN where one was kept, and the emulator
+log, and run the ports check again: it prints nothing.
 
 ## The journeys
 
@@ -1004,6 +1170,12 @@ file and the emulator log, and run the ports check again: it prints nothing.
 | 78 | Two households live (production, after the merge) | The deployed rules and indexes admitting households, a copy and its removal, the deployed callable answering in its region, and the account left as it was | `78-switcher.png`, `78-shared-row.png`, `78-setup.png` |
 | 79 | Review: a refund's type flag and the category that follows the toggle (emulators) | The flag on a real review card's type toggle and the name it gives the button, a flip filing the category on the new side with the live region saying so, the card at a real 375px phone width, what the import writes past the rules, and the form's own flag beside its type | `79-type-flags.png`, `79-category-followed.png`, `79-review-375.png`, `79-form-flag.png` |
 | 80 | Another tab changes the account (emulators) | Two tabs of one origin sharing a session on `/transactions`: another tab's swap, sign-out and sign-in each reloading this one onto the new account with nothing reported on the way out, and a tab's own sign-out reloading nothing | `80-reloaded-as-sam.png`, `80-signed-out.png`, `80-dashboard-as-alex.png` |
+| 81 | Colours follow the theme (emulators) | Every surface the theme tokens reach measured as painted, in both themes and with high contrast on, the chart's edges following a theme switch, and seven routes at a real 375px width with nothing scrolling sideways | `81-dashboard-light.png`, `81-dashboard-dark.png`, `81-budgets-dark.png`, `81-dropzone-375-dark.png` |
+| 82 | A category's colour on every surface (emulators) | A category's glyph on each surface it is drawn on — tiles, a legend, select panels at rest and active, a dialog's icon grid, a household dialog — in both themes switched through the service the chip and the pipe read, a paused rule at full strength, and row menus that name their rows | `82-recurring-paused-dark.png`, `82-category-select-light.png`, `82-category-dialog-dark.png`, `82-household-select-dark.png` |
+| 83 | The papercuts: bounds, Retry, a lost share, a neutral zero, landmarks (emulators) | A year view refusing the years outside the account's own bounds, a Retry over a real failed count with focus and the live region after it on desktop and phone, a share flag gone from a real URL, a zero in no colour, and the names a screen reader lists the landmarks by | `83-year-bounds.png`, `83-totals-retry.png`, `83-share-lost.png`, `83-recap-zero.png` |
+| 84 | The card menu (emulators) | A card moved and hidden from its own menu, focus and the announcement after each, the stored layout read back past the rules holding only what changed, ids from a later build surviving an edit, and the rail's titles kept whole | `84-card-menu.png`, `84-chart-hidden.png`, `84-rail-1024.png` |
+| 85 | The links a reminder opens (emulators) | A bill link landing on its focused row from a cold cache, a rule past the fortnight sent to the rules, the recap's region focused, and a link that comes through the lock screen | `85-bill-focused.png`, `85-not-upcoming.png`, `85-recap-focused.png`, `85-after-unlock.png` |
+| 86 | Shortcuts and the install offer (emulators) | `?`, the header's palette button and the one-time hint in a real header at three widths, chords that never split, and the install card raising a held prompt once | `86-hint.png`, `86-shortcuts-first.png`, `86-install-card.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -1832,15 +2004,15 @@ all four rungs and `rate-status.component.spec.ts` pins `rate-line-stale` on
 the two that failed. What this half adds is the one thing neither can — the
 line as a browser paints it, in the warning colour each theme gives it.
 
-**Keep the string, the real `fetch` and the theme classes, and fail only the
-rates host.** This half reloads nothing until it is over, so a page global
+**Keep the string, the real `fetch` and the theme preference, and fail only
+the rates host.** This half reloads nothing until it is over, so a page global
 holds all three across it:
 
 ```js
 window.__j19 = {
   cache: localStorage.getItem('home-account.exchangeRates'),
   fetch: window.fetch,
-  theme: document.documentElement.className
+  theme: ng.getComponent(document.querySelector('app-header')).authService.themeService.theme()
 };
 window.fetch = (input, init) => {
   const url = typeof input === 'string' ? input
@@ -1876,19 +2048,31 @@ class list carrying `rate-line-stale`, and the colour `rgb(180, 83, 9)` —
 `ng.applyChanges(ng.getComponent(document.querySelector('app-rate-status')))`
 before reading the text ([Panes and viewports](#panes-and-viewports)).
 
-**Dark**, for the same line:
+**Dark**, for the same line, switched through the service as
+[Switching the theme](#switching-the-theme) says:
 
 ```js
-const root = document.documentElement;
-root.classList.add('dark-theme'); root.classList.remove('light-theme');
-getComputedStyle(line()).color;        // 'rgb(251, 191, 36)'
-root.className = window.__j19.theme;   // both classes back as they were
+ng.getComponent(document.querySelector('app-header')).authService.themeService.setTheme('dark');
 ```
 
-That is what `ThemeService.applyTheme` does to the root element and nothing
-besides. The Settings theme control is not used: that click writes
-`preferences.theme` on the user document, and this journey has no account
-write in it.
+Then, in a later console evaluation, once the root carries `dark-theme`:
+
+```js
+document.getAnimations().forEach(a => { try { a.finish(); } catch {} });
+[document.documentElement.className, getComputedStyle(line()).color];  // …, 'rgb(252, 211, 77)'
+```
+
+And back, with the preference the page global kept:
+
+```js
+ng.getComponent(document.querySelector('app-header')).authService.themeService
+  .setTheme(window.__j19.theme);
+```
+
+Neither the root's classes alone, which leave the chip, the glyph pipe and
+the chart palette on the theme the page booted in, nor the Settings theme
+control, whose click writes `preferences.theme` on the user document: this
+journey has no account write in it.
 
 **`fallback`** — remove the key and re-enter, with the fetch still failing:
 
@@ -1901,7 +2085,7 @@ await rates.initializeRates();
 
 `'fallback'`, the line reading *Could not fetch exchange rates — using
 built-in approximate rates* with **no date on screen**, and the same warning
-colour — read in dark the same way, for `rgb(251, 191, 36)`.
+colour — read in dark the same way, for `rgb(252, 211, 77)`.
 
 **Do not read `lastUpdated()` here.** `setDefaultRates()` installs the
 constants and names the rung, and it leaves that signal alone on purpose, so a
@@ -1928,8 +2112,8 @@ and the line reads the same — which is what says the restore is real rather
 than a signal that was told so.
 
 **Pass:** both unreachable rungs read on screen, each with its own sentence,
-`rate-line-stale` and `--color-warning-text` in both themes; the theme classes
-and the cache back as they were; and the starting rung and line confirmed
+`rate-line-stale` and `--color-warning-text` in both themes; the theme and the
+cache back as they were; and the starting rung and line confirmed
 after a real reload, with no new `error`-level console entry across it.
 
 Five shots: the line under the currency select at the start, and each warning
@@ -2053,8 +2237,9 @@ photo, and the cached second answer.
 
 375px wide, at the pane's **own** width where possible — pointer input stalls
 under emulation, and this journey is a menu and a dialog
-([Panes and viewports](#panes-and-viewports)). Take every measurement in the
-same turn that sets the width: a pane clears the emulation between turns.
+([Panes and viewports](#panes-and-viewports)). Take every measurement
+immediately, in the same step that sets the width: a pane can drop the
+emulation on its own.
 
 Below `min-width: 768px` the table is gone and the list is
 `app-transaction-row` elements. The row's receipt mark is an **indicator**,
@@ -2231,16 +2416,14 @@ journey 4 checks it); each row's drag handle, each **Move up**/**Move
 down** and **Reset** measure at least 40px tall; each switch's touch target
 does too.
 
-**Pass — the themes.** Swap the root element's theme class the way journey
-19 does —
-`root.classList.add('dark-theme'); root.classList.remove('light-theme')`
-is exactly what `ThemeService.applyTheme` does and nothing besides, never
-the Settings theme control itself — and read a selected
-switch's track and handle colour against an unselected one's, and an
-enabled move button's colour against a disabled one's, in both dark and
-light. Selected reads distinctly from unselected, and enabled distinctly
-from disabled, in both themes. Restore the root's original classes when
-done.
+**Pass — the themes.** Switch the theme through the service, as
+[Switching the theme](#switching-the-theme) says — never the root's classes
+alone, and never the Settings theme control, which writes
+`preferences.theme` — and read a selected switch's track and handle colour
+against an unselected one's, and an enabled move button's colour against a
+disabled one's, in both dark and light. Selected reads distinctly from
+unselected, and enabled distinctly from disabled, in both themes. Put the
+noted preference back when done.
 
 One shot: the editor at 390px, with every control's box visible.
 
@@ -2359,8 +2542,9 @@ so six pages rendered one column wherever the rule applied. The rules start at
 600, 768 and 1024px; Karma's window is 756px, so three of them cannot be read
 as layout in a spec at all — this is where the render is proved.
 
-The pane is narrower than 1024px, so set the width and read the DOM inside the
-one turn ([Panes and viewports](#panes-and-viewports)). For each grid:
+The pane is narrower than 1024px, so set the width and read the DOM
+immediately, in the same step ([Panes and viewports](#panes-and-viewports)).
+For each grid:
 
 ```js
 getComputedStyle(document.querySelector('.summary-cards')).gridTemplateColumns;
@@ -2427,7 +2611,7 @@ overflowing at 1280.
 
 The account's own `--app-font-scale` is 1.3, which is what a reload renders.
 Compare against 1.0 by overriding the inline variable on `documentElement`
-inside the same turn — it persists nothing:
+in the same step as the readings that use it — it persists nothing:
 
 ```js
 document.documentElement.style.setProperty('--app-font-scale', '1.0');
@@ -2888,12 +3072,16 @@ backgrounds.
 
 A script computes a ratio from two token values. This is the other half:
 what the browser actually composites on a real card, with the card's own
-background behind the chip and the account's font scale in force.
+background behind the chip and the account's font scale in force. Switch
+between the themes through the service, as
+[Switching the theme](#switching-the-theme) says, and put the noted
+preference back at the end.
 
-**Pass — every chip clears 4.5:1 where it is actually painted.** Read each
-chip's computed colour and its effective background in the page and compute
-the ratio there; all three are at or above 4.5:1 in dark, and the light theme
-is unchanged from before the branch.
+**Pass — every chip clears 4.5:1 where it is actually painted.** Measure each
+chip's text against everything painted under it, as
+[Reading a painted colour](#reading-a-painted-colour) does; all three are at
+or above 4.5:1 in dark, and the light theme is unchanged from before the
+branch.
 
 **Pass — the fix did not cost legibility elsewhere.** The same chips in light
 mode, and the stat cards that share the tokens, still read as they did.
@@ -3281,35 +3469,21 @@ One shot: the focused row with its ring.
 ### 57. The colour pairs where they are painted
 
 The pairs the contrast gate scores, measured where they are painted, in dark
-and then light. Switch the theme on the root element the way journey 19 does
-— never the Settings control, which writes `preferences.theme` — and put the
-root's classes back at the end.
+and then light. Switch the theme through the service, as
+[Switching the theme](#switching-the-theme) says — never the root's classes
+alone, and never the Settings control, which writes `preferences.theme` —
+and put the noted preference back at the end.
 
-```js
-const lum = c => {
-  const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(v => {
-    v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-const behind = el => {
-  for (let n = el; n; n = n.parentElement) {
-    const c = getComputedStyle(n).backgroundColor;
-    if (c !== 'transparent' && !/,\s*0\)$/.test(c)) return c;
-  }
-  return getComputedStyle(document.body).backgroundColor;
-};
-const ratio = el => {
-  const a = lum(getComputedStyle(el).color), b = lum(behind(el));
-  return ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)).toFixed(2);
-};
-```
-
-`behind` takes the first background that is not transparent; one whose alpha
-is between 0 and 1 is composited over what lies under it, and a ratio read
-against it is approximate — say so where it happens. In a hidden pane, finish
-the page's transitions after each theme switch and before any reading
-([Panes and viewports](#panes-and-viewports)).
+Measure with `ratio(el)` from
+[Reading a painted colour](#reading-a-painted-colour), which composites a
+translucent fill over what lies under it and reads the `color(srgb …)` a
+`color-mix()` computes to. The scrape this journey first used took the first
+background that was not transparent and read channels as `rgb()` gives them,
+so a `color-mix()` tint anywhere under a pair — every named surface token is
+one ([ADR 0164](ADR/0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md))
+— came back whole and near black. In a hidden
+pane, finish the page's transitions after each theme switch and before any
+reading ([Panes and viewports](#panes-and-viewports)).
 
 - **The add form's type toggle**: `.type-toggle .mat-button-toggle-checked`,
   once on Expense and once on Income. **Cancel** the form.
@@ -3906,8 +4080,8 @@ One shot: the goal with its linked rows and contributions.
 reported only by a page that saw the membership live. Sam stays on
 `http://localhost:4300/household/chen-home`. A second tab at
 `http://127.0.0.1:4300`, cleaned as in pre-flight step 8, gets Alex's record
-and opens `/household/chen-home` there. Front each tab before reading it, or
-flush it as [In a hidden pane](#in-a-hidden-pane) says.
+and opens `/household/chen-home` there. Switch to each tab before reading
+it, or flush it as [In a hidden pane](#in-a-hidden-pane) says.
 
 1. **Alex removes Sam.** In Alex's tab, *Remove* on Sam's row → *Remove Sam
    Lee?* → **Remove**. **Pass:** while the removal runs, the purge line
@@ -4155,11 +4329,13 @@ rows writes `<sam-uid>_tx-hh-4` again but makes no new copy.
 
 Each at **320×568**, **375×812** and **1024px or wider** — record the wide
 one's height too, since a dialog's findings depend on the height as well as
-the width — in light and then in dark. Switch the theme on the root element
-as journey 19 does, **and** set the pane's emulated `prefers-color-scheme`
-to match: Material's own tokens answer the media query, so a class swap
-alone reads a mixed page while the host is in the other scheme. Finish the
-page's animations before any reading:
+the width — in light and then in dark. Switch the theme through the service,
+as [Switching the theme](#switching-the-theme) says: a swap of the root's
+classes, which this journey first used, leaves the category chips on the rows
+behind the bar and the glyphs in the budget dialog's category select on the
+theme the page booted in. Once the service names a theme, the pane's emulated
+`prefers-color-scheme` decides nothing, so it need not match. Put the noted
+preference back at the end. Finish the page's animations before any reading:
 `document.getAnimations().forEach(a => a.finish())`. In a hidden pane an
 open dialog needs its own flush, and its open class before any measure, as
 [In a hidden pane](#in-a-hidden-pane) says.
@@ -4298,7 +4474,7 @@ type grade).
 1. **Hand the rows over.** Wait until the wizard holds its catalogue —
    `ng.getComponent(document.querySelector('app-import-wizard')).categories().length`
    above 0 — since the converter grades each category against it. Then, in
-   one call:
+   one console evaluation:
 
    ```js
    const w = ng.getComponent(document.querySelector('app-import-wizard'));
@@ -4376,8 +4552,8 @@ type grade).
    side to the refund and the expense side to each purchase. A category
    that fits both sides would be offered to every row; the seed holds none.
 4. **The flip.** Click the doubted purchase's toggle. Then read the live
-   region in a call of its own — the announcer writes on a timer of its
-   own, as journey 48 says:
+   region as a separate console evaluation — the announcer writes on a
+   timer of its own, as journey 48 says:
 
    ```js
    document.querySelector('.cdk-live-announcer-element').textContent;
@@ -4480,7 +4656,7 @@ type grade).
    nor a device. So the scan goes through the form's own handler, with the
    strategy service answering from the page — state only, which journey 41
    accepts for a flag whose attributes do not care how it was raised. In
-   one call:
+   one console evaluation:
 
    ```js
    const f = ng.getComponent(document.querySelector('app-transaction-form'));
@@ -4569,9 +4745,10 @@ the account it now holds, with nothing reported on the way out
 - **Tab 2:** `http://localhost:4300/transactions` in a second tab. The same
   origin, so Alex there too, with no welcome: it was skipped.
 - Both list Alex's *Electric bill* and *Hardware store*.
-- Front each tab before reading it.
+- Switch to each tab before reading it.
 
-**The probe**, run in **both** tabs before every step, one call each:
+**The probe**, run in **both** tabs before every step, one console
+evaluation each:
 
 ```js
 window.__j80 = 'armed';
@@ -4626,8 +4803,8 @@ every report the app's error handler logs (`global-error-handler.ts:39`).
 1. **Sam, written from tab 2.** Arm both tabs. In tab 2, write Sam's record
    into local storage — the swap in
    [Signing in a seeded account](#signing-in-a-seeded-account) — and reload
-   tab 2 straight after, in a call of its own. Front tab 1 and read, then
-   tab 2.
+   tab 2 straight after, as a separate console evaluation. Switch to tab 1
+   and read, then tab 2.
    - **Pass, tab 1:** `{ marker: undefined, fresh: true, departing: [],
      path: '/transactions' }` — it reloaded by itself, where it stood, and
      the page it left reported nothing.
@@ -4704,6 +4881,730 @@ Known gaps.
 Three shots: Sam's rows in the reloaded tab, the sign-in screen it reloaded
 onto, and Alex's dashboard after the sign-in from the other tab.
 
+### 81. Colours follow the theme
+
+**Emulators**, as Alex: [pre-flight](#pre-flight) done, signed in as
+[Signing in a seeded account](#signing-in-a-seeded-account) says and the
+welcome skipped, at a desktop width of 1024px or more. The surfaces whose
+colours moved onto theme tokens
+([ADR 0164](ADR/0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md)),
+each read in light and then in dark, switched as
+[Switching the theme](#switching-the-theme) says, with the helpers of
+[Reading a painted colour](#reading-a-painted-colour) pasted at the top of
+every evaluation that measures. In a hidden pane, flush the page after each
+switch ([In a hidden pane](#in-a-hidden-pane)). The bars are that section's:
+4.5:1 for text, 3:1 for large text, a glyph and a bar's indicator.
+
+1. **The dashboard.** `/dashboard`, Budget Progress, and the page's lowest
+   texts:
+
+   ```js
+   const card = document.querySelector('app-budget-progress');
+   const bar = item => item.querySelector('.mdc-linear-progress__bar-inner');
+   const track = item => item.querySelector('.mdc-linear-progress__buffer-bar');
+   const fill = item => getComputedStyle(bar(item)).borderTopColor;
+   ({
+     percentages: [...card.querySelectorAll('.budget-percentage')].map(el => ratio(el)),
+     muted: [...card.querySelectorAll('.budget-period, .budget-amounts')].map(el => ratio(el)),
+     bars: [...card.querySelectorAll('.budget-item')]
+       .map(item => [ratio(track(item), fill(item)), ratio(bar(item), fill(item))]),
+     sameColour: [...card.querySelectorAll('.budget-item')].every(item =>
+       fill(item) === getComputedStyle(item.querySelector('.budget-percentage')).color),
+     page: lowest(document.querySelector('app-dashboard')),
+   });
+   ```
+
+   **Pass:** every percentage and muted line at least 4.5:1, every bar's
+   indicator at least 3:1 on both figures of its pair (its track, then the
+   row around it), and `sameColour` `true` — each indicator in its own
+   percentage's colour, `--color-success-text`, `--color-warning-text`
+   or `--color-error-text` by severity, since Material paints the indicator
+   from `--mat-progress-bar-active-indicator-color` alone and a `[color]`
+   binding paints nothing under M3. The page's three lowest texts each clear
+   their bar. Both themes. Shots: `81-dashboard-light.png`,
+   `81-dashboard-dark.png`.
+2. **The budgets page.** `/budgets`:
+
+   ```js
+   const badge = document.querySelector('.tab-badge');
+   const apart = (a, b) => {
+     const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+     return +((hi + 0.05) / (lo + 0.05)).toFixed(2);
+   };
+   ({
+     badge: ratio(badge),
+     pill: apart(painted(badge), painted(badge.parentElement)),
+     cards: [...document.querySelectorAll('app-budget-progress-card')].map(c => {
+       const inner = c.querySelector('.mdc-linear-progress__bar-inner');
+       const fill = getComputedStyle(inner).borderTopColor;
+       return [c.querySelector('.budget-name').textContent.trim(), lowest(c)[0].ratio,
+         ratio(c.querySelector('.mdc-linear-progress__buffer-bar'), fill), ratio(inner, fill)];
+     }),
+     icons: [...document.querySelectorAll('app-budget-progress-card .menu-btn mat-icon, app-budget-progress-card .alert mat-icon')]
+       .map(icon => {
+         const s = getComputedStyle(icon), r = icon.getBoundingClientRect();
+         return [parseFloat(s.fontSize), parseFloat(s.lineHeight), r.width, r.height].map(Math.round);
+       }),
+   });
+   ```
+
+   **Pass:** the **Budgets** tab's count at least 4.5:1, on a pill that reads
+   apart from the tab under it — the first run read 1.26:1 in light, and at
+   1.03 it vanishes; each card's lowest text at or above its bar, and its
+   indicator at least 3:1 on its track and on the card, the last two
+   figures; and each icon's four figures equal — font size, line height,
+   width and height — so its glyph fills its box and sits in its middle
+   rather than below it. Then open one card's menu (*More actions for* and
+   its name) with a real click and read its **Delete**:
+
+   ```js
+   const item = document.querySelector('.mat-mdc-menu-panel .menu-item-destructive');
+   [ratio(item.querySelector('.mat-mdc-menu-item-text')), ratio(item.querySelector('mat-icon'))];
+   ```
+
+   **Pass:** the label at least 4.5:1 and the icon at least 3:1, both in
+   `--color-error-text`. Close the menu by its backdrop. Both themes. Shot:
+   `81-budgets-dark.png`, with the menu open.
+3. **A category's Delete.** `/settings?panel=categories` → **Add Category**:
+   the name `e2e-81`, any icon and colour → **Create Category**, a write to
+   the emulators. Defaults carry no **Delete**, so the run makes a category
+   that does. Open its row's menu (*More actions for e2e-81*) and read the
+   item as step 2 does. **Pass:** the same two bars, in both themes. Close
+   the menu by its backdrop; the category stays for step 7.
+4. **Your Data and the import page.** `lowest(document.querySelector('app-data-hub'))`
+   on `/data`, and `lowest(document.querySelector('app-import-wizard'))` on
+   `/import/file`. Then hand the dropzone a file it refuses, as journey 44
+   does:
+
+   ```js
+   const dt = new DataTransfer();
+   dt.items.add(new File(['e2e-81'], 'e2e-81.txt', { type: 'text/plain' }));
+   const input = document.querySelector('app-file-dropzone input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   ```
+
+   and read the refusal, whose banner is a translucent tint:
+
+   ```js
+   const banner = document.querySelector('app-file-dropzone .error-banner');
+   [ratio(banner.querySelector('.error-message')), ratio(banner.querySelector('mat-icon'))];
+   ```
+
+   **Pass:** each page's three lowest texts clear their bar; the message at
+   least 4.5:1 and its icon at least 3:1. Both themes. The wizard's own error
+   cards need a failed extraction, which this venue cannot raise:
+   `import-wizard.component.spec.ts` "paints each kind of failure in its own
+   token, the icon at 3:1 or better on the page, in both themes" holds them.
+5. **The chart's edges.** `/reports?tab=monthly`:
+
+   ```js
+   const chart = ng.getDirectives(document.querySelector('app-monthly-comparison canvas'))
+     .find(d => d.chart).chart;
+   const root = getComputedStyle(document.documentElement);
+   [[...new Set(chart.data.datasets.map(d => d.borderColor))],
+     ['--color-income-text', '--color-expense-text'].map(t => root.getPropertyValue(t).trim())];
+   ```
+
+   **Pass:** the edges are exactly the two tokens' values, in light and again
+   once the service has switched to dark: `ChartThemeService` reads the
+   tokens again when the theme the service names changes, which a swap of the
+   root's classes never tells it. The `-text` step is the edge because the
+   income fill falls under 3:1 on the light card.
+6. **High contrast**, through the service beside the theme's, as
+   [Switching the theme](#switching-the-theme) says:
+   `…authService.accessibilityService.setHighContrast(true)`. Steps 1, 2
+   and 5 again, in light and in dark. **Pass:** the same bars, and step 5's
+   edges still the two tokens' values as the root now computes them. Put
+   high contrast back.
+7. **At 375px**, set the width and read in the same step, clicking nothing
+   under it ([Panes and viewports](#panes-and-viewports)). In a hidden pane,
+   reload once after setting the width: the sidebar docks and undocks from
+   a breakpoint the app hears through change detection, which a hidden pane
+   does not run, so without the reload the page keeps its desktop sidebar
+   and every read below measures a 119px column. The reload puts the stored
+   theme back; switch again. On each of `/dashboard`,
+   `/transactions`, `/budgets`, `/reports`, `/settings`, `/data` and
+   `/import/file`, reached with the header's router as
+   [Switching the theme](#switching-the-theme) shows, so the theme holds:
+
+   ```js
+   const m = document.querySelector('.main-container');
+   [document.documentElement.scrollWidth, m.scrollWidth <= m.clientWidth];
+   ```
+
+   **Pass:** at most 375, and `true`, in both themes: nothing scrolls
+   sideways. Then step 4's refusal again on `/import/file`, and `e2e-81`'s
+   **Delete** on `/settings?panel=categories`, its menu opened from the
+   console rather than by a click:
+
+   ```js
+   const row = [...document.querySelectorAll('.category-item')]
+     .find(r => r.querySelector('.category-name').textContent.trim() === 'e2e-81');
+   ng.getDirectives(row.querySelector('[aria-haspopup="menu"]')).find(d => d.openMenu).openMenu();
+   ```
+
+   **Pass:** the same bars as at desktop width. Shot:
+   `81-dropzone-375-dark.png`.
+8. **Put it back.** At desktop width, `e2e-81`'s **Delete**, confirmed: the
+   row leaves the list. The theme and high contrast back to what was noted.
+
+### 82. A category's colour on every surface
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, signed in as
+journey 81 is. A category's colour is drawn through the chip or a pipe that
+knows the surface it sits on
+([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)),
+and both pick it for the theme `ThemeService` names. So each step is read in
+light and then dark switched through the service, as
+[Switching the theme](#switching-the-theme) says: a swap of the root's
+classes would leave every glyph here chosen for the theme the page booted
+in. Measure with [Reading a painted colour](#reading-a-painted-colour).
+
+**Pass, throughout:** every category glyph at least 4.5:1 on what is painted
+under it, which the pipe holds by construction on each tone its surface
+lists, and a glyph on a category's own fill at least 4.5:1 too
+([accessibility.md](accessibility.md)).
+
+1. **The dashboard.**
+
+   ```js
+   ({
+     budgets: [...document.querySelectorAll('app-budget-progress .budget-info mat-icon')].map(el => ratio(el)),
+     legend: [...document.querySelectorAll('app-spending-chart .legend-icon mat-icon')].map(el => ratio(el)),
+     bills: [...document.querySelectorAll('app-upcoming-bills app-category-chip mat-icon')].map(el => ratio(el)),
+   });
+   ```
+
+   The Budget Progress glyphs come through the `categoryGlyph` pipe on the
+   card, each legend glyph is black or white on its slice's own colour
+   (`readableOn`), and each bill sits on its chip's tile.
+2. **The recurring rules, one of them paused.** `/budgets?tab=recurring`.
+   Pause *Gym* from its menu (*More actions for Gym* → **Pause**), a write to
+   the emulators. Then:
+
+   ```js
+   [...document.querySelectorAll('.recurring-card')].map(card => {
+     const paused = card.querySelector('.status-chip .mdc-evolution-chip__text-label');
+     return {
+       name: card.querySelector('.recurring-name').textContent.trim(),
+       glyph: ratio(card.querySelector('app-category-chip mat-icon')),
+       opacity: getComputedStyle(card).opacity,
+       paused: paused ? ratio(paused) : null,
+     };
+   });
+   ```
+
+   **Pass:** every glyph clears the bar, *Gym*'s included — the first run read
+   4.51 to 4.53 — every card's opacity is `'1'`, and *Gym*'s *Paused* chip
+   label is at least 4.5:1. A paused rule's card no longer fades: under the
+   old fade even the chip measured 2.64 to 3.27, and the chip already says it
+   is paused. Then **Resume** *Gym* from the same menu. Shot:
+   `82-recurring-paused-dark.png`, before the resume.
+3. **The form's category field.** `/transactions` → the add button (named
+   *Add Transaction*) → **Add Transaction** → the **Category** field, opened:
+
+   ```js
+   const options = [...document.querySelectorAll('.mat-mdc-select-panel mat-option')];
+   ({
+     count: options.length,
+     direct: options.every(o => o.querySelector(':scope > mat-icon')),
+     ligatures: options.filter(o => ng.getComponent(o).viewValue
+       .includes(o.querySelector(':scope > mat-icon').textContent.trim())).length,
+     lowest: Math.min(...options.map(o => ratio(o.querySelector(':scope > mat-icon')))),
+     active: ratio(document.querySelector('.mat-mdc-select-panel .mat-mdc-option-active > mat-icon')),
+   });
+   ```
+
+   **Pass:** `direct` `true` and `ligatures` 0: each option's icon is a
+   direct child of its `mat-option`, which Material projects outside the
+   label, so no icon's name reaches the option's `viewValue`, which the
+   closed field's typeahead matches and a screen reader hears. `lowest` and
+   `active` at least 4.5:1. Press **Arrow Down** a few times, real keys,
+   and read `active` again on each option the keys reach. Choose
+   *Groceries*: its glyph in the closed field,
+   `mat-select[formcontrolname="categoryId"] mat-select-trigger mat-icon`, at
+   least 4.5:1 on the dialog. **Cancel** the form. Shot:
+   `82-category-select-light.png`, with the panel open.
+4. **The category dialog.** `/settings?panel=categories` → **Add Category**.
+   Choose any icon and the yellow swatch, `#eab308`, the palette's lightest:
+
+   ```js
+   const dialog = document.querySelector('app-category-form-dialog');
+   const swatch = dialog.querySelector('.color-btn.selected');
+   ({
+     grid: ratio(dialog.querySelector('.icon-btn.selected mat-icon')),
+     check: ratio(swatch.querySelector('mat-icon')),
+     preview: ratio(dialog.querySelector('.preview-item app-category-chip mat-icon')),
+     ring: ratio(swatch.parentElement, getComputedStyle(swatch).borderTopColor),
+   });
+   ```
+
+   **Pass:** the chosen icon in the grid, the swatch's check and the
+   preview's glyph each at least 4.5:1 — the first run read 7.15, 10.95 and
+   5.06 — and the selected swatch's ring at least 3:1 against the dialog.
+   Then the grids' names:
+
+   ```js
+   const dialog = document.querySelector('app-category-form-dialog');
+   [...dialog.querySelectorAll('.icon-btn, .color-btn')]
+     .filter(b => b.getAttribute('aria-pressed') === 'true')
+     .map(b => b.getAttribute('aria-label'));
+   ```
+
+   **Pass:** the chosen icon's name and the chosen colour's, *Yellow*:
+   every button in both groups carries the name of what it picks and
+   whether it is picked. The second run found all forty unnamed, a glyph
+   the screen reader skips and a swatch with nothing in it, under a
+   `radiogroup` with no radios. **Cancel**. Shot:
+   `82-category-dialog-dark.png`.
+5. **The household budget dialog.** `/household/chen-home` → *Budgets and
+   goals* → **New budget** → its **Categories** field, opened. Read every
+   option and the active one as step 3 does, and move the active one with
+   the arrow keys. **Pass:** step 3's figures, with `direct` `true` and
+   `ligatures` 0. The first run's lowest was 4.53, on the active option's
+   tone. **Cancel**. Shot: `82-household-select-dark.png`.
+6. **Row menus name their rows.** `/transactions`, at desktop width, where
+   the list is a table:
+
+   ```js
+   [...document.querySelectorAll('.col-actions .action-btn')].map(b => b.getAttribute('aria-label'));
+   ```
+
+   **Pass:** each reads *More actions for* and its own row's description,
+   where every one read *More actions*. The same on `/budgets`, each budget
+   card's; on `/budgets?tab=recurring`, each rule's; and on
+   `/settings?panel=categories`, each category's.
+
+Put the theme back at the end.
+
+### 83. The papercuts: bounds, Retry, a lost share, a neutral zero, landmarks
+
+**Emulators**, as Alex, at a desktop width of 1024px or more unless a step
+says otherwise: the five small defects
+[ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)
+closes, each where a browser shows it.
+
+1. **The pickers are bounded.** `/dashboard`: the calendar button beside the
+   period toggle (*Select Month*) → **Select Year**. Then:
+
+   ```js
+   const { min, max } = ng.getComponent(document.querySelector('app-dashboard app-period-selector')).bounds();
+   ({
+     min: min.toDateString(),
+     max: max.toDateString(),
+     years: [...document.querySelectorAll('.mat-calendar-body-cell')]
+       .map(c => `${c.textContent.trim()}${c.getAttribute('aria-disabled') === 'true' ? ' off' : ''}`),
+     paging: ['.mat-calendar-previous-button', '.mat-calendar-next-button']
+       .map(s => document.querySelector(s).getAttribute('aria-disabled')),
+   });
+   ```
+
+   **Pass:** `min` is the 1st of the month Alex's oldest transaction falls
+   in — May 2026 for the seed, whose rows begin then (`seed.mjs`), and never
+   later than the current month's 1st — and `max` is 31 December next year.
+   Every year before the floor's reads `off`, the floor's year through next
+   year do not, and each paging button with no year left inside the bounds
+   on its side reads `'true'`: both, while the bounds fit one page of the
+   year view. The first run's page ran 2004 to 2027, with 2004 to 2025 off.
+   Close the picker by its backdrop. The other two hosts hold the same pair:
+   `bounds()` of `app-period-selector` on `/reports` and of
+   `app-transaction-filters` on `/transactions`. Shot: `83-year-bounds.png`.
+2. **Retry, on desktop.** `/transactions`, the period totals beside the add
+   button. A count goes to the emulator as an XHR to
+   `…/documents:runAggregationQuery`; fail the page's next ones:
+
+   ```js
+   window.__j83 = XMLHttpRequest.prototype.open;
+   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+     const blocked = String(url).includes(':runAggregationQuery');
+     return window.__j83.call(this, method, blocked ? 'http://127.0.0.1:1/' : url, ...rest);
+   };
+   ```
+
+   Then change the period in the filters — **Week**, say: every filter change
+   counts again. **Pass:** the slot reads *Totals unavailable* beside
+   **Retry** (`.period-totals-retry`). Lift the block,
+   `XMLHttpRequest.prototype.open = window.__j83`, and press **Retry** with a
+   real click. **Pass:** the figures in the slot, focus on the slot itself
+   (`document.activeElement.matches('.period-totals-slot')`), and the live
+   region, read as a separate console evaluation, saying the totals: *Total
+   expenses …, net balance ….* Shot: `83-totals-retry.png`, the unavailable
+   slot.
+3. **Retry, on the phone.** At 375px, set the width and read in the same
+   step, where the totals ride the subtitle line. Block again, change the
+   period again from the console, since pointer input can stall under an
+   emulated width ([Panes and viewports](#panes-and-viewports)) —
+   `ng.getComponent(document.querySelector('app-transaction-filters')).setQuickFilter('thisMonth')`
+   — and read the line's **Retry**:
+
+   ```js
+   const link = document.querySelector('.period-totals-retry-link');
+   [document.querySelector('.period-totals-line').textContent.replace(/\s+/g, ' ').trim(),
+     Math.round(link.getBoundingClientRect().height),
+     parseFloat(getComputedStyle(link, '::after').height)];
+   ```
+
+   **Pass:** the line ends *Totals unavailable Retry*; the link's own box is
+   the line's height, about 21px, while its `::after` reaches at least 40px,
+   the tap target the transaction list's links carry without growing the
+   line. Lift the block and press it from the console too, `link.click()`.
+   **Pass:** the figures on the line, focus on `.period-totals-line`, and
+   the same sentence in the live region.
+4. **A lost share.** `/import/file?source=share&error=1`, the address the
+   share-target worker sends when it could not stash a share. **Pass:** one
+   notification, *The shared files couldn't be received. Share them again to
+   import them.*, and `location.search` reads `''` once the page has read
+   the flags. Reload. **Pass:** no notification, and the address still
+   clean: both flags name something to do once, and the page took them off
+   with `replaceUrl`. Shot: `83-share-lost.png`.
+5. **A neutral zero.** Settings → Profile → **Show the weekly recap** on, a
+   write to the emulators that journey 85 relies on too. The recap shows
+   only for a week with something to say, a row last week or the week before
+   (`hasSomethingToSay`). Its bills line needs no rule due in the next seven
+   days: the seed's fall on the 1st and the 2nd of each month (`seed.mjs`),
+   so pause any that falls in that week from `/budgets?tab=recurring`, and
+   resume it after. On `/dashboard`:
+
+   ```js
+   const amount = document.querySelector('app-weekly-recap .recap-bills app-amount-display > span');
+   [document.querySelector('app-weekly-recap .recap-bills .fact-text').textContent.trim(),
+     amount.textContent.trim(), amount.classList.contains('text-fg'),
+     getComputedStyle(amount).color === getComputedStyle(document.body).color];
+   ```
+
+   **Pass:** *0 bills due in the next 7 days*, `$0.00` with no sign before
+   it, `true` for the class `text-fg` (the span carries `text-sm` beside
+   it, from `size="sm"`), and `true`: the body's own `--text-primary`,
+   neither the income green nor the expense red that a zero once took.
+   Upcoming Bills' footer (`.net-footer`) follows the same rule over its
+   fortnight, and reads the same whenever that holds nothing. Shot:
+   `83-recap-zero.png`.
+6. **Landmarks, and a Translate that stays reachable.** On `/dashboard`:
+
+   ```js
+   [...document.querySelectorAll('nav')].map(n => n.getAttribute('aria-label'));
+   ```
+
+   **Pass:** `['Main', 'Quick access']`, the sidebar's and the bottom
+   navigation's, which a screen reader's list of landmarks once told apart by
+   nothing. Then on `/transactions`, *Hardware store*'s note button (the
+   notes icon, labelled *View note*, journey 2's door):
+
+   ```js
+   const t = document.querySelector('app-note-dialog .translate-button');
+   [t.getAttribute('aria-disabled'), t.hasAttribute('disabled'), t.tabIndex,
+     document.getElementById(t.getAttribute('aria-describedby'))?.textContent.trim()];
+   ```
+
+   **Pass:** `['true', false, 0, 'Translation needs an AI provider. Add an API
+   key in Settings → AI Processing.']`. This venue has no provider, and the
+   button stays in the tab order with its reason, where a `disabled` one
+   left it. Close the dialog. The review card's date question has a
+   **Change** carrying `aria-haspopup="dialog"` as well; it needs a scanned
+   row, and `import-wizard.smoke.spec.ts` asserts it.
+
+### 84. The card menu
+
+**Emulators**, as Alex, on `/dashboard` at a width of 1024px, where the
+desktop rail is narrowest, about 229px. The seed stores no layout. Each card
+carries its own menu
+([ADR 0166](ADR/0166-a-hidden-card-closes-what-nothing-else-reads-the-layout-stores-only-what-changed-and-each-card-has-a-menu.md),
+[dashboard.md](dashboard.md#the-card-menu)). After each step, read the stored
+layout past the rules ([Reading past the rules](#reading-past-the-rules)):
+
+```bash
+curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>" |
+  node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=JSON.parse(s).fields.preferences.mapValue.fields.dashboardLayout;console.log(l?JSON.stringify(Object.fromEntries(Object.entries(l.mapValue.fields??{}).map(([k,v])=>[k,(v.arrayValue.values??[]).map(x=>x.stringValue)]))):"absent")})'
+```
+
+1. **The triggers.**
+
+   ```js
+   [...document.querySelectorAll('.dashboard-grid .card-menu-trigger')].map(b => {
+     const r = b.getBoundingClientRect();
+     return [b.getAttribute('aria-label'), b.getAttribute('aria-haspopup'), Math.round(r.width), Math.round(r.height)];
+   });
+   ```
+
+   **Pass:** four, in page order — *More actions for Recent Transactions*,
+   *… for Upcoming Bills*, *… for Spending by Category* and *… for Budget
+   Progress* — each `'menu'` and 40 × 40. AI Insights has none: this venue
+   has no provider, so its card renders nothing to act on. The layout reads
+   `absent`.
+2. **Move up.** Upcoming Bills' trigger → **Move up**, with a real click.
+   Then, as a separate console evaluation:
+
+   ```js
+   [document.activeElement.getAttribute('aria-label'),
+     document.querySelector('.cdk-live-announcer-element').textContent,
+     [...document.querySelectorAll('.dashboard-grid > *')].map(el => el.tagName.toLowerCase())];
+   ```
+
+   **Pass:** focus on *More actions for Upcoming Bills*; the live region
+   reads *Upcoming Bills moved to position 1 of 3*, counted over the rail's
+   cards with a menu, since at this width a move stays in its own column;
+   and the grid starts with `app-upcoming-bills`. Past the
+   rules: `{"order":["upcoming","recent","chart","insights","budgets"]}`, the
+   order alone, with no `hidden`.
+3. **Hide.** Spending by Category's trigger → **Hide**, then the same read.
+   **Pass:** the card has left the grid; focus is on *More actions for Budget
+   Progress*, the trigger that took its place among those with a menu; and
+   the live region reads *Spending by Category hidden. Show it again from
+   Customize dashboard.* Past the rules: `"hidden":["chart"]` beside the same
+   `order`. Shot: `84-chart-hidden.png`.
+4. **Ids from a later build.** Write, past the rules, a layout carrying an
+   id this build does not know in each field, as a newer build's card would
+   leave it:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -X PATCH \
+     -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+     "$FS/users/<alex-uid>?updateMask.fieldPaths=preferences.dashboardLayout" \
+     -d '{"fields":{"preferences":{"mapValue":{"fields":{"dashboardLayout":{"mapValue":{"fields":{
+       "order":{"arrayValue":{"values":[{"stringValue":"upcoming"},{"stringValue":"future-card"},
+         {"stringValue":"recent"},{"stringValue":"chart"},{"stringValue":"insights"},{"stringValue":"budgets"}]}},
+       "hidden":{"arrayValue":{"values":[{"stringValue":"chart"},{"stringValue":"future-hidden"}]}}}}}}}}}}'
+   # 200
+   ```
+
+   Reload — the page reads the profile once, as it loads — and open
+   **Customize dashboard** (`/settings?panel=dashboard`). **Pass:** the
+   Spending by Category switch is off and the other four on, and the unknown
+   ids render nothing. Turn **Recent Transactions** off. **Pass**, past the
+   rules: `"hidden":["chart","future-hidden","recent"]`, and `order` still
+   `["upcoming","future-card","recent","chart","insights","budgets"]`. The
+   edit added its one id and kept both unknown ones where they stood.
+5. **Reset.** In the editor, **Reset**. **Pass:** past the rules, `absent`,
+   unknown ids and all: Reset deletes the key
+   ([dashboard.md](dashboard.md#reset)). The dashboard shows the default
+   order again.
+6. **The rail.** Still at 1024px:
+
+   ```js
+   [...document.querySelectorAll('app-recent-transactions .card-title, app-upcoming-bills .card-title, app-budget-progress mat-card-title')]
+     .map(t => [t.textContent.trim(), Math.round(t.getBoundingClientRect().height),
+       Math.round(parseFloat(getComputedStyle(t).lineHeight))]);
+   ```
+
+   **Pass:** each title's height is its one line's, with **View All**, or
+   **Manage**, and the trigger on the row below it where they do not fit
+   beside it. The first run found Upcoming Bills breaking its title to keep
+   them beside it at this width, while the other two dropped theirs. Shot:
+   `84-rail-1024.png`.
+7. **Dark.** Switch as [Switching the theme](#switching-the-theme) says, and
+   `ratio(document.querySelector('.card-menu-trigger mat-icon'))` with the
+   helpers of [Reading a painted colour](#reading-a-painted-colour).
+   **Pass:** at least 3:1; the first run read 6.76. Put the theme back.
+
+Shot `84-card-menu.png`: a card's menu open, before step 2.
+
+### 85. The links a reminder opens
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+83 has switched the weekly recap on. A reminder's tap opens a route on the
+dashboard
+([ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md),
+[dashboard.md](dashboard.md#links-from-a-notification-bill-and-recap)), and
+the run opens those routes directly. The tap itself cannot run in a pane:
+the worker's `notificationclick` needs a real notification, which a pane is
+refused permission for, so it is recorded as skipped, and
+`share-target-sw.spec.ts`, describe `a tap on a notification`, holds it.
+
+Load `/dashboard` once before step 1, so this origin's cache holds Alex's
+rules as they stand. Then write two rules past the rules — one due in three
+days, inside the card's fortnight, and one in twenty, past it — which the
+cache has never seen:
+
+Run it in bash, which splits `$rule` into its two words; zsh, macOS's
+default shell, passes it whole and the date comes out invalid.
+
+```bash
+for rule in 'e2e-water 3' 'e2e-far 20'; do
+  node --input-type=module -e '
+  const [FS, uid, id, days] = process.argv.slice(1);
+  const due = new Date(); due.setHours(12, 0, 0, 0); due.setDate(due.getDate() + Number(days));
+  const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+  const t = d => ({ timestampValue: d.toISOString() });
+  const fields = { userId: s(uid), name: s(id), description: s(id), type: s("expense"),
+    amount: { doubleValue: 42.5 }, currency: s("USD"), categoryId: s("bills_electricity"),
+    isActive: { booleanValue: true },
+    frequency: { mapValue: { fields: { type: s("monthly"), interval: n(1), dayOfMonth: n(due.getDate()) } } },
+    startDate: t(due), nextOccurrence: t(due), createdAt: t(new Date()), updatedAt: t(new Date()) };
+  const res = await fetch(`${FS}/users/${uid}/recurring/${id}`, { method: "PATCH",
+    headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+    body: JSON.stringify({ fields }) });
+  console.log(id, res.status);' "$FS" <alex-uid> $rule
+done
+# e2e-water 200
+# e2e-far 200
+```
+
+1. **A bill in the fortnight, from a cold cache.** Load
+   `/dashboard?bill=e2e-water` as a full page load. Then:
+
+   ```js
+   [location.pathname, location.search, document.activeElement.getAttribute('data-rule-id')];
+   ```
+
+   **Pass:** `['/dashboard', '', 'e2e-water']`: the row focused, scrolled
+   into view and marked for two seconds, and the link off the address. The
+   first run found this load sent to the recurring rules. The upcoming
+   card's first emission came from this origin's cache from before the rule
+   existed and said "absent", and the page acted on it; it now asks the
+   server before it acts. Shot: `85-bill-focused.png`.
+2. **A bill past the fortnight.** Load `/dashboard?bill=e2e-far`. **Pass:**
+   the page is on `/budgets?tab=recurring`, and the live region reads *That
+   bill isn't in Upcoming Bills right now, so here are your recurring
+   transactions instead.* Shot: `85-not-upcoming.png`.
+3. **The recap's week.** Back on `/dashboard`, read the week the card
+   recaps:
+
+   ```js
+   ng.getComponent(document.querySelector('app-dashboard')).recap.weekKey();  // last week's Monday, YYYY-MM-DD
+   ```
+
+   `recap` is private, as journey 14 says. Load `/dashboard?recap=` with that
+   key. **Pass:** focus on the card's region
+   (`document.activeElement.matches('app-weekly-recap [role="region"]')`),
+   and `location.search` reads `''`. Shot: `85-recap-focused.png`. Then load
+   it with the Monday a week earlier. **Pass:** the address is clean and
+   focus is not on the region: a link to another week is only taken off the
+   address.
+4. **Through the lock.** Settings → Profile → **App Lock**: **Set a PIN**,
+   with a test PIN of the run's own, kept outside the repository, in *New
+   PIN* and *Confirm PIN* → **Save PIN**, then **Require a PIN** on. The PIN
+   record is this device's, and the switch writes to the emulators. Load
+   `/dashboard?bill=e2e-water` as a full page load: a cold start is locked.
+   **Pass:** the page is on `/lock`, *App Locked*. Enter the PIN →
+   **Unlock**. **Pass:** step 1's read gives `['/dashboard', '',
+   'e2e-water']` again: the link kept its query through the lock, which the
+   lock screen's **Unlock** returns to with `navigateByUrl`. `lockGuard`,
+   which sends a session with nothing left to unlock to the same remembered
+   link, used `navigate` and escaped the `?` into the path; it now uses
+   `navigateByUrl` too, which `auth.guard.spec.ts` "returns to a remembered
+   link with its query intact" holds. Shot: `85-after-unlock.png`. Then
+   **Remove PIN** and **Require a PIN** off.
+
+The two rules stay for the [teardown](#teardown). Switch the recap off, or
+leave it to the teardown too.
+
+### 86. Shortcuts and the install offer
+
+**Emulators**, as Alex, on `/dashboard` at a width of 1024px or more, with
+the hint's key absent: the pre-flight's clean took it, and if a palette has
+opened on this origin since, run
+`localStorage.removeItem('homeaccount.shortcuts-hint-dismissed')` and reload
+([ADR 0168](ADR/0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md),
+[shortcuts.md](shortcuts.md), [pwa.md](pwa.md)).
+
+1. **The hint and the button at three widths.** At 1024px or more, then at
+   768px and at 375px, each width set and read immediately, in the same
+   step, with no navigation in between:
+
+   ```js
+   const header = document.querySelector('app-header');
+   const boxes = [...header.querySelectorAll('button')].map(b => b.getBoundingClientRect());
+   ({
+     hint: header.querySelector('.shortcuts-hint-text')?.textContent.trim() ?? null,
+     palette: header.querySelector('.palette-button')?.getAttribute('aria-label'),
+     overlaps: boxes.some((a, i) => boxes.some((b, j) => j > i
+       && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)),
+     fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+   });
+   ```
+
+   **Pass:** at the desktop width, the hint reads *Press ? to see the
+   keyboard shortcuts*; at 768px and 375px it is `null`, since it speaks to a
+   keyboard and shows at the desktop breakpoint only. At every width the
+   button is named *Command Palette*, `overlaps` is `false` and `fits`
+   `true`. Shot: `86-hint.png`, at the desktop width.
+2. **Dismiss.** At the desktop width, the hint's dismiss (*Dismiss this
+   tip*), with a real click. **Pass:** the hint is gone,
+   `localStorage.getItem('homeaccount.shortcuts-hint-dismissed')` reads
+   `'true'`, and focus is on the palette button.
+3. **`?`.** Remove the key and reload: the hint is back. Synthetic key
+   input in an embedded browser cannot send `?`: the key arrives empty, and
+   inserted text raises no keydown. So dispatch the key from the console,
+   in the shape a US layout's Shift+/ arrives in:
+
+   ```js
+   document.body.dispatchEvent(new KeyboardEvent('keydown',
+     { key: '?', shiftKey: true, bubbles: true, cancelable: true }));
+   ```
+
+   Then, as a separate console evaluation:
+
+   ```js
+   const palette = document.querySelector('app-command-palette');
+   ({
+     sections: [...palette.querySelectorAll('.palette-section-title')].map(h => h.textContent.trim()),
+     focus: document.activeElement === palette.querySelector('input'),
+     hint: document.querySelector('.shortcuts-hint') !== null,
+     stored: localStorage.getItem('homeaccount.shortcuts-hint-dismissed'),
+   });
+   ```
+
+   **Pass:** the sections start with *Keyboard shortcuts*, focus is in the
+   search box, the hint is gone and the key reads `'true'`: any opening
+   retires the hint. A trusted keydown is the specs' to pin:
+   `main-layout.component.spec.ts` "reaches the service on "?" typed with
+   Shift", and `shortcuts.smoke.spec.ts` "opens the palette on its Shortcuts
+   section from '?', passes the axe sweep, and closes on Escape". Close the
+   palette with its own close button. Shot: `86-shortcuts-first.png`, before
+   the close.
+4. **The button.** The palette button, with a real click. **Pass:** the
+   sections read *Go to*, *Actions*, *Keyboard shortcuts*: the commands
+   first, the reference after them. Close the palette with its close button.
+   **Pass:** focus back on the palette button.
+5. **Chords.** Open the palette from the console,
+   `ng.getComponent(document.querySelector('app-header')).openPalette()`, at
+   the desktop width and again at 375px, and read:
+
+   ```js
+   [...document.querySelectorAll('app-command-palette .shortcut-chord')]
+     .map(chord => new Set([...chord.querySelectorAll('kbd')]
+       .map(k => Math.round(k.getBoundingClientRect().top))).size);
+   ```
+
+   **Pass:** `[1, 1]` at both widths: each chord stays on one line, and the
+   keys column wraps only between chords. The first run found ⌘ at the end
+   of one line and its K alone on the next. Close the palette.
+6. **The install card.** `/about`. A real `beforeinstallprompt` cannot be
+   seen in a pane, which is an embedded browser with no install UI of its
+   own (ADR 0168's Known gaps), so hand the page a synthetic one with a
+   stubbed `prompt()`:
+
+   ```js
+   window.__j86 = 0;
+   const offer = new Event('beforeinstallprompt', { cancelable: true });
+   offer.prompt = async () => { window.__j86 += 1; };
+   offer.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
+   window.dispatchEvent(offer);
+   offer.defaultPrevented;  // false
+   ```
+
+   **Pass:** `false`, since the event is held and never `preventDefault()`ed,
+   so the browser's own install UI stays; and the card *Install the app*
+   shows its **Install** button (`.install-card`). Shot:
+   `86-install-card.png`. Press **Install** with a real click. **Pass:**
+   `window.__j86` reads 1, the card is gone, and focus is on **Send
+   feedback** (`.feedback-button`): the event prompts once, and the card goes
+   with it. The iOS steps need an iOS user agent, which this pane cannot
+   emulate; `about.component.spec.ts`, describe `install card`, holds them.
+7. **Dark.** Remove the hint's key and reload, then switch to dark as
+   [Switching the theme](#switching-the-theme) says, and measure with the
+   helpers of [Reading a painted colour](#reading-a-painted-colour): the
+   hint's text (`.shortcuts-hint-text`), its icon (`.shortcuts-hint-icon`),
+   the dismiss and the palette button's icons; with the palette open, a
+   `kbd`, a `.shortcut-keys` and a `.shortcut-label`; and on `/about`,
+   reached through the navigation, since a load puts the stored theme back,
+   with a fresh synthetic event, the card's `.welcome-body`, its
+   `.welcome-icon` and the **Install** button, not pressed. **Pass:** every
+   text at least 4.5:1 and every icon at least 3:1. The first run read the
+   hint's text at 16.67, its icon 13.47, the dismiss and the palette button
+   12.92, a key cap 13.77, the keys column 14.97, the card's body and icon
+   6.57 and the button 10.89. Put the theme back.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -4736,8 +5637,11 @@ goals counted from them, and memberships removed, left, dissolved and erased,
 with the real invite callable and the backstop triggers between them. It
 keeps two tabs of one origin sharing one session as well, which no suite can
 open, and what one tab's page says on its way out when another changes the
-account (journey 80); and a review card at a real phone's width, a viewport
-query Karma's fixed 756px window cannot apply (journey 79).
+account (journey 80); a review card at a real phone's width, a viewport
+query Karma's fixed 756px window cannot apply (journey 79); and colours as a
+browser paints them in both themes, links that cross a real router and a
+lock screen, and a real header at three widths, on an account nothing real
+stands behind (journeys 81 to 86).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -4761,7 +5665,15 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. **Journey 78 runs
-once**, on production, after the merge — when the deploys it checks have
-finished — because what it proves is the deployed rules, indexes and callable,
-which exist only then.
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 86 follow
+it on a branch that touches what each one drives: 81 a theme token, a
+stylesheet's colours or the chart palette; 82 a category colour's reader —
+the category chip, the `categoryGlyph` and `readableOn` pipes, a category
+select or the category dialog; 83 the period pickers' bounds, the period
+totals, the wizard's share flags, the recap's or Upcoming Bills' net, or the
+shell's landmarks; 84 the card menu or the layout writes; 85 the reminder
+routes, the dashboard's `?bill` and `?recap`, or `lockGuard`; and 86 the
+palette and its shortcuts, the header's palette button and hint, or the
+install card. **Journey 78 runs once**, on production, after the merge — when
+the deploys it checks have finished — because what it proves is the deployed
+rules, indexes and callable, which exist only then.

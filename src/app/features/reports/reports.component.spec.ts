@@ -77,11 +77,13 @@ describe('ReportsComponent', () => {
     queryParams = {};
     mockTransactionService = jasmine.createSpyObj(
       'TransactionService',
-      ['getByDateRange', 'getTransactionsInRange'],
+      {
+        getByDateRange: of([]),
+        getTransactionsInRange: of([]),
+        getEarliestTransactionDateFromServer: Promise.resolve(null),
+      },
       { transactions: signal<Transaction[]>([]) }
     );
-    mockTransactionService.getByDateRange.and.returnValue(of([]));
-    mockTransactionService.getTransactionsInRange.and.returnValue(of([]));
 
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['loadCategories'], {
       categories: signal([])
@@ -207,6 +209,43 @@ describe('ReportsComponent', () => {
       // trailing insight window is derived from.
       expect(component.selectedPeriod().option).toBe('custom');
       expect(component.selectedPeriod().start).toBe(start);
+    });
+  });
+
+  // The selector itself is left unrendered here; the build checks the binding.
+  describe('the period pickers\' floor', () => {
+    async function floorAfterInit(): Promise<Date | null> {
+      const fresh = TestBed.createComponent(ReportsComponent);
+      fresh.detectChanges();
+      await fresh.whenStable();
+      return fresh.componentInstance.pickerFloor();
+    }
+
+    it('is the date of the oldest row', async () => {
+      const oldest = new Date(2024, 11, 5, 12);
+      mockTransactionService.getEarliestTransactionDateFromServer.and.resolveTo(oldest);
+
+      expect(await floorAfterInit()).toEqual(oldest);
+    });
+
+    it('is the start of the current year for an account with no rows', async () => {
+      mockTransactionService.getEarliestTransactionDateFromServer.and.resolveTo(null);
+
+      expect(await floorAfterInit()).toEqual(new Date(new Date().getFullYear(), 0, 1));
+    });
+
+    it('is open when the read fails', async () => {
+      mockTransactionService.getEarliestTransactionDateFromServer
+        .and.rejectWith(new Error('unavailable'));
+
+      expect(await floorAfterInit()).toBeNull();
+    });
+
+    it('is read once on init, not again on each period change', () => {
+      component.onPeriodSelection(selection('custom', new Date(2024, 5, 1), new Date(2024, 5, 30)));
+      component.onPeriodSelection(selection('custom', new Date(2024, 6, 1), new Date(2024, 6, 31)));
+
+      expect(mockTransactionService.getEarliestTransactionDateFromServer).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -420,7 +459,11 @@ describe('ReportsComponent, through its own template', () => {
           provide: TransactionService,
           useValue: jasmine.createSpyObj(
             'TransactionService',
-            { getByDateRange: of([]), getTransactionsInRange: of([]) },
+            {
+              getByDateRange: of([]),
+              getTransactionsInRange: of([]),
+              getEarliestTransactionDateFromServer: Promise.resolve(null),
+            },
             { transactions: signal<Transaction[]>([]) }
           ),
         },

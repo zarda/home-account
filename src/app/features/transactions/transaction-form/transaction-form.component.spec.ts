@@ -1,11 +1,12 @@
 import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { EnvironmentInjector, NO_ERRORS_SCHEMA, createComponent } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
@@ -18,9 +19,9 @@ import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
-import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatDialog, MatDialogContainer, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
@@ -53,7 +54,27 @@ import { FirestoreService } from '../../../core/services/firestore.service';
 import { LedgerShareRefusal, LedgerShareService } from '../../../core/services/ledger-share.service';
 import { MAX_RECEIPTS_PER_TRANSACTION } from '../../../core/services/storage.service';
 import { Transaction, Category, Goal, User } from '../../../models';
-import { createTransaction, createCategory, createUser, createTranslationStub } from '../../../core/services/testing';
+import {
+  AUDIT_SCHEMES,
+  GLYPH_PROBE_COLOURS,
+  channels,
+  chooseOption,
+  createTransaction,
+  createCategory,
+  createUser,
+  createTranslationStub,
+  eachOptionState,
+  hoverValue,
+  paintedBackground,
+  paintedColor,
+  ratio,
+  settleAnimations,
+  withScheme,
+  withTheme,
+} from '../../../core/services/testing';
+import type { Rgb } from '../../../core/utils/color-contrast.utils';
+import { ThemeService } from '../../../core/services/theme.service';
+import { CategoryGlyphPipe } from '../../../shared/pipes/category-glyph.pipe';
 
 const renderExpenseCategory = createCategory({ id: 'food', type: 'expense', name: 'food' });
 const renderIncomeCategory = createCategory({ id: 'salary', type: 'income', name: 'salary' });
@@ -2726,17 +2747,24 @@ describe('TransactionFormComponent, through its own template', () => {
     fixture.detectChanges();
   }
 
-  /** The category select's panel renders into the CDK overlay. */
+  /**
+   * What each category option answers to: its viewValue, which typeahead
+   * matches and a plain trigger shows. An option's own text also carries its
+   * icon's ligature, so the panel's text is not the name.
+   */
   function categoryOptions(): string[] {
     // By control name, not by position: the currency select is rendered first.
+    const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+      .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!;
+    return select.injector.get(MatSelect).options.map(option => option.viewValue);
+  }
+
+  /** The category select's panel renders into the CDK overlay. */
+  function openCategoryPanel(): HTMLElement {
     const trigger = el().querySelector('mat-select[formControlName="categoryId"]') as HTMLElement;
     (trigger.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
     fixture.detectChanges();
-    const panel = document.querySelector('.mat-mdc-select-panel') as HTMLElement;
-    const names = Array.from(panel.querySelectorAll('mat-option')).map(o => o.textContent?.trim() ?? '');
-    (document.querySelector('.cdk-overlay-backdrop') as HTMLElement | null)?.click();
-    fixture.detectChanges();
-    return names;
+    return document.querySelector('.mat-mdc-select-panel') as HTMLElement;
   }
 
   afterEach(() => {
@@ -2858,6 +2886,7 @@ describe('TransactionFormComponent, through its own template', () => {
             MatChipsModule,
             MatTooltipModule,
             TranslatePipe,
+            CategoryGlyphPipe,
             CdkTextareaAutosize,
           ],
           // A standalone component's template is governed by its own schemas,
@@ -2932,15 +2961,30 @@ describe('TransactionFormComponent, through its own template', () => {
 
   it('swaps the category list when the type toggle is flipped', () => {
     render();
-    expect(categoryOptions().some(name => name.includes('food'))).toBeTrue();
+    expect(categoryOptions()).toEqual(['food']);
 
     toggle('income').click();
     fixture.detectChanges();
 
     expect(component.form.get('type')?.value).toBe('income');
-    const incomeOptions = categoryOptions();
-    expect(incomeOptions.some(name => name.includes('salary'))).toBeTrue();
-    expect(incomeOptions.some(name => name.includes('food'))).toBeFalse();
+    expect(categoryOptions()).toEqual(['salary']);
+  });
+
+  it('sizes each category option icon at --text-xl, a square of it', () => {
+    // A pin: `mat-option > mat-icon` keeps the size the icon had inside its old wrapper.
+    render();
+
+    const icons = Array.from(openCategoryPanel().querySelectorAll<HTMLElement>('mat-option mat-icon'));
+    expect(icons.length).toBe(1);
+    const probe = document.createElement('span');
+    probe.style.fontSize = 'var(--text-xl)';
+    document.body.appendChild(probe);
+    const expected = getComputedStyle(probe).fontSize;
+    probe.remove();
+    const style = getComputedStyle(icons[0]);
+    expect(style.fontSize).toBe(expected);
+    expect(style.width).toBe(expected);
+    expect(style.height).toBe(expected);
   });
 
   it('offers both receipt affordances while an engine is available', () => {
@@ -3422,6 +3466,388 @@ describe('TransactionFormComponent, through its own template', () => {
       expect(component.formCurrency()).toBe('USD');
       expect(shown()).toBe('USD');
       expect(sessionSpy.remember).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('colours', () => {
+    const THEMES = ['light', 'dark'] as const;
+    // A real data URI: the strips render an <img> for each receipt, and an
+    // invalid URL would log a resource error.
+    const ONE_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+    /**
+     * The form, painted with the surface Material gives the dialog container
+     * (`dialog-container-color` is `surface` in M3), which is what it sits on
+     * in the app.
+     */
+    function renderOnDialog(data?: { mode: 'add' | 'edit'; transaction?: Transaction }): void {
+      render(data);
+      el().style.display = 'block';
+      el().style.background = 'var(--mat-sys-surface)';
+    }
+
+    /** What `<property>: var(token)` computes to under the theme on <html> now. */
+    function tokenValue(token: string, property = 'color'): string {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      try {
+        return getComputedStyle(probe).getPropertyValue(property);
+      } finally {
+        probe.remove();
+      }
+    }
+
+    /** The element whose own text node holds `text`: the one that paints it. */
+    function paintedTextOf(root: Element, text: string): HTMLElement {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.textContent!.includes(text)) return node.parentElement!;
+      }
+      throw new Error(`no text node holds "${text}"`);
+    }
+
+    /**
+     * Runs `fn` with each `[element, property, value]` set inline, which is
+     * how a spec stands in for `:hover`, then removes them. The chip and the
+     * receipt buttons carry `transition: all`, so the values are settled
+     * before anything is read.
+     */
+    function withStyles(styles: readonly (readonly [HTMLElement, string, string])[], fn: () => void): void {
+      try {
+        for (const [node, property, value] of styles) node.style.setProperty(property, value);
+        settleAnimations(document);
+        fn();
+      } finally {
+        for (const [node, property] of styles) node.style.removeProperty(property);
+      }
+    }
+
+    /**
+     * `fill` under Material's hover state layer: the layer's colour at the
+     * opacity Material gives it once its button is hovered. The layer is a
+     * sibling of the label, not an ancestor, so the painted-colour walk never
+     * passes through it.
+     */
+    function underHoverLayer(layer: HTMLElement, fill: Rgb): Rgb {
+      const { rgb } = channels(getComputedStyle(layer, '::before').backgroundColor);
+      const probe = document.createElement('span');
+      probe.style.opacity = hoverValue(layer, '.mat-mdc-outlined-button', 'opacity', '::before');
+      layer.appendChild(probe);
+      const alpha = Number(getComputedStyle(probe).opacity);
+      probe.remove();
+      const mix = (i: 0 | 1 | 2) => Math.round(rgb[i] * alpha + fill[i] * (1 - alpha));
+      return [mix(0), mix(1), mix(2)];
+    }
+
+    /**
+     * Runs `fn` with the global stylesheet where the app has it: first in
+     * <head>, ahead of every component stylesheet Angular appends there.
+     * Karma links it at the end of <body> instead, after them, so on its own
+     * a styles.scss rule wins every tie with a Material component's rule that
+     * it loses in the app. The sheet's parsed rules are copied into a <style>
+     * at the head of <head>, which applies at once, and the link is disabled
+     * until `fn` returns.
+     */
+    function withAppCascade(fn: () => void): void {
+      const link = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
+        .find(node => new URL(node.href).pathname.endsWith('/styles.css'));
+      if (!link?.sheet) throw new Error('the global stylesheet is not linked');
+      const sheet = link.sheet;
+      const copy = document.createElement('style');
+      copy.textContent = Array.from(sheet.cssRules, rule => rule.cssText).join('\n');
+      document.head.prepend(copy);
+      if (copy.sheet?.cssRules.length !== sheet.cssRules.length) {
+        copy.remove();
+        throw new Error('the global stylesheet did not copy rule for rule');
+      }
+      sheet.disabled = true;
+      try {
+        fn();
+      } finally {
+        sheet.disabled = false;
+        copy.remove();
+      }
+    }
+
+    /** Renders the form on the dialog with a category of each probe colour on the expense side. */
+    function renderWithProbes(): Category[] {
+      renderOnDialog();
+      const probes = Object.entries(GLYPH_PROBE_COLOURS).map(([scheme, color]) =>
+        createCategory({ id: `probe-${scheme}`, name: `probe-${scheme}`, color, type: 'expense' })
+      );
+      (TestBed.inject(CategoryService).expenseCategories as WritableSignal<Category[]>).set(probes);
+      fixture.detectChanges();
+      return probes;
+    }
+
+    // A category's glyph is drawn on the dialog in the closed select, and in
+    // the panel on an option at rest, active and selected; it is corrected
+    // for each. Each probe is chosen in turn, so each is seen selected.
+    it('draws each category glyph at AA or better in the closed select and on its panel at rest, active and selected, in both themes', () => {
+      const probes = renderWithProbes();
+      const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).getAttribute('formControlName') === 'categoryId')!
+        .injector.get(MatSelect);
+      const flush = () => fixture.detectChanges();
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const probe of probes) {
+            chooseOption(select, probe.id, flush);
+            const closed = el().querySelector('mat-select[formControlName="categoryId"] .category-option mat-icon') as HTMLElement;
+            expect(closed).withContext(`${scheme} ${probe.id} in the closed select`).toBeTruthy();
+            expect(ratio(paintedColor(closed), paintedBackground(closed)))
+              .withContext(`${scheme} ${probe.color} in the closed select`)
+              .toBeGreaterThanOrEqual(4.5);
+            eachOptionState(select, flush, (option, state) => {
+              const glyph = option._getHostElement().querySelector('mat-icon') as HTMLElement;
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${probe.id} chosen, ${option.value} ${state}`)
+                .toBeGreaterThanOrEqual(4.5);
+            });
+          }
+        });
+      }
+    });
+
+    it("draws the suggested category's glyph at AA or better on the suggestion chip at rest and hovered, in both themes", () => {
+      const probes = renderWithProbes();
+
+      for (const scheme of AUDIT_SCHEMES) {
+        withScheme(TestBed.inject(ThemeService), scheme, () => {
+          for (const probe of probes) {
+            component.suggestedCategory.set(probe);
+            fixture.detectChanges();
+            const chip = el().querySelector('.suggestion-chip') as HTMLElement;
+            const glyph = chip.querySelector('mat-icon:not(.ai-icon)') as HTMLElement;
+            expect(glyph?.textContent?.trim()).withContext(`${scheme} ${probe.id} glyph`).toBe(probe.icon);
+            expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+              .withContext(`${scheme} ${probe.color} at rest`)
+              .toBeGreaterThanOrEqual(4.5);
+            withStyles([[chip, 'background-color', hoverValue(chip, '.suggestion-chip', 'background-color')]], () => {
+              expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
+                .withContext(`${scheme} ${probe.color} hovered`)
+                .toBeGreaterThanOrEqual(4.5);
+            });
+          }
+        });
+      }
+    });
+
+    it('lays the suggestion chip on --surface-suggestion, and hovered on --surface-suggestion-hover, with its offer, reason and AI icon at AA on both, in both themes', () => {
+      renderOnDialog();
+      component.suggestedCurrency.set({ code: 'EUR', reason: 'receipt' } as never);
+      fixture.detectChanges();
+      const chip = el().querySelector('.suggestion-chip') as HTMLElement;
+      const icon = chip.querySelector('.ai-icon') as HTMLElement;
+      const offer = chip.querySelector('.suggestion-text > span:first-child') as HTMLElement;
+      const reason = chip.querySelector('.suggestion-reason') as HTMLElement;
+      const lines = [['offer', offer], ['reason', reason], ['AI icon', icon]] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(getComputedStyle(chip).backgroundColor)
+            .withContext(`${theme} chip at rest`)
+            .toBe(tokenValue('--surface-suggestion', 'background-color'));
+          expect(getComputedStyle(icon).color).withContext(`${theme} AI icon`).toBe(tokenValue('--color-primary-text'));
+          expect(getComputedStyle(offer).color).withContext(`${theme} offer`).toBe(tokenValue('--text-secondary'));
+          for (const [label, node] of lines) {
+            expect(ratio(paintedColor(node), paintedBackground(node)))
+              .withContext(`${theme} ${label} at rest`)
+              .toBeGreaterThanOrEqual(4.5);
+          }
+
+          // A plain button: no state layer lies over it, so its own fill is
+          // all a pointer over it shows.
+          const hovered = hoverValue(chip, '.suggestion-chip', 'background-color');
+          expect(hovered).withContext(`${theme} chip hovered`).toBe('var(--surface-suggestion-hover)');
+          withStyles([[chip, 'background-color', hovered]], () => {
+            expect(getComputedStyle(chip).backgroundColor)
+              .withContext(`${theme} hover fill`)
+              .toBe(tokenValue('--surface-suggestion-hover', 'background-color'));
+            for (const [label, node] of lines) {
+              // The AI icon is a decorative glyph, so its bar is the 3:1 of
+              // a graphic. At rest it clears text's, which is what axe holds
+              // it to while Karma serves no icon font; axe never hovers.
+              expect(ratio(paintedColor(node), paintedBackground(node)))
+                .withContext(`${theme} ${label} hovered`)
+                .toBeGreaterThanOrEqual(node === icon ? 3 : 4.5);
+            }
+          });
+        });
+      }
+    });
+
+    it('rests the scan button on --surface-subtle inside a dashed --border-strong edge, and hovered gives it a brand edge and a fill of its own, its label and icon at AA throughout, in both themes', () => {
+      renderOnDialog();
+      const button = el().querySelector('.scan-receipt-btn') as HTMLElement;
+      const label = paintedTextOf(button, 'ai.scanReceipt');
+      const icon = button.querySelector('mat-icon') as HTMLElement;
+      const layer = button.querySelector('.mat-mdc-button-persistent-ripple') as HTMLElement;
+      const parts = [['label', label], ['icon', icon]] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          const rest = getComputedStyle(button);
+          expect(rest.backgroundColor)
+            .withContext(`${theme} fill at rest`)
+            .toBe(tokenValue('--surface-subtle', 'background-color'));
+          expect(rest.borderTopStyle).withContext(`${theme} edge is dashed`).toBe('dashed');
+          expect(rest.borderTopColor).withContext(`${theme} edge at rest`).toBe(tokenValue('--border-strong'));
+          expect(getComputedStyle(label).color).withContext(`${theme} label`).toBe(tokenValue('--text-secondary'));
+          expect(getComputedStyle(icon).color).withContext(`${theme} icon`).toBe(tokenValue('--text-muted'));
+          for (const [name, node] of parts) {
+            expect(ratio(paintedColor(node), paintedBackground(node)))
+              .withContext(`${theme} ${name} at rest`)
+              .toBeGreaterThanOrEqual(4.5);
+          }
+          const restFill = paintedBackground(button);
+
+          const edge = hoverValue(button, '.scan-receipt-btn', 'border-color');
+          expect(edge).withContext(`${theme} edge hovered`).toBe('var(--color-primary)');
+          withStyles(
+            [
+              [button, 'border-color', edge],
+              [button, 'background-color', hoverValue(button, '.scan-receipt-btn', 'background-color')],
+              [label, 'color', hoverValue(label, '.scan-receipt-btn', 'color')],
+              [icon, 'color', hoverValue(icon, '.scan-receipt-btn', 'color')],
+            ],
+            () => {
+              const fill = paintedBackground(button);
+              expect(fill).withContext(`${theme} hover fill against the rest fill`).not.toEqual(restFill);
+              const shown = underHoverLayer(layer, fill);
+              for (const [name, node] of parts) {
+                expect(getComputedStyle(node).color)
+                  .withContext(`${theme} ${name} hovered`)
+                  .toBe(tokenValue('--color-primary-text'));
+                expect(ratio(paintedColor(node), shown))
+                  .withContext(`${theme} ${name} hovered, under the state layer`)
+                  .toBeGreaterThanOrEqual(4.5);
+              }
+            }
+          );
+        });
+      }
+    });
+
+    it('paints the queued strip, the waiting chip, the dismiss control and the attached-position icon in their tokens at AA, and their edges in the border tokens, in both themes', () => {
+      renderOnDialog();
+      component.pendingReceipts.set([{ file: new File(['x'], 'r.jpg', { type: 'image/jpeg' }), preview: ONE_PIXEL }]);
+      component.isSuggesting.set(true);
+      component.suggestedCurrency.set({ code: 'EUR', reason: 'receipt' } as never);
+      component.locationCoords.set({ lat: 1, lng: 2 });
+      fixture.detectChanges();
+
+      const tile = el().querySelector('.add-receipt-tile') as HTMLElement;
+      const preview = el().querySelector('.receipt-preview') as HTMLElement;
+      const waiting = el().querySelector('.suggestion-chip.loading') as HTMLElement;
+      const painted = [
+        ['tile label', paintedTextOf(tile, 'receiptImages.addAnother'), '--text-secondary'],
+        ['tile icon', tile.querySelector('mat-icon') as HTMLElement, '--text-muted'],
+        ['waiting chip', paintedTextOf(waiting, 'ai.suggesting'), '--text-secondary'],
+        ['dismiss', el().querySelector('.suggestion-dismiss mat-icon') as HTMLElement, '--text-muted'],
+        ['attached position', el().querySelector('.coords-attached') as HTMLElement, '--color-primary-text'],
+      ] as const;
+      const edges = [
+        ['tile', tile, 'dashed', '--border-strong'],
+        ['queued receipt', preview, 'solid', '--border-primary'],
+        ['waiting chip', waiting, 'solid', '--border-primary'],
+      ] as const;
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [name, node, token] of painted) {
+            expect(node).withContext(name).toBeTruthy();
+            expect(getComputedStyle(node).color).withContext(`${theme} ${name}`).toBe(tokenValue(token));
+            expect(ratio(paintedColor(node), paintedBackground(node)))
+              .withContext(`${theme} ${name} at AA`)
+              .toBeGreaterThanOrEqual(4.5);
+          }
+          for (const [name, node, style, token] of edges) {
+            const drawn = getComputedStyle(node);
+            expect(drawn.borderTopStyle).withContext(`${theme} ${name} edge is ${style}`).toBe(style);
+            expect(drawn.borderTopColor).withContext(`${theme} ${name} edge`).toBe(tokenValue(token));
+          }
+        });
+      }
+    });
+
+    // Material's dialog container draws a transparent top edge on every
+    // actions row, from a stylesheet that reaches the document only once a
+    // container exists, and that lands after styles.scss's app-wide rule. A
+    // container is created for its stylesheet, under the app's order. It is
+    // created off the page: a second TestBed fixture would take the form's
+    // off it.
+    it("draws its actions rule in --border-primary over the transparent edge Material's dialog container draws, in the app's stylesheet order, in both themes", () => {
+      renderOnDialog();
+      const actions = el().querySelector('.dialog-actions') as HTMLElement;
+
+      withAppCascade(() => {
+        const container = createComponent(MatDialogContainer, {
+          environmentInjector: TestBed.inject(EnvironmentInjector),
+        });
+        try {
+          for (const theme of THEMES) {
+            withTheme(theme, () => {
+              const drawn = getComputedStyle(actions);
+              // Only Material's rule gives the row a minimum height.
+              expect(drawn.minHeight).withContext("Material's dialog stylesheet applies").toBe('52px');
+              expect(drawn.borderTopStyle).withContext(`${theme} actions rule is solid`).toBe('solid');
+              expect(drawn.borderTopColor).withContext(`${theme} actions rule`).toBe(tokenValue('--border-primary'));
+            });
+          }
+        } finally {
+          container.destroy();
+        }
+      });
+    });
+
+    // The amber the warning family is named for is a fill, under 2:1 on the
+    // light dialog, so a flag reads in its text step. A flag is a graphic,
+    // so its floor is 3:1 (WCAG 1.4.11).
+    it("paints each doubted reading's flag in --color-warning-text at 3:1 or better on the dialog, in both themes", () => {
+      renderOnDialog();
+      component.scanFieldConfidence.set({ amount: 0.2, type: 0.2, date: 0.2 });
+      fixture.detectChanges();
+      const flags = Array.from(el().querySelectorAll('.verify-flag')) as HTMLElement[];
+      expect(flags.length).withContext('the type, amount and date flags').toBe(3);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const flag of flags) {
+            const field = flag.getAttribute('aria-label');
+            expect(getComputedStyle(flag).color)
+              .withContext(`${theme} ${field}`)
+              .toBe(tokenValue('--color-warning-text'));
+            expect(ratio(paintedColor(flag), paintedBackground(flag)))
+              .withContext(`${theme} ${field} on the dialog`)
+              .toBeGreaterThanOrEqual(3);
+          }
+        });
+      }
+    });
+
+    it("paints a stored receipt's remove action in --color-error-text at AA, in both themes", () => {
+      renderOnDialog({ mode: 'edit', transaction: createTransaction({ description: 'Coffee' }) });
+      component.storedReceipts.set([{ url: ONE_PIXEL, slot: 0 }]);
+      fixture.detectChanges();
+      const icon = el().querySelector('.remove-receipt-btn mat-icon') as HTMLElement;
+      expect(icon).withContext('the remove action').toBeTruthy();
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(getComputedStyle(icon).color).withContext(theme).toBe(tokenValue('--color-error-text'));
+          expect(ratio(paintedColor(icon), paintedBackground(icon)))
+            .withContext(`${theme} on the dialog`)
+            .toBeGreaterThanOrEqual(4.5);
+        });
+      }
     });
   });
 });

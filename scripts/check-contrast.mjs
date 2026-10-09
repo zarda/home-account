@@ -109,32 +109,156 @@ const PAIRS = [
   { fg: '--text-secondary', bg: '--surface-background', why: 'secondary copy on the page' },
   { fg: '--text-muted', bg: '--surface-card', why: 'captions and hints on a card' },
   { fg: '--text-muted', bg: '--surface-muted', why: 'captions inside a nested chip or stat tile' },
+  { fg: '--text-primary', bg: '--surface-muted', why: "the command palette's key caps (<kbd>)" },
+  { fg: '--text-muted', bg: '--surface-strong', why: "the category manager's Default badge" },
   { fg: '--text-muted', bg: '--surface-background', why: 'captions on the page' },
+  {
+    fg: '--text-muted',
+    bg: '--surface-hover',
+    why: "the import review card's resting date, currency, place and tag chips and its zero-selection badge, the " +
+      "dropzone's file-type label, the export dialog's summary line, and muted copy under a hovered row, card or " +
+      'link card',
+  },
   {
     fg: '--text-inverse',
     bg: '--color-primary',
     why: "the transactions quick filters' active button and filter count, the import stepper's current step, " +
       "the dropzone's image number, the import preview's selection badge, the snapshot timeline's chosen month",
   },
-  { fg: '--text-inverse', bg: '--color-accent', why: "the bottom-nav add button and the period selector's custom-range button" },
+  {
+    fg: '--text-inverse',
+    bg: '--color-accent',
+    why: "the bottom-nav add button, the period selector's custom-range button and the About page's donate badge",
+  },
+  { fg: '--text-inverse', bg: '--color-error-strong', why: "the transaction row's swipe-to-delete action" },
   { fg: '--color-primary', bg: '--surface-card', why: 'links and active labels on a card' },
   { fg: '--color-accent', bg: '--surface-card', why: 'accent labels on a card' },
+  {
+    fg: '--color-ai',
+    bg: '--surface-card',
+    threshold: 3,
+    why: "the AI features' icons on a card: graphics, so WCAG 1.4.11's 3:1 rather than text's 4.5:1",
+  },
   {
     fg: '--color-primary-text',
     bg: '--color-primary-light',
     why: "the stat-card neutral icon, the import preview badge, the period selector's toggle " +
-      "and chip, the bottom-nav active pill, the profile-settings checked toggle",
+      "and chip, the bottom-nav active pill, the profile-settings checked toggle, the camera's cloud scan badge",
+  },
+  {
+    fg: '--color-primary-text',
+    bg: '--surface-active',
+    why: "the desktop sidebar's current page, its label and its icon",
+  },
+  {
+    fg: '--text-secondary',
+    bg: '--color-primary-light',
+    why: "the export dialog's description of the chosen format and of a format under the pointer",
+  },
+  {
+    fg: '--color-primary-text',
+    bg: '--surface-hover',
+    why: "the import wizard's processing step under way, the About page's feedback category chip and a hovered " +
+      "transaction row's location link. Two hovered labels of the import review step sit on the primary's own " +
+      "tint instead, 5% in light and 10% in dark: a review card's add-notes label over its card, and the list " +
+      "footer's add-row label over the table's --surface-card. The preview spec holds both at 4.5:1 in both " +
+      'themes, the add-notes label on a hovered unchecked card',
   },
   { fg: '--color-income-text', bg: '--color-income-light', why: 'the income chip: stat cards, weekly recap' },
   { fg: '--color-income-text', bg: '--surface-card', why: 'an income amount as running text' },
   { fg: '--color-expense-text', bg: '--color-expense-light', why: 'the expense chip: stat cards, weekly recap, budget alert banner' },
   { fg: '--color-expense-text', bg: '--surface-card', why: 'an expense amount as running text' },
-  { fg: '--color-warning-text', bg: '--color-warning-light', why: 'the warning banner: budget alerts, the recurring-rule chip' },
-  { fg: '--color-warning-text', bg: '--surface-card', why: 'a warning as running text' },
+  {
+    fg: '--color-warning-text',
+    bg: '--color-warning-light',
+    why: "the warning banner: budget alerts, the recurring-rule chip, the import review card's duplicate badge",
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-card',
+    why: "a warning as running text. The import wizard's cut-off glyph and the duplicate panel's header glyph " +
+      "sit on their notice's 5% warning tint over the card instead, and clear 4.86:1 there in light",
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-hover',
+    why: "the import review card's date chip while its day is doubted or asked about, and the flag on that chip " +
+      'and on the currency chip',
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-background',
+    threshold: 3,
+    why: "the import review card's amount and type flags and the category suggestion's medium-confidence dot on an " +
+      "unchecked card, which is the page's own fill: graphics, so 3:1, as --color-ai. On a checked or flagged card " +
+      'they sit on --surface-review-selected or --surface-review-duplicate, which this script cannot read, and ' +
+      "clear 4.61:1 and 4.82:1 there in light. The transaction form's flags sit on the dialog's --mat-sys-surface, " +
+      'which Material declares, and clear 4.78:1 there',
+  },
   {
     fg: '--color-error-text',
     bg: '--color-error-light',
     why: "the login page's error banner and the transaction filters' clear-button hover",
+  },
+  {
+    fg: '--color-error-text',
+    bg: '--surface-card',
+    why: "an error as running text: the app lock, the security settings and activity, the filters' clear button, " +
+      "the split hints, the two translation errors, the import preview's amount. The dropzone's message sits on " +
+      "its banner's 10% error tint over the dropzone's own fill instead, and clears 5.2:1 there in light",
+  },
+  {
+    fg: '--color-error',
+    bg: '--surface-card',
+    threshold: 3,
+    why: "error glyphs: the exact-duplicate mark beside its words and the dropzone's hovered remove. Graphics, so " +
+      "3:1, as --color-ai. The dropzone's banner icon sits on that banner's 10% error tint over the dropzone's own " +
+      "fill, and clears 3.05:1 there in light; the data page's danger icon sits on its zone's 8% error tint over " +
+      'the card, and clears 3.39:1. Everywhere else the token is an edge or a tint under --color-error-text copy',
+  },
+  {
+    fg: '--color-error',
+    bg: '--surface-background',
+    threshold: 3,
+    why: "the import wizard's provider-key, unknown and nothing-found failure icons on the page, and the category " +
+      "suggestion's low-confidence dot on an unchecked review card: graphics, so 3:1. On a checked or flagged card " +
+      'the dot clears 3.45:1 and 3.61:1 in light',
+  },
+  {
+    fg: '--color-success-text',
+    bg: '--color-success-light',
+    why: "the import history's completed chip and the camera's on-device scan badge",
+  },
+  { fg: '--text-primary', bg: '--color-info-light', why: "the import wizard's merged-items badge" },
+  { fg: '--color-success-text', bg: '--surface-card', why: 'a success state as running text' },
+  {
+    fg: '--color-success-text',
+    bg: '--surface-hover',
+    why: "the import wizard's finished processing steps, whose label and glyph sit on the active step's fill, and " +
+      "the import review card's answered date and its check, on the date chip",
+  },
+  {
+    fg: '--color-success-text',
+    bg: '--surface-background',
+    threshold: 3,
+    why: "the import wizard's success glyph on the page, and the category suggestion's high-confidence dot on an " +
+      'unchecked review card: graphics, so 3:1, as --color-ai. On a checked or flagged card the dot clears 4.60:1 ' +
+      'and 4.81:1 in light',
+  },
+  {
+    fg: '--color-success-text',
+    bg: '--surface-subtle',
+    why: "the dashboard budget widget's percentage while a budget is under its limit",
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-subtle',
+    why: "the dashboard budget widget's percentage while a budget nears its limit",
+  },
+  {
+    fg: '--color-error-text',
+    bg: '--surface-subtle',
+    why: "the dashboard budget widget's percentage once a budget is over its limit",
   },
 ];
 
@@ -143,7 +267,10 @@ const EXEMPT = [
   {
     fg: '--text-disabled',
     bg: '--surface-card',
-    why: 'WCAG 1.4.3 exempts text that is part of an inactive control — and dimming a disabled control is how it says it is disabled',
+    why: 'kept for a control nobody can operate, whose text WCAG 1.4.3 exempts, and nothing paints it today: the ' +
+      "confidence dot's base fill is always replaced by its level's colour, and the marks that look quiet but " +
+      "say something — a row's receipt and split marks, the export dialog's summary icons — read in --text-muted, " +
+      'scored above',
   },
   {
     fg: '--border-primary',
@@ -151,19 +278,31 @@ const EXEMPT = [
     why: 'a divider, not a component boundary: 1.4.11 asks for 3:1 on what identifies a control, and a hairline between two rows identifies nothing',
   },
   {
+    fg: '--border-strong',
+    bg: '--surface-card',
+    why: 'the hover outline and the dashed edge of controls that carry their own label: 1.4.11 asks 3:1 of a boundary only where the boundary is what identifies the control',
+  },
+  {
     fg: '--text-inverse',
     bg: '--color-error',
-    why: 'nothing paints it — every inverse-text site sits on --color-primary or --color-accent, both scored above',
+    why: 'a fill too light to carry text (white on it is 3.76:1 in light), so a label on solid red sits on --color-error-strong, scored above',
   },
   {
     fg: '--text-inverse',
     bg: '--color-info',
-    why: 'nothing paints it, as above',
+    why: 'nothing paints it — every inverse-text site sits on --color-primary, --color-accent or --color-error-strong, all scored above',
   },
   {
     fg: '--text-inverse',
     bg: '--color-success',
-    why: 'nothing paints it, as above',
+    why: 'nothing paints it, as the --color-info row above',
+  },
+  {
+    fg: '--color-primary-text',
+    bg: '--surface-background',
+    why: "nothing paints it straight on the page. The budgets tab's count badge sits on a 16% primary tint mixed " +
+      'into the page, a color-mix() fill this script cannot read; the budgets spec holds its count at 4.5:1 ' +
+      'on that tint in both themes (4.99:1 in light, 9.45:1 in dark)',
   },
 ];
 
@@ -196,11 +335,25 @@ const NOT_PAINTED = {
   '--color-accent-light': 'a border colour and one decorative header glyph',
   '--color-income': "a fill — bars, dots, toggles' tints; never text",
   '--color-expense': "a fill — bars, dots, toggles' tints; never text",
-  '--color-success': 'an icon colour beside its own label (the import wizard\'s success states)',
-  '--color-success-light': 'declared and unused',
-  '--color-warning': 'an icon and a border colour beside their own labels; the readable warning token is --color-warning-text',
-  '--color-info': 'an icon and a left border on a callout that carries its own text in --text-primary',
-  '--color-info-light': 'declared and unused',
+  '--color-success':
+    "an edge only: the dropzone's, once it holds the files it lists. No text or glyph is painted in it: the import " +
+    "wizard's success states, the review card's answered date and the category suggestion's high-confidence dot " +
+    'read in --color-success-text, scored above',
+  '--color-warning':
+    "edges and tints only; no text or glyph is painted in it. Edges: the budget alert banner's; on the import " +
+    "review card, a flagged card's, the fell-back currency chip's and the date question's; the duplicate panel's " +
+    "and each duplicate's leading edge; the import wizard's cut-off notice and its two hints; the AI summary's " +
+    "advice and the snapshot timeline's stale strip. Tints, and what sits on each: a flagged card's fill " +
+    "(--surface-review-duplicate), the whole card; the duplicate panel's, copy in --text-muted, --text-secondary " +
+    "and Material's own colours; the wizard's notice and hints, copy in --text-secondary; the stale strip's, copy " +
+    "in --text-secondary and Material's own colours; the advice's, copy in --color-warning-text; and the wizard's " +
+    "summary-card icon tiles. The warning glyph on the panel, the notice, the strip, the advice and each tile reads " +
+    'in --color-warning-text, scored above. The duplicate badge is no tint of it: it sits on --color-warning-light',
+  '--color-info':
+    "glyphs beside their own words that clear 3:1, a tile and an edge: the import wizard's network-failure and " +
+    "queued-offline icons on the page (3.37:1 in light) and its merged-items icon on that card's 10% tile of the " +
+    "same hue (3.29:1), the first and the last held at 3:1 by the wizard's painted spec; that tile; and the info " +
+    "snackbar's leading edge. No text is painted in it or on it",
 };
 
 /** Every block with this selector, merged in file order, as the cascade does. */

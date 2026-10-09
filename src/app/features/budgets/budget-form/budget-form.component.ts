@@ -23,6 +23,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { Budget, CreateBudgetDTO, BudgetPeriod, baseCurrencyOf} from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryGlyphPipe } from '../../../shared/pipes/category-glyph.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 
 export interface BudgetFormDialogData {
@@ -48,7 +49,8 @@ export interface BudgetFormDialogData {
     MatDatepickerModule,
     MatNativeDateModule,
     MatTooltipModule,
-    TranslatePipe
+    TranslatePipe,
+    CategoryGlyphPipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './budget-form.component.html',

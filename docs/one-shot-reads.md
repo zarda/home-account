@@ -378,6 +378,70 @@ the account's rows in the changed category and each of their copies from the
 cache when offline, so a category edit made offline still queues its copies'
 rewrites; a copy it cannot read is written.
 
+## The period pickers' floor (#440)
+
+`TransactionService.getEarliestTransactionDateFromServer` reads the date of
+the account's oldest row. That date is the floor of the month and year
+pickers on the dashboard, the reports and the transactions page
+([ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)).
+Nothing writes it down, but it is a gate: every month before it is
+disabled. Online, `getCollection` would wait for the server too. Offline,
+a floor read through it would come from the cache, whose oldest row is only
+the oldest of whatever windows this session browsed, so it would disable
+months that hold rows, with nothing on screen to say so.
+
+`getCollectionFromServer`, the strict variant, ordered by `date` ascending
+with a limit of one. Each page reads it once, on init. Offline it rejects,
+and the page leaves its pickers with the cap and no floor: every year up to
+the cap is offered, which errs on the side that hides nothing.
+
+## The Monday nudge's gate (#446)
+
+On the installed app the reminder sweep books the weekly recap's Monday
+nudge only for a week the card would show
+([ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md),
+[weekly-recap.md](weekly-recap.md#the-monday-nudge)).
+`ReminderService.recapWeekHasNews` reads the announced week so far and the
+week before it, and asks the card's own `hasSomethingToSay` of them. The
+answer is acted on once: a quiet fortnight books nothing, and retires a
+nudge already booked.
+
+`getTransactionsInRangeFromServer` ×2, the strict variant. The recap card
+itself reads the same two weeks through `getTransactionsInRangeOnce`, which
+suits a card that only paints what it reads. The gate does more than paint:
+a cache that never held those weeks answers with no rows, and a quiet
+fortnight read from it would retire a nudge the account has news for.
+Offline the read rejects, and the gate fails open: the nudge is booked and
+the failure is not remembered. The web build never books the nudge, so it
+never reads.
+
+## A bill link's absent row (#446)
+
+A reminder's tap opens `/dashboard?bill={rule id}`, and the Upcoming card
+answers *absent* when no row names the rule
+([dashboard.md](dashboard.md#links-from-a-notification-bill-and-recap)).
+That answer sends the user to the recurring rules, once, and the card
+answers from the upcoming listener, whose first emission can be this
+device's persistent cache from before the rule existed. The browser run met
+exactly that: a rule created on another client, due in three days, sent a
+cold load to the rules page.
+
+So the page asks the server before it acts:
+`RecurringService.getUpcomingScheduleFromServer` walks the rules
+`getCollectionFromServer` returns over the fortnight from the moment it is
+asked. A rule the server lists and the page's window lacks means the
+listener has not caught up, or, on a page open since an earlier day, that
+it still walks that day's fortnight: it walks only when it emits, and it
+emits only when a rule changes. So the page re-opens the listener, whose
+first emission walks from today over the cache the read has just
+refreshed, and a second *absent* for that rule is final. Offline the read
+rejects, and the rules page, which lists every rule there is, is still the
+answer.
+
+The emulator smoke could not have shown the defect, for the reason
+[below](#when-you-add-another-one): its client has no persistent cache, so
+the listener's first emission there is already complete.
+
 ## The deliberate live readers
 
 These are not exceptions to the rule — they are the other question. The
@@ -430,6 +494,9 @@ moving a method to the strict variant, because one of them may be painting.
 | the household index listing (`indexEntries`) | which entries a tidy, an erasure or the limit check at ten judges | `getCollectionFromServer`, answered by the index listener while attached | **rejects** |
 | the index before a row delete (`indexedHouseholds`) | which households' copies the delete takes out | `getCollection` | cache: the delete works offline |
 | `reprojectCategory` | which copies a category change rewrites | `getCollection`, `getDocument` | cache: the rewrites queue |
+| `getEarliestTransactionDateFromServer` | the month and year pickers' floor (dashboard, reports, transactions) | `getCollectionFromServer` (one row, oldest first) | **rejects; the pickers keep the cap and get no floor** |
+| `getTransactionsInRangeFromServer` ×2 (the nudge's gate) | whether the Monday nudge is booked or retired | `getCollectionFromServer` | **rejects; the nudge is booked** |
+| `getUpcomingScheduleFromServer` | whether a bill link's *absent* sends the user to the recurring rules | `getCollectionFromServer` | **rejects; the rules page is the answer** |
 
 ## The gate
 

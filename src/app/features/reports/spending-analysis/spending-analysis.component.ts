@@ -6,13 +6,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 
-import { Transaction, Category } from '../../../models';
+import { CATEGORY_FALLBACK_COLOR, Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { ChartThemeService } from '../../../core/services/chart-theme.service';
+import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { dayKey, monthKey } from '../../../core/utils/transaction-date.utils';
@@ -301,6 +301,7 @@ export class SpendingAnalysisComponent {
   // Chart data as computed signal to prevent re-renders
   chartData = computed((): ChartData<'line'> => {
     const data = this.trendData();
+    const palette = this.chartTheme.palette();
     // Drop point markers on the dense daily line; keep them on sparse months.
     const pointRadius = this.granularity() === 'day' ? 0 : 3;
 
@@ -308,8 +309,8 @@ export class SpendingAnalysisComponent {
       {
         label: this.translationService.t('common.income'),
         data: data.map(d => d.income),
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        borderColor: palette.incomeEdge,
+        backgroundColor: hexToRgba(palette.income, 0.1),
         fill: true,
         tension: 0.3,
         pointRadius,
@@ -317,8 +318,8 @@ export class SpendingAnalysisComponent {
       {
         label: this.translationService.t('common.totalExpenses'),
         data: data.map(d => d.expense),
-        borderColor: '#ef4444',
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderColor: palette.expenseEdge,
+        backgroundColor: hexToRgba(palette.expense, 0.1),
         fill: true,
         tension: 0.3,
         pointRadius,
@@ -332,8 +333,8 @@ export class SpendingAnalysisComponent {
         label: this.translationService.t('reports.savingsRate'),
         data: this.monthlySavingsRates(),
         yAxisID: 'y1',
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderColor: palette.accentEdge,
+        backgroundColor: hexToRgba(palette.accent, 0.1),
         fill: false,
         tension: 0.3,
         spanGaps: true,
@@ -429,7 +430,7 @@ export class SpendingAnalysisComponent {
         return {
           categoryId,
           name: category?.name || 'Unknown',
-          color: category?.color || '#9E9E9E',
+          color: category?.color || CATEGORY_FALLBACK_COLOR,
           icon: category?.icon || 'category',
           total,
           percentage: totalExpense > 0 ? (total / totalExpense) * 100 : 0,
