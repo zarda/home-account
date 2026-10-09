@@ -281,6 +281,15 @@ banner no longer opens the picker. Pinned in
 refuses", which also checks that the banner has no `role="button"` ancestor,
 and "takes a file dropped on the refusal banner".
 
+Below the zone, the banner can land under the fold: on a 768px-tall window
+the zone fills the first screen, so a sighted user who dropped a file saw
+nothing change. When the banner appears or its message changes, the
+dropzone scrolls it into view with `block: 'nearest'`, after the render that
+inserts it. The scroll is never smooth, so reduced motion has nothing to
+turn off, and it moves no focus: an alert is announced where it is. Pinned
+by "brings a refused file's message into view, and again when the next
+refusal rewrites it" and "scrolls nothing for a file it takes".
+
 ## Accessibility settings
 
 Three preferences under **Settings → Preferences**, in an *Accessibility* group

@@ -1062,7 +1062,11 @@ rows that are missing. An image where nothing landed at all fails whatever
 refused it, so a receipt that produced no transaction is never reported as
 done. An item that has exhausted its retries stays in the queue and keeps
 counting towards the number shown on the AI settings page, which is what
-**Clear Queue** is for.
+**Clear Queue** is for. That number is taken again whenever the signed-in
+account changes. The queue's database usually opens before the session is
+restored, when the count belongs to nobody, so after a reload the card read
+0 over a failed scan, with **Sync Now** and **Clear Queue** both disabled
+until something else wrote to the queue.
 
 One notice per drain says how it went: *{n} transactions imported* when
 everything landed, and *{n} transactions imported, {m} skipped* when anything

@@ -5925,28 +5925,48 @@ size ceiling a file meets on its way in. Each is read where it is painted.
    const banner = document.querySelector('app-file-dropzone .error-banner');
    const zone = document.querySelector('app-file-dropzone .dropzone');
    [banner.getAttribute('role'), banner.querySelector('.error-message').textContent.trim(),
-     zone.contains(banner), banner.getBoundingClientRect().top >= zone.getBoundingClientRect().bottom];
+     zone.contains(banner), banner.getBoundingClientRect().top >= zone.getBoundingClientRect().bottom,
+     Math.floor(banner.getBoundingClientRect().bottom) <= innerHeight];
    ```
 
    **Pass:** `'alert'`, then *big-statement.csv is larger than the 10 MB
-   limit*, the message the first run read, then `false` and `true`. The
-   banner sits below the dashed zone, across its width, outside the zone's
-   `role="button"`, whose children are presentational. The 10 MB is
-   `IMPORT_FILE_MAX_BYTES`, the one constant the dropzone and the share
-   intake read. Shot: `88-refused-11mb.png`.
+   limit*, the message the first run read, then `false`, `true` and `true`.
+   The banner sits below the dashed zone, across its width, outside the
+   zone's `role="button"`, whose children are presentational, and it has
+   been brought into the window. The 10 MB is `IMPORT_FILE_MAX_BYTES`, the
+   one constant the dropzone and the share intake read. Shot:
+   `88-refused-11mb.png`.
 
    **What the first run found.** The banner had no role, so the refusal was
    silent to a screen reader, and it sat inside the zone. It is
    `role="alert"` now, on the frame below the zone (*fix(ui): the dropzone
    announces a file it refuses*). Run 2 is the first to see it there.
 
+   **What the second run found.** Below the zone, the banner landed just
+   under the fold of a 768px-tall window, where the zone fills the first
+   screen, so a sighted user who dropped the file saw nothing change. It is
+   now scrolled into view when it appears or its message changes, without
+   smooth motion and without taking focus (*fix(ui): a refused file's
+   message scrolls into view*). The last value is that check, and a run
+   after the fix is the first to read it.
+
 **What stays in the specs, and why.**
 
-- **The camera's queue-write message.** Reaching it takes a capture through
-  the camera, which the first run recorded as a phone-only door that needs a
-  device camera the pane does not have, so it was skipped. The camera's unit
-  spec and `camera-capture.smoke.spec.ts`, *names a capture the queue could
-  not keep in the user's language when online*, hold it.
+- **The camera's queue-write message, beyond a diagnostic reading.** The
+  first run recorded the camera as a phone-only door and skipped it; it is
+  not. On `/transactions` at desktop width, *Add Transaction* → *Import from
+  Camera* opens the dialog, whose *Choose from library* input, the second of
+  its two file inputs (journey 18), takes a page-built image like journey
+  87's. The second run read two lines there. Online with no provider, the
+  dialog's own guard shows *No AI provider is configured. Add an API key in
+  Settings → AI Processing.* With the strategy and the import stubbed to
+  reject with `AI_QUEUE_WRITE_FAILED`, `describeError` shows *Could not save
+  images for later. Please try again.* That second reading is
+  diagnostic-grade, and recorded as such: the stubs put the failure there, a
+  reload drops them, and no real queue write fails on demand in this venue.
+  The camera's unit spec and `camera-capture.smoke.spec.ts`, *names a
+  capture the queue could not keep in the user's language when online*, hold
+  the real path.
 - **The tie at the other sites**: the report PDF, the spending-summary
   prompt's top five, the insight chip and the spending analysis's top five.
   Their unit specs pin it, and `dashboard-layout.smoke.spec.ts` pins the
@@ -6055,9 +6075,13 @@ that says neither which rule posted it, nor when, nor when a scan was queued
   They are ADR 0173's Known gaps, and nothing here reads them.
 
 **Cleanup.** **Clear Queue** on `/ai`'s Offline Queue card takes journey
-87's entry; otherwise the next pre-flight's clean does (check 8). The claimed
-postings, the share and its copy go with the emulators at the
-[teardown](#teardown).
+87's entry; otherwise the next pre-flight's clean does (check 8). The
+second run found the card reading 0 over that failed entry after a reload,
+with **Sync Now** and **Clear Queue** disabled, until the count was taken
+again by hand. The count now follows the signed-in account, so the card
+reads 1 and **Clear Queue** works (*fix(ui): the offline queue card counts
+what is waiting after a reload*). The claimed postings, the share and its
+copy go with the emulators at the [teardown](#teardown).
 
 Two shots: the shared posting's chip, and its copy on Chen home's page.
 
