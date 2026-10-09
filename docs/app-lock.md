@@ -258,19 +258,19 @@ device and switches `enableAppLock` back off on the account.
 - **No real-device run is on record.** Everything above was proved on a
   simulator, which does not exercise the Secure Enclave, an enrolment change
   invalidating anything, or a real sensor.
-- **No privacy screen on resign-active.** iOS screenshots the app when it goes
-  to the background, so the last screen is visible in the app switcher even
-  while the app is locked. Deferred deliberately.
-- **Optic ID reports as `'none'`.** There is no prompt copy for it, and a
-  biometry the app cannot name is worth no more to it than none.
+- **No privacy screen on resign-active** (#447). iOS screenshots the app
+  when it goes to the background, so the last screen is visible in the app
+  switcher even while the app is locked. Deferred deliberately.
+- **Optic ID reports as `'none'`** (#447). There is no prompt copy for it,
+  and a biometry the app cannot name is worth no more to it than none.
 - **`test:ios` is local only** and the `AppTests` scheme is unshared, so no CI
   job compiles any of this Swift (ADR 0040's gap, unchanged).
-- **The bridge payload is not validated.** `isAvailable()`'s result is read as
-  the declared shape; a plugin answering something else would read as
+- **The bridge payload is not validated** (#447). `isAvailable()`'s result is
+  read as the declared shape; a plugin answering something else would read as
   `available: undefined`, which is falsy by luck rather than by a check.
-- **Outcomes are matched by string** on both sides of the bridge, because a
-  Capacitor rejection carries nothing else. Nothing enforces that the two
-  vocabularies stay equal.
+- **Outcomes are matched by string** on both sides of the bridge (#447),
+  because a Capacitor rejection carries nothing else. Nothing enforces that the
+  two vocabularies stay equal.
 - **The lock is per device, and so is recovery.** Nothing on the account can
   clear a forgotten PIN from another device; the only route is *Sign out
   instead* on the device itself.

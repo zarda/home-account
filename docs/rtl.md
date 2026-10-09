@@ -193,7 +193,7 @@ here, and the four other utility patterns never excluded it. The
 
 The conversion is the large item — 98 hits, 33 files — but it is not the only
 one. These are known, in scope for a first RTL locale, and out of scope for the
-groundwork:
+groundwork; #445 tracks them with the conversion:
 
 | | Where | What is wrong under `rtl` |
 |---|---|---|

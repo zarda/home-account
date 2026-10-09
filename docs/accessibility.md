@@ -823,4 +823,4 @@ items into each state it measures.
   ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 - **RTL layout is groundwork only** (#86). Direction follows the locale and the
   physical CSS that remains is frozen per file, but no right-to-left locale
-  ships and 98 hits are still unconverted — see [rtl.md](rtl.md).
+  ships and 98 hits are still unconverted (#445) — see [rtl.md](rtl.md).

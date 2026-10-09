@@ -481,6 +481,10 @@ covers the rest of what a restore carries verbatim.
 
 ## Known gaps
 
+ADR 0141 (#432) repairs a rule in a bad state where its data allows and
+refuses one where it does not. The first five gaps below are what remains
+after it: the data it will not guess at, and what it still reports badly.
+
 - **A rule the reader cannot use stays that way until you touch it.** A start
   date that is not a date, and an absent pointer, are both left where they
   are: nothing repairs either, and the second cannot even be listed. Editing

@@ -216,9 +216,9 @@ Two checks worth running with it, both quick:
   `subscription.tier` changes. It belongs with the billing work — premium is
   not purchasable yet, so today the only way to change a tier at all is to edit
   the document by hand, and whoever does that can touch a second document.
-- **App Check is not enabled.** The quota survives a raw SDK client, which is
-  what it was built for. It does not distinguish this app from any other client
-  holding a valid user token.
+- **App Check is not enabled** (#378). The quota survives a raw SDK client,
+  which is what it was built for. It does not distinguish this app from any
+  other client holding a valid user token.
 - **The recount lists the whole prefix on every object event.** For an account
   near the free-tier ceiling that is a listing of up to 200 objects per upload
   and per delete. Fine at this scale; the first thing to revisit if the limits

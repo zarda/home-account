@@ -300,7 +300,8 @@ Anything else is the #174 shape and should go through `parseDateInput`.
   grep for, the same arithmetic split across two lines, or a day step hidden
   behind a `DAY_MS` constant. `eslint.config.js` still has no date rule. Two
   sweeps' worth of stragglers (#248, #266, #267) is what reviewer-only greps
-  cost; see ADR 0032.
+  cost; see ADR 0032. `dates:check` came with ADR 0145 (#435), which narrowed
+  this gap to what the greps cannot see.
 - **Weekly budgets label with an ISO week but window on their own weekday.**
   `budgetPeriodWindow('weekly', …)` runs from the anchor's day of the week,
   while `budgetPeriodKey(…, 'weekly')` is an ISO week number, which always

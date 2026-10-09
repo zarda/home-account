@@ -212,25 +212,27 @@ under real system memory pressure — see Known gaps.
 
 ## Known gaps
 
-- **No Lock Screen family.** Only `.systemSmall` and `.systemMedium`; no
-  `.accessoryRectangular` or `.accessoryCircular`.
+- **No Lock Screen family** (#441). Only `.systemSmall` and `.systemMedium`;
+  no `.accessoryRectangular` or `.accessoryCircular`.
 - **Figures are only as fresh as the last this-month paint.** With no data
   source of its own, an account that never opens the dashboard this month
   keeps seeing last month's figures, or the stale sentence once the month
   turns.
-- **Hiding a card does not change the widget.** With Budget Progress or
-  Upcoming Bills hidden on the dashboard, *Top budget* and *Next scheduled*
-  stay on the home screen: the dashboard keeps both streams open for the
-  widget (above), and the widget has no arrangement of its own.
-- **A currency or language change alone does not refresh it.** The publishing
-  effect reads the totals, the base currency and the catalog untracked, so a
-  new base currency or a switched app language reaches the widget only on the
-  next this-month paint — until then the home screen keeps the previous
-  language's labels and the previous currency's figures.
-- **No deep link.** Tapping the widget opens the app wherever it would
-  otherwise land; nothing sets a `widgetURL` to the dashboard specifically.
-- **The gallery name is English.** `.configurationDisplayName("Home
-  Account")` is a literal string, not a catalog key.
+- **Hiding a card does not change the widget** (#441). With Budget Progress
+  or Upcoming Bills hidden on the dashboard, *Top budget* and *Next
+  scheduled* stay on the home screen: the dashboard keeps both streams open
+  for the widget (above), and the widget has no arrangement of its own.
+- **A currency or language change alone does not refresh it** (#441). The
+  publishing effect reads the totals, the base currency and the catalog
+  untracked, so a new base currency or a switched app language reaches the
+  widget only on the next this-month paint — until then the home screen keeps
+  the previous language's labels and the previous currency's figures.
+- **No deep link** (#441). Tapping the widget opens the app wherever it
+  would otherwise land; nothing sets a `widgetURL` to the dashboard
+  specifically.
+- **The gallery name is English** (#441).
+  `.configurationDisplayName("Home Account")` is a literal string, not a
+  catalog key.
 - **No real-device run is recorded here.** Everything above was proved on a
   simulator; nothing here exercises a real Secure Enclave, a real App Group
   on physical hardware, or the operating system's actual reload budget.
