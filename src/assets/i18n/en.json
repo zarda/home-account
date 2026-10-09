@@ -460,7 +460,6 @@
     "jsonDescription": "Full data export for backup purposes",
     "summaryCsvDescription": "Totals per category as a spreadsheet",
     "summaryPdfDescription": "Totals per category as a printable report",
-    "transactionsLabel": "{{count}} transactions",
     "selectMonth": "Select Month",
     "selectYear": "Select Year",
     "pdf": {
