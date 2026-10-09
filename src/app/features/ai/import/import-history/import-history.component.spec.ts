@@ -17,6 +17,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import {
   channels,
+  createLocaleFormatStub,
   paintedBackground,
   paintedColor,
   provideNoMotion,
@@ -44,6 +45,7 @@ describe('ImportHistoryComponent', () => {
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockRouter: jasmine.SpyObj<Router>;
+  let mockLocaleFormat: jasmine.SpyObj<LocaleFormatService>;
 
   const mockTimestamp = {
     seconds: 1704067200, // 2024-01-01 00:00:00 UTC
@@ -107,11 +109,17 @@ describe('ImportHistoryComponent', () => {
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
+    // Markers no Intl formatter would produce, so the joined text can only
+    // come from the two calls.
+    mockLocaleFormat = jasmine.createSpyObj('LocaleFormatService', ['formatDate', 'formatTime']);
+    mockLocaleFormat.formatDate.and.returnValue('DAY-FROM-FORMATTER');
+    mockLocaleFormat.formatTime.and.returnValue('TIME-FROM-FORMATTER');
 
     await TestBed.configureTestingModule({
       imports: [ImportHistoryComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
+        { provide: LocaleFormatService, useValue: mockLocaleFormat },
         { provide: ImportHistoryService, useValue: mockImportHistoryService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: MatSnackBar, useValue: mockSnackBar },
@@ -258,6 +266,12 @@ describe('ImportHistoryComponent', () => {
       const formatted = component.formatDate(mockTimestamp);
       expect(formatted).toBeTruthy();
       expect(typeof formatted).toBe('string');
+    });
+
+    it('joins the formatter\'s short day and its time of day', () => {
+      expect(component.formatDate(mockTimestamp)).toBe('DAY-FROM-FORMATTER TIME-FROM-FORMATTER');
+      expect(mockLocaleFormat.formatDate).toHaveBeenCalledOnceWith(mockTimestamp.toDate(), 'short');
+      expect(mockLocaleFormat.formatTime).toHaveBeenCalledOnceWith(mockTimestamp.toDate());
     });
   });
 
@@ -520,7 +534,7 @@ describe('ImportHistoryComponent transaction shortcut', () => {
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: router },
         { provide: CurrencyService, useValue: currencyStub },
@@ -530,6 +544,15 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(ImportHistoryComponent);
+  });
+
+  it('renders each record\'s day and time of day through the locale formatter', () => {
+    render([itemWith(undefined)]);
+
+    // 1704067200 is 2024-01-01T00:00:00Z; the stub formats a date as its ISO
+    // day and a time as its UTC hour and minute.
+    const subtitle = fixture.nativeElement.querySelector('mat-card-subtitle') as HTMLElement;
+    expect(subtitle.textContent?.trim()).toBe('2024-01-01 00:00');
   });
 
   it('shows no shortcut for a record without transaction ids', () => {
@@ -622,7 +645,7 @@ describe('ImportHistoryComponent overflow', () => {
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: CurrencyService, useValue: currencyStub },
@@ -753,7 +776,7 @@ describe('ImportHistoryComponent, colours as painted', () => {
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: CurrencyService, useValue: currencyStub },

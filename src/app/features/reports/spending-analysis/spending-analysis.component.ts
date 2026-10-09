@@ -12,6 +12,7 @@ import { StatCardComponent } from '../../../shared/components/stat-card/stat-car
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -47,6 +48,7 @@ interface MonthlyData {
 export class SpendingAnalysisComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
   private chartTheme = inject(ChartThemeService);
 
   @Input() set transactions(value: Transaction[]) {
@@ -92,7 +94,6 @@ export class SpendingAnalysisComponent {
   // Chart options as computed signal to prevent re-renders
   chartOptions = computed((): ChartConfiguration<'line'>['options'] => {
     const symbol = this.getCurrencySymbol();
-    const locale = this.translationService.getIntlLocale();
     const axis = this.chartTheme.axis();
     const palette = this.chartTheme.palette();
     // Percent axis for the savings-rate line, kept separate so it never
@@ -131,7 +132,7 @@ export class SpendingAnalysisComponent {
               if (context.dataset.yAxisID === 'y1') {
                 return `${context.dataset.label}: ${value.toFixed(1)}%`;
               }
-              return `${context.dataset.label}: ${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2 })}`;
+              return `${context.dataset.label}: ${symbol}${this.localeFormat.formatNumber(value, '1.2-2')}`;
             },
           },
         },
@@ -144,7 +145,7 @@ export class SpendingAnalysisComponent {
           ticks: {
             ...axis.ticks,
             callback: (value) => {
-              return `${symbol}${Number(value).toLocaleString(locale)}`;
+              return `${symbol}${this.localeFormat.formatNumber(Number(value))}`;
             },
           },
         },

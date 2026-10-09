@@ -8,6 +8,7 @@ import { provideAppCharts } from '../../../core/config/chart.config';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { ThemeService } from '../../../core/services/theme.service';
 import {
@@ -24,6 +25,7 @@ import {
 describe('SpendingAnalysisComponent', () => {
   let component: SpendingAnalysisComponent;
   let fixture: ComponentFixture<SpendingAnalysisComponent>;
+  let localeFormat: jasmine.SpyObj<LocaleFormatService>;
 
   const mockCategories: Category[] = [
     {
@@ -132,11 +134,17 @@ describe('SpendingAnalysisComponent', () => {
   };
 
   beforeEach(async () => {
+    // Echoes its arguments, so an assertion reads which figure and which
+    // digit pattern reached the formatter rather than what Intl makes of them.
+    localeFormat = jasmine.createSpyObj('LocaleFormatService', ['formatNumber']);
+    localeFormat.formatNumber.and.callFake((value, digits) => `N(${value}|${digits ?? ''})`);
+
     await TestBed.configureTestingModule({
       imports: [SpendingAnalysisComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: TranslationService, useValue: mockTranslationService },
+        { provide: LocaleFormatService, useValue: localeFormat },
         provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
@@ -446,6 +454,11 @@ describe('SpendingAnalysisComponent', () => {
       expect(scalesOf()['y1']!.ticks!.callback!(12)).toBe('12%');
     });
 
+    it('formats the currency ticks through the locale formatter', () => {
+      expect(scalesOf()['y']!.ticks!.callback!(2500)).toBe('$N(2500|)');
+      expect(localeFormat.formatNumber).toHaveBeenCalledOnceWith(2500);
+    });
+
     it('omits the axis at day granularity, where nothing plots on it', () => {
       component.dateRange = { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) };
       fixture.detectChanges();
@@ -489,7 +502,7 @@ describe('SpendingAnalysisComponent', () => {
       expect(result).toBe('Savings Rate: 12.3%');
     });
 
-    it('keeps currency formatting for the other datasets', () => {
+    it('formats the currency datasets through the locale formatter, to two places', () => {
       const label = component.chartOptions()!.plugins!.tooltip!.callbacks!.label as (
         context: unknown
       ) => string;
@@ -497,7 +510,8 @@ describe('SpendingAnalysisComponent', () => {
         dataset: { label: 'Income' },
         parsed: { y: 5000 }
       });
-      expect(result).toBe('Income: $5,000.00');
+      expect(result).toBe('Income: $N(5000|1.2-2)');
+      expect(localeFormat.formatNumber).toHaveBeenCalledOnceWith(5000, '1.2-2');
     });
   });
 

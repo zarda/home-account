@@ -62,6 +62,15 @@ describe('createLocaleFormatStub', () => {
   it('formats a number as its own digits', () => {
     expect(createLocaleFormatStub().formatNumber(1234.5)).toBe('1234.5');
   });
+
+  it('formats a time as its UTC hour and minute, and an absent one as the empty string', () => {
+    const stub = createLocaleFormatStub();
+
+    expect(stub.formatTime(new Date('2026-03-04T09:05:00Z'))).toBe('09:05');
+    expect(stub.formatTime({ toDate: () => new Date('2026-03-04T21:30:00Z') })).toBe('21:30');
+    expect(stub.formatTime(null)).toBe('');
+    expect(stub.formatTime('not a date')).toBe('');
+  });
 });
 
 @Component({

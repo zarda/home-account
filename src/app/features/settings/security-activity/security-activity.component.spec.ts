@@ -7,6 +7,7 @@ import { SecurityActivityComponent } from './security-activity.component';
 import { SecurityLogService } from '../../../core/services/security-log.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { SecurityEvent } from '../../../models';
 
@@ -16,6 +17,7 @@ describe('SecurityActivityComponent', () => {
   let mockSecurityLog: jasmine.SpyObj<SecurityLogService>;
   let mockAuth: jasmine.SpyObj<AuthService>;
   let mockDateFormat: jasmine.SpyObj<DateFormatService>;
+  let mockLocaleFormat: jasmine.SpyObj<LocaleFormatService>;
   let mockTranslation: jasmine.SpyObj<TranslationService>;
 
   const event = (overrides: Partial<SecurityEvent> = {}): SecurityEvent => ({
@@ -34,6 +36,7 @@ describe('SecurityActivityComponent', () => {
         { provide: SecurityLogService, useValue: mockSecurityLog },
         { provide: AuthService, useValue: mockAuth },
         { provide: DateFormatService, useValue: mockDateFormat },
+        { provide: LocaleFormatService, useValue: mockLocaleFormat },
         { provide: TranslationService, useValue: mockTranslation },
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -53,8 +56,12 @@ describe('SecurityActivityComponent', () => {
     mockDateFormat.formatRelativeDate.and.returnValue('Yesterday');
     mockDateFormat.formatDate.and.returnValue('07/20/2026');
 
-    mockTranslation = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
-    mockTranslation.getIntlLocale.and.returnValue('en-US');
+    // A marker no Intl formatter would produce, so a row can only show it by
+    // having asked the service.
+    mockLocaleFormat = jasmine.createSpyObj('LocaleFormatService', ['formatTime']);
+    mockLocaleFormat.formatTime.and.returnValue('TIME-FROM-FORMATTER');
+
+    mockTranslation = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslation.t.and.callFake(
       (key: string, params?: Record<string, string | number>) =>
         params ? `${key}:${params['date']}:${params['time']}` : key
@@ -114,7 +121,15 @@ describe('SecurityActivityComponent', () => {
       const label = component.formatWhen(event());
 
       expect(mockDateFormat.formatRelativeDate).toHaveBeenCalled();
-      expect(label.startsWith('settings.activityAt:Yesterday:')).toBe(true);
+      expect(label).toBe('settings.activityAt:Yesterday:TIME-FROM-FORMATTER');
+    });
+
+    it('asks the locale formatter for the clock time of the event', () => {
+      const occurred = event();
+
+      component.formatWhen(occurred);
+
+      expect(mockLocaleFormat.formatTime).toHaveBeenCalledOnceWith(occurred.occurredAt);
     });
 
     it('exposes the absolute date for the tooltip', () => {
@@ -129,6 +144,17 @@ describe('SecurityActivityComponent', () => {
 
     it('falls back for a platform it does not know', () => {
       expect(component.platformLabelKey('windows')).toBe('settings.platformUnknown');
+    });
+  });
+
+  describe('as rendered', () => {
+    it('shows the formatter\'s time on the row', async () => {
+      mockSecurityLog.watchRecent.and.returnValue(of([event()]));
+      await setup();
+      fixture.detectChanges();
+
+      const meta = (fixture.nativeElement as HTMLElement).querySelector('.activity-meta');
+      expect(meta?.textContent).toContain('settings.activityAt:Yesterday:TIME-FROM-FORMATTER');
     });
   });
 });

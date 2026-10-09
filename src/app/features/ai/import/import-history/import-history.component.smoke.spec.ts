@@ -36,7 +36,6 @@ import { ImportHistoryComponent } from './import-history.component';
 import { AuthService } from '../../../../core/services/auth.service';
 import { FirestoreService } from '../../../../core/services/firestore.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ImportHistory } from '../../../../models';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
@@ -56,6 +55,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   let uid: string;
   let fixture: ComponentFixture<ImportHistoryComponent>;
   let router: jasmine.SpyObj<Router>;
+  let translation: jasmine.SpyObj<TranslationService>;
 
   beforeAll(async () => {
     app = initializeApp(
@@ -83,7 +83,10 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     // without depending on query order.
     const legacy: Omit<ImportHistory, 'id'> = {
       userId: uid,
-      importedAt: Timestamp.now(),
+      // A morning hour below ten, in the browser's own zone, so the row's
+      // time reads the same whatever the zone and a padded hour is told apart
+      // from an unpadded one.
+      importedAt: Timestamp.fromDate(new Date(2026, 4, 3, 9, 5)),
       source: 'csv',
       fileType: 'generic_csv',
       fileName: 'smoke-legacy-statement.csv',
@@ -166,11 +169,11 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   beforeEach(async () => {
     router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
-    // Nothing here stubs CurrencyService, so the card renders every record's
-    // totals through the real one — and formatCurrency reads the active
-    // locale from this service, so a spy answering only `t` throws the
-    // moment the template renders a total.
-    const translation = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
+    // Nothing here stubs CurrencyService or LocaleFormatService, so the card
+    // renders every record's totals and time through the real ones — and both
+    // read the active locale from this service, so a spy answering only `t`
+    // throws the moment the template renders a total.
+    translation = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
     translation.t.and.callFake((key: string) => key);
     translation.getIntlLocale.and.returnValue('en-US');
 
@@ -182,7 +185,6 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
         { provide: Firestore, useValue: firestore },
         { provide: AuthService, useValue: { userId: () => uid, currentUser: () => null } },
         { provide: TranslationService, useValue: translation },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => of(true) }) } },
         { provide: Router, useValue: router }
@@ -280,5 +282,32 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     expect(incomeValue?.textContent).toContain('$0.00');
     expect(expenseValue?.textContent).toContain('$0.00');
     expect(card.textContent).not.toContain('NaN');
+  }, 20000);
+
+  // The row's time came from `toLocaleTimeString` with a two-digit hour,
+  // which pads 9:05 to 09:05; it now comes from the locale formatter. The
+  // expectation is computed with Intl in this environment rather than written
+  // out, so it holds on whatever ICU the browser ships.
+  it("a stored record's row shows its time in the active language's convention", async () => {
+    translation.getIntlLocale.and.returnValue('ja-JP');
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 4,
+      'all four seeded records');
+
+    const stored = fixture.componentInstance.importHistory()
+      .find(item => item.fileName === 'smoke-legacy-statement.csv');
+    const importedAt = stored!.importedAt.toDate();
+    const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+    const jaTime = new Intl.DateTimeFormat('ja-JP', timeOptions).format(importedAt);
+    const enTime = new Intl.DateTimeFormat('en-US', timeOptions).format(importedAt);
+    // A 24-hour clock against a 12-hour one with its marker: the two never
+    // agree, so the assertion below cannot pass by the locale being ignored.
+    expect(jaTime).not.toBe(enTime);
+
+    // The subtitle is the short day, a space, then the time; a Japanese day
+    // and time hold no space of their own.
+    const subtitle = cardFor('smoke-legacy-statement.csv').querySelector('mat-card-subtitle');
+    const shown = subtitle?.textContent?.trim() ?? '';
+    expect(shown.slice(shown.lastIndexOf(' ') + 1)).toBe(jaTime);
   }, 20000);
 });

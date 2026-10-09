@@ -41,6 +41,20 @@ rather than thrown on.
 Currency is **not** here — `CurrencyService.formatCurrency` owns it, because
 an amount needs its currency code and that currency's decimal rules.
 
+A chart's figures go through the same method from inside the Chart.js
+callbacks: a tooltip uses `formatNumber(value, '1.2-2')` and an axis tick
+`formatNumber(Number(value))`. The callbacks read the language when they run,
+not when the options are built, so a chart redrawn after a language switch
+follows it.
+
+### Times take the locale's own clock
+
+`formatTime` renders the hour and minute in the active language's convention
+(`9:05 PM` in `en`, `21:05` in `ja`) and does not pad the hour, because
+padding is a choice the locale makes for itself. Same input and empty-string
+contract as `formatDate`. A row that shows a day and a time joins the two
+calls, as `import-history` and the security activity list do.
+
 ## In templates
 
 Use `localeDate` and `localeNumber`. Angular's `date` and `number` are gone
@@ -111,7 +125,3 @@ in feature code, the question is which of the two kinds above it is. Rendered
 values belong here. Stored or matched values belong pinned, with a comment
 saying so — the three sites that called `toLocale*` with no argument at all
 were following the *browser's* locale, which is neither.
-
-Times have no vocabulary here yet: `import-history` passes the service's
-`locale` to `toLocaleTimeString` directly. A second time-formatting site is
-the moment to add a style rather than repeat that.

@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { SecurityLogService } from '../../../core/services/security-log.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { SecurityEvent } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -37,6 +38,7 @@ export class SecurityActivityComponent implements OnInit, OnDestroy {
   private securityLog = inject(SecurityLogService);
   private authService = inject(AuthService);
   private dateFormat = inject(DateFormatService);
+  private localeFormat = inject(LocaleFormatService);
   private translation = inject(TranslationService);
 
   events = signal<SecurityEvent[]>([]);
@@ -65,12 +67,7 @@ export class SecurityActivityComponent implements OnInit, OnDestroy {
   /** Relative day plus clock time, joined through a translated pattern. */
   formatWhen(event: SecurityEvent): string {
     const date = this.dateFormat.formatRelativeDate(event.occurredAt);
-    const time = event.occurredAt
-      .toDate()
-      .toLocaleTimeString(this.translation.getIntlLocale(), {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+    const time = this.localeFormat.formatTime(event.occurredAt);
     return this.translation.t('settings.activityAt', { date, time });
   }
 

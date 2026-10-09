@@ -18,6 +18,7 @@ import { StatCardComponent } from '../../../shared/components/stat-card/stat-car
 import { CurrencyService } from '../../../core/services/currency.service';
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { addMonths, monthKey, parseMonthKey } from '../../../core/utils/transaction-date.utils';
@@ -59,6 +60,7 @@ interface MonthlyComparison {
 export class MonthlyComparisonComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
   private chartTheme = inject(ChartThemeService);
   private breakpointObserver = inject(BreakpointObserver);
 
@@ -129,7 +131,6 @@ export class MonthlyComparisonComponent {
   // Chart options as computed signal to prevent re-renders
   chartOptions = computed((): ChartConfiguration<'bar'>['options'] => {
     const symbol = this.getCurrencySymbol();
-    const locale = this.translationService.getIntlLocale();
     const axis = this.chartTheme.axis();
     const palette = this.chartTheme.palette();
     return {
@@ -148,7 +149,7 @@ export class MonthlyComparisonComponent {
           callbacks: {
             label: (context) => {
               const value = context.parsed.y ?? 0;
-              return `${context.dataset.label}: ${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2 })}`;
+              return `${context.dataset.label}: ${symbol}${this.localeFormat.formatNumber(value, '1.2-2')}`;
             },
           },
         },
@@ -161,7 +162,7 @@ export class MonthlyComparisonComponent {
           ticks: {
             ...axis.ticks,
             callback: (value) => {
-              return `${symbol}${Number(value).toLocaleString(locale)}`;
+              return `${symbol}${this.localeFormat.formatNumber(Number(value))}`;
             },
           },
         },

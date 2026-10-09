@@ -197,11 +197,7 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
     const date = timestamp.toDate();
     // The active language, not the browser's: these two used to disagree on
     // the same screen whenever the UI language was not the device's.
-    const time = date.toLocaleTimeString(this.localeFormat.locale, {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    return `${this.localeFormat.formatDate(date, 'short')} ${time}`;
+    return `${this.localeFormat.formatDate(date, 'short')} ${this.localeFormat.formatTime(date)}`;
   }
 
   /**
