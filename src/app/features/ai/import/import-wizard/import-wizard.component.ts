@@ -21,6 +21,7 @@ import {
   ImportResult,
   ImportSource,
   ImportFileType,
+  ImportWarning,
   DuplicateCheck,
   MultiImageMetadata,
   ReceiptDoor
@@ -41,7 +42,15 @@ import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { importFailureKey, joinSentences, needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
+import {
+  ReviewNotices,
+  importFailureKey,
+  joinSentences,
+  needsDateAnswer,
+  reviewNoticesFrom,
+  rowIsUnfilled,
+  sumByCurrency,
+} from '../../../../core/utils/import-review.utils';
 
 /**
  * How much longer a confirm round's notice stays up for each sentence past
@@ -206,6 +215,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * letting a short receipt look complete (#331).
    */
   answerIncomplete = signal(false);
+  /**
+   * Set when a PDF was longer than the reader takes and only its first pages
+   * were read: the rows on the review step are those pages' rows and no more.
+   * The first such PDF's figures, and how many others were cut the same way.
+   */
+  pagesTruncated = signal<ReviewNotices['pagesTruncated']>(null);
   /**
    * How many photos had nowhere to go and were stored instead. Not an
    * error: they are on the device and the queue processor imports them when
@@ -441,11 +456,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         rows: state.importResult.transactions.length
       }];
 
-      // A handed-over result carries the same warning a wizard import does;
+      // A handed-over result carries the same warnings a wizard import does;
       // the review step is the same step either way.
-      if (state.importResult.warnings?.some(w => w.type === 'parse_error')) {
-        this.answerIncomplete.set(true);
-      }
+      this.showReviewNotices(state.importResult.warnings ?? []);
 
       // Set multi-image metadata if available
       if (state.importResult.multiImageMetadata) {
@@ -562,6 +575,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.processingError.set(null);
     this.queuedOfflineCount.set(0);
     this.answerIncomplete.set(false);
+    this.pagesTruncated.set(null);
     this.extractedTransactions.set([]);
     this.receiptRowIds.set(new Set());
     // The checks go with the rows: each batch below appends its own, and
@@ -587,6 +601,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     const receiptAttempt = imageFiles.length >= 1 && this.imageKind() === 'receipt'
       ? this.receiptAttempts.begin('wizard', 'receipt_image', imageFiles)
       : null;
+    // Every result's warnings, read once after the last file: a notice the
+    // photos raised must not be lowered by a CSV beside them with nothing to
+    // say. Read in `finally`, so the rows that landed before a later file
+    // threw — still offered for review — keep the notices they came with.
+    const warnings: ImportWarning[] = [];
 
     try {
       if (imageFiles.length >= 1) {
@@ -600,9 +619,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
             ? await this.importService.importFromStatementImages(imageFiles)
             : await this.importService.importFromMultipleImages(imageFiles);
           this.imageDiagnostics = result.diagnostics ?? null;
-          if (result.warnings.some(w => w.type === 'parse_error')) {
-            this.answerIncomplete.set(true);
-          }
+          warnings.push(...result.warnings);
           this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
           this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
           if (this.imageKind() === 'receipt') {
@@ -655,6 +672,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // Process non-image files individually
       for (const file of nonImageFiles) {
         const result: ImportResult = await this.importService.importFromFile(file);
+        warnings.push(...result.warnings);
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
         this.processedBatches.push({
@@ -700,7 +718,16 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // A throw from the image batch settles the handle here; a throw from a
       // later file finds it already settled and this is a no-op.
       receiptAttempt?.failed(error);
+    } finally {
+      this.showReviewNotices(warnings);
     }
+  }
+
+  /** Both review-step notices, from one mapping of the warnings behind the rows. */
+  private showReviewNotices(warnings: readonly ImportWarning[]): void {
+    const notices = reviewNoticesFrom(warnings);
+    this.answerIncomplete.set(notices.answerIncomplete);
+    this.pagesTruncated.set(notices.pagesTruncated);
   }
 
   /**

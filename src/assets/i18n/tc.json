@@ -1351,7 +1351,9 @@
     "errorQueueWritePartial": "部分圖片無法儲存以稍後處理。已成功儲存的圖片仍在裝置上，恢復連線後將自動處理。",
     "errorInvalidKey": "AI 的 API 金鑰無效或已過期。請在「設定 → AI 處理」中更新。",
     "errorAnswerIncomplete": "在讀完這張收據前就達到輸出上限。請再試一次，或減少一次上傳的相片數量。",
-    "warningAnswerIncomplete": "讀取在收據中途達到輸出上限，之後的品項因此缺漏。請核對下方金額，並補上沒有列出的品項；清單下方的「新增一列」會建立一個空白列。"
+    "warningAnswerIncomplete": "讀取在收據中途達到輸出上限，之後的品項因此缺漏。請核對下方金額，並補上沒有列出的品項；清單下方的「新增一列」會建立一個空白列。",
+    "pdfPagesTruncated": "此 PDF 共 {{total}} 頁，只讀取了前 {{read}} 頁。",
+    "pdfPagesTruncatedMore": "另有 {{others}} 個 PDF 也只讀取了一部分。"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

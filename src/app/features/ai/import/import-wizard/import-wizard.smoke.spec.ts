@@ -491,6 +491,80 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'says on the review step when a PDF was read only in part',
+    async () => {
+      // The file site of processFiles, where a PDF's result arrives. The
+      // service suite proves importFromPDF pushes the figures past the page
+      // cap; this is where they reach a rendered review step. The door is
+      // spied to answer that shape, since no provider runs here.
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      const translation = TestBed.inject(TranslationService);
+      const partRead: ImportResult = {
+        source: 'pdf',
+        fileType: 'bank_pdf',
+        fileName: 'statement.pdf',
+        fileSize: 4096,
+        confidence: 0.9,
+        warnings: [{ type: 'pages_truncated', read: 15, total: 40 }],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'p1',
+            description: 'Corner Store',
+            amount: 12.5,
+            currency: 'USD',
+            date: new Date('2026-07-01'),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+      const importFromFile = spyOn(TestBed.inject(AIImportService), 'importFromFile').and.resolveTo(partRead);
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      const statement = new File(['%PDF-1.4'], 'statement.pdf', { type: 'application/pdf' });
+      component.onFilesSelected([statement]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 1);
+
+      // The stepper is linear with no hand-off; steps 0 and 1 are complete.
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      expect(importFromFile).toHaveBeenCalledOnceWith(statement);
+      const notice = host.querySelector('.review-step .truncated-notice');
+      expect(notice).withContext('the notice reaches the review step').not.toBeNull();
+      expect(notice!.getAttribute('role')).toBe('status');
+      // Karma loads no catalog, so the line is the bare key on both sides of
+      // the comparison: what this pins is which key the step renders.
+      expect(notice!.textContent).toContain(translation.t('import.pdfPagesTruncated', { read: 15, total: 40 }));
+      expect(notice!.querySelectorAll('p').length)
+        .withContext('one PDF, so no line counting others')
+        .toBe(1);
+      expect(host.querySelector('.incomplete-notice')).toBeNull();
+      // And the rows the read pages held are there to review.
+      expect(host.textContent ?? '').toContain('Corner Store');
+
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
     'imports a receipt at its printed total, not its item sum, into Firestore',
     async () => {
       // Two line items from the same receipt; only the printed grand total

@@ -1,4 +1,4 @@
-import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata, ImportCurrencyTotals, roundToMinorUnit } from '../../models';
+import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata, ImportCurrencyTotals, ImportWarning, roundToMinorUnit } from '../../models';
 import { dayKey } from './transaction-date.utils';
 import { normalizeTags } from './tag.utils';
 
@@ -590,4 +590,33 @@ export function mergeImportRows(
   else delete merged.notes;
 
   return merged;
+}
+
+/** What the review step says above the rows about how the batch was read. */
+export interface ReviewNotices {
+  /** A reader's answer stopped mid-row, so rows after the break are missing. */
+  answerIncomplete: boolean;
+  /**
+   * The first PDF read only in part, by its figures, and how many other PDFs
+   * in the batch were. Null when every PDF was read whole.
+   */
+  pagesTruncated: { read: number; total: number; others: number } | null;
+}
+
+/**
+ * A batch's warnings, mapped once to the review step's notices.
+ *
+ * One call over every result the batch produced, not one per result: a
+ * notice raised by the photos must not be lowered by a CSV beside them that
+ * had nothing to say. Only the first truncated PDF is named by its figures —
+ * a warning carries no file name, so a second set of figures could not say
+ * which file it was — and the rest are counted so none goes unmentioned.
+ */
+export function reviewNoticesFrom(warnings: readonly ImportWarning[]): ReviewNotices {
+  const truncated = warnings.filter(w => w.type === 'pages_truncated');
+  const first = truncated[0];
+  return {
+    answerIncomplete: warnings.some(w => w.type === 'parse_error'),
+    pagesTruncated: first ? { read: first.read, total: first.total, others: truncated.length - 1 } : null,
+  };
 }

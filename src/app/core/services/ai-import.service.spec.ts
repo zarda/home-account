@@ -1687,7 +1687,10 @@ describe('AIImportService', () => {
 
       // Two distinct receiptIds → two standalone transactions, categorization defaulted
       expect(result.transactions.length).toBe(2);
-      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
+      expect(result.transactions.every(t => t.categoryConfidence < 0.5))
+        .withContext('each defaulted row carries the grade the review card flags')
+        .toBeTrue();
+      expect(result.warnings).withContext('no tally repeats the grades').toEqual([]);
     });
 
     it('lets a resolved extraction category override the ladder', async () => {
@@ -1804,7 +1807,7 @@ describe('AIImportService', () => {
         .toEqual([['Refund']]);
     });
 
-    it('should add a duplicate warning when duplicates are detected', async () => {
+    it('carries the verdicts the duplicate banner reads, and no warning repeating them', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
           imageIndex: 0, confidence: 0.9, receiptId: 1 }
@@ -1817,7 +1820,9 @@ describe('AIImportService', () => {
         makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
       ]);
 
-      expect(result.warnings.some(w => w.type === 'duplicate')).toBeTrue();
+      expect(result.duplicates.filter(d => d.isDuplicate).map(d => d.transactionId))
+        .toEqual([result.transactions[0].id]);
+      expect(result.warnings).toEqual([]);
     });
 
     it('carries the receipt country through consolidation onto the reviewed row', async () => {
@@ -1947,14 +1952,17 @@ describe('AIImportService', () => {
 
       expect(cloudLLMProvider.extractStatementTransactions).toHaveBeenCalledTimes(3);
       expect(result.transactions.length).toBe(6);
+      expect(result.warnings).withContext('a PDF read whole says nothing').toEqual([]);
     });
 
-    it('warns rather than silently dropping pages past the cap', async () => {
+    it('says how many pages were read rather than silently dropping those past the cap', async () => {
       rasterize.and.resolveTo({ pages: ['p1', 'p2'], totalPages: 40, truncated: true });
 
       const result = await service.importFromPDF(pdfFile());
 
-      expect(result.warnings.some(w => w.message.includes('40'))).toBeTrue();
+      // Figures, not a sentence: the review step words it in the reader's
+      // own language (ADR 0036).
+      expect(result.warnings).toEqual([{ type: 'pages_truncated', read: 2, total: 40 }]);
     });
 
     it('reports one analytics event, not two', async () => {
@@ -2189,7 +2197,7 @@ describe('AIImportService', () => {
       expect(result.transactions.map(t => t.categoryConfidence)).toEqual([0.8, 0.8]);
     });
 
-    it('keeps the floor and warns when no provider is configured', async () => {
+    it('keeps the floor, which the review card flags row by row, when no provider is configured', async () => {
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
       exportService.importFromCSV.and.returnValue(csvRows());
 
@@ -2200,11 +2208,11 @@ describe('AIImportService', () => {
       // shared catch-all.
       expect(result.transactions.map(t => t.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
       expect(result.transactions.every(t => t.categoryConfidence === 0.1)).toBeTrue();
-      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
+      expect(result.warnings).withContext('no tally repeats the grades').toEqual([]);
       expect(result.confidence).toBeLessThan(0.5);
     });
 
-    it('defaults to the floor and warns when the model fails', async () => {
+    it('defaults to the floor, which the review card flags row by row, when the model fails', async () => {
       spyOn(console, 'warn');
       cloudLLMProvider.categorizeTransactions.and.rejectWith(new Error('cat failed'));
       exportService.importFromCSV.and.returnValue(csvRows());
@@ -2212,7 +2220,7 @@ describe('AIImportService', () => {
       const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
 
       expect(result.transactions.every(t => t.categoryConfidence === 0.1)).toBeTrue();
-      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
+      expect(result.warnings).withContext('no tally repeats the grades').toEqual([]);
     });
 
     it('answers a remembered merchant from memory without asking the model about it', async () => {
@@ -2411,9 +2419,9 @@ describe('AIImportService', () => {
       expect('dateAssumed' in result.transactions[0]).toBeFalse();
       expect(datedToday(result.transactions[1].date)).toBeTrue();
       expect(result.transactions[1].dateAssumed).toBeTrue();
-      expect(result.warnings.some(w => w.type === 'low_confidence'))
-        .withContext('the defaulted row is counted')
-        .toBeTrue();
+      expect(result.warnings)
+        .withContext('the defaulted row\'s grade is its flag; no tally repeats it')
+        .toEqual([]);
     });
 
     it('grades an empty category id as a default, not as the backup\'s own', async () => {
@@ -2462,7 +2470,7 @@ describe('AIImportService', () => {
 
       expect(result.transactions[0].suggestedCategoryId).toBe('food');
       expect(result.transactions[0].categoryConfidence).toBe(1);
-      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeFalse();
+      expect(result.warnings).toEqual([]);
     });
 
     it('grades a category the account does not have as unresolved and files it under its type\'s catch-all', async () => {
@@ -2486,9 +2494,9 @@ describe('AIImportService', () => {
         .toEqual(['other_expense', 'other_income', 'other_expense', 'food']);
       expect(result.transactions.map(t => t.categoryConfidence))
         .toEqual([UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE, 1]);
-      expect(result.warnings.find(w => w.type === 'low_confidence')?.message)
-        .withContext('the three the review has to look at, and not the one it can trust')
-        .toBe('3 transaction(s) have low categorization confidence');
+      expect(result.warnings)
+        .withContext('the three grades are the flags; no tally repeats them')
+        .toEqual([]);
     });
 
     it('refuses a category of the other type', async () => {

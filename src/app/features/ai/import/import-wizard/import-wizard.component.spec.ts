@@ -925,6 +925,29 @@ describe('ImportWizardComponent', () => {
       expect(component.extractedTransactions().length).toBe(2);
     }));
 
+    it('keeps the cut-off notice on the photos\' rows when a later file fails', fakeAsync(() => {
+      // The photos' rows stay on offer beside the failure, so the warning
+      // they came with stays with them.
+      mockImportService.importFromMultipleImages.and.returnValue(Promise.resolve({
+        ...mockImportResult,
+        source: 'image' as const,
+        fileType: 'receipt_image' as const,
+        warnings: [{ type: 'parse_error' as const, message: 'ran out of room' }],
+      }));
+      mockImportService.importFromFile.and.returnValue(Promise.reject(new Error('bad csv')));
+      component.selectedFiles.set([
+        new File([''], 'r.png', { type: 'image/png' }),
+        new File([''], 'ledger.csv', { type: 'text/csv' })
+      ]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.processingError()).toBe('bad csv');
+      expect(component.extractedTransactions().length).toBe(2);
+      expect(component.answerIncomplete()).toBeTrue();
+    }));
+
     it('reports a queued capture as kept rather than as a failure', fakeAsync(() => {
       // The template is the stub, so the state the step branches on is what
       // this reads: the error card and the empty card must both stay down.
@@ -1123,8 +1146,9 @@ describe('ImportWizardComponent', () => {
 
   describe('the cut-off answer notice', () => {
     // Whether the strip actually renders is pinned in
-    // import-wizard.smoke.spec.ts: this suite overrides the template with a
-    // bare div, so nothing here can see the review step at all.
+    // import-wizard.smoke.spec.ts and in 'the notices above the review rows'
+    // below: this suite overrides the template with a bare div, so nothing
+    // here can see the review step at all.
 
     it('titles the error card for an answer nobody could read', () => {
       component.processingErrorType.set('incomplete');
@@ -2706,6 +2730,107 @@ describe('ImportWizardComponent', () => {
       expect(card).withContext('the rows are offered').not.toBeNull();
       expect(card!.textContent).toContain('bad csv');
     }));
+
+    // Every step body is eager, so the review step's notices are in the DOM
+    // without the stepper reaching it.
+    describe('the notices above the review rows', () => {
+      const el = () => realFixture.nativeElement as HTMLElement;
+      const photo = () => new File([''], 'r.png', { type: 'image/png' });
+      const pdf = (name: string) => new File([''], name, { type: 'application/pdf' });
+      /** The fixture's rows under ids of their own, as a second file's rows would be. */
+      const rowsOf = (file: string) => mockTransactions.map(t => ({ ...t, id: `${file}-${t.id}` }));
+      const cutOffPhotos = (): ImportResult => ({
+        ...mockImportResult,
+        source: 'image',
+        fileType: 'receipt_image',
+        transactions: rowsOf('r.png'),
+        warnings: [{ type: 'parse_error', message: 'ran out of room' }],
+      });
+      const partReadPdf = (file: string, read: number, total: number): ImportResult => ({
+        ...mockImportResult,
+        source: 'pdf',
+        fileType: 'bank_pdf',
+        fileName: file,
+        transactions: rowsOf(file),
+        warnings: [{ type: 'pages_truncated', read, total }],
+      });
+
+      beforeEach(() => {
+        // The figures travel with the key, so a notice that lost its numbers
+        // on the way to the template fails here.
+        mockTranslationService.t.and.callFake((key: string, params?: Record<string, string | number>) =>
+          params ? `${key}|${JSON.stringify(params)}` : key
+        );
+      });
+
+      function processBatch(files: File[]): void {
+        const real = realFixture.componentInstance;
+        real.onFilesSelected(files);
+        realFixture.detectChanges();
+        real.processFiles();
+        tick();
+        realFixture.detectChanges();
+      }
+
+      it('keeps the cut-off notice when a CSV in the same batch reports nothing', fakeAsync(() => {
+        mockImportService.importFromMultipleImages.and.resolveTo(cutOffPhotos());
+
+        processBatch([photo(), new File([''], 'ledger.csv', { type: 'text/csv' })]);
+
+        expect(el().querySelector('.incomplete-notice')).withContext('the photos\' cut-off answer').not.toBeNull();
+        expect(el().querySelector('.truncated-notice')).toBeNull();
+      }));
+
+      it('names the first PDF read only in part by its figures, and how many more were', fakeAsync(() => {
+        mockImportService.importFromFile.and.returnValues(
+          Promise.resolve(partReadPdf('march.pdf', 15, 40)),
+          Promise.resolve(partReadPdf('april.pdf', 15, 22))
+        );
+
+        processBatch([pdf('march.pdf'), pdf('april.pdf')]);
+
+        const notice = el().querySelector('.truncated-notice');
+        expect(notice).not.toBeNull();
+        expect(notice!.getAttribute('role')).toBe('status');
+        expect(notice!.textContent).toContain('import.pdfPagesTruncated|{"read":15,"total":40}');
+        expect(notice!.textContent).toContain('import.pdfPagesTruncatedMore|{"others":1}');
+        expect(el().querySelector('.incomplete-notice')).withContext('nothing was cut off mid-answer').toBeNull();
+      }));
+
+      it('takes both notices down when the next batch is read whole', fakeAsync(() => {
+        mockImportService.importFromMultipleImages.and.resolveTo(cutOffPhotos());
+        mockImportService.importFromFile.and.resolveTo(partReadPdf('march.pdf', 15, 40));
+        processBatch([photo(), pdf('march.pdf')]);
+        expect(el().querySelector('.incomplete-notice')).withContext('first batch, cut off').not.toBeNull();
+        expect(el().querySelector('.truncated-notice')).withContext('first batch, read in part').not.toBeNull();
+
+        mockImportService.importFromMultipleImages.and.resolveTo({
+          ...mockImportResult, source: 'image', fileType: 'receipt_image', transactions: rowsOf('r.png')
+        });
+        mockImportService.importFromFile.and.resolveTo(mockImportResult);
+        realFixture.componentInstance.processFiles();
+        tick();
+        realFixture.detectChanges();
+
+        expect(el().querySelector('.incomplete-notice')).withContext('second batch, whole').toBeNull();
+        expect(el().querySelector('.truncated-notice')).withContext('second batch, whole').toBeNull();
+      }));
+
+      it('raises the cut-off notice for a handed-over result that carries one', fakeAsync(() => {
+        history.replaceState({ importResult: cutOffPhotos(), fromCamera: true }, '');
+        try {
+          const handed = TestBed.createComponent(ImportWizardComponent);
+          handed.detectChanges();
+          // ngAfterViewInit defers the hand-off by a macrotask.
+          tick();
+          handed.detectChanges();
+
+          expect((handed.nativeElement as HTMLElement).querySelector('.incomplete-notice')).not.toBeNull();
+        } finally {
+          history.replaceState({}, '');
+        }
+      }));
+    });
 
     describe('colours, as painted', () => {
       const THEMES = ['light', 'dark'] as const;

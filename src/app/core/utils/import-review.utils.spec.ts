@@ -8,6 +8,7 @@ import {
   mergeableRow,
   needsDateAnswer,
   parseAmountInput,
+  reviewNoticesFrom,
   rowCarriesReviewerWork,
   rowIsUnfilled,
   sameSplit,
@@ -1101,6 +1102,32 @@ describe('import-review.utils', () => {
       expect(rowCarriesReviewerWork(scanned({ recurringMatch: match, recurringId: undefined, isRecurring: false })))
         .withContext('recurring link let go')
         .toBeFalse();
+    });
+  });
+
+  describe('reviewNoticesFrom', () => {
+    it('raises the cut-off notice for an answer that stopped mid-row', () => {
+      expect(reviewNoticesFrom([{ type: 'parse_error', message: 'ran out of room' }]))
+        .toEqual({ answerIncomplete: true, pagesTruncated: null });
+    });
+
+    it('carries a PDF read only in part with its own figures and no others', () => {
+      expect(reviewNoticesFrom([{ type: 'pages_truncated', read: 15, total: 64 }]))
+        .toEqual({ answerIncomplete: false, pagesTruncated: { read: 15, total: 64, others: 0 } });
+    });
+
+    it('keeps the first PDF read only in part and counts the rest', () => {
+      // The figures of one PDF are a sentence a reader can act on; two sets
+      // side by side would need the files named, which a warning does not
+      // carry. The others are counted so none goes unmentioned.
+      expect(reviewNoticesFrom([
+        { type: 'pages_truncated', read: 15, total: 64 },
+        { type: 'pages_truncated', read: 15, total: 31 },
+      ])).toEqual({ answerIncomplete: false, pagesTruncated: { read: 15, total: 64, others: 1 } });
+    });
+
+    it('says nothing for a batch that was read whole', () => {
+      expect(reviewNoticesFrom([])).toEqual({ answerIncomplete: false, pagesTruncated: null });
     });
   });
 });

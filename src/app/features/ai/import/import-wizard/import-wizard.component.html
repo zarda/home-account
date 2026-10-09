@@ -312,8 +312,20 @@
 
         @if (answerIncomplete()) {
           <div class="incomplete-notice" role="status">
-            <mat-icon class="incomplete-icon">content_cut</mat-icon>
+            <mat-icon class="incomplete-icon" aria-hidden="true">content_cut</mat-icon>
             <p>{{ 'import.warningAnswerIncomplete' | translate }}</p>
+          </div>
+        }
+
+        @if (pagesTruncated(); as truncated) {
+          <div class="truncated-notice" role="status">
+            <mat-icon class="truncated-icon" aria-hidden="true">picture_as_pdf</mat-icon>
+            <div>
+              <p>{{ 'import.pdfPagesTruncated' | translate:{ read: truncated.read, total: truncated.total } }}</p>
+              @if (truncated.others > 0) {
+                <p>{{ 'import.pdfPagesTruncatedMore' | translate:{ others: truncated.others } }}</p>
+              }
+            </div>
           </div>
         }
 

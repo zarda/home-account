@@ -389,12 +389,21 @@ export interface ImportResult {
   diagnostics?: ReceiptAttemptDiagnostics;
 }
 
-export interface ImportWarning {
-  type: 'duplicate' | 'low_confidence' | 'missing_data' | 'currency_mismatch' | 'parse_error' | 'info';
-  message: string;
-  transactionId?: string;
-  row?: number;
-}
+/**
+ * Something about how a result was read that its rows cannot show. The
+ * review step is the only reader (`reviewNoticesFrom`): what a row already
+ * says — its grade, its duplicate flag — is not repeated here.
+ *
+ * - `parse_error`: the reader's answer stopped mid-row and only the rows it
+ *   finished were kept. `message` is never shown: the step words it from
+ *   the catalog.
+ * - `pages_truncated`: a PDF longer than the page cap, of which only the
+ *   first `read` of `total` pages were read. Figures, not a sentence: the
+ *   step words it in the reader's language (ADR 0036).
+ */
+export type ImportWarning =
+  | { type: 'parse_error'; message: string }
+  | { type: 'pages_truncated'; read: number; total: number };
 
 export interface ImportPreview {
   transactions: CategorizedImportTransaction[];

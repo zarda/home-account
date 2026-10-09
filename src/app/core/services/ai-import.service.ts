@@ -104,9 +104,10 @@ export const IMPORT_READBACK_TIMEOUT_MS = 5000;
 /**
  * The grade for a category the extraction itself named, on the same 0-1
  * scale the categorization ladder grades its own answers on — ADR 0045's
- * evidence rule (`t.category ? 0.8 : 0.3`). Kept at or above 0.5, the
- * `low_confidence` warning threshold, so a merged row naming its own
- * category is never flagged for the review that grade exists to spare it.
+ * evidence rule (`t.category ? 0.8 : 0.3`). Kept at or above 0.5, the line
+ * under which the review card's category chip flags a row, so a merged row
+ * naming its own category is never flagged for the review that grade exists
+ * to spare it.
  */
 const EXTRACTION_CATEGORY_GRADE = 0.8;
 
@@ -1005,24 +1006,6 @@ export class AIImportService {
       });
     }
 
-    // Add warnings for duplicates
-    const duplicateCount = duplicates.filter(d => d.isDuplicate).length;
-    if (duplicateCount > 0) {
-      warnings.push({
-        type: 'duplicate',
-        message: `${duplicateCount} potential duplicate transaction(s) detected`
-      });
-    }
-
-    // Add warnings for low confidence categorizations
-    const lowConfidenceCount = transactions.filter(t => t.categoryConfidence < 0.5).length;
-    if (lowConfidenceCount > 0) {
-      warnings.push({
-        type: 'low_confidence',
-        message: `${lowConfidenceCount} transaction(s) have low categorization confidence`
-      });
-    }
-
     // Calculate overall confidence
     const avgConfidence = transactions.length > 0
       ? transactions.reduce((sum, t) => sum + t.categoryConfidence, 0) / transactions.length
@@ -1068,7 +1051,8 @@ export class AIImportService {
    *
    * Long documents are truncated rather than attempted: each page is a
    * full-size canvas and another image in the request, and on iOS an
-   * over-long document kills the WebView rather than throwing.
+   * over-long document kills the WebView rather than throwing. The result
+   * says how many pages were read, and the review step tells the reader.
    */
   async importFromPDF(file: File): Promise<ImportResult> {
     this.analytics.trackAiAssistUsed({ feature: 'pdf_import' });
@@ -1118,10 +1102,7 @@ export class AIImportService {
 
       const result = this.buildImportResult(file, 'pdf', 'bank_pdf', markedTransactions, duplicates);
       if (truncated) {
-        result.warnings.push({
-          type: 'info',
-          message: `Only the first ${pages.length} of ${totalPages} pages were read.`,
-        });
+        result.warnings.push({ type: 'pages_truncated', read: pages.length, total: totalPages });
       }
       return result;
     } finally {
@@ -1804,26 +1785,6 @@ export class AIImportService {
     transactions: CategorizedImportTransaction[],
     duplicates: ReturnType<typeof this.duplicateService.checkDuplicates> extends Promise<infer T> ? T : never
   ): ImportResult {
-    const warnings: ImportWarning[] = [];
-
-    // Add warnings for duplicates
-    const duplicateCount = duplicates.filter(d => d.isDuplicate).length;
-    if (duplicateCount > 0) {
-      warnings.push({
-        type: 'duplicate',
-        message: `${duplicateCount} potential duplicate transaction(s) detected`
-      });
-    }
-
-    // Add warnings for low confidence categorizations
-    const lowConfidenceCount = transactions.filter(t => t.categoryConfidence < 0.5).length;
-    if (lowConfidenceCount > 0) {
-      warnings.push({
-        type: 'low_confidence',
-        message: `${lowConfidenceCount} transaction(s) have low categorization confidence`
-      });
-    }
-
     // Calculate overall confidence
     const avgConfidence = transactions.length > 0
       ? transactions.reduce((sum, t) => sum + t.categoryConfidence, 0) / transactions.length
@@ -1836,7 +1797,7 @@ export class AIImportService {
       fileSize: file.size,
       transactions,
       confidence: avgConfidence,
-      warnings,
+      warnings: [],
       duplicates
     };
   }
