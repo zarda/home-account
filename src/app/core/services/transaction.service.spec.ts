@@ -2474,17 +2474,6 @@ describe('TransactionService', () => {
     });
   });
 
-  describe('getByCategory', () => {
-    it('should call getTransactions with category filter', (done) => {
-      mockFirestore.setMockCollection('users/test-user-123/transactions', []);
-
-      service.getByCategory('food').subscribe(() => {
-        expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBeGreaterThan(0);
-        done();
-      });
-    });
-  });
-
   describe('getTransactions with a search query', () => {
     beforeEach(() => {
       const transactions = [
@@ -2533,6 +2522,12 @@ describe('TransactionService', () => {
       // caller but it.
       expect('getMonthlyTotals' in TransactionService.prototype).toBeFalse();
       expect('groupByCategory' in TransactionService.prototype).toBeFalse();
+    });
+
+    it('no longer carries the category getter', () => {
+      // getByCategory only wrapped getTransactions({ categoryId }), and
+      // nothing called it.
+      expect('getByCategory' in TransactionService.prototype).toBeFalse();
     });
   });
 });

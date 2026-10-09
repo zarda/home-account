@@ -1820,11 +1820,6 @@ export class TransactionService {
     );
   }
 
-  // Get transactions by category
-  getByCategory(categoryId: string): Observable<Transaction[]> {
-    return this.getTransactions({ categoryId });
-  }
-
   /**
    * Non-mutating period totals with a per-category expense breakdown
    * (in base currency). Used for previous-period comparisons.
