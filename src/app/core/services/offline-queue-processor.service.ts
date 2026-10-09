@@ -93,6 +93,17 @@ export class OfflineQueueProcessorService implements OnDestroy {
         this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue'));
         return;
       }
+      // The entry this account owns, read once for the seed its rows are
+      // named from. An entry the previous build queued has a record and no
+      // seed; no record at all means the entry went (deleted, or another
+      // account's) since the file was read. That is the missing-file case,
+      // not an unseeded entry: carrying on would name a seeded entry's rows
+      // by the legacy `${id}-${index}`, which shows when the photo was queued.
+      const record = await this.queue.getQueuedImage(id);
+      if (!record) {
+        this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue'));
+        return;
+      }
 
       // Door 'queue': the attempt record is written, no event is sent — the
       // capture already sent queued_offline (docs/analytics.md).
@@ -110,7 +121,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
         }
 
         const { landed, refused, receiptsSkipped } = await this.createTransactions(
-          id,
+          { id, rowSeed: record.rowSeed },
           result.transactions,
           file,
         );
@@ -149,11 +160,14 @@ export class OfflineQueueProcessorService implements OnDestroy {
   /**
    * Write the rows read off a queued receipt to the ledger, at most once each.
    *
-   * Every row is written at `${queue row id}-${its position}` rather than at a
-   * fresh auto-id. Both halves survive a crash — the row id is the key the
-   * image is stored under, the position is where the row sat in what the model
-   * read — so a receipt that is reclaimed and drained again aims at exactly
-   * the documents the first pass wrote. Each id is checked before it is used
+   * Every row is written at the id `queueRowTxId` derives from the queued
+   * entry and the row's position rather than at a fresh auto-id. Both survive
+   * a crash — the entry's seed (or, on an entry the previous build queued,
+   * its queue id) is stored with its image, the position is where the row sat
+   * in what the model read — so a receipt that is reclaimed and drained again
+   * aims at exactly the documents the first pass wrote. The ids are worked
+   * out once, before anything is written, and the planner, the check and the
+   * write all use them. Each id is checked before it is used
    * and an existing document is left alone: overwriting would be idempotent in
    * the ledger's shape but not in its content, since the write is a full
    * replace that would reset `createdAt` and discard any edit the user made to
@@ -191,10 +205,11 @@ export class OfflineQueueProcessorService implements OnDestroy {
    * already dropped for it.
    */
   private async createTransactions(
-    id: string,
+    item: { id: string; rowSeed: string | undefined },
     transactions: ProcessedTransaction[],
     file: File,
   ): Promise<{ landed: number; refused: number; receiptsSkipped: number }> {
+    const rowTxIds = await Promise.all(transactions.map((_, index) => queueRowTxId(item, index)));
     // A reader that placed no row on a photo — the single-image cloud read
     // reports neither an index nor a receipt id, because there was only ever
     // one photo to place a row on — still read every one of these rows off
@@ -213,7 +228,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
     });
     const plans = planReceiptAttachments(
       transactions.map((tx, index) => ({
-        id: queueRowTxId({ id }, index),
+        id: rowTxIds[index],
         imageMetadata: metas[index],
       })),
       1,
@@ -237,7 +252,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
     let firstRefusal: unknown;
 
     for (const [index, tx] of transactions.entries()) {
-      const rowTxId = queueRowTxId({ id }, index);
+      const rowTxId = rowTxIds[index];
       const groupKey = groupKeys[index];
       // A plan is decided by metadata, before anything is written; a refusal
       // is decided by the amount, which only the write finds out. The planner

@@ -1,10 +1,14 @@
-import { opaqueRowId } from './opaque-id.utils';
+import { opaqueRowId, toHex } from './opaque-id.utils';
 
 describe('opaque-id.utils', () => {
   // A Firestore-style rule id (20 characters) and a 13-digit millisecond stamp:
   // the two inputs a recurring posting id used to spell out.
   const ruleId = 'q7Lx2mPaVn9RtB4cKd1Z';
   const ms = 1_760_000_000_123;
+
+  it('encodes bytes as zero-padded lower-case hex', () => {
+    expect(toHex(new Uint8Array([0, 1, 15, 16, 171, 255]))).toBe('00010f10abff');
+  });
 
   it('is deterministic', async () => {
     const first = await opaqueRowId('rec', ruleId, ms);

@@ -458,12 +458,19 @@ describe('HouseholdSetupComponent', () => {
         /**
          * Every field a copy carries is either named here by the word the
          * disclosure uses for it, or null for why it shows nothing of the
-         * row: who wrote the copy and when (memberUid, sourceId, gen, pv,
-         * updatedAt), and goalId, which ties the copy to one of the
-         * household's own goals. bucket and bucketGroup are the category's
-         * nearest built-in ancestor and its top-level group, so they reveal
-         * the category. Keyed by the field list itself, a field added to a
-         * copy does not compile here until it is classified.
+         * row: who wrote the copy and when (memberUid, gen, pv, updatedAt),
+         * which row it copies (sourceId), and goalId, which ties the copy
+         * to one of the household's own goals. sourceId is the row's id:
+         * an auto-id or a 32-hex digest, which is what the app names a row
+         * with now, tells nothing, but an id named earlier does — a
+         * recurring posting's `rec-{ruleId}-{ms}` groups one rule's
+         * postings, and a queued scan's `img_{ms}_{random}-{index}` dates
+         * the scan and ties its rows together — and a row drained from an
+         * entry the previous build queued still gets the latter. bucket and
+         * bucketGroup are the category's nearest built-in ancestor and its
+         * top-level group, so they reveal the category. Keyed by the field
+         * list itself, a field added to a copy does not compile here until
+         * it is classified.
          */
         const WORD: Record<(typeof LEDGER_COPY_FIELDS)[number], string | null> = {
           memberUid: null,

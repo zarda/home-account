@@ -19,7 +19,10 @@ export async function opaqueRowId(
 ): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify([kind, ...parts]));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 32);
+  return toHex(new Uint8Array(digest)).slice(0, 32);
+}
+
+/** Bytes as zero-padded lower-case hex, two characters each. */
+export function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }

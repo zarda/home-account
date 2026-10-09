@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { openDB } from 'idb';
-import { DB_NAME, OfflineQueueService, QUEUE_CLOSED_FOR_UPGRADE, QUEUE_NOT_SIGNED_IN } from './offline-queue.service';
+import {
+  DB_NAME,
+  OfflineQueueService,
+  QUEUE_CLOSED_FOR_UPGRADE,
+  QUEUE_NOT_SIGNED_IN,
+  queueRowTxId,
+} from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
 
@@ -82,6 +88,23 @@ describe('OfflineQueueService', () => {
     it('queues without registering anything with the service worker', async () => {
       await expectAsync(service.queueImage(imageFile())).toBeResolved();
       expect(service.pendingCount()).toBe(1);
+    });
+
+    // The seed is what a queued scan's ledger rows are named from, so it has
+    // to be fresh for every image; the queue id beside it keeps its shape.
+    it('draws a random row seed for each image it queues', async () => {
+      const first = await service.queueImage(imageFile('a.jpg'));
+      const second = await service.queueImage(imageFile('b.jpg'));
+      const seeds = [
+        (await service.getQueuedImage(first))?.rowSeed,
+        (await service.getQueuedImage(second))?.rowSeed,
+      ];
+
+      expect(first).toMatch(/^img_/);
+      for (const seed of seeds) {
+        expect(seed).toMatch(/^[0-9a-f]{32}$/);
+      }
+      expect(seeds[0]).not.toBe(seeds[1]);
     });
 
     it('queues multiple images', async () => {
@@ -535,5 +558,17 @@ describe('OfflineQueueService', () => {
       expect(stores).toContain('pending-images');
       expect(stores).toContain('sync-log');
     });
+  });
+});
+
+describe('queueRowTxId', () => {
+  // A pin of the helper's contract; the processor spec drains both shapes.
+  it('names a seeded entry\'s rows by digest and an unseeded entry\'s the previous build\'s way', async () => {
+    const seeded = { id: 'img_1760000000000_k3x9q2a', rowSeed: '0123456789abcdef0123456789abcdef' };
+
+    expect(await queueRowTxId(seeded, 0)).toBe('071013a6631227ed7c099b245af187c8');
+    expect(await queueRowTxId({ ...seeded, rowSeed: undefined }, 2)).toBe('img_1760000000000_k3x9q2a-2');
+    // @ts-expect-error rowSeed is a required key, so an entry cannot reach the unseeded branch by omission
+    await queueRowTxId({ id: seeded.id }, 0);
   });
 });

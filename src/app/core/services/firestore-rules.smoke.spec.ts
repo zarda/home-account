@@ -42,6 +42,7 @@ import {
   EmulatorField,
   EmulatorValue
 } from './testing';
+import { opaqueRowId } from '../utils/opaque-id.utils';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -3767,9 +3768,13 @@ describe('firestore.rules households (emulator smoke test)', () => {
     const ledgerOf = (account: Account) => lite.collection(account.db, `households/${householdId}/ledger`);
     const copyIdOf = (account: Account, row: Row) => `${account.uid}_${row.id}`;
 
-    /** A row of the author's own, naming the households it is shared into. */
-    async function writeRow(account: Account, sharedInto: string[], overrides: Record<string, unknown> = {}): Promise<Row> {
-      const id = lite.doc(lite.collection(account.db, `users/${account.uid}/transactions`)).id;
+    /** A row of the author's own, naming the households it is shared into, at an auto-id unless `id` names one. */
+    async function writeRow(
+      account: Account,
+      sharedInto: string[],
+      overrides: Record<string, unknown> = {},
+      id = lite.doc(lite.collection(account.db, `users/${account.uid}/transactions`)).id
+    ): Promise<Row> {
       const data = transactionFixture(account.uid, () => lite.Timestamp.now(), {
         sharedWith: sharedInto.map(shareKey),
         ...overrides
@@ -3847,6 +3852,19 @@ describe('firestore.rules households (emulator smoke test)', () => {
       it('lets a member write a faithful copy of a row it shares into the household', async () => {
         const row = await writeRow(peer, [householdId]);
         await expectAllowed(writeCopy(peer, row), 'a faithful copy');
+      });
+
+      // A pin: recurring postings and queued scans now name their rows by a
+      // 32-hex digest (#466), and the rules take such a row, its copy and a
+      // probe for a copy not yet written exactly as they take an auto-id's.
+      it('lets a member copy a row whose id is an opaque digest, and probe and clear a missing one', async () => {
+        const seed = newAutoId();
+        const row = await writeRow(peer, [householdId], {}, await opaqueRowId('scan', seed, 0));
+        await expectAllowed(writeCopy(peer, row), 'a faithful copy of an opaque-id row');
+
+        const missing = `${peer.uid}_${await opaqueRowId('scan', seed, 1)}`;
+        await expectAllowed(lite.getDoc(ledgerRef(peer, missing)), 'the author reading a missing opaque-id copy');
+        await expectAllowed(lite.deleteDoc(ledgerRef(peer, missing)), 'the author deleting a missing opaque-id copy');
       });
 
       it('judges a copy against the row as its own commit leaves it', async () => {
