@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed, OnDestroy } from '@angular/core';
+import { Injectable, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
@@ -146,6 +146,19 @@ export class OfflineQueueService implements OnDestroy {
   constructor() {
     this.initializeDB();
     this.setupListeners();
+    // The database usually opens before the session is restored, so the
+    // count taken at open is nobody's, and the card that reads it disabled
+    // Sync Now and Clear Queue over a failed scan. It is taken again
+    // whenever the account changes; before the open it reads 0. Nothing
+    // awaits the recount, so a read that rejects is logged here.
+    effect(() => {
+      this.authService.userId();
+      untracked(() => {
+        this.updatePendingCount().catch(error => {
+          console.error('[OfflineQueue] Failed to recount pending items:', error);
+        });
+      });
+    });
   }
 
   ngOnDestroy(): void {
@@ -320,7 +333,10 @@ export class OfflineQueueService implements OnDestroy {
     if (this.onlineHandler) {
       window.removeEventListener('online', this.onlineHandler);
     }
+    // Closed and forgotten, as `closeForUpgrade` does: a recount after this
+    // reads 0 instead of asking a closed handle.
     this.db?.close();
+    this.db = null;
   }
 
   /**
