@@ -84,7 +84,7 @@ const SINGLE_PROVIDER = {
   },
   receiptItems: {
     providers: ['gemini'],
-    reason: 'position-aware single-image itemization has no OpenAI/Claude counterpart yet',
+    reason: 'single-image itemization has no OpenAI/Claude counterpart yet',
   },
 };
 

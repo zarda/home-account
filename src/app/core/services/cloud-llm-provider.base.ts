@@ -427,7 +427,6 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         merchant: t.merchant,
         details: t.details,
         imageIndex: t.imageIndex ?? 0,
-        positionInImage: t.positionInImage || 'middle',
         confidence: t.confidence ?? 0.7,
         receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,

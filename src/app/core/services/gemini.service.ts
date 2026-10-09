@@ -323,7 +323,7 @@ export class GeminiService extends CloudLLMProviderBase {
     return super.extractTransactionsFromMultipleImages(imageBase64Array, options);
   }
 
-  /** One image, itemized, with each row's position on the receipt. */
+  /** One image, itemized into a row per purchased item. */
   private async extractWithPositionMetadata(
     imageBase64: string,
     imageIndex: number,
@@ -355,7 +355,6 @@ export class GeminiService extends CloudLLMProviderBase {
         merchant: t.merchant,
         details: t.details,
         imageIndex: imageIndex,
-        positionInImage: t.positionInImage || 'middle',
         confidence: t.confidence ?? 0.7,
         receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,

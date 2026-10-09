@@ -556,7 +556,6 @@ describe('imageMetadataOf', () => {
     expect(imageMetadataOf(read({ imageIndex: 2 }))).toEqual({
       imageIndex: 2,
       imageId: 'image_2',
-      positionInImage: 'middle',
       confidenceScore: 0.9,
     });
 
@@ -565,7 +564,6 @@ describe('imageMetadataOf', () => {
     expect(imageMetadataOf(read({ receiptId: 3 }))).toEqual({
       imageIndex: 0,
       imageId: 'image_0',
-      positionInImage: 'middle',
       confidenceScore: 0.9,
       receiptId: 3,
     });
@@ -573,7 +571,6 @@ describe('imageMetadataOf', () => {
     expect(imageMetadataOf(read({ imageIndex: 0, mergedFromImages: [0, 1], receiptId: 1 }))).toEqual({
       imageIndex: 0,
       imageId: 'image_0',
-      positionInImage: 'middle',
       confidenceScore: 0.9,
       mergedFromImages: [0, 1],
       receiptId: 1,

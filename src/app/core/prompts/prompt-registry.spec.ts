@@ -561,7 +561,7 @@ describe('prompt registry', () => {
 
     it('asks for the fields the consolidation pass reads back', () => {
       const prompt = render('multiImageReceipts');
-      for (const field of ['receiptId', 'imageIndex', 'positionInImage', 'confidence', 'dateConfidence', 'mergedFromImages']) {
+      for (const field of ['receiptId', 'imageIndex', 'confidence', 'dateConfidence', 'mergedFromImages']) {
         expect(prompt).withContext(`missing ${field}`).toContain(`- ${field}`);
       }
     });
@@ -569,6 +569,13 @@ describe('prompt registry', () => {
     it('never asks the model whether an item was merged: only the app decides that', () => {
       const prompt = render('multiImageReceipts');
       expect(prompt).not.toContain('wasMerged');
+    });
+
+    it('never asks the model where on the photo an item sat: nothing reads it', () => {
+      // Consolidation groups by receiptId, so a vertical position fed no
+      // decision; asking for it spent output tokens on every row.
+      const prompt = render('multiImageReceipts');
+      expect(prompt).not.toContain('positionInImage');
     });
 
     it('asks for the printed grand total once per receipt group', () => {
@@ -703,8 +710,8 @@ describe('prompt registry', () => {
       expect(prompt).toContain('Do NOT include total, subtotal, tax, or service charge as items.');
     });
 
-    it('asks for the position metadata the overlap pass reads', () => {
-      expect(render('receiptItems')).toContain('- positionInImage: "top", "middle", "bottom"');
+    it('never asks the model where on the photo an item sat: nothing reads it', () => {
+      expect(render('receiptItems')).not.toContain('positionInImage');
     });
 
     it('asks for the printed grand total once per receipt group', () => {

@@ -489,9 +489,9 @@ describe('CloudLLMProviderBase', () => {
       provider.response = {
         text: JSON.stringify([
           { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
-            category: 'Zeugs', imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+            category: 'Zeugs', imageIndex: 0, confidence: 0.9, receiptId: 1 },
           { date: '2024-06-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
-            category: 'Transport', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+            category: 'Transport', imageIndex: 0, confidence: 0.9, receiptId: 1 },
         ]),
         truncated: false,
       };
@@ -510,7 +510,7 @@ describe('CloudLLMProviderBase', () => {
       provider.response = {
         text: JSON.stringify([
           { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
-            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1,
+            imageIndex: 0, confidence: 0.9, receiptId: 1,
             wasMerged: true, mergedFromImages: [0, 1] },
         ]),
         truncated: false,
@@ -924,9 +924,9 @@ describe('CloudLLMProviderBase', () => {
         text: JSON.stringify([
           { date: '2026-07-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
             merchant: 'Cafe', location: '渋谷店 東京都渋谷区 1-2-3', imageIndex: 0,
-            positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+            confidence: 0.9, receiptId: 1 },
           { date: '2026-07-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
-            merchant: 'Cafe', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+            merchant: 'Cafe', imageIndex: 0, confidence: 0.9, receiptId: 1 },
         ]),
         truncated: false,
       };
@@ -988,9 +988,9 @@ describe('CloudLLMProviderBase', () => {
       provider.response = {
         text: JSON.stringify([
           { date: '2026-07-01', description: 'A', amount: 5, type: 'expense', currency: 'KRW',
-            merchant: 'Cafe', imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+            merchant: 'Cafe', imageIndex: 0, confidence: 0.9, receiptId: 1 },
           { date: '2026-07-01', description: 'B', amount: 6, type: 'expense', currency: 'KRW',
-            merchant: 'Cafe', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1,
+            merchant: 'Cafe', imageIndex: 0, confidence: 0.9, receiptId: 1,
             location: '서울 강남구', country: 'KR' },
         ]),
         truncated: false,

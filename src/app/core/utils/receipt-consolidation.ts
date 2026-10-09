@@ -149,7 +149,6 @@ export function consolidateReceiptItems(
         merchant,
         details,
         imageIndex: 0,
-        positionInImage: 'middle',
         confidence: groupItems.reduce((sum, i) => sum + i.confidence, 0) / groupItems.length,
         receiptId: first.receiptId,
         wasMerged: true,

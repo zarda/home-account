@@ -628,7 +628,7 @@ export class AIImportService {
       this.processingProgress.set(30);
       provider = this.strategyService.receiptProvider();
 
-      // Use multi-image extraction with position-aware deduplication
+      // Use multi-image extraction; the reader groups rows by receiptId
       const extractedTransactions = await this.withTimeout(
         signal =>
           this.cloudLLMProvider.extractTransactionsFromMultipleImages(imageBase64Array, { signal }),
@@ -826,7 +826,6 @@ export class AIImportService {
         imageMetadata: {
           imageIndex: original.imageIndex,
           imageId: `image_${original.imageIndex}`,
-          positionInImage: original.positionInImage,
           confidenceScore: original.confidence,
           wasMerged: original.wasMerged,
           mergedFromImages: original.mergedFromImages,

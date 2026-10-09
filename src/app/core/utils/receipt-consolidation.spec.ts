@@ -37,7 +37,7 @@ describe('consolidateReceiptItems', () => {
   function item(overrides: Partial<MultiImageExtractedTransaction>): MultiImageExtractedTransaction {
     return {
       date: '2026-01-15', description: 'Item', amount: 1, type: 'expense', currency: 'USD',
-      imageIndex: 0, positionInImage: 'middle', confidence: 0.8,
+      imageIndex: 0, confidence: 0.8,
       ...overrides,
     };
   }

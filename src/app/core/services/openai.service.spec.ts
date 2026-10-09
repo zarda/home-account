@@ -827,7 +827,6 @@ describe('OpenAIService', () => {
               type: 'expense',
               currency: 'USD',
               imageIndex: 1,
-              positionInImage: 'top',
               confidence: 0.9,
               wasMerged: true,
               mergedFromImages: [0, 1],
@@ -876,7 +875,6 @@ describe('OpenAIService', () => {
       const result = await service.extractTransactionsFromMultipleImages(['a']);
 
       expect(result[0].imageIndex).toBe(0);
-      expect(result[0].positionInImage).toBe('middle');
       expect(result[0].confidence).toBe(0.7);
       expect(result[0].wasMerged).toBeFalse();
       expect(result[0].receiptId).toBe(1);

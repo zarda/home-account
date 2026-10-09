@@ -120,7 +120,6 @@ export interface ImportError {
 export interface ImagePositionMetadata {
   imageIndex: number;              // Which image this item came from (0-based)
   imageId: string;                 // Unique identifier for the source image
-  positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position within image
   confidenceScore: number;         // OCR/extraction confidence (0-1)
   wasMerged?: boolean;             // True if this item was deduplicated from multiple images
   mergedFromImages?: number[];     // Source image indices this item was merged from

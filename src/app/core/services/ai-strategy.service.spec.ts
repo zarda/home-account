@@ -548,12 +548,12 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', details: 'set menu', imageIndex: 0, positionInImage: 'top', confidence: 0.8,
+          currency: 'USD', details: 'set menu', imageIndex: 0, confidence: 0.8,
           receiptId: 1,
         },
         {
           date: '2026-01-16', description: 'Snack', amount: 5, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'top', confidence: 0.6,
+          currency: 'USD', imageIndex: 1, confidence: 0.6,
           receiptId: 2,
         },
       ];
@@ -572,12 +572,12 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0,
           confidence: 0.8, receiptId: 1,
         },
         {
           date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          currency: 'USD', imageIndex: 1, confidence: 0.6,
           receiptId: 1,
         },
       ];
@@ -597,12 +597,12 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: 'not a date', description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0,
           confidence: 0.8, receiptId: 1,
         },
         {
           date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          currency: 'USD', imageIndex: 1, confidence: 0.6,
           receiptId: 1,
         },
       ];
@@ -621,7 +621,7 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', dateConfidence: 0, description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0,
           confidence: 0.8, receiptId: 1, receiptTotal: 10,
         },
       ];
@@ -641,17 +641,17 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0,
           confidence: 0.8, receiptId: 1,
         },
         {
           date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          currency: 'USD', imageIndex: 1, confidence: 0.6,
           receiptId: 1,
         },
         {
           date: '2026-01-16', description: 'Solo', amount: 7, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'top', confidence: 0.9,
+          currency: 'USD', imageIndex: 1, confidence: 0.9,
           receiptId: 2,
         },
       ];
@@ -672,12 +672,12 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0,
           confidence: 0.8, receiptId: 1,
         },
         {
           date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          currency: 'USD', imageIndex: 1, confidence: 0.6,
           receiptId: 1, receiptTotal: 16.2,
         },
       ];
@@ -694,17 +694,17 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0,
           confidence: 0.8, receiptId: 1,
         },
         {
           date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          currency: 'USD', imageIndex: 1, confidence: 0.6,
           receiptId: 1, location: { name: 'Shibuya 1-2-3' },
         },
         {
           date: '2026-01-16', description: 'Solo', amount: 7, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'top', confidence: 0.9,
+          currency: 'USD', imageIndex: 1, confidence: 0.9,
           receiptId: 2,
         },
       ];
@@ -720,11 +720,11 @@ describe('AIStrategyService', () => {
     it('carries the receipt country through consolidation onto the row', async () => {
       const extracted: MultiImageExtractedTransaction[] = [
         { date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense', currency: 'KRW',
-          merchant: 'Diner', imageIndex: 0, positionInImage: 'top', confidence: 0.8, receiptId: 1 },
+          merchant: 'Diner', imageIndex: 0, confidence: 0.8, receiptId: 1 },
         { date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense', currency: 'KRW',
-          imageIndex: 1, positionInImage: 'bottom', confidence: 0.6, receiptId: 1, receiptCountry: 'KR' },
+          imageIndex: 1, confidence: 0.6, receiptId: 1, receiptCountry: 'KR' },
         { date: '2026-01-16', description: 'Solo', amount: 7, type: 'expense', currency: 'KRW',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 2 },
+          imageIndex: 1, confidence: 0.9, receiptId: 2 },
       ];
       cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
       const service = createService('web');
@@ -739,11 +739,11 @@ describe('AIStrategyService', () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
-          currency: 'USD', imageIndex: 0, positionInImage: 'top', confidence: 0.8, receiptId: 1,
+          currency: 'USD', imageIndex: 0, confidence: 0.8, receiptId: 1,
         },
         {
           date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
-          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6, receiptId: 1,
+          currency: 'USD', imageIndex: 1, confidence: 0.6, receiptId: 1,
           receiptDetails: 'Lunch — 10.00\nSnack — 5.00\nTax 1.20\nTotal 16.20',
         },
       ];

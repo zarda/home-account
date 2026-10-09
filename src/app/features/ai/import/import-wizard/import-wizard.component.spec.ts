@@ -1846,7 +1846,7 @@ describe('ImportWizardComponent', () => {
       const merged: CategorizedImportTransaction = {
         ...mockTransactions[0],
         imageMetadata: {
-          imageIndex: 0, imageId: 'image_0', positionInImage: 'middle', confidenceScore: 0.9,
+          imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9,
           receiptId: 1, wasMerged: true, mergedFromImages: [0, 1],
         },
       };
@@ -2739,7 +2739,7 @@ describe('ImportWizardComponent', () => {
         ...mockTransactions[0],
         id,
         imageMetadata: {
-          imageIndex: 0, imageId: 'image_0', positionInImage: 'middle', confidenceScore: 0.9,
+          imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9,
           receiptId: 1, wasMerged: true, mergedFromImages: [0, 1],
         },
       });

@@ -714,7 +714,7 @@ describe('AIImportService', () => {
   describe('remembered categories', () => {
     const oneItem = () => [
       { date: '2024-06-01', description: 'STARBUCKS', amount: 5, type: 'expense' as const,
-        currency: 'JPY', imageIndex: 0, positionInImage: 'top' as const, confidence: 0.9, receiptId: 1 },
+        currency: 'JPY', imageIndex: 0, confidence: 0.9, receiptId: 1 },
     ];
 
     it('uses a remembered category without asking the model', async () => {
@@ -770,7 +770,7 @@ describe('AIImportService', () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         ...oneItem(),
         { date: '2024-06-01', description: 'NEW PLACE', amount: 9, type: 'expense' as const,
-          currency: 'JPY', imageIndex: 0, positionInImage: 'bottom' as const, confidence: 0.9, receiptId: 2 },
+          currency: 'JPY', imageIndex: 0, confidence: 0.9, receiptId: 2 },
       ]);
 
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -869,7 +869,7 @@ describe('AIImportService', () => {
   describe('suggested tags', () => {
     const oneItem = (overrides: Record<string, unknown> = {}) => [{
       date: '2024-06-01', description: 'STARBUCKS', amount: 5, type: 'expense' as const,
-      currency: 'JPY', imageIndex: 0, positionInImage: 'top' as const, confidence: 0.9, receiptId: 1,
+      currency: 'JPY', imageIndex: 0, confidence: 0.9, receiptId: 1,
       ...overrides,
     }];
 
@@ -1083,7 +1083,7 @@ describe('AIImportService', () => {
   describe('offered recurring rules', () => {
     const oneItem = (overrides: Record<string, unknown> = {}) => [{
       date: '2024-06-01', description: 'NETFLIX.COM', amount: 15.99, type: 'expense' as const,
-      currency: 'USD', imageIndex: 0, positionInImage: 'top' as const, confidence: 0.9, receiptId: 1,
+      currency: 'USD', imageIndex: 0, confidence: 0.9, receiptId: 1,
       ...overrides,
     }];
 
@@ -1476,7 +1476,7 @@ describe('AIImportService', () => {
       spyOn(service, 'importFromImage');
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo item', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+          imageIndex: 0, confidence: 0.9, receiptId: 1 }
       ]));
 
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -1489,9 +1489,9 @@ describe('AIImportService', () => {
     it('should split one photo containing two receipts into two transactions with their groups', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop A' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Shop A' },
         { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'bottom', confidence: 0.8, receiptId: 2, merchant: 'Shop B' }
+          imageIndex: 0, confidence: 0.8, receiptId: 2, merchant: 'Shop B' }
       ]));
 
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -1504,7 +1504,7 @@ describe('AIImportService', () => {
       const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+          imageIndex: 0, confidence: 0.9, receiptId: 1 }
       ]));
 
       await service.importFromMultipleImages([
@@ -1553,7 +1553,7 @@ describe('AIImportService', () => {
     it('should consolidate single-item receipts as standalone transactions', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo item', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 7 }
+          imageIndex: 0, confidence: 0.9, receiptId: 7 }
       ]));
 
       const result = await service.importFromMultipleImages([
@@ -1571,9 +1571,9 @@ describe('AIImportService', () => {
     it('should merge multiple items sharing a receiptId into one transaction', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Shop' },
         { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'bottom', confidence: 0.7, receiptId: 1 }
+          imageIndex: 1, confidence: 0.7, receiptId: 1 }
       ]));
 
       const result = await service.importFromMultipleImages([
@@ -1589,9 +1589,9 @@ describe('AIImportService', () => {
     it('carries the merchant onto the reviewed row', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Shop' },
         { date: '2024-06-01', description: 'Mystery', amount: 4, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 2 }
+          imageIndex: 1, confidence: 0.9, receiptId: 2 }
       ]));
 
       const result = await service.importFromMultipleImages([
@@ -1605,9 +1605,9 @@ describe('AIImportService', () => {
     it('should prefer the reported receipt total for a merged receipt', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Shop' },
         { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'bottom', confidence: 0.7, receiptId: 1, receiptTotal: 330.9 }
+          imageIndex: 1, confidence: 0.7, receiptId: 1, receiptTotal: 330.9 }
       ]));
 
       const result = await service.importFromMultipleImages([
@@ -1626,9 +1626,9 @@ describe('AIImportService', () => {
     it('rounds a summed receipt to whole yen', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100.4, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Shop' },
         { date: '2024-06-01', description: 'Item B', amount: 200.4, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'bottom', confidence: 0.7, receiptId: 1 }
+          imageIndex: 1, confidence: 0.7, receiptId: 1 }
       ]));
 
       const result = await service.importFromMultipleImages([
@@ -1644,7 +1644,7 @@ describe('AIImportService', () => {
     it('a lone item is never merged, whatever the model says', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo', amount: 10, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 4, wasMerged: true }
+          imageIndex: 0, confidence: 0.9, receiptId: 4, wasMerged: true }
       ]));
 
       const result = await service.importFromMultipleImages([
@@ -1657,10 +1657,10 @@ describe('AIImportService', () => {
     it('should merge using AI-provided receipt details and a non-JPY currency', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 1.5, type: 'expense', currency: 'USD',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 2,
+          imageIndex: 0, confidence: 0.9, receiptId: 2,
           receiptDetails: 'Full receipt body' },
         { date: '2024-06-01', description: 'Item B', amount: 2.5, type: 'expense', currency: 'USD',
-          imageIndex: 1, positionInImage: 'middle', confidence: 0.8, receiptId: 2 }
+          imageIndex: 1, confidence: 0.8, receiptId: 2 }
       ]));
 
       const result = await service.importFromMultipleImages([
@@ -1675,9 +1675,9 @@ describe('AIImportService', () => {
     it('should fall back to defaults when AI categorization throws', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+          imageIndex: 0, confidence: 0.9, receiptId: 1 },
         { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 }
+          imageIndex: 1, confidence: 0.9, receiptId: 9 }
       ]));
       cloudLLMProvider.categorizeTransactions.and.returnValue(Promise.reject(new Error('cat failed')));
 
@@ -1705,9 +1705,9 @@ describe('AIImportService', () => {
       );
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, category: 'transport' },
         { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+          imageIndex: 1, confidence: 0.9, receiptId: 9 },
       ]);
 
       const result = await service.importFromMultipleImages([
@@ -1724,9 +1724,9 @@ describe('AIImportService', () => {
     it('sends only uncategorised rows to the ladder', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, category: 'transport' },
         { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+          imageIndex: 1, confidence: 0.9, receiptId: 9 },
       ]);
 
       await service.importFromMultipleImages([
@@ -1740,9 +1740,9 @@ describe('AIImportService', () => {
     it('makes no ladder call when every row already carries a category', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, category: 'transport' },
         { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9, category: 'dining' },
+          imageIndex: 1, confidence: 0.9, receiptId: 9, category: 'dining' },
       ]);
 
       await service.importFromMultipleImages([
@@ -1761,11 +1761,11 @@ describe('AIImportService', () => {
       );
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, category: 'transport' },
         { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+          imageIndex: 1, confidence: 0.9, receiptId: 9 },
         { date: '2024-06-01', description: 'Z', amount: 7, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'bottom', confidence: 0.9, receiptId: 10, category: 'entertainment' },
+          imageIndex: 1, confidence: 0.9, receiptId: 10, category: 'entertainment' },
       ]);
 
       const result = await service.importFromMultipleImages([
@@ -1785,9 +1785,9 @@ describe('AIImportService', () => {
       );
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         { date: '2024-06-01', description: 'Refund', amount: 5, type: 'income', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'food' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, category: 'food' },
         { date: '2024-06-01', description: 'Lunch', amount: 6, type: 'expense', currency: 'JPY',
-          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9, category: 'food' },
+          imageIndex: 1, confidence: 0.9, receiptId: 9, category: 'food' },
       ]);
 
       const result = await service.importFromMultipleImages([
@@ -1807,7 +1807,7 @@ describe('AIImportService', () => {
     it('should add a duplicate warning when duplicates are detected', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+          imageIndex: 0, confidence: 0.9, receiptId: 1 }
       ]));
       duplicateService.checkDuplicates.and.callFake(async (txns) =>
         txns.map(t => ({ transactionId: t.id, isDuplicate: true, matchType: 'exact' as const, confidence: 1 }))
@@ -1823,11 +1823,11 @@ describe('AIImportService', () => {
     it('carries the receipt country through consolidation onto the reviewed row', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Shop' },
         { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'bottom', confidence: 0.8, receiptId: 1, receiptCountry: 'JP' },
+          imageIndex: 0, confidence: 0.8, receiptId: 1, receiptCountry: 'JP' },
         { date: '2024-06-02', description: 'No Country', amount: 50, type: 'expense', currency: 'JPY',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 2 },
+          imageIndex: 0, confidence: 0.9, receiptId: 2 },
       ]));
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
       const merged = result.transactions.find(t => t.description === 'Shop');
@@ -1840,7 +1840,7 @@ describe('AIImportService', () => {
       spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item', amount: 100, type: 'expense', currency: '',
-          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, receiptCountry: 'JP' },
+          imageIndex: 0, confidence: 0.9, receiptId: 1, receiptCountry: 'JP' },
       ]));
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
       expect(result.transactions[0].currencyFellBack).toBeTrue();
@@ -1857,7 +1857,7 @@ describe('AIImportService', () => {
         // failure marks the row.
         cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
           { date: '2024-06-31', description: 'Ghost item', amount: 5, type: 'expense', currency: 'JPY',
-            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+            imageIndex: 0, confidence: 0.9, receiptId: 1 }
         ]));
 
         const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -1889,7 +1889,7 @@ describe('AIImportService', () => {
         // model grade to go on at all.
         cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
           { date: '2024-06-01', description: 'Faded receipt', amount: 5, type: 'expense', currency: 'JPY',
-            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, dateConfidence: 0.4 }
+            imageIndex: 0, confidence: 0.9, receiptId: 1, dateConfidence: 0.4 }
         ]));
 
         const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -3536,7 +3536,6 @@ describe('AIImportService', () => {
         imageMetadata: {
           imageIndex: 0,
           imageId: 'image_0',
-          positionInImage: 'middle',
           confidenceScore: 0.9,
           ...meta
         }

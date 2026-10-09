@@ -209,7 +209,6 @@ export class OfflineQueueProcessorService implements OnDestroy {
     const metas = transactions.map((tx): ImagePositionMetadata => imageMetadataOf(tx) ?? {
       imageIndex: 0,
       imageId: 'image_0',
-      positionInImage: 'middle',
       confidenceScore: tx.confidence,
     });
     const plans = planReceiptAttachments(

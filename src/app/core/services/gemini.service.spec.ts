@@ -394,8 +394,8 @@ describe('GeminiService', () => {
   describe('extractTransactionsFromMultipleImages (single image)', () => {
     it('normalizes a missing receiptId to 1 and keeps explicit ids', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2026-07-01', description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD', positionInImage: 'top', confidence: 0.9 },
-        { date: '2026-07-01', description: 'Bread', amount: 2, type: 'expense', currency: 'USD', positionInImage: 'bottom', confidence: 0.9, receiptId: 2 },
+        { date: '2026-07-01', description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD', confidence: 0.9 },
+        { date: '2026-07-01', description: 'Bread', amount: 2, type: 'expense', currency: 'USD', confidence: 0.9, receiptId: 2 },
       ])));
 
       const result = await service.extractTransactionsFromMultipleImages(['AAA']);
@@ -409,9 +409,9 @@ describe('GeminiService', () => {
     it('carries a printed location onto the row that reported it', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
         { date: '2026-07-01', description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD',
-          positionInImage: 'top', confidence: 0.9, merchant: 'Cafe' },
+          confidence: 0.9, merchant: 'Cafe' },
         { date: '2026-07-01', description: 'Bread', amount: 2, type: 'expense', currency: 'USD',
-          positionInImage: 'bottom', confidence: 0.9, merchant: 'Cafe', location: 'Shibuya 1-2-3' },
+          confidence: 0.9, merchant: 'Cafe', location: 'Shibuya 1-2-3' },
       ])));
 
       const result = await service.extractTransactionsFromMultipleImages(['AAA']);
@@ -423,9 +423,9 @@ describe('GeminiService', () => {
     it('carries the issuing country onto the row that reported it', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
         { date: '2026-07-01', description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD',
-          positionInImage: 'top', confidence: 0.9, merchant: 'Cafe' },
+          confidence: 0.9, merchant: 'Cafe' },
         { date: '2026-07-01', description: 'Bread', amount: 2, type: 'expense', currency: 'USD',
-          positionInImage: 'bottom', confidence: 0.9, merchant: 'Cafe', location: 'Shibuya 1-2-3', country: 'JP' },
+          confidence: 0.9, merchant: 'Cafe', location: 'Shibuya 1-2-3', country: 'JP' },
       ])));
 
       const result = await service.extractTransactionsFromMultipleImages(['AAA']);
@@ -926,9 +926,9 @@ describe('GeminiService', () => {
       expect(result).toEqual([]);
     });
 
-    it('uses single-image position extraction for one image', async () => {
+    it('uses single-image itemization for one image', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95, category: 'Groceries', receiptTotal: 130 },
+        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', confidence: 0.95, category: 'Groceries', receiptTotal: 130 },
         { description: 'Coffee', amount: 330 },
       ])));
 
@@ -936,7 +936,6 @@ describe('GeminiService', () => {
       expect(result.length).toBe(2);
       expect(result[0].imageIndex).toBe(0);
       expect(result[0].category).toBe('food_groceries');
-      expect(result[0].positionInImage).toBe('middle');
       expect(result[0].receiptTotal).toBe(130);
       // Defaults filled in for the sparse second item.
       expect(result[1].description).toBe('Coffee');
@@ -949,19 +948,19 @@ describe('GeminiService', () => {
 
     it('grades the date confidence: zero with no date, forwarded verbatim when reported, unset when not', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD', positionInImage: 'top', confidence: 0.9 },
+        { description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD', confidence: 0.9 },
       ])));
       const noDate = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
       expect(noDate[0].dateConfidence).toBe(0);
 
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95, dateConfidence: 0.4 },
+        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', confidence: 0.95, dateConfidence: 0.4 },
       ])));
       const graded = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
       expect(graded[0].dateConfidence).toBe(0.4);
 
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95 },
+        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', confidence: 0.95 },
       ])));
       const withDate = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
       expect('dateConfidence' in withDate[0]).toBeFalse();
@@ -970,7 +969,7 @@ describe('GeminiService', () => {
     it('leaves an unrecognized category name undefined', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
         { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY',
-          positionInImage: 'middle', confidence: 0.95, category: 'Zeugs' },
+          confidence: 0.95, category: 'Zeugs' },
       ])));
 
       const result = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
@@ -980,7 +979,7 @@ describe('GeminiService', () => {
 
     it('extracts and normalizes items from multiple images', async () => {
       textModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2024-01-15', description: 'Item A', amount: -100, type: 'expense', currency: 'JPY', receiptId: 1, imageIndex: 0, positionInImage: 'top', confidence: 0.9, category: 'Groceries', wasMerged: true, mergedFromImages: [0, 1], receiptTotal: 130 },
+        { date: '2024-01-15', description: 'Item A', amount: -100, type: 'expense', currency: 'JPY', receiptId: 1, imageIndex: 0, confidence: 0.9, category: 'Groceries', wasMerged: true, mergedFromImages: [0, 1], receiptTotal: 130 },
         { description: 'Item B', amount: 50 },
       ])));
 
@@ -1034,7 +1033,7 @@ describe('GeminiService', () => {
     });
 
     // extractWithPositionMetadata error path (single image)
-    it('rethrows when single-image position extraction fails', async () => {
+    it('rethrows when single-image itemization fails', async () => {
       visionModel.generateContent.and.rejectWith(new Error('single boom'));
       await expectAsync(service.extractTransactionsFromMultipleImages(['only']))
         .toBeRejectedWithError('single boom');

@@ -303,7 +303,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1,
               mergedFromImages: [0]
@@ -323,7 +322,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'bottom',
               confidenceScore: 0.85,
               receiptId: 2
             }
@@ -506,7 +504,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         },
@@ -517,7 +514,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'bottom',
           confidence: 0.9,
           receiptId: 1,
           receiptDetails: 'Latte — USD 10.00\nMuffin — USD 5.00\nTotal — USD 16.20',
@@ -624,7 +620,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         }
@@ -808,7 +803,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           // inside the provider, which is what is stubbed out here.
           location: { name: '渋谷店 1-2-3' },
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         }
@@ -1154,7 +1148,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         }
@@ -2210,7 +2203,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -2857,7 +2849,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -3028,7 +3019,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -3047,7 +3037,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 1,
               imageId: 'image_1',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 2
             }
@@ -3199,7 +3188,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -3218,7 +3206,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 1,
               imageId: 'image_1',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 2
             }

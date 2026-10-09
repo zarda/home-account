@@ -112,7 +112,6 @@ export interface ExtractedTransaction {
 
 export interface MultiImageExtractedTransaction extends ExtractedTransaction {
   imageIndex: number;             // Which image this item came from (0-based)
-  positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position
   confidence: number;             // OCR/extraction confidence (0-1)
   receiptId?: number;             // AI-assigned receipt group (items from same receipt share same ID)
   receiptDetails?: string;        // Full receipt content reproduced line by line

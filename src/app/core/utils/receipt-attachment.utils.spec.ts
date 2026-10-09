@@ -21,7 +21,6 @@ describe('planReceiptAttachments', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'middle',
               confidenceScore: 0.9,
               ...meta
             }

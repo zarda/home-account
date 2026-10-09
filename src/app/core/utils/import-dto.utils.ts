@@ -294,7 +294,6 @@ export function imageMetadataOf(tx: ReadRowPlacement): ImagePositionMetadata | u
   return {
     imageIndex: tx.imageIndex ?? 0,
     imageId: `image_${tx.imageIndex ?? 0}`,
-    positionInImage: 'middle',
     confidenceScore: tx.confidence,
     ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
     ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
