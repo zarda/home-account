@@ -40,9 +40,7 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
   let attempts: ReturnType<typeof attemptStub>;
 
   beforeEach(async () => {
-    const pwaService = jasmine.createSpyObj('PwaService', [
-      'isIOS', 'isStandalone', 'isOnline', 'registerBackgroundSync',
-    ]);
+    const pwaService = jasmine.createSpyObj('PwaService', ['isIOS', 'isStandalone', 'isOnline']);
     pwaService.isIOS.and.returnValue(false);
     pwaService.isStandalone.and.returnValue(false);
     pwaService.isOnline.and.returnValue(false);

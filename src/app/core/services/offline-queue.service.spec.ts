@@ -27,7 +27,7 @@ describe('OfflineQueueService', () => {
   let consoleLogSpy: jasmine.Spy;
 
   beforeEach(async () => {
-    pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
+    pwa = jasmine.createSpyObj('PwaService', ['isOnline']);
     pwa.isOnline.and.returnValue(true);
 
     userId = signal<string | null>('user-a');
@@ -72,9 +72,16 @@ describe('OfflineQueueService', () => {
       expect(id).toMatch(/^img_/);
       expect(service.pendingCount()).toBe(1);
       expect(service.hasPendingItems()).toBeTrue();
-      expect(pwa.registerBackgroundSync).toHaveBeenCalledWith('sync-offline-queue');
       const pending = await service.getPendingImages();
       expect(pending.length).toBe(1);
+    });
+
+    // The double carries `isOnline` and nothing else, so a queue that still
+    // reached for a background-sync registration would throw on the missing
+    // member and reject here.
+    it('queues without registering anything with the service worker', async () => {
+      await expectAsync(service.queueImage(imageFile())).toBeResolved();
+      expect(service.pendingCount()).toBe(1);
     });
 
     it('queues multiple images', async () => {
@@ -189,6 +196,32 @@ describe('OfflineQueueService', () => {
       expect(result.success).toBe(2);
       expect(imageEvents.length).toBe(2);
       expect(service.isSyncing()).toBeFalse();
+    });
+
+    // What drains the queue is a reconnect and the manual Sync Now. No worker
+    // posts a sync message to the page and none answers a sync event, so a
+    // `sync-offline-queue` event on the window is not a trigger.
+    it('drains when the connection comes back', async () => {
+      const id = await service.queueImage(imageFile());
+      const drained: string[] = [];
+      const listener = (e: Event) => drained.push((e as CustomEvent<{ id: string }>).detail.id);
+      window.addEventListener('process-queued-image', listener);
+      try {
+        window.dispatchEvent(new Event('online'));
+        await waitFor(() => drained.includes(id));
+      } finally {
+        window.removeEventListener('process-queued-image', listener);
+      }
+
+      expect(drained.filter((queued) => queued === id)).toEqual([id]);
+    });
+
+    it('drains nothing on a sync-offline-queue window event', () => {
+      const syncQueue = spyOn(service, 'syncQueue').and.callThrough();
+
+      window.dispatchEvent(new CustomEvent('sync-offline-queue'));
+
+      expect(syncQueue).not.toHaveBeenCalled();
     });
 
     it('fails images that exceeded the retry limit', async () => {

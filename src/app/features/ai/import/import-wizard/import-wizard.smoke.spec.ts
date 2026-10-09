@@ -177,12 +177,8 @@ function stubReceiptSeams(parsed?: ParsedReceipt): void {
   });
   cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-  const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-    'isOnline',
-    'registerBackgroundSync'
-  ]);
+  const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
   pwa.isOnline.and.returnValue(true);
-  pwa.registerBackgroundSync.and.resolveTo(true);
 
   const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
     'AnalyticsService',
@@ -561,12 +557,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -670,12 +662,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -863,12 +851,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -992,12 +976,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -1101,12 +1081,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -1216,12 +1192,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',

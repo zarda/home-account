@@ -19,14 +19,13 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 /**
- * Reachability, platform detection, the install prompt and the service
- * worker's messages.
+ * Reachability, platform detection and the install prompt.
  *
  * Confirms the connection actually carries traffic (not just that the OS
  * reports an interface), detects standalone/iOS so callers can adapt their
- * UI, holds the browser's install prompt so the app can offer it, registers
- * background sync for the offline queue, and relays the message types the
- * service worker posts back to the running app.
+ * UI, and holds the browser's install prompt so the app can offer it. The
+ * service worker's messages are not read here: the share-target worker posts
+ * notification routes, and NotificationTapService listens for them itself.
  */
 @Injectable({ providedIn: 'root' })
 export class PwaService {
@@ -96,25 +95,6 @@ export class PwaService {
       window.addEventListener('beforeinstallprompt', (event) => {
         this._installPrompt.set(event as BeforeInstallPromptEvent);
       });
-    }
-
-    // Listen for messages from service worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        this.handleServiceWorkerMessage(event.data);
-      });
-    }
-  }
-
-  // The channel is shared (the share-target worker posts notification routes
-  // on it), so a message is not assumed to be one of this service's.
-  private handleServiceWorkerMessage(data: unknown): void {
-    if (typeof data !== 'object' || data === null) return;
-    switch ((data as { type?: unknown }).type) {
-      case 'SYNC_OFFLINE_QUEUE':
-        // Trigger offline queue sync (will be handled by offline-queue service)
-        window.dispatchEvent(new CustomEvent('sync-offline-queue'));
-        break;
     }
   }
 
@@ -259,25 +239,6 @@ export class PwaService {
       await event.prompt();
     } catch (error) {
       console.warn('[PWA] The install prompt was refused:', error);
-    }
-  }
-
-  /**
-   * Register for background sync (for offline queue)
-   */
-  async registerBackgroundSync(tag: string): Promise<boolean> {
-    if (!('serviceWorker' in navigator) || !('sync' in ServiceWorkerRegistration.prototype)) {
-      console.warn('[PWA] Background sync not supported');
-      return false;
-    }
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      await (registration as ServiceWorkerRegistration & { sync: { register: (tag: string) => Promise<void> } }).sync.register(tag);
-      return true;
-    } catch (error) {
-      console.error('[PWA] Background sync registration failed:', error);
-      return false;
     }
   }
 }

@@ -88,7 +88,6 @@ export class OfflineQueueService implements OnDestroy {
   private db: IDBPDatabase<OfflineQueueDB> | null = null;
   private syncInProgress = false;
   private onlineHandler: (() => void) | null = null;
-  private syncEventHandler: ((event: Event) => void) | null = null;
 
   // State signals
   private _isReady = signal<boolean>(false);
@@ -279,20 +278,11 @@ export class OfflineQueueService implements OnDestroy {
       }
     };
     window.addEventListener('online', this.onlineHandler);
-
-    // Listen for sync event from service worker
-    this.syncEventHandler = () => {
-      this.syncQueue();
-    };
-    window.addEventListener('sync-offline-queue', this.syncEventHandler);
   }
 
   private cleanup(): void {
     if (this.onlineHandler) {
       window.removeEventListener('online', this.onlineHandler);
-    }
-    if (this.syncEventHandler) {
-      window.removeEventListener('sync-offline-queue', this.syncEventHandler);
     }
     this.db?.close();
   }
@@ -324,9 +314,6 @@ export class OfflineQueueService implements OnDestroy {
     await this.db.put('pending-images', queuedImage);
     await this.updatePendingCount();
     await this.logSync('item_processed', id, 'Image queued for processing');
-
-    // Register background sync if available
-    this.pwaService.registerBackgroundSync('sync-offline-queue');
 
     return id;
   }

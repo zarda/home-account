@@ -68,11 +68,11 @@ export class OfflineQueueProcessorService implements OnDestroy {
    * Run a queued receipt image through the AI strategy and record the outcome.
    *
    * What the model read is written straight to the ledger instead of being
-   * parked for review: this runs unattended — a reconnect or a background-sync
-   * wake-up, with no camera dialog open and possibly no one looking — so there
-   * is nothing to route a review through, and a receipt held back for one would
-   * sit unread until the user happened to go looking. The snackbar is how they
-   * find out, and the rows are editable like any other.
+   * parked for review: this runs without a review step — a reconnect or the
+   * manual Sync Now, with no camera dialog open and possibly no one looking —
+   * so there is nothing to route a review through, and a receipt held back
+   * for one would sit unread until the user happened to go looking. The
+   * snackbar is how they find out, and the rows are editable like any other.
    */
   private async processQueuedImage(id: string): Promise<void> {
     try {

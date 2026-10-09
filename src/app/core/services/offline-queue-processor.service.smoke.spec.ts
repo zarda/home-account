@@ -143,7 +143,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
    * back the same closed instance. Only a module reset gives a new one.
    */
   async function configure(): Promise<void> {
-    const pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
+    const pwa = jasmine.createSpyObj('PwaService', ['isOnline']);
     pwa.isOnline.and.returnValue(true);
 
     const authMock = {
