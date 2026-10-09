@@ -80,6 +80,18 @@ export const DB_NAME = 'homeaccount-offline-queue';
 const DB_VERSION = 3;
 const MAX_RETRY_COUNT = 3;
 
+/**
+ * The ledger id of the row at `index` among those read off a queued image.
+ * Both halves are stable across a reclaim, so a replay of the same image aims
+ * at the documents the first pass wrote instead of at fresh ones. The queue
+ * row id is minted in `queueImage` below; this is the only place that says
+ * how a row of that image is named, so the drain writes, skips and plans
+ * attachments by one id.
+ */
+export function queueRowTxId(item: { id: string }, index: number): string {
+  return `${item.id}-${index}`;
+}
+
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService implements OnDestroy {
   private pwaService = inject(PwaService);

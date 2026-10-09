@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
-import { OfflineQueueService, QueuedImage } from './offline-queue.service';
+import { OfflineQueueService, QueuedImage, queueRowTxId } from './offline-queue.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { INVALID_AMOUNT_ERROR, RECEIPT_ATTACH_FAILED, TransactionService } from './transaction.service';
@@ -174,7 +174,7 @@ describe('OfflineQueueProcessorService', () => {
           description: 'Konbini',
           note: 'Onigiri — JPY 180',
         }),
-        { id: 'img_1-0' },
+        { id: queueRowTxId({ id: 'img_1' }, 0) },
       );
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
     });
@@ -193,12 +193,29 @@ describe('OfflineQueueProcessorService', () => {
       // at the documents the first pass wrote rather than at fresh ones.
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.objectContaining({ description: 'Konbini' }),
-        { id: 'img_1-0' },
+        { id: queueRowTxId({ id: 'img_1' }, 0) },
       );
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.objectContaining({ description: 'Kiosk' }),
-        { id: 'img_1-1' },
+        { id: queueRowTxId({ id: 'img_1' }, 1) },
       );
+    });
+
+    it('writes row 1 at the id the helper names, and a replay asks the ledger for that same id', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
+      );
+      const id = 'img_1';
+
+      dispatchImage(id);
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // One helper owns the id: what is written and what a replay's
+      // hasTransaction looks up are the same string, so a second pass over
+      // the image finds the rows the first pass put there.
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: queueRowTxId({ id }, 1) });
+      expect(transactions.hasTransaction).toHaveBeenCalledWith(queueRowTxId({ id }, 1));
     });
 
     it('skips a row that already landed instead of posting it twice', async () => {
@@ -208,7 +225,7 @@ describe('OfflineQueueProcessorService', () => {
       );
       // The first row was written before the crash; the second was not.
       transactions.hasTransaction.and.callFake((id: string) =>
-        Promise.resolve(id === 'img_1-0'),
+        Promise.resolve(id === queueRowTxId({ id: 'img_1' }, 0)),
       );
 
       dispatchImage('img_1');
@@ -217,7 +234,7 @@ describe('OfflineQueueProcessorService', () => {
       expect(transactions.addTransaction).toHaveBeenCalledTimes(1);
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.objectContaining({ description: 'Kiosk' }),
-        { id: 'img_1-1' },
+        { id: queueRowTxId({ id: 'img_1' }, 1) },
       );
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
       // Two rows came off this receipt; one of them simply did not need
@@ -308,7 +325,7 @@ describe('OfflineQueueProcessorService', () => {
         jasmine.objectContaining({
           type: 'income', amount: 120.5, currency: 'USD', categoryId: 'other_income',
         }),
-        { id: 'img_1-0' },
+        { id: queueRowTxId({ id: 'img_1' }, 0) },
       );
       const [dto] = transactions.addTransaction.calls.mostRecent().args;
       expect('fieldConfidence' in dto).toBeFalse();
@@ -387,7 +404,7 @@ describe('OfflineQueueProcessorService', () => {
       // row was read off, so the row claims it.
       expect(transactions.addTransaction).toHaveBeenCalledTimes(1);
       expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: 'img_21-0' });
+      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: queueRowTxId({ id: 'img_21' }, 0) });
     });
 
     it('attaches the photo to the first row of each receipt the reader numbered', async () => {
@@ -410,11 +427,11 @@ describe('OfflineQueueProcessorService', () => {
       // only the first of a group carries it, while two receipts printed on
       // one photo are a different case: the photo is evidence for both.
       expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: 'img_9-0' });
+      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: queueRowTxId({ id: 'img_9' }, 0) });
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
-      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_9-1' });
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: queueRowTxId({ id: 'img_9' }, 1) });
       expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: 'img_9-2' });
+      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: queueRowTxId({ id: 'img_9' }, 2) });
     });
 
     it('falls back to the bare row when the photo is refused, and counts it', async () => {
@@ -433,7 +450,7 @@ describe('OfflineQueueProcessorService', () => {
       // the wrong way round. The retry is bare, and the loss is reported.
       expect(transactions.addTransaction).toHaveBeenCalledTimes(2);
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
-      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_12-0' });
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: queueRowTxId({ id: 'img_12' }, 0) });
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_12', 'completed');
       expect(translation.t).toHaveBeenCalledWith(
         'settings.transactionsImportedPartial', { count: 1, skipped: 1 },
@@ -467,7 +484,7 @@ describe('OfflineQueueProcessorService', () => {
       // whole receipt, so it goes to the row behind the refused one rather
       // than past it.
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_16-1' });
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: queueRowTxId({ id: 'img_16' }, 1) });
       expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toBeUndefined();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_16', 'completed');
       // One loss, not two: the row was refused, the photo landed.
@@ -615,12 +632,12 @@ describe('OfflineQueueProcessorService', () => {
       // Nothing remembers a refusal: the row has no document, so the next
       // pass over the same image attempts it again, is refused again, and
       // counts it again. Only the row that landed is skipped by its id.
-      transactions.hasTransaction.and.callFake((id: string) => Promise.resolve(id === 'img_15-0'));
+      transactions.hasTransaction.and.callFake((id: string) => Promise.resolve(id === queueRowTxId({ id: 'img_15' }, 0)));
       dispatchImage('img_15');
       await waitFor(() => queue.updateImageStatus.calls.count() === 2);
 
       expect(transactions.addTransaction).toHaveBeenCalledTimes(3);
-      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: 'img_15-1' });
+      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: queueRowTxId({ id: 'img_15' }, 1) });
       expect(queue.updateImageStatus.calls.allArgs()).toEqual([
         ['img_15', 'completed'],
         ['img_15', 'completed'],

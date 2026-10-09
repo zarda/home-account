@@ -1,5 +1,5 @@
 import { Injectable, inject, OnDestroy } from '@angular/core';
-import { OfflineQueueService } from './offline-queue.service';
+import { OfflineQueueService, queueRowTxId } from './offline-queue.service';
 import { AIStrategyService } from './ai-strategy.service';
 import {
   INVALID_AMOUNT_ERROR,
@@ -213,7 +213,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
     });
     const plans = planReceiptAttachments(
       transactions.map((tx, index) => ({
-        id: `${id}-${index}`,
+        id: queueRowTxId({ id }, index),
         imageMetadata: metas[index],
       })),
       1,
@@ -237,7 +237,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
     let firstRefusal: unknown;
 
     for (const [index, tx] of transactions.entries()) {
-      const rowTxId = `${id}-${index}`;
+      const rowTxId = queueRowTxId({ id }, index);
       const groupKey = groupKeys[index];
       // A plan is decided by metadata, before anything is written; a refusal
       // is decided by the amount, which only the write finds out. The planner

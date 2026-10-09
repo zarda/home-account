@@ -15,7 +15,7 @@ import {
   Storage,
 } from '@angular/fire/storage';
 
-import { OfflineQueueService } from './offline-queue.service';
+import { OfflineQueueService, queueRowTxId } from './offline-queue.service';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
 import { FirestoreService } from './firestore.service';
 import { TransactionService } from './transaction.service';
@@ -511,7 +511,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     // The slot key is the row's own id, so the bytes are findable from the
     // id alone — which is what makes the replay below land on them again.
     await expectAsync(
-      getMetadata(ref(storage, `users/${uid}/receipts/${id}-0`)),
+      getMetadata(ref(storage, `users/${uid}/receipts/${queueRowTxId({ id }, 0)}`)),
     ).toBeResolved();
   }, 30000);
 
@@ -522,7 +522,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   it('re-uploads into the same slot on a replay', async () => {
     reads(412.12, 'Smoke replay slot');
     const id = await queue.queueImage(markedFile(0x42));
-    const rowId = `${id}-0`;
+    const rowId = queueRowTxId({ id }, 0);
     const objectsForRow = async (): Promise<string[]> => {
       const listed = await listAll(ref(storage, `users/${uid}/receipts`));
       return listed.items.map((i) => i.name).filter((name) => name.startsWith(rowId));
