@@ -4,7 +4,7 @@ import { CATEGORIZE_CHUNK_SIZE, CloudLLMProviderBase, ProviderResponse } from '.
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { ProviderCapabilities } from './llm-provider.interface';
+import { AIRequestOptions, ProviderCapabilities } from './llm-provider.interface';
 import { PromptId, RenderedPrompt } from '../prompts';
 import { Category } from '../../models';
 import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
@@ -98,6 +98,10 @@ class StubProvider extends CloudLLMProviderBase {
 
   callPostProcessProse(promptId: PromptId, response: ProviderResponse): string {
     return this.postProcessProse(promptId, response);
+  }
+
+  callRequestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
+    return this.requestOptions(options);
   }
 }
 
@@ -540,6 +544,22 @@ describe('CloudLLMProviderBase', () => {
       expect(provider.callExtractJson('  I cannot help with that  ')).toBe(
         'I cannot help with that'
       );
+    });
+  });
+
+  describe('requestOptions', () => {
+    it("carries the caller's signal in the shape every SDK call takes", () => {
+      const { signal } = new AbortController();
+
+      const options = provider.callRequestOptions({ signal });
+
+      expect(options).toEqual({ signal });
+      expect(options!.signal).toBe(signal);
+    });
+
+    it('is undefined without a signal, so the request goes out as it always did', () => {
+      expect(provider.callRequestOptions()).toBeUndefined();
+      expect(provider.callRequestOptions({})).toBeUndefined();
     });
   });
 

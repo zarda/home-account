@@ -149,6 +149,23 @@ describe('prompt registry', () => {
     }
   });
 
+  it('declares on every entry the answer kind its render produces', () => {
+    // The entry's literal is what the type system reads — ProsePromptId, which
+    // keys Gemini's prose fixes — and the render's value is what the adapters
+    // act on at run time. Two copies of one fact, so they have to agree.
+    for (const id of PROMPT_IDS) {
+      const input = SAMPLE_INPUT[id];
+      const rendered =
+        input === undefined
+          ? renderPrompt(id as 'receiptParse')
+          : renderPrompt(id as 'multiImageReceipts', input as { imageCount: number });
+
+      expect(PROMPTS[id].expects)
+        .withContext(`${id} declares a different answer kind from the one it renders`)
+        .toBe(rendered.expects);
+    }
+  });
+
   it('never bakes the Gemini JSON preamble into a prompt', () => {
     // It belongs to the Gemini adapter. A prompt carrying it would send the
     // warning to OpenAI and Claude too, which is how the copies diverged before.

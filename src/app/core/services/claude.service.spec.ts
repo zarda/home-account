@@ -295,6 +295,29 @@ describe('ClaudeService', () => {
       await expectAsync(service.parseReceipt('img')).toBeRejected();
       expect(service.lastError()).toBe('Unknown error');
     });
+
+    it("hands the caller's signal to messages.create as its options", async () => {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+      const { signal } = new AbortController();
+
+      await service.parseReceipt('img', { signal });
+
+      const options = fake.messages.create.calls.mostRecent().args[1];
+      expect(options).toEqual({ signal });
+      expect(options.signal).toBe(signal);
+    });
+
+    it('passes messages.create no options when there is no signal', async () => {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+
+      await service.parseReceipt('img');
+
+      expect(fake.messages.create.calls.mostRecent().args[1]).toBeUndefined();
+    });
   });
 
   describe('suggestCategory', () => {

@@ -218,6 +218,21 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     return response.text.trim();
   }
 
+  /**
+   * The caller's cancellation, in the shape every SDK call takes as its second
+   * argument: Gemini's `generateContent`, OpenAI's `responses.create` and
+   * Claude's `messages.create`. Gemini's `SingleRequestOptions` has only
+   * optional fields, so this shape is assignable to it without the base
+   * naming an SDK type.
+   *
+   * Undefined when there is nothing to cancel with, so a request without a
+   * signal goes out exactly as it did before — the Gemini SDK wires up an
+   * AbortController of its own for any options object it is handed.
+   */
+  protected requestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
+    return options?.signal ? { signal: options.signal } : undefined;
+  }
+
   // ---------------------------------------------- running an operation
 
   /**

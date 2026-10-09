@@ -370,6 +370,29 @@ describe('GeminiService', () => {
       await expectAsync(service.parseReceipt('abc')).toBeRejected();
       expect(service.lastError()).toBe('Unknown error');
     });
+
+    it("hands the caller's signal to generateContent as its options", async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        suggestedCategory: 'Groceries',
+      })));
+      const { signal } = new AbortController();
+
+      await service.parseReceipt('abc', { signal });
+
+      const options = textModel.generateContent.calls.mostRecent().args[1];
+      expect(options).toEqual({ signal });
+      expect(options.signal).toBe(signal);
+    });
+
+    it('passes generateContent no options when there is no signal', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        suggestedCategory: 'Groceries',
+      })));
+
+      await service.parseReceipt('abc');
+
+      expect(textModel.generateContent.calls.mostRecent().args[1]).toBeUndefined();
+    });
   });
 
   // ----------------------------------------------------------------

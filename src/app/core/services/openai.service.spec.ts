@@ -318,6 +318,29 @@ describe('OpenAIService', () => {
       await expectAsync(service.parseReceipt('img')).toBeRejected();
       expect(service.lastError()).toBe('Unknown error');
     });
+
+    it("hands the caller's signal to responses.create as its options", async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+      const { signal } = new AbortController();
+
+      await service.parseReceipt('img', { signal });
+
+      const options = fake.responses.create.calls.mostRecent().args[1];
+      expect(options).toEqual({ signal });
+      expect(options.signal).toBe(signal);
+    });
+
+    it('passes responses.create no options when there is no signal', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+
+      await service.parseReceipt('img');
+
+      expect(fake.responses.create.calls.mostRecent().args[1]).toBeUndefined();
+    });
   });
 
   describe('suggestCategory', () => {

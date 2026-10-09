@@ -217,13 +217,4 @@ export class ClaudeService extends CloudLLMProviderBase {
   private samplingParams(rendered: RenderedPrompt): { temperature?: number } {
     return acceptsSampling(this.model) ? { temperature: rendered.temperature } : {};
   }
-
-  /**
-   * The caller's cancellation, in the shape `messages.create` takes as its
-   * second argument. Undefined when there is nothing to cancel with, so a
-   * request without a signal is issued exactly as it was before.
-   */
-  private requestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
-    return options?.signal ? { signal: options.signal } : undefined;
-  }
 }
