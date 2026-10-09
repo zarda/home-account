@@ -4,6 +4,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { IMPORT_FILE_MAX_BYTES } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
@@ -25,7 +26,7 @@ export class FileDropzoneComponent implements OnDestroy {
   private translationService = inject(TranslationService);
 
   @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
-  @Input() maxFileSize = 10 * 1024 * 1024; // 10MB
+  @Input() maxFileSize = IMPORT_FILE_MAX_BYTES;
   @Input() multiple = true;
   @Output() filesSelected = new EventEmitter<File[]>();
 

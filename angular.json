@@ -199,6 +199,9 @@
               "node:fs",
               "node:path"
             ],
+            "loader": {
+              ".rules": "text"
+            },
             "stylePreprocessorOptions": {
               "includePaths": [
                 "src/theme"

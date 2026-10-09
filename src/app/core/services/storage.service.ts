@@ -9,7 +9,13 @@ import {
 } from '@angular/fire/storage';
 import { prepareReceiptImage } from '../utils/receipt-image.utils';
 
-/** Maximum receipt image size in bytes (2 MB). Mirrors storage.rules. */
+/**
+ * Maximum stored receipt image size in bytes (2 MB). It applies to the photo
+ * after `prepareReceiptImage` has compressed it, not to the original, whose
+ * ceiling is `IMPORT_FILE_MAX_BYTES`. storage.rules repeats it in both
+ * `request.resource.size` clauses, and storage.service.spec.ts holds the two
+ * together.
+ */
 export const MAX_RECEIPT_BYTES = 2 * 1024 * 1024;
 
 /**

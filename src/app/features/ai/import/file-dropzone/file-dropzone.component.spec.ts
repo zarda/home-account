@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
+import { IMPORT_FILE_MAX_BYTES } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
   channels,
@@ -62,8 +63,8 @@ describe('FileDropzoneComponent', () => {
       expect(component.acceptedTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp,.json');
     });
 
-    it('should have default max file size of 10MB', () => {
-      expect(component.maxFileSize).toBe(10 * 1024 * 1024);
+    it('should default its max file size to the shared intake ceiling', () => {
+      expect(component.maxFileSize).toBe(IMPORT_FILE_MAX_BYTES);
     });
   });
 
