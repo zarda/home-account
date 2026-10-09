@@ -19,7 +19,14 @@ interface FileReplacement {
   with: string;
 }
 
+interface Budget {
+  type: string;
+  maximumWarning?: string;
+  maximumError?: string;
+}
+
 interface BuildOptions {
+  budgets?: Budget[];
   fileReplacements?: FileReplacement[];
   optimization?: boolean;
   sourceMap?: boolean;
@@ -146,6 +153,30 @@ describe('angular.json build configurations', () => {
     expect(serveConfigurations['emulators']?.buildTarget).toBe('home-account:build:emulators');
     const scripts = (packageJson as { scripts: Record<string, string> }).scripts;
     expect(scripts['start:emulators']).toBe('ng serve --configuration emulators --port 4300');
+  });
+});
+
+describe('angular.json build budgets', () => {
+  /** The `initial` budget of one build configuration. */
+  const initialBudget = (name: string) => buildConfigurations[name]?.budgets?.find(b => b.type === 'initial');
+
+  it('holds the same initial budget in both deployable configurations', () => {
+    // `production` and `production-local` build the same bundle; they differ
+    // only in the service worker. A warning lowered in one and not the other
+    // leaves that build measured against the old ceiling.
+    expect(initialBudget('production')).toBeDefined();
+    expect(initialBudget('production-local')).toEqual(initialBudget('production'));
+  });
+});
+
+describe('the shipped dependencies', () => {
+  it('ships without the deprecated animations runtime', () => {
+    // Angular Material and the CDK animate with CSS; provideAnimations() only
+    // added the runtime to the initial bundle. Specs turn motion off with
+    // provideNoMotion() instead.
+    const { dependencies } = packageJson as { dependencies: Record<string, string> };
+
+    expect(Object.keys(dependencies)).not.toContain('@angular/animations');
   });
 });
 

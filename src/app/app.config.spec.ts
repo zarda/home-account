@@ -1,6 +1,9 @@
+import { HttpClient } from '@angular/common/http';
 import {
+  ANIMATION_MODULE_TYPE,
   EnvironmentInjector,
   EnvironmentProviders,
+  ErrorHandler,
   Injector,
   WritableSignal,
   createEnvironmentInjector,
@@ -29,6 +32,7 @@ import {
   NotificationTapArmer,
   appAnalyticsFactory,
   appAuthFactory,
+  appConfig,
   appFirestoreFactory,
   appStorageFactory,
   armLedgerSweep,
@@ -454,6 +458,48 @@ describe('provideAppRemoteConfig', () => {
 
   it('should default to the committed hosts, which name no emulator', () => {
     expect(providerCount(provideAppRemoteConfig())).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The tokens `providers` provide, however deep they sit: appConfig nests
+ * arrays, and provideRouter, provideHttpClient and the rest return
+ * EnvironmentProviders, whose provider array is only reachable through the
+ * internal field (the reach providerCount uses above).
+ */
+function providedTokens(providers: unknown): unknown[] {
+  if (Array.isArray(providers)) {
+    return providers.flatMap(providedTokens);
+  }
+  if (typeof providers === 'function') {
+    return [providers];
+  }
+  if (providers && typeof providers === 'object') {
+    const nested = (providers as { ɵproviders?: unknown }).ɵproviders;
+    if (nested) {
+      return providedTokens(nested);
+    }
+    const { provide } = providers as { provide?: unknown };
+    return provide === undefined ? [] : [provide];
+  }
+  return [];
+}
+
+describe('appConfig', () => {
+  it('is read through the providers nested inside EnvironmentProviders', () => {
+    // The pin below passes on a walk that sees nothing, so the walk is
+    // pinned first: ErrorHandler is provided at the top level, HttpClient
+    // only inside provideHttpClient()'s EnvironmentProviders.
+    const tokens = providedTokens(appConfig.providers);
+
+    expect(tokens).toContain(ErrorHandler);
+    expect(tokens).toContain(HttpClient);
+  });
+
+  it('leaves the animations module type unprovided, so Material and the CDK animate with plain CSS', () => {
+    // provideAnimations() answered this token with 'BrowserAnimations' and
+    // pulled the deprecated animations runtime into the initial bundle.
+    expect(providedTokens(appConfig.providers)).not.toContain(ANIMATION_MODULE_TYPE);
   });
 });
 

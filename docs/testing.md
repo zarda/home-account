@@ -158,8 +158,9 @@ Reference: `transaction-preview-table.component.spec.ts:1011-1072`.
 A **top-level sibling `describe`** — no `resetTestingModule()`, Jasmine's
 per-spec teardown handles it. No `.overrideComponent` at all. **`NO_ERRORS_SCHEMA`
 dropped**: with it, a mistyped child selector is swallowed, which is exactly
-the bug the describe exists to catch. `imports: [Component, NoopAnimationsModule]`,
-and every service the *template* reaches stubbed.
+the bug the describe exists to catch. `imports: [Component]` and
+`providers: [provideNoMotion(), …]`, with `provideNoMotion` taken from the
+`core/services/testing` barrel, and every service the *template* reaches stubbed.
 
 Use it when the component's children are cheap — Material, directives, small
 shared components.

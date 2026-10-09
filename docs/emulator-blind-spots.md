@@ -474,13 +474,13 @@ harness or of how axe meets it, shape what that can honestly mean:
   scheme leaks into the next smoke file. What the walkthrough cannot reach
   is measured in both themes in a browser — journeys 45 and 57 in
   [e2e.md](e2e.md) do.
-- **Colours are read at rest, not in motion.** `provideNoopAnimations` stops
-  Angular's animations but not plain CSS transitions, and headless Chrome need
-  not paint a frame between a class landing and the pass, so a transition can
-  sit on its first colours for the whole audit. The transactions quick
-  filters mark "This month" from a zero-delay timer after first render, and
-  their `transition: all 0.15s` carried the active button across: five
-  forced-dark runs out of five audited it still wearing the inactive
+- **Colours are read at rest, not in motion.** `provideNoMotion` stops
+  Material's and the CDK's animations but not plain CSS transitions, and
+  headless Chrome need not paint a frame between a class landing and the pass,
+  so a transition can sit on its first colours for the whole audit. The
+  transactions quick filters mark "This month" from a zero-delay timer after
+  first render, and their `transition: all 0.15s` carried the active button
+  across: five forced-dark runs out of five audited it still wearing the inactive
   button's gray-400 on `#1e1e1e`, while the colours it settles on — white on
   the dark `--color-primary`, 3.45:1 — failed the one earlier run that read
   them. So `runAxe` finishes every running transition and

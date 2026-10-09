@@ -143,16 +143,26 @@ toggle on real routed UI instead.
 
 `angular.json` carries an `initial` budget in both the `production` and
 `production-local` configurations — the same numbers in both, because
-`build:ios` uses the second one and they would otherwise drift.
+`build:ios` uses the second one and they would otherwise drift;
+`build-configurations.spec.ts` pins that they are equal.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.472 MB | 2.7 MB |
+| Initial bundle | 2.408 MB | 2.7 MB |
 
-Against 2,471,499 bytes, measured from a clean production build on
-2026-10-09. The warning stood at 2.45 MB until household sharing (#465) put
-the initial bundle 12.85 kB over it, and moved by that much and no more. It
-moved again, from 2.47 MB to 2.472 MB, when the theme, dashboard and
+Against 2,406,960 bytes (JavaScript 2,376,069, stylesheet 30,891, in 54
+initial files), measured from a clean production build on 2026-10-09. The
+warning came down from 2.472 MB to 2.408 MB when the deprecated animations
+runtime went out: `provideAnimations()`, the `@angular/platform-browser/animations`
+wrapper it pulled in and the `@angular/animations` package behind it were
+64,539 bytes of the initial JavaScript, from 2,471,499 bytes before. The
+budget gave back 64 kB of that, rounded down to the whole kilobyte, so the
+rest is headroom. Material and the CDK animate with CSS and need none of it,
+and the specs turn motion off with `provideNoMotion()` instead.
+
+The warning had stood at 2.45 MB until household sharing (#465) put the
+initial bundle 12.85 kB over it, and moved by that much and no more. It then
+moved, from 2.47 MB to 2.472 MB, when the theme, dashboard and
 notification work of #436, #440, #442, #446 and #461 put it 1,499 bytes
 over. That work grew the initial JavaScript by 5.9 kB and shrank the
 stylesheet by 0.9 kB: the theme aliases came in and the palette ramp and
