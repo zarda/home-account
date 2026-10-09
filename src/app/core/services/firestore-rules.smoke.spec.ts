@@ -2482,6 +2482,12 @@ describe('firestore.rules households (emulator smoke test)', () => {
     return account;
   }
 
+  // A stamp the client picks, a minute in the past, for the cases a rule
+  // refuses because a field must be the request time. A client `now()` is no
+  // such stamp: the runner's browser and emulator share one clock, and a now()
+  // read in the millisecond the emulator stamps the request equals it.
+  const chosenStamp = () => lite.Timestamp.fromMillis(Date.now() - 60_000);
+
   /** One row of each of the four kinds, written by its own account. */
   async function seedOwnKinds(account: Account): Promise<void> {
     const base = `users/${account.uid}`;
@@ -3919,7 +3925,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
           writeCopy(peer, row, { category: { name: 'x', icon: 'y', color: 'z', extra: 'w' } }),
           'a category snapshot with an extra key'
         );
-        await expectDenied(writeCopy(peer, row, { updatedAt: lite.Timestamp.now() }), 'a client-chosen stamp');
+        await expectDenied(writeCopy(peer, row, { updatedAt: chosenStamp() }), 'a client-chosen stamp');
       });
 
       it('holds each string of the category snapshot to its bound', async () => {
@@ -4318,8 +4324,8 @@ describe('firestore.rules households (emulator smoke test)', () => {
           await expectDenied(writePlan(stranger, kind), `a stranger's ${kind}`);
           await expectDenied(writePlan(peer, kind, { createdBy: owner.uid }), `${kind} naming another maker`);
           await expectDenied(writePlan(peer, kind, { gen: lite.Timestamp.fromMillis(0) }), `${kind} of another generation`);
-          await expectDenied(writePlan(peer, kind, { createdAt: lite.Timestamp.now() }), `${kind} with a chosen creation time`);
-          await expectDenied(writePlan(peer, kind, { updatedAt: lite.Timestamp.now() }), `${kind} with a chosen stamp`);
+          await expectDenied(writePlan(peer, kind, { createdAt: chosenStamp() }), `${kind} with a chosen creation time`);
+          await expectDenied(writePlan(peer, kind, { updatedAt: chosenStamp() }), `${kind} with a chosen stamp`);
         }
       });
 
@@ -4399,7 +4405,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
         const budgetId = await makePlan(peer, 'budgets');
         await expectDenied(lite.updateDoc(planRef(peer, 'budgets', budgetId), { amount: 700 }), 'an edit without the stamp');
         await expectDenied(
-          lite.updateDoc(planRef(peer, 'budgets', budgetId), { amount: 700, updatedAt: lite.Timestamp.now() }),
+          lite.updateDoc(planRef(peer, 'budgets', budgetId), { amount: 700, updatedAt: chosenStamp() }),
           'an edit with a chosen stamp'
         );
       });
@@ -4553,7 +4559,7 @@ describe('firestore.rules households (emulator smoke test)', () => {
         await expectDenied(writeContribution(peer, goalId, { memberUid: owner.uid }), "a contribution under the owner's name");
         await expectDenied(writeContribution(stranger, goalId), "a stranger's contribution");
         await expectDenied(writeContribution(peer, goalId, { gen: lite.Timestamp.fromMillis(0) }), 'a contribution of another generation');
-        await expectDenied(writeContribution(peer, goalId, { createdAt: lite.Timestamp.now() }), 'a contribution with a chosen stamp');
+        await expectDenied(writeContribution(peer, goalId, { createdAt: chosenStamp() }), 'a contribution with a chosen stamp');
         await expectDenied(writeContribution(peer, goalId, { amount: 0 }), 'a contribution of nothing');
         await expectDenied(writeContribution(peer, goalId, { date: '2026-09-01' }), 'a date that is not a timestamp');
         await expectDenied(writeContribution(peer, goalId, { note: 'flights' }), 'a field outside the contribution');
