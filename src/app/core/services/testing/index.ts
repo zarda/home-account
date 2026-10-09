@@ -10,3 +10,4 @@ export * from './painted-contrast';
 export * from './option-states';
 export * from './icon-box';
 export * from './text-lines';
+export * from './no-motion';
