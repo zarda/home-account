@@ -54,7 +54,6 @@ import {
   Transaction,
   TransactionFilters,
   CreateTransactionDTO,
-  MonthlyTotal,
   CategoryTotal,
   Goal,
   SplitPart,
@@ -1826,38 +1825,6 @@ export class TransactionService {
     return this.getTransactions({ categoryId });
   }
 
-  // Get monthly totals
-  getMonthlyTotals(year: number, month: number): Observable<MonthlyTotal> {
-    // One-based month here, unlike everywhere else in the app.
-    const { start: startDate, end: endDate } = monthWindow({ year, month: month - 1 });
-
-    return this.getByDateRange(startDate, endDate).pipe(
-      map(transactions => {
-        const baseCurrency = baseCurrencyOf(this.authService.currentUser());
-        const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
-
-        const income = transactions
-          .filter(t => t.type === 'income')
-          .reduce((sum, t) => sum + toBase(t), 0);
-
-        const expense = transactions
-          .filter(t => t.type === 'expense')
-          .reduce((sum, t) => sum + toBase(t), 0);
-
-        const byCategory = this.groupByCategory(transactions);
-
-        return {
-          income,
-          expense,
-          balance: income - expense,
-          transactionCount: transactions.length,
-          byCategory
-        };
-      })
-    );
-  }
-
-  // Helper to group transactions by category
   /**
    * Non-mutating period totals with a per-category expense breakdown
    * (in base currency). Used for previous-period comparisons.
@@ -2042,24 +2009,6 @@ export class TransactionService {
         { field: 'date', op: '<=', value: Timestamp.fromDate(endOfDay(end)) }
       ]
     };
-  }
-
-  private groupByCategory(transactions: Transaction[]): CategoryTotal[] {
-    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
-    const categoryMap = new Map<string, number>();
-
-    for (const transaction of transactions) {
-      const current = categoryMap.get(transaction.categoryId) ?? 0;
-      categoryMap.set(
-        transaction.categoryId,
-        current + this.currencyService.amountInBase(transaction, baseCurrency)
-      );
-    }
-
-    return Array.from(categoryMap.entries()).map(([categoryId, total]) => ({
-      categoryId,
-      total
-    }));
   }
 
   /**
