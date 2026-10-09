@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with twelve permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 86.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 89.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,13 +47,16 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 86
+there too; neither touches a household or calls a function. Journeys 81 to 89
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
 coming days written past the rules, a stored dashboard layout read back the
-same way, and the recap and a PIN switched on. None of them calls a function,
-and only 82 opens a household page, to read a dialog it cancels.
+same way, the recap and a PIN switched on, overdue rules the app claims, a
+scan queued offline and a drain that fails for want of a provider, a row and
+a sign-in written past the rules, and a posting shared into a household. None
+of them calls a function, and only 82 and 89 open a household page: 82 to read
+a dialog it cancels, and 89 to read the copy of a posting it shared.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -150,7 +153,10 @@ it is the served catalog and the header:
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).shortcuts` is
 defined on this branch and `undefined` on `c47d6f26`, and on any signed-in
 page `document.querySelector('app-header .palette-button') !== null` is
-`true`, where `c47d6f26`'s header has no palette button. For another branch it
+`true`, where `c47d6f26`'s header has no palette button. For the removal
+sweep, the folds and opaque row ids it is the served catalog:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).import.pdfPagesTruncated`
+is defined on this branch and `undefined` on `8a6e2c9a`. For another branch it
 is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
@@ -550,7 +556,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 86 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 89 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -800,16 +806,24 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 86 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 89 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
 [ADR 0165](ADR/0165-the-period-pickers-are-bounded-unavailable-totals-offer-retry-and-three-smaller-papercuts-close.md)
-(83); the dashboard's card menu (84); the links a reminder opens (85); and
-the shortcuts and the install offer (86).
+(83); the dashboard's card menu (84); the links a reminder opens (85); the
+shortcuts and the install offer (86); the removal sweep of
+[ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)
+(87); the folds of
+[ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)
+(88); and the opaque row ids of
+[ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)
+(89), whose third step shares a posting into Chen home.
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
-[reminders.md](reminders.md), [shortcuts.md](shortcuts.md) and
-[pwa.md](pwa.md) describe what they drive.
+[reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
+[pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
+[locale-formatting.md](locale-formatting.md), [recurring.md](recurring.md)
+and [household.md](household.md) describe what they drive.
 
 The seed writes the households, their members and every shared row's copy
 past the rules, as the app's own commits leave them; nothing in this venue
@@ -820,7 +834,7 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
 
-Journeys 79 to 86 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 89 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -1051,12 +1065,14 @@ survive a navigation.
 
 ### Reading past the rules
 
-The journeys read back — and in one place write — documents past the rules,
-through the Firestore emulator's REST API with the owner token. The seeded
-households are `chen-home` and `trip-fund`; one made in a journey is listed
-under its owner's index, `users/<uid>/households`. A copy's id is
-`<author-uid>_<row-id>`, and the seeded rows this month are `tx-hh-1` onwards
-under each account.
+The journeys read back — and in places write — documents past the rules,
+through the Firestore emulator's REST API with the owner token: journey 75
+writes a copy no client can reach, 84 a layout, 85 rules and 88 a row and a
+sign-in, and 77 clears the database at its end; the superseded 60 and 63
+wrote a quota and a name. The seeded households are `chen-home` and
+`trip-fund`; one made in a journey is listed under its owner's index,
+`users/<uid>/households`. A copy's id is `<author-uid>_<row-id>`, and the
+seeded rows this month are `tx-hh-1` onwards under each account.
 
 ```bash
 FS='http://127.0.0.1:8080/v1/projects/demo-home-account/databases/(default)/documents'
@@ -1176,6 +1192,9 @@ log, and run the ports check again: it prints nothing.
 | 84 | The card menu (emulators) | A card moved and hidden from its own menu, focus and the announcement after each, the stored layout read back past the rules holding only what changed, ids from a later build surviving an edit, and the rail's titles kept whole | `84-card-menu.png`, `84-chart-hidden.png`, `84-rail-1024.png` |
 | 85 | The links a reminder opens (emulators) | A bill link landing on its focused row from a cold cache, a rule past the fortnight sent to the rules, the recap's region focused, and a link that comes through the lock screen | `85-bill-focused.png`, `85-not-upcoming.png`, `85-recap-focused.png`, `85-after-unlock.png` |
 | 86 | Shortcuts and the install offer (emulators) | `?`, the header's palette button and the one-time hint in a real header at three widths, chords that never split, and the install card raising a held prompt once | `86-hint.png`, `86-shortcuts-first.png`, `86-install-card.png` |
+| 87 | The removal sweep (emulators) | A menu, a dialog, a select and a datepicker still moving under the real providers with the animations runtime gone, the one worker a real origin registers, a scan queued offline whose drain on `online` starts and fails for want of a provider, and the page-cap notice at a real 375px | `87-queued-offline.png`, `87-page-cap-375.png` |
+| 88 | The folds (emulators) | An exact tie between two categories on the real dashboard in id order, the times one formatter writes on two pages in two languages, the report chart's figures, and a file over the intake's ceiling refused out loud below the zone | `88-category-tie.png`, `88-history-ja.png`, `88-refused-11mb.png` |
+| 89 | Opaque row ids (emulators) | Postings the claim wrote at 32-hex ids, read back past the rules and one recomputed outside the app, a shared posting's copy at `{uid}_{hex}` the rules took and the household page renders, and a queued scan's seed | `89-shared-posting.png`, `89-household-copy.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -5605,6 +5624,443 @@ opened on this origin since, run
    12.92, a key cap 13.77, the keys column 14.97, the card's body and icon
    6.57 and the button 10.89. Put the theme back.
 
+### 87. The removal sweep
+
+**Emulators**, as Alex: [pre-flight](#pre-flight) done, signed in as
+[Signing in a seeded account](#signing-in-a-seeded-account) says and the
+welcome skipped, at a desktop width of 1024px or more. The branch took out
+the deprecated animations runtime, the Angular service worker the production
+build emitted and nothing registered, the offline queue's sync seam, and
+import warnings nothing read, one of which, the PDF page cap, now shows on
+the review step
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md),
+[pwa.md](pwa.md), [receipt-import.md](receipt-import.md)). This journey reads
+what each removal could have broken, where only a browser shows it.
+
+1. **The overlays still move.** No spec boots the real `appConfig`, so the
+   real providers' motion is read here, each overlay while it is open. On
+   `/transactions`, the add button (named *Add Transaction*) opens a menu:
+
+   ```js
+   const panel = document.querySelector('.mat-mdc-menu-panel');
+   [getComputedStyle(panel).animationName, getComputedStyle(panel).animationDuration,
+     panel.classList.contains('mat-menu-panel-animations-disabled')];
+   ```
+
+   **Pass:** `['_mat-menu-enter', '0.12s', false]`. The menu's **Add
+   Transaction** item opens the form, a dialog:
+
+   ```js
+   const container = document.querySelector('mat-dialog-container');
+   [container.classList.contains('_mat-animation-noopable'),
+     getComputedStyle(container.querySelector('.mat-mdc-dialog-surface')).transitionDuration];
+   ```
+
+   **Pass:** `[false, '0.15s']`: no noop class, and Material's 150ms
+   opening. Open the form's **Category** select and read
+   `document.querySelector('.mat-mdc-select-panel').classList.contains('mat-select-panel-animations-enabled')`;
+   close it by clicking beside it, open the calendar beside **Date** and read
+   `document.querySelector('.mat-datepicker-content').classList.contains('mat-datepicker-content-animations-enabled')`.
+   **Pass:** `true` for each. Close the calendar the same way and **Cancel**
+   the form. The first run read these four; a snackbar was not read, and is
+   not here. It reads the same Material token the four do, which they show
+   the real providers leave on, and `no-motion.spec.ts` pins that the
+   snackbar's container takes its animations class from that token.
+
+   **Reduced motion is not read here.** The pane cannot emulate
+   `prefers-reduced-motion`, and the first run recorded that. The reduced
+   half rests on Material's own media query, which turns its animations off
+   as it did before the removal, and on `motion:check`
+   ([accessibility.md](accessibility.md#reduced-motion-has-to-reach-three-places)).
+2. **The console.** Judge it by the difference across the boot and step 1,
+   as check 3 of [Before every run](#before-every-run) says. **Pass:** no
+   new `error`-level entry. AngularFire's warnings, *Firebase API called
+   outside injection context: …*, came with every boot before this branch as
+   well, and are recorded, not judged.
+3. **One worker.**
+
+   ```js
+   (await navigator.serviceWorker.getRegistrations())
+     .map(r => (r.active ?? r.waiting ?? r.installing)?.scriptURL);
+   ```
+
+   **Pass:** one registration, `http://localhost:4300/share-target-sw.js`.
+   It is a regression check only. The emulators build never emitted
+   `ngsw-worker.js`, which only the production configuration built, so this
+   venue cannot show it gone. Production's copy is checked on the deployed
+   site after the deploy, not here: the address then falls to the hosting's
+   SPA rewrite and answers with the app's own page, where `26.10.171`, the
+   version built from `8a6e2c9a`, which this branch starts from, serves the
+   worker's script.
+4. **A scan queued offline.** On `/import/file`, tell the app the network
+   has gone, as journey 71 does: `window.dispatchEvent(new Event('offline'))`.
+   This is diagnostic-grade, and recorded as such: the app checks
+   reachability again whenever the tab becomes visible, which puts it back
+   online, so keep the pane in view until the scan is queued (journey 36).
+   The queue reads nothing, so any image will do. Build one in the page and
+   hand it to the dropzone's hidden input:
+
+   ```js
+   const canvas = document.createElement('canvas');
+   canvas.width = canvas.height = 16;
+   const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+   const dt = new DataTransfer();
+   dt.items.add(new File([png], 'e2e-87-receipt.png', { type: 'image/png' }));
+   const input = document.querySelector('app-file-dropzone input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'handed';
+   ```
+
+   Leave the image kind on **Receipt** and press **Process with AI**.
+   **Pass:** the processing step ends on the offline card, *1 image queued
+   for processing when online*, with **Done** and **Back**: offline, the
+   receipt door keeps the photo before any provider guard. Then:
+
+   ```js
+   const queue = ng.getComponent(document.querySelector('app-import-wizard')).importService.offlineQueue;
+   (await queue.getPendingImages()).map(i =>
+     ({ id: i.id, rowSeed: i.rowSeed, status: i.status, retryCount: i.retryCount, lastError: i.lastError }));
+   ```
+
+   **Pass:** one entry. Its `id` is `img_<ms>_<random>`, beside a `rowSeed`
+   of 32 lower-case hex characters, the seed its rows are named from
+   (journey 89). Its `status` is `'pending'`, its `retryCount` 0, and it has
+   no `lastError`. `importService` is private, TypeScript's word, which the
+   running page does not enforce, as journey 14 says. Shot:
+   `87-queued-offline.png`, the card.
+5. **`online` starts a drain.** `window.dispatchEvent(new Event('online'))`,
+   the event the queue drains on while it holds something pending. Run step
+   4's read again, as a separate console evaluation, until it stops
+   changing. **Pass:** the same entry, `status` `'failed'`, `retryCount` 1
+   and `lastError` `'AI_CLOUD_UNAVAILABLE'`. The drain started and handed the
+   photo to the reader, which this venue cannot reach: it has no provider
+   key. The failed attempt is also written to Import History as a failed
+   receipt, which journey 88 reads.
+6. **The page-cap notice, by injection.** Without a provider no PDF longer
+   than fifteen pages is read here, so the notice goes on the wizard's own
+   signal: state only, diagnostic-grade, and recorded as such. Reach the
+   review step with journey 79's hand-off (one row is enough), then:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   w.pagesTruncated.set({ read: 15, total: 40, others: 1 });
+   ng.applyChanges(w);
+   const notice = document.querySelector('.review-step .truncated-notice');
+   [notice.getAttribute('role'), notice.querySelector('mat-icon').getAttribute('aria-hidden'),
+     [...notice.querySelectorAll('p')].map(p => p.textContent.trim())];
+   ```
+
+   **Pass:** `'status'`, `'true'`, and two lines: *Only the first 15 of 40
+   pages of the PDF were read.* and *Other PDFs also read only in part: 1.*
+   Then set the pane to 375px and read in the same step, clicking nothing
+   ([Panes and viewports](#panes-and-viewports)):
+
+   ```js
+   const notice = document.querySelector('.review-step .truncated-notice');
+   [document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+     notice.scrollWidth <= notice.clientWidth];
+   ```
+
+   **Pass:** `[true, true]`: nothing overflows. Shot: `87-page-cap-375.png`.
+   Clear the width, then the hand-off, `history.replaceState({}, '')`, and
+   reload. The signal goes with the page.
+
+**What stays in the specs, and why.**
+
+- **A drain that lands its rows** needs a provider.
+  `offline-queue-processor.service.smoke.spec.ts` drains a queued receipt
+  into the ledger at its digest: *a drained receipt lands with its photo
+  attached*.
+- **The page-cap notice from a real PDF.** Unit specs prove the import
+  reports the figures past the cap, and the wizard's smoke, *says on the
+  review step when a PDF was read only in part*, renders them from the
+  result.
+
+**What it cannot show.** Reduced motion, which rests on Material's own media
+query and on `motion:check` (step 1), and production's worker file, which
+only the deployed site can show (step 3).
+
+**Cleanup.** None here. The queued entry is journey 89's to read, and the
+failed record journey 88's. The rest goes with the emulators at the
+[teardown](#teardown). The queue lives in this origin's IndexedDB, which the
+next pre-flight's clean deletes (check 8).
+
+Two shots: the queued card offline, and the page-cap notice at 375px.
+
+### 88. The folds
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+87, whose drain left a failed receipt in Import History. The branch folded
+second copies into one copy of each helper
+([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md),
+[locale-formatting.md](locale-formatting.md),
+[dashboard.md](dashboard.md)). Among them are the category fold, which now
+breaks an exact tie by category id, the time and number formatting, and the
+size ceiling a file meets on its way in. Each is read where it is painted.
+
+1. **A tie, in id order.** This month's *Gym membership*, a $35 Health &
+   Wellness row the claim posts on the first load (journey 89), needs a
+   partner at the same total in a category whose id sorts first. Write one
+   past the rules ([Reading past the rules](#reading-past-the-rules)): $35
+   of Food & Drinks, dated noon on the 1st, before the gym's posting. The
+   window arrives newest first, so the order the rows arrived in would list
+   Health & Wellness first.
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const at = new Date(); at.setDate(1); at.setHours(12, 0, 0, 0);
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const t = d => ({ timestampValue: d.toISOString() });
+   const fields = { userId: s(uid), type: s("expense"), amount: n(35), currency: s("USD"),
+     amountInBaseCurrency: n(35), exchangeRate: n(1), categoryId: s("food"), description: s("e2e-tie-food"),
+     date: t(at), createdAt: t(at), updatedAt: t(at), isRecurring: { booleanValue: false } };
+   const res = await fetch(`${FS}/users/${uid}/transactions/e2e-tie-food`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) });
+   console.log(res.status);' "$FS" <alex-uid>
+   # 200
+   ```
+
+   Before the 2nd of a month the gym has not posted in it: write a $35
+   `health` row the same way, dated after this one. Then load `/dashboard`:
+
+   ```js
+   [ng.getComponent(document.querySelector('app-dashboard')).categoryTotals()
+     .filter(c => c.total === 35).map(c => c.categoryId),
+     [...document.querySelectorAll('app-spending-chart .legend-name')].map(n => n.textContent.trim())];
+   ```
+
+   **Pass:** `['food', 'health']`, and the Spending by Category legend lists
+   *Food & Drinks* directly before *Health & Wellness*, each at $35. Shot:
+   `88-category-tie.png`.
+2. **Import History's time, in English.** `/import/history`, the card for
+   *e2e-87-receipt.png*:
+
+   ```js
+   const card = [...document.querySelectorAll('.history-item')]
+     .find(c => c.textContent.includes('e2e-87-receipt.png'));
+   [card.querySelector('mat-card-subtitle').textContent.trim(),
+     card.querySelector('.failure-class').textContent.trim(),
+     [...card.querySelectorAll('.errors li')].map(li => li.textContent.trim())];
+   ```
+
+   **Pass:** the date, then the time `formatTime` writes, with no zero before
+   the hour. The first run read *10/10/2026 3:36 AM*. Then *Connection
+   problem*, and one error line, *Cloud AI could not be reached. Check your
+   connection, or add an API key in Settings → AI Processing.*: the
+   classifier's own sentence the record stores, read back to its catalog
+   key, the line the wizard and the camera show for the same failure. Its
+   class alone would have said to check the connection, on a venue that is
+   online and has no provider key.
+3. **Security activity's time, in English.** A seeded account never signs
+   in through the app, so its log is empty. Write a sign-in past the rules,
+   yesterday at 9:05 in the machine's zone, which is the browser's:
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const at = new Date(); at.setDate(at.getDate() - 1); at.setHours(9, 5, 0, 0);
+   const s = v => ({ stringValue: v });
+   const fields = { userId: s(uid), type: s("signIn"), occurredAt: { timestampValue: at.toISOString() },
+     platform: s("web") };
+   const res = await fetch(`${FS}/users/${uid}/securityEvents/e2e-signin-1`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) });
+   console.log(res.status);' "$FS" <alex-uid>
+   # 200
+   ```
+
+   Then Settings → Profile, *Recent Sign-In Activity*:
+   `document.querySelector('app-security-activity .activity-meta').textContent.trim()`.
+   **Pass:** it begins *Yesterday at 9:05 AM*: the relative day and the same
+   formatter's time, joined by the translated pattern.
+4. **Both again, in Japanese.** Settings → Profile → **Language** → 日本語,
+   a write to the emulators. Read steps 3 and 2 again. **Pass:** the sign-in
+   begins *昨日 9:05*. The history card reads *2026/10/10 3:36* in the first
+   run's figures, its failure line *接続の問題*, and its error line
+   *クラウドAIに接続できませんでした。接続を確認するか、設定 → AI処理 でAPIキーを追加してください。*
+   Shot: `88-history-ja.png`.
+   Switch the language back to **English**.
+
+   **What the first run found.** The history printed each record's stored
+   English, *Cloud AI is not reachable.*, in both languages, and a list
+   longer than three ended in a hard-coded *+N more*. The card now reads a
+   failed attempt by the app's own sentence where it stored one and by its
+   class otherwise, and a failed row by its reason, through catalog keys
+   (*fix(ui): import history shows its errors in the reader's language*).
+   Run 2 is the first to read the translated lines in a browser.
+   A whole-import failure still shows its stored English, one of
+   [ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)'s
+   Known gaps.
+5. **The report chart's figures, diagnostic-grade.** `/reports`, on Spending
+   Analysis, the first tab. The tooltip and the axis are painted on a
+   canvas, so their callbacks are called from the console: state only, never
+   a hover.
+
+   ```js
+   const options = ng.getComponent(document.querySelector('app-spending-analysis')).chartOptions();
+   [options.plugins.tooltip.callbacks.label({ parsed: { y: 1234.5 }, dataset: { label: 'X' } }),
+     options.scales.y.ticks.callback(1234567)];
+   ```
+
+   **Pass:** `['X: $1,234.50', '$1,234,567']`, both through `formatNumber`.
+   The tooltip shows exactly two decimals, where it once showed a third
+   when the amount had one, and the tick shows none. The Monthly Comparison
+   tab's chart builds the same pair.
+6. **A file over the ceiling.** `/import/file`, with an 11 MB file built in
+   the page:
+
+   ```js
+   const dt = new DataTransfer();
+   dt.items.add(new File([new Uint8Array(11 * 1024 * 1024)], 'big-statement.csv', { type: 'text/csv' }));
+   const input = document.querySelector('app-file-dropzone input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'handed';
+   ```
+
+   Then:
+
+   ```js
+   const banner = document.querySelector('app-file-dropzone .error-banner');
+   const zone = document.querySelector('app-file-dropzone .dropzone');
+   [banner.getAttribute('role'), banner.querySelector('.error-message').textContent.trim(),
+     zone.contains(banner), banner.getBoundingClientRect().top >= zone.getBoundingClientRect().bottom];
+   ```
+
+   **Pass:** `'alert'`, then *big-statement.csv is larger than the 10 MB
+   limit*, the message the first run read, then `false` and `true`. The
+   banner sits below the dashed zone, across its width, outside the zone's
+   `role="button"`, whose children are presentational. The 10 MB is
+   `IMPORT_FILE_MAX_BYTES`, the one constant the dropzone and the share
+   intake read. Shot: `88-refused-11mb.png`.
+
+   **What the first run found.** The banner had no role, so the refusal was
+   silent to a screen reader, and it sat inside the zone. It is
+   `role="alert"` now, on the frame below the zone (*fix(ui): the dropzone
+   announces a file it refuses*). Run 2 is the first to see it there.
+
+**What stays in the specs, and why.**
+
+- **The camera's queue-write message.** Reaching it takes a capture through
+  the camera, which the first run recorded as a phone-only door that needs a
+  device camera the pane does not have, so it was skipped. The camera's unit
+  spec and `camera-capture.smoke.spec.ts`, *names a capture the queue could
+  not keep in the user's language when online*, hold it.
+- **The tie at the other sites**: the report PDF, the spending-summary
+  prompt's top five, the insight chip and the spending analysis's top five.
+  Their unit specs pin it, and `dashboard-layout.smoke.spec.ts` pins the
+  dashboard's as well: *lists two categories with equal spending in category
+  id order*.
+
+**Cleanup.** The language is back on English (step 4). `e2e-tie-food` and
+`e2e-signin-1` go with the emulators at the [teardown](#teardown). The
+refused file never left the page.
+
+Three shots: the tie on the dashboard, the history in Japanese, and the
+refusal below the zone.
+
+### 89. Opaque row ids
+
+**Emulators**, as Alex, at `http://localhost:4300`, after journey 87, whose
+queued entry step 4 reads. A digest needs a secure origin, and plain HTTP to
+a network address is not one (ADR 0173's Known gaps). The seed's four
+recurring rules (`seed.mjs`: `r-rent`, `r-salary`, `r-netflix` and `r-gym`)
+point at `2026-08-01`, so every occurrence since is overdue, and the app
+claims them on its first load as Alex. A row the app names now carries an id
+that says neither which rule posted it, nor when, nor when a scan was queued
+([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md),
+[recurring.md](recurring.md), [household.md](household.md)).
+
+1. **The claimed postings.** List, past the rules, every row that names a
+   rule:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/transactions?pageSize=300" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).documents??[]).filter(d=>d.fields.recurringId).map(d=>[d.name.split("/").pop(),d.fields.recurringId.stringValue,d.fields.date.timestampValue].join(" ")).sort().join("\n")))'
+   ```
+
+   No seeded row carries `recurringId`, so only what the claim wrote is
+   listed. **Pass:** every id is 32 lower-case hex characters and none
+   starts `rec-`. The rule is named in the row's own `recurringId`, never in
+   its id. The first run's list held
+   `0c7934c0cfef279744d803d345889ea4 r-rent 2026-10-01T00:00:00Z`.
+2. **One recomputed outside the app.** The id is the first 32 hex
+   characters of the SHA-256 of `JSON.stringify(['rec', ruleId, occurrence
+   ms])` (`opaque-id.utils.ts`). Take a line's rule and date:
+
+   ```bash
+   node -e 'const [k,r,t]=process.argv.slice(1);console.log(require("crypto").createHash("sha256").update(JSON.stringify([k,r,Date.parse(t)])).digest("hex").slice(0,32))' rec r-rent 2026-10-01T00:00:00Z
+   # 0c7934c0cfef279744d803d345889ea4
+   ```
+
+   **Pass:** the digest printed is the line's id. Take the time from the
+   row's `date`, not from the calendar: it is the occurrence the claim
+   walked to, which in the first run fell at midnight UTC.
+3. **A posting shared, and its copy.** On `/transactions` for this month,
+   *Gym membership*'s menu → *Share with…* → check *Chen home* → **Save**,
+   as in journey 69. **Pass:** nothing is refused, and the row wears
+   *Shared · Chen home*: the rules took a copy of a row whose id is a
+   digest. Past the rules, the copy is `<alex-uid>_<hex>`, where `<hex>` is
+   the posting's own id from step 1, and it names that id as its source:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/households/chen-home/ledger/<alex-uid>_<hex>" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const f=JSON.parse(s).fields;console.log(f.sourceId.stringValue,f.description.stringValue)})'
+   # <hex> Gym membership
+   ```
+
+   The first run's copy ended in `ec5f85af…`, the digest of `r-gym` at
+   `2026-10-02T00:00:00Z`. Shot: `89-shared-posting.png`, the row and its
+   chip. Then `/household/chen-home`:
+
+   ```js
+   [...document.querySelectorAll('app-household-overview .overview-row')]
+     .some(row => row.innerText.includes('Gym membership'));
+   ```
+
+   **Pass:** `true`: the household page renders the copy. Shot:
+   `89-household-copy.png`.
+4. **A queued scan's seed.** On `/ai`, journey 87's entry, still queued
+   after its failed drain:
+
+   ```js
+   const queue = ng.getComponent(document.querySelector('app-ai-settings-page')).offlineQueue;
+   (await queue.getPendingImages()).map(i => [i.id, i.rowSeed]);
+   ```
+
+   **Pass:** `img_<ms>_<random>` beside a 32-hex `rowSeed`. The queue id
+   still holds the moment the photo was queued, and its rows are named from
+   the seed and their position (`queueRowTxId`), never from the queue id.
+   No row lands from it in this venue, which has no provider. `offlineQueue`
+   is private, TypeScript's word, which the running page does not enforce,
+   as step 4 of journey 87 says.
+
+**What stays in the specs, and why.**
+
+- **A second claim of one occurrence** needs the pointer put back between
+  claims. `recurring.service.smoke.spec.ts` does that: *a second claim of
+  one occurrence leaves one row, at an opaque id*.
+- **A drained row at its digest** needs a provider.
+  `offline-queue-processor.service.smoke.spec.ts`, *a drained receipt lands
+  with its photo attached*, reads the row at a 32-hex id.
+- **The probe and clear of a missing copy at a digest id.** Step 3 writes a
+  copy and nothing else. `firestore-rules.smoke.spec.ts` holds the rest:
+  *lets a member copy a row whose id is an opaque digest, and probe and
+  clear a missing one*.
+- **Rows that keep revealing ids**: postings from before the change, rows
+  of an entry the earlier app queued, and rows a `/data` restore writes.
+  Once a household has seen a rule's id in one of them, step 2's
+  recomputation over a later copy's date confirms that rule's postings too.
+  They are ADR 0173's Known gaps, and nothing here reads them.
+
+**Cleanup.** **Clear Queue** on `/ai`'s Offline Queue card takes journey
+87's entry; otherwise the next pre-flight's clean does (check 8). The claimed
+postings, the share and its copy go with the emulators at the
+[teardown](#teardown).
+
+Two shots: the shared posting's chip, and its copy on Chen home's page.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -5641,7 +6097,9 @@ account (journey 80); a review card at a real phone's width, a viewport
 query Karma's fixed 756px window cannot apply (journey 79); and colours as a
 browser paints them in both themes, links that cross a real router and a
 lock screen, and a real header at three widths, on an account nothing real
-stands behind (journeys 81 to 86).
+stands behind (journeys 81 to 86); and the motion of the real providers,
+which no spec boots, the one worker a real origin registers, and the ids the
+app writes, read back past the rules (journeys 87 to 89).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -5665,15 +6123,23 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 86 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 89 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
 select or the category dialog; 83 the period pickers' bounds, the period
 totals, the wizard's share flags, the recap's or Upcoming Bills' net, or the
 shell's landmarks; 84 the card menu or the layout writes; 85 the reminder
-routes, the dashboard's `?bill` and `?recap`, or `lockGuard`; and 86 the
+routes, the dashboard's `?bill` and `?recap`, or `lockGuard`; 86 the
 palette and its shortcuts, the header's palette button and hint, or the
-install card. **Journey 78 runs once**, on production, after the merge — when
-the deploys it checks have finished — because what it proves is the deployed
-rules, indexes and callable, which exist only then.
+install card; 87 the app's motion (`app.config.ts`'s providers, or an
+overlay's animation), a worker the build emits or the app registers, the
+offline queue's capture or its drain on `online`, or the review step's
+notices; 88 the category fold or a list it ranks, `formatTime` or
+`formatNumber` or a page that shows them, the intake's ceiling or the
+dropzone's refusal, or Import History's lines; and 89 how a row's id is
+chosen — `opaqueRowId`, the recurring claim, the queue's `rowSeed` and
+`queueRowTxId` — or a copy's id and the rules that take it.
+**Journey 78 runs once**, on production, after the merge — when the deploys
+it checks have finished — because what it proves is the deployed rules,
+indexes and callable, which exist only then.
