@@ -1604,6 +1604,7 @@ export class AIImportService {
         errorCount,
         totalIncome,
         totalExpenses,
+        // Always written, even empty: the history's totalLines reads its presence to tell a new record from a legacy one.
         totalsByCurrency: sumByCurrency(written, baseCurrency),
         duplicatesSkipped: skippedDuplicates
       };
