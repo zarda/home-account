@@ -99,6 +99,14 @@ async function tap(worker: WorkerRun, data: unknown): Promise<jasmine.Spy> {
   return close;
 }
 
+/** Measurement hosts, each with a path its beacons really use. */
+const ANALYTICS_REQUESTS = [
+  'https://www.google-analytics.com/g/collect?v=2',
+  'https://www.googletagmanager.com/gtag/js?id=G-TEST',
+  'https://analytics.google.com/g/collect?v=2',
+  'https://app-measurement.com/a',
+];
+
 describe('share-target-sw.js', () => {
   beforeAll(async () => {
     const response = await fetch('/share-target-sw.js');
@@ -203,6 +211,24 @@ describe('share-target-sw.js', () => {
         await tap(withTab, { route });
         expect(tab.postMessage).withContext(label).toHaveBeenCalledOnceWith({ type: 'notification-route', route: '/' });
         expect(withTab.clients.openWindow).withContext(label).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  describe('a request that is not a share', () => {
+    it('pin: leaves a request to an analytics host to the network', () => {
+      // Answering a measurement beacon out of the worker would swallow live
+      // hits or replay stale ones, and neither is visible from inside the app.
+      const worker = runWorker([]);
+
+      for (const url of ANALYTICS_REQUESTS) {
+        for (const method of ['GET', 'POST']) {
+          const respondWith = jasmine.createSpy('respondWith');
+
+          listener(worker, 'fetch')({ request: { url, method }, respondWith });
+
+          expect(respondWith).withContext(`${method} ${url}`).not.toHaveBeenCalled();
+        }
       }
     });
   });

@@ -179,10 +179,11 @@ export class PwaService {
     const timer = setTimeout(() => controller.abort(), REACHABILITY_TIMEOUT_MS);
 
     try {
-      // HEAD on purpose: both this app's service worker and ngsw only handle
-      // GET, so the probe is never answered out of a cache — and nothing it
-      // fetches ends up in one. The timestamp is for the transparent proxies
-      // that hotel networks run and that ignore `no-store`.
+      // HEAD on purpose: this app's service worker answers only the share
+      // POST and passes every other request to the network, so the probe is
+      // never answered out of a cache — and nothing it fetches ends up in
+      // one. The timestamp is for the transparent proxies that hotel
+      // networks run and that ignore `no-store`.
       const response = await fetch(this.reachabilityUrl(), {
         method: 'HEAD',
         cache: 'no-store',
