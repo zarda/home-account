@@ -9,8 +9,10 @@
 // a mock handed back; and that a record missing `totalIncome`/
 // `totalExpenses` and `totalsByCurrency` alike also passes the rules and
 // renders a zero through the real `CurrencyService`, never the `NaN` an
-// unguarded `Intl.NumberFormat` call would produce. The unit spec overrides
-// nothing here — ImportHistoryComponent's own template and its own
+// unguarded `Intl.NumberFormat` call would produce. A failed receipt attempt,
+// stored the way the attempt service writes one, also reads its error line
+// from the catalog rather than the English the record holds. The unit spec
+// overrides nothing here — ImportHistoryComponent's own template and its own
 // MatMenuModule import are what render.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
@@ -79,7 +81,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     // validate userId/importedAt/source/fileType/fileName/status on create,
     // and accept transactionIds only as a list when present) — no
     // ImportHistoryService call, no AI provider, no confirmImport run behind
-    // it. Four distinct fileNames so each test can find its own card
+    // it. Five distinct fileNames so each test can find its own card
     // without depending on query order.
     const legacy: Omit<ImportHistory, 'id'> = {
       userId: uid,
@@ -154,12 +156,34 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       // fileName/status, so this shape — older than either total scheme, a
       // restore, or a write from outside the app — passes create as-is.
     };
+    // What ReceiptAttemptService.recordFailure writes for a cloud attempt
+    // that could not reach the AI: the attempt's English beside its class.
+    const failedAttempt: Omit<ImportHistory, 'id'> = {
+      userId: uid,
+      importedAt: Timestamp.now(),
+      source: 'image',
+      fileType: 'receipt_image',
+      fileName: 'smoke-failed-receipt.jpg',
+      fileSize: 40960,
+      transactionCount: 0,
+      successCount: 0,
+      skippedCount: 0,
+      errorCount: 1,
+      totalIncome: 0,
+      totalExpenses: 0,
+      status: 'failed',
+      duplicatesSkipped: 0,
+      errors: [{ message: 'Cloud AI is not reachable.' }],
+      door: 'wizard',
+      errorType: 'network'
+    };
 
     await Promise.all([
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-legacy`), legacy),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-single`), single),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-batch`), batch),
-      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-bare-totals`), bareTotals)
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-bare-totals`), bareTotals),
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-failed-attempt`), failedAttempt)
     ]);
   });
 
@@ -214,8 +238,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a legacy record renders no shortcut', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     const card = cardFor('smoke-legacy-statement.csv');
     // Delete is always there; a legacy record with no transactionIds joins
@@ -225,8 +249,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a one-transaction record's button navigates with its stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     const card = cardFor('smoke-single-receipt.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -244,8 +268,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a batch record's menu holds one entry per stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     const card = cardFor('smoke-batch-receipts.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -269,8 +293,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a record with neither total renders a zero, not NaN', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     // The seeding `setDoc` already resolving is the proof the rules took
     // the write; this is the other half — what the real CurrencyService
@@ -291,8 +315,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   it("a stored record's row shows its time in the active language's convention", async () => {
     translation.getIntlLocale.and.returnValue('ja-JP');
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     const stored = fixture.componentInstance.importHistory()
       .find(item => item.fileName === 'smoke-legacy-statement.csv');
@@ -309,5 +333,22 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     const subtitle = cardFor('smoke-legacy-statement.csv').querySelector('mat-card-subtitle');
     const shown = subtitle?.textContent?.trim() ?? '';
     expect(shown.slice(shown.lastIndexOf(' ') + 1)).toBe(jaTime);
+  }, 20000);
+
+  // The stored line is English; the card reads it back to the classifier's
+  // own key, through the catalog (ADR 0036), and not to its class's sentence,
+  // which would tell an online reader to check the connection. The spy
+  // answers with the key, so the key on screen is the sentence a Japanese
+  // reader gets in Japanese.
+  it("a stored failed attempt's error line comes from the catalog, not the English it stored", async () => {
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
+
+    const card = cardFor('smoke-failed-receipt.jpg');
+    const lines = Array.from(card.querySelectorAll('.errors li'))
+      .map(li => li.textContent?.trim());
+    expect(lines).toEqual(['import.errorCloudUnavailable']);
+    expect(card.textContent).not.toContain('Cloud AI is not reachable.');
   }, 20000);
 });

@@ -3438,7 +3438,7 @@ describe('AIImportService', () => {
       expect(stats.errors?.length).toBe(1);
       expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({ transactionId: 'a' }));
       expect('row' in stats.errors![0])
-        .withContext('the wizard re-offers by transactionId and the history list renders the message alone')
+        .withContext('the wizard re-offers by transactionId and the history reads the row by its reason')
         .toBeFalse();
     });
 

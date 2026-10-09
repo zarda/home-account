@@ -106,10 +106,10 @@
                 <p class="error-title">{{ 'import.errors' | translate }}:</p>
                 <ul>
                   @for (error of item.errors.slice(0, 3); track $index) {
-                    <li>{{ error.message }}</li>
+                    <li>{{ errorLine(item, error) }}</li>
                   }
                   @if (item.errors.length > 3) {
-                    <li class="more">+{{ item.errors.length - 3 }} more</li>
+                    <li class="more">{{ 'import.moreErrors' | translate: { others: item.errors.length - 3 } }}</li>
                   }
                 </ul>
               </div>
