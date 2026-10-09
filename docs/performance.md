@@ -148,10 +148,10 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.408 MB | 2.7 MB |
+| Initial bundle | 2.407 MB | 2.7 MB |
 
-Against 2,406,960 bytes (JavaScript 2,376,069, stylesheet 30,891, in 54
-initial files), measured from a clean production build on 2026-10-09. The
+Against 2,405,885 bytes (JavaScript 2,374,994, stylesheet 30,891, in 55
+initial files), measured from a clean production build on 2026-10-10. The
 warning came down from 2.472 MB to 2.408 MB when the deprecated animations
 runtime went out: `provideAnimations()`, the `@angular/platform-browser/animations`
 wrapper it pulled in and the `@angular/animations` package behind it were
@@ -159,6 +159,21 @@ wrapper it pulled in and the `@angular/animations` package behind it were
 budget gave back 64 kB of that, rounded down to the whole kilobyte, so the
 rest is headroom. Material and the CDK animate with CSS and need none of it,
 and the specs turn motion off with `provideNoMotion()` instead.
+
+It came down once more, to 2.407 MB, when the removals of #437 took 1,075
+bytes net off the 2,406,960 that figure was measured at. The removals were
+larger than that and some of what came in beside them is eager: out went the
+background-sync seam nothing answers (in `PwaService` and the offline queue),
+the monthly totals and the category getter of `TransactionService` that
+nothing called, and the position, row-number and free-text fields the import
+carried and nothing read. In came the shared category fold, which
+`cloud-llm-provider.base` now imports from `transaction-aggregation.utils`
+(a 2,593-byte initial chunk of its own), and the opaque row-id helper that
+`recurring.service` and the offline queue reach at startup (331 bytes). The
+budget gave back 1 kB of the 1,075, rounded down to the whole kilobyte, which
+leaves 1,115 bytes of headroom under the warning.
+`about.component.ts` and `feedback.service.ts` import `package.json` whole, so
+a version bump moves the figure by a few bytes too.
 
 The warning had stood at 2.45 MB until household sharing (#465) put the
 initial bundle 12.85 kB over it, and moved by that much and no more. It then
