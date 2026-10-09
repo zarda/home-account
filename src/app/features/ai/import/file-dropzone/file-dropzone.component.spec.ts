@@ -475,6 +475,45 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(banner.textContent).toContain('import.fileTypeUnsupported:{"name":"tool.exe"}');
   });
 
+  // Below the zone, the banner sat just under the fold of a 768px window,
+  // where the zone fills the first screen: a sighted user who dropped the
+  // file saw nothing change. The scroll waits for the render that inserts
+  // or rewrites the banner, so it runs on the tick, and it moves the page
+  // only: an alert is announced where it is, never focused.
+  it('brings a refused file\'s message into view, and again when the next refusal rewrites it', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+    const focused = document.activeElement;
+
+    const big = new File(['x'], 'big-statement.csv', { type: 'text/csv' });
+    Object.defineProperty(big, 'size', { value: component.maxFileSize + 1 });
+    component.onFileSelect({ target: { files: [big], value: 'x' } } as unknown as Event);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const banner = el().querySelector('.error-banner') as HTMLElement;
+    expect(scroll).toHaveBeenCalledOnceWith({ block: 'nearest' });
+    expect(scroll.calls.mostRecent().object).toBe(banner);
+    expect(document.activeElement).toBe(focused);
+
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll.calls.mostRecent().object).toBe(banner);
+  });
+
+  it('scrolls nothing for a file it takes', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+
+    dropFiles([csvFile('statement.csv')]);
+    TestBed.tick();
+
+    expect(text('.file-name')).toBe('statement.csv');
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
   it('marks the zone while a drag is over it', () => {
     fixture.detectChanges();
     const zone = el().querySelector('.dropzone') as HTMLElement;
