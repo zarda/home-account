@@ -328,9 +328,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           }
         ],
         multiImageMetadata: {
-          totalImages: 1,
-          deduplicationMethod: 'ai',
-          imageIds: ['image_0']
+          totalImages: 1
         }
       };
 

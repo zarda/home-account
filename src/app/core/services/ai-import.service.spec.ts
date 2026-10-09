@@ -1564,7 +1564,9 @@ describe('AIImportService', () => {
       expect(result.fileType).toBe('receipt_image');
       expect(result.transactions.length).toBe(1);
       expect(result.multiImageMetadata?.totalImages).toBe(2);
-      expect(result.multiImageMetadata?.deduplicationMethod).toBe('ai');
+      expect(Object.keys(result.multiImageMetadata ?? {}))
+        .withContext('the image count is all the wizard reads of it')
+        .toEqual(['totalImages']);
       expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
     });
 

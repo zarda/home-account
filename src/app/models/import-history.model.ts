@@ -342,8 +342,6 @@ export interface CSVColumnMapping {
 
 export interface MultiImageMetadata {
   totalImages: number;             // Total number of images processed
-  deduplicationMethod: 'ai' | 'position' | 'manual';  // How deduplication was performed
-  imageIds: string[];              // Ordered list of image identifiers
 }
 
 /**

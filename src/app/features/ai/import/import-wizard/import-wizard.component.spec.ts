@@ -2870,7 +2870,7 @@ describe('ImportWizardComponent', () => {
       /** A batch that puts every summary card and the multi-image banner on screen. */
       function landEveryCard(): void {
         const real = realFixture.componentInstance;
-        real.multiImageMetadata.set({ totalImages: 2, deduplicationMethod: 'ai', imageIds: ['image_0', 'image_1'] });
+        real.multiImageMetadata.set({ totalImages: 2 });
         real.receiptRowIds.set(new Set(['dated']));
         real.extractedTransactions.set([
           merged('merged'),

@@ -1030,9 +1030,7 @@ export class AIImportService {
       duplicates,
       sourceFiles: files,
       multiImageMetadata: {
-        totalImages: files.length,
-        deduplicationMethod: 'ai',
-        imageIds: files.map((_, i) => `image_${i}`)
+        totalImages: files.length
       }
     };
   }
