@@ -309,10 +309,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * Selected rows still short of an amount or a description — a row the
    * reviewer added and has not finished typing, and a row from any door
    * that arrived without one. Held here rather than at the write, which
-   * refuses a non-positive amount mid-import with a row number the reviewer
-   * has to go back and find, and files an empty description under a name of
-   * its own — so what lands is not a nameless row but a mis-named one, past
-   * review. This holds Continue and Import exactly as the date question does.
+   * refuses a non-positive amount mid-import and re-offers the row by its id
+   * only once the batch is done, and files an empty description under a name
+   * of its own — so what lands is not a nameless row but a mis-named one,
+   * past review. This holds Continue and Import exactly as the date question
+   * does.
    */
   unfilledRows = computed(() => this.extractedTransactions().filter(rowIsUnfilled).length);
   // The linear stepper refuses next() on an incomplete step. The camera

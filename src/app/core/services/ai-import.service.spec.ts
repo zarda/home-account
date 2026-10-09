@@ -3429,7 +3429,10 @@ describe('AIImportService', () => {
       expect(stats.errorCount).toBe(1);
       expect(stats.successCount).toBe(1);
       expect(stats.errors?.length).toBe(1);
-      expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({ row: 1, transactionId: 'a' }));
+      expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({ transactionId: 'a' }));
+      expect('row' in stats.errors![0])
+        .withContext('the wizard re-offers by transactionId and the history list renders the message alone')
+        .toBeFalse();
     });
 
     it("records the caught error's own code alongside its message", async () => {

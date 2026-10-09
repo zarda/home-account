@@ -2523,8 +2523,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         totalIncome: 0,
         totalExpenses: 0,
         status: 'partial',
-        // row is wrong on purpose: the wizard matches by transactionId.
-        errors: [{ row: 99, transactionId: component.extractedTransactions()[0].id, message: 'refused' }],
+        errors: [{ transactionId: component.extractedTransactions()[0].id, message: 'refused' }],
         duplicatesSkipped: 0
       });
 
@@ -2617,7 +2616,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         // this app: a stable code, kept apart from the message, which is
         // prose the card could not put on screen as-is.
         errors: [{
-          row: 1, transactionId: rowId,
+          transactionId: rowId,
           code: 'permission-denied', message: 'Missing or insufficient permissions.',
         }],
         duplicatesSkipped: 0
@@ -3577,9 +3576,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const errors = record?.['errors'] as ImportHistory['errors'];
       expect(errors?.length).toBe(1);
       expect(errors?.[0].transactionId).toBe(zeroRow.id);
-      expect(errors?.[0].row)
-        .withContext('the position in what was submitted, not on the card')
-        .toBe(2);
+      expect('row' in errors![0])
+        .withContext('a failed row is named by its id; no position is recorded')
+        .toBeFalse();
       // Refused before any write reaches Firestore; were that guard ever to
       // go, the rules would refuse it and the message would be a denial.
       expect(errors?.[0].message).toBe(INVALID_AMOUNT_ERROR);

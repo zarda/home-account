@@ -11,7 +11,7 @@ import { ImportHistoryService } from '../../../../core/services/import-history.s
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
-import { ImportHistory } from '../../../../models';
+import { ImportError, ImportHistory } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
@@ -569,6 +569,17 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     items[1].click();
 
     expect(router.navigate).toHaveBeenCalledWith(['/transactions'], { queryParams: { tx: 'tx-2' } });
+  });
+
+  it('lists a stored error by its message, whatever else an older record kept on it', () => {
+    // Records written before an error stopped carrying a position still hold
+    // one in Firestore; the list reads the message alone.
+    const stored = { row: 2, message: 'INVALID_TRANSACTION_AMOUNT' } as ImportError;
+    render([{ ...baseRecord, status: 'partial', errorCount: 1, errors: [stored] }]);
+
+    const lines = Array.from(fixture.nativeElement.querySelectorAll('.errors li'))
+      .map(li => (li as HTMLElement).textContent?.trim());
+    expect(lines).toEqual(['INVALID_TRANSACTION_AMOUNT']);
   });
 });
 

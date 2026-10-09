@@ -681,8 +681,7 @@ describe('ImportWizardComponent', () => {
         transactionCount: 2, successCount: 1, skippedCount: 0, errorCount: 1,
         totalIncome: 0, totalExpenses: 5, duplicatesSkipped: 0,
         status: 'partial' as const,
-        // row is wrong on purpose: the wizard reads transactionId, not position.
-        errors: [{ row: 99, transactionId: 'failed', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        errors: [{ transactionId: 'failed', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
@@ -1542,7 +1541,7 @@ describe('ImportWizardComponent', () => {
         fileName: 'r.png', fileSize: 10, transactionCount: 2, successCount: 2,
         skippedCount: 0, errorCount: 1, totalIncome: 0, totalExpenses: 5,
         duplicatesSkipped: 0, status: 'partial' as const, receiptsSkipped: 1, receiptsFailed: 1,
-        errors: [{ row: 3, transactionId: 'c', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        errors: [{ transactionId: 'c', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
@@ -1587,8 +1586,7 @@ describe('ImportWizardComponent', () => {
         ...mockTransactions[0], id, selected, isDuplicate,
       });
       // An unselected duplicate still sits between selected rows, but the
-      // match is now by id: row is planted wrong (99) to prove the wizard
-      // isn't reading position — only transactionId 'b' can land it on `b`.
+      // match is by id: only transactionId 'b' can land the failure on `b`.
       component.extractedTransactions.set([
         row('a', true), row('dup', false, true), row('b', true), row('c', true),
       ]);
@@ -1602,7 +1600,7 @@ describe('ImportWizardComponent', () => {
         transactionCount: 3, successCount: 2, skippedCount: 1, errorCount: 1,
         totalIncome: 0, totalExpenses: 10, duplicatesSkipped: 1,
         status: 'partial' as const,
-        errors: [{ row: 99, transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        errors: [{ transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
@@ -1637,7 +1635,7 @@ describe('ImportWizardComponent', () => {
         transactionCount: 3, successCount: 2, skippedCount: 0, errorCount: 1,
         totalIncome: 0, totalExpenses: 10, duplicatesSkipped: 0,
         status: 'partial' as const,
-        errors: [{ row: 1, transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        errors: [{ transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
@@ -1658,7 +1656,7 @@ describe('ImportWizardComponent', () => {
         transactionCount: 1, successCount: 0, skippedCount: 0, errorCount: 1,
         totalIncome: 0, totalExpenses: 0, duplicatesSkipped: 0,
         status: 'partial' as const,
-        errors: [{ row: 1, transactionId: 'a', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        errors: [{ transactionId: 'a', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
@@ -1687,7 +1685,7 @@ describe('ImportWizardComponent', () => {
         // A rules denial the way it actually reaches this app: a stable
         // code, separate from prose meant for a console.
         errors: [{
-          row: 1, transactionId: 'a',
+          transactionId: 'a',
           code: 'permission-denied', message: 'Missing or insufficient permissions.',
           originalValue: 'Coffee',
         }],
@@ -1742,8 +1740,8 @@ describe('ImportWizardComponent', () => {
         totalIncome: 0, totalExpenses: 0, duplicatesSkipped: 0,
         status: 'partial' as const,
         errors: [
-          { row: 1, transactionId: 'a', code: 'permission-denied', message: 'Missing or insufficient permissions.', originalValue: 'Coffee' },
-          { row: 2, transactionId: 'b', code: 'unavailable', message: 'The service is currently unavailable.', originalValue: 'Lunch' },
+          { transactionId: 'a', code: 'permission-denied', message: 'Missing or insufficient permissions.', originalValue: 'Coffee' },
+          { transactionId: 'b', code: 'unavailable', message: 'The service is currently unavailable.', originalValue: 'Lunch' },
         ],
       }));
 

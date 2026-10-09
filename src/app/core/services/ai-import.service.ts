@@ -1565,7 +1565,6 @@ export class AIImportService {
             ? (error as { code: string }).code
             : undefined;
           errors.push({
-            row: i + 1,
             transactionId: txn.id,
             message: error instanceof Error ? error.message : 'Unknown error',
             ...(code ? { code } : {}),
