@@ -14,6 +14,7 @@ import {
   WidgetSnapshotState,
   WidgetSnapshotTopBudget,
 } from '../../models';
+import { monthKey } from '../utils/transaction-date.utils';
 
 /**
  * Writes what the iOS home-screen widget shows: the figures the dashboard last
@@ -84,13 +85,12 @@ export class WidgetSnapshotService {
   private compose(state: WidgetSnapshotState, now: Date): WidgetSnapshot {
     const translation = this.injector.get(TranslationService);
     const localeFormat = this.injector.get(LocaleFormatService);
-    const month = String(now.getMonth() + 1).padStart(2, '0');
 
     return {
       version: 1,
       state,
       writtenAt: now.getTime(),
-      monthKey: `${now.getFullYear()}-${month}`,
+      monthKey: monthKey(now),
       labels: {
         title: translation.t('dashboard.thisMonth'),
         spent: translation.t('widget.spent'),

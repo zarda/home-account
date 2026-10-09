@@ -40,15 +40,14 @@ export class DateFormatService {
     const d = (date as Timestamp)?.toDate?.() ?? new Date(date as Date);
     const format = this.getDateFormat();
 
-    const day = d.getDate().toString().padStart(2, '0');
-    const month = (d.getMonth() + 1).toString().padStart(2, '0');
-    const year = d.getFullYear();
+    const key = dayKey(d);
+    const [year, month, day] = key.split('-');
 
     switch (format) {
       case 'DD/MM/YYYY':
         return `${day}/${month}/${year}`;
       case 'YYYY-MM-DD':
-        return dayKey(d);
+        return key;
       case 'MM/DD/YYYY':
         return `${month}/${day}/${year}`;
       case DATE_FORMAT_AUTO:

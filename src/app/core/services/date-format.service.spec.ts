@@ -95,6 +95,15 @@ describe('DateFormatService', () => {
         expect(withDateFormat('YYYY-MM-DD').formatDate(day)).toBe('2024-01-15');
       });
 
+      // Pin: the numeric patterns zero-pad a single-digit day and month; they
+      // were padded by hand before they were split from `dayKey`.
+      it('zero-pads a single-digit day and month in the numeric patterns', () => {
+        const fifth = new Date(2026, 0, 5);
+
+        expect(withDateFormat('DD/MM/YYYY').formatDate(fifth)).toBe('05/01/2026');
+        expect(withDateFormat('MM/DD/YYYY').formatDate(fifth)).toBe('01/05/2026');
+      });
+
       it('follows the active language on auto', () => {
         mockTranslationService.getIntlLocale.and.returnValue('ja-JP');
 
