@@ -176,6 +176,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0169](0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md) | A category's colour is drawn through the chip or a pipe that knows its surface, and the axe pass sweeps both themes below the fold | Accepted; closes three gaps of 0151 and two of accessibility.md | 2026-10-08 |
 | [0170](0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md) | The animations runtime, the unregistered worker and nine dead items come out | Accepted; applies 0048; amends 0112; closes gaps of 0009, 0036, 0045, 0051, 0059, 0105, 0111, 0112, 0113, 0115, 0116 and 0124; corrects a gap of 0023 | 2026-10-10 |
 | [0171](0171-second-copies-fold-into-one-copy-of-each-helper.md) | Second copies fold into one copy of each helper | Accepted; closes gaps of 0015, 0025, 0032, 0058, 0061, 0065 and 0067 | 2026-10-10 |
+| [0172](0172-a-closure-is-named-on-both-rows-and-the-adr-index-is-checked-against-the-records.md) | A closure is named on both rows, and the ADR index is checked against the records | Accepted; applies 0145 | 2026-10-10 |
 
 ## What belongs here
 
@@ -220,3 +221,21 @@ a generic consequences list to satisfy a template.
 
 Write what was true at the time. An ADR is not maintained as the code changes;
 if the decision is revisited, that is a new record.
+
+A record's status in the index also says what later records did to it. When
+a record closes a Known gap of an earlier one, both rows say so. The closer's
+status names the record whose gap it closed (`closes a gap of 0006`). The
+closed record's status names its closer (`concurrent-edit gap closed by
+0007`). The older row is the one that needs the pointer, because its record
+still describes the gap as open. A gap made smaller but not closed is
+written the same way, with *narrows* (`narrows a gap of 0006`,
+`quota gap narrowed by 0094`).
+
+`npm run adr-index:check`
+([0172](0172-a-closure-is-named-on-both-rows-and-the-adr-index-is-checked-against-the-records.md)),
+which runs in CI, holds the rows to the records. It reads every clause in a
+record's header that closes a gap, and every `Closed by NNNN` note in its
+body. It fails when either row leaves the other out. It reads only those two
+phrasings, so a closure written any other way is kept on both rows by hand.
+It skips code, so a record that quotes a closure as an example puts the
+quote in a code span.
