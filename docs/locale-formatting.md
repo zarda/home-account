@@ -52,8 +52,14 @@ follows it.
 `formatTime` renders the hour and minute in the active language's convention
 (`9:05 PM` in `en`, `21:05` in `ja`) and does not pad the hour, because
 padding is a choice the locale makes for itself. Same input and empty-string
-contract as `formatDate`. A row that shows a day and a time joins the two
-calls, as `import-history` and the security activity list do.
+contract as `formatDate`. The two rows that show a day and a time put them
+together differently. `import-history` joins `formatDate(date, 'short')` and
+`formatTime(date)` itself, with a space. The security activity list passes
+its relative day and the time through the translated `settings.activityAt`
+pattern (*{date} at {time}* in `en`), so each language orders and joins them
+its own way. Both used to call `toLocaleTimeString` with a two-digit hour,
+from two different locale sources
+([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)).
 
 ## In templates
 
@@ -113,6 +119,9 @@ Two formatters are machine-facing and must not follow the UI language:
 - **`formatReceiptItemLines`** (`receipt-consolidation.ts`) builds text that
   is **persisted** onto a transaction note. Its format must not depend on
   whichever language happened to be active when the receipt was imported.
+  Its `toLocaleString('en', …)` is pinned on purpose, and the line carries a
+  comment pointing here. It is the one `toLocaleString(` left outside this
+  service.
 
 The distinction to apply: formatting that is *rendered* follows the reader;
 formatting that is *stored or matched against* does not.
@@ -120,8 +129,9 @@ formatting that is *stored or matched against* does not.
 ## When you add another one
 
 Reach for `LocaleFormatService`, or the two pipes in a template. If you find
-yourself writing `toLocaleDateString()`, `toLocaleString()` or a `new Intl.…`
-in feature code, the question is which of the two kinds above it is. Rendered
-values belong here. Stored or matched values belong pinned, with a comment
-saying so — the three sites that called `toLocale*` with no argument at all
-were following the *browser's* locale, which is neither.
+yourself writing `toLocaleDateString()`, `toLocaleTimeString()`,
+`toLocaleString()` or a `new Intl.…` in feature code, the question is which
+of the two kinds above it is. Rendered values belong here. Stored or matched
+values belong pinned, with a comment saying so — the three sites that called
+`toLocale*` with no argument at all were following the *browser's* locale,
+which is neither.

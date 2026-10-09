@@ -225,7 +225,8 @@ rendered template needs them:
   echoes the params beside it when there are any, so an assertion can name the
   whole rendered label.
 - **`createLocaleFormatStub(overrides?)`** — for templates carrying
-  `localeDate` or `localeNumber`. Deliberately not `Intl`: the output is stable
+  `localeDate` or `localeNumber`, and for components that call `formatTime`
+  (it renders the UTC `HH:mm`). Deliberately not `Intl`: the output is stable
   text a spec can assert whole, and it does not move when a Node or ICU upgrade
   changes a separator.
 

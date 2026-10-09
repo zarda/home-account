@@ -51,8 +51,13 @@ as if the file had been dropped on the dropzone
    every auth change; with nobody signed in the row is written ownerless.
 4. The wizard, arriving with `?source=share`, drains the stash through
    `ShareIntakeService.consumeAll()` and hands the files to its normal
-   intake. Files that are oversized (>10 MB), empty, or of an unaccepted
-   type are dropped at this gate.
+   intake. Files that are oversized (more than `IMPORT_FILE_MAX_BYTES`,
+   10 MB), empty, or of an unaccepted type are dropped at this gate. The
+   wizard's dropzone reads the same constant, so a file is held to one
+   ceiling whichever way it arrives. It bounds the original. A receipt
+   photo's stored copy has its own 2 MB ceiling, `MAX_RECEIPT_BYTES`, met by
+   compression on upload and mirrored in `storage.rules`
+   ([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)).
 5. **The wizard takes both flags off its URL as it reads them**, so a
    reload or Back does not enter the share path again. Its own
    `stripShareParams` navigates with `replaceUrl`, keeping every other
@@ -164,10 +169,10 @@ gitignored Google client id into it.
 - Android native share intents are out of scope; the installed PWA's
   `share_target` covers Android Chrome.
 - The extension accepts what the share sheet offers as images/files; the
-  10 MB/type gate is applied at consumption, not in the extension. A raw
-  HEIC shared from the Files app (no JPEG representation requested) is
-  stashed as `image/heic`, rejected at that gate, and completed — only
-  Photos-style shares transcode.
+  size and type gate (`IMPORT_FILE_MAX_BYTES`, 10 MB) is applied at
+  consumption, not in the extension. A raw HEIC shared from the Files app
+  (no JPEG representation requested) is stashed as `image/heic`, rejected
+  at that gate, and completed — only Photos-style shares transcode.
 - The worker and the stash schema are version-locked: a stale cached
   worker still pinned at v1 cannot open the v2 database, and that share is
   lost. The worker redirects with `error=1`, and the wizard says the share

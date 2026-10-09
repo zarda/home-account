@@ -38,7 +38,7 @@ five ids — `DashboardCardId = 'recent' | 'upcoming' | 'chart' | 'insights' |
 |---|---|---|
 | Recent Transactions | `app-recent-transactions` | The five most recent transactions (`getRecentTransactions(5)`), independent of the selected period |
 | Upcoming Bills | `app-upcoming-bills` | The 14-day window's occurrences and the count of those behind its floor (`getUpcomingSchedule`), live-converted to the base currency |
-| Spending by Category | `app-spending-chart` | `categoryTotals` — the selected period's expenses folded by category |
+| Spending by Category | `app-spending-chart` | `categoryTotals` — the selected period's expenses folded by category through the shared `groupExpensesByCategoryWithCounts`, in base currency: largest first, each total rounded to the cent, and an exact tie ordered by category id rather than by which row the listener delivered first ([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)) |
 | AI Insights | `app-ai-summary` | The selected period's transactions, the previous period's totals and per-category breakdown, a trailing historical window sized by the account's RAG tier, active budgets and goals |
 | Budget Progress | `app-budget-progress` | `activeBudgets()` — and only while at least one exists; an account with no active budget never sees this card, arranged or not |
 

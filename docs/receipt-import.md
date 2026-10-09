@@ -932,6 +932,24 @@ can offer the key hint), `nothing_extracted` (an engine answered with no
 row) and `queue_write` (the offline queue could not store the image) — from
 the camera dialog; a wizard refusal is filed as `unknown`.
 
+**The camera dialog says a failure the way the wizard does.** The line
+under a failed capture comes from `parseAIError`, the classifier the
+wizard's error card reads, and the one `classifyReceiptFailure` files the
+record and the event with. A failure the classifier has a catalog key for
+is shown as that sentence, in the reader's language: no provider, cloud AI
+unreachable, queued offline, a queue write that kept nothing or only part,
+a rejected key (`import.errorInvalidKey`) and an answer cut short
+(`import.errorAnswerIncomplete`). Anything else is shown in the provider's
+own words, which cannot be translated, and an error with no text at all as
+*Could not process the image* (`import.errorProcessingFailed`). The dialog
+used to keep a table of its own that knew three of those codes, so a
+rejected key showed the provider's wording and a failed queue write its bare
+code ([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)).
+A rate limit, a network failure, a spent quota, a server error and a timeout
+carry no key, so for those the camera's one line still says less than the
+wizard's card, which adds a translated title and, for the first three, a
+hint.
+
 ## Offline capture and the queue
 
 An image captured offline is neither processed nor lost: it is stored in an
@@ -1016,7 +1034,12 @@ rather than rewritten. So a reclaimed receipt aims at exactly the documents its
 first pass wrote: a replay does not duplicate them and does not discard an edit
 you made to them in between. The count in the toast is what the receipt
 produced, so a receipt that had already fully landed reports its rows again and
-writes nothing. The reasoning, and what is still not guaranteed, is
+writes nothing. One helper names those rows: `queueRowTxId`, in
+`offline-queue.service.ts` beside the code that mints the queue id. The
+drain's photo plan, its existence check and its write all take the id from
+it, so none of them can aim at a different document from the others
+([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)).
+The reasoning, and what is still not guaranteed, is
 [ADR 0015](ADR/0015-reclaimed-receipts-replay-idempotently.md).
 
 A row the ledger refuses for good no longer fails the image around it. A

@@ -19,7 +19,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted; row anatomy revised by 0017 | 2026-08-03 |
 | [0013](0013-the-printed-total-is-the-amount-not-the-item-sum.md) | The printed total is the amount, not the sum of the items | Accepted; parser date-grade gap closed by 0074; on-device grade gap narrowed by 0147 | 2026-08-05 |
 | [0014](0014-recurrence-guards-and-anchors.md) | Recurrence validates at the edges, breaks in the loops, and anchors on the start date | Accepted; five gaps closed by 0141 | 2026-08-05 |
-| [0015](0015-reclaimed-receipts-replay-idempotently.md) | A reclaimed receipt replays onto the ids it already used | Accepted; closed-queue status gap narrowed by 0142 | 2026-08-05 |
+| [0015](0015-reclaimed-receipts-replay-idempotently.md) | A reclaimed receipt replays onto the ids it already used | Accepted; closed-queue status gap narrowed by 0142; id-coupling gap closed by 0171 | 2026-08-05 |
 | [0016](0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md) | Aggregate answers persist as snapshots that refresh locally | Accepted; amended by 0030, which closes three of its gaps | 2026-08-06 |
 | [0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md) | The row stacks its lines, and actions ride behind a swipe | Accepted | 2026-08-07 |
 | [0018](0018-account-deletion-is-a-client-side-cascade.md) | Account deletion is a client-side cascade | Accepted; closes a gap of 0002; its no-Cloud-Functions premise recorded as history by 0152 | 2026-08-07 |
@@ -29,14 +29,14 @@ reverse — why a thing is the way it is, not how to use it.
 | [0022](0022-the-forecast-baselines-at-zero-today.md) | The forecast baselines at zero today | Accepted | 2026-08-07 |
 | [0023](0023-the-initial-bundle-carries-only-the-entry-route.md) | The initial bundle carries only the entry route | Accepted; prefetch gap corrected by 0170 | 2026-08-08 |
 | [0024](0024-every-component-checks-with-onpush.md) | Every component checks with OnPush | Accepted | 2026-08-08 |
-| [0025](0025-provider-variation-lives-in-the-transport-seam.md) | Provider variation lives in the transport seam | Accepted; amended by 0043 | 2026-08-08 |
+| [0025](0025-provider-variation-lives-in-the-transport-seam.md) | Provider variation lives in the transport seam | Accepted; amended by 0043; request-options and prose-switch gaps closed by 0171 | 2026-08-08 |
 | [0026](0026-every-period-window-comes-from-one-helper.md) | Every period window comes from one helper | Accepted | 2026-08-08 |
 | [0027](0027-a-linked-transaction-carries-its-converted-amount.md) | A linked transaction carries its converted amount, and the goal keeps the sum | Accepted | 2026-08-08 |
 | [0028](0028-a-search-scope-only-names-what-a-transaction-carries.md) | A search scope only names what a transaction carries | Accepted | 2026-08-08 |
 | [0029](0029-every-stored-kind-has-one-door.md) | Every stored kind has one door, checked against the deletion cascade | Accepted | 2026-08-08 |
 | [0030](0030-a-stored-search-holds-either-figures-or-a-scope.md) | A stored search holds either figures or a scope; a pinned one does not expire | Accepted; amends 0016 and closes three of its gaps; amended by 0035 | 2026-08-08 |
 | [0031](0031-a-restore-merges-into-the-row-it-finds.md) | A restore merges into the row it finds; the backup's flags outrank the create defaults | Accepted; amends 0021; amended by 0143, which closes its order gap | 2026-08-09 |
-| [0032](0032-a-sweep-is-only-as-wide-as-its-greps.md) | A sweep is only as wide as its greps | Accepted; extends 0026; zone gap closed by 0050, audit gap by 0145 | 2026-08-10 |
+| [0032](0032-a-sweep-is-only-as-wide-as-its-greps.md) | A sweep is only as wide as its greps | Accepted; extends 0026; zone gap closed by 0050, audit gap by 0145, dayKey-copies gap by 0171 | 2026-08-10 |
 | [0033](0033-a-stored-figure-is-re-taken-only-when-its-input-moved.md) | A stored figure is re-taken only when its input moved, and its unit never moves under it | Accepted; amends 0027 | 2026-08-11 |
 | [0034](0034-a-correctness-read-enumerates-the-collection.md) | A correctness-bearing read enumerates the collection, never a listener's first emission | Accepted | 2026-08-11 |
 | [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted; the deploy gap closed by 0077 | 2026-08-12 |
@@ -62,16 +62,16 @@ reverse — why a thing is the way it is, not how to use it.
 | [0055](0055-the-active-route-is-announced-not-only-coloured.md) | The active route is announced, not only coloured | Accepted; landmark gap closed by 0165 | 2026-08-17 |
 | [0056](0056-a-permission-the-rules-grant-has-a-door-in-the-ui.md) | A permission the rules grant has a door in the UI | Accepted | 2026-08-17 |
 | [0057](0057-a-replayed-answer-enumerates-and-reports.md) | A replayed answer enumerates, and reports | Accepted | 2026-08-19 |
-| [0058](0058-a-formatted-date-follows-the-chosen-language.md) | A formatted date follows the chosen language | Accepted; pipe-ban gap closed by 0145 | 2026-08-19 |
+| [0058](0058-a-formatted-date-follows-the-chosen-language.md) | A formatted date follows the chosen language | Accepted; pipe-ban gap closed by 0145, time-formatting gap by 0171 | 2026-08-19 |
 | [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 and closes a gap of it; Category and tag-separator gaps closed by 0150, originalText gap by 0170 | 2026-08-20 |
 | [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted; split parts excepted by 0106; provenance extended by 0065; offline-queue gap closed by 0142 | 2026-08-20 |
-| [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted; inline-retry gap closed by 0165 | 2026-08-21 |
+| [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted; inline-retry gap closed by 0165, dashboard-fold gap by 0171 | 2026-08-21 |
 | [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted; amended by 0099; third-currency gap closed and bulk-apply gap narrowed by 0149 | 2026-08-22 |
 | [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted; ladder kept by 0102; backup rule-link gap narrowed by 0147 | 2026-08-22 |
 | [0064](0064-the-country-comes-off-the-paper-before-the-phone.md) | The country comes off the paper before it comes off the phone | Accepted; amended by 0068 | 2026-08-23 |
-| [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted; closes a gap of 0008; extends 0060; processingSource removed by 0125 | 2026-08-23 |
+| [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted; closes a gap of 0008; extends 0060; processingSource removed by 0125; camera-mapper gap closed by 0171 | 2026-08-23 |
 | [0066](0066-an-answers-budget-follows-its-question.md) | An answer's budget follows its question, and a cut-off answer is read as far as it goes | Accepted | 2026-08-24 |
-| [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted | 2026-08-25 |
+| [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted; dropzone-ceiling gap closed by 0171 | 2026-08-25 |
 | [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted; hand-editing gap closed by 0102, rollup-rate gap by 0148 | 2026-08-26 |
 | [0069](0069-one-ladder-decides-what-is-the-same-merchant.md) | One ladder decides what is the same merchant, and it stays a string ladder | Accepted | 2026-08-26 |
 | [0070](0070-accessibility-preferences-ride-the-account-and-land-on-the-root.md) | Accessibility preferences ride the account, and land on the root | Accepted | 2026-08-27 |
@@ -175,6 +175,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0168](0168-the-palette-lists-the-shortcuts-and-the-header-opens-it-and-about-offers-to-install-the-app.md) | The palette lists the shortcuts and the header opens it, and About offers to install the app | Accepted; closes gaps of 0073 and 0112; amends 0112 | 2026-10-08 |
 | [0169](0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md) | A category's colour is drawn through the chip or a pipe that knows its surface, and the axe pass sweeps both themes below the fold | Accepted; closes three gaps of 0151 and two of accessibility.md | 2026-10-08 |
 | [0170](0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md) | The animations runtime, the unregistered worker and nine dead items come out | Accepted; applies 0048; amends 0112; closes gaps of 0009, 0036, 0045, 0051, 0059, 0105, 0111, 0112, 0113, 0115, 0116 and 0124; corrects a gap of 0023 | 2026-10-10 |
+| [0171](0171-second-copies-fold-into-one-copy-of-each-helper.md) | Second copies fold into one copy of each helper | Accepted; closes gaps of 0015, 0025, 0032, 0058, 0061, 0065 and 0067 | 2026-10-10 |
 
 ## What belongs here
 
