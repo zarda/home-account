@@ -340,13 +340,12 @@ Three of the issue's claims were wrong, and two more were half right.
   `."`.
 - **A note naming two closers credits only the first.** In
   `Closed by [0181] and [0182]` the pattern takes 0181 and stops.
-- **The index is checked against the records, not the reverse.** Two
-  closures the index states have no record behind them. 0140's row says
-  `closes a gap of 0102`, but 0140 never mentions 0102. 0145's row lists
-  0139 among the records whose gaps it closes, but 0145 mentions 0139 only
-  to say that it kept that record's `firstValueFrom` lint selectors. Neither
-  older row names its supposed closer. Both claims are left standing until
-  the owner decides whether to strip them.
+- **The index is checked against the records, not the reverse.** A
+  closure the index states with no record behind it passes. Two were found
+  and taken out of their rows: 0140's said `closes a gap of 0102`, though
+  0140 never mentions 0102, and 0145's listed 0139 among the records whose
+  gaps it closes, though 0145 mentions 0139 only to say that it kept that
+  record's `firstValueFrom` lint selectors. Nothing would catch a third.
 - **A closure kept by hand has no guard.** Nothing holds the hand-verified
   rows above or the phrasings the gate misses. An edit that drops one side
   passes.
