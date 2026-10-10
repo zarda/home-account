@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef } from '@angular/material/dialog';
 
 import { OnboardingDialogComponent } from './onboarding-dialog.component';
 import { TranslationService } from '../../../core/services/translation.service';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('OnboardingDialogComponent', () => {
   let fixture: ComponentFixture<OnboardingDialogComponent>;
@@ -23,10 +23,11 @@ describe('OnboardingDialogComponent', () => {
     );
 
     await TestBed.configureTestingModule({
-      imports: [OnboardingDialogComponent, NoopAnimationsModule],
+      imports: [OnboardingDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: TranslationService, useValue: translationService },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

@@ -99,6 +99,15 @@ and [receipt-import.md](receipt-import.md).
 | `parseMonthKey(key)` | `{ year, month } \| null` | `month` is 0-11, to match `Date` |
 | `parseDateInput(value)` | `Date \| null` | For untrusted input: model JSON, CSV cells, queued rows, and the `{ seconds, nanoseconds }` map a backup file carries |
 
+`dayKey` and `monthKey` are the only places a day or month key is built, and
+`dayKey` is built on `monthKey`. A caller that wants the parts splits the
+key: `DateFormatService`'s numeric patterns take `dayKey(d).split('-')`. The
+search context's `today` is `dayKey(new Date())`, and the widget snapshot's
+`monthKey` is `monthKey(now)`. Each of the three had its own `padStart` copy
+until [ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md).
+`grep -rn "padStart(2, '0')" src/app --include='*.ts' | grep -v spec` prints
+the two helpers and two hex encoders, and nothing else.
+
 `parseDayKey` rejects a well-shaped date that does not exist rather than
 falling through to the platform, which does not reject it either —
 `new Date('2026-02-31')` is 3 March in V8. Having recognised the format, a date
@@ -300,7 +309,8 @@ Anything else is the #174 shape and should go through `parseDateInput`.
   grep for, the same arithmetic split across two lines, or a day step hidden
   behind a `DAY_MS` constant. `eslint.config.js` still has no date rule. Two
   sweeps' worth of stragglers (#248, #266, #267) is what reviewer-only greps
-  cost; see ADR 0032.
+  cost; see ADR 0032. `dates:check` came with ADR 0145 (#435), which narrowed
+  this gap to what the greps cannot see.
 - **Weekly budgets label with an ISO week but window on their own weekday.**
   `budgetPeriodWindow('weekly', …)` runs from the anchor's day of the week,
   while `budgetPeriodKey(…, 'weekly')` is an ISO week number, which always

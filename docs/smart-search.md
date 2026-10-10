@@ -163,9 +163,10 @@ than a copy. The description line returns after a refresh.
 - Pinning fifty records leaves the collection unbounded: nothing prunes a
   pinned record, and saved searches have always behaved the same way.
 - The answer card's scope line shows only the resolved date range. A goal or
-  category in the scope narrows the figures but is not named there; opening
-  the matching transactions is where you see it. For a filter record this
-  matters more — the chips it was made of are not named on the row either.
+  category in the scope narrows the figures but is not named there (#444);
+  opening the matching transactions is where you see it. For a filter record
+  this matters more — the chips it was made of are not named on the row
+  either.
 - A search that falls back to keyword matching is not recorded here at all; it
   goes to the recent-searches list instead, because there was no
   interpretation to store.

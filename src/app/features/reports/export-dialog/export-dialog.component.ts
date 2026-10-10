@@ -13,6 +13,7 @@ import { ExportService, ReportData } from '../../../core/services/export.service
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
+import { groupExpensesByCategory } from '../../../core/utils/transaction-aggregation.utils';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -173,12 +174,6 @@ export class ExportDialogComponent {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + this.toBaseCurrency(t), 0);
 
-    const categoryTotals = new Map<string, number>();
-    for (const t of this.data.transactions.filter(t => t.type === 'expense')) {
-      const current = categoryTotals.get(t.categoryId) || 0;
-      categoryTotals.set(t.categoryId, current + this.toBaseCurrency(t));
-    }
-
     const reportData: ReportData = {
       title: this.translationService.t('reports.pdfTitle'),
       period: this.dateRangeLabel,
@@ -188,10 +183,10 @@ export class ExportDialogComponent {
         expense: totalExpense,
         balance: totalIncome - totalExpense,
         transactionCount: this.data.transactions.length,
-        byCategory: Array.from(categoryTotals.entries()).map(([categoryId, total]) => ({
-          categoryId,
-          total,
-        })),
+        // Ranked by the shared category fold, an exact tie by category id,
+        // as the reports page's top five are; its full breakdown still ranks
+        // a tie first-seen (ADR 0171, Remaining folds).
+        byCategory: groupExpensesByCategory(this.data.transactions, t => this.toBaseCurrency(t)),
       },
       categories: this.data.categories,
       currency: this.data.currency,

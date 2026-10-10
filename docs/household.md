@@ -37,7 +37,8 @@ says so.
   gaps are closed by 0158.
 - [ADR 0157](ADR/0157-a-transaction-is-private-until-its-owner-shares-it-and-a-household-sees-a-faithful-copy.md)
   — a transaction is private until its owner shares it, and a household sees
-  a faithful copy.
+  a faithful copy. Amended by 0173: the ids the app picks for a recurring
+  posting and for a queued scan's rows are opaque digests.
 - [ADR 0158](ADR/0158-an-account-holds-up-to-ten-memberships-each-named-by-an-index-it-owns.md)
   — an account holds up to ten memberships, each named by an index it owns.
 - [ADR 0159](ADR/0159-a-copy-follows-its-row-in-a-commit-of-its-own-and-a-sweep-repairs-what-the-follow-ups-miss.md)
@@ -72,12 +73,20 @@ receipts (neither the photos nor their links), its tags, its location — not
 even the place's name — its recurring or split links, the personal goal it
 counts toward, or its base-currency snapshot (`baseCurrency`, `exchangeRate`,
 `amountInBaseCurrency`). The row's id, though, is the copy's own id and its
-`sourceId`, and some ids say more than which row: a recurring posting's is
-`rec-{ruleId}-{occurrenceMs}`, and the rows of a scan queued offline are
-`img_{queuedMs}_{random}-{index}`. So the copy data tells a member, though
-no screen shows it, which shared rows one recurring rule posted — the
-recurring link the fields leave out — and when a scan was queued and which
-rows came from it ([Known gaps](#known-gaps)). The currency each shared row
+`sourceId`. The ids the app picks itself, for a recurring posting and for the
+rows of a scan queued offline, are 32 lower-case hex characters: a digest
+that does not spell the rule, the day it fell due, the image or when it was
+queued
+([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)),
+though a member who already knows a rule's id can test a copy against it
+([Known gaps](#known-gaps)).
+Some older rows still carry ids that say more: a recurring posting written
+before that change is `rec-{ruleId}-{occurrenceMs}`, and a row read off an
+image the earlier app queued is `img_{queuedMs}_{random}-{index}`. For those
+rows the copy data tells a member, though no screen shows it, which shared
+rows one recurring rule posted — the recurring link the fields leave out —
+and when a scan was queued and which rows came from it
+([Known gaps](#known-gaps) names every such row). The currency each shared row
 was entered in shows; the member's base currency does not. The rules hold a
 copy to exactly these fields ([below](#the-rules-and-what-they-cost)), and
 `npm run ledger:check` fails when the app's list and the rules' differ.
@@ -1260,8 +1269,8 @@ the first sign.
   the share controls. The accept disclosure is pinned to
   `LEDGER_COPY_FIELDS`: each field a copy carries is named by the word the
   dialog uses for it or marked as showing none of the row's content (who
-  shared it, the stamps and the goal link), except the row's id, which for a
-  recurring posting or a queued scan says more and which the dialog does not
+  shared it, the stamps and the goal link), except the row's id, which says
+  more for a row still named the old way and which the dialog does not
   mention ([Known gaps](#known-gaps), #466); the note, receipts, tags and
   place are named as never shown.
 - `npm run smoke` — the rules matrix for households (the index, the copies,
@@ -1454,16 +1463,38 @@ the first sign.
   purge fails, the page says the households still show them, and copies of
   rows that no longer exist stay until it is run again or the next full
   pass ([Sharing](#sharing)).
-- **A copy's id carries its row's id** (#466). A copy is named
-  `{uid}_{txId}` and holds the row id as `sourceId`, since the rules judge a
-  copy against the row that id names. A recurring posting's id is
-  `rec-{ruleId}-{occurrenceMs}`, so a member reading the copy data (the
-  cache, or a hand-written query) can tell, though no screen shows it, which
-  shared rows one recurring rule posted and when each was due: the recurring
-  link the copy's fields leave out. The rows of a scan queued offline are
-  `img_{queuedMs}_{random}-{index}`, which tells when the scan was queued
-  and which shared rows came from it. The join disclosure describes what the
-  page shows and does not mention it.
+- **Some copies' ids still say where their rows came from** (#466). A copy
+  is named `{uid}_{txId}` and holds the row id as `sourceId`, since the rules
+  judge a copy against the row that id names. The ids the app picks for a
+  recurring posting and a queued scan's rows are opaque digests now
+  ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)),
+  but nothing migrates the rows named before. A recurring posting written
+  before that change is `rec-{ruleId}-{occurrenceMs}`, so a member reading
+  the copy data (the cache, or a hand-written query) can tell, though no
+  screen shows it, which shared rows one recurring rule posted and when each
+  was due: the recurring link the copy's fields leave out. A row read off an
+  image the earlier app queued is `img_{queuedMs}_{random}-{index}`, which
+  tells when the scan was queued and which shared rows came from it; such an
+  image keeps that shape whenever it is drained, so that a drain the earlier
+  app left half done resumes at the rows it wrote. A copy of the earlier app
+  that is still running, in a tab opened before the update or an installed
+  app not yet updated, names its rows the old way too, and the `/data`
+  restore writes a row back at the id its file holds, whatever its shape.
+  Even an opaque id leaves the content: the copies of one rule's postings
+  share their description, amount and category, and each copy's date is its
+  day, so a member can still group them by eye, and confirm them for a
+  rule whose id the household has seen (the next gap). The join disclosure
+  describes what the page shows and does not mention the id.
+- **A rule's id, once a household has seen it, links its later postings.**
+  The digest is unkeyed, and its inputs are the rule's id and the occurrence
+  time, which a copy's `date` holds to the millisecond. Once one of the rows
+  above has shown a household a rule's id — a posting written before the
+  change, one an earlier app still running posted, a restored row — a
+  member can recompute the digest over any later copy's date and match it
+  against the copy's `sourceId`, so every later posting of that rule stays
+  linkable to it. A secret salt per rule, kept where no member reads it,
+  would close this; it is a decision for the owner and not taken yet
+  ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
 - A member's new name or picture reaches the others only once that member's
   own page opens after the change; a member who never opens it again stays as
   they were. The picture is the profile's, which takes it from the sign-in

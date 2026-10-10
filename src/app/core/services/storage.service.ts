@@ -9,7 +9,13 @@ import {
 } from '@angular/fire/storage';
 import { prepareReceiptImage } from '../utils/receipt-image.utils';
 
-/** Maximum receipt image size in bytes (2 MB). Mirrors storage.rules. */
+/**
+ * Maximum stored receipt image size in bytes (2 MB). It applies to the photo
+ * after `prepareReceiptImage` has compressed it, not to the original, whose
+ * ceiling is `IMPORT_FILE_MAX_BYTES`. storage.rules repeats it in both
+ * `request.resource.size` clauses, and storage.service.spec.ts holds the two
+ * together.
+ */
 export const MAX_RECEIPT_BYTES = 2 * 1024 * 1024;
 
 /**
@@ -28,9 +34,16 @@ export const MAX_RECEIPTS_PER_TRANSACTION = 5;
  * Slot 0 stays unsuffixed so every object uploaded before slots existed is
  * still addressable at its original key — no migration, no dual-path
  * lookup. The suffix cannot alias another transaction's slot 0 because no
- * transaction id contains an underscore: Firestore auto-ids draw from
- * [A-Za-z0-9], and the only caller-supplied ids are the recurring engine's
- * `rec-{ruleId}-{timestamp}`, which are hyphen-separated.
+ * transaction id ends in an underscore and digits. Firestore auto-ids draw
+ * from [A-Za-z0-9], and the ids the app chooses for a recurring posting or
+ * a queued scan's row are 32 lower-case hex digests (`opaqueRowId`). The
+ * older shapes — kept by earlier rows, written back by a restore, and still
+ * drained to by an entry the previous build queued — end in a hyphen and
+ * digits: the recurring engine's `rec-{ruleId}-{timestamp}` holds no
+ * underscore at all, and a queued scan's `img_{timestamp}_{random}-{index}`
+ * holds two but always ends in `-{index}`. Nor can two slot keys meet: the
+ * part after the last underscore is the slot, so equal keys name the same
+ * transaction.
  *
  * The name is a single path segment either way, so storage.rules'
  * `users/{userId}/receipts/{fileName}` match covers every slot; a nested

@@ -1,6 +1,5 @@
 import { WritableSignal, computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -28,6 +27,7 @@ import {
   createTranslationStub,
   createUser,
   paintedBackground,
+  provideNoMotion,
   ratio,
   runAxe,
   settleAnimations,
@@ -187,7 +187,7 @@ describe('HouseholdPlansComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HouseholdPlansComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideNativeDateAdapter(),
         { provide: HouseholdPlansService, useValue: { ...plans, ...writes } },
         {

@@ -269,7 +269,6 @@ For each UNIQUE transaction/line item found, extract:
 - currency: ${CURRENCY_FIELD}
 - receiptId: integer grouping items from the same receipt (1, 2, 3...)
 - imageIndex: which image this item appears in (0-based)
-- positionInImage: "top", "middle", or "bottom" based on vertical position
 - confidence: your confidence in the extraction accuracy (0.0 to 1.0)
 - dateConfidence: how clearly the date was legible, 0.0 to 1.0
 - merchant: store name (optional)
@@ -294,7 +293,6 @@ Return ONLY a valid JSON array (no markdown):
     "currency": "<ISO 4217 code>",
     "receiptId": 1,
     "imageIndex": 0,
-    "positionInImage": "middle",
     "confidence": 0.95,
     "dateConfidence": 0.95,
     "merchant": "Store name",
@@ -315,8 +313,7 @@ If no transactions can be extracted, return an empty array: []`,
 }
 
 /**
- * Break a single receipt photo into one row per purchased item, with the
- * position metadata the consolidation pass uses to detect overlap.
+ * Break a single receipt photo into one row per purchased item.
  */
 export function renderReceiptItems(): RenderedPrompt {
   return {
@@ -334,7 +331,6 @@ FIELDS PER ITEM:
 - type: "expense"
 - currency: ${CURRENCY_FIELD}
 - receiptId: Integer grouping items from the same receipt (1, 2, 3...)
-- positionInImage: "top", "middle", "bottom"
 - confidence: 0.0-1.0
 - dateConfidence: 0.0-1.0, how clearly the date was legible
 - category: Restaurants, Groceries, Coffee & Drinks, Fast Food, Shopping, Other (optional)
@@ -350,8 +346,8 @@ ${RECEIPT_COUNTRY_FIELD}
 
 Example:
 [
-  {"date":"2024-04-11","description":"<item name as printed>","amount":151,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"middle","confidence":0.95,"dateConfidence":0.95,"merchant":"<store name as printed>"},
-  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"dateConfidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19","receiptTotal":481,"location":"<branch or address as printed, or empty>","country":"<ISO 3166-1 alpha-2 of the issuing country, or empty>"}
+  {"date":"2024-04-11","description":"<item name as printed>","amount":151,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"confidence":0.95,"dateConfidence":0.95,"merchant":"<store name as printed>"},
+  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"confidence":0.90,"dateConfidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19","receiptTotal":481,"location":"<branch or address as printed, or empty>","country":"<ISO 3166-1 alpha-2 of the issuing country, or empty>"}
 ]
 
 Output ONLY JSON array. Nothing else.`,

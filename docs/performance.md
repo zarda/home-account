@@ -17,6 +17,16 @@ one downloads that page and not the other five. `login` and the layout
 itself stay eager: the layout renders the outlet the others load into, and
 login is where an unauthenticated visitor lands.
 
+No service worker caches or prefetches the app. The only service worker,
+`public/share-target-sw.js`, answers the share-target POST and raises
+reminders' notifications, and every other request goes to the network
+([share-import.md](share-import.md)). The Angular service worker the
+production build used to emit was never registered, so its prefetch of every
+lazy chunk, which this page once counted as a cost, never ran, and it is gone
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
+A returning visitor's lazy chunks come from the network or from the HTTP
+cache under Hosting's default headers.
+
 ## The heavy dependencies, and where each one loads
 
 | Dependency | Size | Loaded by |
@@ -143,16 +153,68 @@ toggle on real routed UI instead.
 
 `angular.json` carries an `initial` budget in both the `production` and
 `production-local` configurations — the same numbers in both, because
-`build:ios` uses the second one and they would otherwise drift.
+`build:ios` uses the second one and they would otherwise drift;
+`build-configurations.spec.ts` pins that they are equal.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.472 MB | 2.7 MB |
+| Initial bundle | 2.407 MB | 2.7 MB |
 
-Against 2,471,499 bytes, measured from a clean production build on
-2026-10-09. The warning stood at 2.45 MB until household sharing (#465) put
-the initial bundle 12.85 kB over it, and moved by that much and no more. It
-moved again, from 2.47 MB to 2.472 MB, when the theme, dashboard and
+Against 2,406,611 bytes (JavaScript 2,375,720, stylesheet 30,891, in 58
+initial files), measured by `npm run build:analyze` from a clean production
+build on 2026-10-10. The warning came down from 2.472 MB to 2.408 MB when the
+deprecated animations runtime went out: `provideAnimations()`, the
+`@angular/platform-browser/animations` wrapper it pulled in and the
+`@angular/animations` package behind it were 64,539 bytes of the initial
+JavaScript, from 2,471,499 bytes before. The budget gave back 64 kB of that,
+rounded down to the whole kilobyte, so the rest is headroom. Material and the
+CDK animate with CSS and need none of it, and the specs turn motion off with
+`provideNoMotion()` instead.
+
+It came down once more, to 2.407 MB, when the removals of #437 took 1,075
+bytes net off the 2,406,960 bytes the animations runtime's removal had left
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
+The removals were larger than that and some of what came in beside them is
+eager: out went the background-sync seam nothing answers (in `PwaService` and
+the offline queue), the monthly totals and the category getter of
+`TransactionService` that nothing called, and the position, row-number and
+free-text fields the import carried and nothing read. In came the shared
+category fold, which `cloud-llm-provider.base` now imports from
+`transaction-aggregation.utils` (a 2,593-byte initial chunk of its own), and
+the opaque row-id helper that `recurring.service` and the offline queue reach
+at startup (331 bytes).
+
+That lowering ran ahead of the final figure. It was set when the drop was
+1,075 bytes, and the branch's later code took some of it back: the net saving
+since the animations runtime's removal is 349 bytes (2,406,960 less
+2,406,611), less than the kilobyte the warning was lowered by. Two of the
+later additions are pure split points of modules the initial graph already
+held. The import history, a lazy chunk, came to import `importFailureKey` from
+`import-review.utils.ts` for its error lines, and `parseAIError` with its
+codes from `ai-error.utils.ts` to read the classifier's own sentences. A
+module with a second, lazy importer is cut out of the chunk that held it into
+one of its own, and the cut costs the export and import lines around it.
+`import-review.utils.ts` is now a shared initial chunk of 4,445 bytes (+347)
+and `ai-error.utils.ts` one of 3,078 bytes (+189). The last addition is not a
+split. The offline queue card's count is taken again whenever the signed-in
+account changes, so `OfflineQueueService`, an initial service, gained an
+effect on the account, a `catch` for the recount's read and the release of
+its handle on destroy: +192 bytes (2,406,419 to 2,406,611), 100 of them the
+effect and 92 the `catch` and the release.
+
+The warning stays at 2.407 MB. The final build leaves 389 bytes of headroom
+under it, which is now less than the 501 bytes the main branch had under the
+2.472 MB warning at `8a6e2c9a` (2,471,499 bytes). `about.component.ts` and
+`feedback.service.ts` import `package.json` whole, but a version string of the
+same length adds nothing of its own. The bump from 26.10.171 to 26.10.172 moved
+the total from 2,406,421 to 2,406,419 bytes all the same, and all of it in the
+entry chunk: the new content hashes left two fewer of the chunk file names it
+imports with a ninth character. So a bump can still move the figure by a byte
+or two.
+
+The warning had stood at 2.45 MB until household sharing (#465) put the
+initial bundle 12.85 kB over it, and moved by that much and no more. It then
+moved, from 2.47 MB to 2.472 MB, when the theme, dashboard and
 notification work of #436, #440, #442, #446 and #461 put it 1,499 bytes
 over. That work grew the initial JavaScript by 5.9 kB and shrank the
 stylesheet by 0.9 kB: the theme aliases came in and the palette ramp and
@@ -177,24 +239,43 @@ fold household figures load with the household page's own route, so neither
 is in it. To re-measure after a change that could move it:
 
 ```bash
-rm -rf dist && npm run build:prod
+rm -rf dist && npm run build:analyze
 ```
 
-Read the `Initial total` row. A budget set from an incremental build is
-worse than no budget, hence the `rm -rf`. If a deliberate change moves the
-number, move the budget in the same commit and say what bought the space —
-a budget quietly raised to fit the app stops being a gate, which is the
-state this one was in before it was lowered.
+Read the `Initial total` line it prints last: the exact bytes, and the
+JavaScript and the stylesheet apart. The build's own chunk table rounds each
+file to 0.01 kB and the total to 0.01 MB, which is too coarse when the
+headroom is under a kilobyte. A budget set from an incremental build is worse
+than no budget, hence the `rm -rf`. If a deliberate change moves the number,
+move the budget in the same commit and say what bought the space — a budget
+quietly raised to fit the app stops being a gate, which is the state this one
+was in before it was lowered.
+
+## What fills the initial bundle
+
+`npm run build:analyze` (`scripts/analyze-bundle.mjs`) runs the production
+build with `--stats-json`, which makes the builder write
+`dist/home-account/stats.json`, and then reads that file. For every initial
+output, largest first, it prints the ten inputs that put the most bytes into
+it, and then the initial total. So when the figure moves, the line that
+moved names the module, where before it meant reading the chunk table and
+grepping `dist/` for a symbol, as the `jsPDF` check in ADR 0023 did.
+
+"Initial" is the builder's own rule, mirrored from `@angular/build`: an
+output that carries an entry point and is named `main`, `polyfills` or
+`styles`, plus everything those reach through static imports, transitively.
+A dynamic import is lazy however large its target, and a lazy chunk carries
+an entry point too, so the entry point alone decides nothing. The total sums
+every initial output's bytes, the stylesheet included, which is the sum the
+initial budget is measured against. A metafile the script no longer
+understands fails the run rather than printing a total over the wrong files.
+
+Its `--self-test` checks that rule against an inline metafile and runs in
+CI. The real run needs a production build, so it is local only
+([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
 
 ## Known gaps
 
-- `ngsw-config.json` prefetches `/*.js` in its `app` asset group, so the
-  service worker still downloads every lazy chunk at install time. Lazy
-  routes cut what the browser parses and executes on first paint, and they
-  restore the budget as a working signal; they do not cut the bytes a
-  returning installed PWA has already fetched in the background.
 - Nothing measures the initial bundle in CI beyond the budget. The budget
-  catches growth past a threshold, not a steady creep beneath it.
-- There is no bundle-analysis script. Attributing a regression means
-  reading the chunk table from `build:prod` and grepping `dist/` for the
-  symbol, as the `jsPDF` check in ADR 0023 did.
+  catches growth past a threshold, not a steady creep beneath it, and
+  `build:analyze` runs only when someone runs it.

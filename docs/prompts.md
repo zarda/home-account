@@ -32,7 +32,7 @@ const rendered = renderPrompt('categorizeTransactions', {
 });
 ```
 
-Most prompts are rendered once, in `CloudLLMProviderBase` (`core/services/cloud-llm-provider.base.ts`), which every provider service extends. What each provider still owns is its transport: `sendText` and `sendVision`, and the `renderedText` strategy behind them. Gemini prepends the JSON-only preamble when `expects === 'json'`, doubles the token budget for Gemma's verbose drafting, and carries the declared temperature in `generationConfig`; OpenAI flattens `system` into the input and sends no sampling parameter at all; Claude hoists `system` to its top-level parameter and sends the temperature only on models that still accept one. Nobody writes "return ONLY valid JSON" for Gemini's benefit again — they set `expects: 'json'`. ADR 0025 records why the variation lives there and nowhere else.
+Most prompts are rendered once, in `CloudLLMProviderBase` (`core/services/cloud-llm-provider.base.ts`), which every provider service extends. What each provider still owns is its transport: `sendText` and `sendVision`, and the `renderedText` strategy behind them. Gemini prepends the JSON-only preamble when `expects === 'json'`, doubles the token budget for Gemma's verbose drafting, and carries the declared temperature in `generationConfig`; OpenAI flattens `system` into the input and sends no sampling parameter at all; Claude hoists `system` to its top-level parameter and sends the temperature only on models that still accept one. Nobody writes "return ONLY valid JSON" for Gemini's benefit again — they set `expects: 'json'`, on the render and on the prompt's registry entry. The entry's copy is a literal the type system can read, and a registry spec holds it equal to the render's. `ProsePromptId` is every id whose entry does not expect JSON, and Gemini's prose clean-ups are a table keyed by it, so a new prose prompt does not compile until the Gemini transport says what happens to its answer, even when that is nothing. The cancellation signal travels the same way for all three: the base's `requestOptions` builds the options argument each SDK call takes. ADR 0025 records why the variation lives there and nowhere else, and [ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md) why the table and the options moved.
 
 A call site in the base reaches all three providers by construction, so `npm run prompts:check` counts it as all three. It also fails on the two ways that can go wrong: a prompt rendered in the base *and* in a provider file, where one of the two must be drift, and a single-provider exemption claimed by a prompt the base renders.
 
@@ -80,7 +80,7 @@ A prompt asks for what the paper says, not for a conclusion the app draws for it
 |---|---|---|---|---|
 | `receiptParse` | receiptScanning | claude, gemini, openai | 1.17.93 | One receipt photo → one transaction, with `receiptCount` so several receipts in one photo are noticed; reports the issuing country as an alpha-2 code |
 | `receiptSummary` | receiptScanning | gemini | 1.17.93 | One receipt photo → one summary row carrying the full receipt body as notes; reports the issuing country as an alpha-2 code |
-| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total, with position metadata for overlap detection; reports the issuing country as an alpha-2 code |
+| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total; reports the issuing country as an alpha-2 code |
 | `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item; reports the issuing country as an alpha-2 code |
 | `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges, one printed total per group; reports the issuing country as an alpha-2 code. The only prompt whose `maxOutputTokens` is computed rather than fixed — the answer grows with the photo count, so the budget does too (ADR 0066) |
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row; sent in chunks of 25 rows so every answer fits the declared 800-token budget |
@@ -107,7 +107,7 @@ An exemption names concrete provider files, so an exempted prompt has to be rend
 | Prompt | Sent by | Gap |
 |---|---|---|
 | `receiptSummary` | gemini | The other two go straight to statement extraction |
-| `receiptItems` | gemini | Position-aware single-image itemization has no OpenAI/Claude counterpart yet |
+| `receiptItems` | gemini | Single-image itemization has no OpenAI/Claude counterpart yet |
 
 ## What the check cannot see
 

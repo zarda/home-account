@@ -460,7 +460,6 @@
     "jsonDescription": "Full data export for backup purposes",
     "summaryCsvDescription": "Totals per category as a spreadsheet",
     "summaryPdfDescription": "Totals per category as a printable report",
-    "transactionsLabel": "{{count}} transactions",
     "selectMonth": "Select Month",
     "selectYear": "Select Year",
     "pdf": {
@@ -1327,6 +1326,7 @@
     "statusProcessing": "Processing",
     "skipped": "Skipped",
     "errors": "Errors",
+    "moreErrors": "+{{others}} more",
     "engineCloud": "Cloud AI",
     "engineNative": "On-device",
     "engineCloudAfterNative": "Cloud AI, after on-device fell short",
@@ -1487,7 +1487,11 @@
     "errorQueueWritePartial": "Some images could not be saved for later. The ones that were saved are on your device and will be processed when you are back online.",
     "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing.",
     "errorAnswerIncomplete": "The reader ran out of room before it finished this receipt. Try again, or with fewer photos at a time.",
-    "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below, and add anything that is not here — Add a row under the list starts a blank one."
+    "errorServer": "The AI service was temporarily unavailable. Try again later.",
+    "errorTimeout": "The AI took too long to answer. Try a clearer photo, or fewer photos at a time.",
+    "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below, and add anything that is not here — Add a row under the list starts a blank one.",
+    "pdfPagesTruncated": "Only the first {{read}} of {{total}} pages of the PDF were read.",
+    "pdfPagesTruncatedMore": "Other PDFs also read only in part: {{others}}."
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

@@ -3,7 +3,6 @@ import type {
   GoogleGenerativeAI,
   GenerativeModel,
   GenerateContentResult,
-  SingleRequestOptions,
 } from '@google/generative-ai';
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
@@ -24,6 +23,7 @@ import {
   JSON_ONLY_PREAMBLE,
   PROMPTS,
   PromptId,
+  ProsePromptId,
   RenderedPrompt,
   renderPrompt,
 } from '../prompts';
@@ -52,6 +52,9 @@ export type {
   RawTransaction,
   ReceiptItem,
 } from './llm-provider.interface';
+
+/** One task's clean-up of a trimmed Gemini prose answer. */
+type ProseFix = (text: string, response: ProviderResponse) => string;
 
 @Injectable({ providedIn: 'root' })
 export class GeminiService extends CloudLLMProviderBase {
@@ -323,7 +326,7 @@ export class GeminiService extends CloudLLMProviderBase {
     return super.extractTransactionsFromMultipleImages(imageBase64Array, options);
   }
 
-  /** One image, itemized, with each row's position on the receipt. */
+  /** One image, itemized into a row per purchased item. */
   private async extractWithPositionMetadata(
     imageBase64: string,
     imageIndex: number,
@@ -355,7 +358,6 @@ export class GeminiService extends CloudLLMProviderBase {
         merchant: t.merchant,
         details: t.details,
         imageIndex: imageIndex,
-        positionInImage: t.positionInImage || 'middle',
         confidence: t.confidence ?? 0.7,
         receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,
@@ -410,40 +412,46 @@ export class GeminiService extends CloudLLMProviderBase {
   /**
    * What has to come off a Gemini answer before the user sees it, per task.
    *
-   * Every case here is a property of the model rather than of the prompt, which
+   * Every entry here is a property of the model rather than of the prompt, which
    * is why it lives beside the transport and not in the registry (ADR 0005):
    * Gemma drafts several attempts before its final one, and in CJK locales the
    * English sentences left in an answer are draft commentary rather than
    * anything the user asked for.
+   *
+   * Keyed by every prose prompt the registry declares, so a new one is a
+   * compile error here until it is given an entry. A field rather than a module
+   * constant because the fixes read this instance's model and locale.
    */
+  private readonly proseFixes: Record<ProsePromptId, ProseFix> = {
+    categorySuggestion: text => this.filterReasoningContext(text),
+    patternNarrative: text => this.dropDraftLanguage(text),
+    spendingSummary: (text, response) => {
+      const filtered = this.currentTextModelId.includes('gemma-4')
+        ? this.filterReasoningContext(text)
+        : text;
+      // Never end on a line that was cut off mid-sentence; when the token
+      // limit was hit, even a trailing list item is known to be truncated
+      return dropIncompleteTrailingLine(filtered, { dropListItems: response.truncated });
+    },
+    financialAdvice: text => {
+      const filtered = this.currentTextModelId.includes('gemma-4')
+        ? this.filterReasoningContextForAdvice(text)
+        : text;
+      // Never show advice that was cut off mid-sentence
+      return trimToLastCompleteSentence(this.dropDraftLanguage(filtered));
+    },
+  };
+
   protected override postProcessProse(
     promptId: PromptId,
     response: ProviderResponse
   ): string {
     const text = response.text.trim();
-    switch (promptId) {
-      case 'categorySuggestion':
-        return this.filterReasoningContext(text);
-      case 'patternNarrative':
-        return this.dropDraftLanguage(text);
-      case 'spendingSummary': {
-        const filtered = this.currentTextModelId.includes('gemma-4')
-          ? this.filterReasoningContext(text)
-          : text;
-        // Never end on a line that was cut off mid-sentence; when the token
-        // limit was hit, even a trailing list item is known to be truncated
-        return dropIncompleteTrailingLine(filtered, { dropListItems: response.truncated });
-      }
-      case 'financialAdvice': {
-        const filtered = this.currentTextModelId.includes('gemma-4')
-          ? this.filterReasoningContextForAdvice(text)
-          : text;
-        // Never show advice that was cut off mid-sentence
-        return trimToLastCompleteSentence(this.dropDraftLanguage(filtered));
-      }
-      default:
-        return text;
-    }
+    // Widened rather than cast: the base hands over any prompt id, and a JSON
+    // prompt has no entry, so the lookup can genuinely come back empty.
+    const fixes: Partial<Record<PromptId, ProseFix>> = this.proseFixes;
+    const fix = fixes[promptId];
+    return fix ? fix(text, response) : text;
   }
 
   /** In CJK locales, an English-only sentence is leftover draft commentary. */
@@ -481,18 +489,6 @@ export class GeminiService extends CloudLLMProviderBase {
       temperature: rendered.temperature,
       ...(rendered.topP !== undefined ? { topP: rendered.topP } : {}),
     };
-  }
-
-  /**
-   * The caller's cancellation, in the shape `generateContent` takes as its
-   * second argument.
-   *
-   * Undefined when there is nothing to cancel with, so a request without a
-   * signal reaches fetch exactly as it did before — the SDK wires up an
-   * AbortController of its own for any options object it is handed.
-   */
-  private requestOptions(options?: AIRequestOptions): SingleRequestOptions | undefined {
-    return options?.signal ? { signal: options.signal } : undefined;
   }
 
   // Helper: Extract JSON from response that might have markdown formatting or reasoning

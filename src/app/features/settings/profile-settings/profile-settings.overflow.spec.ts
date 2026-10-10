@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, WritableSignal, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of } from 'rxjs';
 
@@ -18,6 +17,7 @@ import { WeeklyRecapService } from '../../../core/services/weekly-recap.service'
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RateSource } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /**
  * The theme toggle at the Extra large font scale on a phone.
@@ -129,7 +129,7 @@ describe('overflow guard: the theme toggle', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [ThemeToggleOverflowProbeComponent, NoopAnimationsModule],
+      imports: [ThemeToggleOverflowProbeComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
         { provide: AuthService, useValue: mockAuthService },
@@ -147,6 +147,7 @@ describe('overflow guard: the theme toggle', () => {
           useValue: jasmine.createSpyObj('AnalyticsService', ['trackSettingsChange']),
         },
         { provide: CurrencyService, useValue: mockCurrencyService },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
@@ -339,7 +340,7 @@ describe('overflow guard: profile-settings grid tracks (#450)', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [ProfileSettingsComponent, NoopAnimationsModule],
+      imports: [ProfileSettingsComponent],
       providers: [
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: AuthService, useValue: mockAuthService },
@@ -354,6 +355,7 @@ describe('overflow guard: profile-settings grid tracks (#450)', () => {
         { provide: WeeklyRecapService, useValue: mockRecap },
         { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackSettingsChange']) },
         { provide: CurrencyService, useValue: mockCurrencyService },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

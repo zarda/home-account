@@ -1,12 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 
 import { NoteDialogComponent } from './note-dialog.component';
 import { NoteTranslationService } from '../../../core/services/note-translation.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NoteTranslation } from '../../../core/services/llm-provider.interface';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('NoteDialogComponent', () => {
   let fixture: ComponentFixture<NoteDialogComponent>;
@@ -37,7 +37,7 @@ describe('NoteDialogComponent', () => {
     // alone. Its service is stubbed because the real one pulls the cloud-LLM
     // graph in behind it, with no Firestore to build it from.
     await TestBed.configureTestingModule({
-      imports: [NoteDialogComponent, NoopAnimationsModule],
+      imports: [NoteDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { note: NOTE, description: 'Family Mart' } },
@@ -50,6 +50,7 @@ describe('NoteDialogComponent', () => {
           },
         },
         { provide: TranslationService, useValue: translation },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

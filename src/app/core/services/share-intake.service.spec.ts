@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { EMPTY } from 'rxjs';
 
-import { ShareIntakeService, isAcceptedShare } from './share-intake.service';
+import { IMPORT_FILE_MAX_BYTES, ShareIntakeService, isAcceptedShare } from './share-intake.service';
 import { ShareStashStore, StashedShare } from './share-stash.store';
 import { AuthService } from './auth.service';
 import { NativeShareService } from './native-share.service';
@@ -116,7 +116,7 @@ describe('ShareIntakeService', () => {
     const oversized = stashedRow({
       id: 'big',
       name: 'huge.png',
-      blob: new Blob([new Uint8Array(10 * 1024 * 1024 + 1)], { type: 'image/png' })
+      blob: new Blob([new Uint8Array(IMPORT_FILE_MAX_BYTES + 1)], { type: 'image/png' })
     });
     const executable = stashedRow({
       id: 'exe',

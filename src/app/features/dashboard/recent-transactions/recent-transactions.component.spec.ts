@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter, Router } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { Timestamp } from '@angular/fire/firestore';
@@ -21,6 +20,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   textLines,
@@ -71,7 +71,7 @@ describe('RecentTransactionsComponent', () => {
     translation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [RecentTransactionsComponent, NoopAnimationsModule],
+      imports: [RecentTransactionsComponent],
       providers: [
         provideRouter([]),
         { provide: CurrencyService, useValue: currency },
@@ -82,6 +82,7 @@ describe('RecentTransactionsComponent', () => {
         { provide: FirestoreService, useValue: { subscribeToCollection: () => households } },
         // The menu the rail describe projects; nothing there presses it.
         { provide: DashboardLayoutService, useValue: {} },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

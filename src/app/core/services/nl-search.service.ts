@@ -133,7 +133,7 @@ export class NlSearchService {
     ]);
 
     return {
-      today: this.toIsoDate(new Date()),
+      today: dayKey(new Date()),
       baseCurrency: this.baseCurrency(),
       categories: categories.map(c => ({
         id: c.id,
@@ -328,11 +328,5 @@ export class NlSearchService {
 
   private baseCurrency(): string {
     return baseCurrencyOf(this.authService.currentUser());
-  }
-
-  private toIsoDate(date: Date): string {
-    const month = `${date.getMonth() + 1}`.padStart(2, '0');
-    const day = `${date.getDate()}`.padStart(2, '0');
-    return `${date.getFullYear()}-${month}-${day}`;
   }
 }

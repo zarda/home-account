@@ -31,12 +31,16 @@ as if the file had been dropped on the dropzone
      [ADR 0167](ADR/0167-a-notification-carries-its-route-and-a-tap-lands-on-it-and-the-recap-nudge-needs-a-week-with-news.md)).
      It never navigates an open tab itself, which would reload the app.
    - Every other fetch passes through untouched; there is no caching and no
-     offline shell. The Angular `ngsw` build artifacts remain unactivated,
-     and the hand-written caching worker that once sat dead in `src/` is gone
+     offline shell. The build emits no other worker. The Angular `ngsw` one
+     was built for production and never registered, and registering it at
+     `/` would have replaced this one, so it is gone
+     ([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
+     So is the hand-written caching worker that once sat dead in `src/`
      ([ADR 0105](ADR/0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md)).
-   - It has no `sync` handler. Registering any worker makes
-     `PwaService.registerBackgroundSync()` start succeeding (the offline
-     queue calls it), and a sync event with no handler is inert on purpose.
+   - It has no `sync` handler, and the app registers no sync tag. The
+     offline queue drains on the browser's `online` event and on **Sync
+     Now**, never on a worker wake-up
+     ([receipt-import.md](receipt-import.md#offline-capture-and-the-queue)).
 3. The worker stashes the files into IndexedDB (`homeaccount-share-intake` /
    `pending` — schema duplicated in `ShareStashStore`, which the worker
    cannot import; the two must ship together, since a worker pinned at an
@@ -47,8 +51,13 @@ as if the file had been dropped on the dropzone
    every auth change; with nobody signed in the row is written ownerless.
 4. The wizard, arriving with `?source=share`, drains the stash through
    `ShareIntakeService.consumeAll()` and hands the files to its normal
-   intake. Files that are oversized (>10 MB), empty, or of an unaccepted
-   type are dropped at this gate.
+   intake. Files that are oversized (more than `IMPORT_FILE_MAX_BYTES`,
+   10 MB), empty, or of an unaccepted type are dropped at this gate. The
+   wizard's dropzone reads the same constant, so a file is held to one
+   ceiling whichever way it arrives. It bounds the original. A receipt
+   photo's stored copy has its own 2 MB ceiling, `MAX_RECEIPT_BYTES`, met by
+   compression on upload and mirrored in `storage.rules`
+   ([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)).
 5. **The wizard takes both flags off its URL as it reads them**, so a
    reload or Back does not enter the share path again. Its own
    `stripShareParams` navigates with `replaceUrl`, keeping every other
@@ -128,8 +137,13 @@ The Swift half — the extension's sidecar writer, the App Group store behind
 the plugin, and the OCR data-URL strip — is covered by
 `npm run test:ios` (`ios/App/AppTests/ShareSeamsTests.swift`, run in the
 iOS Simulator; local only, CI never builds iOS — see ADR 0040).
-**The service worker's POST path itself has no automated test** — Karma
-cannot install a share target — so after touching it, verify by hand:
+**The service worker's POST path is tested only in part.**
+`share-target-sw.spec.ts` runs the real worker script against a fake `self`:
+it pins that a share whose form cannot be read is sent to the wizard with
+`error=1`, and that a request to an analytics host, by GET or POST, is left
+to the network. The stash into IndexedDB and the redirect on a good share
+are not covered — Karma cannot install a share target — so after touching
+them, verify by hand:
 
 1. `npm run build:prod`, serve `dist/home-account/browser` over HTTPS or
    localhost, and install the PWA in Chrome.
@@ -145,18 +159,20 @@ gitignored Google client id into it.
 
 ## Known gaps
 
-- No automated coverage for the worker's POST handling (kept minimal for
-  exactly that reason). The extension's sidecar writer and the plugin's
-  store are XCTested (`npm run test:ios`), but nothing enforces that suite —
-  CI never builds iOS — and the provider loop ahead of the writer is still
-  manual-only.
+- The worker's POST handling is covered only where the share's form cannot
+  be read (`error=1`) and where an analytics beacon is left to the network;
+  the stash and the redirect on a good share are verified by hand (and kept
+  minimal for exactly that reason). The extension's sidecar writer and the
+  plugin's store are XCTested (`npm run test:ios`), but nothing enforces
+  that suite — CI never builds iOS — and the provider loop ahead of the
+  writer is still manual-only.
 - Android native share intents are out of scope; the installed PWA's
   `share_target` covers Android Chrome.
 - The extension accepts what the share sheet offers as images/files; the
-  10 MB/type gate is applied at consumption, not in the extension. A raw
-  HEIC shared from the Files app (no JPEG representation requested) is
-  stashed as `image/heic`, rejected at that gate, and completed — only
-  Photos-style shares transcode.
+  size and type gate (`IMPORT_FILE_MAX_BYTES`, 10 MB) is applied at
+  consumption, not in the extension. A raw HEIC shared from the Files app
+  (no JPEG representation requested) is stashed as `image/heic`, rejected
+  at that gate, and completed — only Photos-style shares transcode.
 - The worker and the stash schema are version-locked: a stale cached
   worker still pinned at v1 cannot open the v2 database, and that share is
   lost. The worker redirects with `error=1`, and the wizard says the share

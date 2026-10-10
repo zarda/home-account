@@ -5,6 +5,7 @@ import { EMULATOR_HOSTS } from '../environments/emulators';
 import { EMULATOR_HOSTS as EMULATOR_BUILD_HOSTS } from '../environments/emulators.on';
 import { environment as emulatorEnvironment } from '../environments/environment.emulators';
 import { isConfiguredMeasurementId } from './core/config/analytics.config';
+import { PDF_WORKER_SRC } from './core/utils/pdf-raster.utils';
 
 /**
  * The emulator serve is one configuration away from the production build: the
@@ -19,7 +20,21 @@ interface FileReplacement {
   with: string;
 }
 
+interface BuildAsset {
+  glob: string;
+  input: string;
+  output?: string;
+}
+
+interface Budget {
+  type: string;
+  maximumWarning?: string;
+  maximumError?: string;
+}
+
 interface BuildOptions {
+  assets?: (string | BuildAsset)[];
+  budgets?: Budget[];
   fileReplacements?: FileReplacement[];
   optimization?: boolean;
   sourceMap?: boolean;
@@ -146,6 +161,59 @@ describe('angular.json build configurations', () => {
     expect(serveConfigurations['emulators']?.buildTarget).toBe('home-account:build:emulators');
     const scripts = (packageJson as { scripts: Record<string, string> }).scripts;
     expect(scripts['start:emulators']).toBe('ng serve --configuration emulators --port 4300');
+  });
+});
+
+describe('angular.json build budgets', () => {
+  /** The `initial` budget of one build configuration. */
+  const initialBudget = (name: string) => buildConfigurations[name]?.budgets?.find(b => b.type === 'initial');
+
+  it('holds the same initial budget in both deployable configurations', () => {
+    // `production` and `production-local` build the same bundle. A warning
+    // lowered in one and not the other leaves that build measured against the
+    // old ceiling.
+    expect(initialBudget('production')).toBeDefined();
+    expect(initialBudget('production-local')).toEqual(initialBudget('production'));
+  });
+});
+
+describe('angular.json build output', () => {
+  it('asks no build for an Angular service worker', () => {
+    // The only worker the app registers is public/share-target-sw.js, which
+    // share-intake.service.ts registers itself. A second worker script
+    // emitted beside it by the build would be one that nothing ever
+    // registers.
+    expect(buildConfigurations['production']).toBeDefined();
+    expect(architect['build'].options?.serviceWorker).withContext('options').toBeUndefined();
+    for (const [name, options] of Object.entries(buildConfigurations)) {
+      expect(options.serviceWorker).withContext(name).toBeUndefined();
+    }
+  });
+
+  it('pin: copies the pdfjs worker to /assets, where the rasterizer asks for it', () => {
+    expect(architect['build'].options?.assets).toContain({
+      glob: 'pdf.worker.min.mjs',
+      input: 'node_modules/pdfjs-dist/build',
+      output: '/assets',
+    });
+    expect(PDF_WORKER_SRC).toBe('assets/pdf.worker.min.mjs');
+  });
+});
+
+describe('the shipped dependencies', () => {
+  it('ships without the Angular service worker package', () => {
+    const { dependencies } = packageJson as { dependencies: Record<string, string> };
+
+    expect(Object.keys(dependencies)).not.toContain('@angular/service-worker');
+  });
+
+  it('ships without the deprecated animations runtime', () => {
+    // Angular Material and the CDK animate with CSS; provideAnimations() only
+    // added the runtime to the initial bundle. Specs turn motion off with
+    // provideNoMotion() instead.
+    const { dependencies } = packageJson as { dependencies: Record<string, string> };
+
+    expect(Object.keys(dependencies)).not.toContain('@angular/animations');
   });
 });
 

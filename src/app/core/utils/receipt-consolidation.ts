@@ -19,6 +19,7 @@ export function formatReceiptItemLines(
     .filter(item => item?.name)
     .map(item => {
       if (!Number.isFinite(item.amount)) return String(item.name);
+      // Pinned to 'en': persisted note text, not rendered (docs/locale-formatting.md).
       const amount = (item.amount as number)
         .toLocaleString('en', { minimumFractionDigits: fractionDigits });
       return `${item.name} — ${currency ? `${currency} ${amount}` : amount}`;
@@ -149,7 +150,6 @@ export function consolidateReceiptItems(
         merchant,
         details,
         imageIndex: 0,
-        positionInImage: 'middle',
         confidence: groupItems.reduce((sum, i) => sum + i.confidence, 0) / groupItems.length,
         receiptId: first.receiptId,
         wasMerged: true,

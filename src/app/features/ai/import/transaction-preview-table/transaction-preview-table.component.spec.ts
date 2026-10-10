@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
@@ -31,6 +30,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 import { ThemeService } from '../../../../core/services/theme.service';
 import type { Rgb } from '../../../../core/utils/color-contrast.utils';
@@ -105,7 +105,7 @@ describe('TransactionPreviewTableComponent', () => {
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
+      imports: [TransactionPreviewTableComponent],
       schemas: [NO_ERRORS_SCHEMA],
       providers: [
         {
@@ -134,6 +134,7 @@ describe('TransactionPreviewTableComponent', () => {
         },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
         { provide: NotificationService, useValue: notifications },
+        provideNoMotion(),
       ],
     })
       .overrideComponent(TransactionPreviewTableComponent, {
@@ -152,7 +153,7 @@ describe('TransactionPreviewTableComponent', () => {
       const row = {
         ...createMockTransactions()[0],
         imageMetadata: {
-          imageIndex: 0, imageId: 'image_0', positionInImage: 'middle' as const,
+          imageIndex: 0, imageId: 'image_0',
           confidenceScore: 0.9, receiptId: 2, mergedFromImages: [0, 1],
         },
       };
@@ -163,7 +164,7 @@ describe('TransactionPreviewTableComponent', () => {
       const row = {
         ...createMockTransactions()[0],
         imageMetadata: {
-          imageIndex: 2, imageId: 'image_2', positionInImage: 'top' as const,
+          imageIndex: 2, imageId: 'image_2',
           confidenceScore: 0.8, receiptId: 1,
         },
       };
@@ -1207,7 +1208,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
+      imports: [TransactionPreviewTableComponent],
       providers: [
         {
           // Echoes the key and its params, as the first describe does, so a
@@ -1234,6 +1235,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         // the real service's own announce call to land on this spy, so a
         // second one from this component's own code would be caught.
         { provide: AnnouncerService, useValue: mockAnnouncer },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -3603,7 +3605,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         id: 'txn1',
         amount: 5400,
         currency: 'JPY',
-        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 3 },
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 3 },
       });
       const given = [row];
       render(given);
@@ -3640,7 +3642,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       render([makeRow({
         id: 'txn1',
         amount: 5400,
-        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 3 },
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 3 },
       })]);
 
       splitTrigger('txn1')!.click();
@@ -3947,11 +3949,11 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     it('merges the source into the picked target: a shorter array, the target\'s id, the summed amount and the union badge', () => {
       const a = makeRow({
         id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5,
-        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1 },
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 1 },
       });
       const b = makeRow({
         id: 'b', currency: 'USD', description: 'Lunch', amount: 12,
-        imageMetadata: { imageIndex: 1, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8, receiptId: 1 },
+        imageMetadata: { imageIndex: 1, imageId: 'image_1', confidenceScore: 0.8, receiptId: 1 },
       });
       const given = [a, b];
       render(given);
@@ -4320,7 +4322,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
           fieldConfidence: { amount: 0.4 },
           currencyFellBack: true,
           dateAssumed: true,
-          imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1 },
+          imageMetadata: { imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 1 },
         }),
       ]);
       const emitted = emissions();

@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { CategoryFormDialogComponent } from './category-form-dialog.component';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -17,6 +16,7 @@ import {
   summarizeViolations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 import type { Rgb } from '../../../../core/utils/color-contrast.utils';
 import {
@@ -55,11 +55,12 @@ describe('CategoryFormDialogComponent', () => {
     translationService.t.and.callFake((key: string) => translations[key] ?? key);
 
     await TestBed.configureTestingModule({
-      imports: [CategoryFormDialogComponent, NoopAnimationsModule],
+      imports: [CategoryFormDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: TranslationService, useValue: translationService },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

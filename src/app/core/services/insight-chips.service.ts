@@ -11,6 +11,7 @@ import {
   computeAmountAnomalies,
   computeCategoryDeltas,
 } from '../utils/spending-insight.utils';
+import { groupExpensesByCategoryWithCounts } from '../utils/transaction-aggregation.utils';
 import {
   dateOf,
   monthWindow,
@@ -150,27 +151,22 @@ export class InsightChipsService {
     }
 
     // Biggest spending category of the month, when it has enough activity.
-    const totals = new Map<string, { total: number; count: number }>();
-    for (const t of currentExpenses) {
-      const entry = totals.get(t.categoryId) ?? { total: 0, count: 0 };
-      entry.total += toBase(t);
-      entry.count += 1;
-      totals.set(t.categoryId, entry);
-    }
-    const top = [...totals.entries()].sort((a, b) => b[1].total - a[1].total)[0];
+    // The shared fold breaks an exact tie by category id, so a tie names the
+    // same category on every load.
+    const [top] = groupExpensesByCategoryWithCounts(currentExpenses, toBase);
     if (
       top &&
-      top[1].total > 0 &&
-      top[1].count >= InsightChipsService.TOP_CATEGORY_MIN_COUNT &&
-      !usedCategories.has(top[0])
+      top.total > 0 &&
+      top.count >= InsightChipsService.TOP_CATEGORY_MIN_COUNT &&
+      !usedCategories.has(top.categoryId)
     ) {
       chips.push({
-        id: `top:${top[0]}`,
+        id: `top:${top.categoryId}`,
         kind: 'topCategory',
         labelKey: 'transactions.chipTopCategory',
-        labelParams: { category: this.categoryName(top[0]) },
+        labelParams: { category: this.categoryName(top.categoryId) },
         icon: 'leaderboard',
-        filters: { ...monthFilters, categoryId: top[0] },
+        filters: { ...monthFilters, categoryId: top.categoryId },
       });
     }
 

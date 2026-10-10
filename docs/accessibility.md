@@ -260,6 +260,36 @@ is where the user is looking. A failed row's reason stands on its card as
 `role="note"` rather than an alert: it happened during the write, before that
 render, and interrupts nothing.
 
+### A file the import refuses
+
+The import dropzone refuses a file it cannot take, too large or of a type it
+does not read, with a banner under the dashed zone: *{name} is larger than
+the 10 MB limit*, or that it is not a supported file type. The banner is
+`role="alert"`, because the refusal answers the pick or the drop the user
+just made, and its icon is decorative (`aria-hidden="true"`). It used to
+have no role, so a refused file was silent to a screen reader: to someone
+who could not see the banner, the pick seemed to have done nothing.
+
+The banner sits below the zone, not inside it. The zone itself is the
+`role="button"` that opens the file picker, and ARIA gives a button
+presentational children, so an alert inside one is kept only where a browser
+chooses to keep it. Chrome does; WebKit, which the iOS app runs in, was not
+checked. The drag handlers moved out to a frame around the zone and the
+banner, so a file dropped on the banner still lands, and a click on the
+banner no longer opens the picker. Pinned in
+`file-dropzone.component.spec.ts` by "announces an oversized file it
+refuses", which also checks that the banner has no `role="button"` ancestor,
+and "takes a file dropped on the refusal banner".
+
+Below the zone, the banner can land under the fold: on a 768px-tall window
+the zone fills the first screen, so a sighted user who dropped a file saw
+nothing change. When the banner appears or its message changes, the
+dropzone scrolls it into view with `block: 'nearest'`, after the render that
+inserts it. The scroll is never smooth, so reduced motion has nothing to
+turn off, and it moves no focus: an alert is announced where it is. Pinned
+by "brings a refused file's message into view, and again when the next
+refusal rewrites it" and "scrolls nothing for a file it takes".
+
 ## Accessibility settings
 
 Three preferences under **Settings → Preferences**, in an *Accessibility* group
@@ -812,6 +842,10 @@ items into each state it measures.
 - **Nothing sweeps for the next animation CSS cannot reach.** Chart.js and the
   Material tab strips were found by reading the code; a new WAAPI duration or
   canvas animation will honour neither kill-switch and no gate will say so.
+- **The same refusal twice is announced once.** A second refusal of a
+  different file changes the banner's text, and the alert says it. Refusing
+  the identical file again leaves the text as it was, so there is nothing new
+  for the alert to say, though the banner stays on screen.
 - **Material's own announcements bypass the queue.** A closed single
   `mat-select` whose value an arrow key or typeahead moves calls the CDK
   `LiveAnnouncer` itself with the option's text. The CDK begins every
@@ -823,4 +857,4 @@ items into each state it measures.
   ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 - **RTL layout is groundwork only** (#86). Direction follows the locale and the
   physical CSS that remains is frozen per file, but no right-to-left locale
-  ships and 98 hits are still unconverted — see [rtl.md](rtl.md).
+  ships and 98 hits are still unconverted (#445) — see [rtl.md](rtl.md).

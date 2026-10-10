@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, Subject, throwError } from 'rxjs';
 import { InsightsTabComponent } from './insights-tab.component';
 import { AuthService } from '../../../core/services/auth.service';
@@ -24,7 +23,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { createTranslationStub } from '../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
 
 function expenseRow(date: Date, amount: number, overrides: Partial<Transaction> = {}): Transaction {
   return createTransaction({
@@ -137,7 +136,7 @@ describe('InsightsTabComponent', () => {
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
 
     await TestBed.configureTestingModule({
-      imports: [InsightsTabComponent, NoopAnimationsModule],
+      imports: [InsightsTabComponent],
       providers: [
         { provide: TransactionService, useValue: transactionService },
         { provide: AuthService, useValue: { currentUser } },
@@ -168,6 +167,7 @@ describe('InsightsTabComponent', () => {
             currentLocale: signal('en'),
           },
         },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })
@@ -431,7 +431,7 @@ describe('InsightsTabComponent, through its own template', () => {
     snapshots.regenerate.and.resolveTo(null);
 
     await TestBed.configureTestingModule({
-      imports: [InsightsTabComponent, NoopAnimationsModule],
+      imports: [InsightsTabComponent],
       providers: [
         { provide: TransactionService, useValue: transactions },
         { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
@@ -453,6 +453,7 @@ describe('InsightsTabComponent, through its own template', () => {
           provide: TranslationService,
           useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
         },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })

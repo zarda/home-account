@@ -3,7 +3,6 @@ import { registerLocaleData } from '@angular/common';
 import localeJa from '@angular/common/locales/ja';
 import localeZhHant from '@angular/common/locales/zh-Hant';
 import { provideRouter } from '@angular/router';
-import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideFirebaseApp, initializeApp, getApp } from '@angular/fire/app';
 import {
@@ -456,7 +455,6 @@ export const appConfig: ApplicationConfig = {
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    provideAnimations(),
     provideNativeDateAdapter(),
     provideHttpClient(),
     provideFirebaseApp(() => initializeApp(environment.firebase)),

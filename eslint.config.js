@@ -50,7 +50,7 @@ const ANALYTICS_IMPORT_PATTERNS = [
 const LISTENER_METHOD_ALTERNATION =
   "getTransactions|getTransactionById|getTransactionsInRange|getTransactionsWithReceipts|" +
   "getRecentTransactions|getExpensesInRange|getPeriodTotals|getPeriodCategoryTotals|" +
-  "getTransactionDatesForMonth|getByDateRange|getByCategory|getMonthlyTotals|" +
+  "getTransactionDatesForMonth|getByDateRange|" +
   "subscribeToCollection|subscribeToCollectionWithMetadata|subscribeToDocument|subscribeToDocumentWithMetadata|watch";
 const FIRST_VALUE_FROM_LISTENER_MESSAGE =
   "firstValueFrom takes a listener's first emission, which the persistent " +

@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 
@@ -17,6 +16,7 @@ import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TEXT_MODELS, VISION_MODELS } from '../../../core/config/ai-models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /**
  * The Gemini model selects at the Extra large font scale on a phone.
@@ -127,7 +127,6 @@ describe('overflow guard: the AI settings model selects', () => {
     await TestBed.configureTestingModule({
       imports: [
         ModelFieldOverflowProbeComponent,
-        NoopAnimationsModule,
         RouterTestingModule,
         HttpClientTestingModule,
       ],
@@ -142,6 +141,7 @@ describe('overflow guard: the AI settings model selects', () => {
         { provide: ProviderKeyService, useValue: providerKeysMock },
         { provide: CategoryMemoryService, useValue: categoryMemoryMock },
         { provide: TagMemoryService, useValue: tagMemoryMock },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

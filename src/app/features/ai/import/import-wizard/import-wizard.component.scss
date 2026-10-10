@@ -448,8 +448,10 @@
   margin: 0;
 }
 
-/* Review Step - the reader ran out of room mid-answer */
-.incomplete-notice {
+/* Review Step - the reader ran out of room mid-answer, or a PDF was read only
+   in part; the two notices wear one look */
+.incomplete-notice,
+.truncated-notice {
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -460,10 +462,15 @@
   background: color-mix(in srgb, var(--color-warning) 5%, var(--surface-card));
 }
 
-.incomplete-notice p {
+.incomplete-notice p,
+.truncated-notice p {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--text-secondary);
+}
+
+.truncated-notice p + p {
+  margin-top: 4px;
 }
 
 /* Review Step - a receipt row still owing a date answer, or a row short of
@@ -484,7 +491,8 @@
    line-height, and a font-size set without one drops the glyph off its row.
    The amber fill is under 2:1 on the notice's own tint of it, so the glyph
    takes the warning's text step. */
-.incomplete-icon {
+.incomplete-icon,
+.truncated-icon {
   flex: 0 0 auto;
   font-size: var(--text-xl);
   width: var(--text-xl);

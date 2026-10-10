@@ -47,11 +47,10 @@ export interface RasterizedPdf {
  */
 async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist');
-  // The worker is copied to /assets by the build rather than resolved from
-  // node_modules, so the service worker's lazy asset group covers it. A
-  // root-level .mjs would match no glob in ngsw-config.json and the first
-  // offline PDF import would fail with a worker error rather than a network
-  // one.
+  // The worker is copied to /assets by an angular.json asset entry, which
+  // build-configurations.spec.ts holds, rather than resolved from
+  // node_modules: pdfjs loads it by URL at run time, so the bundler never
+  // sees it as an import and would not emit it.
   pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
   return pdfjs;
 }

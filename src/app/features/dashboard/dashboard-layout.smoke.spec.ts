@@ -13,7 +13,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAppCharts } from '../../core/config/chart.config';
@@ -36,7 +35,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { TransactionService } from '../../core/services/transaction.service';
 import { FirestoreService } from '../../core/services/firestore.service';
 import { addDays, budgetPeriodWindow, dayKey, startOfDay } from '../../core/utils/transaction-date.utils';
-import { MockAuthService, createMockUser } from '../../core/services/testing';
+import { MockAuthService, createMockUser, provideNoMotion } from '../../core/services/testing';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { dashboardGridAreas } from './dashboard-layout.utils';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
@@ -182,7 +181,7 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),
@@ -451,6 +450,76 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
       // The menu rendered into the CDK overlay, outside the routed view.
       doc.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
       await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #438 P4: the Spending by Category card ranks through the fold reports
+  // uses, so two categories with equal spending list by category id. The
+  // window arrives date-descending, so first-seen order would put Tie Beta,
+  // dated later today, ahead of Tie Alpha.
+  it(
+    'lists two categories with equal spending in category id order',
+    async () => {
+      const transactionIds: string[] = [];
+      const seedCategory = (id: string, name: string) =>
+        setDoc(doc(firestore, `users/${uid}/categories/${id}`), {
+          userId: uid,
+          name,
+          icon: 'category',
+          color: '#607D8B',
+          type: 'expense',
+          order: 1,
+          isActive: true,
+          isDefault: false
+        });
+      const seedExpense = async (categoryId: string, date: Timestamp) => {
+        const ref = await addDoc(collection(firestore, `users/${uid}/transactions`), {
+          userId: uid,
+          type: 'expense',
+          categoryId,
+          date,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          isRecurring: false,
+          amount: 25,
+          currency: 'USD',
+          amountInBaseCurrency: 25,
+          exchangeRate: 1,
+          description: `Smoke ${categoryId}`
+        });
+        transactionIds.push(ref.id);
+      };
+
+      try {
+        await seedCategory('smoke-tie-a', 'Tie Alpha');
+        await seedCategory('smoke-tie-b', 'Tie Beta');
+        await seedExpense('smoke-tie-a', Timestamp.fromDate(startOfDay(new Date())));
+        await seedExpense('smoke-tie-b', Timestamp.now());
+
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+        }));
+
+        await harness.navigateByUrl('/dashboard');
+        const page = harness.routeNativeElement!.ownerDocument;
+        const tiedLegend = (): string[] =>
+          Array.from(page.querySelectorAll('app-spending-chart .legend-name'))
+            .map(el => el.textContent?.trim() ?? '')
+            .filter(name => name.startsWith('Tie '));
+        await waitForDom('both tied categories in the legend', () => tiedLegend().length === 2);
+
+        expect(tiedLegend()).toEqual(['Tie Alpha', 'Tie Beta']);
+      } finally {
+        harness.fixture.destroy();
+        for (const id of transactionIds) {
+          await deleteDoc(doc(firestore, `users/${uid}/transactions/${id}`)).catch(() => undefined);
+        }
+        for (const id of ['smoke-tie-a', 'smoke-tie-b']) {
+          await deleteDoc(doc(firestore, `users/${uid}/categories/${id}`)).catch(() => undefined);
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
     },
     CASE_TIMEOUT
   );

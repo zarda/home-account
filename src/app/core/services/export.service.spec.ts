@@ -420,6 +420,50 @@ describe('ExportService', () => {
       const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
       expect(head).toBe('%PDF-');
     });
+
+    // #438 P4: the PDF ranks a copy of the summary, so the caller's array
+    // keeps the order it was handed in.
+    it("does not sort the caller's summary in place", async () => {
+      const report = createReport();
+      report.summary.byCategory = [
+        { categoryId: 'smaller', total: 50 },
+        { categoryId: 'larger', total: 150 },
+      ];
+      // The suite-wide fetch rejection warns that the CJK font is missing.
+      spyOn(console, 'warn');
+
+      await service.exportToPDF(report);
+
+      expect(report.summary.byCategory.map(row => row.categoryId)).toEqual(['smaller', 'larger']);
+    });
+
+    // The table promises the ten largest, so the PDF ranks a copy itself
+    // rather than trusting every caller to hand it a ranked summary.
+    it('prints the ten largest of an unranked summary in order, ties by id', async () => {
+      const report = createReport();
+      report.transactions = [];
+      const totals: [string, number][] = [
+        ['c05', 60], ['c11', 5], ['c02', 90], ['c09', 20], ['c07', 40],
+        ['c01', 100], ['c10', 10], ['c04', 70], ['c08', 30], ['c03', 70], ['c06', 50],
+      ];
+      report.categories = totals.map(([id]) =>
+        createCategory({ id, name: `Row${id.slice(1)}`, type: 'expense' }));
+      report.summary.byCategory = totals.map(([categoryId, total]) => ({ categoryId, total }));
+      report.summary.expense = totals.reduce((sum, [, total]) => sum + total, 0);
+      const given = report.summary.byCategory.map(row => row.categoryId);
+      spyOn(console, 'warn');
+
+      const blob = await service.exportToPDF(report);
+
+      // On helvetica (the font fetch is rejected suite-wide) jsPDF writes each
+      // cell as a literal string, so the content stream reads in table order.
+      const printed = [...(await blob.text()).matchAll(/\((Row\d\d)\) Tj/g)].map(m => m[1]);
+      expect(printed).toEqual([
+        'Row01', 'Row02', 'Row03', 'Row04', 'Row05',
+        'Row06', 'Row07', 'Row08', 'Row09', 'Row10',
+      ]);
+      expect(report.summary.byCategory.map(row => row.categoryId)).toEqual(given);
+    });
   });
 
   describe('category summary export', () => {
@@ -604,8 +648,8 @@ describe('ExportService', () => {
       });
 
       it('leaves the caller\'s array in the order it was given', async () => {
-        // exportToPDF sorts its category array in place; this builder is
-        // handed the reports tab's own list and must not touch it.
+        // This builder is handed the reports tab's own list and must not
+        // reorder it.
         const transactions = [
           createTransaction({ type: 'expense', amount: 10, categoryId: 'food_restaurants' }),
           createTransaction({ type: 'expense', amount: 90, categoryId: 'food_groceries' }),

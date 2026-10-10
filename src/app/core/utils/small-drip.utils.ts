@@ -3,6 +3,7 @@ import { DetectorWindow } from './spending-pattern.types';
 import { dateOf, monthKeysBetween } from './transaction-date.utils';
 import {
   ToBase,
+  compareCategoryTotals,
   compareIds,
   finiteOrNull,
   median,
@@ -151,7 +152,7 @@ export function computeSmallAmountDrip(
         count: entry.count,
         total: roundMoney(entry.total),
       }))
-      .sort((a, b) => b.total - a.total || compareIds(a.categoryId, b.categoryId))
+      .sort(compareCategoryTotals)
       .slice(0, settings.categoryCap),
     transactionIds: small.slice(0, settings.idCap).map(entry => entry.transaction.id),
     truncated: small.length > settings.idCap,

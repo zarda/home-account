@@ -44,11 +44,12 @@ export function createTranslationStub(overrides: Partial<TranslationStub> = {}):
   };
 }
 
-/** The half of `LocaleFormatService` the two locale pipes call. */
+/** The half of `LocaleFormatService` the two locale pipes and the time callers use. */
 export interface LocaleFormatStub {
   formatDate: (value: unknown, style?: LocaleDateStyle) => string;
   formatRange: (start: unknown, end: unknown, style?: LocaleDateStyle) => string;
   formatNumber: (value: number | null | undefined, digitsInfo?: string) => string;
+  formatTime: (value: unknown) => string;
 }
 
 /**
@@ -58,10 +59,10 @@ export interface LocaleFormatStub {
  * Deliberately not `Intl`: the output is stable text a spec can assert
  * whole, and it does not move when a Node or ICU upgrade changes a
  * separator. A date formats as its ISO day, a range as the two joined by an
- * en dash, and a number as `String(value)`. An absent or unparseable value
- * formats as the empty string, which is the real service's contract
- * (`locale-format.service.ts:80-85`) and the one behaviour a template can
- * actually depend on.
+ * en dash, a time as its UTC `HH:mm`, and a number as `String(value)`. An
+ * absent or unparseable value formats as the empty string, which is the real
+ * service's contract (`locale-format.service.ts:80-85`) and the one behaviour
+ * a template can actually depend on.
  */
 export function createLocaleFormatStub(overrides: Partial<LocaleFormatStub> = {}): LocaleFormatStub {
   const asDate = (value: unknown): Date | null => {
@@ -84,6 +85,7 @@ export function createLocaleFormatStub(overrides: Partial<LocaleFormatStub> = {}
     },
     formatNumber: (value: number | null | undefined) =>
       value === null || value === undefined || !Number.isFinite(value) ? '' : String(value),
+    formatTime: (value: unknown) => asDate(value)?.toISOString().slice(11, 16) ?? '',
     ...overrides,
   };
 }

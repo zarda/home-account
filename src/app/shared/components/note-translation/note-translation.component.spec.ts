@@ -1,11 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { NoteTranslationComponent } from './note-translation.component';
 import { NoteTranslationService } from '../../../core/services/note-translation.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NoteTranslation } from '../../../core/services/llm-provider.interface';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('NoteTranslationComponent', () => {
   let fixture: ComponentFixture<NoteTranslationComponent>;
@@ -55,10 +55,11 @@ describe('NoteTranslationComponent', () => {
     );
 
     await TestBed.configureTestingModule({
-      imports: [NoteTranslationComponent, NoopAnimationsModule],
+      imports: [NoteTranslationComponent],
       providers: [
         { provide: NoteTranslationService, useValue: { available, translate, failureKey } },
         { provide: TranslationService, useValue: translation },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

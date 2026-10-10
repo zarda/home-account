@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { CommonModule } from '@angular/common';
 import { signal } from '@angular/core';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
@@ -16,7 +15,13 @@ import { AuthService } from '../../core/services/auth.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { paintedBackground, paintedColor, ratio, withTheme } from '../../core/services/testing';
+import {
+  paintedBackground,
+  paintedColor,
+  provideNoMotion,
+  ratio,
+  withTheme,
+} from '../../core/services/testing';
 
 describe('SettingsComponent', () => {
   let component: SettingsComponent;
@@ -40,12 +45,13 @@ describe('SettingsComponent', () => {
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
-      imports: [SettingsComponent, NoopAnimationsModule],
+      imports: [SettingsComponent],
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatDialog, useValue: mockDialog },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -108,12 +114,13 @@ describe('SettingsComponent', () => {
 
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [SettingsComponent, NoopAnimationsModule],
+        imports: [SettingsComponent],
         providers: [
           provideRouter([]),
           { provide: AuthService, useValue: mockAuthServiceNoUser },
           { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -149,12 +156,13 @@ describe('SettingsComponent', () => {
     beforeEach(async () => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [SettingsComponent, NoopAnimationsModule],
+        imports: [SettingsComponent],
         providers: [
           provideRouter([]),
           { provide: AuthService, useValue: mockAuthService },
           { provide: MatDialog, useValue: mockDialog },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -244,12 +252,13 @@ describe('SettingsComponent', () => {
     beforeEach(async () => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [SettingsComponent, NoopAnimationsModule],
+        imports: [SettingsComponent],
         providers: [
           provideRouter([]),
           { provide: AuthService, useValue: mockAuthService },
           { provide: MatDialog, useValue: mockDialog },
-          { provide: TranslationService, useValue: mockTranslationService }
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })
@@ -315,7 +324,7 @@ describe('SettingsComponent', () => {
     const build = async (panel: string | null): Promise<SettingsComponent> => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [SettingsComponent, NoopAnimationsModule],
+        imports: [SettingsComponent],
         providers: [
           { provide: AuthService, useValue: mockAuthService },
           { provide: MatDialog, useValue: mockDialog },
@@ -323,7 +332,8 @@ describe('SettingsComponent', () => {
           {
             provide: ActivatedRoute,
             useValue: { snapshot: { queryParamMap: convertToParamMap(panel ? { panel } : {}) } }
-          }
+          },
+          provideNoMotion()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })

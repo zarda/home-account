@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
@@ -15,7 +14,7 @@ import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AccessibilityService } from '../../core/services/accessibility.service';
 import { Budget } from '../../models';
-import { createBudget } from '../../core/services/testing';
+import { createBudget, provideNoMotion } from '../../core/services/testing';
 
 /**
  * The budgets tab strip, which holds more than it can show.
@@ -77,7 +76,7 @@ describe('overflow guard: the budgets tab strip', () => {
     const accessibility = { tabAnimationDuration: signal('0ms') };
 
     await TestBed.configureTestingModule({
-      imports: [BudgetsStripOverflowProbeComponent, NoopAnimationsModule],
+      imports: [BudgetsStripOverflowProbeComponent],
       providers: [
         {
           provide: ActivatedRoute,
@@ -92,6 +91,7 @@ describe('overflow guard: the budgets tab strip', () => {
           provide: NotificationService,
           useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']),
         },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })

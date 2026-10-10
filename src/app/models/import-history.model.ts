@@ -95,13 +95,7 @@ export type ImportProvenance = Pick<
 >;
 
 export interface ImportError {
-  row?: number;
-  /**
-   * The review row's id at the time of the write, which the wizard
-   * re-offers by. `row` is kept for records already written before this
-   * field existed, and for the history list, which renders the message
-   * alone.
-   */
+  /** The review row's id at the time of the write, which the wizard re-offers by. */
   transactionId?: string;
   field?: string;
   message: string;
@@ -120,7 +114,6 @@ export interface ImportError {
 export interface ImagePositionMetadata {
   imageIndex: number;              // Which image this item came from (0-based)
   imageId: string;                 // Unique identifier for the source image
-  positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position within image
   confidenceScore: number;         // OCR/extraction confidence (0-1)
   wasMerged?: boolean;             // True if this item was deduplicated from multiple images
   mergedFromImages?: number[];     // Source image indices this item was merged from
@@ -247,7 +240,6 @@ export interface CategorizedImportTransaction {
    * (`rowCarriesReviewerWork`).
    */
   editedOnCard?: true;
-  originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
   isDuplicate: boolean;
@@ -350,8 +342,6 @@ export interface CSVColumnMapping {
 
 export interface MultiImageMetadata {
   totalImages: number;             // Total number of images processed
-  deduplicationMethod: 'ai' | 'position' | 'manual';  // How deduplication was performed
-  imageIds: string[];              // Ordered list of image identifiers
 }
 
 /**
@@ -390,12 +380,21 @@ export interface ImportResult {
   diagnostics?: ReceiptAttemptDiagnostics;
 }
 
-export interface ImportWarning {
-  type: 'duplicate' | 'low_confidence' | 'missing_data' | 'currency_mismatch' | 'parse_error' | 'info';
-  message: string;
-  transactionId?: string;
-  row?: number;
-}
+/**
+ * Something about how a result was read that its rows cannot show. The
+ * review step is the only reader (`reviewNoticesFrom`): what a row already
+ * says — its grade, its duplicate flag — is not repeated here.
+ *
+ * - `parse_error`: the reader's answer stopped mid-row and only the rows it
+ *   finished were kept. `message` is never shown: the step words it from
+ *   the catalog.
+ * - `pages_truncated`: a PDF longer than the page cap, of which only the
+ *   first `read` of `total` pages were read. Figures, not a sentence: the
+ *   step words it in the reader's language (ADR 0036).
+ */
+export type ImportWarning =
+  | { type: 'parse_error'; message: string }
+  | { type: 'pages_truncated'; read: number; total: number };
 
 export interface ImportPreview {
   transactions: CategorizedImportTransaction[];

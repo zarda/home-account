@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, NgZone, input, output } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -31,7 +30,12 @@ import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
 import { Category, Transaction, TransactionFilters, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
-import { createTransaction, createCategory, createTranslationStub } from '../../core/services/testing';
+import {
+  createTransaction,
+  createCategory,
+  createTranslationStub,
+  provideNoMotion,
+} from '../../core/services/testing';
 
 function createMockWindowSource() {
   return {
@@ -799,7 +803,7 @@ describe('TransactionsComponent, through its own template', () => {
     earliestRead = jasmine.createSpy('getEarliestTransactionDateFromServer').and.resolveTo(null);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionsComponent, NoopAnimationsModule],
+      imports: [TransactionsComponent],
       providers: [
         {
           provide: TransactionService,
@@ -841,6 +845,7 @@ describe('TransactionsComponent, through its own template', () => {
         },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })

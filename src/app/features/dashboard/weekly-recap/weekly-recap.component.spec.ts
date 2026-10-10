@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 
 import { WeeklyRecapComponent } from './weekly-recap.component';
@@ -20,6 +19,7 @@ import { BudgetAlert, Category, RecurringOccurrence } from '../../../models';
 import {
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -150,7 +150,7 @@ describe('WeeklyRecapComponent', () => {
     router = jasmine.createSpyObj('Router', ['navigate']);
 
     await TestBed.configureTestingModule({
-      imports: [WeeklyRecapComponent, NoopAnimationsModule],
+      imports: [WeeklyRecapComponent],
       providers: [
         { provide: WeeklyRecapService, useValue: recap },
         { provide: CurrencyService, useValue: currency },
@@ -161,6 +161,7 @@ describe('WeeklyRecapComponent', () => {
         { provide: ReminderService, useValue: reminders },
         { provide: Router, useValue: router },
         { provide: LocaleFormatService, useValue: localeFormat },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

@@ -16,12 +16,89 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
-import { ImportHistory, ImportFileType, ImportStatus, LLMProvider, ReceiptEngine, ReceiptFailureClass, baseCurrencyOf } from '../../../../models';
+import { ImportError, ImportHistory, ImportFileType, ImportStatus, LLMProvider, ReceiptEngine, ReceiptFailureClass, baseCurrencyOf } from '../../../../models';
+import { importFailureKey } from '../../../../core/utils/import-review.utils';
+import {
+  AI_CLOUD_UNAVAILABLE,
+  AI_NO_PROVIDER,
+  AI_QUEUE_WRITE_FAILED,
+  AI_QUEUE_WRITE_PARTIAL,
+  parseAIError,
+} from '../../../../core/utils/ai-error.utils';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../../core/services/notification.service';
+
+/**
+ * A failed receipt attempt's error line, a sentence per failure class.
+ *
+ * The record stores the attempt's English (`classifyReceiptFailure`) next to
+ * its class. Where that English is one of the app's own sentences, the line
+ * reads it back to its own key (`OWN_SENTENCE_KEYS`); otherwise the class is
+ * what is read. Most classes already had a sentence in the catalog; server
+ * and timeout had only the short label the failure line above the list uses,
+ * and got one of their own.
+ */
+const FAILURE_SENTENCE_KEYS: Record<ReceiptFailureClass, string> = {
+  rate_limit: 'import.errorHintRateLimit',
+  auth: 'import.errorInvalidKey',
+  network: 'errors.network',
+  quota: 'import.errorHintQuota',
+  server: 'import.errorServer',
+  timeout: 'import.errorTimeout',
+  incomplete: 'import.errorAnswerIncomplete',
+  no_provider: 'import.errorNoProvider',
+  nothing_extracted: 'import.noTransactionsFoundDescription',
+  queue_write: 'import.errorQueueWrite',
+  unknown: 'import.errorProcessingFailed',
+};
+
+/**
+ * The classifier's sentence for each failure the app raises itself, mapped
+ * back to the key it hands the screen.
+ *
+ * A class is too coarse for these: a drain that failed online with no
+ * provider is class network, and its class's sentence would tell the reader
+ * to check a connection that works, where the wizard and the camera said to
+ * add a key. Built from `parseAIError`'s own answers, so a reworded sentence
+ * moves both sides at once.
+ */
+const OWN_SENTENCE_KEYS = new Map(
+  [AI_NO_PROVIDER, AI_CLOUD_UNAVAILABLE, AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL]
+    .map(code => parseAIError(new Error(code)))
+    .map(parsed => [parsed.message, parsed.messageKey] as const)
+);
+
+/**
+ * The catalog key one stored error line reads as, or null when nothing on
+ * the line says what it is.
+ *
+ * Two shapes are recognised: a failed receipt attempt, by its own sentence
+ * where the app wrote one and by the class on its record otherwise, and a
+ * row the confirm loop refused, by what names the row — its id since rows
+ * were matched by id, its description on every record the loop ever wrote —
+ * read through the wizard's own `importFailureKey`. Neither covers
+ * `failImport`'s whole-import error, or a record restored or written outside
+ * the app in some other shape, such as a row's with no message: a row's
+ * reason would misdescribe those, so the caller falls back to the stored
+ * message rather than guess.
+ */
+function errorLineKey(item: ImportHistory, error: ImportError): string | null {
+  if (item.status === 'failed') {
+    const own = OWN_SENTENCE_KEYS.get(error.message);
+    if (own) return own;
+    if (item.errorType) return FAILURE_SENTENCE_KEYS[item.errorType];
+  }
+  if (
+    (error.transactionId !== undefined || error.originalValue !== undefined) &&
+    typeof error.message === 'string'
+  ) {
+    return importFailureKey(error);
+  }
+  return null;
+}
 
 @Component({
   selector: 'app-import-history',
@@ -193,15 +270,17 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
     return this.t(keys[errorType]);
   }
 
+  /** One line of a record's error list, in the reader's language where its shape allows (ADR 0036). */
+  errorLine(item: ImportHistory, error: ImportError): string {
+    const key = errorLineKey(item, error);
+    return key ? this.t(key) : (error.message ?? '');
+  }
+
   formatDate(timestamp: Timestamp): string {
     const date = timestamp.toDate();
     // The active language, not the browser's: these two used to disagree on
     // the same screen whenever the UI language was not the device's.
-    const time = date.toLocaleTimeString(this.localeFormat.locale, {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    return `${this.localeFormat.formatDate(date, 'short')} ${time}`;
+    return `${this.localeFormat.formatDate(date, 'short')} ${this.localeFormat.formatTime(date)}`;
   }
 
   /**

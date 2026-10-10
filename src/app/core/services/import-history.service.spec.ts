@@ -322,7 +322,7 @@ describe('ImportHistoryService', () => {
     });
 
     it('should pass through stats and any errors', async () => {
-      const errors = [{ row: 1, message: 'bad row' }];
+      const errors = [{ transactionId: 't1', message: 'bad row' }];
       await service.completeImport('import1', { ...stats, errorCount: 1, successCount: 9, errors });
 
       const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;

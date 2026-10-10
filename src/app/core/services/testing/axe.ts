@@ -119,9 +119,9 @@ export function axeOptions(): RunOptions {
  * Jumps every running transition and finite animation in the document to
  * its end, so `color-contrast` scores the colours the page rests on.
  *
- * `provideNoopAnimations` stops Angular's animations, not plain CSS ones, and
- * headless Chrome need not paint a frame between a class landing and the
- * pass — so a transition can sit on its first colours for the whole run. The
+ * `provideNoMotion` stops Material's and the CDK's animations, not plain CSS
+ * ones, and headless Chrome need not paint a frame between a class landing and
+ * the pass — so a transition can sit on its first colours for the whole run. The
  * transactions quick filters mark "This month" after first render and carry
  * `transition: all 0.15s`; audited mid-flight, their active button read as
  * the inactive one, and a 3.45:1 dark pair passed every run but one.

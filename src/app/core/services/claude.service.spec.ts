@@ -295,6 +295,29 @@ describe('ClaudeService', () => {
       await expectAsync(service.parseReceipt('img')).toBeRejected();
       expect(service.lastError()).toBe('Unknown error');
     });
+
+    it("hands the caller's signal to messages.create as its options", async () => {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+      const { signal } = new AbortController();
+
+      await service.parseReceipt('img', { signal });
+
+      const options = fake.messages.create.calls.mostRecent().args[1];
+      expect(options).toEqual({ signal });
+      expect(options.signal).toBe(signal);
+    });
+
+    it('passes messages.create no options when there is no signal', async () => {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+
+      await service.parseReceipt('img');
+
+      expect(fake.messages.create.calls.mostRecent().args[1]).toBeUndefined();
+    });
   });
 
   describe('suggestCategory', () => {
@@ -777,7 +800,6 @@ describe('ClaudeService', () => {
               type: 'expense',
               currency: 'USD',
               imageIndex: 1,
-              positionInImage: 'top',
               confidence: 0.9,
               wasMerged: true,
               mergedFromImages: [0, 1],
@@ -825,7 +847,6 @@ describe('ClaudeService', () => {
 
       const result = await service.extractTransactionsFromMultipleImages(['a']);
       expect(result[0].imageIndex).toBe(0);
-      expect(result[0].positionInImage).toBe('middle');
       expect(result[0].confidence).toBe(0.7);
       expect(result[0].wasMerged).toBeFalse();
       expect(result[0].receiptId).toBe(1);

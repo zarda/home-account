@@ -13,6 +13,7 @@ import {
   getDoc,
   doc,
   setDoc,
+  updateDoc,
   deleteDoc,
   Firestore,
   Timestamp
@@ -25,6 +26,7 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service';
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
+import { opaqueRowId } from '../utils/opaque-id.utils';
 import { prefillFromGroup } from '../utils/recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
 import { integerField, patchFieldsAsOwner } from './testing/emulator-admin';
@@ -37,10 +39,12 @@ silenceFirebaseWarnings();
  *
  * The unit suite stubs `runTransaction`, so it can prove which occurrence dates
  * the loop computes but not that each one becomes its own document. The
- * idempotency key is derived from the occurrence date — `rec-<rule>-<time>` —
- * which means a date bug and a duplicate-posting bug are the same bug: two
- * occurrences that collapse onto one date collapse onto one document, and the
- * month in between is simply never written. Only a real commit shows that.
+ * idempotency key is a digest of the rule and the occurrence date
+ * (`opaqueRowId`), which means a date bug and a duplicate-posting bug are the
+ * same bug: two occurrences that collapse onto one date collapse onto one
+ * document, and the month in between is simply never written. Only a real
+ * commit shows that. The id names neither, so these cases find a rule's rows by
+ * the `recurringId` each one stores.
  *
  * Runs only under the emulators:
  *   npm run test:smoke
@@ -60,7 +64,9 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   const RULE_ID = 'smoke-rent-31st';
   /** The rule the bad-state cases seed whole and then break. */
   const BAD_ID = 'smoke-bad-state';
-  const IDS = [RULE_ID, BAD_ID];
+  /** The rule whose one occurrence is claimed twice. */
+  const DOUBLE_ID = 'smoke-double-claim';
+  const IDS = [RULE_ID, BAD_ID, DOUBLE_ID];
 
   beforeAll(async () => {
     app = initializeApp(
@@ -142,7 +148,7 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
     const posted = await getDocs(collection(firestore, `users/${uid}/transactions`));
     await Promise.all(
       posted.docs
-        .filter(d => IDS.some(id => d.id.startsWith(`rec-${id}-`)))
+        .filter(d => IDS.includes(d.data()['recurringId']))
         .map(d => deleteDoc(d.ref).catch(() => undefined))
     );
   });
@@ -150,7 +156,7 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   const postedDayKeys = async (): Promise<string[]> => {
     const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
     return snapshot.docs
-      .filter(d => d.id.startsWith(`rec-${RULE_ID}-`))
+      .filter(d => d.data()['recurringId'] === RULE_ID)
       .map(d => dayKey((d.data()['date'] as Timestamp).toDate()))
       .sort();
   };
@@ -212,7 +218,7 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
       await service.catchUpRecurringTransactions();
 
       const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
-      const posted = snapshot.docs.filter(d => d.id.startsWith(`rec-${DRAIN_ID}-`));
+      const posted = snapshot.docs.filter(d => d.data()['recurringId'] === DRAIN_ID);
 
       // Every due day posted exactly once across the claims.
       expect(posted.length).toBeGreaterThanOrEqual(daysBack);
@@ -228,7 +234,7 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
       const leftovers = await getDocs(collection(firestore, `users/${uid}/transactions`));
       await Promise.all(
         leftovers.docs
-          .filter(d => d.id.startsWith(`rec-${DRAIN_ID}-`))
+          .filter(d => d.data()['recurringId'] === DRAIN_ID)
           .map(d => deleteDoc(d.ref).catch(() => undefined))
       );
     }
@@ -298,6 +304,50 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
     await service.catchUpRecurringTransactions();
 
     expect(await postedDayKeys()).toEqual(first);
+  }, 60000);
+
+  /**
+   * Two claims of one occurrence: the pointer is put back on a date already
+   * posted, as a racing device or a retried claim would find it. The id is a
+   * digest of the rule and the date, so the second claim lands on the document
+   * the first one wrote, and that id names neither of them (#466).
+   */
+  it('a second claim of one occurrence leaves one row, at an opaque id', async () => {
+    const due = new Date();
+    due.setHours(9, 0, 0, 0);
+    due.setDate(due.getDate() - 3);
+    const rulePath = `users/${uid}/recurring/${DOUBLE_ID}`;
+    await setDoc(doc(firestore, rulePath), {
+      userId: uid,
+      name: 'Double claim',
+      type: 'expense',
+      amount: 9,
+      currency: 'USD',
+      categoryId: 'food_coffee',
+      description: 'Double claim',
+      // Yearly, so exactly one occurrence is due and the next is a year out.
+      frequency: { type: 'yearly', interval: 1 },
+      startDate: Timestamp.fromDate(due),
+      nextOccurrence: Timestamp.fromDate(due),
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+
+    await service.catchUpRecurringTransactions();
+    await updateDoc(doc(firestore, rulePath), { nextOccurrence: Timestamp.fromDate(due) });
+    await service.catchUpRecurringTransactions();
+
+    // The second claim committed: its pointer advance rides in the same
+    // transaction as its write.
+    const rule = (await getDoc(doc(firestore, rulePath))).data()!;
+    expect((rule['nextOccurrence'] as Timestamp).toDate().getTime()).toBeGreaterThan(Date.now());
+
+    const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
+    const ids = snapshot.docs.filter(d => d.data()['recurringId'] === DOUBLE_ID).map(d => d.id);
+    expect(ids).toEqual([await opaqueRowId('rec', DOUBLE_ID, due.getTime())]);
+    expect(ids[0]).toMatch(/^[0-9a-f]{32}$/);
+    expect(ids[0]).not.toContain('rec-');
   }, 60000);
 
   /**
@@ -403,7 +453,9 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
 
     const badRuleOccurrences = async (): Promise<string[]> => {
       const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
-      return snapshot.docs.map(d => d.id).filter(id => id.startsWith(`rec-${BAD_ID}-`));
+      return snapshot.docs
+        .filter(d => d.data()['recurringId'] === BAD_ID)
+        .map(d => d.id);
     };
 
     it('a rule whose start date is gone is skipped by name and the next rule posts', async () => {

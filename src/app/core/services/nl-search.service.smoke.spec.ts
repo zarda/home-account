@@ -30,6 +30,7 @@ import { TransactionService } from './transaction.service';
 import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { Transaction } from '../../models';
+import { dayKey } from '../utils/transaction-date.utils';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -251,6 +252,7 @@ describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
     await service.search('how much toward the japan trip');
 
     const context = interpretSearchQuery.calls.mostRecent().args[1];
+    expect(context.today).toBe(dayKey(new Date()));
     expect(context.goals).toContain(
       jasmine.objectContaining({ id: 'nl-smoke-goal-a', name: 'Japan trip' })
     );

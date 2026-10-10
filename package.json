@@ -1,12 +1,13 @@
 {
   "name": "home-account",
-  "version": "26.10.171",
+  "version": "26.10.172",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
     "start:emulators": "ng serve --configuration emulators --port 4300",
     "build": "ng build",
     "build:prod": "ng build --configuration=production",
+    "build:analyze": "ng build --configuration=production --stats-json && node scripts/analyze-bundle.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:smoke": "ng test --watch=false --browsers=ChromeHeadless --include='**/*.smoke.spec.ts'",
@@ -33,6 +34,7 @@
     "contrast:check": "node scripts/check-contrast.mjs --self-test && node scripts/check-contrast.mjs",
     "colors:check": "node scripts/check-colors.mjs --self-test && node scripts/check-colors.mjs",
     "icon-labels:check": "node scripts/check-icon-labels.mjs --self-test && node scripts/check-icon-labels.mjs",
+    "adr-index:check": "node scripts/check-adr-index.mjs --self-test && node scripts/check-adr-index.mjs",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",
@@ -57,7 +59,6 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/animations": "^22.1.4",
     "@angular/cdk": "^22.1.4",
     "@angular/common": "^22.1.4",
     "@angular/compiler": "^22.1.4",
@@ -67,7 +68,6 @@
     "@angular/material": "^22.1.4",
     "@angular/platform-browser": "^22.1.4",
     "@angular/router": "^22.1.4",
-    "@angular/service-worker": "^22.1.4",
     "@anthropic-ai/sdk": "^0.104.1",
     "@capacitor-firebase/analytics": "^8.4.0",
     "@capacitor-firebase/authentication": "^8.4.0",

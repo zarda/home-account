@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideNativeDateAdapter } from '@angular/material/core';
 
@@ -10,7 +9,7 @@ import {
 import { HouseholdError } from '../../../../core/services/household.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub } from '../../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
 import { startOfDay } from '../../../../core/utils/transaction-date.utils';
 import {
   PLAN_AUDIT_THEMES,
@@ -37,7 +36,7 @@ describe('HouseholdContributionDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HouseholdContributionDialogComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideNativeDateAdapter(),
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { goalName: 'Holiday', currency: 'EUR', save } },

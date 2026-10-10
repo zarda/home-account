@@ -26,9 +26,9 @@
 // `notificationclose`.
 //
 // Every other request passes through untouched: no caching, no offline
-// shell, and deliberately no `sync` handler — registering any worker makes
-// PwaService.registerBackgroundSync() start succeeding, and a sync event
-// with no handler here is inert by design.
+// shell, and no `sync` handler — the offline queue drains on a reconnect or
+// the manual Sync Now, never on a worker wake-up. The only message this
+// worker posts to a page is the notification route above.
 //
 // The DB name, store names, version, and row shape are duplicated in
 // src/app/core/services/share-stash.store.ts, which a worker cannot

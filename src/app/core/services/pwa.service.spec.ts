@@ -223,61 +223,22 @@ describe('PwaService', () => {
     });
   });
 
-  describe('service worker messages', () => {
-    type Handler = (d: { type: string; payload?: unknown }) => void;
+  describe('service worker channel', () => {
+    // The channel is shared: the share-target worker posts notification routes
+    // on it and NotificationTapService reads them with its own listener, and
+    // anything else under this origin may post anything. This service has no
+    // message of its own to answer, so it stays off the channel.
+    it('registers no message listener on the service worker container', () => {
+      const addListener = spyOn(navigator.serviceWorker, 'addEventListener').and.callThrough();
 
-    it('re-dispatches the sync signal', () => {
-      const s = make();
-      const events: string[] = [];
-      const onSync = () => events.push('sync');
-      window.addEventListener('sync-offline-queue', onSync);
-      const handler = (s as unknown as { handleServiceWorkerMessage: Handler }).handleServiceWorkerMessage.bind(s);
-      handler({ type: 'SYNC_OFFLINE_QUEUE' });
-      window.removeEventListener('sync-offline-queue', onSync);
-      expect(events).toEqual(['sync']);
-    });
-
-    it('ignores CACHE_SIZE messages', () => {
-      const s = make();
-      const dispatchSpy = spyOn(window, 'dispatchEvent').and.callThrough();
-      const handler = (s as unknown as { handleServiceWorkerMessage: Handler }).handleServiceWorkerMessage.bind(s);
-      expect(() => handler({
-        type: 'CACHE_SIZE', payload: { total: 10, models: 4, static: 3, dynamic: 3 },
-      })).not.toThrow();
-      expect(dispatchSpy).not.toHaveBeenCalled();
-    });
-
-    it('ignores CHECK_MODEL_UPDATES messages', () => {
-      const s = make();
-      const onModel = jasmine.createSpy('onModel');
-      window.addEventListener('check-model-updates', onModel);
-      const handler = (s as unknown as { handleServiceWorkerMessage: Handler }).handleServiceWorkerMessage.bind(s);
-      handler({ type: 'CHECK_MODEL_UPDATES' });
-      window.removeEventListener('check-model-updates', onModel);
-      expect(onModel).not.toHaveBeenCalled();
-    });
-
-    // The channel is shared: the share-target worker posts notification
-    // routes on it, and anything else under this origin may post anything.
-    // A listener that throws is reported for every message, by every
-    // instance still listening.
-    it('ignores a message whose data is not an object, through the real container', () => {
       make();
-      const thrown: unknown[] = [];
-      const onError = (event: ErrorEvent) => {
-        thrown.push(event.error);
-        event.preventDefault();
-      };
-      window.addEventListener('error', onError);
-      try {
-        for (const data of [null, undefined, 42, 'SYNC_OFFLINE_QUEUE']) {
-          navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data }));
-        }
-      } finally {
-        window.removeEventListener('error', onError);
-      }
 
-      expect(thrown).toEqual([]);
+      expect(addListener.calls.allArgs().map(([type]) => type)).not.toContain('message');
+    });
+
+    // No worker here answers a sync event, so there is nothing to register.
+    it('has no background-sync registration', () => {
+      expect('registerBackgroundSync' in make()).toBeFalse();
     });
   });
 
@@ -337,43 +298,6 @@ describe('PwaService', () => {
         withDevice(MAC_SAFARI_UA, 0);
         expect(make().isIOS()).toBeFalse();
       });
-    });
-  });
-
-  describe('registerBackgroundSync', () => {
-    it('resolves to a boolean without hanging', async () => {
-      const s = make();
-      const supported =
-        'serviceWorker' in navigator && 'sync' in ServiceWorkerRegistration.prototype;
-      if (supported) {
-        Object.defineProperty(navigator.serviceWorker, 'ready', {
-          configurable: true,
-          value: Promise.resolve({ sync: { register: () => Promise.resolve() } }),
-        });
-      }
-      const result = await s.registerBackgroundSync('sync-offline-queue');
-      expect(typeof result).toBe('boolean');
-    });
-
-    // The success arm used to print `[PWA] Background sync registered: <tag>`.
-    // ADR 0123's rule took it out and no-console keeps it out; the returned
-    // boolean already says whether the registration happened, and the two
-    // failure arms still warn and error the way 0123 kept them.
-    it('registers without narrating it', async () => {
-      const logSpy = spyOn(console, 'log');
-      const s = make();
-      const supported =
-        'serviceWorker' in navigator && 'sync' in ServiceWorkerRegistration.prototype;
-      if (supported) {
-        Object.defineProperty(navigator.serviceWorker, 'ready', {
-          configurable: true,
-          value: Promise.resolve({ sync: { register: () => Promise.resolve() } }),
-        });
-      }
-
-      await s.registerBackgroundSync('sync-offline-queue');
-
-      expect(logSpy).not.toHaveBeenCalled();
     });
   });
 });

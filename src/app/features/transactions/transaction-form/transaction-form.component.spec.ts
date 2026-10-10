@@ -2,7 +2,6 @@ import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@an
 import { EnvironmentInjector, NO_ERRORS_SCHEMA, createComponent } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -71,6 +70,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 import type { Rgb } from '../../../core/utils/color-contrast.utils';
 import { ThemeService } from '../../../core/services/theme.service';
@@ -2821,7 +2821,7 @@ describe('TransactionFormComponent, through its own template', () => {
     quota.canAddImages.and.resolveTo(true);
 
     await TestBed.configureTestingModule({
-      imports: [TransactionFormComponent, ReactiveFormsModule, NoopAnimationsModule],
+      imports: [TransactionFormComponent, ReactiveFormsModule],
       providers: [
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: TransactionService, useValue: transactions },
@@ -2864,6 +2864,7 @@ describe('TransactionFormComponent, through its own template', () => {
         { provide: FirestoreService, useValue: { subscribeToCollection: () => of(householdIndex) } },
         { provide: LedgerShareService, useValue: jasmine.createSpyObj('LedgerShareService', ['share', 'unshare']) },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
+        provideNoMotion(),
       ],
     })
       .overrideComponent(TransactionFormComponent, {

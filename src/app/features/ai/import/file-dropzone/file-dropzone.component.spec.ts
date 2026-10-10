@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
+import { IMPORT_FILE_MAX_BYTES } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
   channels,
@@ -10,6 +10,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -21,12 +22,15 @@ describe('FileDropzoneComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [FileDropzoneComponent, NoopAnimationsModule],
+      imports: [FileDropzoneComponent],
       schemas: [NO_ERRORS_SCHEMA],
       // The component itself reads the catalog now — its two file refusals
       // are user-facing sentences — so the stub is needed even with the
       // template blanked.
-      providers: [{ provide: TranslationService, useValue: createTranslationStub() }]
+      providers: [
+        { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion()
+      ]
     })
       .overrideComponent(FileDropzoneComponent, {
         set: { template: '<div></div>' }
@@ -59,8 +63,8 @@ describe('FileDropzoneComponent', () => {
       expect(component.acceptedTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp,.json');
     });
 
-    it('should have default max file size of 10MB', () => {
-      expect(component.maxFileSize).toBe(10 * 1024 * 1024);
+    it('should default its max file size to the shared intake ceiling', () => {
+      expect(component.maxFileSize).toBe(IMPORT_FILE_MAX_BYTES);
     });
   });
 
@@ -301,8 +305,11 @@ describe('FileDropzoneComponent, through its own template', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [FileDropzoneComponent, NoopAnimationsModule],
-      providers: [{ provide: TranslationService, useValue: createTranslationStub() }]
+      imports: [FileDropzoneComponent],
+      providers: [
+        { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion()
+      ]
     }).compileComponents();
 
     fixture = TestBed.createComponent(FileDropzoneComponent);
@@ -409,6 +416,102 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(el().querySelector('.error-banner')).not.toBeNull();
     expect(text('.error-message')).toBe('import.fileTypeUnsupported:{"name":"notes.txt"}');
     expect(el().querySelector('.dropzone')?.classList).toContain('error');
+  });
+
+  // The banner is the only thing that says a file was refused. It is inserted
+  // by `@if`, so as an alert its arrival is spoken; without the role a
+  // screen-reader user dropped a file and heard nothing at all.
+  it('announces an oversized file it refuses', () => {
+    fixture.detectChanges();
+    const big = new File(['x'], 'big-statement.csv', { type: 'text/csv' });
+    // A DataTransfer copies the file and drops an overridden size, so this
+    // one goes in through the input's handler rather than a drop.
+    Object.defineProperty(big, 'size', { value: component.maxFileSize + 1 });
+    component.onFileSelect({ target: { files: [big], value: 'x' } } as unknown as Event);
+    fixture.detectChanges();
+
+    const banner = el().querySelector('.error-banner') as HTMLElement;
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.textContent).toContain('import.fileTooLarge:{"name":"big-statement.csv","limit":"10 MB"}');
+    expect(banner.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
+
+    // A refusal leaves nothing picked, so the zone is a role="button" right
+    // now, and a button's children are presentational: an alert inside one
+    // is each engine's to keep or prune. The banner sits beside the zone.
+    expect(el().querySelector('.dropzone')?.getAttribute('role')).toBe('button');
+    expect(banner.closest('[role="button"]')).toBeNull();
+  });
+
+  // Beside the zone, the banner still sits inside the frame that takes the
+  // drop, so a file dropped on it is read rather than opened by the browser.
+  it('takes a file dropped on the refusal banner', () => {
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    const banner = el().querySelector('.error-banner') as HTMLElement;
+
+    const transfer = new DataTransfer();
+    transfer.items.add(csvFile('statement.csv'));
+    banner.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }));
+    fixture.detectChanges();
+
+    expect(text('.file-name')).toBe('statement.csv');
+    expect(el().querySelector('.error-banner')).toBeNull();
+  });
+
+  it('announces an unsupported file it refuses, and the next refusal in the same alert', () => {
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+
+    const banner = el().querySelector('.error-banner') as HTMLElement;
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.textContent).toContain('import.fileTypeUnsupported:{"name":"notes.txt"}');
+    expect(banner.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
+
+    // processFiles clears and sets the error in one handler, so a second
+    // refusal never unmounts the banner: its new text lands in the same
+    // alert, and a change to an alert's text is spoken too.
+    dropFiles([new File(['x'], 'tool.exe', { type: 'application/octet-stream' })]);
+    expect(el().querySelector('.error-banner')).toBe(banner);
+    expect(banner.textContent).toContain('import.fileTypeUnsupported:{"name":"tool.exe"}');
+  });
+
+  // Below the zone, the banner sat just under the fold of a 768px window,
+  // where the zone fills the first screen: a sighted user who dropped the
+  // file saw nothing change. The scroll waits for the render that inserts
+  // or rewrites the banner, so it runs on the tick, and it moves the page
+  // only: an alert is announced where it is, never focused.
+  it('brings a refused file\'s message into view, and again when the next refusal rewrites it', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+    const focused = document.activeElement;
+
+    const big = new File(['x'], 'big-statement.csv', { type: 'text/csv' });
+    Object.defineProperty(big, 'size', { value: component.maxFileSize + 1 });
+    component.onFileSelect({ target: { files: [big], value: 'x' } } as unknown as Event);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const banner = el().querySelector('.error-banner') as HTMLElement;
+    expect(scroll).toHaveBeenCalledOnceWith({ block: 'nearest' });
+    expect(scroll.calls.mostRecent().object).toBe(banner);
+    expect(document.activeElement).toBe(focused);
+
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll.calls.mostRecent().object).toBe(banner);
+  });
+
+  it('scrolls nothing for a file it takes', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+
+    dropFiles([csvFile('statement.csv')]);
+    TestBed.tick();
+
+    expect(text('.file-name')).toBe('statement.csv');
+    expect(scroll).not.toHaveBeenCalled();
   });
 
   it('marks the zone while a drag is over it', () => {
@@ -533,8 +636,9 @@ describe('FileDropzoneComponent, through its own template', () => {
       }
     });
 
-    // The message sits on its banner's 10% error tint over the zone, not on a
-    // card, and the zone fades between its states, so it is settled first.
+    // The message sits on its banner's 10% error tint over whatever is below
+    // the zone, not on a card, and the zone fades between its states, so the
+    // page is settled first.
     it('reads a refused file\'s message in --color-error-text at AA on its banner, in both themes', () => {
       fixture.detectChanges();
       dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);

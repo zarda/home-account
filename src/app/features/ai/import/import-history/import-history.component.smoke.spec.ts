@@ -9,8 +9,10 @@
 // a mock handed back; and that a record missing `totalIncome`/
 // `totalExpenses` and `totalsByCurrency` alike also passes the rules and
 // renders a zero through the real `CurrencyService`, never the `NaN` an
-// unguarded `Intl.NumberFormat` call would produce. The unit spec overrides
-// nothing here — ImportHistoryComponent's own template and its own
+// unguarded `Intl.NumberFormat` call would produce. A failed receipt attempt,
+// stored the way the attempt service writes one, also reads its error line
+// from the catalog rather than the English the record holds. The unit spec
+// overrides nothing here — ImportHistoryComponent's own template and its own
 // MatMenuModule import are what render.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
@@ -21,7 +23,6 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, EMPTY } from 'rxjs';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
@@ -37,10 +38,10 @@ import { ImportHistoryComponent } from './import-history.component';
 import { AuthService } from '../../../../core/services/auth.service';
 import { FirestoreService } from '../../../../core/services/firestore.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ImportHistory } from '../../../../models';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
+import { provideNoMotion } from '../../../../core/services/testing';
 
 jasmine.getEnv().configure({ random: false });
 silenceFirebaseWarnings();
@@ -56,6 +57,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   let uid: string;
   let fixture: ComponentFixture<ImportHistoryComponent>;
   let router: jasmine.SpyObj<Router>;
+  let translation: jasmine.SpyObj<TranslationService>;
 
   beforeAll(async () => {
     app = initializeApp(
@@ -79,11 +81,14 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     // validate userId/importedAt/source/fileType/fileName/status on create,
     // and accept transactionIds only as a list when present) — no
     // ImportHistoryService call, no AI provider, no confirmImport run behind
-    // it. Four distinct fileNames so each test can find its own card
+    // it. Five distinct fileNames so each test can find its own card
     // without depending on query order.
     const legacy: Omit<ImportHistory, 'id'> = {
       userId: uid,
-      importedAt: Timestamp.now(),
+      // A morning hour below ten, in the browser's own zone, so the row's
+      // time reads the same whatever the zone and a padded hour is told apart
+      // from an unpadded one.
+      importedAt: Timestamp.fromDate(new Date(2026, 4, 3, 9, 5)),
       source: 'csv',
       fileType: 'generic_csv',
       fileName: 'smoke-legacy-statement.csv',
@@ -151,12 +156,34 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       // fileName/status, so this shape — older than either total scheme, a
       // restore, or a write from outside the app — passes create as-is.
     };
+    // What ReceiptAttemptService.recordFailure writes for a cloud attempt
+    // that could not reach the AI: the attempt's English beside its class.
+    const failedAttempt: Omit<ImportHistory, 'id'> = {
+      userId: uid,
+      importedAt: Timestamp.now(),
+      source: 'image',
+      fileType: 'receipt_image',
+      fileName: 'smoke-failed-receipt.jpg',
+      fileSize: 40960,
+      transactionCount: 0,
+      successCount: 0,
+      skippedCount: 0,
+      errorCount: 1,
+      totalIncome: 0,
+      totalExpenses: 0,
+      status: 'failed',
+      duplicatesSkipped: 0,
+      errors: [{ message: 'Cloud AI is not reachable.' }],
+      door: 'wizard',
+      errorType: 'network'
+    };
 
     await Promise.all([
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-legacy`), legacy),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-single`), single),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-batch`), batch),
-      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-bare-totals`), bareTotals)
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-bare-totals`), bareTotals),
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-failed-attempt`), failedAttempt)
     ]);
   });
 
@@ -166,23 +193,22 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   beforeEach(async () => {
     router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
-    // Nothing here stubs CurrencyService, so the card renders every record's
-    // totals through the real one — and formatCurrency reads the active
-    // locale from this service, so a spy answering only `t` throws the
-    // moment the template renders a total.
-    const translation = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
+    // Nothing here stubs CurrencyService or LocaleFormatService, so the card
+    // renders every record's totals and time through the real ones — and both
+    // read the active locale from this service, so a spy answering only `t`
+    // throws the moment the template renders a total.
+    translation = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
     translation.t.and.callFake((key: string) => key);
     translation.getIntlLocale.and.returnValue('en-US');
 
     await TestBed.configureTestingModule({
       imports: [ImportHistoryComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         FirestoreService,
         { provide: Firestore, useValue: firestore },
         { provide: AuthService, useValue: { userId: () => uid, currentUser: () => null } },
         { provide: TranslationService, useValue: translation },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => of(true) }) } },
         { provide: Router, useValue: router }
@@ -212,8 +238,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a legacy record renders no shortcut', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     const card = cardFor('smoke-legacy-statement.csv');
     // Delete is always there; a legacy record with no transactionIds joins
@@ -223,8 +249,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a one-transaction record's button navigates with its stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     const card = cardFor('smoke-single-receipt.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -242,8 +268,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a batch record's menu holds one entry per stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     const card = cardFor('smoke-batch-receipts.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -267,8 +293,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a record with neither total renders a zero, not NaN', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 4,
-      'all four seeded records');
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
 
     // The seeding `setDoc` already resolving is the proof the rules took
     // the write; this is the other half — what the real CurrencyService
@@ -280,5 +306,49 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     expect(incomeValue?.textContent).toContain('$0.00');
     expect(expenseValue?.textContent).toContain('$0.00');
     expect(card.textContent).not.toContain('NaN');
+  }, 20000);
+
+  // The row's time came from `toLocaleTimeString` with a two-digit hour,
+  // which pads 9:05 to 09:05; it now comes from the locale formatter. The
+  // expectation is computed with Intl in this environment rather than written
+  // out, so it holds on whatever ICU the browser ships.
+  it("a stored record's row shows its time in the active language's convention", async () => {
+    translation.getIntlLocale.and.returnValue('ja-JP');
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
+
+    const stored = fixture.componentInstance.importHistory()
+      .find(item => item.fileName === 'smoke-legacy-statement.csv');
+    const importedAt = stored!.importedAt.toDate();
+    const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+    const jaTime = new Intl.DateTimeFormat('ja-JP', timeOptions).format(importedAt);
+    const enTime = new Intl.DateTimeFormat('en-US', timeOptions).format(importedAt);
+    // A 24-hour clock against a 12-hour one with its marker: the two never
+    // agree, so the assertion below cannot pass by the locale being ignored.
+    expect(jaTime).not.toBe(enTime);
+
+    // The subtitle is the short day, a space, then the time; a Japanese day
+    // and time hold no space of their own.
+    const subtitle = cardFor('smoke-legacy-statement.csv').querySelector('mat-card-subtitle');
+    const shown = subtitle?.textContent?.trim() ?? '';
+    expect(shown.slice(shown.lastIndexOf(' ') + 1)).toBe(jaTime);
+  }, 20000);
+
+  // The stored line is English; the card reads it back to the classifier's
+  // own key, through the catalog (ADR 0036), and not to its class's sentence,
+  // which would tell an online reader to check the connection. The spy
+  // answers with the key, so the key on screen is the sentence a Japanese
+  // reader gets in Japanese.
+  it("a stored failed attempt's error line comes from the catalog, not the English it stored", async () => {
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 5,
+      'all five seeded records');
+
+    const card = cardFor('smoke-failed-receipt.jpg');
+    const lines = Array.from(card.querySelectorAll('.errors li'))
+      .map(li => li.textContent?.trim());
+    expect(lines).toEqual(['import.errorCloudUnavailable']);
+    expect(card.textContent).not.toContain('Cloud AI is not reachable.');
   }, 20000);
 });

@@ -1,4 +1,4 @@
-import { RenderedPrompt } from './prompt-inputs';
+import { PromptResponseKind, RenderedPrompt } from './prompt-inputs';
 import {
   renderCategorizeTransactions,
   renderCategorySuggestion,
@@ -49,6 +49,13 @@ export interface PromptDefinition<I = never> {
   since: string;
   /** Which capability the prompt belongs to, matching AIFeatureType. */
   feature: 'receiptScanning' | 'categorization' | 'insights' | 'search' | 'translation';
+  /**
+   * How the model answers — the same value the render puts on its prompt, held
+   * here as a literal so the type system can see it. A render's `expects` is
+   * only known once it runs; this one is what `ProsePromptId` is derived from.
+   * The registry spec holds the two equal.
+   */
+  expects: PromptResponseKind;
   render: (input: I) => RenderedPrompt;
 }
 
@@ -56,81 +63,108 @@ export const PROMPTS = {
   receiptParse: {
     since: '1.17.93',
     feature: 'receiptScanning',
+    expects: 'json',
     render: renderReceiptParse,
   },
   receiptSummary: {
     since: '1.17.93',
     feature: 'receiptScanning',
+    expects: 'json',
     render: renderReceiptSummary,
   },
   receiptItems: {
     since: '1.17.93',
     feature: 'receiptScanning',
+    expects: 'json',
     render: renderReceiptItems,
   },
   statementTransactions: {
     since: '1.17.93',
     feature: 'receiptScanning',
+    expects: 'json',
     render: renderStatementTransactions,
   },
   multiImageReceipts: {
     since: '1.17.93',
     feature: 'receiptScanning',
+    expects: 'json',
     render: renderMultiImageReceipts,
   },
   categorizeTransactions: {
     since: '1.17.93',
     feature: 'categorization',
+    expects: 'json',
     render: renderCategorizeTransactions,
   },
   categorySuggestion: {
     since: '1.17.93',
     feature: 'categorization',
+    expects: 'plainText',
     render: renderCategorySuggestion,
   },
   csvMapping: {
     since: '1.17.93',
     feature: 'categorization',
+    expects: 'json',
     render: renderCsvMapping,
   },
   suggestTags: {
     since: '1.26.138',
     feature: 'categorization',
+    expects: 'json',
     render: renderSuggestTags,
   },
   spendingSummary: {
     since: '1.17.93',
     feature: 'insights',
+    expects: 'markdown',
     render: renderSpendingSummary,
   },
   patternNarrative: {
     since: '1.17.93',
     feature: 'insights',
+    expects: 'plainText',
     render: renderPatternNarrative,
   },
   financialAdvice: {
     since: '1.17.93',
     feature: 'insights',
+    expects: 'plainText',
     render: renderFinancialAdvice,
   },
   searchQuery: {
     since: '1.17.93',
     feature: 'search',
+    expects: 'json',
     render: renderSearchQuery,
   },
   translateNote: {
     since: '26.9.152',
     feature: 'translation',
+    expects: 'json',
     render: renderTranslateNote,
   },
   translateReceiptImage: {
     since: '26.9.160',
     feature: 'translation',
+    expects: 'json',
     render: renderTranslateReceiptImage,
   },
-} as const;
+} as const satisfies Record<string, PromptDefinition>;
 
 export type PromptId = keyof typeof PROMPTS;
+
+/**
+ * The prompts answered in prose rather than JSON, read off each entry's
+ * `expects`.
+ *
+ * A provider that cleans up prose answers keys its table by this, so a new
+ * prose prompt is a compile error there until it says what happens to its
+ * answer — even when that is nothing.
+ */
+export type ProsePromptId = {
+  [K in PromptId]: (typeof PROMPTS)[K]['expects'] extends 'json' ? never : K;
+}[PromptId];
 
 /**
  * The input a prompt requires, read off its own render function.

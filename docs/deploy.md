@@ -359,9 +359,10 @@ Kept here because it is also the anything-looks-wrong checklist:
    composite indexes* step holds the run until every one is ready — so
    Firestore → Indexes is the fallback to read when that step is the one that
    went red.
-3. https://home-accounter.web.app loads; hard-reload once (the service
-   worker serves the cached shell until it updates); About shows the new
-   version; one signed-in read and write works.
+3. https://home-accounter.web.app loads; hard-reload once (Hosting serves
+   the shell with `cache-control: max-age=3600`, so a plain reload can show
+   the previous build for up to an hour; no service worker caches it); About
+   shows the new version; one signed-in read and write works.
 4. The next pull request shows both deploy jobs as skipped (`changes` runs
    and reports nothing to deploy), and a docs-only merge deploys nothing.
 5. After a functions deploy that created a callable, its Cloud Run service

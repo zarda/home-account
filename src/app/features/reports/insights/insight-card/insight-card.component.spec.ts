@@ -1,14 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { InsightCardComponent } from './insight-card.component';
 import { CategoryService } from '../../../../core/services/category.service';
 import { PendingFiltersService } from '../../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightCard, Transaction } from '../../../../models';
 import { createCategory, createTransaction } from '../../../../core/services/testing/test-data';
-import { createTranslationStub } from '../../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
 
 describe('InsightCardComponent', () => {
   let component: InsightCardComponent;
@@ -55,7 +54,7 @@ describe('InsightCardComponent', () => {
     router = jasmine.createSpyObj<Router>('Router', ['navigate']);
 
     await TestBed.configureTestingModule({
-      imports: [InsightCardComponent, NoopAnimationsModule],
+      imports: [InsightCardComponent],
       providers: [
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
@@ -74,6 +73,7 @@ describe('InsightCardComponent', () => {
               params ? `${key}|${JSON.stringify(params)}` : key,
           },
         },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })
@@ -277,7 +277,7 @@ describe('InsightCardComponent, through its own template', () => {
     router = jasmine.createSpyObj<Router>('Router', ['navigate']);
 
     await TestBed.configureTestingModule({
-      imports: [InsightCardComponent, NoopAnimationsModule],
+      imports: [InsightCardComponent],
       providers: [
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
@@ -288,6 +288,7 @@ describe('InsightCardComponent, through its own template', () => {
           },
         },
         { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

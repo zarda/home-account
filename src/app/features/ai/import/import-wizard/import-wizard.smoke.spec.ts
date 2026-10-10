@@ -47,7 +47,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -69,7 +68,11 @@ import {
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
 import { ImportWizardComponent } from './import-wizard.component';
 import { AuthService } from '../../../../core/services/auth.service';
-import { MockAuthService, createMockUser } from '../../../../core/services/testing';
+import {
+  MockAuthService,
+  createMockUser,
+  provideNoMotion,
+} from '../../../../core/services/testing';
 import { AIImportService } from '../../../../core/services/ai-import.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { AIStrategyService } from '../../../../core/services/ai-strategy.service';
@@ -174,12 +177,8 @@ function stubReceiptSeams(parsed?: ParsedReceipt): void {
   });
   cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-  const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-    'isOnline',
-    'registerBackgroundSync'
-  ]);
+  const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
   pwa.isOnline.and.returnValue(true);
-  pwa.registerBackgroundSync.and.resolveTo(true);
 
   const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
     'AnalyticsService',
@@ -264,7 +263,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         { provide: Firestore, useValue: firestore },
@@ -304,7 +303,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1,
               mergedFromImages: [0]
@@ -324,16 +322,13 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'bottom',
               confidenceScore: 0.85,
               receiptId: 2
             }
           }
         ],
         multiImageMetadata: {
-          totalImages: 1,
-          deduplicationMethod: 'ai',
-          imageIds: ['image_0']
+          totalImages: 1
         }
       };
 
@@ -494,6 +489,80 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'says on the review step when a PDF was read only in part',
+    async () => {
+      // The file site of processFiles, where a PDF's result arrives. The
+      // service suite proves importFromPDF pushes the figures past the page
+      // cap; this is where they reach a rendered review step. The door is
+      // spied to answer that shape, since no provider runs here.
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      const translation = TestBed.inject(TranslationService);
+      const partRead: ImportResult = {
+        source: 'pdf',
+        fileType: 'bank_pdf',
+        fileName: 'statement.pdf',
+        fileSize: 4096,
+        confidence: 0.9,
+        warnings: [{ type: 'pages_truncated', read: 15, total: 40 }],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'p1',
+            description: 'Corner Store',
+            amount: 12.5,
+            currency: 'USD',
+            date: new Date('2026-07-01'),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+      const importFromFile = spyOn(TestBed.inject(AIImportService), 'importFromFile').and.resolveTo(partRead);
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      const statement = new File(['%PDF-1.4'], 'statement.pdf', { type: 'application/pdf' });
+      component.onFilesSelected([statement]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 1);
+
+      // The stepper is linear with no hand-off; steps 0 and 1 are complete.
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      expect(importFromFile).toHaveBeenCalledOnceWith(statement);
+      const notice = host.querySelector('.review-step .truncated-notice');
+      expect(notice).withContext('the notice reaches the review step').not.toBeNull();
+      expect(notice!.getAttribute('role')).toBe('status');
+      // Karma loads no catalog, so the line is the bare key on both sides of
+      // the comparison: what this pins is which key the step renders.
+      expect(notice!.textContent).toContain(translation.t('import.pdfPagesTruncated', { read: 15, total: 40 }));
+      expect(notice!.querySelectorAll('p').length)
+        .withContext('one PDF, so no line counting others')
+        .toBe(1);
+      expect(host.querySelector('.incomplete-notice')).toBeNull();
+      // And the rows the read pages held are there to review.
+      expect(host.textContent ?? '').toContain('Corner Store');
+
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
     'imports a receipt at its printed total, not its item sum, into Firestore',
     async () => {
       // Two line items from the same receipt; only the printed grand total
@@ -507,7 +576,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         },
@@ -518,7 +586,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'bottom',
           confidence: 0.9,
           receiptId: 1,
           receiptDetails: 'Latte — USD 10.00\nMuffin — USD 5.00\nTotal — USD 16.20',
@@ -558,12 +625,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -629,7 +692,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         }
@@ -667,12 +729,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -817,7 +875,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           // inside the provider, which is what is stubbed out here.
           location: { name: '渋谷店 1-2-3' },
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         }
@@ -860,12 +917,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -989,12 +1042,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -1098,12 +1147,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -1175,7 +1220,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
           type: 'expense',
           currency: 'USD',
           imageIndex: 0,
-          positionInImage: 'top',
           confidence: 0.9,
           receiptId: 1
         }
@@ -1213,12 +1257,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       });
       cloudLLMProvider.resolveProvider.and.returnValue(null);
 
-      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
-        'isOnline',
-        'registerBackgroundSync'
-      ]);
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', ['isOnline']);
       pwa.isOnline.and.returnValue(true);
-      pwa.registerBackgroundSync.and.resolveTo(true);
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
@@ -2235,7 +2275,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -2482,8 +2521,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         totalIncome: 0,
         totalExpenses: 0,
         status: 'partial',
-        // row is wrong on purpose: the wizard matches by transactionId.
-        errors: [{ row: 99, transactionId: component.extractedTransactions()[0].id, message: 'refused' }],
+        errors: [{ transactionId: component.extractedTransactions()[0].id, message: 'refused' }],
         duplicatesSkipped: 0
       });
 
@@ -2576,7 +2614,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         // this app: a stable code, kept apart from the message, which is
         // prose the card could not put on screen as-is.
         errors: [{
-          row: 1, transactionId: rowId,
+          transactionId: rowId,
           code: 'permission-denied', message: 'Missing or insufficient permissions.',
         }],
         duplicatesSkipped: 0
@@ -2882,7 +2920,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -3053,7 +3090,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -3072,7 +3108,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 1,
               imageId: 'image_1',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 2
             }
@@ -3224,7 +3259,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 0,
               imageId: 'image_0',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 1
             }
@@ -3243,7 +3277,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             imageMetadata: {
               imageIndex: 1,
               imageId: 'image_1',
-              positionInImage: 'top',
               confidenceScore: 0.9,
               receiptId: 2
             }
@@ -3541,9 +3574,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const errors = record?.['errors'] as ImportHistory['errors'];
       expect(errors?.length).toBe(1);
       expect(errors?.[0].transactionId).toBe(zeroRow.id);
-      expect(errors?.[0].row)
-        .withContext('the position in what was submitted, not on the card')
-        .toBe(2);
+      expect('row' in errors![0])
+        .withContext('a failed row is named by its id; no position is recorded')
+        .toBeFalse();
       // Refused before any write reaches Firestore; were that guard ever to
       // go, the rules would refuse it and the message would be a denial.
       expect(errors?.[0].message).toBe(INVALID_AMOUNT_ERROR);

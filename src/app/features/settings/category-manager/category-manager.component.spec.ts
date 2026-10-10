@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { of, Subject } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -16,6 +15,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -119,14 +119,15 @@ describe('CategoryManagerComponent', () => {
     });
 
     await TestBed.configureTestingModule({
-      imports: [CategoryManagerComponent, NoopAnimationsModule],
+      imports: [CategoryManagerComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: AnnouncerService, useValue: mockAnnouncer }
+        { provide: AnnouncerService, useValue: mockAnnouncer },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -464,7 +465,7 @@ describe('CategoryManagerComponent, through its own template', () => {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
-      imports: [CategoryManagerComponent, NoopAnimationsModule],
+      imports: [CategoryManagerComponent],
       providers: [
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: CategoryService, useValue: categories },
@@ -472,6 +473,7 @@ describe('CategoryManagerComponent, through its own template', () => {
         { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
+        provideNoMotion(),
       ],
     }).compileComponents();
   });

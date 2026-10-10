@@ -1,7 +1,6 @@
 import { WritableSignal, computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 import { Subject, of } from 'rxjs';
 
@@ -24,7 +23,7 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub } from '../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { Household, HouseholdInvite, HouseholdMember } from '../../../models';
 import { HouseholdPageFocus } from '../household-focus';
@@ -187,7 +186,7 @@ describe('HouseholdMembersComponent', () => {
     formatDate = jasmine.createSpy('formatDate').and.returnValue('Oct 2, 2026');
 
     await TestBed.configureTestingModule({
-      imports: [HouseholdMembersComponent, NoopAnimationsModule],
+      imports: [HouseholdMembersComponent],
       providers: [
         {
           provide: HouseholdService,
@@ -207,7 +206,8 @@ describe('HouseholdMembersComponent', () => {
         { provide: PwaService, useValue: { isOnline: online } },
         { provide: DateFormatService, useValue: { formatDate } },
         { provide: TranslationService, useValue: createTranslationStub() },
-        HouseholdPageFocus
+        HouseholdPageFocus,
+        provideNoMotion()
       ]
     }).compileComponents();
 

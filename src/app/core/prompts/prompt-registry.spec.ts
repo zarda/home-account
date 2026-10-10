@@ -149,6 +149,23 @@ describe('prompt registry', () => {
     }
   });
 
+  it('declares on every entry the answer kind its render produces', () => {
+    // The entry's literal is what the type system reads — ProsePromptId, which
+    // keys Gemini's prose fixes — and the render's value is what the adapters
+    // act on at run time. Two copies of one fact, so they have to agree.
+    for (const id of PROMPT_IDS) {
+      const input = SAMPLE_INPUT[id];
+      const rendered =
+        input === undefined
+          ? renderPrompt(id as 'receiptParse')
+          : renderPrompt(id as 'multiImageReceipts', input as { imageCount: number });
+
+      expect(PROMPTS[id].expects)
+        .withContext(`${id} declares a different answer kind from the one it renders`)
+        .toBe(rendered.expects);
+    }
+  });
+
   it('never bakes the Gemini JSON preamble into a prompt', () => {
     // It belongs to the Gemini adapter. A prompt carrying it would send the
     // warning to OpenAI and Claude too, which is how the copies diverged before.
@@ -561,7 +578,7 @@ describe('prompt registry', () => {
 
     it('asks for the fields the consolidation pass reads back', () => {
       const prompt = render('multiImageReceipts');
-      for (const field of ['receiptId', 'imageIndex', 'positionInImage', 'confidence', 'dateConfidence', 'mergedFromImages']) {
+      for (const field of ['receiptId', 'imageIndex', 'confidence', 'dateConfidence', 'mergedFromImages']) {
         expect(prompt).withContext(`missing ${field}`).toContain(`- ${field}`);
       }
     });
@@ -569,6 +586,13 @@ describe('prompt registry', () => {
     it('never asks the model whether an item was merged: only the app decides that', () => {
       const prompt = render('multiImageReceipts');
       expect(prompt).not.toContain('wasMerged');
+    });
+
+    it('never asks the model where on the photo an item sat: nothing reads it', () => {
+      // Consolidation groups by receiptId, so a vertical position fed no
+      // decision; asking for it spent output tokens on every row.
+      const prompt = render('multiImageReceipts');
+      expect(prompt).not.toContain('positionInImage');
     });
 
     it('asks for the printed grand total once per receipt group', () => {
@@ -703,8 +727,8 @@ describe('prompt registry', () => {
       expect(prompt).toContain('Do NOT include total, subtotal, tax, or service charge as items.');
     });
 
-    it('asks for the position metadata the overlap pass reads', () => {
-      expect(render('receiptItems')).toContain('- positionInImage: "top", "middle", "bottom"');
+    it('never asks the model where on the photo an item sat: nothing reads it', () => {
+      expect(render('receiptItems')).not.toContain('positionInImage');
     });
 
     it('asks for the printed grand total once per receipt group', () => {

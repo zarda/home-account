@@ -24,11 +24,18 @@ export const SHARED_FILE_ACCEPT_TYPES = [
   'text/csv'
 ];
 export const SHARED_FILE_ACCEPT_EXTENSIONS = ['.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp'];
-export const SHARED_FILE_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The intake ceiling: the largest original (CSV, PDF, JSON or image) the app
+ * will read, shared in or picked from the dropzone. It is not the stored-photo
+ * ceiling — `MAX_RECEIPT_BYTES` in storage.service.ts is 2 MB and applies after
+ * a receipt photo has been compressed.
+ */
+export const IMPORT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Pure gate for one shared file; exported for the spec. */
 export function isAcceptedShare(file: File): boolean {
-  if (file.size === 0 || file.size > SHARED_FILE_MAX_BYTES) return false;
+  if (file.size === 0 || file.size > IMPORT_FILE_MAX_BYTES) return false;
   if (SHARED_FILE_ACCEPT_TYPES.includes(file.type)) return true;
   const name = file.name.toLowerCase();
   return SHARED_FILE_ACCEPT_EXTENSIONS.some(ext => name.endsWith(ext));

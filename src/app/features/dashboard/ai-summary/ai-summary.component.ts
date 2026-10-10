@@ -21,6 +21,7 @@ import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provid
 import { goalProgressAmount } from '../../../core/utils/goal-progress.utils';
 import { transactionFingerprint } from '../../../core/utils/insight-facts.utils';
 import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
+import { groupExpensesByCategory } from '../../../core/utils/transaction-aggregation.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -323,21 +324,12 @@ export class AiSummaryComponent {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + toBase(t), 0);
 
-    // Group by category
-    const categoryTotals = new Map<string, number>();
-    for (const t of transactions.filter(t => t.type === 'expense')) {
-      categoryTotals.set(t.categoryId, (categoryTotals.get(t.categoryId) || 0) + toBase(t));
-    }
-
     return {
       income,
       expense,
       balance: income - expense,
       transactionCount: transactions.length,
-      byCategory: Array.from(categoryTotals.entries()).map(([categoryId, total]) => ({
-        categoryId,
-        total
-      }))
+      byCategory: groupExpensesByCategory(transactions, toBase),
     };
   }
 

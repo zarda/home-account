@@ -3,6 +3,7 @@
 // instance built from root `firebase/firestore` is incompatible with the writes
 // FirestoreService issues via @angular/fire — they must come from the same copy.
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import { getFirestore, connectFirestoreEmulator, Firestore, Timestamp } from '@angular/fire/firestore';
@@ -15,7 +16,7 @@ import {
   Storage,
 } from '@angular/fire/storage';
 
-import { OfflineQueueService } from './offline-queue.service';
+import { OfflineQueueService, queueRowTxId } from './offline-queue.service';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
 import { FirestoreService } from './firestore.service';
 import { TransactionService } from './transaction.service';
@@ -65,7 +66,8 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   let firestore: ReturnType<typeof getFirestore>;
   let storage: ReturnType<typeof getStorage>;
   let uid: string;
-  let signedInAs: string | null;
+  /** A signal, as the real session is, so the queue's count can follow it. */
+  const signedInAs = signal<string | null>(null);
 
   let queue: OfflineQueueService;
   let processor: OfflineQueueProcessorService;
@@ -143,12 +145,12 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
    * back the same closed instance. Only a module reset gives a new one.
    */
   async function configure(): Promise<void> {
-    const pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
+    const pwa = jasmine.createSpyObj('PwaService', ['isOnline']);
     pwa.isOnline.and.returnValue(true);
 
     const authMock = {
-      userId: () => signedInAs,
-      currentUser: () => ({ id: signedInAs, preferences: { baseCurrency: 'USD' } }),
+      userId: signedInAs,
+      currentUser: () => ({ id: signedInAs(), preferences: { baseCurrency: 'USD' } }),
     };
 
     TestBed.resetTestingModule();
@@ -205,7 +207,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
   beforeEach(async () => {
     // Mutable so a test can queue as one account and sync as another.
-    signedInAs = uid;
+    signedInAs.set(uid);
     ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt']);
     await configure();
     await queue.clearAll();
@@ -244,7 +246,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
     // A second account signs in on the same device before the queue drains.
     const other = `${uid}-other`;
-    signedInAs = other;
+    signedInAs.set(other);
 
     window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
 
@@ -259,7 +261,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     await waitFor(async () => (await queue.peekQueuedImage(id))?.status === 'pending');
     expect(ai.processReceipt).not.toHaveBeenCalled();
 
-    signedInAs = uid;
+    signedInAs.set(uid);
     // Nothing landed in the capturing account either — it is still queued.
     const own = await firestoreService.getCollection<{ amount: number }>(
       `users/${uid}/transactions`,
@@ -343,6 +345,37 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
     expect((await matching()).length).toBe(1);
   }, 45000);
+
+  // The Offline Queue card reads the queue's count, and its Sync Now and
+  // Clear Queue are disabled at zero. A drain this venue cannot finish, with
+  // no provider, leaves the scan failed and counted. After a reload the
+  // database opens before the session is restored, so the count taken at
+  // open is nobody's: the card read 0 over that scan until the count came
+  // to follow the account.
+  it('a failed drain leaves the card\'s count at 1, and a reload counts it again once signed in', async () => {
+    ai.processReceipt.and.rejectWith(new Error('AI_CLOUD_UNAVAILABLE'));
+    const id = await queue.queueImage(receiptFile('unread.jpg'));
+    expect(queue.pendingCount()).toBe(1);
+
+    await queue.syncQueue();
+    await waitFor(async () => (await queue.peekQueuedImage(id))?.status === 'failed');
+    const [failed] = await queue.getPendingImages();
+    expect([failed?.id, failed?.retryCount, failed?.lastError]).toEqual([id, 1, 'AI_CLOUD_UNAVAILABLE']);
+    await waitFor(() => queue.pendingCount() === 1);
+
+    // A reload: the database opens with nobody signed in yet.
+    processor.ngOnDestroy();
+    queue.ngOnDestroy();
+    signedInAs.set(null);
+    await configure();
+    expect(queue.pendingCount()).toBe(0);
+
+    signedInAs.set(uid);
+    TestBed.tick();
+    // The expectation below says what the count read if it never got there.
+    await waitFor(() => queue.pendingCount() === 1, 3000).catch(() => undefined);
+    expect(queue.pendingCount()).toBe(1);
+  }, 30000);
 
   // #151. A queued image that reads nothing used to leave no trace outside
   // the IndexedDB row's lastError. Now it is a failed record in Import
@@ -510,9 +543,10 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
     // The slot key is the row's own id, so the bytes are findable from the
     // id alone — which is what makes the replay below land on them again.
-    await expectAsync(
-      getMetadata(ref(storage, `users/${uid}/receipts/${id}-0`)),
-    ).toBeResolved();
+    // That id is a digest of the seed the queue drew for this image (#466).
+    const rowId = await queueRowTxId({ id, rowSeed: (await queue.peekQueuedImage(id))?.rowSeed }, 0);
+    expect(rowId).toMatch(/^[0-9a-f]{32}$/);
+    await expectAsync(getMetadata(ref(storage, `users/${uid}/receipts/${rowId}`))).toBeResolved();
   }, 30000);
 
   // The upload precedes the document write, so a drain interrupted between
@@ -522,7 +556,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   it('re-uploads into the same slot on a replay', async () => {
     reads(412.12, 'Smoke replay slot');
     const id = await queue.queueImage(markedFile(0x42));
-    const rowId = `${id}-0`;
+    const rowId = await queueRowTxId({ id, rowSeed: (await queue.peekQueuedImage(id))?.rowSeed }, 0);
     const objectsForRow = async (): Promise<string[]> => {
       const listed = await listAll(ref(storage, `users/${uid}/receipts`));
       return listed.items.map((i) => i.name).filter((name) => name.startsWith(rowId));

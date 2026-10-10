@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import {
   ActivatedRoute,
@@ -54,6 +53,7 @@ import {
   paintedColor,
   ratio,
   withTheme,
+  provideNoMotion,
 } from '../../core/services/testing';
 import {
   PeriodSelection,
@@ -373,6 +373,27 @@ describe('DashboardComponent', () => {
       const totals = build().componentInstance.categoryTotals();
       expect(totals[0]).toEqual(jasmine.objectContaining({ categoryId: 'food', total: 500, count: 2 }));
       expect(totals[1]).toEqual(jasmine.objectContaining({ categoryId: 'travel', total: 100, count: 1 }));
+    });
+
+    // #438 P4: the category fold reports uses, so an exact tie ranks by id
+    // rather than by whichever row the listener happened to deliver first.
+    it('ranks an exact tie between categories by category id', () => {
+      transactionService.transactions.set([
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'travel' }),
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'food' }),
+      ]);
+      const totals = build().componentInstance.categoryTotals();
+      expect(totals.map(row => row.categoryId)).toEqual(['food', 'travel']);
+    });
+
+    it('rounds each category total at the fold boundary', () => {
+      transactionService.transactions.set([
+        createTransaction({ type: 'expense', amount: 0.1, categoryId: 'food' }),
+        createTransaction({ type: 'expense', amount: 0.2, categoryId: 'food' }),
+      ]);
+      expect(build().componentInstance.categoryTotals()).toEqual([
+        { categoryId: 'food', total: 0.3, count: 2 },
+      ]);
     });
 
     it('builds a categories map', () => {
@@ -1871,7 +1892,7 @@ describe('DashboardComponent', () => {
       await TestBed.configureTestingModule({
         imports: [DashboardComponent],
         providers: [
-          provideNoopAnimations(),
+          provideNoMotion(),
           provideRouter([]),
           { provide: TransactionService, useValue: transactionService },
           { provide: BudgetService, useValue: budgetService },

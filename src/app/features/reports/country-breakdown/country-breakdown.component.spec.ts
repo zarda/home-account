@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -10,6 +9,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import {
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -48,7 +48,7 @@ describe('CountryBreakdownComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [CountryBreakdownComponent, NoopAnimationsModule],
+      imports: [CountryBreakdownComponent],
       providers: [
         {
           provide: CurrencyService,
@@ -57,6 +57,7 @@ describe('CountryBreakdownComponent', () => {
             amountInBase: (t: Transaction) => t.amountInBaseCurrency,
           },
         },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })
@@ -156,7 +157,7 @@ describe('CountryBreakdownComponent, through its own template', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [CountryBreakdownComponent, NoopAnimationsModule],
+      imports: [CountryBreakdownComponent],
       providers: [
         {
           provide: CurrencyService,
@@ -166,6 +167,7 @@ describe('CountryBreakdownComponent, through its own template', () => {
           },
         },
         { provide: TranslationService, useValue: translation },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

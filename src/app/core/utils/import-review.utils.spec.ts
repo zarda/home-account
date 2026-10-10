@@ -8,6 +8,7 @@ import {
   mergeableRow,
   needsDateAnswer,
   parseAmountInput,
+  reviewNoticesFrom,
   rowCarriesReviewerWork,
   rowIsUnfilled,
   sameSplit,
@@ -165,7 +166,7 @@ describe('import-review.utils', () => {
       // reads, and a mark would flag a row nobody could have misread.
       const row = blankImportRow('manual_1', neighbour({
         imageMetadata: {
-          imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1,
+          imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 1,
         },
         fieldConfidence: { amount: 0.2, date: 0.3 },
         dateAssumed: true,
@@ -446,7 +447,6 @@ describe('import-review.utils', () => {
     const meta = (overrides: Partial<ImagePositionMetadata> = {}): ImagePositionMetadata => ({
       imageIndex: 0,
       imageId: 'image_0',
-      positionInImage: 'middle',
       confidenceScore: 0.9,
       ...overrides,
     });
@@ -570,7 +570,7 @@ describe('import-review.utils', () => {
 
     it('a split part does not inherit the merged mark', () => {
       const meta: ImagePositionMetadata = {
-        imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1,
+        imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 1,
         wasMerged: true, mergedFromImages: [0, 1],
       };
       const [kept, part] = splitImportRow(row({ imageMetadata: meta }), 1.2, 'split_1')!;
@@ -867,11 +867,11 @@ describe('import-review.utils', () => {
 
     it('unions photo lineage into the target\'s imageMetadata block when both rows carry one', () => {
       const t = target({
-        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9 },
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9 },
       });
       const s = source({
         imageMetadata: {
-          imageIndex: 0, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8, mergedFromImages: [1],
+          imageIndex: 0, imageId: 'image_1', confidenceScore: 0.8, mergedFromImages: [1],
         },
       });
       const merged = mergeImportRows(t, s)!;
@@ -882,7 +882,7 @@ describe('import-review.utils', () => {
 
     it('records the receipt groups it folded into the target, and only those', () => {
       const meta = (over: Partial<ImagePositionMetadata>): ImagePositionMetadata => ({
-        imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, ...over,
+        imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, ...over,
       });
 
       const across = mergeImportRows(
@@ -906,7 +906,7 @@ describe('import-review.utils', () => {
 
     it('copies the source\'s imageMetadata block when the target has none', () => {
       const meta: ImagePositionMetadata = {
-        imageIndex: 1, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8,
+        imageIndex: 1, imageId: 'image_1', confidenceScore: 0.8,
       };
       const merged = mergeImportRows(target({ imageMetadata: undefined }), source({ imageMetadata: meta }))!;
       expect(merged.imageMetadata).toEqual(meta);
@@ -1041,7 +1041,6 @@ describe('import-review.utils', () => {
       imageMetadata: {
         imageIndex: 0,
         imageId: 'image_0',
-        positionInImage: 'top',
         confidenceScore: 0.9,
         receiptId: 1,
         wasMerged: true,
@@ -1074,7 +1073,6 @@ describe('import-review.utils', () => {
       const photo = (receiptId: number): ImagePositionMetadata => ({
         imageIndex: receiptId - 1,
         imageId: `image_${receiptId - 1}`,
-        positionInImage: 'top',
         confidenceScore: 0.9,
         receiptId,
       });
@@ -1104,6 +1102,32 @@ describe('import-review.utils', () => {
       expect(rowCarriesReviewerWork(scanned({ recurringMatch: match, recurringId: undefined, isRecurring: false })))
         .withContext('recurring link let go')
         .toBeFalse();
+    });
+  });
+
+  describe('reviewNoticesFrom', () => {
+    it('raises the cut-off notice for an answer that stopped mid-row', () => {
+      expect(reviewNoticesFrom([{ type: 'parse_error', message: 'ran out of room' }]))
+        .toEqual({ answerIncomplete: true, pagesTruncated: null });
+    });
+
+    it('carries a PDF read only in part with its own figures and no others', () => {
+      expect(reviewNoticesFrom([{ type: 'pages_truncated', read: 15, total: 64 }]))
+        .toEqual({ answerIncomplete: false, pagesTruncated: { read: 15, total: 64, others: 0 } });
+    });
+
+    it('keeps the first PDF read only in part and counts the rest', () => {
+      // The figures of one PDF are a sentence a reader can act on; two sets
+      // side by side would need the files named, which a warning does not
+      // carry. The others are counted so none goes unmentioned.
+      expect(reviewNoticesFrom([
+        { type: 'pages_truncated', read: 15, total: 64 },
+        { type: 'pages_truncated', read: 15, total: 31 },
+      ])).toEqual({ answerIncomplete: false, pagesTruncated: { read: 15, total: 64, others: 1 } });
+    });
+
+    it('says nothing for a batch that was read whole', () => {
+      expect(reviewNoticesFrom([])).toEqual({ answerIncomplete: false, pagesTruncated: null });
     });
   });
 });

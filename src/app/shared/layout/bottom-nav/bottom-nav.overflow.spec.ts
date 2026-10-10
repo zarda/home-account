@@ -1,12 +1,12 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { BottomNavComponent } from './bottom-nav.component';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { FitTextRegistry } from '../../directives/fit-text.registry';
+import { provideNoMotion } from '../../../core/services/testing';
 
 /** Real en.json nav.* strings — the four destinations the bar actually renders. */
 const LABELS: Record<string, string> = {
@@ -48,7 +48,7 @@ describe('overflow guard: the bottom nav', () => {
     mockTranslationService.t.and.callFake((key: string) => LABELS[key] ?? key);
 
     await TestBed.configureTestingModule({
-      imports: [BottomNavOverflowProbeComponent, NoopAnimationsModule],
+      imports: [BottomNavOverflowProbeComponent],
       providers: [
         provideRouter([
           { path: 'dashboard', component: StubPage },
@@ -58,6 +58,7 @@ describe('overflow guard: the bottom nav', () => {
         ]),
         { provide: QuickAddService, useValue: mockQuickAdd },
         { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

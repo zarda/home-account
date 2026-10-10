@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
@@ -17,6 +16,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 import { CategorySurface, Rgb, categoryGlyphColor } from '../../../../core/utils/color-contrast.utils';
 
@@ -85,7 +85,8 @@ describe('CategorySuggestionComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [CategorySuggestionComponent, NoopAnimationsModule],
+      imports: [CategorySuggestionComponent],
+      providers: [provideNoMotion()],
       schemas: [NO_ERRORS_SCHEMA]
     })
       .overrideComponent(CategorySuggestionComponent, {
@@ -401,7 +402,8 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [CategorySuggestionComponent, NoopAnimationsModule],
+      imports: [CategorySuggestionComponent],
+      providers: [provideNoMotion()],
     }).compileComponents();
 
     fixture = TestBed.createComponent(CategorySuggestionComponent);

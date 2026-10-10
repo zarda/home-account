@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { openDB } from 'idb';
-import { DB_NAME, OfflineQueueService, QUEUE_CLOSED_FOR_UPGRADE, QUEUE_NOT_SIGNED_IN } from './offline-queue.service';
+import {
+  DB_NAME,
+  OfflineQueueService,
+  QUEUE_CLOSED_FOR_UPGRADE,
+  QUEUE_NOT_SIGNED_IN,
+  queueRowTxId,
+} from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
 
@@ -27,7 +33,7 @@ describe('OfflineQueueService', () => {
   let consoleLogSpy: jasmine.Spy;
 
   beforeEach(async () => {
-    pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
+    pwa = jasmine.createSpyObj('PwaService', ['isOnline']);
     pwa.isOnline.and.returnValue(true);
 
     userId = signal<string | null>('user-a');
@@ -60,6 +66,22 @@ describe('OfflineQueueService', () => {
     service.ngOnDestroy();
   });
 
+  /** Close this connection and open a fresh service over the same database. */
+  async function relaunch(): Promise<OfflineQueueService> {
+    service.ngOnDestroy();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        OfflineQueueService,
+        { provide: PwaService, useValue: pwa },
+        { provide: AuthService, useValue: { userId } },
+      ],
+    });
+    const reopened = TestBed.inject(OfflineQueueService);
+    await waitFor(() => reopened.isReady());
+    return reopened;
+  }
+
   it('initializes the database', () => {
     expect(service.isReady()).toBeTrue();
     expect(service.pendingCount()).toBe(0);
@@ -72,9 +94,33 @@ describe('OfflineQueueService', () => {
       expect(id).toMatch(/^img_/);
       expect(service.pendingCount()).toBe(1);
       expect(service.hasPendingItems()).toBeTrue();
-      expect(pwa.registerBackgroundSync).toHaveBeenCalledWith('sync-offline-queue');
       const pending = await service.getPendingImages();
       expect(pending.length).toBe(1);
+    });
+
+    // The double carries `isOnline` and nothing else, so a queue that still
+    // reached for a background-sync registration would throw on the missing
+    // member and reject here.
+    it('queues without registering anything with the service worker', async () => {
+      await expectAsync(service.queueImage(imageFile())).toBeResolved();
+      expect(service.pendingCount()).toBe(1);
+    });
+
+    // The seed is what a queued scan's ledger rows are named from, so it has
+    // to be fresh for every image; the queue id beside it keeps its shape.
+    it('draws a random row seed for each image it queues', async () => {
+      const first = await service.queueImage(imageFile('a.jpg'));
+      const second = await service.queueImage(imageFile('b.jpg'));
+      const seeds = [
+        (await service.getQueuedImage(first))?.rowSeed,
+        (await service.getQueuedImage(second))?.rowSeed,
+      ];
+
+      expect(first).toMatch(/^img_/);
+      for (const seed of seeds) {
+        expect(seed).toMatch(/^[0-9a-f]{32}$/);
+      }
+      expect(seeds[0]).not.toBe(seeds[1]);
     });
 
     it('queues multiple images', async () => {
@@ -189,6 +235,32 @@ describe('OfflineQueueService', () => {
       expect(result.success).toBe(2);
       expect(imageEvents.length).toBe(2);
       expect(service.isSyncing()).toBeFalse();
+    });
+
+    // What drains the queue is a reconnect and the manual Sync Now. No worker
+    // posts a sync message to the page and none answers a sync event, so a
+    // `sync-offline-queue` event on the window is not a trigger.
+    it('drains when the connection comes back', async () => {
+      const id = await service.queueImage(imageFile());
+      const drained: string[] = [];
+      const listener = (e: Event) => drained.push((e as CustomEvent<{ id: string }>).detail.id);
+      window.addEventListener('process-queued-image', listener);
+      try {
+        window.dispatchEvent(new Event('online'));
+        await waitFor(() => drained.includes(id));
+      } finally {
+        window.removeEventListener('process-queued-image', listener);
+      }
+
+      expect(drained.filter((queued) => queued === id)).toEqual([id]);
+    });
+
+    it('drains nothing on a sync-offline-queue window event', () => {
+      const syncQueue = spyOn(service, 'syncQueue').and.callThrough();
+
+      window.dispatchEvent(new CustomEvent('sync-offline-queue'));
+
+      expect(syncQueue).not.toHaveBeenCalled();
     });
 
     it('fails images that exceeded the retry limit', async () => {
@@ -403,22 +475,6 @@ describe('OfflineQueueService', () => {
    * second one is exactly the app relaunching over the same data.
    */
   describe('reclaiming work interrupted mid-sync', () => {
-    /** Close this connection and open a fresh service over the same database. */
-    async function relaunch(): Promise<OfflineQueueService> {
-      service.ngOnDestroy();
-      TestBed.resetTestingModule();
-      TestBed.configureTestingModule({
-        providers: [
-          OfflineQueueService,
-          { provide: PwaService, useValue: pwa },
-          { provide: AuthService, useValue: { userId } },
-        ],
-      });
-      const reopened = TestBed.inject(OfflineQueueService);
-      await waitFor(() => reopened.isReady());
-      return reopened;
-    }
-
     it('hides an item that is in flight, which is why losing one is silent', async () => {
       const id = await service.queueImage(imageFile('a.jpg'));
       await service.updateImageStatus(id, 'processing');
@@ -481,6 +537,86 @@ describe('OfflineQueueService', () => {
   });
 
   /**
+   * The Offline Queue card reads `pendingCount`, and its Sync Now and Clear
+   * Queue are disabled at zero. The database usually opens before the
+   * session is restored, so the count taken at open belongs to nobody: after
+   * a reload the card read 0 over a failed scan it could neither retry nor
+   * clear. The count is taken again whenever the account changes.
+   */
+  describe('the count, as the account becomes known', () => {
+    /** Signs in as `account`; the recount is an IndexedDB read, so it lands a few tasks later. */
+    async function signIn(account: string | null, expected: number): Promise<void> {
+      userId.set(account);
+      TestBed.tick();
+      // The expectation below says what the count read if it never got there.
+      await waitFor(() => service.pendingCount() === expected, 1000).catch(() => undefined);
+      expect(service.pendingCount()).withContext(`signed in as ${account}`).toBe(expected);
+    }
+
+    it('counts a failed scan when the account signs in after the database opened', async () => {
+      const id = await service.queueImage(imageFile('a.jpg'));
+      await service.updateImageStatus(id, 'failed', 'AI_CLOUD_UNAVAILABLE');
+
+      userId.set(null);
+      service = await relaunch();
+      expect(service.pendingCount()).toBe(0);
+
+      await signIn('user-a', 1);
+    });
+
+    it('counts the next account\'s scans on a switch, and none once signed out', async () => {
+      await service.queueImage(imageFile('a.jpg'));
+      userId.set('user-b');
+      await service.queueImage(imageFile('b1.jpg'));
+      await service.queueImage(imageFile('b2.jpg'));
+      expect(service.pendingCount()).toBe(2);
+
+      await signIn('user-a', 1);
+      await signIn('user-b', 2);
+      await signIn(null, 0);
+    });
+
+    // The recount is `void`-ed from an effect, so a read that rejects has no
+    // caller to hand the rejection to. It is logged under the queue's prefix
+    // instead of reaching the global handler.
+    it('logs a read that rejects on an account change instead of leaving it unhandled', async () => {
+      const consoleErrorSpy = spyOn(console, 'error');
+      const readFailure = new Error('read failed');
+      const holder = service as unknown as { db: unknown };
+      const open = holder.db;
+      holder.db = { getAll: () => Promise.reject(readFailure), close: () => undefined };
+
+      userId.set('user-b');
+      TestBed.tick();
+      await waitFor(() => consoleErrorSpy.calls.count() > 0, 1000).catch(() => undefined);
+      // Give a rejection that nothing caught the turns it needs to surface.
+      await new Promise(r => setTimeout(r, 50));
+      holder.db = open;
+
+      expect(consoleErrorSpy).toHaveBeenCalledOnceWith(
+        '[OfflineQueue] Failed to recount pending items:',
+        readFailure,
+      );
+    });
+
+    it('reads 0 without an error when the account changes after the service was destroyed', async () => {
+      const consoleErrorSpy = spyOn(console, 'error');
+      await service.queueImage(imageFile('a.jpg'));
+      expect(service.pendingCount()).toBe(1);
+
+      service.ngOnDestroy();
+      expect((service as unknown as { db: unknown }).db).toBeNull();
+
+      userId.set('user-b');
+      TestBed.tick();
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(service.pendingCount()).toBe(0);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
    * The queued-transaction path never had a caller in the shipped app, so the
    * store it wrote to is empty on every device that has one, and deleting an
    * object store is only legal inside a `versionchange` transaction — which is
@@ -502,5 +638,17 @@ describe('OfflineQueueService', () => {
       expect(stores).toContain('pending-images');
       expect(stores).toContain('sync-log');
     });
+  });
+});
+
+describe('queueRowTxId', () => {
+  // A pin of the helper's contract; the processor spec drains both shapes.
+  it('names a seeded entry\'s rows by digest and an unseeded entry\'s the previous build\'s way', async () => {
+    const seeded = { id: 'img_1760000000000_k3x9q2a', rowSeed: '0123456789abcdef0123456789abcdef' };
+
+    expect(await queueRowTxId(seeded, 0)).toBe('071013a6631227ed7c099b245af187c8');
+    expect(await queueRowTxId({ ...seeded, rowSeed: undefined }, 2)).toBe('img_1760000000000_k3x9q2a-2');
+    // @ts-expect-error rowSeed is a required key, so an entry cannot reach the unseeded branch by omission
+    await queueRowTxId({ id: seeded.id }, 0);
   });
 });

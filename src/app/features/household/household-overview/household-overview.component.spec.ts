@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { WritableSignal, computed, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { HOUSEHOLD_OVERVIEW_ROW_PAGE, HouseholdOverviewComponent } from './household-overview.component';
@@ -25,6 +24,7 @@ import {
   createLocaleFormatStub,
   createTranslationStub,
   createUser,
+  provideNoMotion,
   TranslationStub
 } from '../../../core/services/testing';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
@@ -167,7 +167,7 @@ describe('HouseholdOverviewComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HouseholdOverviewComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: HouseholdLedgerService, useValue: ledger },
         { provide: CurrencyService, useValue: currency },
         {

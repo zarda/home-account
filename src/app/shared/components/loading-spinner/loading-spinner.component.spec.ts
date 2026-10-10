@@ -1,8 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { LoadingSpinnerComponent } from './loading-spinner.component';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub } from '../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
 
 describe('LoadingSpinnerComponent', () => {
   let component: LoadingSpinnerComponent;
@@ -10,8 +9,11 @@ describe('LoadingSpinnerComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [LoadingSpinnerComponent, NoopAnimationsModule],
-      providers: [{ provide: TranslationService, useValue: createTranslationStub() }],
+      imports: [LoadingSpinnerComponent],
+      providers: [
+        { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(LoadingSpinnerComponent);

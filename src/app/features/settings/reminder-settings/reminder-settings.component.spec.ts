@@ -2,7 +2,6 @@ import { NO_ERRORS_SCHEMA, computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatSlideToggle, MatSlideToggleChange } from '@angular/material/slide-toggle';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { ReminderSettingsComponent } from './reminder-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
@@ -10,6 +9,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { ReminderService } from '../../../core/services/reminder.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { User, UserPreferences, remindersEnabled } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('ReminderSettingsComponent', () => {
   let fixture: ComponentFixture<ReminderSettingsComponent>;
@@ -69,12 +69,13 @@ describe('ReminderSettingsComponent', () => {
     notifications = jasmine.createSpyObj('NotificationService', ['error']);
 
     await TestBed.configureTestingModule({
-      imports: [ReminderSettingsComponent, NoopAnimationsModule],
+      imports: [ReminderSettingsComponent],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: NotificationService, useValue: notifications },
         { provide: ReminderService, useValue: reminders },
         { provide: TranslationService, useValue: { t: (key: string) => key } },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { Component, input, output, signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
@@ -15,6 +14,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import {
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -126,9 +126,10 @@ describe('CategoryBreakdownComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [CategoryBreakdownComponent, NoopAnimationsModule],
+      imports: [CategoryBreakdownComponent],
       providers: [
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -306,7 +307,7 @@ describe('CategoryBreakdownComponent', () => {
     TestBed.resetTestingModule();
     const mockTranslationService = { t: (key: string) => key, currentLocale: signal('en') };
     await TestBed.configureTestingModule({
-      imports: [CategoryBreakdownComponent, NoopAnimationsModule],
+      imports: [CategoryBreakdownComponent],
       providers: [
         {
           provide: CurrencyService,
@@ -317,7 +318,8 @@ describe('CategoryBreakdownComponent', () => {
             amountInBase: (t: Transaction) => t.amountInBaseCurrency
           }
         },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion()
       ]
     })
       .overrideComponent(CategoryBreakdownComponent, {

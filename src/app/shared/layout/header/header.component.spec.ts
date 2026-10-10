@@ -9,13 +9,13 @@ import { AuthService } from '../../../core/services/auth.service';
 import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
 import { CommandPaletteComponent } from '../../components/command-palette/command-palette.component';
 import { User } from '../../../models';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { TranslationService } from '../../../core/services/translation.service';
 import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { APP_BREAKPOINTS, AppBreakpointName } from '../../../core/layout/breakpoints';
 import {
   AUDIT_SCHEMES,
   createTranslationStub,
+  provideNoMotion,
   runAxe,
   summarizeViolations,
   withTheme,
@@ -218,7 +218,7 @@ describe('HeaderComponent, through its own template', () => {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
-      imports: [HeaderComponent, NoopAnimationsModule],
+      imports: [HeaderComponent],
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: auth },
@@ -228,6 +228,7 @@ describe('HeaderComponent, through its own template', () => {
           useValue: { observe: () => new BehaviorSubject<BreakpointState>({ matches: false, breakpoints: {} }).asObservable() },
         },
         { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -396,7 +397,7 @@ describe('HeaderComponent, the palette button and the ? hint (#446)', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [HeaderComponent, NoopAnimationsModule],
+      imports: [HeaderComponent],
       providers: [
         provideRouter([]),
         {
@@ -409,6 +410,7 @@ describe('HeaderComponent, the palette button and the ? hint (#446)', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: BreakpointObserver, useValue: { observe } },
         { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
   });
@@ -577,7 +579,7 @@ describe("HeaderComponent, focus after a palette opened from the hint's own dism
     localStorage.removeItem(HINT_KEY);
     // The real MatDialog: restoring focus as a dialog closes is the CDK's.
     await TestBed.configureTestingModule({
-      imports: [HeaderComponent, NoopAnimationsModule],
+      imports: [HeaderComponent],
       providers: [
         provideRouter([]),
         {
@@ -598,6 +600,7 @@ describe("HeaderComponent, focus after a palette opened from the hint's own dism
           },
         },
         { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

@@ -12,9 +12,11 @@ import { StatCardComponent } from '../../../shared/components/stat-card/stat-car
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { groupExpensesByCategory } from '../../../core/utils/transaction-aggregation.utils';
 import { dayKey, monthKey } from '../../../core/utils/transaction-date.utils';
 
 interface MonthlyData {
@@ -47,6 +49,7 @@ interface MonthlyData {
 export class SpendingAnalysisComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
   private chartTheme = inject(ChartThemeService);
 
   @Input() set transactions(value: Transaction[]) {
@@ -92,7 +95,6 @@ export class SpendingAnalysisComponent {
   // Chart options as computed signal to prevent re-renders
   chartOptions = computed((): ChartConfiguration<'line'>['options'] => {
     const symbol = this.getCurrencySymbol();
-    const locale = this.translationService.getIntlLocale();
     const axis = this.chartTheme.axis();
     const palette = this.chartTheme.palette();
     // Percent axis for the savings-rate line, kept separate so it never
@@ -131,7 +133,7 @@ export class SpendingAnalysisComponent {
               if (context.dataset.yAxisID === 'y1') {
                 return `${context.dataset.label}: ${value.toFixed(1)}%`;
               }
-              return `${context.dataset.label}: ${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2 })}`;
+              return `${context.dataset.label}: ${symbol}${this.localeFormat.formatNumber(value, '1.2-2')}`;
             },
           },
         },
@@ -144,7 +146,7 @@ export class SpendingAnalysisComponent {
           ticks: {
             ...axis.ticks,
             callback: (value) => {
-              return `${symbol}${Number(value).toLocaleString(locale)}`;
+              return `${symbol}${this.localeFormat.formatNumber(Number(value))}`;
             },
           },
         },
@@ -410,22 +412,16 @@ export class SpendingAnalysisComponent {
     return (this.netSavings() / income) * 100;
   });
 
-  // Top spending categories (using dynamic conversion)
+  // Top spending categories (using dynamic conversion). The shared fold ranks
+  // them and breaks an exact tie by category id, so a tie at rank five shows
+  // the same category on every render.
   topCategories = computed(() => {
-    const transactions = this._transactions();
     const categories = this._categories();
-    const expenseTransactions = transactions.filter(t => t.type === 'expense');
-
-    const totals = new Map<string, number>();
-    for (const t of expenseTransactions) {
-      const current = totals.get(t.categoryId) || 0;
-      totals.set(t.categoryId, current + this.toBaseCurrency(t));
-    }
-
     const totalExpense = this.totalExpenses();
 
-    return Array.from(totals.entries())
-      .map(([categoryId, total]) => {
+    return groupExpensesByCategory(this._transactions(), t => this.toBaseCurrency(t))
+      .slice(0, 5)
+      .map(({ categoryId, total }) => {
         const category = categories.find(c => c.id === categoryId);
         return {
           categoryId,
@@ -435,9 +431,7 @@ export class SpendingAnalysisComponent {
           total,
           percentage: totalExpense > 0 ? (total / totalExpense) * 100 : 0,
         };
-      })
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
+      });
   });
 
   hasData = computed(() => this._transactions().length > 0);

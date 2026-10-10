@@ -1,9 +1,25 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnDestroy, Output, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Injector,
+  Input,
+  OnDestroy,
+  Output,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { IMPORT_FILE_MAX_BYTES } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
@@ -23,9 +39,11 @@ import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 })
 export class FileDropzoneComponent implements OnDestroy {
   private translationService = inject(TranslationService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private injector = inject(Injector);
 
   @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
-  @Input() maxFileSize = 10 * 1024 * 1024; // 10MB
+  @Input() maxFileSize = IMPORT_FILE_MAX_BYTES;
   @Input() multiple = true;
   @Output() filesSelected = new EventEmitter<File[]>();
 
@@ -35,6 +53,22 @@ export class FileDropzoneComponent implements OnDestroy {
   errorMessage = signal('');
 
   private filePreviews = new Map<string, string>();
+
+  constructor() {
+    // The banner sits below the zone, and the zone fills the first screen
+    // of a short window, so a refusal shown only there changed nothing a
+    // sighted user could see. It is brought into view after the render that
+    // inserts or rewrites it, without smooth motion and without focus: an
+    // alert is announced where it is.
+    effect(() => {
+      if (!this.hasError()) return;
+      this.errorMessage();
+      untracked(() => afterNextRender(
+        () => this.host.nativeElement.querySelector('.error-banner')?.scrollIntoView({ block: 'nearest' }),
+        { injector: this.injector },
+      ));
+    });
+  }
 
   // Computed signals for multi-image handling
   hasMultipleImages = computed(() => {

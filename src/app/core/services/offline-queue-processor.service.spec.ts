@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
-import { OfflineQueueService, QueuedImage } from './offline-queue.service';
+import { OfflineQueueService, QueuedImage, queueRowTxId } from './offline-queue.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { INVALID_AMOUNT_ERROR, RECEIPT_ATTACH_FAILED, TransactionService } from './transaction.service';
@@ -11,6 +11,7 @@ import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
 import { CategoryService } from './category.service';
 import { createCategory } from './testing/test-data';
+import { opaqueRowId } from '../utils/opaque-id.utils';
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -96,12 +97,16 @@ describe('OfflineQueueProcessorService', () => {
 
   beforeEach(() => {
     queue = jasmine.createSpyObj<OfflineQueueService>('OfflineQueueService', [
+      'getQueuedImage',
       'getQueuedImageAsFile',
       'peekQueuedImage',
       'updateImageStatus',
     ]);
     queue.updateImageStatus.and.resolveTo(true);
     queue.peekQueuedImage.and.resolveTo(undefined);
+    // An entry the previous build queued, with no seed, unless a case seeds
+    // one: its rows keep the `${id}-${index}` ids that build wrote.
+    queue.getQueuedImage.and.callFake(async (id: string) => queuedImage({ id }));
 
     userId = signal<string | null>('user-a');
 
@@ -174,7 +179,7 @@ describe('OfflineQueueProcessorService', () => {
           description: 'Konbini',
           note: 'Onigiri — JPY 180',
         }),
-        { id: 'img_1-0' },
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0) },
       );
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
     });
@@ -188,17 +193,36 @@ describe('OfflineQueueProcessorService', () => {
       dispatchImage('img_1');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      // The queue row id plus the row's position in what the model read. Both
-      // halves are stable across a reclaim, so a replay of this receipt aims
-      // at the documents the first pass wrote rather than at fresh ones.
+      // This entry carries no seed, so its rows keep the previous build's
+      // names: the queue row id plus the row's position in what the model
+      // read. Both halves are stable across a reclaim, so a replay of this
+      // receipt aims at the documents the first pass wrote, not fresh ones.
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.objectContaining({ description: 'Konbini' }),
-        { id: 'img_1-0' },
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0) },
       );
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.objectContaining({ description: 'Kiosk' }),
-        { id: 'img_1-1' },
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 1) },
       );
+    });
+
+    it('writes row 1 at the id the helper names, and a replay asks the ledger for that same id', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
+      );
+      const id = 'img_1';
+
+      dispatchImage(id);
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // One helper owns the id: what is written and what a replay's
+      // hasTransaction looks up are the same string, so a second pass over
+      // the image finds the rows the first pass put there.
+      const rowId = await queueRowTxId({ id, rowSeed: undefined }, 1);
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: rowId });
+      expect(transactions.hasTransaction).toHaveBeenCalledWith(rowId);
     });
 
     it('skips a row that already landed instead of posting it twice', async () => {
@@ -207,9 +231,8 @@ describe('OfflineQueueProcessorService', () => {
         processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
       );
       // The first row was written before the crash; the second was not.
-      transactions.hasTransaction.and.callFake((id: string) =>
-        Promise.resolve(id === 'img_1-0'),
-      );
+      const landed = await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0);
+      transactions.hasTransaction.and.callFake((id: string) => Promise.resolve(id === landed));
 
       dispatchImage('img_1');
       await waitFor(() => queue.updateImageStatus.calls.any());
@@ -217,7 +240,7 @@ describe('OfflineQueueProcessorService', () => {
       expect(transactions.addTransaction).toHaveBeenCalledTimes(1);
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.objectContaining({ description: 'Kiosk' }),
-        { id: 'img_1-1' },
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 1) },
       );
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
       // Two rows came off this receipt; one of them simply did not need
@@ -308,7 +331,7 @@ describe('OfflineQueueProcessorService', () => {
         jasmine.objectContaining({
           type: 'income', amount: 120.5, currency: 'USD', categoryId: 'other_income',
         }),
-        { id: 'img_1-0' },
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0) },
       );
       const [dto] = transactions.addTransaction.calls.mostRecent().args;
       expect('fieldConfidence' in dto).toBeFalse();
@@ -387,7 +410,9 @@ describe('OfflineQueueProcessorService', () => {
       // row was read off, so the row claims it.
       expect(transactions.addTransaction).toHaveBeenCalledTimes(1);
       expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: 'img_21-0' });
+      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_21', rowSeed: undefined }, 0),
+      });
     });
 
     it('attaches the photo to the first row of each receipt the reader numbered', async () => {
@@ -410,11 +435,17 @@ describe('OfflineQueueProcessorService', () => {
       // only the first of a group carries it, while two receipts printed on
       // one photo are a different case: the photo is evidence for both.
       expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({ id: 'img_9-0' });
+      expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_9', rowSeed: undefined }, 0),
+      });
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
-      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_9-1' });
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_9', rowSeed: undefined }, 1),
+      });
       expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: 'img_9-2' });
+      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_9', rowSeed: undefined }, 2),
+      });
     });
 
     it('falls back to the bare row when the photo is refused, and counts it', async () => {
@@ -433,7 +464,9 @@ describe('OfflineQueueProcessorService', () => {
       // the wrong way round. The retry is bare, and the loss is reported.
       expect(transactions.addTransaction).toHaveBeenCalledTimes(2);
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toBeUndefined();
-      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_12-0' });
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_12', rowSeed: undefined }, 0),
+      });
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_12', 'completed');
       expect(translation.t).toHaveBeenCalledWith(
         'settings.transactionsImportedPartial', { count: 1, skipped: 1 },
@@ -467,7 +500,9 @@ describe('OfflineQueueProcessorService', () => {
       // whole receipt, so it goes to the row behind the refused one rather
       // than past it.
       expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
-      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({ id: 'img_16-1' });
+      expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_16', rowSeed: undefined }, 1),
+      });
       expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toBeUndefined();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_16', 'completed');
       // One loss, not two: the row was refused, the photo landed.
@@ -615,12 +650,15 @@ describe('OfflineQueueProcessorService', () => {
       // Nothing remembers a refusal: the row has no document, so the next
       // pass over the same image attempts it again, is refused again, and
       // counts it again. Only the row that landed is skipped by its id.
-      transactions.hasTransaction.and.callFake((id: string) => Promise.resolve(id === 'img_15-0'));
+      const landed = await queueRowTxId({ id: 'img_15', rowSeed: undefined }, 0);
+      transactions.hasTransaction.and.callFake((id: string) => Promise.resolve(id === landed));
       dispatchImage('img_15');
       await waitFor(() => queue.updateImageStatus.calls.count() === 2);
 
       expect(transactions.addTransaction).toHaveBeenCalledTimes(3);
-      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({ id: 'img_15-1' });
+      expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_15', rowSeed: undefined }, 1),
+      });
       expect(queue.updateImageStatus.calls.allArgs()).toEqual([
         ['img_15', 'completed'],
         ['img_15', 'completed'],
@@ -649,6 +687,23 @@ describe('OfflineQueueProcessorService', () => {
 
       expect(ai.processReceipt).not.toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_3', 'failed', 'Image not found in queue');
+    });
+
+    it('marks the image failed and writes nothing when its record is gone after the file was read', async () => {
+      // The entry was deleted, or changed owner, between the two reads. A
+      // missing record must not be taken for an entry without a seed: that
+      // would write a seeded entry's rows at the names that show its time.
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      queue.getQueuedImage.and.resolveTo(undefined);
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_3');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(ai.processReceipt).not.toHaveBeenCalled();
+      expect(transactions.hasTransaction).not.toHaveBeenCalled();
+      expect(transactions.addTransaction).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).toHaveBeenCalledOnceWith('img_3', 'failed', 'Image not found in queue');
     });
 
     it('opens a queue-door handle and reports success', async () => {
@@ -763,6 +818,73 @@ describe('OfflineQueueProcessorService', () => {
       expect(transactions.addTransaction).toHaveBeenCalled();
       expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
       expect(consoleWarnSpy).toHaveBeenCalledWith(jasmine.stringContaining('[OfflineQueueProcessor]'), 'img_1');
+    });
+  });
+
+  // A shared row's household copy carries the row's id, so the id must not
+  // say when the photo was queued, nor tie the rows of one photo together
+  // (#466). These hash, and crypto.subtle answers on a task, so they wait on
+  // the real-timer poll; the frozen-clock case below drains a legacy entry.
+  describe('row ids', () => {
+    // Random in the queue; fixed here so the digests are known.
+    const SEED = '0123456789abcdef0123456789abcdef';
+    const QUEUED_AT = 1760000000000;
+    const QUEUE_ID = `img_${QUEUED_AT}_k3x9q2a`;
+
+    /** The longest stem both strings begin with. */
+    function sharedStem(a: string, b: string): string {
+      let length = 0;
+      while (length < a.length && a[length] === b[length]) length++;
+      return a.slice(0, length);
+    }
+
+    async function drainTwoRows(entry: Partial<QueuedImage>): Promise<(string | undefined)[]> {
+      queue.getQueuedImage.and.resolveTo(queuedImage({ id: QUEUE_ID, createdAt: QUEUED_AT, ...entry }));
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
+      );
+
+      dispatchImage(QUEUE_ID);
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      return transactions.addTransaction.calls.allArgs().map(([, options]) => options?.id);
+    }
+
+    it('names a seeded entry\'s rows by digests of the seed and their position', async () => {
+      const written = await drainTwoRows({ rowSeed: SEED });
+
+      const expected = [await opaqueRowId('scan', SEED, 0), await opaqueRowId('scan', SEED, 1)];
+      expect(written).toEqual(expected);
+      // A replay asks for exactly the ids the first pass wrote.
+      expect(transactions.hasTransaction.calls.allArgs()).toEqual(expected.map((rowId) => [rowId]));
+      expect(queue.getQueuedImage).toHaveBeenCalledOnceWith(QUEUE_ID);
+      expect(queue.updateImageStatus).toHaveBeenCalledWith(QUEUE_ID, 'completed');
+    });
+
+    it('writes ids that hold neither the queue time nor the queue id, and share no stem', async () => {
+      const written = await drainTwoRows({ rowSeed: SEED });
+
+      for (const rowId of written) {
+        expect(rowId).toMatch(/^[0-9a-f]{32}$/);
+        expect(rowId).not.toContain(String(QUEUED_AT));
+        expect(rowId).not.toContain(QUEUE_ID);
+      }
+      // Every row of one photo used to begin with the same `img_…-`. For
+      // this seed the two digests already differ at their first character.
+      expect(sharedStem(written[0] ?? '', written[1] ?? '')).toBe('');
+    });
+
+    it('keeps the previous build\'s ids for an entry queued without a seed, and skips what landed', async () => {
+      // A pin: an entry the previous build queued and half drained resumes
+      // at the ids that build wrote, so its replay finds the row it posted.
+      transactions.hasTransaction.and.callFake((rowId: string) => Promise.resolve(rowId === `${QUEUE_ID}-0`));
+
+      const written = await drainTwoRows({});
+
+      expect(transactions.hasTransaction.calls.allArgs()).toEqual([[`${QUEUE_ID}-0`], [`${QUEUE_ID}-1`]]);
+      expect(written).toEqual([`${QUEUE_ID}-1`]);
+      expect(queue.updateImageStatus).toHaveBeenCalledWith(QUEUE_ID, 'completed');
     });
   });
 

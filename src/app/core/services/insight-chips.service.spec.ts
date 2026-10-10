@@ -161,6 +161,24 @@ describe('InsightChipsService', () => {
     expect(chips[0].filters.categoryId).toBe('food');
   });
 
+  // #438 P4: the top category comes from the shared fold, so an exact tie
+  // names the same category on every load instead of whichever arrived first.
+  it('names the lower category id when two categories tie for the top', () => {
+    setup([
+      expense(30, 'transport', currentDate),
+      expense(30, 'transport', currentDate),
+      expense(30, 'transport', currentDate),
+      expense(30, 'food', currentDate),
+      expense(30, 'food', currentDate),
+      expense(30, 'food', currentDate),
+    ]);
+
+    const chips = service.chips();
+    expect(chips.length).toBe(1);
+    expect(chips[0].id).toBe('top:food');
+    expect(chips[0].labelParams['category']).toBe('Food');
+  });
+
   it('skips the top-category chip below 3 transactions', () => {
     setup([expense(30, 'food', currentDate), expense(20, 'food', currentDate)]);
     expect(service.chips().length).toBe(0);

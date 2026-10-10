@@ -4,12 +4,12 @@ import { CATEGORIZE_CHUNK_SIZE, CloudLLMProviderBase, ProviderResponse } from '.
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { ProviderCapabilities } from './llm-provider.interface';
+import { AIRequestOptions, ProviderCapabilities } from './llm-provider.interface';
 import { PromptId, RenderedPrompt } from '../prompts';
 import { Category } from '../../models';
 import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
-import { createCategory, createTransaction } from './testing';
+import { createBudget, createCategory, createTransaction } from './testing';
 import { dayKey } from '../utils/transaction-date.utils';
 
 /**
@@ -99,10 +99,15 @@ class StubProvider extends CloudLLMProviderBase {
   callPostProcessProse(promptId: PromptId, response: ProviderResponse): string {
     return this.postProcessProse(promptId, response);
   }
+
+  callRequestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
+    return this.requestOptions(options);
+  }
 }
 
 describe('CloudLLMProviderBase', () => {
   let provider: StubProvider;
+  let categoryService: jasmine.SpyObj<CategoryService>;
 
   const categories: Category[] = [
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense' }),
@@ -112,7 +117,7 @@ describe('CloudLLMProviderBase', () => {
   ];
 
   beforeEach(() => {
-    const categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
+    categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
       'categories',
     ]);
     categoryService.categories.and.returnValue(categories);
@@ -450,6 +455,59 @@ describe('CloudLLMProviderBase', () => {
       expect(prompt).not.toContain('50.00');
       expect(prompt).not.toContain('100.00');
     });
+
+    // #438 P4: the breakdown keeps the five largest, so a tie at rank five
+    // decides which category reaches the prompt. The shared fold ranks it by
+    // id, not by whichever row arrived first.
+    it('breaks a tie at rank five by category id', async () => {
+      categoryService.categories.and.returnValue([
+        createCategory({ id: 'rank_1', name: 'First', type: 'expense' }),
+        createCategory({ id: 'rank_2', name: 'Second', type: 'expense' }),
+        createCategory({ id: 'rank_3', name: 'Third', type: 'expense' }),
+        createCategory({ id: 'rank_4', name: 'Fourth', type: 'expense' }),
+        createCategory({ id: 'tie_a', name: 'Tied A', type: 'expense' }),
+        createCategory({ id: 'tie_b', name: 'Tied B', type: 'expense' }),
+      ]);
+      const expense = (categoryId: string, amount: number) =>
+        createTransaction({ type: 'expense', amount, categoryId });
+
+      await provider.generateSpendingSummary([
+        expense('rank_1', 90),
+        expense('tie_b', 20),
+        expense('rank_2', 70),
+        expense('rank_3', 50),
+        expense('tie_a', 20),
+        expense('rank_4', 30),
+      ], 'This month', 'USD');
+
+      const prompt = provider.renderedSent[0].user;
+      expect(prompt).toContain('Fourth: 30.00 USD (1 transactions)\nTied A: 20.00 USD (1 transactions)');
+      // The largest-expenses list ranks rows, not categories, and may still
+      // name it; only the breakdown's own line is ruled out.
+      expect(prompt).not.toContain('Tied B: ');
+    });
+
+    // The budget lines read their spent figure from the same ranked fold as
+    // the breakdown, looked up by category id. The budgets arrive in the
+    // opposite order to the fold, so a positional read would swap them.
+    it('gives each budget line the spending of its own category', async () => {
+      const expense = (categoryId: string, amount: number) =>
+        createTransaction({ type: 'expense', amount, categoryId });
+
+      await provider.generateSpendingSummary([
+        expense('food_groceries', 30),
+        expense('transport', 90),
+        expense('food_groceries', 20),
+        expense('other_expense', 15),
+      ], 'This month', 'USD', null, [
+        createBudget({ name: 'Groceries budget', categoryId: 'food_groceries', amount: 200 }),
+        createBudget({ name: 'Transport budget', categoryId: 'transport', amount: 100 }),
+      ]);
+
+      const prompt = provider.renderedSent[0].user;
+      expect(prompt).toContain('- Groceries budget: 50.00/200.00 USD (25%) ✓');
+      expect(prompt).toContain('- Transport budget: 90.00/100.00 USD (90%) ⚠️ Near limit');
+    });
   });
 
   describe('extraction category resolution', () => {
@@ -489,9 +547,9 @@ describe('CloudLLMProviderBase', () => {
       provider.response = {
         text: JSON.stringify([
           { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
-            category: 'Zeugs', imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+            category: 'Zeugs', imageIndex: 0, confidence: 0.9, receiptId: 1 },
           { date: '2024-06-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
-            category: 'Transport', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+            category: 'Transport', imageIndex: 0, confidence: 0.9, receiptId: 1 },
         ]),
         truncated: false,
       };
@@ -510,7 +568,7 @@ describe('CloudLLMProviderBase', () => {
       provider.response = {
         text: JSON.stringify([
           { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
-            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1,
+            imageIndex: 0, confidence: 0.9, receiptId: 1,
             wasMerged: true, mergedFromImages: [0, 1] },
         ]),
         truncated: false,
@@ -540,6 +598,22 @@ describe('CloudLLMProviderBase', () => {
       expect(provider.callExtractJson('  I cannot help with that  ')).toBe(
         'I cannot help with that'
       );
+    });
+  });
+
+  describe('requestOptions', () => {
+    it("carries the caller's signal in the shape every SDK call takes", () => {
+      const { signal } = new AbortController();
+
+      const options = provider.callRequestOptions({ signal });
+
+      expect(options).toEqual({ signal });
+      expect(options!.signal).toBe(signal);
+    });
+
+    it('is undefined without a signal, so the request goes out as it always did', () => {
+      expect(provider.callRequestOptions()).toBeUndefined();
+      expect(provider.callRequestOptions({})).toBeUndefined();
     });
   });
 
@@ -924,9 +998,9 @@ describe('CloudLLMProviderBase', () => {
         text: JSON.stringify([
           { date: '2026-07-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
             merchant: 'Cafe', location: '渋谷店 東京都渋谷区 1-2-3', imageIndex: 0,
-            positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+            confidence: 0.9, receiptId: 1 },
           { date: '2026-07-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
-            merchant: 'Cafe', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+            merchant: 'Cafe', imageIndex: 0, confidence: 0.9, receiptId: 1 },
         ]),
         truncated: false,
       };
@@ -988,9 +1062,9 @@ describe('CloudLLMProviderBase', () => {
       provider.response = {
         text: JSON.stringify([
           { date: '2026-07-01', description: 'A', amount: 5, type: 'expense', currency: 'KRW',
-            merchant: 'Cafe', imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+            merchant: 'Cafe', imageIndex: 0, confidence: 0.9, receiptId: 1 },
           { date: '2026-07-01', description: 'B', amount: 6, type: 'expense', currency: 'KRW',
-            merchant: 'Cafe', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1,
+            merchant: 'Cafe', imageIndex: 0, confidence: 0.9, receiptId: 1,
             location: '서울 강남구', country: 'KR' },
         ]),
         truncated: false,

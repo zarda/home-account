@@ -2,7 +2,6 @@ import { NO_ERRORS_SCHEMA, computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatSlideToggle, MatSlideToggleChange } from '@angular/material/slide-toggle';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Capacitor } from '@capacitor/core';
 
 import { WeeklyRecapSettingsComponent } from './weekly-recap-settings.component';
@@ -12,6 +11,7 @@ import { ReminderService } from '../../../core/services/reminder.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { WeeklyRecapService } from '../../../core/services/weekly-recap.service';
 import { User, UserPreferences, weeklyRecapEnabled } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('WeeklyRecapSettingsComponent', () => {
   let fixture: ComponentFixture<WeeklyRecapSettingsComponent>;
@@ -71,7 +71,7 @@ describe('WeeklyRecapSettingsComponent', () => {
     isNative = spyOn(Capacitor, 'isNativePlatform').and.returnValue(false);
 
     await TestBed.configureTestingModule({
-      imports: [WeeklyRecapSettingsComponent, NoopAnimationsModule],
+      imports: [WeeklyRecapSettingsComponent],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: NotificationService, useValue: notifications },
@@ -85,6 +85,7 @@ describe('WeeklyRecapSettingsComponent', () => {
             enabled: computed(() => weeklyRecapEnabled(currentUser()?.preferences)),
           },
         },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

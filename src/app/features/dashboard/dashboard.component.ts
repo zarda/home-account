@@ -46,7 +46,11 @@ import {
   DashboardCardId,
   weeklyRecapEnabled,
 } from '../../models';
-import { roundMoney, sumByType } from '../../core/utils/transaction-aggregation.utils';
+import {
+  groupExpensesByCategoryWithCounts,
+  roundMoney,
+  sumByType,
+} from '../../core/utils/transaction-aggregation.utils';
 import {
   DateWindow,
   clampWindowToNow,
@@ -217,21 +221,14 @@ export class DashboardComponent implements OnInit {
 
   balance = computed(() => this.typeTotals().balance);
 
+  // The shared category fold, so an exact tie orders by category id rather
+  // than by whichever row the listener delivered first.
   categoryTotals = computed(() => {
     const baseCurrency = this.baseCurrency();
-    const transactions = this.transactions();
-    const expenseTransactions = transactions.filter(t => t.type === 'expense');
-
-    const totals = new Map<string, { total: number; count: number }>();
-    for (const t of expenseTransactions) {
-      const current = totals.get(t.categoryId) || { total: 0, count: 0 };
-      const convertedAmount = this.currencyService.amountInBase(t, baseCurrency);
-      totals.set(t.categoryId, { total: current.total + convertedAmount, count: current.count + 1 });
-    }
-
-    return Array.from(totals.entries())
-      .map(([categoryId, data]) => ({ categoryId, total: data.total, count: data.count }))
-      .sort((a, b) => b.total - a.total);
+    return groupExpensesByCategoryWithCounts(
+      this.transactions(),
+      t => this.currencyService.amountInBase(t, baseCurrency)
+    );
   });
 
   // Category data

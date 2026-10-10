@@ -192,13 +192,4 @@ export class OpenAIService extends CloudLLMProviderBase {
   private renderedText(rendered: RenderedPrompt): string {
     return rendered.system ? `${rendered.system}\n\n${rendered.user}` : rendered.user;
   }
-
-  /**
-   * The caller's cancellation, in the shape `responses.create` takes as its
-   * second argument. Undefined when there is nothing to cancel with, so a
-   * request without a signal is issued exactly as it was before.
-   */
-  private requestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
-    return options?.signal ? { signal: options.signal } : undefined;
-  }
 }

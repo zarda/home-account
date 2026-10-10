@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatSelect } from '@angular/material/select';
@@ -27,6 +26,7 @@ import {
   paintedColor,
   ratio,
   withScheme,
+  provideNoMotion,
 } from '../../../../core/services/testing';
 import { defaultCategories } from '../../../../core/utils/category-merge.utils';
 import { defaultBudgetStart } from '../../../../core/utils/transaction-date.utils';
@@ -99,7 +99,7 @@ describe('HouseholdBudgetDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HouseholdBudgetDialogComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideNativeDateAdapter(),
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: {} },

@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, Signal, WritableSignal, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of } from 'rxjs';
@@ -17,6 +16,7 @@ import { ReminderService } from '../../../core/services/reminder.service';
 import { WeeklyRecapService } from '../../../core/services/weekly-recap.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RateSource } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -99,7 +99,7 @@ describe('ProfileSettingsComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [ProfileSettingsComponent, NoopAnimationsModule],
+      imports: [ProfileSettingsComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
         { provide: AuthService, useValue: mockAuthService },
@@ -121,7 +121,8 @@ describe('ProfileSettingsComponent', () => {
         // The rate marker under Base Currency reads CurrencyService, whose
         // real constructor walks the rate ladder and reaches fetch. These two
         // signals are its whole surface.
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

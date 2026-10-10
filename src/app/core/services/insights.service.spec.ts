@@ -61,8 +61,7 @@ describe('InsightsService', () => {
 
     transactionService = jasmine.createSpyObj<TransactionService>(
       'TransactionService',
-      ['getTransactionsInRange', 'getByDateRange', 'getTransactions', 'getMonthlyTotals',
-        'getExpensesInRange']);
+      ['getTransactionsInRange', 'getByDateRange', 'getTransactions', 'getExpensesInRange']);
     transactionService.getTransactionsInRange.and.returnValue(of([]));
 
     currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['amountInBase']);
@@ -140,11 +139,10 @@ describe('InsightsService', () => {
       service.load(selection(new Date(2026, 0, 1), new Date(2026, 5, 30)));
 
       expect(transactionService.getTransactionsInRange).toHaveBeenCalledTimes(1);
-      // These three all overwrite the shared transactions signal that the other
+      // These two both overwrite the shared transactions signal that the other
       // three report tabs render from, so the insights tab must never call them.
       expect(transactionService.getByDateRange).not.toHaveBeenCalled();
       expect(transactionService.getTransactions).not.toHaveBeenCalled();
-      expect(transactionService.getMonthlyTotals).not.toHaveBeenCalled();
     });
 
     it('requests both transaction types, since payday needs income', () => {

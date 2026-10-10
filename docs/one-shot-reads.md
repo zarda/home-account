@@ -507,11 +507,11 @@ The registry above is a list of reads somebody already found. Since #427 the
 `src/app/**/*.ts` (specs exempt): one matching `firstValueFrom(x.method(...))`
 directly, one matching the `firstValueFrom(x.method(...).pipe(...))` form.
 They key on the **method name**, on any receiver, against an alternation of
-the twelve `Observable`-returning methods `TransactionService` has today plus
+the ten `Observable`-returning methods `TransactionService` has today plus
 `subscribeToCollection`, `subscribeToDocument` and `watch`. `npm run lint`
 runs them.
 
-A hand-written list of names goes stale the moment a thirteenth listener is
+A hand-written list of names goes stale the moment an eleventh listener is
 added, so `scripts/check-lint-guards.mjs` re-derives the census from the
 service's own source — signatures ending in `): Observable<`, with paren depth
 tracked so a wrapped signature still counts — and fails if any name is missing

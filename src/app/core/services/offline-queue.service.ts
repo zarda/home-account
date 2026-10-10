@@ -1,7 +1,8 @@
-import { Injectable, inject, signal, computed, OnDestroy } from '@angular/core';
+import { Injectable, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
+import { opaqueRowId, toHex } from '../utils/opaque-id.utils';
 
 // Database schema
 interface OfflineQueueDB extends DBSchema {
@@ -46,6 +47,12 @@ export interface QueuedImage {
   status: QueueStatus;
   retryCount: number;
   lastError?: string;
+  /**
+   * 32 lower-case hex characters of randomness, drawn when the image is
+   * queued, from which the ledger ids of its rows are derived. Absent on an
+   * entry the previous build queued, whose rows keep that build's ids.
+   */
+  rowSeed?: string;
 }
 
 export interface SyncLogEntry {
@@ -80,6 +87,35 @@ export const DB_NAME = 'homeaccount-offline-queue';
 const DB_VERSION = 3;
 const MAX_RETRY_COUNT = 3;
 
+/**
+ * The ledger id of the row at `index` among those read off a queued image.
+ * The seed and the position are both stable across a reclaim, so a replay of
+ * the same image aims at the documents the first pass wrote instead of at
+ * fresh ones. This is the only place that says how a row of that image is
+ * named, so the drain writes, skips and plans attachments by one id.
+ *
+ * A seeded entry's rows are named by a digest of its seed and the position:
+ * a shared row's household copy carries the row's id, while the queue id
+ * minted in `queueImage` below holds the moment the photo was queued and is
+ * shared by every row read off it (#466). An entry the previous build
+ * queued has no seed, and keeps that build's `${id}-${index}`, so a drain
+ * it left half done resumes at the documents already written. The field's
+ * absence decides, not the id's shape. `rowSeed` is a required key, so a
+ * caller holding only the queue id cannot fall into that branch by leaving
+ * it out.
+ */
+export async function queueRowTxId(
+  item: { id: string; rowSeed: string | undefined },
+  index: number,
+): Promise<string> {
+  return item.rowSeed ? opaqueRowId('scan', item.rowSeed, index) : `${item.id}-${index}`;
+}
+
+/** 128 random bits as 32 lower-case hex characters, for `QueuedImage.rowSeed`. */
+function newRowSeed(): string {
+  return toHex(crypto.getRandomValues(new Uint8Array(16)));
+}
+
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService implements OnDestroy {
   private pwaService = inject(PwaService);
@@ -88,7 +124,6 @@ export class OfflineQueueService implements OnDestroy {
   private db: IDBPDatabase<OfflineQueueDB> | null = null;
   private syncInProgress = false;
   private onlineHandler: (() => void) | null = null;
-  private syncEventHandler: ((event: Event) => void) | null = null;
 
   // State signals
   private _isReady = signal<boolean>(false);
@@ -111,6 +146,19 @@ export class OfflineQueueService implements OnDestroy {
   constructor() {
     this.initializeDB();
     this.setupListeners();
+    // The database usually opens before the session is restored, so the
+    // count taken at open is nobody's, and the card that reads it disabled
+    // Sync Now and Clear Queue over a failed scan. It is taken again
+    // whenever the account changes; before the open it reads 0. Nothing
+    // awaits the recount, so a read that rejects is logged here.
+    effect(() => {
+      this.authService.userId();
+      untracked(() => {
+        this.updatePendingCount().catch(error => {
+          console.error('[OfflineQueue] Failed to recount pending items:', error);
+        });
+      });
+    });
   }
 
   ngOnDestroy(): void {
@@ -279,22 +327,16 @@ export class OfflineQueueService implements OnDestroy {
       }
     };
     window.addEventListener('online', this.onlineHandler);
-
-    // Listen for sync event from service worker
-    this.syncEventHandler = () => {
-      this.syncQueue();
-    };
-    window.addEventListener('sync-offline-queue', this.syncEventHandler);
   }
 
   private cleanup(): void {
     if (this.onlineHandler) {
       window.removeEventListener('online', this.onlineHandler);
     }
-    if (this.syncEventHandler) {
-      window.removeEventListener('sync-offline-queue', this.syncEventHandler);
-    }
+    // Closed and forgotten, as `closeForUpgrade` does: a recount after this
+    // reads 0 instead of asking a closed handle.
     this.db?.close();
+    this.db = null;
   }
 
   /**
@@ -319,14 +361,12 @@ export class OfflineQueueService implements OnDestroy {
       createdAt: Date.now(),
       status: 'pending',
       retryCount: 0,
+      rowSeed: newRowSeed(),
     };
 
     await this.db.put('pending-images', queuedImage);
     await this.updatePendingCount();
     await this.logSync('item_processed', id, 'Image queued for processing');
-
-    // Register background sync if available
-    this.pwaService.registerBackgroundSync('sync-offline-queue');
 
     return id;
   }

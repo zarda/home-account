@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Component, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { AiSummaryComponent } from './ai-summary.component';
@@ -14,6 +13,7 @@ import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../mo
 import {
   channels, createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
   hoverValue, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
@@ -241,6 +241,26 @@ describe('AiSummaryComponent', () => {
       cloudLLM.generateSpendingSummary.calls.reset();
       await generate(component);
       expect(cloudLLM.generateSpendingSummary).not.toHaveBeenCalled();
+    });
+
+    // A contract pin: no provider reads byCategory on the advice path today,
+    // so this holds the shape a later reader would find — expenses only,
+    // largest first, an exact tie ranked by category id.
+    it('hands the advice its category totals ranked, ties by category id', async () => {
+      const component = build().componentInstance;
+      const internal = internals(component);
+      await internal.loadInsights([
+        createTransaction({ type: 'expense', amount: 30, categoryId: 'transport' }),
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'shopping' }),
+        createTransaction({ type: 'income', amount: 900, categoryId: 'employment_salary' }),
+        createTransaction({ type: 'expense', amount: 50, categoryId: 'food' }),
+      ], 'thisMonth', internal.cacheKey());
+
+      expect(cloudLLM.getFinancialAdvice.calls.mostRecent().args[0].byCategory).toEqual([
+        { categoryId: 'food', total: 50 },
+        { categoryId: 'shopping', total: 50 },
+        { categoryId: 'transport', total: 30 },
+      ]);
     });
 
     it('migrates the legacy boolean to the standard tier config', async () => {
@@ -542,7 +562,7 @@ describe('AiSummaryComponent, through its own template', () => {
     sanitizer.bypassSecurityTrustHtml.and.callFake((val: string) => val);
 
     await TestBed.configureTestingModule({
-      imports: [AiSummaryComponent, NoopAnimationsModule],
+      imports: [AiSummaryComponent],
       providers: [
         { provide: CloudLLMProviderService, useValue: llm },
         { provide: CurrencyService, useValue: currencySpy },
@@ -552,6 +572,7 @@ describe('AiSummaryComponent, through its own template', () => {
         { provide: RagContextService, useValue: rag },
         { provide: DomSanitizer, useValue: sanitizer },
         { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackAiAssistUsed']) },
+        provideNoMotion(),
       ],
     }).compileComponents();
   });

@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { Category, CategorizedImportTransaction } from '../../../../models';
@@ -10,6 +9,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
+import { provideNoMotion } from '../../../../core/services/testing';
 
 /**
  * The review card at the narrowest width the app supports, carrying
@@ -107,7 +107,7 @@ describe('overflow guard: the import review card', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [PreviewOverflowProbeComponent, NoopAnimationsModule],
+      imports: [PreviewOverflowProbeComponent],
       providers: [
         // t() alone: TranslatePipe, LocaleDatePipe, LocaleFormatService and
         // CategorySuggestionComponent all guard their signal reads for exactly
@@ -154,6 +154,7 @@ describe('overflow guard: the import review card', () => {
           },
         },
         { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
@@ -1121,7 +1122,7 @@ describe('overflow guard: the currency offer label\'s ink, not just its box', ()
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [InkOverflowProbeComponent, NoopAnimationsModule],
+      imports: [InkOverflowProbeComponent],
       providers: [
         // Same shape as the mock above, with one substitution: the
         // country-less offer key renders the unbreakable token in place of
@@ -1147,6 +1148,7 @@ describe('overflow guard: the currency offer label\'s ink, not just its box', ()
           },
         },
         { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

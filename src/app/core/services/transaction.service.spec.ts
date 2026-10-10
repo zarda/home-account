@@ -2474,17 +2474,6 @@ describe('TransactionService', () => {
     });
   });
 
-  describe('getByCategory', () => {
-    it('should call getTransactions with category filter', (done) => {
-      mockFirestore.setMockCollection('users/test-user-123/transactions', []);
-
-      service.getByCategory('food').subscribe(() => {
-        expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBeGreaterThan(0);
-        done();
-      });
-    });
-  });
-
   describe('getTransactions with a search query', () => {
     beforeEach(() => {
       const transactions = [
@@ -2527,86 +2516,18 @@ describe('TransactionService', () => {
     });
   });
 
-  describe('getMonthlyTotals', () => {
-    beforeEach(() => {
-      const now = new Date();
-      const transactions = [
-        createTransaction({
-          type: 'income',
-          amount: 5000,
-          amountInBaseCurrency: 5000,
-          date: Timestamp.fromDate(now)
-        }),
-        createTransaction({
-          type: 'expense',
-          amount: 100,
-          amountInBaseCurrency: 100,
-          categoryId: 'food',
-          date: Timestamp.fromDate(now)
-        }),
-        createTransaction({
-          type: 'expense',
-          amount: 50,
-          amountInBaseCurrency: 50,
-          categoryId: 'food',
-          date: Timestamp.fromDate(now)
-        }),
-        createTransaction({
-          type: 'expense',
-          amount: 200,
-          amountInBaseCurrency: 200,
-          categoryId: 'transport',
-          date: Timestamp.fromDate(now)
-        })
-      ];
-      mockFirestore.setMockCollection('users/test-user-123/transactions', transactions);
+  describe('methods with no production caller', () => {
+    it('no longer carries the monthly totals read or its category helper', () => {
+      // Nothing in the app called getMonthlyTotals, and groupByCategory had no
+      // caller but it.
+      expect('getMonthlyTotals' in TransactionService.prototype).toBeFalse();
+      expect('groupByCategory' in TransactionService.prototype).toBeFalse();
     });
 
-    it('should calculate income total', (done) => {
-      const now = new Date();
-      service.getMonthlyTotals(now.getFullYear(), now.getMonth() + 1).subscribe(totals => {
-        expect(totals.income).toBe(5000);
-        done();
-      });
-    });
-
-    it('should calculate expense total', (done) => {
-      const now = new Date();
-      service.getMonthlyTotals(now.getFullYear(), now.getMonth() + 1).subscribe(totals => {
-        expect(totals.expense).toBe(350); // 100 + 50 + 200
-        done();
-      });
-    });
-
-    it('should calculate balance', (done) => {
-      const now = new Date();
-      service.getMonthlyTotals(now.getFullYear(), now.getMonth() + 1).subscribe(totals => {
-        expect(totals.balance).toBe(4650); // 5000 - 350
-        done();
-      });
-    });
-
-    it('should include transaction count', (done) => {
-      const now = new Date();
-      service.getMonthlyTotals(now.getFullYear(), now.getMonth() + 1).subscribe(totals => {
-        expect(totals.transactionCount).toBe(4);
-        done();
-      });
-    });
-
-    it('should group by category', (done) => {
-      const now = new Date();
-      service.getMonthlyTotals(now.getFullYear(), now.getMonth() + 1).subscribe(totals => {
-        expect(totals.byCategory.length).toBeGreaterThan(0);
-
-        const foodCategory = totals.byCategory.find(c => c.categoryId === 'food');
-        expect(foodCategory?.total).toBe(150); // 100 + 50
-
-        const transportCategory = totals.byCategory.find(c => c.categoryId === 'transport');
-        expect(transportCategory?.total).toBe(200);
-
-        done();
-      });
+    it('no longer carries the category getter', () => {
+      // getByCategory only wrapped getTransactions({ categoryId }), and
+      // nothing called it.
+      expect('getByCategory' in TransactionService.prototype).toBeFalse();
     });
   });
 });

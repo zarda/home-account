@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -16,6 +15,7 @@ import {
   ratio,
   settleAnimations,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 
 function expenseTxn(overrides: Partial<Transaction> = {}): Transaction {
@@ -80,8 +80,8 @@ describe('RecurringBreakdownComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [RecurringBreakdownComponent, NoopAnimationsModule],
-      providers: [{ provide: CurrencyService, useValue: mockCurrencyService }],
+      imports: [RecurringBreakdownComponent],
+      providers: [{ provide: CurrencyService, useValue: mockCurrencyService }, provideNoMotion()],
       schemas: [NO_ERRORS_SCHEMA],
     })
       .overrideComponent(RecurringBreakdownComponent, {
@@ -220,7 +220,7 @@ describe('RecurringBreakdownComponent, through its own template', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RecurringBreakdownComponent, NoopAnimationsModule],
+      imports: [RecurringBreakdownComponent],
       providers: [
         {
           provide: CurrencyService,
@@ -231,6 +231,7 @@ describe('RecurringBreakdownComponent, through its own template', () => {
         },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

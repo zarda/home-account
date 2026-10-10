@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -18,6 +17,7 @@ import { SearchAnswerHistoryService } from '../../../core/services/search-answer
 import { TranslationService } from '../../../core/services/translation.service';
 import { Goal, NlSearchResult, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
 import { createCategory, createTransaction } from '../../../core/services/testing/test-data';
+import { provideNoMotion } from '../../../core/services/testing';
 import {
   hoverValue,
   paintedBackground,
@@ -102,7 +102,7 @@ describe('AiSearchDialogComponent', () => {
     dateFormatService.formatDate.and.callFake((d: Date) => d.toISOString().slice(0, 10));
 
     await TestBed.configureTestingModule({
-      imports: [AiSearchDialogComponent, NoopAnimationsModule],
+      imports: [AiSearchDialogComponent],
       providers: [
         { provide: AnalyticsService, useValue: analytics },
         { provide: NlSearchService, useValue: nlSearch },
@@ -116,6 +116,7 @@ describe('AiSearchDialogComponent', () => {
         { provide: CurrencyService, useValue: currencyService },
         { provide: TranslationService, useValue: translationService },
         { provide: DateFormatService, useValue: dateFormatService },
+        provideNoMotion(),
       ],
     })
       // The component imports MatDialogModule, whose environment provider for

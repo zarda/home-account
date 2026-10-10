@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatTabsModule } from '@angular/material/tabs';
 
 import { TabStripScrollDirective } from './tab-strip-scroll.directive';
+import { provideNoMotion } from '../../core/services/testing';
 
 /**
  * Everything here is geometric, so the probe measures real layout rather than
@@ -70,7 +70,8 @@ describe('TabStripScrollDirective', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [TabStripScrollProbeComponent, NoopAnimationsModule],
+      imports: [TabStripScrollProbeComponent],
+      providers: [provideNoMotion()],
     }).compileComponents();
 
     fixture = TestBed.createComponent(TabStripScrollProbeComponent);

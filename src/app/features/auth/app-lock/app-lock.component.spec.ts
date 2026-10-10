@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 
 import { AppLockComponent } from './app-lock.component';
@@ -11,6 +10,7 @@ import {
   BiometricOutcome,
 } from '../../../core/services/biometric-auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('AppLockComponent', () => {
   let component: AppLockComponent;
@@ -57,13 +57,14 @@ describe('AppLockComponent', () => {
     );
 
     await TestBed.configureTestingModule({
-      imports: [AppLockComponent, NoopAnimationsModule],
+      imports: [AppLockComponent],
       providers: [
         { provide: AppLockService, useValue: appLock },
         { provide: AuthService, useValue: auth },
         { provide: BiometricAuthService, useValue: biometricAuth },
         { provide: TranslationService, useValue: translation },
         { provide: Router, useValue: router },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

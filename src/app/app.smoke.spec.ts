@@ -28,7 +28,6 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { By } from '@angular/platform-browser';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatSelect } from '@angular/material/select';
@@ -68,7 +67,8 @@ import {
   createMockUser,
   runAxe,
   unexpectedViolations,
-  withScheme
+  withScheme,
+  provideNoMotion
 } from './core/services/testing';
 import { BUDGET_TABS } from './features/budgets/budgets.component';
 import { REPORT_TABS } from './features/reports/reports.component';
@@ -483,7 +483,7 @@ describe('App routes (emulator smoke test)', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        provideNoopAnimations(),
+        provideNoMotion(),
         provideHttpClient(),
         provideNativeDateAdapter(),
         provideAppCharts(),

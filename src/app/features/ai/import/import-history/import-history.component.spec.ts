@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Router } from '@angular/router';
 import { of, EMPTY } from 'rxjs';
@@ -12,14 +11,17 @@ import { ImportHistoryService } from '../../../../core/services/import-history.s
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
-import { ImportHistory } from '../../../../models';
+import { ImportError, ImportHistory } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import {
   channels,
+  createLocaleFormatStub,
+  createTranslationStub,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -44,6 +46,7 @@ describe('ImportHistoryComponent', () => {
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockRouter: jasmine.SpyObj<Router>;
+  let mockLocaleFormat: jasmine.SpyObj<LocaleFormatService>;
 
   const mockTimestamp = {
     seconds: 1704067200, // 2024-01-01 00:00:00 UTC
@@ -107,11 +110,17 @@ describe('ImportHistoryComponent', () => {
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
+    // Markers no Intl formatter would produce, so the joined text can only
+    // come from the two calls.
+    mockLocaleFormat = jasmine.createSpyObj('LocaleFormatService', ['formatDate', 'formatTime']);
+    mockLocaleFormat.formatDate.and.returnValue('DAY-FROM-FORMATTER');
+    mockLocaleFormat.formatTime.and.returnValue('TIME-FROM-FORMATTER');
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
+        { provide: LocaleFormatService, useValue: mockLocaleFormat },
         { provide: ImportHistoryService, useValue: mockImportHistoryService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: MatSnackBar, useValue: mockSnackBar },
@@ -119,7 +128,8 @@ describe('ImportHistoryComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: Router, useValue: mockRouter },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -257,6 +267,12 @@ describe('ImportHistoryComponent', () => {
       const formatted = component.formatDate(mockTimestamp);
       expect(formatted).toBeTruthy();
       expect(typeof formatted).toBe('string');
+    });
+
+    it('joins the formatter\'s short day and its time of day', () => {
+      expect(component.formatDate(mockTimestamp)).toBe('DAY-FROM-FORMATTER TIME-FROM-FORMATTER');
+      expect(mockLocaleFormat.formatDate).toHaveBeenCalledOnceWith(mockTimestamp.toDate(), 'short');
+      expect(mockLocaleFormat.formatTime).toHaveBeenCalledOnceWith(mockTimestamp.toDate());
     });
   });
 
@@ -514,20 +530,30 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: router },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ]
     }).compileComponents();
 
     fixture = TestBed.createComponent(ImportHistoryComponent);
+  });
+
+  it('renders each record\'s day and time of day through the locale formatter', () => {
+    render([itemWith(undefined)]);
+
+    // 1704067200 is 2024-01-01T00:00:00Z; the stub formats a date as its ISO
+    // day and a time as its UTC hour and minute.
+    const subtitle = fixture.nativeElement.querySelector('mat-card-subtitle') as HTMLElement;
+    expect(subtitle.textContent?.trim()).toBe('2024-01-01 00:00');
   });
 
   it('shows no shortcut for a record without transaction ids', () => {
@@ -568,6 +594,18 @@ describe('ImportHistoryComponent transaction shortcut', () => {
 
     expect(router.navigate).toHaveBeenCalledWith(['/transactions'], { queryParams: { tx: 'tx-2' } });
   });
+
+  it('reads an older record\'s row error by its reason, whatever else it kept on it', () => {
+    // Records written before an error named its row by id still hold a
+    // position and the row's description in Firestore, as the confirm loop
+    // wrote them then; the description is what marks the line as a row's.
+    const stored = { row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' } as ImportError;
+    render([{ ...baseRecord, status: 'partial', errorCount: 1, errors: [stored] }]);
+
+    const lines = Array.from(fixture.nativeElement.querySelectorAll('.errors li'))
+      .map(li => (li as HTMLElement).textContent?.trim());
+    expect(lines).toEqual(['import.rowFailedAmount']);
+  });
 });
 
 // A third sibling suite, for the same reason as the one above: this needs
@@ -604,16 +642,17 @@ describe('ImportHistoryComponent overflow', () => {
     translation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ]
     }).compileComponents();
 
@@ -734,16 +773,17 @@ describe('ImportHistoryComponent, colours as painted', () => {
     translation.t.and.callFake((key: string) => key);
 
     await TestBed.configureTestingModule({
-      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      imports: [ImportHistoryComponent],
       providers: [
         { provide: ImportHistoryService, useValue: historyService },
         { provide: TranslationService, useValue: translation },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
-        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: CurrencyService, useValue: currencyStub },
-        { provide: AuthService, useValue: authStub }
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
       ]
     }).compileComponents();
 
@@ -830,5 +870,137 @@ describe('ImportHistoryComponent, colours as painted', () => {
         expectPainted(cards()[2].querySelector('.failure-class'), '--color-error-text', `${theme} failure line`);
       });
     }
+  });
+});
+
+// A fifth sibling suite on the real template, with a stub that echoes a
+// key's params: every error line a record stores was written as English or
+// as a code, and what reaches the reader has to come from the catalog (ADR
+// 0036).
+describe('ImportHistoryComponent, error lines in the reader\'s language', () => {
+  let fixture: ComponentFixture<ImportHistoryComponent>;
+  let historyService: jasmine.SpyObj<ImportHistoryService>;
+
+  const record = (overrides: Partial<ImportHistory>): ImportHistory => ({
+    id: 'import1',
+    userId: 'user1',
+    importedAt: { seconds: 1704067200, nanoseconds: 0, toDate: () => new Date(1704067200 * 1000) } as Timestamp,
+    source: 'csv',
+    fileType: 'generic_csv',
+    fileName: 'statement.csv',
+    fileSize: 2048,
+    transactionCount: 1,
+    successCount: 0,
+    skippedCount: 0,
+    errorCount: 1,
+    totalIncome: 0,
+    totalExpenses: 0,
+    duplicatesSkipped: 0,
+    status: 'partial',
+    ...overrides,
+  });
+
+  /** A row the confirm loop refused, in the shape it writes one now. */
+  const rowError = (transactionId: string, overrides: Partial<ImportError> = {}): ImportError => ({
+    transactionId,
+    message: 'Failed to get document because the client is offline.',
+    code: 'unavailable',
+    originalValue: 'Coffee',
+    ...overrides,
+  });
+
+  function render(items: ImportHistory[]): string[] {
+    historyService.getImportHistory.and.returnValue(of(items));
+    fixture.detectChanges();
+    return Array.from(fixture.nativeElement.querySelectorAll('.errors li'))
+      .map(li => (li as HTMLElement).textContent?.trim() ?? '');
+  }
+
+  beforeEach(async () => {
+    historyService = jasmine.createSpyObj('ImportHistoryService', ['getImportHistory']);
+
+    await TestBed.configureTestingModule({
+      imports: [ImportHistoryComponent],
+      providers: [
+        { provide: ImportHistoryService, useValue: historyService },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
+        { provide: CurrencyService, useValue: currencyStub },
+        { provide: AuthService, useValue: authStub },
+        provideNoMotion()
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ImportHistoryComponent);
+  });
+
+  /** A failed receipt attempt's record, as the attempt service writes one. */
+  const failedAttempt = (errorType: ImportHistory['errorType'], message: string): ImportHistory => record({
+    source: 'image',
+    fileType: 'receipt_image',
+    fileName: 'receipt.jpg',
+    status: 'failed',
+    errorType,
+    errors: [{ message }],
+  });
+
+  it('says a failed receipt attempt\'s failure in the reader\'s language, not the English it stored', () => {
+    // The drain's usual failure: online, with no provider to reach. Its
+    // class is network, but the classifier gave it a sentence of its own,
+    // and the card reads that one rather than "check your connection".
+    const lines = render([failedAttempt('network', 'Cloud AI is not reachable.')]);
+
+    expect(lines).toEqual(['import.errorCloudUnavailable']);
+    expect(fixture.nativeElement.textContent).not.toContain('Cloud AI is not reachable.');
+  });
+
+  it('reads a partly kept capture by its own sentence, not as a failure to try again', () => {
+    const lines = render([failedAttempt('unknown', 'Only part of the capture could be stored for later.')]);
+
+    expect(lines).toEqual(['import.errorQueueWritePartial']);
+  });
+
+  it('reads a real connection failure by its class', () => {
+    const lines = render([failedAttempt(
+      'network', 'Network error. Please check your internet connection and try again.')]);
+
+    expect(lines).toEqual(['errors.network']);
+  });
+
+  it('falls back to the stored line for a row error with no message, rather than throwing', () => {
+    // A restored backup's elements are written verbatim, and the rules do
+    // not look inside the list.
+    const stored = { originalValue: 'Coffee' } as ImportError;
+    const lines = render([record({ errors: [stored] })]);
+
+    expect(lines).toEqual(['']);
+  });
+
+  it('reads a refused row by its reason rather than by the client\'s prose', () => {
+    const lines = render([record({ errors: [rowError('row-1')] })]);
+
+    expect(lines).toEqual(['import.rowFailedConnection']);
+  });
+
+  it('lists three errors and counts the rest from the catalog', () => {
+    const errors = ['a', 'b', 'c', 'd', 'e'].map(id => rowError(id));
+    const lines = render([record({ errorCount: 5, errors })]);
+
+    expect(lines).toEqual([
+      'import.rowFailedConnection',
+      'import.rowFailedConnection',
+      'import.rowFailedConnection',
+      'import.moreErrors:{"others":2}',
+    ]);
+  });
+
+  it('keeps the stored message for a whole-import failure, the one shape neither reading knows', () => {
+    // failImport's shape: no errorType, nothing naming a row.
+    const lines = render([record({ status: 'failed', errors: [{ message: 'Import failed' }] })]);
+
+    expect(lines).toEqual(['Import failed']);
   });
 });

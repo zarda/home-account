@@ -196,7 +196,7 @@ The About page lists the same steps on iOS, and shows nothing once the app runs 
 
 ## Scripts
 
-Every step the `ci` job runs, in the order it runs it. Two of them are not
+Every step the `ci` job runs, in the order it runs it. Three of them are not
 `npm` scripts and are written the way CI writes them; the deploy-only commands
 are a separate table below, because they belong to `deploy-web` and never run
 here.
@@ -214,6 +214,7 @@ here.
 | `npm run firebase-tools:check` | Verify the pinned firebase-tools major has not drifted |
 | `node scripts/check-prod-env.mjs --self-test` | The digest checker's own logic, against a stub. **CI runs this half only** — the "Create local environment stubs" step overwrites the file the real digest was taken from, so the compare would fail here by construction. The real compare belongs to `deploy-web`, below |
 | `node scripts/wait-for-indexes.mjs --self-test` | The index wait's state classification, deadline math, signed assertion and token-and-poll loop, against a local stub server. The real wait reaches the Firestore Admin API and belongs to `deploy-web`, below |
+| `node scripts/analyze-bundle.mjs --self-test` | The bundle analyzer's rule for which outputs are initial — the entries, their static-import closure, the CSS counted, a dynamic-import chunk left out — against an inline metafile. The real run needs a production build with the stats file and is local only, below |
 | `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates ([docs/ui-overflow.md](docs/ui-overflow.md)) |
 | `npm run grid:check` | Verify no `grid-template-columns` nests a `minmax()` inside another or declares a bare `1fr` — G2 ([docs/ui-overflow.md](docs/ui-overflow.md)) |
 | `npm run direction:check` | Verify the physical-direction CSS is still exactly where the per-file baseline says ([docs/rtl.md](docs/rtl.md)) |
@@ -223,6 +224,7 @@ here.
 | `npm run contrast:check` | Score every colour pair the app paints against WCAG AA, in all four rendered modes ([docs/accessibility.md](docs/accessibility.md)) |
 | `npm run colors:check` | Verify every colour comes from the theme tokens: a palette utility, hex, named colour, `var()` fallback or bound category colour fails unless the per-file, per-colour baseline still lists it, and every literal kept on purpose carries a reasoned `colors:allow` marker counted in the script ([docs/accessibility.md](docs/accessibility.md)) |
 | `npm run icon-labels:check` | Verify every `mat-icon` carrying `role="img"` or an aria-label also carries a literal `aria-hidden` — a bound one does not reach Material's constructor — and that every `mat-spinner`, `mat-progress-bar` and `mat-progress-spinner` carries an aria-label, aria-labelledby or a literal `aria-hidden="true"` ([docs/accessibility.md](docs/accessibility.md)) |
+| `npm run adr-index:check` | Verify every gap closure an ADR states — a header clause that closes a gap of an earlier record, or a body note "Closed by NNNN" — is named on both rows of the index: the closer's names the record it closed, and the closed record's names its closer ([docs/ADR/README.md](docs/ADR/README.md)) |
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run test:dates` | Run the zone-sensitive specs — CI runs them twice, under `TZ=America/New_York` and `TZ=Asia/Tokyo` |
 | `npm run smoke` | Run integration tests against Firebase emulators, including the axe-core accessibility pass over every route the walkthrough opens (requires JDK 21+) |
@@ -243,6 +245,7 @@ Local only:
 |---------|-------------|
 | `npm start` | Dev server at localhost:4200 |
 | `npm run start:emulators` | Dev server at localhost:4300, built with the `emulators` configuration against the local Firebase emulators and the demo project — for the browser journeys that need several accounts ([docs/e2e.md](docs/e2e.md)); start the emulators first |
+| `npm run build:analyze` | Production build with `--stats-json`, then print each initial output's ten largest inputs by bytes in the output and the initial total in exact bytes — the build's own table rounds it |
 | `npm run build:ios` | Build and sync to iOS |
 | `npm run cap:ios` | Open iOS project in Xcode |
 | `npm test` | Run unit tests |
@@ -251,7 +254,7 @@ Local only:
 
 ## Continuous Integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions workspace build and tests, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the ledger contract check, the firebase-tools major check, the self-test of the production-config digest checker (the real compare belongs to `deploy-web`), the self-test of the Firestore index wait (which cannot reach the Admin API outside a deploy), the truncation check, the grid-track check, the direction check, the Material-imports check, the date-arithmetic check, the reduced-motion check, the colour-contrast check, the icon-label check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. The Scripts table above lists the same steps with what each one is for; the two tables change together. On a push to `main`, a `changes` job classifies what the merge touched and a green pipeline fans out into deploys: `deploy-web` rebuilds against the real production config held in the `PROD_ENVIRONMENT_TS` secret and ships hosting, the Firestore rules and indexes, and the Storage rules, while `deploy-functions` ships the Cloud Functions when `functions/` or `firebase.json` changed — docs-only merges deploy nothing, and [docs/deploy.md](docs/deploy.md) is the runbook. The coverage report is uploaded as a build artifact, and a failed run also uploads the Firestore emulator's log, which keeps every operation it refused with its rules trace. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
+GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions workspace build and tests, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the ledger contract check, the firebase-tools major check, the self-test of the production-config digest checker (the real compare belongs to `deploy-web`), the self-test of the Firestore index wait (which cannot reach the Admin API outside a deploy), the self-test of the bundle analyzer (its real run needs a production build and stays local), the truncation check, the grid-track check, the direction check, the Material-imports check, the date-arithmetic check, the reduced-motion check, the colour-contrast check, the icon-label check, the ADR-index check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. The Scripts table above lists the same steps with what each one is for; the two tables change together. On a push to `main`, a `changes` job classifies what the merge touched and a green pipeline fans out into deploys: `deploy-web` rebuilds against the real production config held in the `PROD_ENVIRONMENT_TS` secret and ships hosting, the Firestore rules and indexes, and the Storage rules, while `deploy-functions` ships the Cloud Functions when `functions/` or `firebase.json` changed — docs-only merges deploy nothing, and [docs/deploy.md](docs/deploy.md) is the runbook. The coverage report is uploaded as a build artifact, and a failed run also uploads the Firestore emulator's log, which keeps every operation it refused with its rules trace. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 
@@ -279,7 +282,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/smart-search.md](docs/smart-search.md) | Natural-language search: one interpretation call, local aggregation, keyword fallback, and the persisted answer history |
 | [docs/account-deletion.md](docs/account-deletion.md) | Account deletion: the client-side cascade, its ordering, partial-failure semantics, and the rules it needed |
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |
-| [docs/pwa.md](docs/pwa.md) | The PWA layer: reachability, running installed, iOS and iPadOS detection, the install prompt and the About page's card, background sync and the worker's messages |
+| [docs/pwa.md](docs/pwa.md) | The PWA layer: reachability, running installed, iOS and iPadOS detection, the install prompt and the About page's card, and why there is no background sync |
 | [docs/widget.md](docs/widget.md) | The iOS home-screen widget: the snapshot contract, when it is written and deduplicated, the four states, the plugin and target, and verifying it on the simulator |
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
 | [docs/household.md](docs/household.md) | Households: what a shared row reveals and what stays private, sharing, the household's own budgets and goals, the flows, the invite callable's answers, the data model and rules, the cleanup triggers, and the operator runbook for the callable, its invoker grant and its mail |

@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { Component, NO_ERRORS_SCHEMA, input, output, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
@@ -12,6 +11,7 @@ import { SpendingChartComponent } from '../../dashboard/spending-chart/spending-
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { provideNoMotion } from '../../../core/services/testing';
 
 // Stands in for the reused donut so the real template can render without
 // SpendingChartComponent's own provider chain — see the identical stub in
@@ -68,7 +68,7 @@ describe('overflow guard: category-breakdown grid tracks (#450)', () => {
     const mockTranslationService = { t: (key: string) => key, currentLocale: signal('en') };
 
     await TestBed.configureTestingModule({
-      imports: [CategoryBreakdownComponent, NoopAnimationsModule],
+      imports: [CategoryBreakdownComponent],
       providers: [
         {
           provide: CurrencyService,
@@ -80,6 +80,7 @@ describe('overflow guard: category-breakdown grid tracks (#450)', () => {
           },
         },
         { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion(),
       ],
     })
       .overrideComponent(CategoryBreakdownComponent, {

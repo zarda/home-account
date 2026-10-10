@@ -391,10 +391,10 @@ convenience.
 - **A notification raised before routes were carried opens `/`.** On the web
   the worker posts `/` to an open tab, which navigates there; on iOS such a
   tap carries no route and is ignored.
-- **The iOS half ships with a native build.** The installed app runs the web
-  bundle it was built with, so the routes in `extra`, the tap listener and the
-  recap nudge's gate reach an iPhone only with a new native build. They are
-  proven by unit specs only.
+- **The iOS half ships with a native build** (#446). The installed app runs
+  the web bundle it was built with, so the routes in `extra`, the tap listener
+  and the recap nudge's gate reach an iPhone only with a new native build.
+  They are proven by unit specs only.
 - **A budget reminder needs a page to have loaded budgets.** In practice the
   dashboard always has; a Settings-only session would raise none.
 - **Nothing checks the pending count against the 64 cap.** Scheduling only the

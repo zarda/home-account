@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -7,7 +6,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { GoalContributeDialogComponent } from './goal-contribute-dialog.component';
 import { Goal } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub } from '../../../../core/services/testing';
+import { createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
 
 const goal: Goal = {
   id: 'g1',
@@ -31,10 +30,11 @@ describe('GoalContributeDialogComponent', () => {
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
 
     await TestBed.configureTestingModule({
-      imports: [GoalContributeDialogComponent, NoopAnimationsModule],
+      imports: [GoalContributeDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
-        { provide: MAT_DIALOG_DATA, useValue: { goal } }
+        { provide: MAT_DIALOG_DATA, useValue: { goal } },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -104,11 +104,12 @@ describe('GoalContributeDialogComponent, through its own template', () => {
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
 
     await TestBed.configureTestingModule({
-      imports: [GoalContributeDialogComponent, NoopAnimationsModule],
+      imports: [GoalContributeDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { goal } },
-        { provide: TranslationService, useValue: createTranslationStub() }
+        { provide: TranslationService, useValue: createTranslationStub() },
+        provideNoMotion()
       ]
     }).compileComponents();
 

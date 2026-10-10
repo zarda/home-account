@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { SecuritySettingsComponent } from './security-settings.component';
 import { AppLockMethod, AppLockService } from '../../../core/services/app-lock.service';
@@ -9,6 +8,7 @@ import { BiometricAuthService } from '../../../core/services/biometric-auth.serv
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { User, UserPreferences } from '../../../models';
+import { provideNoMotion } from '../../../core/services/testing';
 
 describe('SecuritySettingsComponent', () => {
   let fixture: ComponentFixture<SecuritySettingsComponent>;
@@ -71,7 +71,7 @@ describe('SecuritySettingsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [SecuritySettingsComponent],
       providers: [
-        provideNoopAnimations(),
+        provideNoMotion(),
         { provide: AppLockService, useValue: appLock },
         { provide: AuthService, useValue: authService },
         { provide: NotificationService, useValue: notifications },

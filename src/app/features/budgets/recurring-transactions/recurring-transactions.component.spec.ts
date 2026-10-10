@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
@@ -30,6 +29,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withScheme,
@@ -132,7 +132,7 @@ describe('RecurringTransactionsComponent', () => {
     });
 
     await TestBed.configureTestingModule({
-      imports: [RecurringTransactionsComponent, NoopAnimationsModule],
+      imports: [RecurringTransactionsComponent],
       providers: [
         { provide: NotificationService, useValue: notifications },
         { provide: RecurringService, useValue: mockRecurringService },
@@ -146,7 +146,8 @@ describe('RecurringTransactionsComponent', () => {
           useValue: {
             formatCurrency: (amount: number, code: string) => `${code} ${amount.toFixed(2)}`,
           },
-        }
+        },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -466,7 +467,7 @@ describe('RecurringTransactionsComponent', () => {
     beforeEach(async () => {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
-        imports: [RecurringTransactionsComponent, NoopAnimationsModule],
+        imports: [RecurringTransactionsComponent],
         providers: [
         { provide: NotificationService, useValue: notifications },
           { provide: RecurringService, useValue: mockRecurringService },
@@ -483,7 +484,8 @@ describe('RecurringTransactionsComponent', () => {
             useValue: {
               formatCurrency: (amount: number, code: string) => `${code} ${amount.toFixed(2)}`,
             },
-          }
+          },
+          provideNoMotion()
         ]
       })
         .overrideComponent(RecurringTransactionsComponent, {

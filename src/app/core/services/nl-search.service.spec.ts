@@ -130,6 +130,22 @@ describe('NlSearchService', () => {
       expect(context.categories.some(c => c.id === 'dormant')).toBeFalse();
     });
 
+    // Pin: the day was zero-padded by a private copy before it came from
+    // `dayKey`; a single-digit month and day is the case a missing pad breaks.
+    it('writes today as a zero-padded local day', async () => {
+      jasmine.clock().install();
+      jasmine.clock().mockDate(new Date(2026, 0, 5, 9, 30));
+      try {
+        mockIntent({ kind: 'filter', filters: {} });
+        await service.search('anything');
+
+        const context = cloudLLMProvider.interpretSearchQuery.calls.mostRecent().args[1];
+        expect(context.today).toBe('2026-01-05');
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
     it('carries the goal and budget catalogs so a named one can be resolved', async () => {
       goalService.goals.and.returnValue([
         { id: 'g1', name: 'Japan trip', isActive: true },

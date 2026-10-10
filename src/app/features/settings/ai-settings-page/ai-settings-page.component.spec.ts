@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 
@@ -16,7 +15,7 @@ import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
-import { settleAnimations, withTheme } from '../../../core/services/testing';
+import { provideNoMotion, settleAnimations, withTheme } from '../../../core/services/testing';
 import { DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
 
 describe('AiSettingsPageComponent', () => {
@@ -122,7 +121,6 @@ describe('AiSettingsPageComponent', () => {
     await TestBed.configureTestingModule({
       imports: [
         AiSettingsPageComponent,
-        NoopAnimationsModule,
         RouterTestingModule,
         HttpClientTestingModule,
       ],
@@ -138,6 +136,7 @@ describe('AiSettingsPageComponent', () => {
         { provide: ProviderKeyService, useValue: providerKeysMock },
         { provide: CategoryMemoryService, useValue: categoryMemoryMock },
         { provide: TagMemoryService, useValue: tagMemoryMock },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

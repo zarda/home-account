@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { Timestamp } from '@angular/fire/firestore';
@@ -25,6 +24,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 
 function breakpointState(matches: boolean): BreakpointState {
@@ -146,6 +146,7 @@ describe('MonthlyComparisonComponent', () => {
   let component: MonthlyComparisonComponent;
   let fixture: ComponentFixture<MonthlyComparisonComponent>;
   let breakpoint$: BehaviorSubject<BreakpointState>;
+  let localeFormat: jasmine.SpyObj<LocaleFormatService>;
 
   const mockTransactions = mockTransactionSet;
 
@@ -179,12 +180,19 @@ describe('MonthlyComparisonComponent', () => {
     // headless browser; the mobile cases push a match through it.
     breakpoint$ = new BehaviorSubject<BreakpointState>(breakpointState(false));
 
+    // Echoes its arguments, so an assertion reads which figure and which
+    // digit pattern reached the formatter rather than what Intl makes of them.
+    localeFormat = jasmine.createSpyObj('LocaleFormatService', ['formatNumber']);
+    localeFormat.formatNumber.and.callFake((value, digits) => `N(${value}|${digits ?? ''})`);
+
     await TestBed.configureTestingModule({
-      imports: [MonthlyComparisonComponent, NoopAnimationsModule],
+      imports: [MonthlyComparisonComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } }
+        { provide: LocaleFormatService, useValue: localeFormat },
+        { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -361,6 +369,32 @@ describe('MonthlyComparisonComponent', () => {
     });
   });
 
+  describe('chart number formatting', () => {
+    type LabelCallback = (context: unknown) => string;
+    type TickCallback = (value: number | string) => string;
+
+    beforeEach(() => {
+      component.transactions = mockTransactions;
+      component.dateRange = { start: new Date(2024, 4, 1), end: new Date(2024, 5, 30) };
+      fixture.detectChanges();
+    });
+
+    it('formats a tooltip figure through the locale formatter, to two places', () => {
+      const label = component.chartOptions()!.plugins!.tooltip!.callbacks!.label as LabelCallback;
+
+      expect(label({ dataset: { label: 'Income' }, parsed: { y: 5000 } })).toBe('Income: $N(5000|1.2-2)');
+      expect(localeFormat.formatNumber).toHaveBeenCalledOnceWith(5000, '1.2-2');
+    });
+
+    it('formats a tick through the locale formatter', () => {
+      const y = (component.chartOptions()!.scales as Record<string, { ticks?: { callback?: unknown } }>)['y'];
+      const tick = y.ticks!.callback as TickCallback;
+
+      expect(tick(2500)).toBe('$N(2500|)');
+      expect(localeFormat.formatNumber).toHaveBeenCalledOnceWith(2500);
+    });
+  });
+
   describe('year-over-year comparison', () => {
     beforeEach(() => {
       component.transactions = mockTransactions;
@@ -517,7 +551,7 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     breakpoint$ = new BehaviorSubject<BreakpointState>(breakpointState(false));
 
     await TestBed.configureTestingModule({
-      imports: [MonthlyComparisonComponent, NoopAnimationsModule],
+      imports: [MonthlyComparisonComponent],
       providers: [
         provideAppCharts(),
         {
@@ -536,6 +570,7 @@ describe('MonthlyComparisonComponent, through its own template', () => {
         },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

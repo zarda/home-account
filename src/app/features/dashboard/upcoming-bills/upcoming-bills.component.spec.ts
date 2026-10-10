@@ -2,7 +2,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { RuleFocusOutcome, UpcomingBillsComponent } from './upcoming-bills.component';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
@@ -28,6 +27,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   textLines,
@@ -105,7 +105,7 @@ describe('UpcomingBillsComponent', () => {
     reducedMotion = signal(false);
 
     await TestBed.configureTestingModule({
-      imports: [UpcomingBillsComponent, NoopAnimationsModule],
+      imports: [UpcomingBillsComponent],
       providers: [
         provideRouter([]),
         { provide: AccessibilityService, useValue: { reducedMotion } },
@@ -118,6 +118,7 @@ describe('UpcomingBillsComponent', () => {
         },
         // The menu the rail describe projects; nothing there presses it.
         { provide: DashboardLayoutService, useValue: {} },
+        provideNoMotion(),
       ],
     }).compileComponents();
 

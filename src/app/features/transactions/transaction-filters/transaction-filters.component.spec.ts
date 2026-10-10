@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, SimpleChange, signal } from '@angular/core';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
@@ -15,6 +14,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -153,13 +153,14 @@ describe('TransactionFiltersComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [TransactionFiltersComponent, NoopAnimationsModule],
+      imports: [TransactionFiltersComponent],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: SearchHistoryService, useValue: mockSearchHistory },
-        { provide: GoalService, useValue: mockGoalService }
+        { provide: GoalService, useValue: mockGoalService },
+        provideNoMotion()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

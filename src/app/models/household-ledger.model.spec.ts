@@ -20,6 +20,7 @@ import {
   sharedHouseholdNames,
 } from './household-ledger.model';
 import { MAX_HOUSEHOLDS_PER_ACCOUNT, householdIndexPath } from './household.model';
+import { opaqueRowId } from '../core/utils/opaque-id.utils';
 
 /**
  * Every transaction field a household must never see, plus the
@@ -270,6 +271,16 @@ describe('household-ledger.model', () => {
         expect(id.slice('AbC123xyz'.length + 1)).toBe(txId);
       });
     }
+
+    // A pin: a row named by opaqueRowId (a recurring posting, a queued scan's
+    // row) is 32 lower-case hex, so it holds no slash, the one character a
+    // copy id refuses in a row id.
+    it('takes an opaque row id whole', async () => {
+      const txId = await opaqueRowId('scan', '0123456789abcdef0123456789abcdef', 0);
+
+      expect(txId).toMatch(/^[0-9a-f]{32}$/);
+      expect(ledgerCopyId('AbC123xyz', txId)).toBe(`AbC123xyz_${txId}`);
+    });
 
     const REFUSED: readonly { name: string; uid: string; txId: string }[] = [
       { name: 'an author holding an underscore', uid: 'u_1', txId: 'tx1' },

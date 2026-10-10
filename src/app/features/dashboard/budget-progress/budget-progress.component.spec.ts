@@ -1,6 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetProgressComponent } from './budget-progress.component';
@@ -20,6 +19,7 @@ import {
   settleAnimations,
   withScheme,
   withTheme,
+  provideNoMotion,
 } from '../../../core/services/testing';
 
 /**
@@ -115,11 +115,12 @@ describe('BudgetProgressComponent', () => {
     mockCategoryHelperService.getCategoryColor.and.returnValue('#FF5722');
 
     await TestBed.configureTestingModule({
-      imports: [BudgetProgressComponent, NoopAnimationsModule],
+      imports: [BudgetProgressComponent],
       providers: [
         provideRouter([]),
         { provide: CurrencyService, useValue: mockCurrencyService },
-        { provide: CategoryHelperService, useValue: mockCategoryHelperService }
+        { provide: CategoryHelperService, useValue: mockCategoryHelperService },
+        provideNoMotion()
       ]
     }).compileComponents();
 

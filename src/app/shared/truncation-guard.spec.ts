@@ -1,6 +1,5 @@
 import { TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { FitTextRegistry } from './directives/fit-text.registry';
 import { CategorySuggestionComponent } from '../features/ai/import/category-suggestion/category-suggestion.component';
@@ -10,7 +9,7 @@ import { NotificationService } from '../core/services/notification.service';
 import { CategoryService } from '../core/services/category.service';
 import { TranslationService } from '../core/services/translation.service';
 import { StorableRecurringSummary } from '../models';
-import { createCategory } from '../core/services/testing';
+import { createCategory, provideNoMotion } from '../core/services/testing';
 
 /**
  * G3 says nothing truncates. `scripts/check-truncation.mjs` is what enforces
@@ -66,9 +65,10 @@ describe('truncation guard: a label that cannot wrap', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [ChipProbeComponent, NoopAnimationsModule],
+      imports: [ChipProbeComponent],
       providers: [
         { provide: TranslationService, useValue: { t: (key: string) => key } },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
@@ -177,7 +177,7 @@ describe('truncation guard: text that wraps', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RecurringRowProbeComponent, NoopAnimationsModule],
+      imports: [RecurringRowProbeComponent],
       providers: [
         {
           provide: CategoryService,
@@ -192,6 +192,7 @@ describe('truncation guard: text that wraps', () => {
         // The list's convert action pulls these in; the probe never converts.
         { provide: RecurringService, useValue: { createRecurring: () => Promise.resolve('id') } },
         { provide: NotificationService, useValue: { success: () => undefined, error: () => undefined } },
+        provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

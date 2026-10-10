@@ -1,12 +1,12 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { SidebarComponent } from './sidebar.component';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
   paintedBackground,
   paintedColor,
+  provideNoMotion,
   ratio,
   settleAnimations,
   withTheme,
@@ -26,7 +26,7 @@ describe('SidebarComponent', () => {
     mockTranslationService.t.and.callFake((key: string) => `t:${key}`);
 
     await TestBed.configureTestingModule({
-      imports: [SidebarComponent, NoopAnimationsModule],
+      imports: [SidebarComponent],
       providers: [
         provideRouter([
           { path: 'dashboard', component: StubPage },
@@ -36,6 +36,7 @@ describe('SidebarComponent', () => {
           { path: 'data', component: StubPage },
         ]),
         { provide: TranslationService, useValue: mockTranslationService },
+        provideNoMotion(),
       ],
     }).compileComponents();
 
