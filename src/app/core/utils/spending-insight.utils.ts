@@ -43,7 +43,7 @@ export interface AmountAnomaly {
  * window that includes the current period — so the detector works early in
  * a period and reflects month-over-month norms. Only `expenses` (the current
  * period) are eligible to be flagged. Results are sorted by amount, largest
- * first, capped at `cap`.
+ * first (a tie ranks by row id), capped at `cap`.
  */
 export function computeAmountAnomalies(
   expenses: Transaction[],
@@ -83,7 +83,9 @@ export function computeAmountAnomalies(
     }
   }
 
-  return anomalies.sort((a, b) => b.value - a.value).slice(0, cap);
+  return anomalies
+    .sort((a, b) => b.value - a.value || compareIds(a.transaction.id, b.transaction.id))
+    .slice(0, cap);
 }
 
 export interface CategoryDelta {

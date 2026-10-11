@@ -25,8 +25,11 @@ describe('spending-insight.utils', () => {
   });
 
   describe('computeAmountAnomalies', () => {
-    // Baseline 10,10,10,10 -> mean 10, stddev 0, threshold 10.
-    const baseline = [expense(10), expense(10), expense(10), expense(10)];
+    // Baseline 10,10,10,10 -> mean 10, stddev 0, threshold 10, for food and pets.
+    const baseline = [
+      expense(10), expense(10), expense(10), expense(10),
+      expense(10, 'pets'), expense(10, 'pets'), expense(10, 'pets'), expense(10, 'pets'),
+    ];
 
     it('flags current transactions above mean + 2*stddev', () => {
       const outlier = expense(100);
@@ -56,6 +59,33 @@ describe('spending-insight.utils', () => {
       const result = computeAmountAnomalies([big, bigger], baseline, toBase, 1);
       expect(result.length).toBe(1);
       expect(result[0].transaction).toBe(bigger);
+    });
+
+    // #488: the sort ends in the row id, so a tie at the cap names the same row
+    // on every load. The function lists the candidates in the order its input
+    // holds them (grouped by category), so the tie hands the HIGHER id over first.
+    describe('a tie in the amount', () => {
+      it('ranks equal amounts by row id', () => {
+        const hi = { ...expense(100, 'pets'), id: 'row-b' };
+        const lo = { ...expense(100, 'food'), id: 'row-a' };
+        const result = computeAmountAnomalies([hi, lo], baseline, toBase, 5);
+        expect(result.map(a => a.transaction.id)).toEqual(['row-a', 'row-b']);
+      });
+
+      it('keeps the lower id when the cap falls between the tied pair', () => {
+        const hi = { ...expense(100, 'pets'), id: 'row-b' };
+        const lo = { ...expense(100, 'food'), id: 'row-a' };
+        const result = computeAmountAnomalies([hi, lo], baseline, toBase, 1);
+        expect(result.map(a => a.transaction.id)).toEqual(['row-a']);
+      });
+
+      it('still ranks a larger amount ahead of a lower id', () => {
+        // Pin: the id only breaks a tie, it never outranks the size.
+        const big = { ...expense(300, 'pets'), id: 'row-z' };
+        const small = { ...expense(100, 'food'), id: 'row-a' };
+        const result = computeAmountAnomalies([small, big], baseline, toBase, 5);
+        expect(result.map(a => a.transaction.id)).toEqual(['row-z', 'row-a']);
+      });
     });
 
     it('only flags current-period transactions, not baseline rows', () => {
@@ -103,6 +133,21 @@ describe('spending-insight.utils', () => {
       const pets = result.find(d => d.categoryId === 'pets');
       expect(pets?.isNew).toBeTrue();
       expect(pets?.current).toBe(30);
+    });
+
+    it('reads isNew from the cent-rounded previous total', () => {
+      // Pin: a previous total below half a cent rounds to nothing, so the
+      // category counts as new and reports a previous of exactly 0.
+      const result = computeCategoryDeltas(
+        [expense(50, 'pets')],
+        [{ categoryId: 'pets', total: 0.004 }],
+        toBase,
+        5
+      );
+      expect(result.length).toBe(1);
+      expect(result[0].isNew).toBeTrue();
+      expect(result[0].previous).toBe(0);
+      expect(result[0].change).toBe(50);
     });
 
     it('ignores negligible changes and caps by absolute change', () => {
