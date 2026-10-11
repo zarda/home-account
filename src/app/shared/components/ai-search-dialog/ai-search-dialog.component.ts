@@ -80,6 +80,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   private result = signal<NlSearchResult | null>(null);
   private openedRecordId = signal<string | null>(null);
   private historySubscription?: Subscription;
+  private categoriesSub?: Subscription;
   /** One-shot fallback for goal names when no page has published the signal. */
   private fallbackGoals = signal<Goal[]>([]);
   private goalNamesRequested = false;
@@ -115,10 +116,15 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.historySubscription = this.answerHistory.loadAnswers().subscribe();
+    // A search reads the catalog to interpret the question, scope a category
+    // with its children and name each group, and the dialog opens from pages
+    // that never load it.
+    this.categoriesSub = this.categoryService.loadCategories().subscribe();
   }
 
   ngOnDestroy(): void {
     this.historySubscription?.unsubscribe();
+    this.categoriesSub?.unsubscribe();
   }
 
   async submit(): Promise<void> {

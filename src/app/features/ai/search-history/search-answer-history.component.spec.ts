@@ -3,7 +3,7 @@ import { WritableSignal, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, EMPTY } from 'rxjs';
+import { BehaviorSubject, of, EMPTY, tap } from 'rxjs';
 import { SearchAnswerHistoryComponent } from './search-answer-history.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -14,7 +14,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
+import { Category, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { createCategory } from '../../../core/services/testing/test-data';
 import {
@@ -41,6 +41,8 @@ describe('SearchAnswerHistoryComponent', () => {
   let router: jasmine.SpyObj<Router>;
   let matDialog: jasmine.SpyObj<MatDialog>;
   let notifications: jasmine.SpyObj<NotificationService>;
+  let categories: WritableSignal<Category[]>;
+  let catalogFeed: BehaviorSubject<Category[]>;
 
   const rec = (
     id: string,
@@ -84,10 +86,18 @@ describe('SearchAnswerHistoryComponent', () => {
       afterClosed: () => of(true),
     } as MatDialogRef<unknown>);
 
-    const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
-    categoryService.categories.and.returnValue([
+    // As the real service: the signal stays empty until a subscription to
+    // loadCategories delivers the catalog, which no other page has done on a
+    // direct load of this one.
+    categories = signal<Category[]>([]);
+    catalogFeed = new BehaviorSubject<Category[]>([
       createCategory({ id: 'food', name: 'Food & Drinks', type: 'expense' }),
     ]);
+    const categoryService = {
+      categories,
+      loadCategories: jasmine.createSpy('loadCategories').and.callFake(() =>
+        catalogFeed.pipe(tap(list => categories.set(list)))),
+    };
     const currencyService = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
     currencyService.formatCurrency.and.callFake(
       (amount: number, code: string) => `${code} ${amount.toFixed(2)}`);
@@ -334,6 +344,40 @@ describe('SearchAnswerHistoryComponent', () => {
 
       expect(answerHistory.refreshAnswer).toHaveBeenCalled();
       expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'refresh' });
+    });
+  });
+
+  // A direct load of this page is the only reader of the catalog: the card
+  // names each group from it, and a Refresh rolls a child category up into
+  // its parent from it. Without it every group read "Other" and a Refresh
+  // stored the children apart from their parents.
+  describe('the category catalog', () => {
+    it('is subscribed when the page starts', () => {
+      expect(catalogFeed.observed).toBeTrue();
+    });
+
+    it('is released when the page is destroyed', () => {
+      expect(catalogFeed.observed).withContext('held while the page is up').toBeTrue();
+
+      fixture.destroy();
+
+      expect(catalogFeed.observed).withContext('released with the page').toBeFalse();
+    });
+
+    it('names the groups of an expanded answer instead of "Other"', () => {
+      storedAnswers.set([rec('a-1', 2_000, {
+        operation: 'topCategories',
+        groups: [{ categoryId: 'food', total: 421.5 }],
+      })]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      const names = Array.from(
+        fixture.nativeElement.querySelectorAll('app-nl-answer-card .answer-groups li > span:first-child'),
+        el => (el as HTMLElement).textContent?.trim());
+      expect(names).toEqual(['Food & Drinks']);
     });
   });
 
