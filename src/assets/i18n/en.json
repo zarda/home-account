@@ -1284,6 +1284,8 @@
     "rowFailedAmount": "This transaction's amount could not be saved. Check the amount and try again.",
     "rowFailedConnection": "The connection dropped before this row could be saved. Check your connection and try again.",
     "rowFailedUnknown": "This row could not be saved for an unknown reason. Try again, or remove it.",
+    "wholeFailedConnection": "This import's record could not be finished because the connection dropped. Its transactions may already be in your list, so check before importing again.",
+    "wholeFailedUnknown": "This import's record could not be finished. Its transactions may already be in your list, so check before importing again.",
     "importingRow": "Importing {{done}} of {{total}}...",
     "importPhotosSkipped": {
       "one": "The transactions were saved, but {{count}} receipt photo was not attached — image storage limit reached",

@@ -1,7 +1,10 @@
 import {
+  ROW_FAILURE_KEYS,
+  WHOLE_IMPORT_FAILURE_KEYS,
   blankImportRow,
   datedToday,
   imageSources,
+  importFailureFamily,
   importFailureKey,
   joinSentences,
   mergeImportRows,
@@ -14,6 +17,7 @@ import {
   sameSplit,
   splitImportRow,
   sumByCurrency,
+  wholeImportFailureKey,
   withoutFieldConfidence,
 } from './import-review.utils';
 import { CategorizedImportTransaction, ImagePositionMetadata } from '../../models';
@@ -249,6 +253,62 @@ describe('import-review.utils', () => {
     it('falls back to unknown for anything neither reading places', () => {
       expect(importFailureKey({ message: 'refused' })).toBe('import.rowFailedUnknown');
       expect(importFailureKey({ message: '' })).toBe('import.rowFailedUnknown');
+    });
+  });
+
+  describe('importFailureFamily', () => {
+    it('reads the amount guard\'s sentinel as amount, whatever code rides with it (pin)', () => {
+      expect(importFailureFamily({ message: 'INVALID_TRANSACTION_AMOUNT' })).toBe('amount');
+      expect(importFailureFamily({ message: 'INVALID_TRANSACTION_AMOUNT', code: 'unavailable' })).toBe('amount');
+    });
+
+    it('reads each connection code as connection, whatever the prose says (pin)', () => {
+      for (const code of ['permission-denied', 'unavailable', 'deadline-exceeded', 'resource-exhausted']) {
+        expect(importFailureFamily({ code, message: 'refused' })).withContext(code).toBe('connection');
+      }
+    });
+
+    it('reads any other code as unknown, without consulting the prose (pin)', () => {
+      expect(importFailureFamily({ code: 'not-found', message: 'network error' })).toBe('unknown');
+    });
+
+    it('reads an empty code as no code, so the prose ladder still places it (pin)', () => {
+      expect(importFailureFamily({ code: '', message: 'network error' })).toBe('connection');
+    });
+
+    it('places a codeless error by each rung of the prose ladder, in any case (pin)', () => {
+      expect(importFailureFamily({ message: 'PERMISSION-DENIED by rules' })).toBe('connection');
+      expect(importFailureFamily({ message: 'Service Unavailable' })).toBe('connection');
+      expect(importFailureFamily({ message: 'network error' })).toBe('connection');
+      expect(importFailureFamily({ message: 'Import failed' })).toBe('unknown');
+      expect(importFailureFamily({ message: '' })).toBe('unknown');
+    });
+
+    it('reads a message that is not a string as unknown rather than throwing (pin)', () => {
+      // A restored record's errors are written verbatim, and the rules do not
+      // look inside the list.
+      expect(importFailureFamily({})).toBe('unknown');
+      expect(importFailureFamily({ message: 42 })).toBe('unknown');
+      expect(importFailureFamily({ message: null })).toBe('unknown');
+    });
+  });
+
+  describe('wholeImportFailureKey', () => {
+    it('says a connection family dropped the connection (pin)', () => {
+      expect(wholeImportFailureKey({ code: 'permission-denied', message: 'Missing or insufficient permissions.' }))
+        .toBe('import.wholeFailedConnection');
+      expect(wholeImportFailureKey({ message: 'network error' })).toBe('import.wholeFailedConnection');
+    });
+
+    it('says nothing more than unknown for every other family, amount included (pin)', () => {
+      expect(wholeImportFailureKey({ code: 'not-found', message: 'Not found.' })).toBe('import.wholeFailedUnknown');
+      expect(wholeImportFailureKey({ message: 'Import failed' })).toBe('import.wholeFailedUnknown');
+      expect(wholeImportFailureKey({ message: 'INVALID_TRANSACTION_AMOUNT' })).toBe('import.wholeFailedUnknown');
+      expect(wholeImportFailureKey({})).toBe('import.wholeFailedUnknown');
+    });
+
+    it('keys every family, as the row table does (pin)', () => {
+      expect(Object.keys(WHOLE_IMPORT_FAILURE_KEYS).sort()).toEqual(Object.keys(ROW_FAILURE_KEYS).sort());
     });
   });
 

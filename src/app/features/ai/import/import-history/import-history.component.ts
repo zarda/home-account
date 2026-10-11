@@ -17,7 +17,7 @@ import { ConfirmDialogComponent } from '../../../../shared/components/confirm-di
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { ImportError, ImportHistory, ImportFileType, ImportStatus, LLMProvider, ReceiptEngine, ReceiptFailureClass, baseCurrencyOf } from '../../../../models';
-import { importFailureKey } from '../../../../core/utils/import-review.utils';
+import { importFailureKey, wholeImportFailureKey } from '../../../../core/utils/import-review.utils';
 import {
   AI_CLOUD_UNAVAILABLE,
   AI_NO_PROVIDER,
@@ -41,7 +41,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
  * and timeout had only the short label the failure line above the list uses,
  * and got one of their own.
  */
-const FAILURE_SENTENCE_KEYS: Record<ReceiptFailureClass, string> = {
+export const FAILURE_SENTENCE_KEYS: Record<ReceiptFailureClass, string> = {
   rate_limit: 'import.errorHintRateLimit',
   auth: 'import.errorInvalidKey',
   network: 'errors.network',
@@ -65,7 +65,7 @@ const FAILURE_SENTENCE_KEYS: Record<ReceiptFailureClass, string> = {
  * add a key. Built from `parseAIError`'s own answers, so a reworded sentence
  * moves both sides at once.
  */
-const OWN_SENTENCE_KEYS = new Map(
+export const OWN_SENTENCE_KEYS = new Map(
   [AI_NO_PROVIDER, AI_CLOUD_UNAVAILABLE, AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL]
     .map(code => parseAIError(new Error(code)))
     .map(parsed => [parsed.message, parsed.messageKey] as const)
@@ -75,21 +75,38 @@ const OWN_SENTENCE_KEYS = new Map(
  * The catalog key one stored error line reads as, or null when nothing on
  * the line says what it is.
  *
- * Two shapes are recognised: a failed receipt attempt, by its own sentence
- * where the app wrote one and by the class on its record otherwise, and a
- * row the confirm loop refused, by what names the row — its id since rows
- * were matched by id, its description on every record the loop ever wrote —
- * read through the wizard's own `importFailureKey`. Neither covers
- * `failImport`'s whole-import error, or a record restored or written outside
- * the app in some other shape, such as a row's with no message: a row's
- * reason would misdescribe those, so the caller falls back to the stored
- * message rather than guess.
+ * Three shapes are recognised: a failed receipt attempt, by its own
+ * sentence where the app wrote one and by the class on its record otherwise;
+ * `failImport`'s whole-import error, on a failed record with no class and
+ * nothing naming a row, by `wholeImportFailureKey`; and a row the confirm
+ * loop refused, by what names the row — its id since rows were matched by
+ * id, its description on every record the loop ever wrote — read through
+ * the wizard's own `importFailureKey`. Only those last two read the line
+ * through `importFailureFamily`. A line a restore or a write from
+ * outside the app left in some other shape — one naming no row on a record
+ * that did not fail, a row's with no message — is none of these: a reason
+ * would misdescribe it, so the caller falls back to the stored message
+ * rather than guess.
+ *
+ * Every key returned here comes from `FAILURE_SENTENCE_KEYS`,
+ * `OWN_SENTENCE_KEYS` or the two failure tables in `import-review.utils`,
+ * which are exported for the spec that checks each one resolves in the
+ * catalog — the i18n gate cannot see a key a function returns. A new branch
+ * adds its keys to a table rather than returning a literal.
  */
 function errorLineKey(item: ImportHistory, error: ImportError): string | null {
   if (item.status === 'failed') {
     const own = OWN_SENTENCE_KEYS.get(error.message);
     if (own) return own;
     if (item.errorType) return FAILURE_SENTENCE_KEYS[item.errorType];
+  }
+  if (
+    item.status === 'failed' &&
+    !item.errorType &&
+    error.transactionId === undefined &&
+    error.originalValue === undefined
+  ) {
+    return wholeImportFailureKey(error);
   }
   if (
     (error.transactionId !== undefined || error.originalValue !== undefined) &&

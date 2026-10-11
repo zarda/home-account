@@ -6,7 +6,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 
-import { ImportHistoryComponent } from './import-history.component';
+import { FAILURE_SENTENCE_KEYS, ImportHistoryComponent, OWN_SENTENCE_KEYS } from './import-history.component';
+import { ROW_FAILURE_KEYS, WHOLE_IMPORT_FAILURE_KEYS } from '../../../../core/utils/import-review.utils';
+import en from '../../../../../assets/i18n/en.json';
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
@@ -997,10 +999,114 @@ describe('ImportHistoryComponent, error lines in the reader\'s language', () => 
     ]);
   });
 
-  it('keeps the stored message for a whole-import failure, the one shape neither reading knows', () => {
-    // failImport's shape: no errorType, nothing naming a row.
-    const lines = render([record({ status: 'failed', errors: [{ message: 'Import failed' }] })]);
+  /** failImport's shape: no errorType, nothing naming a row. */
+  const wholeImportFailure = (error: ImportError): ImportHistory =>
+    record({ status: 'failed', errors: [error] });
+
+  function cardText(): string {
+    return (fixture.nativeElement.querySelector('.history-item') as HTMLElement | null)?.textContent ?? '';
+  }
+
+  it('reads a whole import the rules refused as a dropped connection, not the English it stored', () => {
+    const stored = 'Missing or insufficient permissions.';
+    const lines = render([wholeImportFailure({ message: stored, code: 'permission-denied' })]);
+
+    expect(lines).toEqual(['import.wholeFailedConnection']);
+    expect(cardText()).not.toContain(stored);
+  });
+
+  it('reads a whole import refused offline as a dropped connection', () => {
+    const stored = 'Failed to get document because the client is offline.';
+    const lines = render([wholeImportFailure({ message: stored, code: 'unavailable' })]);
+
+    expect(lines).toEqual(['import.wholeFailedConnection']);
+    expect(cardText()).not.toContain(stored);
+  });
+
+  it('reads a whole import refused with any other code as unknown, whatever its prose says', () => {
+    // The prose would place this one as a connection; the code is final.
+    const stored = 'Function setDoc() failed: network';
+    const lines = render([wholeImportFailure({ message: stored, code: 'invalid-argument' })]);
+
+    expect(lines).toEqual(['import.wholeFailedUnknown']);
+    expect(cardText()).not.toContain(stored);
+  });
+
+  it('reads a whole import that failed with no code as unknown', () => {
+    const stored = 'Import failed';
+    const lines = render([wholeImportFailure({ message: stored })]);
+
+    expect(lines).toEqual(['import.wholeFailedUnknown']);
+    expect(cardText()).not.toContain(stored);
+  });
+
+  it('reads a whole-import record written before the code was kept as unknown, not as its English', () => {
+    // The prose of a rules refusal never names its code, so the ladder
+    // cannot place it, and the reader gets the sentence that claims nothing.
+    const stored = 'Missing or insufficient permissions.';
+    const lines = render([wholeImportFailure({ message: stored })]);
+
+    expect(lines).toEqual(['import.wholeFailedUnknown']);
+    expect(cardText()).not.toContain(stored);
+  });
+
+  // Every key an error line reads is returned from a function, which
+  // scripts/check-i18n.mjs cannot see, and this suite's stub echoes any key,
+  // so a key missing from the catalog would pass everything else here and
+  // reach the reader as a raw key. The tables are the whole list: a branch
+  // that returns a key from anywhere else has to add it to one of them.
+  it('finds every sentence an error line can read in the English catalog', () => {
+    const keys = new Set([
+      ...Object.values(FAILURE_SENTENCE_KEYS),
+      ...OWN_SENTENCE_KEYS.values(),
+      ...Object.values(ROW_FAILURE_KEYS),
+      ...Object.values(WHOLE_IMPORT_FAILURE_KEYS),
+    ]);
+    // An own sentence parseAIError gave no key would be a gap too.
+    const missing = [...keys].filter(key => {
+      const value = key === undefined ? undefined : leafValue(en, key);
+      return typeof value !== 'string' || value.trim() === '';
+    });
+
+    expect(keys.size).toBeGreaterThan(0);
+    expect(missing).toEqual([]);
+  });
+
+  it('still reads a record whose every row was refused by each row\'s reason (pin)', () => {
+    // completeImport stamps this one failed too; what names its rows keeps it
+    // off the whole-import sentence.
+    const lines = render([record({
+      status: 'failed',
+      errorCount: 3,
+      errors: [
+        rowError('row-1'),
+        rowError('row-2', { message: 'INVALID_TRANSACTION_AMOUNT' }),
+        { message: 'network error', originalValue: 'Tea' },
+      ],
+    })]);
+
+    expect(lines).toEqual(['import.rowFailedConnection', 'import.rowFailedAmount', 'import.rowFailedConnection']);
+  });
+
+  it('keeps a completed record\'s bare message as it was stored (pin)', () => {
+    const lines = render([record({ status: 'completed', errorCount: 0, errors: [{ message: 'Import failed' }] })]);
 
     expect(lines).toEqual(['Import failed']);
   });
+
+  it('shows no failure class for a whole-import record (pin)', () => {
+    const lines = render([wholeImportFailure({ message: 'Import failed' })]);
+
+    expect(lines.length).withContext('the card rendered its error line').toBe(1);
+    expect(fixture.nativeElement.querySelector('.failure-class')).toBeNull();
+  });
 });
+
+/** A dotted catalog key's value in one catalog tree, or undefined. */
+function leafValue(tree: object, key: string): unknown {
+  return key.split('.').reduce<unknown>((node, segment) => {
+    return node !== null && typeof node === 'object'
+      ? (node as Record<string, unknown>)[segment]
+      : undefined;
+  }, tree);
+}
