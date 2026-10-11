@@ -23,7 +23,7 @@ budget catalogs (names and ids only) — and gets back either
 | Intent | What happens |
 |---|---|
 | `filter` | The interpreted filters are shown as chips for confirmation; **Apply** hands them to the transactions page |
-| `aggregate` | The app fetches the resolved date range and computes the figure locally: `count`, `sum`, `average`, `max`/`min` (with the extreme row), or `topCategories` |
+| `aggregate` | The app fetches the resolved date range and computes the figure locally: `count`, `sum`, `average`, `max`/`min` (with the extreme row), or `topCategories` (each category rolled up to its parent, totals rounded to the cent, largest first, an exact tie by category id) |
 
 No transaction data goes to the model with the question, and no figure in an
 answer comes from the model. The interpretation is validated before use
@@ -38,6 +38,32 @@ The answer card always displays the resolved range, so the default is visible
 rather than implied. A filter question resolves nothing: it keeps exactly the
 dates it named, possibly none. Amount bounds ("over $100") compare in your base currency, matching
 how every figure in the answer is computed.
+
+**Top categories rank the way every category list does.** `topCategories`
+keeps as many categories as the question asked for: three when it names no
+number, and ten at most. Each category is rolled up to its parent before it
+is totalled, and each total is rounded to the cent. The list then ranks
+larger first, and an exact tie by category id, so a tie at the limit keeps
+the lower id whichever row arrived first. The answer's headline figure is
+the first group's rounded total. A record stored before the rounding gets
+rounded groups on its next refresh
+([ADR 0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md)).
+A question that names neither income nor spending adds both into one total
+per category. Only a category of type `both` can hold both, and no default
+category has that type.
+
+**The category catalog is loaded where a search runs.** A search reads the
+catalog to interpret the question, to take a category's children into its
+scope, to roll a top category up to its parent, and to name each group on
+the answer card. The search dialog and the history page each subscribe to
+the catalog for as long as they are open, as every other page that reads it
+does. Before they did, a direct load of `/search-history`, or the dialog
+opened first from a page that loads no catalog, searched against an empty
+list. Every group then read *Other*, and a Refresh stored its groups
+without rolling them up
+([ADR 0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md)).
+A question submitted before the catalog's first snapshot arrives still
+sees the empty list (see *Known gaps*).
 
 ## Goals and budgets in a question
 
@@ -170,3 +196,13 @@ than a copy. The description line returns after a refresh.
 - A search that falls back to keyword matching is not recorded here at all; it
   goes to the recent-searches list instead, because there was no
   interpretation to store.
+- A question submitted in the dialog, or a Refresh on this page, before the
+  category catalog's first snapshot arrives is interpreted, scoped and
+  rolled up without the catalog, and what it stores keeps those groups. The
+  window is short only when the persistent cache holds a result for the
+  catalog's query. An account with no custom categories, on a device that
+  has never synced that query, has none, so the first snapshot waits for
+  the server.
+- A record written or refreshed while the catalog was empty, before the
+  history page and the dialog loaded it, keeps its un-rolled groups until
+  it is refreshed again. Nothing migrates it.

@@ -99,6 +99,21 @@ A snapshot has to be reproducible from the same transactions months later, so:
 
 Each detector has a shuffled-input test asserting byte-identical output.
 
+The same rules hold for the category lists beyond the detectors:
+
+- the category changes behind the AI summary and the Transactions page's
+  new-category chip;
+- a search's top categories;
+- the Reports page's Categories tab.
+
+Each ranks figures rounded to the cent, larger first, and breaks an exact
+tie by category id through `compareIds`. The unusual amounts behind the
+summary and the chips hold one row's amount each, and break a tie by the
+row's id. Of the lists the AI summary reads, the top expenses alone keep
+arrival order on a tie, because a tie there only decides which of two equal
+rows is named
+([ADR 0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md)).
+
 ## Snapshots
 
 One document per closed month at `users/{uid}/insightSnapshots/{yyyy-MM}`, written

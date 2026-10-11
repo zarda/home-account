@@ -26,6 +26,22 @@ when it exceeds the category's mean by more than two standard deviations, using
 a trailing history window (which includes the current period) as the baseline.
 Categories need at least four baseline samples before anything is flagged.
 
+How each list is ranked, and what decides a tie:
+
+- **Category changes** rank by the size of the change, worked out over
+  totals rounded to the cent. Two changes of the same size rank by category
+  id, so a tie at the cap keeps the lower id whichever row the query
+  returned first. A category whose previous total rounds to nothing is
+  listed as new.
+- **Unusual amounts** rank largest first, and two at the same amount rank
+  by the row's id.
+- **Top expenses** rank largest first, and two at the same amount keep the
+  order the rows arrived in. Either way the block names one of two equal
+  rows, and no category moves.
+
+The reasoning is in
+[ADR/0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md).
+
 At Off and Light the app skips the trailing-window Firestore query entirely, so
 those levels are also cheaper on reads and faster to load.
 
@@ -38,6 +54,16 @@ quick-filter chips above the transaction list. The chips run entirely on
 device with no model call, so they are always available and are **not**
 affected by the detail-level setting — that setting only controls what is
 shared with the AI provider for the dashboard summary.
+
+The chips read those lists in the same order:
+
+- At most two unusual-amount chips show, one per category. When amounts tie
+  at that cap, the categories of the lower row ids get the chips.
+- The new-category chip names the first new category among the changes
+  that no unusual-amount chip already names. Of two new categories at the
+  same total, it names the lower id.
+- The top-category chip reads the dashboard's category fold, which already
+  breaks a tie by category id.
 
 ## The level also gates the spending-pattern narrative
 
