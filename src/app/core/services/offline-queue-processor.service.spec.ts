@@ -10,6 +10,8 @@ import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
 import { CategoryService } from './category.service';
+import { ProviderKeyService } from './provider-key.service';
+import { ProviderSecrets } from '../../models';
 import { createCategory } from './testing/test-data';
 import { opaqueRowId } from '../utils/opaque-id.utils';
 
@@ -90,6 +92,7 @@ describe('OfflineQueueProcessorService', () => {
   let translation: jasmine.SpyObj<TranslationService>;
   let userId: WritableSignal<string | null>;
   let attempts: ReturnType<typeof attemptStub>;
+  let providerKeys: jasmine.SpyObj<ProviderKeyService>;
 
   beforeEach(() => {
     // Only the drain's one read and its status write: a call to any other
@@ -121,6 +124,10 @@ describe('OfflineQueueProcessorService', () => {
     translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
     attempts = attemptStub();
+    // The account's keys, which the drain waits for before it opens its
+    // attempt: already read unless a case holds the read.
+    providerKeys = jasmine.createSpyObj<ProviderKeyService>('ProviderKeyService', ['resolve']);
+    providerKeys.resolve.and.resolveTo({});
     // One entry on each side of the ledger, so a suggestion can be checked
     // against the side of the row it was read for.
     const categories = signal([
@@ -139,6 +146,7 @@ describe('OfflineQueueProcessorService', () => {
         { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: CategoryService, useValue: { categories } },
+        { provide: ProviderKeyService, useValue: providerKeys },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -757,6 +765,35 @@ describe('OfflineQueueProcessorService', () => {
       expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_5', 'pending']]);
       expect(attempts.service.begin).not.toHaveBeenCalled();
       expect(ai.processReceipt).not.toHaveBeenCalled();
+    });
+
+    // #487. After a cold offline start the key read the reconnect starts is
+    // still in flight when the drain runs, and a failure filed before it
+    // lands cannot say whether a key is set. The drain waits for that read,
+    // with the keys not yet loaded, before it opens its attempt.
+    it('waits for the account\'s key read before it opens the attempt or hands the photo on', async () => {
+      let settle!: (keys: ProviderSecrets) => void;
+      providerKeys.resolve.and.returnValue(new Promise<ProviderSecrets>((resolve) => { settle = resolve; }));
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.peekQueuedImage.calls.any());
+      // Long enough for a drain that did not wait to have opened its attempt
+      // and written its outcome.
+      await new Promise((r) => setTimeout(r, 25));
+
+      expect(providerKeys.resolve).toHaveBeenCalledTimes(1);
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+      expect(ai.processReceipt).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).not.toHaveBeenCalled();
+
+      // The read lands, and the drain goes on to the end.
+      settle({});
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(attempts.service.begin.calls.mostRecent().args[0]).toBe('queue');
+      expect(ai.processReceipt).toHaveBeenCalledTimes(1);
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
     });
 
     it('carries location, tags, period and recurring through the one mapper', async () => {

@@ -8,6 +8,8 @@ import { Timestamp } from '@angular/fire/firestore';
 
 import { FAILURE_SENTENCE_KEYS, ImportHistoryComponent, OWN_SENTENCE_KEYS } from './import-history.component';
 import { ROW_FAILURE_KEYS, WHOLE_IMPORT_FAILURE_KEYS } from '../../../../core/utils/import-review.utils';
+import { classifyReceiptFailure, provenanceOf } from '../../../../core/services/receipt-attempt.service';
+import { AI_CLOUD_UNAVAILABLE, ReceiptProcessingError } from '../../../../core/utils/ai-error.utils';
 import en from '../../../../../assets/i18n/en.json';
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -950,13 +952,47 @@ describe('ImportHistoryComponent, error lines in the reader\'s language', () => 
   });
 
   it('says a failed receipt attempt\'s failure in the reader\'s language, not the English it stored', () => {
-    // The drain's usual failure: online, with no provider to reach. Its
-    // class is network, but the classifier gave it a sentence of its own,
-    // and the card reads that one rather than "check your connection".
+    // The legacy reading of a drain with no provider to reach: one that ran
+    // before the keys were read, or a record written before such a drain was
+    // filed as no_provider. Its class is network, but the classifier gave it
+    // a sentence of its own, and the card reads that one rather than "check
+    // your connection".
     const lines = render([failedAttempt('network', 'Cloud AI is not reachable.')]);
 
     expect(lines).toEqual(['import.errorCloudUnavailable']);
     expect(fixture.nativeElement.textContent).not.toContain('Cloud AI is not reachable.');
+  });
+
+  it('reads a drain filed as no provider by that class and the no-provider sentence (pin)', () => {
+    // Built the way ReceiptAttemptService builds it, from the classifier and
+    // provenanceOf, for a drain that ran online with no key set.
+    const { failure, diagnostics, message } = classifyReceiptFailure(
+      new ReceiptProcessingError(
+        { engine: 'cloud', provider: null, durationMs: 1, errorType: 'network', retryable: true },
+        new Error(AI_CLOUD_UNAVAILABLE)
+      ),
+      { providerAbsent: true }
+    );
+    const lines = render([record({
+      source: 'image',
+      fileType: 'receipt_image',
+      fileName: 'unread.jpg',
+      status: 'failed',
+      errors: [{ message }],
+      ...provenanceOf('queue', diagnostics, failure),
+    })]);
+
+    const failureClass = fixture.nativeElement.querySelector('.failure-class') as HTMLElement | null;
+    expect(failureClass?.textContent?.trim()).toBe('import.failureNoProvider');
+    expect(lines).toEqual(['import.errorNoProvider']);
+
+    // No diagnostics were filed, so the card has no engine chip and no
+    // duration chip: only the status, kind and size chips are there.
+    const chips = Array.from(fixture.nativeElement.querySelectorAll('.chips mat-chip'))
+      .map(chip => (chip as HTMLElement).textContent?.trim() ?? '');
+    expect(chips.length).withContext('chips drawn').toBe(3);
+    expect(chips.some(text => text.includes('import.engine'))).withContext('engine chip').toBeFalse();
+    expect(chips.some(text => text.includes('import.duration'))).withContext('duration chip').toBeFalse();
   });
 
   it('reads a partly kept capture by its own sentence, not as a failure to try again', () => {

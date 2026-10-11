@@ -27,6 +27,7 @@ import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { PwaService } from './pwa.service';
+import { ProviderKeyService } from './provider-key.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { AnalyticsService } from './analytics.service';
@@ -354,6 +355,12 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   // open is nobody's: the card read 0 over that scan until the count came
   // to follow the account.
   it('a failed drain leaves the card\'s count at 1, and a reload counts it again once signed in', async () => {
+    // The venue holds no secrets document, so the keys read as none set. They
+    // are not read here first: the drain waits for that read itself (#487),
+    // so it fails online with its provider's absence known, not guessed.
+    const providerKeys = TestBed.inject(ProviderKeyService);
+    expect(providerKeys.keys()).toBeNull();
+
     ai.processReceipt.and.rejectWith(new Error('AI_CLOUD_UNAVAILABLE'));
     const id = await queue.queueImage(receiptFile('unread.jpg'));
     expect(queue.pendingCount()).toBe(1);
@@ -363,6 +370,17 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     const [failed] = await queue.getPendingImages();
     expect([failed?.id, failed?.retryCount, failed?.lastError]).toEqual([id, 1, 'AI_CLOUD_UNAVAILABLE']);
     await waitFor(() => queue.pendingCount() === 1);
+
+    // #487: Import History files it as no provider, under the real rules. The
+    // record is written fire-and-forget, so it is awaited before the reload.
+    await waitFor(async () => {
+      const imports = await firestoreService.getCollection<{ door?: string; errorType?: string; fileName: string }>(
+        `users/${uid}/imports`,
+      );
+      return imports.some((i) => i.fileName === 'unread.jpg' && i.door === 'queue' && i.errorType === 'no_provider');
+    });
+    // The drain's own read is the one that loaded them.
+    expect([providerKeys.keys(), providerKeys.loadFailed()]).toEqual([{}, false]);
 
     // A reload: the database opens with nobody signed in yet.
     processor.ngOnDestroy();

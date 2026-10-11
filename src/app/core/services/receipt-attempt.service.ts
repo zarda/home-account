@@ -3,9 +3,17 @@ import { Timestamp } from '@angular/fire/firestore';
 import { AnalyticsService } from './analytics.service';
 import { ImportHistoryService } from './import-history.service';
 import { AuthService } from './auth.service';
+import { PwaService } from './pwa.service';
+import { ProviderKeyService } from './provider-key.service';
 import { ReceiptAttemptDiagnostics } from './ai-types';
 import { AnalyticsEventParams } from '../config/analytics-events';
-import { AI_NO_PROVIDER, AI_QUEUED_OFFLINE, ReceiptProcessingError, parseAIError } from '../utils/ai-error.utils';
+import {
+  AI_CLOUD_UNAVAILABLE,
+  AI_NO_PROVIDER,
+  AI_QUEUED_OFFLINE,
+  ReceiptProcessingError,
+  parseAIError,
+} from '../utils/ai-error.utils';
 import {
   ImportHistory,
   ImportProvenance,
@@ -91,8 +99,16 @@ function durationBucket(durationMs: number | undefined): ReceiptImportPayload['d
  * parseAIError calls it `auth` — that classification exists so the wizard
  * can offer the key hint; for the record and the report the honest class is
  * that nothing was configured.
+ *
+ * The cloud sentinel is filed the same way when the caller knows no provider
+ * is set (`context.providerAbsent`): a drain that ran online with no key
+ * never reached a provider, and filed as network it would read as a
+ * connection problem. It takes the no-provider sentence and drops the
+ * diagnostics, which describe a cloud pass that never named a provider.
+ * Without that knowledge — offline, or before the keys were read — the
+ * sentinel stays network, since the cause could be either.
  */
-export function classifyReceiptFailure(errorOrReason: unknown): {
+export function classifyReceiptFailure(errorOrReason: unknown, context?: { providerAbsent?: boolean }): {
   failure: ReceiptFailureClass;
   diagnostics: ReceiptAttemptDiagnostics | null;
   message: string;
@@ -100,8 +116,11 @@ export function classifyReceiptFailure(errorOrReason: unknown): {
   if (isReason(errorOrReason)) {
     return { failure: errorOrReason, diagnostics: null, message: REASON_MESSAGES[errorOrReason] };
   }
-  const diagnostics = errorOrReason instanceof ReceiptProcessingError ? errorOrReason.diagnostics : null;
   const raw = errorOrReason instanceof Error ? errorOrReason.message : String(errorOrReason);
+  if (raw === AI_CLOUD_UNAVAILABLE && context?.providerAbsent) {
+    return { failure: 'no_provider', diagnostics: null, message: REASON_MESSAGES.no_provider };
+  }
+  const diagnostics = errorOrReason instanceof ReceiptProcessingError ? errorOrReason.diagnostics : null;
   const parsed = parseAIError(errorOrReason);
   const failure: ReceiptFailureClass = raw === AI_NO_PROVIDER
     ? 'no_provider'
@@ -141,6 +160,8 @@ export class ReceiptAttemptService {
   private analytics = inject(AnalyticsService);
   private importHistory = inject(ImportHistoryService);
   private authService = inject(AuthService);
+  private pwa = inject(PwaService);
+  private providerKeys = inject(ProviderKeyService);
 
   begin(door: ReceiptDoor, kind: 'receipt_image' | 'screenshot', files: File[]): ReceiptAttempt {
     let settled = false;
@@ -184,11 +205,29 @@ export class ReceiptAttemptService {
           send('queued_offline', null, null);
           return;
         }
-        const { failure, diagnostics, message } = classifyReceiptFailure(errorOrReason);
+        const { failure, diagnostics, message } = classifyReceiptFailure(errorOrReason, {
+          providerAbsent: this.providerAbsent(),
+        });
         void this.recordFailure(door, kind, files, provenanceOf(door, diagnostics, failure), message);
         send('failed', diagnostics, failure);
       }),
     };
+  }
+
+  /**
+   * Whether no provider is known to be set, read when the attempt fails, so a
+   * key load that lands while the attempt runs is seen. The queue's drain
+   * waits for the account's key read before it opens its attempt, so a drain
+   * stays network only when that read itself failed. Only an online device
+   * whose keys were read and hold none can say so; keys not loaded, or a read
+   * that failed, say nothing either way.
+   */
+  private providerAbsent(): boolean {
+    const keys = this.providerKeys.keys();
+    return this.pwa.isOnline()
+      && keys !== null
+      && !this.providerKeys.loadFailed()
+      && !keys.gemini && !keys.openai && !keys.claude;
   }
 
   private async recordFailure(

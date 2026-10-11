@@ -59,11 +59,14 @@ export const FAILURE_SENTENCE_KEYS: Record<ReceiptFailureClass, string> = {
  * The classifier's sentence for each failure the app raises itself, mapped
  * back to the key it hands the screen.
  *
- * A class is too coarse for these: a drain that failed online with no
- * provider is class network, and its class's sentence would tell the reader
- * to check a connection that works, where the wizard and the camera said to
- * add a key. Built from `parseAIError`'s own answers, so a reworded sentence
- * moves both sides at once.
+ * A class is too coarse for these: a drain that failed with no provider
+ * reachable is class network wherever the attempt could not know the
+ * provider was absent — offline, before the keys were read, or on a record
+ * written before such a drain was filed as no_provider — and its class's
+ * sentence would tell the reader to check a connection that may well work.
+ * Its own sentence says only that cloud AI was not reachable. Built from
+ * `parseAIError`'s own answers, so a reworded sentence moves both sides at
+ * once.
  */
 export const OWN_SENTENCE_KEYS = new Map(
   [AI_NO_PROVIDER, AI_CLOUD_UNAVAILABLE, AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL]
