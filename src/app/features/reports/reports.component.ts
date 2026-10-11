@@ -31,7 +31,7 @@ import { MonthlyComparisonComponent } from './monthly-comparison/monthly-compari
 import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ForecastComponent } from './forecast/forecast.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
-import { Category, Transaction, baseCurrencyOf} from '../../models';
+import { Transaction, baseCurrencyOf} from '../../models';
 import { AccessibilityService } from '../../core/services/accessibility.service';
 import {
   sumByType,
@@ -128,14 +128,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // the same supersede-on-reload and release-on-destroy treatment.
   private rangeSub?: Subscription;
   private categoriesSub?: Subscription;
-
-  categoriesMap = computed(() => {
-    const map = new Map<string, Category>();
-    for (const cat of this.categories()) {
-      map.set(cat.id, cat);
-    }
-    return map;
-  });
 
   // Base-currency value: write-time snapshot first (deterministic), live
   // conversion only as a legacy fallback.
