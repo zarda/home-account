@@ -69,6 +69,23 @@ export const UNREADABLE_SCHEDULE_ERROR = 'RECURRING_SCHEDULE_UNREADABLE';
  */
 export const RULE_ENDED_ERROR = 'RECURRING_RULE_ENDED';
 
+/**
+ * The id a rule's occurrence falling due at `occurrenceMs` is posted under.
+ *
+ * Deterministic, so a retried or racing claim lands on the row it already
+ * wrote. Keyed by the rule's own salt, which only the owner can read: a shared
+ * row's household copy carries this id and the occurrence's date, so without
+ * the salt a member who had seen the rule's id could hash it with the date and
+ * confirm which rule posted the row (#486). The salt is a required key, so a
+ * call site cannot fall back to the unsalted digest by leaving it out.
+ */
+export function recurringPostingId(
+  rule: { id: string; salt: string },
+  occurrenceMs: number
+): Promise<string> {
+  return opaqueRowId('rec', rule.salt, rule.id, occurrenceMs);
+}
+
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
   private firestoreService = inject(FirestoreService);
@@ -589,6 +606,13 @@ export class RecurringService {
       // condition the next run will find any different.
       if (!schedule?.pointer || !rule.isActive || schedule.pointer > now) return null;
 
+      // The key of every id this claim posts under (#486), settled from the
+      // fresh read above and never from the work list: a rule another device
+      // has salted since keeps that salt. A rule written before salts existed,
+      // or holding one no draw could produce, gets a fresh draw, which the
+      // update below stores only if something posts under it.
+      const salt = isSeed(rule.salt) ? rule.salt : newSeed();
+
       let occurrenceDate = schedule.pointer;
       // Every step of the catch-up below measures from the rule's start date,
       // never from the occurrence it has just posted, so draining a backlog
@@ -631,16 +655,22 @@ export class RecurringService {
       // The pointer stays on a stalled date, so every later claim walks to it
       // again. Whether that date is already posted is a question for the
       // server: a row under an id the occurrence has had before, such as an
-      // older build's clear `rec-` one, would otherwise be joined by a second
-      // posting of the same occurrence under the id this claim writes. The
-      // count before the lookup is what `capped` below measures, so dropping
-      // the date cannot change whether a full batch ended the walk.
+      // older build's clear `rec-` one or the unsalted digest, would otherwise
+      // be joined by a second posting of the same occurrence under the id this
+      // claim writes. A rule that already holds a salt may have posted the date
+      // under it, so that id is asked too; a salt drawn just now has keyed
+      // nothing yet. The count before the lookup is what `capped` below
+      // measures, so dropping the date cannot change whether a full batch ended
+      // the walk.
       const walkedCount = occurrenceDates.length;
       if (stalled) {
         const stuckMs = occurrenceDates[walkedCount - 1].getTime();
         const earlierIds = [...new Set([
           `rec-${rule.id}-${stuckMs}`,
-          await opaqueRowId('rec', rule.id, stuckMs)
+          await opaqueRowId('rec', rule.id, stuckMs),
+          ...(isSeed(rule.salt)
+            ? [await recurringPostingId({ id: rule.id, salt: rule.salt }, stuckMs)]
+            : [])
         ])];
         // Every read is issued here, before the first write, as a Firestore
         // transaction requires.
@@ -652,14 +682,19 @@ export class RecurringService {
         if (earlier.some(row => row.exists())) occurrenceDates.pop();
       }
 
-      // A digest of the rule and the occurrence time: deterministic, so a
-      // repeated run or a retried callback writes the same documents, and
-      // opaque, because a shared row's household copy carries this id and it
-      // must name neither the rule nor the day the row fell due (#466). Every
-      // read above precedes every write below, as a Firestore transaction
-      // requires.
+      // A digest of the rule's salt, the rule and the occurrence time:
+      // deterministic once the rule holds a salt, so a repeated run or a
+      // retried callback writes the same documents. A retry on a rule still
+      // without a salt draws afresh where the salt is settled above, which is
+      // safe only because these ids are computed here, inside the callback,
+      // from this attempt's salt and stored with it below; never hoist them
+      // out of runTransaction or reuse them across attempts. Opaque, because
+      // a shared row's household copy carries this id and it must name
+      // neither the rule nor the day the row fell due (#466), nor be rebuilt
+      // from a rule id and the copy's date (#486). Every read above precedes
+      // every write below, as a Firestore transaction requires.
       const postedIds = await Promise.all(
-        occurrenceDates.map(date => opaqueRowId('rec', rule.id, date.getTime()))
+        occurrenceDates.map(date => recurringPostingId({ id: rule.id, salt }, date.getTime()))
       );
       postedIds.forEach((transactionId, i) => {
         const transactionRef = this.firestoreService.getDocRef(
@@ -679,6 +714,12 @@ export class RecurringService {
       if (postedIds.length > 0) {
         update.nextOccurrence = this.firestoreService.dateToTimestamp(occurrenceDate);
         update.lastProcessed = this.firestoreService.getTimestamp();
+      }
+      // A drawn salt is stored with the pointer it moved, in the same commit as
+      // the rows keyed by it, so a later claim recomputes the ids they took. A
+      // claim that posted nothing keys nothing and stores nothing.
+      if (postedIds.length > 0 && salt !== rule.salt) {
+        update.salt = salt;
       }
       if (endDatePassed && !capped) {
         // Only once the backlog is drained: deactivating on a capped batch

@@ -24,9 +24,9 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service';
+import { RecurringService, MAX_OCCURRENCES_PER_CLAIM, recurringPostingId } from './recurring.service';
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
-import { opaqueRowId } from '../utils/opaque-id.utils';
+import { isSeed, opaqueRowId } from '../utils/opaque-id.utils';
 import { prefillFromGroup } from '../utils/recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
 import { integerField, patchFieldsAsOwner } from './testing/emulator-admin';
@@ -39,12 +39,12 @@ silenceFirebaseWarnings();
  *
  * The unit suite stubs `runTransaction`, so it can prove which occurrence dates
  * the loop computes but not that each one becomes its own document. The
- * idempotency key is a digest of the rule and the occurrence date
- * (`opaqueRowId`), which means a date bug and a duplicate-posting bug are the
- * same bug: two occurrences that collapse onto one date collapse onto one
- * document, and the month in between is simply never written. Only a real
- * commit shows that. The id names neither, so these cases find a rule's rows by
- * the `recurringId` each one stores.
+ * idempotency key is a digest of the rule's salt, the rule and the occurrence
+ * date (`recurringPostingId`), which means a date bug and a duplicate-posting
+ * bug are the same bug: two occurrences that collapse onto one date collapse
+ * onto one document, and the month in between is simply never written. Only a
+ * real commit shows that. The id names neither, so these cases find a rule's
+ * rows by the `recurringId` each one stores.
  *
  * Runs only under the emulators:
  *   npm run test:smoke
@@ -70,7 +70,9 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   const STUCK_ID = 'smoke-stalled-legacy';
   /** The stalled rule whose stuck occurrence nothing has posted yet. */
   const STUCK_FRESH_ID = 'smoke-stalled-fresh';
-  const IDS = [RULE_ID, BAD_ID, DOUBLE_ID, STUCK_ID, STUCK_FRESH_ID];
+  /** The rule seeded the way a build before #486 wrote it: with no salt. */
+  const SALTLESS_ID = 'smoke-saltless';
+  const IDS = [RULE_ID, BAD_ID, DOUBLE_ID, STUCK_ID, STUCK_FRESH_ID, SALTLESS_ID];
 
   beforeAll(async () => {
     app = initializeApp(
@@ -313,8 +315,10 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   /**
    * Two claims of one occurrence: the pointer is put back on a date already
    * posted, as a racing device or a retried claim would find it. The id is a
-   * digest of the rule and the date, so the second claim lands on the document
-   * the first one wrote, and that id names neither of them (#466).
+   * digest of the rule's salt, the rule and the date, so the second claim
+   * lands on the document the first one wrote. That id names neither the rule
+   * nor the date (#466), and is not the digest a member holding the rule's id
+   * could rebuild from the date alone (#486).
    */
   it('a second claim of one occurrence leaves one row, at an opaque id', async () => {
     const due = new Date();
@@ -346,12 +350,60 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
     // transaction as its write.
     const rule = (await getDoc(doc(firestore, rulePath))).data()!;
     expect((rule['nextOccurrence'] as Timestamp).toDate().getTime()).toBeGreaterThan(Date.now());
+    // The salt the first claim drew survived the rewind, so the second claim
+    // computed the same id from it.
+    const salt = rule['salt'] as string;
+    expect(isSeed(salt)).toBeTrue();
 
     const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
     const ids = snapshot.docs.filter(d => d.data()['recurringId'] === DOUBLE_ID).map(d => d.id);
-    expect(ids).toEqual([await opaqueRowId('rec', DOUBLE_ID, due.getTime())]);
+    expect(ids).toEqual([await recurringPostingId({ id: DOUBLE_ID, salt }, due.getTime())]);
+    expect(ids).not.toContain(await opaqueRowId('rec', DOUBLE_ID, due.getTime()));
     expect(ids[0]).toMatch(/^[0-9a-f]{32}$/);
     expect(ids[0]).not.toContain('rec-');
+  }, 60000);
+
+  /**
+   * #486: a rule written before salts existed draws one on its first posting,
+   * and the rules let the claim store it with the pointer. Only a real commit
+   * shows both, and that what lands is a row a member holding the rule's id
+   * cannot find by hashing that id with the row's date.
+   */
+  it('gives a saltless rule a salt on its first catch-up, and keys its row by it', async () => {
+    const due = new Date();
+    due.setHours(9, 0, 0, 0);
+    due.setDate(due.getDate() - 3);
+    const rulePath = `users/${uid}/recurring/${SALTLESS_ID}`;
+    await setDoc(doc(firestore, rulePath), {
+      userId: uid,
+      name: 'Saltless',
+      type: 'expense',
+      amount: 4,
+      currency: 'USD',
+      categoryId: 'food_coffee',
+      description: 'Saltless',
+      // Yearly, so exactly one occurrence is due and the next is a year out.
+      frequency: { type: 'yearly', interval: 1 },
+      startDate: Timestamp.fromDate(due),
+      nextOccurrence: Timestamp.fromDate(due),
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+
+    await service.catchUpRecurringTransactions();
+
+    const salt = (await getDoc(doc(firestore, rulePath))).data()!['salt'] as string;
+    expect(isSeed(salt)).toBeTrue();
+
+    const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
+    const rows = snapshot.docs.filter(d => d.data()['recurringId'] === SALTLESS_ID);
+    expect(rows.map(d => d.id)).toEqual([await recurringPostingId({ id: SALTLESS_ID, salt }, due.getTime())]);
+
+    // What a member holding the rule's id would compute from the copy's date.
+    const rowDate = (rows[0].data()['date'] as Timestamp).toMillis();
+    const unsalted = await opaqueRowId('rec', SALTLESS_ID, rowDate);
+    expect(snapshot.docs.map(d => d.id)).not.toContain(unsalted);
   }, 60000);
 
   /**
@@ -594,17 +646,25 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
       await expectAsync(claims[0].returnValue)
         .toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
       expect(await rowsOf(STUCK_ID)).toEqual([legacyId]);
-      // Nothing posted and nothing paused, so the rule was not written at all.
+      // Nothing posted and nothing paused, so the rule was not written at all:
+      // not even the salt the claim drew, which keyed nothing.
       expect(await updatedAtOf(STUCK_ID)).toEqual(SEEDED_AT);
+      expect('salt' in (await getDoc(doc(firestore, rulePath(STUCK_ID)))).data()!).toBeFalse();
     }, 60000);
 
     it('posts the stuck occurrence once and leaves the rule alone on the next catch-up', async () => {
       const claim = spyOn(service as unknown as Claimer, 'claimDueOccurrences').and.callThrough();
       const due = stuckDue();
       await seedStalledRule(STUCK_FRESH_ID, due);
-      const postedId = await opaqueRowId('rec', STUCK_FRESH_ID, due.getTime());
 
       await service.catchUpRecurringTransactions();
+
+      // The rule was seeded without a salt, so the claim drew one and stored
+      // it with the pointer; the row is keyed by it (#486). The second claim
+      // below finds the row only by asking under that salted id.
+      const salt = (await getDoc(doc(firestore, rulePath(STUCK_FRESH_ID)))).data()!['salt'] as string;
+      expect(isSeed(salt)).toBeTrue();
+      const postedId = await recurringPostingId({ id: STUCK_FRESH_ID, salt }, due.getTime());
 
       const first = claim.calls.all().filter(call => call.args[0] === STUCK_FRESH_ID);
       expect(first.length).toBe(1);

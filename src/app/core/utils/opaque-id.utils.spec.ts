@@ -72,15 +72,22 @@ describe('opaque-id.utils', () => {
     const hexSeed = '0123456789abcdef0123456789abcdef';
     const hexRule = 'deadbeef00112233';
 
-    const [scan, rec] = await Promise.all([
+    const [scan, rec, salted] = await Promise.all([
       opaqueRowId('scan', hexSeed, 0),
       opaqueRowId('rec', hexRule, ms),
+      // A recurring posting's id is keyed by its rule's salt, which is hex
+      // too, and the salt is the one input a household copy must not carry.
+      opaqueRowId('rec', hexSeed, hexRule, ms),
     ]);
 
     expect(scan).not.toContain(hexSeed);
     expect(scan).not.toContain(hexSeed.slice(0, 8));
     expect(rec).not.toContain(hexRule);
     expect(rec).not.toContain(hexRule.slice(0, 8));
+    expect(salted).not.toContain(hexSeed);
+    expect(salted).not.toContain(hexSeed.slice(0, 8));
+    expect(salted).not.toContain(hexRule);
+    expect(salted).not.toContain(hexRule.slice(0, 8));
   });
 
   it('gives two indexes of one seed no shared 4-character prefix', async () => {
@@ -91,6 +98,21 @@ describe('opaque-id.utils', () => {
 
     const prefixes = ids.map(id => id.slice(0, 4));
     expect(new Set(prefixes).size).toBe(ids.length);
+  });
+
+  // #486: the salt is what a member holding a rule id and a copy's date lacks,
+  // so each salt has to give its own id, and a salted id must not be the
+  // unsalted digest the same rule and time give.
+  it('gives two salts two ids, and neither is the unsalted id', async () => {
+    const [unsalted, first, second] = await Promise.all([
+      opaqueRowId('rec', ruleId, ms),
+      opaqueRowId('rec', '00112233445566778899aabbccddeeff', ruleId, ms),
+      opaqueRowId('rec', 'ffeeddccbbaa99887766554433221100', ruleId, ms),
+    ]);
+
+    expect(first).not.toBe(second);
+    expect(first).not.toBe(unsalted);
+    expect(second).not.toBe(unsalted);
   });
 
   it('keeps the two kinds apart for the same parts', async () => {
@@ -121,9 +143,13 @@ describe('opaque-id.utils', () => {
   // and a retry recomputes. A changed preimage, prefix or cut would silently
   // re-id them, and a retried write would then duplicate the row it had
   // already created. If this fails, the helper changed; do not just update
-  // the literals.
+  // the literals. The salted id was computed outside the helper, with Node:
+  //   node -e "const c=require('crypto');console.log(c.createHash('sha256').update(JSON.stringify(['rec','00112233445566778899aabbccddeeff','rule1',1])).digest('hex').slice(0,32))"
   it('pins the exact ids for known inputs', async () => {
     expect(await opaqueRowId('rec', 'rule1', 1)).toBe('c5f49f1c8d24ddb3423ef31980c05ce1');
+    expect(await opaqueRowId('rec', '00112233445566778899aabbccddeeff', 'rule1', 1)).toBe(
+      'e3e86f902d84ead0754cf709449f6596'
+    );
     expect(await opaqueRowId('scan', '0123456789abcdef0123456789abcdef', 0)).toBe(
       '071013a6631227ed7c099b245af187c8'
     );

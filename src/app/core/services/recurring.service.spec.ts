@@ -7,7 +7,8 @@ import {
   MAX_OCCURRENCES_PER_CLAIM,
   INVALID_FREQUENCY_ERROR,
   UNREADABLE_SCHEDULE_ERROR,
-  RULE_ENDED_ERROR
+  RULE_ENDED_ERROR,
+  recurringPostingId
 } from './recurring.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -36,6 +37,9 @@ describe('RecurringService', () => {
   const DAY = 24 * 60 * 60 * 1000;
 
   const monthly: RecurringFrequency = { type: 'monthly', interval: 1 };
+  // 32 lower-case hex characters, a salt the claim keeps. Anything else it
+  // replaces with a fresh draw, and no spec could name the ids that follow.
+  const FIXTURE_SALT = '00112233445566778899aabbccddeeff';
 
   const createRecurring = (overrides: Partial<RecurringTransaction> = {}): RecurringTransaction => {
     const nextOccurrence = overrides.nextOccurrence ?? Timestamp.fromDate(new Date(2024, 1, 1));
@@ -60,6 +64,9 @@ describe('RecurringService', () => {
       startDate: nextOccurrence,
       nextOccurrence,
       isActive: true,
+      // Before the overrides, so { salt: undefined } is a rule written before
+      // rules held a salt.
+      salt: FIXTURE_SALT,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
       ...overrides
@@ -132,13 +139,36 @@ describe('RecurringService', () => {
   const txSetPaths = (): string[] =>
     txSet.calls.allArgs().map(args => (args[0] as FakeDocRef).path);
 
-  /** Where a claim posts the occurrence of `ruleId` falling due at `when`. */
-  const occurrencePath = async (ruleId: string, when: Date): Promise<string> =>
+  /**
+   * Where a claim posts the occurrence of `ruleId` falling due at `when`, keyed
+   * by the salt the rule holds. Every fixture rule holds FIXTURE_SALT.
+   */
+  const occurrencePath = async (
+    ruleId: string,
+    when: Date,
+    salt: string = FIXTURE_SALT
+  ): Promise<string> =>
+    `users/user123/transactions/${await recurringPostingId({ id: ruleId, salt }, when.getTime())}`;
+
+  /** Where a build before the salt posted the same occurrence: a digest with no key. */
+  const unsaltedOccurrencePath = async (ruleId: string, when: Date): Promise<string> =>
     `users/user123/transactions/${await opaqueRowId('rec', ruleId, when.getTime())}`;
 
   /** Where an older build posted the same occurrence: the rule and the time, in clear. */
   const legacyOccurrencePath = (ruleId: string, when: Date): string =>
     `users/user123/transactions/rec-${ruleId}-${when.getTime()}`;
+
+  /**
+   * Every read a claim of a rule stalled on `when` is served, in order: the
+   * rule, then each id the stuck occurrence may already stand under. A rule
+   * holding a well-formed salt adds the salted id to the two older ones.
+   */
+  const stalledReads = async (ruleId: string, when: Date, salt?: string): Promise<string[]> => [
+    `users/user123/recurring/${ruleId}`,
+    legacyOccurrencePath(ruleId, when),
+    await unsaltedOccurrencePath(ruleId, when),
+    ...(salt === undefined ? [] : [await occurrencePath(ruleId, when, salt)])
+  ];
 
   const installTransactionStub = (): void => {
     serverDocs = new Map();
@@ -957,6 +987,17 @@ describe('RecurringService', () => {
     });
   });
 
+  // #486: the id a posting takes. The known answer is the salted pin in
+  // opaque-id.utils.spec.ts, so the argument order is checked here too.
+  describe('recurringPostingId', () => {
+    it('keys the digest by the rule\'s salt, a key no call site can leave out', async () => {
+      expect(await recurringPostingId({ id: 'rule1', salt: FIXTURE_SALT }, 1))
+        .toBe('e3e86f902d84ead0754cf709449f6596');
+      // @ts-expect-error salt is a required key, so a call site cannot reach the unsalted digest by omission
+      await recurringPostingId({ id: 'rule1' }, 1);
+    });
+  });
+
   // The real SDK rejects a read issued after a write in the same transaction.
   // A fake that allowed it would let a claim read in the wrong place and still
   // pass every unit case, so the fakes enforce the order themselves. These
@@ -1360,21 +1401,46 @@ describe('RecurringService', () => {
     });
 
     // A shared row's household copy carries the row's id, so the id must not
-    // tell a member which rule posted it or when it fell due (#466).
+    // tell a member which rule posted it or when it fell due (#466), nor be
+    // one a member who has seen the rule's id can rebuild from the copy's date
+    // (#486).
     it('posts at an opaque id that names neither the rule nor the due time, the same on every claim', async () => {
+      installCommittingTransactionStub();
       const due = new Date(Date.now() - 3 * DAY);
-      const rule = createRecurring({ id: 'rent-rule', nextOccurrence: Timestamp.fromDate(due) });
+      const rulePath = 'users/user123/recurring/rent-rule';
+      const rule = createRecurring({
+        id: 'rent-rule',
+        nextOccurrence: Timestamp.fromDate(due),
+        salt: undefined
+      });
       seedServerRule(rule);
 
-      // The default stub never commits the advanced pointer, so the second run
-      // claims the same occurrence again, as a racing or retried claim would.
       await service.processRecurringTransactions([rule]);
+
+      // The first claim drew the rule a salt and committed it with the pointer.
+      const committed = serverDocs.get(rulePath)!.salt as string;
+      expect(isSeed(committed)).toBeTrue();
+
+      // Put the pointer back and keep the salt, as a retried or racing claim
+      // finds the rule. Without this the second claim reads the advanced
+      // pointer and answers null.
+      serverDocs.set(rulePath, {
+        ...serverDocs.get(rulePath)!,
+        nextOccurrence: Timestamp.fromDate(due)
+      });
+
       await service.processRecurringTransactions([rule]);
 
       const ids = txSetPaths().map(path => path.split('/').pop()!);
       expect(ids.length).toBe(2);
       expect(new Set(ids).size).toBe(1);
-      expect(ids[0]).toBe(await opaqueRowId('rec', 'rent-rule', due.getTime()));
+      expect(ids[0]).toBe(await recurringPostingId({ id: 'rent-rule', salt: committed }, due.getTime()));
+      expect(ids[0]).not.toBe(await opaqueRowId('rec', 'rent-rule', due.getTime()));
+      // The salt is written once, by the claim that drew it.
+      const updates = txUpdate.calls.allArgs().map(args => args[1] as Record<string, unknown>);
+      expect(updates.length).toBe(2);
+      expect(updates[0]['salt']).toBe(committed);
+      expect('salt' in updates[1]).toBeFalse();
       expect(ids[0]).toMatch(/^[0-9a-f]{32}$/);
       expect(ids[0]).not.toContain('rent-rule');
       expect(ids[0]).not.toContain(String(due.getTime()));
@@ -1457,13 +1523,9 @@ describe('RecurringService', () => {
 
       expect(txSet).toHaveBeenCalledTimes(1);
       expect(result).toEqual([]);
-      // The stuck date is looked up at both ids it may already stand under,
+      // The stuck date is looked up at every id it may already stand under,
       // after the rule is read and before anything is written.
-      expect(txGetPaths).toEqual([
-        'users/user123/recurring/stuck',
-        legacyOccurrencePath('stuck', due),
-        await occurrencePath('stuck', due)
-      ]);
+      expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
     });
 
     describe('a rule whose walk cannot advance', () => {
@@ -1514,11 +1576,7 @@ describe('RecurringService', () => {
         // that threw, so the claim's own answer and the reads it was served
         // prove it ran and found the row.
         await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
-        expect(txGetPaths).toEqual([
-          rulePath('stuck'),
-          legacyOccurrencePath('stuck', due),
-          await occurrencePath('stuck', due)
-        ]);
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
         expect(txSet).not.toHaveBeenCalled();
         expect(txUpdate).not.toHaveBeenCalled();
         expect(result).toEqual([]);
@@ -1528,23 +1586,69 @@ describe('RecurringService', () => {
         const due = new Date(Date.now() - 3 * DAY);
         const rule = stuckRule('stuck', due);
         seedServerRule(rule);
-        seedServerDoc(await occurrencePath('stuck', due), {});
+        seedServerDoc(await unsaltedOccurrencePath('stuck', due), {});
 
         const result = await service.processRecurringTransactions([rule]);
 
         await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
-        expect(txGetPaths).toEqual([
-          rulePath('stuck'),
-          legacyOccurrencePath('stuck', due),
-          await occurrencePath('stuck', due)
-        ]);
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
         expect(txSet).not.toHaveBeenCalled();
         expect(txUpdate).not.toHaveBeenCalled();
         expect(result).toEqual([]);
       });
 
-      // Pin: nothing stands under either id, so the stuck date posts once, as
-      // it did before the lookup existed.
+      // #486: a rule holding a salt posted its stuck date under the salted id,
+      // so that is a third place the date may already stand.
+      it('skips an occurrence already posted at its salted id, after three distinct lookups', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+        seedServerDoc(await occurrencePath('stuck', due), {});
+
+        const result = await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
+        expect(new Set(txGetPaths.slice(1)).size).toBe(3);
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+      });
+
+      // Pin: a claim that posts nothing writes nothing, a drawn salt included.
+      // A saltless rule keeps no salt until something posts under one.
+      it('writes no salt to a saltless rule whose stuck date is already posted', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due, { salt: undefined });
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due));
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+      });
+
+      // Pin: a malformed salt keys nothing, so it adds no lookup, and it is not
+      // replaced by a claim that posts nothing.
+      it('writes no salt over a malformed one when the stuck date is already posted', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due, { salt: 'NOT-HEX' });
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due));
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+      });
+
+      // Pin: nothing stands under any of its ids, so the stuck date posts once,
+      // as it did before the lookup existed.
       it('posts a stalled occurrence once when no earlier row exists', async () => {
         const due = new Date(Date.now() - 3 * DAY);
         const rule = stuckRule('stuck', due);
@@ -1575,11 +1679,7 @@ describe('RecurringService', () => {
               postedIds: [(await occurrencePath('adv', march)).split('/').pop()!]
             })
           );
-          expect(txGetPaths).toEqual([
-            rulePath('adv'),
-            legacyOccurrencePath('adv', twentyFirst),
-            await occurrencePath('adv', twentyFirst)
-          ]);
+          expect(txGetPaths).toEqual(await stalledReads('adv', twentyFirst, FIXTURE_SALT));
           expect(txSetPaths()).toEqual([await occurrencePath('adv', march)]);
           // The pointer still lands on the stuck date, which is where the next
           // claim finds the walk stalled again.
@@ -1596,11 +1696,7 @@ describe('RecurringService', () => {
 
           await service.processRecurringTransactions([rule]);
 
-          expect(txGetPaths).toEqual([
-            rulePath('adv'),
-            legacyOccurrencePath('adv', twentyFirst),
-            await occurrencePath('adv', twentyFirst)
-          ]);
+          expect(txGetPaths).toEqual(await stalledReads('adv', twentyFirst, FIXTURE_SALT));
           expect(txSetPaths()).toEqual([
             await occurrencePath('adv', march),
             await occurrencePath('adv', twentyFirst)
@@ -1619,11 +1715,7 @@ describe('RecurringService', () => {
         await service.processRecurringTransactions([rule]);
 
         await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
-        expect(txGetPaths).toEqual([
-          rulePath('stuck'),
-          legacyOccurrencePath('stuck', due),
-          await occurrencePath('stuck', due)
-        ]);
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
         expect(txSet).not.toHaveBeenCalled();
         expect(txUpdate).toHaveBeenCalledTimes(1);
         const [ref, data] = txUpdate.calls.mostRecent().args;
@@ -1648,6 +1740,101 @@ describe('RecurringService', () => {
 
         expect(txSet).toHaveBeenCalled();
         expect(txGetPaths).toEqual([rulePath('daily')]);
+      });
+    });
+
+    // #486: a posting's id is keyed by a salt only its rule holds. The claim
+    // settles the salt from its own read of the rule, and writes one only in
+    // the update that moves the pointer, so only when something posts.
+    describe('the salt a posting is keyed by', () => {
+      const OTHER_SEED = 'ffeeddccbbaa99887766554433221100';
+
+      /** A daily rule 2.5 days late: three occurrences, at due, due+1d and due+2d. */
+      const lateDailyRule = (id: string, overrides: Partial<RecurringTransaction> = {}) => {
+        const due = new Date(Date.now() - 2.5 * DAY);
+        const rule = createRecurring({
+          id,
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(due),
+          ...overrides
+        });
+        return { rule, dates: [due, addDays(due, 1), addDays(due, 2)] };
+      };
+
+      it('draws a saltless rule a salt and writes it with the pointer it moves', async () => {
+        const { rule, dates } = lateDailyRule('bare', { salt: undefined });
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+        const salt = update['salt'] as string;
+        expect(isSeed(salt)).toBeTrue();
+        expect(update['nextOccurrence']).toBeDefined();
+        expect(txSetPaths()).toEqual(
+          await Promise.all(dates.map(date => occurrencePath('bare', date, salt)))
+        );
+      });
+
+      it('posts under a stored well-formed salt and writes the rule no salt', async () => {
+        const { rule, dates } = lateDailyRule('salted');
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txSetPaths()).toEqual(
+          await Promise.all(dates.map(date => occurrencePath('salted', date, FIXTURE_SALT)))
+        );
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(update['nextOccurrence']).toBeDefined();
+        expect('salt' in update).toBeFalse();
+      });
+
+      it('replaces a malformed stored salt on a rule that posts', async () => {
+        const { rule, dates } = lateDailyRule('bad-salt', { salt: 'NOT-HEX' });
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+        const salt = update['salt'] as string;
+        expect(isSeed(salt)).toBeTrue();
+        expect(update['nextOccurrence']).toBeDefined();
+        expect(txSetPaths()).toEqual(
+          await Promise.all(dates.map(date => occurrencePath('bad-salt', date, salt)))
+        );
+      });
+
+      // The work list can be older than the rule: another device may have
+      // posted under a salt it drew since. The claim's own read is the copy
+      // the salt comes from, whatever the work list held.
+      ([
+        ['no salt', { salt: undefined }],
+        ['the fixture salt', {}]
+      ] as const).forEach(([label, overrides]) => {
+        it(`takes the salt from the claim's own read when the work list holds ${label}`, async () => {
+          const due = new Date(Date.now() - 3 * DAY);
+          const listed = createRecurring({
+            id: 'raced-salt',
+            nextOccurrence: Timestamp.fromDate(due),
+            ...overrides
+          });
+          seedServerRule(createRecurring({
+            id: 'raced-salt',
+            nextOccurrence: Timestamp.fromDate(due),
+            salt: OTHER_SEED
+          }));
+
+          await service.processRecurringTransactions([listed]);
+
+          expect(txSetPaths()).toEqual([await occurrencePath('raced-salt', due, OTHER_SEED)]);
+          expect(txUpdate).toHaveBeenCalledTimes(1);
+          const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+          expect('salt' in update).toBeFalse();
+        });
       });
     });
 
