@@ -1559,9 +1559,7 @@ export class AIImportService {
           // when the caught value actually carried one — a FirebaseError's
           // string code, not whatever shape a thrown plain object happens to
           // have.
-          const code = typeof (error as { code?: unknown })?.code === 'string'
-            ? (error as { code: string }).code
-            : undefined;
+          const code = errorCode(error);
           errors.push({
             transactionId: txn.id,
             message: error instanceof Error ? error.message : 'Unknown error',
