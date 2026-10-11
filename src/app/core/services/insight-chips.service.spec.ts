@@ -147,6 +147,22 @@ describe('InsightChipsService', () => {
     expect(chip!.filters.categoryId).toBe('pets');
   });
 
+  // #488: two categories new this month with the same change name the lower
+  // id on every load, not whichever the expense rows listed first.
+  it('names the lower category id when two new categories tie', () => {
+    setup(
+      [expense(30, 'transport', currentDate), expense(30, 'pets', currentDate)],
+      [{ categoryId: 'food', total: 40 }]
+    );
+
+    const chips = service.chips();
+    expect(chips.length).toBe(1);
+    expect(chips[0].kind).toBe('newCategory');
+    expect(chips[0].id).toBe('new:pets');
+    expect(chips[0].labelParams['category']).toBe('Pets');
+    expect(chips[0].filters.categoryId).toBe('pets');
+  });
+
   it('builds a top-category chip only with at least 3 transactions', () => {
     setup([
       expense(30, 'food', currentDate),

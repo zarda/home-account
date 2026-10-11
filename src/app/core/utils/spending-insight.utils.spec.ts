@@ -115,5 +115,69 @@ describe('spending-insight.utils', () => {
       expect(result.length).toBe(1);
       expect(result[0].categoryId).toBe('transport');
     });
+
+    // #488: the sort ends in the category id, so a tie names the same category
+    // on every load. The function lists the ids in its own order (this
+    // period's rows first, then the ids found only in the previous period),
+    // so each tie below hands the HIGHER id over first.
+    describe('a tie in the absolute change', () => {
+      it('ranks a grower and a category that fell to nothing by id', () => {
+        // transport grew by 30 and arrives first; food fell by 30 to nothing.
+        const result = computeCategoryDeltas(
+          [expense(40, 'transport')],
+          [{ categoryId: 'food', total: 30 }, { categoryId: 'transport', total: 10 }],
+          toBase,
+          5
+        );
+        expect(result.map(d => d.categoryId)).toEqual(['food', 'transport']);
+      });
+
+      it('ranks changes that tie once rounded to the cent by id', () => {
+        // food grew 0.1 -> 0.3, a change of 0.19999999999999998; pets is new
+        // at exactly 0.2. Over the raw floats pets ranks first.
+        const result = computeCategoryDeltas(
+          [expense(0.3, 'food'), expense(0.2, 'pets')],
+          [{ categoryId: 'food', total: 0.1 }],
+          toBase,
+          5
+        );
+        expect(result.map(d => d.categoryId)).toEqual(['food', 'pets']);
+        expect(result.map(d => d.change)).toEqual([0.2, 0.2]);
+      });
+
+      it('keeps the lower id when the cap falls between the tied pair', () => {
+        const result = computeCategoryDeltas(
+          [expense(30, 'transport'), expense(30, 'food')],
+          [{ categoryId: 'utilities', total: 5 }],
+          toBase,
+          1
+        );
+        expect(result.map(d => d.categoryId)).toEqual(['food']);
+      });
+
+      it('still ranks a larger change ahead of a lower id', () => {
+        // Pin: the id only breaks a tie, it never outranks the size.
+        const result = computeCategoryDeltas(
+          [expense(50, 'transport'), expense(30, 'food')],
+          [{ categoryId: 'utilities', total: 5 }],
+          toBase,
+          5
+        );
+        expect(result.map(d => d.categoryId)).toEqual(['transport', 'food', 'utilities']);
+      });
+    });
+
+    it('rounds the totals and the change to the cent', () => {
+      const result = computeCategoryDeltas(
+        [expense(0.1, 'food'), expense(0.2, 'food')],
+        [{ categoryId: 'food', total: 0.1 }],
+        toBase,
+        5
+      );
+      expect(result.length).toBe(1);
+      expect(result[0].current).toBe(0.3);
+      expect(result[0].previous).toBe(0.1);
+      expect(result[0].change).toBe(0.2);
+    });
   });
 });

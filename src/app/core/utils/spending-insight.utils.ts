@@ -1,4 +1,5 @@
 import { CategoryTotal, Transaction } from '../../models';
+import { compareIds, roundMoney } from './transaction-aggregation.utils';
 
 /**
  * Pure spending-analysis computations shared by the RAG prompt grounding
@@ -98,8 +99,8 @@ export interface CategoryDelta {
 
 /**
  * Largest per-category spending changes vs. the previous period, sorted by
- * absolute change, capped at `cap`. Empty when no previous-period breakdown
- * is available.
+ * absolute change over cent-rounded totals (a tie ranks by category id), capped
+ * at `cap`. Empty when no previous-period breakdown is available.
  */
 export function computeCategoryDeltas(
   expenses: Transaction[],
@@ -120,11 +121,11 @@ export function computeCategoryDeltas(
   const categoryIds = new Set([...currentTotals.keys(), ...previousTotals.keys()]);
   return [...categoryIds]
     .map(categoryId => {
-      const current = currentTotals.get(categoryId) ?? 0;
-      const previous = previousTotals.get(categoryId) ?? 0;
-      return { categoryId, current, previous, change: current - previous, isNew: previous <= 0 };
+      const current = roundMoney(currentTotals.get(categoryId) ?? 0);
+      const previous = roundMoney(previousTotals.get(categoryId) ?? 0);
+      return { categoryId, current, previous, change: roundMoney(current - previous), isNew: previous <= 0 };
     })
     .filter(d => Math.abs(d.change) > 0.005)
-    .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
+    .sort((a, b) => Math.abs(b.change) - Math.abs(a.change) || compareIds(a.categoryId, b.categoryId))
     .slice(0, cap);
 }
