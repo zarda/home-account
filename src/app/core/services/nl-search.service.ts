@@ -25,6 +25,7 @@ import {
   baseCurrencyOf
 } from '../../models';
 import { applyClientTransactionFilters } from '../utils/transaction-query.utils';
+import { compareCategoryTotals, roundMoney } from '../utils/transaction-aggregation.utils';
 
 /**
  * Natural-language transaction search. The model only translates the query
@@ -233,9 +234,12 @@ export class NlSearchService {
           const groupId = this.rollUpToParent(t.categoryId);
           totals.set(groupId, (totals.get(groupId) ?? 0) + toBase(t));
         }
+        // Rounded to cents before the sort, and ordered as the shared category
+        // folds are: a tie, including one split only by float noise, falls to
+        // the id rather than to row arrival.
         answer.groups = [...totals.entries()]
-          .map(([categoryId, total]) => ({ categoryId, total }))
-          .sort((a, b) => b.total - a.total)
+          .map(([categoryId, total]) => ({ categoryId, total: roundMoney(total) }))
+          .sort(compareCategoryTotals)
           .slice(0, intent.limit);
         answer.value = answer.groups[0]?.total ?? 0;
         break;

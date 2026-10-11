@@ -19,6 +19,7 @@ import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
 import { BudgetService } from './budget.service';
+import { CategoryService } from './category.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { CurrencyService } from './currency.service';
 import { GoalService } from './goal.service';
@@ -32,6 +33,7 @@ import { ReceiptQuotaService } from './receipt-quota.service';
 import { Transaction } from '../../models';
 import { dayKey } from '../utils/transaction-date.utils';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+import { createCategory } from './testing/test-data';
 silenceFirebaseWarnings();
 
 /**
@@ -79,6 +81,15 @@ describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
     date: Timestamp.fromDate(AUGUST),
     isRecurring: false,
     ...(goalId ? { goalId, goalAmount: amount } : {})
+  });
+
+  // A row for the tie case: the same stored shape as `row`, in a category and
+  // on a day of its own. It is written by that case alone, in September, so
+  // the August window every other case pins never sees it.
+  const tieRow = (id: string, categoryId: string, amount: number, date: Date) => ({
+    ...row(id, amount),
+    categoryId,
+    date: Timestamp.fromDate(date)
   });
 
   const SEEDED = [
@@ -242,6 +253,44 @@ describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
 
     expect(answer.value).toBe(1694);
     expect(listener).not.toHaveBeenCalled();
+  }, 30000);
+
+  // Rows come back date-descending, so the later 'tie-b-kid' row reaches the
+  // fold before 'tie-a' and its parent 'tie-b' is inserted first: with a sort
+  // on the total alone the limit keeps 'tie-b', the higher id, on arrival.
+  it('ranks a tie among parents at the limit by category id', async () => {
+    const rows = [
+      tieRow('nl-smoke-tie-top', 'tie-top', 80, new Date(2026, 8, 10, 12)),
+      tieRow('nl-smoke-tie-b-kid', 'tie-b-kid', 40, new Date(2026, 8, 15, 12)),
+      tieRow('nl-smoke-tie-a', 'tie-a', 40, new Date(2026, 8, 15, 9))
+    ];
+    TestBed.inject(CategoryService).categories.set([
+      createCategory({ id: 'tie-top', name: 'Top', type: 'expense' }),
+      createCategory({ id: 'tie-a', name: 'A', type: 'expense' }),
+      createCategory({ id: 'tie-b', name: 'B', type: 'expense' }),
+      createCategory({ id: 'tie-b-kid', name: 'B kid', type: 'expense', parentId: 'tie-b' })
+    ]);
+
+    try {
+      await Promise.all(rows.map(({ id, ...data }) =>
+        setDoc(doc(firestore, `users/${uid}/transactions/${id}`), { ...data, userId: uid })
+      ));
+
+      const answer = await service.replayAggregate(
+        'topCategories',
+        { startDate: new Date(2026, 8, 1), endDate: new Date(2026, 8, 30, 23, 59, 59, 999) },
+        2
+      );
+
+      expect(answer.groups).toEqual([
+        { categoryId: 'tie-top', total: 80 },
+        { categoryId: 'tie-a', total: 40 }
+      ]);
+    } finally {
+      await Promise.all(rows.map(t =>
+        deleteDoc(doc(firestore, `users/${uid}/transactions/${t.id}`)).catch(() => undefined)
+      ));
+    }
   }, 30000);
 
   it('sends the active goal and budget catalogs to the model from cold signals', async () => {

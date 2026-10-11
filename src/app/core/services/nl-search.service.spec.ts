@@ -77,6 +77,7 @@ describe('NlSearchService', () => {
       createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense', parentId: 'food' }),
       createCategory({ id: 'food_restaurants', name: 'Restaurants', type: 'expense', parentId: 'food' }),
       createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
+      createCategory({ id: 'transport_taxi', name: 'Taxi', type: 'expense', parentId: 'transport' }),
       createCategory({ id: 'pets', name: 'Pets', type: 'expense' }),
       createCategory({ id: 'employment', name: 'Employment', type: 'income' }),
       createCategory({ id: 'dormant', name: 'Dormant', type: 'expense', isActive: false }),
@@ -463,6 +464,7 @@ describe('NlSearchService', () => {
       mockIntent({ kind: 'aggregate', operation: 'topCategories', filters: {}, limit: 2 });
 
       const result = await service.search('top 3 spending categories this month');
+      expect(result.kind).toBe('answer');
       if (result.kind === 'answer') {
         expect(result.answer.groups).toEqual([
           { categoryId: 'food', total: 80 },
@@ -470,6 +472,40 @@ describe('NlSearchService', () => {
         ]);
         expect(result.answer.value).toBe(80);
       }
+    });
+
+    // Through replayAggregate, which cannot fall back to keywords: a wrong
+    // answer here fails on its groups, never on a swallowed error.
+    it('ranks a tie among parents at the limit by category id, not by row arrival', async () => {
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
+        expense(50, 'food_groceries'),
+        expense(30, 'food_restaurants'),
+        expense(40, 'transport'),
+        expense(40, 'pets'),
+      ]);
+
+      const answer = await service.replayAggregate('topCategories', {}, 2);
+
+      expect(answer.groups).toEqual([
+        { categoryId: 'food', total: 80 },
+        { categoryId: 'pets', total: 40 },
+      ]);
+    });
+
+    // 0.1 + 0.2 folds to 0.30000000000000004 under 'transport', which would
+    // outrank 'pets' at 0.3 although both are 30 cents. The noise sits on the
+    // higher id, so only a cent-rounded total lets the id decide the tie.
+    it('ranks a tie between cent-rounded totals by id when float noise separates the sums', async () => {
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
+        expense(0.1, 'transport'),
+        expense(0.2, 'transport_taxi'),
+        expense(0.3, 'pets'),
+      ]);
+
+      const answer = await service.replayAggregate('topCategories', {}, 1);
+
+      expect(answer.groups).toEqual([{ categoryId: 'pets', total: 0.3 }]);
+      expect(answer.value).toBe(0.3);
     });
 
     it('defaults a date-less aggregate to the current month and echoes it in the scope', async () => {
