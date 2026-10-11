@@ -3806,13 +3806,34 @@ describe('AIImportService', () => {
     });
 
     it('should fail the import and rethrow when completion throws', async () => {
+      // PIN: a plain Error carries no code, so the entry is the message alone
+      // and the key is absent (failImport writes it straight to Firestore,
+      // which rejects an undefined field). This passes before the code read.
       importHistoryService.completeImport.and.returnValue(Promise.reject(new Error('complete boom')));
 
       await expectAsync(
         service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image')
       ).toBeRejectedWithError(/complete boom/);
-      expect(importHistoryService.failImport).toHaveBeenCalled();
+      expect(importHistoryService.failImport).toHaveBeenCalledOnceWith('hist-1', [{ message: 'complete boom' }]);
+      const entry = importHistoryService.failImport.calls.mostRecent().args[1]?.[0] ?? {};
+      expect('code' in entry).toBeFalse();
       expect(service.isProcessing()).toBeFalse();
+    });
+
+    it("keeps the code a refused completion carried on the failed import's entry", async () => {
+      // A rules refusal keeps a stable code apart from its prose message, and
+      // the history page reads the code to speak in the reader's language.
+      const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+      });
+      importHistoryService.completeImport.and.returnValue(Promise.reject(denied));
+
+      await expectAsync(
+        service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image')
+      ).toBeRejectedWith(denied);
+      expect(importHistoryService.failImport).toHaveBeenCalledOnceWith('hist-1', [
+        { message: 'Missing or insufficient permissions.', code: 'permission-denied' },
+      ]);
     });
   });
 
