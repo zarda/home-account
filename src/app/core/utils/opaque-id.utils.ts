@@ -26,3 +26,13 @@ export async function opaqueRowId(
 export function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
+
+/** 128 random bits as 32 lower-case hex characters. */
+export function newSeed(): string {
+  return toHex(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+/** Whether a value is a seed `newSeed` could have drawn: 32 lower-case hex characters. */
+export function isSeed(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{32}$/.test(value);
+}

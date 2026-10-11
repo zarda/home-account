@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed, effect, untracked, OnDestroy } fr
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
-import { opaqueRowId, toHex } from '../utils/opaque-id.utils';
+import { newSeed, opaqueRowId } from '../utils/opaque-id.utils';
 
 // Database schema
 interface OfflineQueueDB extends DBSchema {
@@ -109,11 +109,6 @@ export async function queueRowTxId(
   index: number,
 ): Promise<string> {
   return item.rowSeed ? opaqueRowId('scan', item.rowSeed, index) : `${item.id}-${index}`;
-}
-
-/** 128 random bits as 32 lower-case hex characters, for `QueuedImage.rowSeed`. */
-function newRowSeed(): string {
-  return toHex(crypto.getRandomValues(new Uint8Array(16)));
 }
 
 @Injectable({ providedIn: 'root' })
@@ -361,7 +356,7 @@ export class OfflineQueueService implements OnDestroy {
       createdAt: Date.now(),
       status: 'pending',
       retryCount: 0,
-      rowSeed: newRowSeed(),
+      rowSeed: newSeed(),
     };
 
     await this.db.put('pending-images', queuedImage);

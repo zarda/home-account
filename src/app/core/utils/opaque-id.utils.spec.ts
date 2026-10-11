@@ -1,4 +1,4 @@
-import { opaqueRowId, toHex } from './opaque-id.utils';
+import { isSeed, newSeed, opaqueRowId, toHex } from './opaque-id.utils';
 
 describe('opaque-id.utils', () => {
   // A Firestore-style rule id (20 characters) and a 13-digit millisecond stamp:
@@ -8,6 +8,33 @@ describe('opaque-id.utils', () => {
 
   it('encodes bytes as zero-padded lower-case hex', () => {
     expect(toHex(new Uint8Array([0, 1, 15, 16, 171, 255]))).toBe('00010f10abff');
+  });
+
+  it('draws a seed of 32 lower-case hex characters, and two draws differ', () => {
+    const first = newSeed();
+    const second = newSeed();
+
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+  });
+
+  it('accepts a seed it drew', () => {
+    expect(isSeed(newSeed())).toBe(true);
+    expect(isSeed('0123456789abcdef0123456789abcdef')).toBe(true);
+  });
+
+  it('refuses upper case, a wrong length, non-hex characters and non-strings as a seed', () => {
+    expect(isSeed('0123456789ABCDEF0123456789abcdef')).toBe(false);
+    expect(isSeed('0123456789abcdef0123456789abcde')).toBe(false);
+    expect(isSeed('0123456789abcdef0123456789abcdef0')).toBe(false);
+    expect(isSeed('0123456789abcdeg0123456789abcdef')).toBe(false);
+    expect(isSeed('')).toBe(false);
+    expect(isSeed(undefined)).toBe(false);
+    expect(isSeed(null)).toBe(false);
+    expect(isSeed(123456789)).toBe(false);
+    expect(isSeed({})).toBe(false);
+    expect(isSeed(['0123456789abcdef0123456789abcdef'])).toBe(false);
   });
 
   it('is deterministic', async () => {
