@@ -10,6 +10,7 @@ import { getFirestore, connectFirestoreEmulator, Firestore, Timestamp } from '@a
 import {
   getStorage,
   connectStorageEmulator,
+  getBytes,
   getMetadata,
   listAll,
   ref,
@@ -529,7 +530,8 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   // was the one import door that dropped it.
   it('a drained receipt lands with its photo attached', async () => {
     reads(311.11, 'Smoke queued photo');
-    const id = await queue.queueImage(markedFile(0x41));
+    const photo = markedFile(0x41);
+    const id = await queue.queueImage(photo);
 
     window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
     await waitFor(async () => (await queue.getPendingImages()).length === 0);
@@ -547,6 +549,10 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     const rowId = await queueRowTxId({ id, rowSeed: (await queue.peekQueuedImage(id))?.rowSeed }, 0);
     expect(rowId).toMatch(/^[0-9a-f]{32}$/);
     await expectAsync(getMetadata(ref(storage, `users/${uid}/receipts/${rowId}`))).toBeResolved();
+    // The drain builds the photo from the queued record, so the object holds
+    // the bytes that were queued, not merely something at the right key.
+    const uploaded = await getBytes(ref(storage, `users/${uid}/receipts/${rowId}`));
+    expect([...new Uint8Array(uploaded)]).toEqual([...new Uint8Array(await photo.arrayBuffer())]);
   }, 30000);
 
   // The upload precedes the document write, so a drain interrupted between

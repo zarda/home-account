@@ -1,5 +1,5 @@
 import { Injectable, inject, OnDestroy } from '@angular/core';
-import { OfflineQueueService, queueRowTxId } from './offline-queue.service';
+import { OfflineQueueService, queuedImageFile, queueRowTxId } from './offline-queue.service';
 import { AIStrategyService } from './ai-strategy.service';
 import {
   INVALID_AMOUNT_ERROR,
@@ -76,34 +76,28 @@ export class OfflineQueueProcessorService implements OnDestroy {
    */
   private async processQueuedImage(id: string): Promise<void> {
     try {
-      // Ownership is re-checked here, not just at dispatch. TransactionService
-      // resolves the account at call time, so a sync that fires while a
-      // different account is signed in would write this receipt into their
-      // ledger. Left 'pending' rather than 'failed': it is a perfectly good
-      // item waiting for its own account, and failing it would burn one of the
-      // three retries for something that is not its fault.
+      // The one read of the entry. Its owner, its photo and the seed its rows
+      // are named from all come off this record, so they cannot disagree. An
+      // entry the previous build queued has a record and no seed; no record
+      // at all is a missing image, never an unseeded entry.
       const queued = await this.queue.peekQueuedImage(id);
-      if (queued && queued.userId !== this.authService.userId()) {
+      if (!queued) {
+        this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue'));
+        return;
+      }
+      // Ownership is re-checked here, not just at dispatch, and before the
+      // photo is built or handed on. TransactionService resolves the account
+      // at call time, so a sync that fires while a different account is
+      // signed in would write this receipt into their ledger. Left 'pending'
+      // rather than 'failed': it is a perfectly good item waiting for its own
+      // account, and failing it would burn one of the three retries for
+      // something that is not its fault.
+      if (queued.userId !== this.authService.userId()) {
         await this.queue.updateImageStatus(id, 'pending');
         return;
       }
 
-      const file = await this.queue.getQueuedImageAsFile(id);
-      if (!file) {
-        this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue'));
-        return;
-      }
-      // The entry this account owns, read once for the seed its rows are
-      // named from. An entry the previous build queued has a record and no
-      // seed; no record at all means the entry went (deleted, or another
-      // account's) since the file was read. That is the missing-file case,
-      // not an unseeded entry: carrying on would name a seeded entry's rows
-      // by the legacy `${id}-${index}`, which shows when the photo was queued.
-      const record = await this.queue.getQueuedImage(id);
-      if (!record) {
-        this.warnIfDropped(id, await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue'));
-        return;
-      }
+      const file = queuedImageFile(queued);
 
       // Door 'queue': the attempt record is written, no event is sent — the
       // capture already sent queued_offline (docs/analytics.md).
@@ -121,7 +115,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
         }
 
         const { landed, refused, receiptsSkipped } = await this.createTransactions(
-          { id, rowSeed: record.rowSeed },
+          { id, rowSeed: queued.rowSeed },
           result.transactions,
           file,
         );
@@ -150,10 +144,13 @@ export class OfflineQueueProcessorService implements OnDestroy {
     }
   }
 
-  /** A `completed`/`failed` write the closed queue dropped still needs saying. */
+  /**
+   * A `completed`/`failed` write the queue dropped, because it is closed or
+   * the entry is gone, still needs saying.
+   */
   private warnIfDropped(id: string, recorded: boolean): void {
     if (!recorded) {
-      console.warn('[OfflineQueueProcessor] Outcome not recorded; the queue is closed', id);
+      console.warn('[OfflineQueueProcessor] Outcome not recorded; the queue is closed or the entry is gone', id);
     }
   }
 
