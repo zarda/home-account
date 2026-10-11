@@ -136,6 +136,10 @@ describe('RecurringService', () => {
   const occurrencePath = async (ruleId: string, when: Date): Promise<string> =>
     `users/user123/transactions/${await opaqueRowId('rec', ruleId, when.getTime())}`;
 
+  /** Where an older build posted the same occurrence: the rule and the time, in clear. */
+  const legacyOccurrencePath = (ruleId: string, when: Date): string =>
+    `users/user123/transactions/rec-${ruleId}-${when.getTime()}`;
+
   const installTransactionStub = (): void => {
     serverDocs = new Map();
     serverRows = new Map();
@@ -1103,6 +1107,11 @@ describe('RecurringService', () => {
       // occurrence was posted twice across the claims.
       expect(new Set(txSetPaths()).size).toBe(total);
 
+      // Pin: the cap ends each walk on its count and not on a stall, so no claim
+      // looked up an earlier row; every read was the rule's.
+      expect(txGetPaths.length).toBe(setsPerClaim.length);
+      expect(txGetPaths.every(path => path === 'users/user123/recurring/dormant')).toBeTrue();
+
       // The committed pointer ends past now, so the next catch-up no-ops.
       const finalRule = serverDocs.get('users/user123/recurring/dormant')!;
       expect(finalRule.nextOccurrence.toDate().getTime()).toBeGreaterThan(Date.now());
@@ -1386,6 +1395,198 @@ describe('RecurringService', () => {
 
       expect(txSet).toHaveBeenCalledTimes(1);
       expect(result).toEqual([]);
+      // The stuck date is looked up at both ids it may already stand under,
+      // after the rule is read and before anything is written.
+      expect(txGetPaths).toEqual([
+        'users/user123/recurring/stuck',
+        legacyOccurrencePath('stuck', due),
+        await occurrencePath('stuck', due)
+      ]);
+    });
+
+    describe('a rule whose walk cannot advance', () => {
+      const rulePath = (id: string): string => `users/user123/recurring/${id}`;
+      const lastClaim = () => mockFirestoreService.runTransaction.calls.mostRecent().returnValue;
+
+      const stuckRule = (id: string, due: Date, overrides: Partial<RecurringTransaction> = {}) =>
+        createRecurring({
+          id,
+          frequency: { type: 'daily', interval: 0 },
+          nextOccurrence: Timestamp.fromDate(due),
+          ...overrides
+        });
+
+      // A rule stalled on its second step: the walk posts 1 March, steps to 21
+      // March, and finds the step after that lands on 21 March again. Interval
+      // 1 and a now past 21 March are what end the walk on the break and not on
+      // the date it is posting until.
+      const march = new Date(2026, 2, 1, 9);
+      const twentyFirst = new Date(2026, 2, 21, 9);
+      const advancingRule = () =>
+        createRecurring({
+          id: 'adv',
+          frequency: { type: 'monthly', interval: 1, dayOfMonth: -10 },
+          startDate: Timestamp.fromDate(march),
+          nextOccurrence: Timestamp.fromDate(march)
+        });
+
+      const withAprilNow = async (run: () => Promise<void>): Promise<void> => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 3, 15));
+          await run();
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      };
+
+      it('skips an occurrence already posted at its earlier id', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        const result = await service.processRecurringTransactions([rule]);
+
+        // A skip behind the claim's swallowing catch looks the same as a claim
+        // that threw, so the claim's own answer and the reads it was served
+        // prove it ran and found the row.
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual([
+          rulePath('stuck'),
+          legacyOccurrencePath('stuck', due),
+          await occurrencePath('stuck', due)
+        ]);
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+      });
+
+      it('skips an occurrence already posted at the unsalted digest', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+        seedServerDoc(await occurrencePath('stuck', due), {});
+
+        const result = await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual([
+          rulePath('stuck'),
+          legacyOccurrencePath('stuck', due),
+          await occurrencePath('stuck', due)
+        ]);
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+      });
+
+      // Pin: nothing stands under either id, so the stuck date posts once, as
+      // it did before the lookup existed.
+      it('posts a stalled occurrence once when no earlier row exists', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        const posted = await occurrencePath('stuck', due);
+        await expectAsync(lastClaim()).toBeResolvedTo(
+          jasmine.objectContaining({ postedIds: [posted.split('/').pop()!] })
+        );
+        expect(txSetPaths()).toEqual([posted]);
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const [, data] = txUpdate.calls.mostRecent().args;
+        expect((data as { nextOccurrence: Timestamp }).nextOccurrence.toDate()).toEqual(due);
+      });
+
+      it('posts what advanced and skips only the stuck date that is already posted', async () => {
+        await withAprilNow(async () => {
+          const rule = advancingRule();
+          seedServerRule(rule);
+          seedServerDoc(legacyOccurrencePath('adv', twentyFirst), {});
+
+          await service.processRecurringTransactions([rule]);
+
+          await expectAsync(lastClaim()).toBeResolvedTo(
+            jasmine.objectContaining({
+              postedIds: [(await occurrencePath('adv', march)).split('/').pop()!]
+            })
+          );
+          expect(txGetPaths).toEqual([
+            rulePath('adv'),
+            legacyOccurrencePath('adv', twentyFirst),
+            await occurrencePath('adv', twentyFirst)
+          ]);
+          expect(txSetPaths()).toEqual([await occurrencePath('adv', march)]);
+          // The pointer still lands on the stuck date, which is where the next
+          // claim finds the walk stalled again.
+          const [, data] = txUpdate.calls.mostRecent().args;
+          expect((data as { nextOccurrence: Timestamp }).nextOccurrence.toDate())
+            .toEqual(twentyFirst);
+        });
+      });
+
+      it('posts both dates when nothing stands under the stuck date', async () => {
+        await withAprilNow(async () => {
+          const rule = advancingRule();
+          seedServerRule(rule);
+
+          await service.processRecurringTransactions([rule]);
+
+          expect(txGetPaths).toEqual([
+            rulePath('adv'),
+            legacyOccurrencePath('adv', twentyFirst),
+            await occurrencePath('adv', twentyFirst)
+          ]);
+          expect(txSetPaths()).toEqual([
+            await occurrencePath('adv', march),
+            await occurrencePath('adv', twentyFirst)
+          ]);
+        });
+      });
+
+      it('still deactivates an ended rule whose stuck date is already posted', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due, {
+          endDate: Timestamp.fromDate(new Date(Date.now() - 1 * DAY))
+        });
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual([
+          rulePath('stuck'),
+          legacyOccurrencePath('stuck', due),
+          await occurrencePath('stuck', due)
+        ]);
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const [ref, data] = txUpdate.calls.mostRecent().args;
+        expect((ref as FakeDocRef).path).toBe(rulePath('stuck'));
+        // Nothing posted, so the pointer and the processed stamp stay where
+        // they were; the pause is the one change the claim makes.
+        expect(Object.keys(data as object).sort()).toEqual(['isActive', 'updatedAt']);
+        expect((data as { isActive: boolean }).isActive).toBeFalse();
+      });
+
+      // Pin: a walk that ends on the date it posts until reads the rule and
+      // nothing else, so only a stalled walk pays for the lookups.
+      it('reads only the rule when the walk advances', async () => {
+        const rule = createRecurring({
+          id: 'daily',
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(new Date(Date.now() - 2 * DAY))
+        });
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txSet).toHaveBeenCalled();
+        expect(txGetPaths).toEqual([rulePath('daily')]);
+      });
     });
 
     // The interval never reaches the walk as a plain number here: it reaches

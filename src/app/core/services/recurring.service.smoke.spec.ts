@@ -66,7 +66,11 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   const BAD_ID = 'smoke-bad-state';
   /** The rule whose one occurrence is claimed twice. */
   const DOUBLE_ID = 'smoke-double-claim';
-  const IDS = [RULE_ID, BAD_ID, DOUBLE_ID];
+  /** The stalled rule whose stuck occurrence an older build already posted. */
+  const STUCK_ID = 'smoke-stalled-legacy';
+  /** The stalled rule whose stuck occurrence nothing has posted yet. */
+  const STUCK_FRESH_ID = 'smoke-stalled-fresh';
+  const IDS = [RULE_ID, BAD_ID, DOUBLE_ID, STUCK_ID, STUCK_FRESH_ID];
 
   beforeAll(async () => {
     app = initializeApp(
@@ -496,6 +500,128 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
 
       // The repaired pointer is in the future, so this run claims nothing.
       expect(await badRuleOccurrences()).toEqual([]);
+    }, 60000);
+  });
+
+  /**
+   * A rule whose walk cannot advance stands on its pointer: the step after the
+   * stuck date does not land past it, so every claim walks to the same date.
+   * Day -60 of a month is the shape that does it and that the rules accept
+   * (they pin the interval, not the day). The claim has to ask the server
+   * whether that date is already posted before it posts it again, and what it
+   * asks is not visible from the rows alone: a claim that threw looks the same
+   * as one that found the row. The spy on the claim supplies what each one
+   * resolved to.
+   */
+  describe('a rule whose walk cannot advance', () => {
+    /** Far enough in the past that it was stamped by nothing in this run. */
+    const SEEDED_AT = new Date(2026, 0, 2, 3, 4, 5);
+
+    interface Claimer {
+      claimDueOccurrences: (
+        recurringId: string,
+        userId: string,
+        now: Date
+      ) => Promise<{ postedIds: string[] } | null>;
+    }
+
+    /** Yesterday at nine: due in every time zone, and the date the walk stalls on. */
+    const stuckDue = (): Date => {
+      const due = new Date();
+      due.setHours(9, 0, 0, 0);
+      due.setDate(due.getDate() - 1);
+      return due;
+    };
+
+    const rulePath = (id: string): string => `users/${uid}/recurring/${id}`;
+
+    const seedStalledRule = (id: string, due: Date): Promise<void> =>
+      setDoc(doc(firestore, rulePath(id)), {
+        userId: uid,
+        name: 'Stalled',
+        type: 'expense',
+        amount: 5,
+        currency: 'USD',
+        categoryId: 'food_coffee',
+        description: 'Stalled',
+        frequency: { type: 'monthly', interval: 1, dayOfMonth: -60 },
+        startDate: Timestamp.fromDate(due),
+        nextOccurrence: Timestamp.fromDate(due),
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.fromDate(SEEDED_AT)
+      });
+
+    /** The rows of the rule `id`, by their ids. */
+    const rowsOf = async (id: string): Promise<string[]> => {
+      const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      return snapshot.docs.filter(d => d.data()['recurringId'] === id).map(d => d.id);
+    };
+
+    const updatedAtOf = async (id: string): Promise<Date> =>
+      ((await getDoc(doc(firestore, rulePath(id)))).data()!['updatedAt'] as Timestamp).toDate();
+
+    it('does not post the occurrence an older build already posted under its own id', async () => {
+      const claim = spyOn(service as unknown as Claimer, 'claimDueOccurrences').and.callThrough();
+      const due = stuckDue();
+      await seedStalledRule(STUCK_ID, due);
+      // A whole row, as the older build wrote it: the rules refuse a bare
+      // { recurringId }, and txCreateValid names what a row cannot lack.
+      const legacyId = `rec-${STUCK_ID}-${due.getTime()}`;
+      await setDoc(doc(firestore, `users/${uid}/transactions/${legacyId}`), {
+        userId: uid,
+        type: 'expense',
+        amount: 5,
+        currency: 'USD',
+        amountInBaseCurrency: 5,
+        exchangeRate: 1,
+        baseCurrency: 'USD',
+        categoryId: 'food_coffee',
+        description: 'Stalled',
+        date: Timestamp.fromDate(due),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        isRecurring: true,
+        recurringId: STUCK_ID
+      });
+
+      await service.catchUpRecurringTransactions();
+
+      // The claim ran, and found the row: a swallowed rejection would leave
+      // the same single row behind.
+      const claims = claim.calls.all().filter(call => call.args[0] === STUCK_ID);
+      expect(claims.length).toBe(1);
+      await expectAsync(claims[0].returnValue)
+        .toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+      expect(await rowsOf(STUCK_ID)).toEqual([legacyId]);
+      // Nothing posted and nothing paused, so the rule was not written at all.
+      expect(await updatedAtOf(STUCK_ID)).toEqual(SEEDED_AT);
+    }, 60000);
+
+    it('posts the stuck occurrence once and leaves the rule alone on the next catch-up', async () => {
+      const claim = spyOn(service as unknown as Claimer, 'claimDueOccurrences').and.callThrough();
+      const due = stuckDue();
+      await seedStalledRule(STUCK_FRESH_ID, due);
+      const postedId = await opaqueRowId('rec', STUCK_FRESH_ID, due.getTime());
+
+      await service.catchUpRecurringTransactions();
+
+      const first = claim.calls.all().filter(call => call.args[0] === STUCK_FRESH_ID);
+      expect(first.length).toBe(1);
+      await expectAsync(first[0].returnValue)
+        .toBeResolvedTo(jasmine.objectContaining({ postedIds: [postedId] }));
+      expect(await rowsOf(STUCK_FRESH_ID)).toEqual([postedId]);
+      const stamped = await updatedAtOf(STUCK_FRESH_ID);
+      expect(stamped.getTime()).toBeGreaterThan(SEEDED_AT.getTime());
+
+      await service.catchUpRecurringTransactions();
+
+      const second = claim.calls.all().filter(call => call.args[0] === STUCK_FRESH_ID);
+      expect(second.length).toBe(2);
+      await expectAsync(second[1].returnValue)
+        .toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+      expect(await rowsOf(STUCK_FRESH_ID)).toEqual([postedId]);
+      expect(await updatedAtOf(STUCK_FRESH_ID)).toEqual(stamped);
     }, 60000);
   });
 });

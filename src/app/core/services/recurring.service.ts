@@ -597,6 +597,10 @@ export class RecurringService {
       const postUntil = endDatePassed ? endDate : now;
 
       const occurrenceDates: Date[] = [];
+      // Set when the walk ends on the safety break below rather than on the
+      // date it is posting until or on the cap. Only that exit leaves the
+      // last date standing where a later claim will find the walk again.
+      let stalled = false;
 
       // Catch up every occurrence that came due since the last run, bounded
       // by the per-claim cap so the transaction stays under Firestore's
@@ -609,16 +613,43 @@ export class RecurringService {
         // negated rather than `<=` so an Invalid Date stops the walk too —
         // every comparison against NaN is false, so the plain form let it
         // through and it became the stored pointer.
-        if (!(next.getTime() > occurrenceDate.getTime())) break;
+        if (!(next.getTime() > occurrenceDate.getTime())) {
+          stalled = true;
+          break;
+        }
         occurrenceDate = next;
+      }
+
+      // The pointer stays on a stalled date, so every later claim walks to it
+      // again. Whether that date is already posted is a question for the
+      // server: a row under an id the occurrence has had before, such as an
+      // older build's clear `rec-` one, would otherwise be joined by a second
+      // posting of the same occurrence under the id this claim writes. The
+      // count before the lookup is what `capped` below measures, so dropping
+      // the date cannot change whether a full batch ended the walk.
+      const walkedCount = occurrenceDates.length;
+      if (stalled) {
+        const stuckMs = occurrenceDates[walkedCount - 1].getTime();
+        const earlierIds = [...new Set([
+          `rec-${rule.id}-${stuckMs}`,
+          await opaqueRowId('rec', rule.id, stuckMs)
+        ])];
+        // Every read is issued here, before the first write, as a Firestore
+        // transaction requires.
+        const earlier = await Promise.all(
+          earlierIds.map(id => tx.get(
+            this.firestoreService.getDocRef(`users/${userId}/transactions/${id}`)
+          ))
+        );
+        if (earlier.some(row => row.exists())) occurrenceDates.pop();
       }
 
       // A digest of the rule and the occurrence time: deterministic, so a
       // repeated run or a retried callback writes the same documents, and
       // opaque, because a shared row's household copy carries this id and it
-      // must name neither the rule nor the day the row fell due (#466). The
-      // claim's only read is the rule above, so every write still follows
-      // every read, as a Firestore transaction requires.
+      // must name neither the rule nor the day the row fell due (#466). Every
+      // read above precedes every write below, as a Firestore transaction
+      // requires.
       const postedIds = await Promise.all(
         occurrenceDates.map(date => opaqueRowId('rec', rule.id, date.getTime()))
       );
@@ -633,7 +664,7 @@ export class RecurringService {
       // transaction so posting and claim commit atomically. After a capped
       // batch the pointer lands on the first unposted occurrence, so the
       // next claim resumes exactly where this one stopped.
-      const capped = postedIds.length >= MAX_OCCURRENCES_PER_CLAIM;
+      const capped = walkedCount >= MAX_OCCURRENCES_PER_CLAIM;
       const update: Partial<RecurringTransaction> = {
         updatedAt: this.firestoreService.getTimestamp()
       };
@@ -647,7 +678,12 @@ export class RecurringService {
         // date, because catch-up only claims active rules.
         update.isActive = false;
       }
-      tx.update(ruleRef, update);
+      // A claim that posted nothing and pauses nothing changes nothing worth
+      // a write: stamping updatedAt alone would make a stalled, already-posted
+      // rule look edited on every catch-up.
+      if (Object.keys(update).some(key => key !== 'updatedAt')) {
+        tx.update(ruleRef, update);
+      }
 
       return { postedIds, categoryId: rule.categoryId, type: rule.type };
     });
