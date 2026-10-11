@@ -7,7 +7,7 @@ import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { addDays, dateAtClampedDay, endOfDay, startOfDay, toDate } from '../utils/transaction-date.utils';
-import { opaqueRowId } from '../utils/opaque-id.utils';
+import { isSeed, newSeed, opaqueRowId } from '../utils/opaque-id.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -186,6 +186,13 @@ export class RecurringService {
    * `nextOccurrence` is still recomputed from today either way, so resuming a
    * restored pause behaves like a fresh resume rather than restoring the
    * stored pointer — the same thing `resumeRecurring` does.
+   * `options.salt` is the restore's channel for the salt a backed-up rule
+   * held. It keys the ids the rule's postings take, so the rule names them as
+   * it did before. The pointer above still moves past now, so this matters
+   * only where it lands on a date already posted: a stalled rule's stuck
+   * date, which the claim's lookup then finds under this salt. A value that
+   * is not 32 lower-case hex characters is not kept, and a rule handed none
+   * draws a fresh one.
    */
   async createRecurring(
     data: CreateRecurringDTO,
@@ -231,6 +238,7 @@ export class RecurringService {
           : {}),
         nextOccurrence: this.firestoreService.dateToTimestamp(nextOccurrence),
         isActive: options?.isActive ?? true,
+        salt: isSeed(options?.salt) ? options.salt : newSeed(),
         createdAt: this.firestoreService.getTimestamp(),
         updatedAt: this.firestoreService.getTimestamp()
       };

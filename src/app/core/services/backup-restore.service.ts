@@ -403,7 +403,20 @@ export class BackupRestoreService {
           // A paused rule must come back paused: catch-up runs unprompted on
           // every dashboard load, so restoring one as active starts posting
           // money the user stopped.
-        }, { id: rule.id, isActive: rule.isActive ?? true });
+        }, {
+          id: rule.id,
+          isActive: rule.isActive ?? true,
+          // The salt keys the ids the rule's postings take, so keeping the
+          // file's means the rule names its postings as it did before. The
+          // pointer is recomputed past now, so an advancing rule re-posts
+          // nothing either way. A rule whose walk cannot advance lands back
+          // on its stuck date, and the claim's lookup finds that date under
+          // this salt instead of posting it again. Spread in only when the
+          // file holds one: a rule saved before the salt existed is handed
+          // none and draws a fresh one, and createRecurring checks the shape
+          // of one it is handed.
+          ...(rule.salt ? { salt: rule.salt } : {})
+        });
         summary.recurring++;
       } catch (error) {
         skip('recurring', rule.id, error);

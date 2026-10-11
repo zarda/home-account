@@ -16,7 +16,7 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
-import { opaqueRowId } from '../utils/opaque-id.utils';
+import { isSeed, opaqueRowId } from '../utils/opaque-id.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -161,6 +161,7 @@ describe('RecurringService', () => {
       'subscribeToCollection',
       'subscribeToDocument',
       'addDocument',
+      'setDocument',
       'updateDocument',
       'deleteDocument',
       'getDocument',
@@ -423,6 +424,67 @@ describe('RecurringService', () => {
     it('should reset isLoading after completion', async () => {
       await service.createRecurring(dto);
       expect(service.isLoading()).toBeFalse();
+    });
+
+    // #486: the salt keys the ids a rule's postings take, so every new rule
+    // holds one from its first write, on whichever path writes it.
+    describe('the salt', () => {
+      const HANDED = '0123456789abcdef0123456789abcdef';
+
+      it('gives a rule written by addDocument a seed', async () => {
+        await service.createRecurring(dto);
+
+        const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+        expect(isSeed((data as Record<string, unknown>)['salt'])).toBeTrue();
+      });
+
+      it('gives a rule written at a chosen id a seed', async () => {
+        await service.createRecurring(dto, { id: 'chosen' });
+
+        const [path, data] = mockFirestoreService.setDocument.calls.mostRecent().args;
+        expect(path).toBe('users/user123/recurring/chosen');
+        expect(isSeed((data as Record<string, unknown>)['salt'])).toBeTrue();
+      });
+
+      it('draws a different seed for each rule', async () => {
+        await service.createRecurring(dto);
+        await service.createRecurring(dto);
+
+        const salts = mockFirestoreService.addDocument.calls.allArgs()
+          .map(args => (args[1] as Record<string, unknown>)['salt']);
+        expect(salts.length).toBe(2);
+        expect(salts[0]).not.toBe(salts[1]);
+      });
+
+      it('keeps a well-formed salt it is handed', async () => {
+        await service.createRecurring(dto, { id: 'chosen', salt: HANDED });
+
+        const [, data] = mockFirestoreService.setDocument.calls.mostRecent().args;
+        expect((data as Record<string, unknown>)['salt']).toBe(HANDED);
+      });
+
+      it('keeps a well-formed salt it is handed on the addDocument path', async () => {
+        await service.createRecurring(dto, { salt: HANDED });
+
+        const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+        expect((data as Record<string, unknown>)['salt']).toBe(HANDED);
+      });
+
+      for (const [label, bad] of [
+        ['an upper-case one', HANDED.toUpperCase()],
+        ['a short one', 'abc123'],
+        ['an empty one', ''],
+        ['one with a non-hex character', 'g'.repeat(32)]
+      ] as const) {
+        it(`replaces ${label} with a fresh seed`, async () => {
+          await service.createRecurring(dto, { id: 'chosen', salt: bad });
+
+          const [, data] = mockFirestoreService.setDocument.calls.mostRecent().args;
+          const salt = (data as Record<string, unknown>)['salt'];
+          expect(isSeed(salt)).toBeTrue();
+          expect(salt).not.toBe(bad);
+        });
+      }
     });
   });
 
