@@ -27,6 +27,7 @@ you need when creating a rule, reading what it posted, or changing the engine.
 | `nextOccurrence` | the pointer: the next date not yet posted |
 | `lastProcessed` | when the engine last posted for this rule |
 | `isActive` | false while paused |
+| `salt` | 32 lower-case hex characters that key the ids of the rule's postings, read only by the owner ([below](#the-catch-up-engine)); absent on a rule written before the field until the rule's first posting after that change |
 
 `startDate` is not just the first date. For a monthly or yearly rule that does not
 name a day, it is where every later occurrence takes its day from — see
@@ -112,19 +113,40 @@ document is re-read fresh inside that transaction, every due occurrence is
 written, and the pointer is advanced — all in one atomic commit. A second device
 running its own catch-up at the same time reads the advanced pointer and no-ops.
 
-**Occurrence ids are deterministic:** a digest of the rule's id and the
-occurrence time in ms, `opaqueRowId('rec', ruleId, occurrenceMs)`, which is 32
-lower-case hex characters. The same occurrence always lands on the same
-document, so nothing duplicates a posting even if two runs overlap, and a claim
-Firestore retries computes the same ids again. The id is a digest rather than
-the two values spelled out because a shared posting's household copy carries
-it, and it must name neither the rule nor the day
+**Occurrence ids are deterministic:** a digest of the rule's salt, the rule's
+id and the occurrence time in ms. `recurringPostingId(rule, occurrenceMs)` is
+the one place that names a posting, and it returns
+`opaqueRowId('rec', salt, ruleId, occurrenceMs)`, 32 lower-case hex
+characters. The same occurrence always lands on the same document, so nothing
+duplicates a posting even if two runs overlap, and once a rule holds a salt, a
+claim Firestore retries computes the same ids again. A retried claim on a rule
+that has no salt yet draws a new one. That is safe, because the aborted attempt
+committed nothing and the attempt that commits stores its salt in the same
+update as the rows it names. Ids are therefore computed only inside the
+transaction callback, from that attempt's own salt. The id is a digest rather than the values spelled
+out because a shared posting's household copy carries it, and it must name
+neither the rule nor the day
 ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
-It is unkeyed, so a household that has already seen a rule's id can still
-test a copy against it ([household.md](household.md#known-gaps)).
-Postings written before that change keep their
-`rec-<ruleId>-<occurrence time in ms>` ids, so one rule can hold both shapes;
-nothing reads either.
+The salt is what keeps a household from rebuilding it: a copy holds the
+occurrence's date to the millisecond, and a member may have seen the rule's
+id, but only the owner reads the rule
+([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
+
+**Where the salt comes from.** It is 128 random bits. `createRecurring` draws
+one for every new rule, or keeps the one a restore hands it when that one is
+well formed, and the rules refuse a write that sets anything but 32 lower-case
+hex characters. A rule written before the field has none until the claim that
+next posts for it. That claim draws one, names its postings with it, and
+stores it in the same update that moves the pointer; a claim that posts
+nothing stores nothing. A stored salt that is not well formed counts as none
+and is replaced the same way. An edit never touches the salt.
+
+Postings keep the id they were written under, so one rule can hold three
+shapes: `rec-<ruleId>-<occurrence time in ms>` from before ADR 0173, the
+unsalted digest `opaqueRowId('rec', ruleId, occurrenceMs)` from between the
+two changes, and the salted digest since. The unsalted ones can still be
+tested against a rule's id ([household.md](household.md#known-gaps)). Only the
+lookup below reads any of them.
 
 **A claim posts at most 400 occurrences.** A Firestore transaction is capped at
 500 writes and one occurrence is one write, plus the rule update — 400 leaves
@@ -133,6 +155,18 @@ each claim leaves the pointer on the first occurrence it did not post, so the
 next one resumes exactly there. Without the cap, a daily rule dormant for more
 than about 500 days built a transaction that could never commit, and failed the
 same way forever.
+
+**A rule that cannot advance posts its stuck occurrence once.** The walk stops
+when a step does not move past the date it holds, and that leaves the pointer
+on the date, so every later claim walks back to it. Before posting it, the
+claim reads that occurrence under every id it may already have: the `rec-` id,
+the unsalted digest, and the salted id when the rule holds a well-formed salt.
+These reads come after the rule's and before any write, as a Firestore
+transaction requires. If one exists the date is not posted, and a claim left
+with nothing to change, neither the pointer nor the active flag, writes
+nothing at all, not even `updatedAt`. Such a rule costs up to three reads
+beyond its own on every catch-up, and no writes once its occurrence is
+posted. A rule that advances reads only itself.
 
 **Offline, the run defers rather than pretending.** The work-list read is
 answered by the server or not at all, so with no network the whole run rejects —
@@ -486,8 +520,11 @@ the pause had been undone.
 What does not survive is the pointer. `nextOccurrence` is recomputed from the
 rule's start date forward past today, exactly as it is for a rule created by
 hand, so nothing accrues for the stretch the backup sat on disk and resuming a
-restored pause later behaves like a fresh resume. [docs/backup-restore.md](backup-restore.md)
-covers the rest of what a restore carries verbatim.
+restored pause later behaves like a fresh resume. The salt does survive: a
+rule comes back with the one its file holds, so it names its postings as it
+did before, and a rule from a file saved before salts existed draws a fresh
+one. [docs/backup-restore.md](backup-restore.md) covers the rest of what a
+restore carries verbatim.
 
 ## Known gaps
 
@@ -500,19 +537,19 @@ after it: the data it will not guess at, and what it still reports badly.
   are: nothing repairs either, and the second cannot even be listed. Editing
   or deleting the rule is the only way out, and the absent-pointer case needs
   a backup to get that far ([above](#a-rule-the-engine-cannot-read)).
-- **A rule already stored with an interval below 1 is made harmless, not
-  repaired.** Catch-up still posts the single occurrence its pointer names,
-  then breaks before advancing and writes the very same pointer back. The
-  occurrence id is deterministic, so the ledger keeps exactly one row — but
-  every run rewrites that row with a fresh `createdAt` and stamps the rule
-  with a fresh `updatedAt` and `lastProcessed` beside it, and that goes on
-  until the interval is edited or the rule deleted. Across the change of id
-  shape it is two rows: a rule that posted the occurrence at its `rec-` id
-  posts it once more at the digest, and the old row stays beside the new one,
-  which is the only one rewritten from then on
-  ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
-  Nothing picks a corrected interval on the user's behalf. What changed here
-  is only the resume half, which now refuses such a rule by name instead of
+- **A rule already stored with a frequency that cannot advance is made
+  harmless, not repaired.** An interval below 1 is one such frequency. A day
+  of month or month of year out of range is another, and neither the service
+  nor the rules check those two, so a restore or a direct write can still
+  store one. Catch-up posts the single occurrence the pointer names once;
+  every later run finds it under one of its ids and writes nothing, neither
+  the row nor the rule ([above](#the-catch-up-engine),
+  [ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
+  A second row such a rule gained under
+  [ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md),
+  at the digest beside its `rec-` row, is an ordinary row and stays. Nothing
+  picks a corrected frequency on the user's behalf. What ADR 0141 changed is
+  only the resume half, which now refuses such a rule by name instead of
   reporting success.
 - **The interval refusal answers for more than the interval.** Resume raises
   `INVALID_RECURRING_FREQUENCY` for a stored `frequency.type` outside the four
@@ -540,3 +577,10 @@ after it: the data it will not guess at, and what it still reports badly.
 - **A drained backlog converts at today's rate.** Occurrences posted late are
   converted with the exchange rates current when the catch-up runs, not the rates
   of the dates they carry.
+- **A stalled rule restored from a file without its salt posts its stuck
+  occurrence once more.** The restore draws a fresh salt for a rule its file
+  holds none for, and a stalled rule's recomputed pointer lands back on its
+  stuck date. If the rule had posted that occurrence under a salt the file
+  predates, the lookup asks the new salt's id, finds nothing, and posts it
+  again. Later runs find that row
+  ([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).

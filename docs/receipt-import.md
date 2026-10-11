@@ -1041,8 +1041,12 @@ carries it
 ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
 An image the earlier app queued has no seed, and its rows keep that app's
 `{queue id}-{index}`, so a drain it left half done resumes at the documents it
-wrote. An entry whose record is gone by the time the drain reads its seed fails
-like one whose image is gone. One helper names those rows: `queueRowTxId`, in
+wrote. The drain reads each entry once and takes the owner, the photo and the
+seed off that one record, so the three cannot disagree. An entry whose record
+is gone fails as *Image not found in queue*, and one another account owns goes
+back to pending without spending a retry
+([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
+One helper names those rows: `queueRowTxId`, in
 `offline-queue.service.ts` beside the code that mints the queue id. The
 drain's photo plan, its existence check and its write all take the id from
 it, so none of them can aim at a different document from the others

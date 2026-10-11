@@ -18,7 +18,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0011](0011-the-csv-file-is-a-contract.md) | The CSV file is a contract, and every cell in it is untrusted | Accepted; amended by 0059; period-and-recurrence gap closed by 0059, Category gap by 0150 | 2026-08-03 |
 | [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted; row anatomy revised by 0017 | 2026-08-03 |
 | [0013](0013-the-printed-total-is-the-amount-not-the-item-sum.md) | The printed total is the amount, not the sum of the items | Accepted; parser date-grade gap closed by 0074; on-device grade gap narrowed by 0147 | 2026-08-05 |
-| [0014](0014-recurrence-guards-and-anchors.md) | Recurrence validates at the edges, breaks in the loops, and anchors on the start date | Accepted; five gaps closed by 0141; id shape superseded by 0173 | 2026-08-05 |
+| [0014](0014-recurrence-guards-and-anchors.md) | Recurrence validates at the edges, breaks in the loops, and anchors on the start date | Accepted; five gaps closed by 0141; id shape superseded by 0173; rewrite gap closed by 0174 | 2026-08-05 |
 | [0015](0015-reclaimed-receipts-replay-idempotently.md) | A reclaimed receipt replays onto the ids it already used | Accepted; closed-queue status gap narrowed by 0142; id-coupling gap closed by 0171; id shape superseded by 0173 | 2026-08-05 |
 | [0016](0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md) | Aggregate answers persist as snapshots that refresh locally | Accepted; amended by 0030, which closes three of its gaps | 2026-08-06 |
 | [0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md) | The row stacks its lines, and actions ride behind a swipe | Accepted | 2026-08-07 |
@@ -177,7 +177,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0170](0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md) | The animations runtime, the unregistered worker and nine dead items come out | Accepted; applies 0048; amends 0112; closes gaps of 0009, 0036, 0045, 0051, 0059, 0105, 0111, 0112, 0113, 0115, 0116 and 0124; corrects a gap of 0023 | 2026-10-10 |
 | [0171](0171-second-copies-fold-into-one-copy-of-each-helper.md) | Second copies fold into one copy of each helper | Accepted; closes gaps of 0015, 0025, 0032, 0058, 0061, 0065 and 0067 | 2026-10-10 |
 | [0172](0172-a-closure-is-named-on-both-rows-and-the-adr-index-is-checked-against-the-records.md) | A closure is named on both rows, and the ADR index is checked against the records | Accepted; applies 0145 | 2026-10-10 |
-| [0173](0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md) | A new row's id is an opaque digest, and names neither its rule nor its scan | Accepted; amends 0157 and narrows a gap of 0157; supersedes the id shapes of 0006, 0014, 0015 and 0142 | 2026-10-10 |
+| [0173](0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md) | A new row's id is an opaque digest, and names neither its rule nor its scan | Accepted; amends 0157 and narrows a gap of 0157; supersedes the id shapes of 0006, 0014, 0015 and 0142; amended by 0174; cannot-advance gap closed by 0174; linkability gap narrowed by 0174 | 2026-10-10 |
+| [0174](0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md) | A posting's digest carries a salt only its rule holds, and the drain reads once | Accepted; amends 0173; closes a gap of 0014 and a gap of 0173; narrows a gap of 0173 | 2026-10-11 |
 
 ## What belongs here
 

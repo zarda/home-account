@@ -1,10 +1,42 @@
 # 173. A new row's id is an opaque digest, and names neither its rule nor its scan
 
-**Status:** Accepted, implemented · **Date:** 2026-10-10 · **Issues:** #466
+**Status:** Accepted, implemented; amended by
+[0174](0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)
+· **Date:** 2026-10-10 · **Issues:** #466
 
 Reference documentation lives in [../household.md](../household.md),
 [../recurring.md](../recurring.md) and
 [../receipt-import.md](../receipt-import.md).
+
+**Amended by
+[0174](0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md).**
+The digest, its array preimage, both known answers and the seeded id of a
+queued scan's rows stand. What changes is the recurring posting. Its id is
+now `opaqueRowId('rec', salt, ruleId, occurrenceMs)`, where the salt is 32
+lower-case hex characters kept on the rule, which only its owner reads. A
+rule written before 0174 draws one with its next posting. So the id under
+*A recurring posting*, the digest of the rule and the occurrence alone, now
+names only the postings written between 0173 and 0174 and those a copy of
+the earlier app still running writes. Its known answer stays pinned,
+because 0174's claim still computes that digest to look for them. Four
+statements below no longer hold as written:
+
+- **Under *A queued scan*,** that the drain reads the image with
+  `getQueuedImageAsFile` and then the record with `getQueuedImage`. It reads
+  the entry once, with `peekQueuedImage`, and takes the owner, the photo and
+  the seed off that one record. Both methods are gone, and so is the failure
+  for a record gone between two reads, under *Things that only became
+  apparent while building*.
+- **Under *What was rejected*,** that a secret salt per rule is not taken
+  here. 0174 takes it.
+- **The entry *A rule whose walk cannot advance gains a second row*.**
+  Before the claim posts the occurrence its walk is stuck on, it now reads that
+  occurrence at `rec-{ruleId}-{ms}`, at the unsalted digest and at the
+  rule's salted id, and posts nothing when one exists. A claim that then has
+  nothing to change writes nothing.
+- **The entry *A rule's id, once seen, links its later postings*.** It now
+  holds only for the unsalted postings named above. A member who knows a
+  rule's id cannot rebuild a salted posting's id without the rule's salt.
 
 Amends
 [0157](0157-a-transaction-is-private-until-its-owner-shares-it-and-a-household-sees-a-faithful-copy.md).
