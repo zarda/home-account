@@ -158,11 +158,53 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.407 MB | 2.7 MB |
+| Initial bundle | 2.408 MB | 2.7 MB |
 
-Against 2,406,611 bytes (JavaScript 2,375,720, stylesheet 30,891, in 58
+Against 2,407,839 bytes (JavaScript 2,376,948, stylesheet 30,891, in 59
 initial files), measured by `npm run build:analyze` from a clean production
-build on 2026-10-10. The warning came down from 2.472 MB to 2.408 MB when the
+build on 2026-10-11.
+
+The warning went back up, to 2.408 MB, when the work of #486, #487 and #488
+put the initial bundle 647 bytes over the 2.407 MB it had been lowered to; it
+moved to the whole kilobyte above the figure and no more. That work grew the
+initial JavaScript by 1,036 bytes (from 2,375,720) and left the stylesheet
+alone. All of it lands in initial chunks, but not all of it is code the first
+screen runs. `recurring.service.ts` took 502 bytes: the per-rule salt, with the draw that gives a rule one and the
+shape check on one a restore hands back, and the lookup a stalled rule makes,
+before it posts, for the occurrence its walk is stuck on. `opaque-id.utils.ts`
+took 139 (331 to 470): the 128-bit seed generator and its check, which
+`recurring.service.ts` and the offline queue now both import instead of the
+queue drawing its own. `ai-import.service.ts` shares its initial chunk with
+`receipt-attempt.service.ts`, and the chunk took 428: a whole-import failure
+now keeps the code it was refused with, and the attempt classifier reads
+whether a provider is set (a key check and the two services it injects) before
+it files a drain's cloud failure as a network one. `import-review.utils.ts`
+took 236 (to 4,681): the reader of a failure's family and its two key tables.
+Only the lazy import wizard and Import History call them; they are initial only
+because the module's other exports have eager importers (`ai-import.service.ts`,
+`duplicate-detection.service.ts`, `receipt-attachment.utils.ts`, the transaction
+form). The chunk of `rag-context.service.ts` took 124: the cent-rounded, id-tied
+category changes and the id-tied anomaly order of `spending-insight.utils.ts`.
+One chunk is new. `errorCode` gained an eager importer, `ai-import.service.ts`,
+beside the lazy ones it already had, so `firebase-error.utils.ts` is cut out of
+the chunk that held it into an initial chunk of its own, 121 bytes, which also
+carries `isRefused`, read only by the lazy household and ledger-share code, the
+cut described below for `import-review.utils.ts` and `ai-error.utils.ts`. Two
+removals gave some back. The queue drain reads each entry once now:
+`offline-queue.service.ts` lost `getQueuedImage`, `getQueuedImageAsFile` and its
+private seed draw for the one `queuedImageFile`, which took 315 bytes off the
+chunk it shares with the `idb` wrapper, and the processor in the entry chunk
+lost two of its three reads and a branch, 199 bytes net. The final build adds
+192 bytes to those figures: 118 in the entry chunk, where the commit "fix(ui): the
+search history and the search dialog load the category catalog" put the
+catalog's subscription (the AI search dialog subscribes it, and the header
+reaches the dialog), 72 more there, where the queue drain now waits for the
+account's key read before it opens its attempt, so a drain with no key set is
+filed as no provider after a cold offline start too, and one byte each in two
+lazy-imported initial chunks, which the bump to 26.10.173 renamed through the
+lengths of their content hashes, as the bump to 26.10.172 did (below).
+
+The warning had come down from 2.472 MB to 2.408 MB when the
 deprecated animations runtime went out: `provideAnimations()`, the
 `@angular/platform-browser/animations` wrapper it pulled in and the
 `@angular/animations` package behind it were 64,539 bytes of the initial
@@ -202,9 +244,9 @@ effect on the account, a `catch` for the recount's read and the release of
 its handle on destroy: +192 bytes (2,406,419 to 2,406,611), 100 of them the
 effect and 92 the `catch` and the release.
 
-The warning stays at 2.407 MB. The final build leaves 389 bytes of headroom
-under it, which is now less than the 501 bytes the main branch had under the
-2.472 MB warning at `8a6e2c9a` (2,471,499 bytes). `about.component.ts` and
+The warning stands at 2.408 MB. The final build leaves 161 bytes of headroom
+under it (2,408,000 less 2,407,839), which is now less than the 501 bytes the
+main branch had under the 2.472 MB warning at `8a6e2c9a` (2,471,499 bytes). `about.component.ts` and
 `feedback.service.ts` import `package.json` whole, but a version string of the
 same length adds nothing of its own. The bump from 26.10.171 to 26.10.172 moved
 the total from 2,406,421 to 2,406,419 bytes all the same, and all of it in the

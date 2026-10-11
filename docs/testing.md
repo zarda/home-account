@@ -455,10 +455,10 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | After this wave |
+| | Base (`7b693953`) | `26.10.173` |
 |---|---|---|
-| ERROR | 40 | 43 |
-| WARN | 38 | 40 |
+| ERROR | 40 | 53 |
+| WARN | 38 | 60 |
 | LOG | 26 | **0** |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
@@ -467,7 +467,10 @@ double. **Halve the raw count**, or strip ANSI and dedupe. Any comparison must
 use the same method or it reads as a doubling that did not happen.
 
 LOG fell to zero because `no-console` now bans `console.log` outright; the five
-new ERROR/WARN lines are expected-failure paths in new specs. **Rendering
+lines over the base when it was first recorded (43 ERROR and 40 WARN) are
+expected-failure paths in new specs, and so are the ten ERROR and twenty WARN
+lines above that earlier figure, which came from specs added since; the wave
+that recorded `26.10.173` added none. **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.

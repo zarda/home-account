@@ -30,10 +30,13 @@ migrates:
 
 The copies of one rule's postings still share their description, amount
 and category, so a member can still group them by their content. The id
-alone no longer confirms it, but the digest is unkeyed: once one of the rows
-above has shown a household a rule's id, a member can recompute the digest
-over a later copy's date and confirm that rule's postings. 0173 lists that
-as a Known gap of its own.
+alone no longer confirms it, except for a posting written without a salt,
+under 0173's digest: once one of the rows above has shown a household a
+rule's id, a member can recompute that digest over such a copy's date and
+confirm that rule's postings.
+[0174](0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)
+keys every later posting by a salt only its rule holds; 0173 and 0174 list
+what stays linkable.
 
 Supersedes [0152](0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md)'s
 peer reads (a member reading the other members' transactions, categories,

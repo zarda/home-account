@@ -9,6 +9,7 @@ import { CATEGORY_FALLBACK_COLOR, Transaction, Category } from '../../../models'
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { groupByCategoryAndType } from '../../../core/utils/transaction-aggregation.utils';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -107,36 +108,28 @@ export class CategoryBreakdownComponent {
     return this.filteredTransactions().reduce((sum, t) => sum + this.toBaseCurrency(t), 0);
   });
 
-  // Category breakdown (using dynamic conversion)
+  // Category breakdown, through the shared fold: each total rounded to cents,
+  // largest first, a tie by category id. Rows arrive date-descending, so a
+  // local fold listed a tie by whichever row was newest (#488). The input
+  // holds the selected side only, so every row comes back on that side.
   categoryBreakdown = computed<CategoryBreakdown[]>(() => {
-    const transactions = this.filteredTransactions();
     const categories = this._categories();
     const total = this.total();
 
-    const breakdown = new Map<string, { total: number; count: number }>();
-
-    for (const t of transactions) {
-      const existing = breakdown.get(t.categoryId) || { total: 0, count: 0 };
-      existing.total += this.toBaseCurrency(t);
-      existing.count += 1;
-      breakdown.set(t.categoryId, existing);
-    }
-
-    return Array.from(breakdown.entries())
-      .map(([categoryId, data]) => {
-        const category = categories.find(c => c.id === categoryId);
+    return groupByCategoryAndType(this.filteredTransactions(), t => this.toBaseCurrency(t))
+      .map(row => {
+        const category = categories.find(c => c.id === row.categoryId);
         return {
-          categoryId,
+          categoryId: row.categoryId,
           name: category?.name || 'Unknown',
           icon: category?.icon || 'category',
           color: category?.color || CATEGORY_FALLBACK_COLOR,
-          total: data.total,
-          percentage: total > 0 ? (data.total / total) * 100 : 0,
-          transactionCount: data.count,
-          averageAmount: data.count > 0 ? data.total / data.count : 0,
+          total: row.total,
+          percentage: total > 0 ? (row.total / total) * 100 : 0,
+          transactionCount: row.count,
+          averageAmount: row.total / row.count,
         };
-      })
-      .sort((a, b) => b.total - a.total);
+      });
   });
 
   // Get transactions for a specific category

@@ -1086,6 +1086,89 @@ describe('firestore.rules (emulator smoke test)', () => {
         'repointed categoryId'
       );
     });
+
+    // The salt keys the ids a rule's postings are written under, so it is held
+    // to the one shape the client draws: 32 lower-case hex characters. The key
+    // is optional (a rule written before the field has none until its next
+    // posting) and removable.
+    describe('salt', () => {
+      const SEED = '0123456789abcdef0123456789abcdef';
+      const NOT_SEEDS: readonly (readonly [string, unknown])[] = [
+        ['in upper case', 'ABCDEF0123456789ABCDEF0123456789'],
+        ['of 31 characters', SEED.slice(1)],
+        ['of 33 characters', `${SEED}0`],
+        ['with a non-hex character', `${SEED.slice(1)}g`],
+        ['that is a number', 12345]
+      ];
+
+      for (const [what, salt] of NOT_SEEDS) {
+        it(`rejects a create with a salt ${what}`, async () => {
+          await expectDenied(
+            setDoc(doc(firestore, path('recurring')), validRecurring({ salt })),
+            `a salt ${what} on create`
+          );
+        });
+
+        it(`rejects an update setting the salt ${what}`, async () => {
+          const p = path('recurring');
+          await setDoc(doc(firestore, p), validRecurring());
+          await expectDenied(
+            updateDoc(doc(firestore, p), { salt }),
+            `a salt ${what} on update`
+          );
+        });
+      }
+
+      // Pin: today's rules accept any key, so a well-formed salt passes before
+      // and after the clauses land.
+      it('accepts a create with a well-formed salt', async () => {
+        await expectAllowed(
+          setDoc(doc(firestore, path('recurring')), validRecurring({ salt: SEED })),
+          'a create with a salt'
+        );
+      });
+
+      // Pin: a rule written before the field carries none.
+      it('accepts a create with no salt', async () => {
+        const rule = validRecurring();
+        expect('salt' in rule).toBeFalse();
+        await expectAllowed(setDoc(doc(firestore, path('recurring')), rule), 'a create with no salt');
+      });
+
+      // Pin: the first posting of an older rule adds the salt in the claim's
+      // own update.
+      it('accepts the occurrence claim update adding a well-formed salt', async () => {
+        const p = path('recurring');
+        await setDoc(doc(firestore, p), validRecurring());
+        await expectAllowed(
+          updateDoc(doc(firestore, p), {
+            updatedAt: Timestamp.now(),
+            nextOccurrence: Timestamp.now(),
+            lastProcessed: Timestamp.now(),
+            salt: SEED
+          }),
+          'the claim adding a salt'
+        );
+      });
+
+      // Pin: a deleted key is no key, so removal needs no clause of its own.
+      it('accepts an update removing the salt', async () => {
+        const p = path('recurring');
+        await setDoc(doc(firestore, p), validRecurring({ salt: SEED }));
+        await expectAllowed(updateDoc(doc(firestore, p), { salt: deleteField() }), 'the salt removed');
+      });
+
+      // Pin: the clause sits behind touched(), so a rule that already holds a
+      // malformed salt stays editable for every other field. `frequency` is
+      // written whole with the client and the salt is broken afterwards,
+      // because `setDocumentAsOwner` cannot express the `frequency` map.
+      it('accepts a rename on a rule already holding a malformed salt', async () => {
+        const p = path('recurring');
+        await setDoc(doc(firestore, p), validRecurring());
+        await patchFieldsAsOwner(p, { salt: stringField('NOT-A-SEED') });
+        await expectAllowed(updateDoc(doc(firestore, p), { name: 'Renamed' }), 'a rename beside a malformed salt');
+      });
+    });
   });
 
   describe('savedSearches', () => {

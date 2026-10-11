@@ -3,7 +3,7 @@ import { WritableSignal, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, EMPTY } from 'rxjs';
+import { of, EMPTY, Subject } from 'rxjs';
 import { AiSearchDialogComponent } from './ai-search-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -15,7 +15,13 @@ import { NotificationService } from '../../../core/services/notification.service
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { Goal, NlSearchResult, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
+import {
+  Category,
+  Goal,
+  NlSearchResult,
+  SEARCH_ANSWER_SCHEMA_VERSION,
+  SearchAnswerRecord,
+} from '../../../models';
 import { createCategory, createTransaction } from '../../../core/services/testing/test-data';
 import { provideNoMotion } from '../../../core/services/testing';
 import {
@@ -45,6 +51,7 @@ describe('AiSearchDialogComponent', () => {
     deleteAnswer: jasmine.Spy;
   };
   let goalService: { goals: jasmine.Spy; listAll: jasmine.Spy };
+  let catalogFeed: Subject<Category[]>;
 
   async function searchWith(result: NlSearchResult): Promise<void> {
     nlSearch.search.and.resolveTo(result);
@@ -80,11 +87,15 @@ describe('AiSearchDialogComponent', () => {
       listAll: jasmine.createSpy('listAll').and.resolveTo([]),
     };
 
-    const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
+    const categoryService = jasmine.createSpyObj('CategoryService', ['categories', 'loadCategories']);
     categoryService.categories.and.returnValue([
       createCategory({ id: 'food', name: 'Food & Drinks', type: 'expense' }),
       createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
     ]);
+    // Silent: the catalog above stands in for what it would deliver, and the
+    // feed is only watched for being held and released.
+    catalogFeed = new Subject<Category[]>();
+    categoryService.loadCategories.and.returnValue(catalogFeed);
     const currencyService = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
     currencyService.formatCurrency.and.callFake(
       (amount: number, code: string) => `${code} ${amount.toFixed(2)}`);
@@ -347,6 +358,23 @@ describe('AiSearchDialogComponent', () => {
       expect(component.fallbackNoticeKey('offline')).toBe('aiSearch.offlineFallback');
       expect(component.fallbackNoticeKey('noProvider')).toBe('aiSearch.noProviderFallback');
       expect(component.fallbackNoticeKey('error')).toBe('aiSearch.errorFallback');
+    });
+  });
+
+  // The dialog opens from the header on any page, and several load no
+  // catalog of their own. Searching there named every group "Other" and
+  // left a category scope without its children.
+  describe('the category catalog', () => {
+    it('is subscribed when the dialog opens', () => {
+      expect(catalogFeed.observed).toBeTrue();
+    });
+
+    it('is released when the dialog closes', () => {
+      expect(catalogFeed.observed).withContext('held while the dialog is open').toBeTrue();
+
+      fixture.destroy();
+
+      expect(catalogFeed.observed).withContext('released with the dialog').toBeFalse();
     });
   });
 

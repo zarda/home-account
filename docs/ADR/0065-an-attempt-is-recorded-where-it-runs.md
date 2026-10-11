@@ -1,6 +1,8 @@
 # 65. An attempt is recorded where it runs
 
-**Status:** Accepted, implemented · **Date:** 2026-08-23 · **Issues:** #151
+**Status:** Accepted, implemented; amended by
+[0175](0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)
+· **Date:** 2026-08-23 · **Issues:** #151
 
 Closes the first known gap of
 [0008](0008-universal-receipt-language-support.md) — "there is no diagnostic
@@ -10,6 +12,25 @@ on the Import History record. The event registry and the privacy boundary
 live in [../analytics.md](../analytics.md); what each door records and what
 the Import History page now shows is in
 [../receipt-import.md](../receipt-import.md) under *Failure surfacing*.
+
+**Amended by
+[0175](0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md).**
+The handle, its one event per attempt and its one classifier stand. What
+changes is what `classifyReceiptFailure` is told. It takes an optional
+second argument, `context?: { providerAbsent?: boolean }`. When that says no
+provider is set, the cloud sentinel, `AI_CLOUD_UNAVAILABLE`, is filed as
+`no_provider`, not as the `network` class that `parseAIError` and the
+strategy's diagnostics give it. Such a failure stores the sentence the
+camera's `no_provider` reason stores and carries no diagnostics, so its
+record has no engine, provider or duration. It is the one error the
+classifier files without asking `parseAIError`; for every other failure, the
+statement under *Consequences* that the record and the event go through
+`parseAIError` still holds. The handle works the context out in its failed
+terminal, and now injects `PwaService` and `ProviderKeyService` to do so: the
+device is online, the account's keys were read without a failure, and none
+is set. In practice that is a drain that ran online with no key. Without the
+context, the classifier answers as described below. No event moves, since the
+queue door still sends none.
 
 ## Context
 

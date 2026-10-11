@@ -5,6 +5,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { Subscription } from 'rxjs';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
@@ -55,6 +56,7 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private matDialog = inject(MatDialog);
   private analytics = inject(AnalyticsService);
+  private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private dateFormatService = inject(DateFormatService);
@@ -64,6 +66,7 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
   isRefreshing = signal(false);
   private expandedId = signal<string | null>(null);
   private subscription?: Subscription;
+  private categoriesSub?: Subscription;
 
   // Read live from the subscription: a record deleted elsewhere collapses
   // instead of lingering as stale data.
@@ -77,10 +80,15 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.subscription = this.history.loadAnswers().subscribe();
+    // The card names each group from the catalog, and a refresh rolls child
+    // categories up to their parents from it; on a direct load no other page
+    // has loaded it.
+    this.categoriesSub = this.categoryService.loadCategories().subscribe();
   }
 
   ngOnDestroy(): void {
     this.subscription?.unsubscribe();
+    this.categoriesSub?.unsubscribe();
   }
 
   /**

@@ -887,10 +887,19 @@ the newest 200 records.
 stored. A failed attempt that stored one of the app's own sentences, the
 classifier's line for a failure the app raised itself (no provider, cloud AI
 out of reach, a queue write refused in whole or in part), is read back to
-that sentence's own key, the one the wizard and the camera showed: a drain
-that failed online with no provider says to add a key
-(`import.errorCloudUnavailable`), not to check a connection that works. Any
-other failed attempt's line is a catalog sentence for its error class:
+that sentence's own key, the one the wizard and the camera showed. A drain
+that failed online with no provider set is filed as `no_provider` when the
+attempt knows it, which needs the device online, its keys read without a
+failure, and none of them set. It stores the no-provider sentence, so its
+card reads *No AI provider configured* above `import.errorNoProvider`, with
+no *Cloud* chip and no duration, as the camera's does. The drain waits for
+the account's key read before it opens its attempt, so a cold offline start
+does not stop it knowing. A drain that could not know, offline or because
+that read failed, is filed as a connection failure, and its stored sentence
+reads back as
+`import.errorCloudUnavailable`, which says to check the connection or add
+a key ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
+Any other failed attempt's line is a catalog sentence for its error class:
 `errors.network` for a connection failure, `import.errorHintQuota` for a
 spent quota, and so on, reusing a sentence the catalogs already had wherever
 there was one, with two new ones for `server` and `timeout`. A row the
@@ -898,10 +907,24 @@ confirm loop refused is read by its reason through `importFailureKey`, the
 wizard's own reading: a refused amount, a connection failure, or a reason it
 cannot name. Such a row is recognised by its id, on every record since rows
 were matched by id, or by its description, which the loop has always
-written, so older records translate too. The first three lines show, and
-the rest fold into *+{others} more* (`import.moreErrors`). A line that is
-neither shape, a whole-import failure or a record restored in some other
-shape, falls back to its stored text (see *What still bounds coverage*).
+written, so older records translate too. A whole-import failure, the line
+`failImport` writes when the confirm itself is refused, sits on a failed
+record with no error class and names no row. It is read by the same family
+reader, `importFailureFamily`, into a sentence about the record rather than
+the rows: `import.wholeFailedConnection` when the refusal's code, or failing
+a code its text, places it as a connection failure, and
+`import.wholeFailedUnknown` otherwise. What reaches that catch is a refused
+completion after the rows landed, so both sentences say the transactions may
+already be in the list and to check before importing again. Such a record
+keeps the refusal's Firestore `code` beside its message; one written before
+the code was kept is placed by its text alone (see *What still bounds
+coverage*). A whole-import failure shows no class label, since it is not a
+receipt attempt
+([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
+The first three lines show, and the rest fold into *+{others} more*
+(`import.moreErrors`). A line in no shape the app writes, one naming no row
+on a record that did not fail or a row's line with no message, as a restore
+may leave, falls back to its stored text.
 
 **A completed import names the transactions it created.** A success record
 carries `transactionIds` — the ids of the rows that landed, in selected-row
@@ -926,11 +949,17 @@ no button. See
 
 The classes a failure is filed under: `parseAIError`'s
 `rate_limit | auth | network | quota | server | timeout | unknown`, plus
-three the pipeline decides itself — `no_provider` (nothing configured;
-filed here even though `parseAIError` calls the sentinel `auth` so the wizard
-can offer the key hint), `nothing_extracted` (an engine answered with no
-row) and `queue_write` (the offline queue could not store the image) — from
-the camera dialog; a wizard refusal is filed as `unknown`.
+three the pipeline decides itself — `no_provider` (nothing configured),
+`nothing_extracted` (an engine answered with no row) and `queue_write` (the
+offline queue could not store the image) — which the camera dialog files as
+reasons of its own; a wizard refusal is filed as `unknown`. `no_provider` has
+two more ways in. The no-provider sentinel is filed under it even though
+`parseAIError` calls that sentinel `auth` so the wizard can offer the key
+hint. And the cloud sentinel, which `parseAIError` calls `network` because it
+stands for no connection and no provider alike, is filed under it when the
+attempt knows no provider is set, which in practice is a drain that ran
+online with no key. That failure carries no engine, provider or duration
+([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
 
 **The camera dialog says a failure the way the wizard does.** The line
 under a failed capture comes from `parseAIError`, the classifier the
@@ -1041,8 +1070,12 @@ carries it
 ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
 An image the earlier app queued has no seed, and its rows keep that app's
 `{queue id}-{index}`, so a drain it left half done resumes at the documents it
-wrote. An entry whose record is gone by the time the drain reads its seed fails
-like one whose image is gone. One helper names those rows: `queueRowTxId`, in
+wrote. The drain reads each entry once and takes the owner, the photo and the
+seed off that one record, so the three cannot disagree. An entry whose record
+is gone fails as *Image not found in queue*, and one another account owns goes
+back to pending without spending a retry
+([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
+One helper names those rows: `queueRowTxId`, in
 `offline-queue.service.ts` beside the code that mints the queue id. The
 drain's photo plan, its existence check and its write all take the id from
 it, so none of them can aim at a different document from the others
@@ -1150,13 +1183,23 @@ names the image and the status it dropped, with the drain's warning beside it.
   captured after another tab has taken the database to a newer version is met
   as an ordinary could-not-store failure rather than as the closed-queue state
   the AI settings page names; the page has to be reloaded first.
-- **A whole-import failure reads as its stored English in Import History.**
-  When a confirm fails outright, `failImport` writes the thrown error's own
-  message, or *Import failed*, with no error class and no row, so the
-  history has nothing to translate it from and shows the text as stored.
-  Every line from a failed attempt or a refused row reads in the reader's
-  language. Giving that path a class of its own is a follow-up
-  ([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
+- **An import that failed outright says less than it could in two places.**
+  Import History reads it in the reader's language, but a record written
+  before the refusal's code was kept holds only the message, and a rules
+  refusal's text never names its code. So *Missing or insufficient
+  permissions.* on such a record reads as the could-not-finish sentence
+  rather than the connection one. And the wizard's toast for the same
+  failure, `import.importFailed`, still puts the thrown error's message, a
+  Firestore client sentence in English, into every language; reading it the
+  way the history does is a follow-up
+  ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
+- **A drain whose key read fails still says *Connection problem*.** The
+  drain waits for the account's key read before it opens its attempt, so it
+  is filed as a connection failure only when that read itself fails. Nothing
+  then says whether a key is set, so the record carries the sentence that
+  names both causes, even on a device with no key. It never claims no
+  provider on a device that has one
+  ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
 
 If a receipt fails for any other reason, that is a bug rather than a
 limitation. Diagnosing one starts on the Import History page: the failed

@@ -33,6 +33,7 @@ import {
 } from '../utils/ai-error.utils';
 import { nextImportRowId } from '../utils/import-row-id.utils';
 import { normalizeTags } from '../utils/tag.utils';
+import { errorCode } from '../utils/firebase-error.utils';
 import {
   categoryFitsType,
   CategoryRowType,
@@ -1558,9 +1559,7 @@ export class AIImportService {
           // when the caught value actually carried one — a FirebaseError's
           // string code, not whatever shape a thrown plain object happens to
           // have.
-          const code = typeof (error as { code?: unknown })?.code === 'string'
-            ? (error as { code: string }).code
-            : undefined;
+          const code = errorCode(error);
           errors.push({
             transactionId: txn.id,
             message: error instanceof Error ? error.message : 'Unknown error',
@@ -1651,8 +1650,13 @@ export class AIImportService {
       );
 
     } catch (error) {
+      // The refusal's own code rides next to its prose message, so the
+      // history page can speak in the reader's language. Firestore rejects
+      // an undefined field, so the key is only added when a string was read.
+      const code = errorCode(error);
       await this.importHistoryService.failImport(historyId, [{
-        message: error instanceof Error ? error.message : 'Import failed'
+        message: error instanceof Error ? error.message : 'Import failed',
+        ...(code ? { code } : {})
       }]);
       throw error;
     } finally {

@@ -284,6 +284,24 @@ describe('RagContextService', () => {
     expect(context).not.toMatch(/Entertainment: 500 → 500/);
   });
 
+  // #488: a tied pair lists in category id order, whichever the rows named first.
+  it('should list a tie in the category changes in id order', () => {
+    const context = service.buildSummaryGrounding({
+      transactions: [
+        expense({ categoryId: 'food_groceries', amount: 500 }),
+        expense({ categoryId: 'entertainment', amount: 500 }),
+      ],
+      previousByCategory: [
+        { categoryId: 'food_groceries', total: 100 },
+        { categoryId: 'entertainment', total: 100 },
+      ],
+      baseCurrency: 'TWD',
+    });
+
+    const deltaSection = context.split('Category changes vs. previous period:')[1] ?? '';
+    expect(deltaSection.match(/^- .+?:/gm)).toEqual(['- Entertainment:', '- Groceries:']);
+  });
+
   it('should mark categories with no previous spending as new', () => {
     const context = service.buildSummaryGrounding({
       transactions: [expense({ categoryId: 'entertainment', amount: 800 })],

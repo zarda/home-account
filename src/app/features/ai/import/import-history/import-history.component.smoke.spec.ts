@@ -11,7 +11,9 @@
 // renders a zero through the real `CurrencyService`, never the `NaN` an
 // unguarded `Intl.NumberFormat` call would produce. A failed receipt attempt,
 // stored the way the attempt service writes one, also reads its error line
-// from the catalog rather than the English the record holds. The unit spec
+// from the catalog rather than the English the record holds, and so does a
+// whole import the rules refused, stored the way the confirm writes one
+// through `failImport`. The unit spec
 // overrides nothing here — ImportHistoryComponent's own template and its own
 // MatMenuModule import are what render.
 //
@@ -81,7 +83,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     // validate userId/importedAt/source/fileType/fileName/status on create,
     // and accept transactionIds only as a list when present) — no
     // ImportHistoryService call, no AI provider, no confirmImport run behind
-    // it. Five distinct fileNames so each test can find its own card
+    // it. Six distinct fileNames so each test can find its own card
     // without depending on query order.
     const legacy: Omit<ImportHistory, 'id'> = {
       userId: uid,
@@ -177,13 +179,35 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       door: 'wizard',
       errorType: 'network'
     };
+    // What the confirm writes through failImport when the import itself was
+    // refused: the record createPendingImport opened, now failed, holding the
+    // rejection's prose beside the code it carried. No class, no door, and
+    // nothing naming a row.
+    const wholeImportFailed: Omit<ImportHistory, 'id'> = {
+      userId: uid,
+      importedAt: Timestamp.now(),
+      source: 'csv',
+      fileType: 'generic_csv',
+      fileName: 'smoke-whole-import-failed.csv',
+      fileSize: 2048,
+      transactionCount: 0,
+      successCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+      totalIncome: 0,
+      totalExpenses: 0,
+      duplicatesSkipped: 0,
+      status: 'failed',
+      errors: [{ message: 'Missing or insufficient permissions.', code: 'permission-denied' }]
+    };
 
     await Promise.all([
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-legacy`), legacy),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-single`), single),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-batch`), batch),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-bare-totals`), bareTotals),
-      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-failed-attempt`), failedAttempt)
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-failed-attempt`), failedAttempt),
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-whole-import-failed`), wholeImportFailed)
     ]);
   });
 
@@ -238,8 +262,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a legacy record renders no shortcut', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 5,
-      'all five seeded records');
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
 
     const card = cardFor('smoke-legacy-statement.csv');
     // Delete is always there; a legacy record with no transactionIds joins
@@ -249,8 +273,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a one-transaction record's button navigates with its stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 5,
-      'all five seeded records');
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
 
     const card = cardFor('smoke-single-receipt.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -268,8 +292,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a batch record's menu holds one entry per stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 5,
-      'all five seeded records');
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
 
     const card = cardFor('smoke-batch-receipts.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -293,8 +317,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a record with neither total renders a zero, not NaN', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 5,
-      'all five seeded records');
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
 
     // The seeding `setDoc` already resolving is the proof the rules took
     // the write; this is the other half — what the real CurrencyService
@@ -315,8 +339,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   it("a stored record's row shows its time in the active language's convention", async () => {
     translation.getIntlLocale.and.returnValue('ja-JP');
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 5,
-      'all five seeded records');
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
 
     const stored = fixture.componentInstance.importHistory()
       .find(item => item.fileName === 'smoke-legacy-statement.csv');
@@ -342,13 +366,30 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   // reader gets in Japanese.
   it("a stored failed attempt's error line comes from the catalog, not the English it stored", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 5,
-      'all five seeded records');
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
 
     const card = cardFor('smoke-failed-receipt.jpg');
     const lines = Array.from(card.querySelectorAll('.errors li'))
       .map(li => li.textContent?.trim());
     expect(lines).toEqual(['import.errorCloudUnavailable']);
     expect(card.textContent).not.toContain('Cloud AI is not reachable.');
+  }, 20000);
+
+  // The record holds the rules' English and the code the refusal carried;
+  // the card reads the code, so the reader is told the connection dropped
+  // and to check the list before importing again, in their own language.
+  // Nothing on it is a receipt attempt's, so it shows no failure class.
+  it("a stored whole-import failure's error line comes from the catalog, not the English it stored", async () => {
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
+
+    const card = cardFor('smoke-whole-import-failed.csv');
+    const lines = Array.from(card.querySelectorAll('.errors li'))
+      .map(li => li.textContent?.trim());
+    expect(lines).toEqual(['import.wholeFailedConnection']);
+    expect(card.textContent).not.toContain('Missing or insufficient permissions.');
+    expect(card.querySelector('.failure-class')).toBeNull();
   }, 20000);
 });

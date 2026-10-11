@@ -193,8 +193,8 @@ describe('CategoryBreakdownComponent', () => {
       expect(breakdown.length).toBe(2); // cat1 and cat2
     });
 
-    // Note: computed signals don't re-evaluate when plain property (selectedType) changes
-    // This test would require selectedType to be a signal for reactive behavior
+    // selectedType is a signal that starts on 'expense'; this case reads the
+    // breakdown without setting it, so it pins the default side.
     it('should use selectedType when filtering', () => {
       // selectedType defaults to 'expense', which filters to expense transactions
       const breakdown = component.categoryBreakdown();
@@ -228,9 +228,15 @@ describe('CategoryBreakdownComponent', () => {
       expect(food?.percentage).toBe(80);
     });
 
-    it('should sort by total descending', () => {
-      const breakdown = component.categoryBreakdown();
-      expect(breakdown[0].total).toBeGreaterThanOrEqual(breakdown[1].total);
+    // The shared fixture already arrives largest first, so a smaller total
+    // arrives first here: the order can only come from the sort.
+    it('lists the larger total first (pin)', () => {
+      component.transactions = [
+        { ...mockTransactions[0], id: 'p1', categoryId: 'cat1', amount: 50, amountInBaseCurrency: 50 },
+        { ...mockTransactions[0], id: 'p2', categoryId: 'cat2', amount: 200, amountInBaseCurrency: 200 },
+      ];
+
+      expect(component.categoryBreakdown().map(b => b.categoryId)).toEqual(['cat2', 'cat1']);
     });
 
     it('should include category metadata', () => {
@@ -254,8 +260,8 @@ describe('CategoryBreakdownComponent', () => {
       expect(component.total()).toBe(250);
     });
 
-    // Note: computed signals don't re-evaluate when plain property (selectedType) changes
-    // This test verifies default behavior with expense type
+    // No set here: selectedType is a signal that starts on 'expense', so this
+    // case pins the default side.
     it('should calculate total using default expense type', () => {
       expect(component.total()).toBe(250); // 200 + 50 expense transactions
     });
@@ -296,6 +302,57 @@ describe('CategoryBreakdownComponent', () => {
     it('should return empty array for category with no transactions', () => {
       const transactions = component.getTransactionsForCategory('nonexistent');
       expect(transactions.length).toBe(0);
+    });
+  });
+
+  // #488: rows arrive date-descending, so a fold that keeps first-seen order
+  // through a stable sort lists a tie by whichever row is newest. Each tie
+  // here has the higher id's row first, the order that exposes that.
+  describe('a tie between categories', () => {
+    const freelance: Category = { ...mockCategories[2], id: 'cat4', name: 'Freelance' };
+    const row = (id: string, type: 'expense' | 'income', categoryId: string, amount: number): Transaction => ({
+      ...mockTransactions[0],
+      id,
+      type,
+      categoryId,
+      amount,
+      amountInBaseCurrency: amount,
+    });
+
+    beforeEach(() => {
+      component.categories = [...mockCategories, freelance];
+    });
+
+    it('lists an equal total in category id order, on each side', () => {
+      component.transactions = [
+        row('e1', 'expense', 'cat2', 100),
+        row('e2', 'expense', 'cat1', 100),
+        row('i1', 'income', 'cat4', 500),
+        row('i2', 'income', 'cat3', 500),
+      ];
+
+      expect(component.categoryBreakdown().map(b => b.categoryId)).withContext('expense rows').toEqual(['cat1', 'cat2']);
+      expect(component.chartTotals().map(t => t.categoryId)).withContext('expense donut').toEqual(['cat1', 'cat2']);
+
+      component.selectedType.set('income');
+
+      expect(component.categoryBreakdown().map(b => b.categoryId)).withContext('income rows').toEqual(['cat3', 'cat4']);
+      expect(component.chartTotals().map(t => t.categoryId)).withContext('income donut').toEqual(['cat3', 'cat4']);
+    });
+
+    // The lower id's row arrives first, so arrival order would already list
+    // it first: only the unrounded 0.30000000000000004 can put cat2 ahead.
+    it('counts a total that differs only by float noise as a tie', () => {
+      component.transactions = [
+        row('n1', 'expense', 'cat1', 0.3),
+        row('n2', 'expense', 'cat2', 0.1),
+        row('n3', 'expense', 'cat2', 0.2),
+      ];
+
+      const breakdown = component.categoryBreakdown();
+      expect(breakdown.map(b => b.categoryId)).toEqual(['cat1', 'cat2']);
+      expect(breakdown.map(b => b.total)).toEqual([0.3, 0.3]);
+      expect(component.chartTotals().map(t => t.categoryId)).toEqual(['cat1', 'cat2']);
     });
   });
 
@@ -376,6 +433,24 @@ describe('CategoryBreakdownComponent', () => {
       innerChart().categoryActivated.emit('cat3');
 
       expect(activated).toEqual([{ categoryId: 'cat3', type: 'income' }]);
+    });
+
+    // #488: the panels and the donut both render a tie in category id order,
+    // with the higher id's row arriving first.
+    it('renders a tie in category id order in the panels and the donut', () => {
+      realFixture.componentInstance.transactions = [
+        { ...mockTransactions[0], id: 'e1', categoryId: 'cat2', amount: 100, amountInBaseCurrency: 100 },
+        { ...mockTransactions[0], id: 'e2', categoryId: 'cat1', amount: 100, amountInBaseCurrency: 100 },
+      ];
+      realFixture.detectChanges();
+
+      // The count sits inside the name, as " (N)".
+      const names = Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('.category-name'))
+        .map(el => (el.textContent ?? '').replace(/\s*\(\d+\)\s*$/, '').trim());
+      expect(names).withContext('panel order').toEqual(['Food & Drinks', 'Transportation']);
+      expect(innerChart().categoryTotals().map(t => t.categoryId))
+        .withContext('donut order')
+        .toEqual(['cat1', 'cat2']);
     });
 
     it('keeps the amount in the row when a description is far too long', () => {

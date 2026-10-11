@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with twelve permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 89.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 92.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,16 +47,19 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 89
+there too; neither touches a household or calls a function. Journeys 81 to 92
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
 coming days written past the rules, a stored dashboard layout read back the
 same way, the recap and a PIN switched on, overdue rules the app claims, a
 scan queued offline and a drain that fails for want of a provider, a row and
-a sign-in written past the rules, and a posting shared into a household. None
-of them calls a function, and only 82 and 89 open a household page: 82 to read
-a dialog it cancels, and 89 to read the copy of a posting it shared.
+a sign-in written past the rules, a posting shared into a household, two
+rules that cannot advance and a row of the old shape written past the rules,
+two failed import records written the same way, and rows that tie and a
+stored answer written the same way. None of them calls a function, and only
+82 and 89 open a household page: 82 to read a dialog it cancels, and 89 to
+read the copy of a posting journey 90 shared.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -156,7 +159,10 @@ page `document.querySelector('app-header .palette-button') !== null` is
 `true`, where `c47d6f26`'s header has no palette button. For the removal
 sweep, the folds and opaque row ids it is the served catalog:
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).import.pdfPagesTruncated`
-is defined on this branch and `undefined` on `8a6e2c9a`. For another branch it
+is defined on this branch and `undefined` on `8a6e2c9a`. For the salted
+postings, the history lines and the category ties it is the served catalog
+too: `(await fetch('/assets/i18n/en.json').then(r => r.json())).import.wholeFailedConnection`
+is defined on this branch and `undefined` on `3b53c2ca`. For another branch it
 is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
@@ -556,7 +562,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 89 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 92 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -806,7 +812,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 89 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 92 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -816,14 +822,38 @@ shortcuts and the install offer (86); the removal sweep of
 [ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)
 (87); the folds of
 [ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)
-(88); and the opaque row ids of
+(88); the opaque row ids of
 [ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)
-(89), whose third step shares a posting into Chen home.
+(89), whose third step reads the copy of a posting journey 90 shared into
+Chen home; the salted postings, the stalled rules and the one read of
+[ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)
+(90), whose second step makes that share; Import History's lines of
+[ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)
+(91); and the one tie rule of
+[ADR 0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md)
+(92).
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
-[locale-formatting.md](locale-formatting.md), [recurring.md](recurring.md)
-and [household.md](household.md) describe what they drive.
+[locale-formatting.md](locale-formatting.md), [recurring.md](recurring.md),
+[household.md](household.md), [smart-search.md](smart-search.md) and
+[insights.md](insights.md) describe what they drive.
+
+Journeys 87 to 92 build on one another's writes, so they run in one emulator
+session, in this order:
+
+1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
+2. journey 88, which reads that drain's record in Import History;
+3. **Clear Queue** on `/ai`'s Offline Queue card, which takes journey 87's
+   failed entry, so that journey 90's `online` drains only its own;
+4. journey 90, which shares a posting, writes two stalled rules and drains
+   a scan of its own;
+5. journey 89, which reads journey 90's share and queued entry;
+6. journey 91, which reads journey 87's record in a third language;
+7. journey 92, which counts what 88 and 90 wrote.
+
+Journey 87's other steps stand alone, and each journey's opening paragraph
+names what it reads from the ones before it.
 
 The seed writes the households, their members and every shared row's copy
 past the rules, as the app's own commits leave them; nothing in this venue
@@ -834,7 +864,7 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
 
-Journeys 79 to 89 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 92 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -1067,17 +1097,22 @@ survive a navigation.
 
 The journeys read back — and in places write — documents past the rules,
 through the Firestore emulator's REST API with the owner token: journey 75
-writes a copy no client can reach, 84 a layout, 85 rules and 88 a row and a
-sign-in, and 77 clears the database at its end; the superseded 60 and 63
-wrote a quota and a name. The seeded households are `chen-home` and
-`trip-fund`; one made in a journey is listed under its owner's index,
-`users/<uid>/households`. A copy's id is `<author-uid>_<row-id>`, and the
-seeded rows this month are `tx-hh-1` onwards under each account.
+writes a copy no client can reach, 84 a layout, 85 rules, 88 a row and a
+sign-in, 90 two rules that cannot advance and one's row of the old shape, 91
+two import records, and 92 rows that tie and a stored answer, and 77 clears
+the database at its end; the superseded 60 and 63 wrote a quota and a name.
+The seeded households are `chen-home` and `trip-fund`; one made in a journey
+is listed under its owner's index, `users/<uid>/households`. A copy's id is
+`<author-uid>_<row-id>`, and the seeded rows this month are `tx-hh-1` onwards
+under each account.
 
 ```bash
 FS='http://127.0.0.1:8080/v1/projects/demo-home-account/databases/(default)/documents'
 curl -s -H 'Authorization: Bearer owner' "$FS/users/<uid>/households"
 curl -s -H 'Authorization: Bearer owner' "$FS/users/<uid>/transactions/<row-id>"
+curl -s -H 'Authorization: Bearer owner' "$FS/users/<uid>/recurring/<rule-id>"
+curl -s -H 'Authorization: Bearer owner' "$FS/users/<uid>/imports"
+curl -s -H 'Authorization: Bearer owner' "$FS/users/<uid>/searchAnswers"
 curl -s -H 'Authorization: Bearer owner' "$FS/households/<hid>"
 curl -s -H 'Authorization: Bearer owner' "$FS/households/<hid>/members"
 curl -s -H 'Authorization: Bearer owner' "$FS/households/<hid>/ledger"
@@ -1194,7 +1229,10 @@ log, and run the ports check again: it prints nothing.
 | 86 | Shortcuts and the install offer (emulators) | `?`, the header's palette button and the one-time hint in a real header at three widths, chords that never split, and the install card raising a held prompt once | `86-hint.png`, `86-shortcuts-first.png`, `86-install-card.png` |
 | 87 | The removal sweep (emulators) | A menu, a dialog, a select and a datepicker still moving under the real providers with the animations runtime gone, the one worker a real origin registers, a scan queued offline whose drain on `online` starts and fails for want of a provider, and the page-cap notice at a real 375px | `87-queued-offline.png`, `87-page-cap-375.png` |
 | 88 | The folds (emulators) | An exact tie between two categories on the real dashboard in id order, the times one formatter writes on two pages in two languages, the report chart's figures, and a file over the intake's ceiling refused out loud below the zone | `88-category-tie.png`, `88-history-ja.png`, `88-refused-11mb.png` |
-| 89 | Opaque row ids (emulators) | Postings the claim wrote at 32-hex ids, read back past the rules and one recomputed outside the app, a shared posting's copy at `{uid}_{hex}` the rules took and the household page renders, and a queued scan's seed | `89-shared-posting.png`, `89-household-copy.png` |
+| 89 | Opaque row ids (emulators) | Postings the claim wrote at 32-hex ids, read back past the rules and one recomputed outside the app from its rule's salt, a shared posting's copy at `{uid}_{hex}` the rules took and the household page renders, and a queued scan's seed | `89-shared-posting.png`, `89-household-copy.png` |
+| 90 | Salted postings, stalled rules and one read (emulators) | Each posting's id rebuilt outside the app from the salt its rule holds, read as the owner, with the unsalted digest naming no row; a shared posting's copy naming the salted id; two rules that cannot advance, one already posted under an old id, left unwritten across two loads; and one read of a queued entry between its two status writes | `90-stalled-rows.png`, `90-queued-offline.png` |
+| 91 | Import History in the reader's language (emulators) | Two whole-import failures written past the rules, read as sentences about the record in Japanese, Traditional Chinese and English with none of their stored English, and a drain that failed for want of a provider read in the third language | `91-whole-import-ja.png`, `91-whole-import-tc.png`, `91-whole-import-en.png` |
+| 92 | One tie rule (emulators) | A tie in category id order on the Categories tab, in its accordion and legend on both sides of the real toggle; the new-category chip naming the lower id; and a stored answer refreshed on the history page to its groups in id order, rolled up and named | `92-categories-tie.png`, `92-income-tie.png`, `92-new-chip.png`, `92-answer-refreshed.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -5688,10 +5726,10 @@ what each removal could have broken, where only a browser shows it.
    It is a regression check only. The emulators build never emitted
    `ngsw-worker.js`, which only the production configuration built, so this
    venue cannot show it gone. Production's copy is checked on the deployed
-   site after the deploy, not here: the address then falls to the hosting's
-   SPA rewrite and answers with the app's own page, where `26.10.171`, the
-   version built from `8a6e2c9a`, which this branch starts from, serves the
-   worker's script.
+   site after the deploy, not here: the address falls to the hosting's SPA
+   rewrite and answers with the app's own page, as it does for the version
+   on main. A version built before the removal, such as `8a6e2c9a`'s,
+   served the worker's script there.
 4. **A scan queued offline.** On `/import/file`, tell the app the network
    has gone, as journey 71 does: `window.dispatchEvent(new Event('offline'))`.
    This is diagnostic-grade, and recorded as such: the app checks
@@ -5780,10 +5818,12 @@ what each removal could have broken, where only a browser shows it.
 query and on `motion:check` (step 1), and production's worker file, which
 only the deployed site can show (step 3).
 
-**Cleanup.** None here. The queued entry is journey 89's to read, and the
-failed record journey 88's. The rest goes with the emulators at the
-[teardown](#teardown). The queue lives in this origin's IndexedDB, which the
-next pre-flight's clean deletes (check 8).
+**Cleanup.** None here. The failed record is journey 88's to read. The
+queued entry is taken after journey 88 by **Clear Queue** on `/ai`, before
+journey 90's `online` could drain it again
+([the run order](#emulator-journeys)). The rest goes with the emulators at
+the [teardown](#teardown). The queue lives in this origin's IndexedDB, which
+the next pre-flight's clean deletes (check 8).
 
 Two shots: the queued card offline, and the page-cap notice at 375px.
 
@@ -5846,13 +5886,16 @@ size ceiling a file meets on its way in. Each is read where it is painted.
    ```
 
    **Pass:** the date, then the time `formatTime` writes, with no zero before
-   the hour. The first run read *10/10/2026 3:36 AM*. Then *Connection
-   problem*, and one error line, *Cloud AI could not be reached. Check your
-   connection, or add an API key in Settings → AI Processing.*: the
-   classifier's own sentence the record stores, read back to its catalog
-   key, the line the wizard and the camera show for the same failure. Its
-   class alone would have said to check the connection, on a venue that is
-   online and has no provider key.
+   the hour. The first run read *10/10/2026 3:36 AM*. Then *No AI provider
+   configured* (`import.failureNoProvider`), and one error line, *No AI
+   provider is configured. Add an API key in Settings → AI Processing.*
+   (`import.errorNoProvider`): the sentence the record stores, read back to
+   its catalog key, the line the wizard and the camera show for the same
+   failure. The drain failed online on a venue with no provider key, so the
+   attempt is filed as `no_provider`
+   ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)),
+   and its chips are *Failed*, *Receipt* and the size, with no *Cloud* chip
+   and no duration.
 3. **Security activity's time, in English.** A seeded account never signs
    in through the app, so its log is empty. Write a sign-in past the rules,
    yesterday at 9:05 in the machine's zone, which is the browser's:
@@ -5878,8 +5921,8 @@ size ceiling a file meets on its way in. Each is read where it is painted.
 4. **Both again, in Japanese.** Settings → Profile → **Language** → 日本語,
    a write to the emulators. Read steps 3 and 2 again. **Pass:** the sign-in
    begins *昨日 9:05*. The history card reads *2026/10/10 3:36* in the first
-   run's figures, its failure line *接続の問題*, and its error line
-   *クラウドAIに接続できませんでした。接続を確認するか、設定 → AI処理 でAPIキーを追加してください。*
+   run's figures, its failure line *AIプロバイダー未設定*, and its error line
+   *AIプロバイダーが設定されていません。設定 → AI処理 でAPIキーを追加してください。*
    Shot: `88-history-ja.png`.
    Switch the language back to **English**.
 
@@ -5889,10 +5932,15 @@ size ceiling a file meets on its way in. Each is read where it is painted.
    failed attempt by the app's own sentence where it stored one and by its
    class otherwise, and a failed row by its reason, through catalog keys
    (*fix(ui): import history shows its errors in the reader's language*).
-   Run 2 is the first to read the translated lines in a browser.
-   A whole-import failure still shows its stored English, one of
+   Run 2 was the first to read the translated lines in a browser, and it
+   read *Connection problem* above them: the drain that failed online for
+   want of a provider was filed under the network class, above a line that
+   named both causes. Since
+   [ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)
+   such a drain is filed as no provider, and steps 2 and 4 read it so. A
+   whole-import failure showed its stored English, one of
    [ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)'s
-   Known gaps.
+   Known gaps. ADR 0175 closed that gap, and journey 91 reads it.
 5. **The report chart's figures, diagnostic-grade.** `/reports`, on Spending
    Analysis, the first tab. The tooltip and the axis are painted on a
    canvas, so their callbacks are called from the console: state only, never
@@ -5982,15 +6030,19 @@ refusal below the zone.
 
 ### 89. Opaque row ids
 
-**Emulators**, as Alex, at `http://localhost:4300`, after journey 87, whose
-queued entry step 4 reads. A digest needs a secure origin, and plain HTTP to
-a network address is not one (ADR 0173's Known gaps). The seed's four
-recurring rules (`seed.mjs`: `r-rent`, `r-salary`, `r-netflix` and `r-gym`)
-point at `2026-08-01`, so every occurrence since is overdue, and the app
-claims them on its first load as Alex. A row the app names now carries an id
-that says neither which rule posted it, nor when, nor when a scan was queued
+**Emulators**, as Alex, at `http://localhost:4300`, after journey 90, whose
+share step 3 reads and whose queued entry step 4 reads
+([the run order](#emulator-journeys)). A digest needs a secure origin, and
+plain HTTP to a network address is not one (ADR 0173's Known gaps). The
+seed's four recurring rules (`seed.mjs`: `r-rent`, `r-salary`, `r-netflix`
+and `r-gym`) point at `2026-08-01`, so every occurrence since is overdue, and
+the app claims them on its first load as Alex. A row the app names now
+carries an id that says neither which rule posted it, nor when, nor when a
+scan was queued
 ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md),
-[recurring.md](recurring.md), [household.md](household.md)).
+[recurring.md](recurring.md), [household.md](household.md)), and a
+posting's is keyed by a salt only its rule holds
+([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
 
 1. **The claimed postings.** List, past the rules, every row that names a
    rule:
@@ -6001,28 +6053,55 @@ that says neither which rule posted it, nor when, nor when a scan was queued
    ```
 
    No seeded row carries `recurringId`, so only what the claim wrote is
-   listed. **Pass:** every id is 32 lower-case hex characters and none
-   starts `rec-`. The rule is named in the row's own `recurringId`, never in
-   its id. The first run's list held
-   `0c7934c0cfef279744d803d345889ea4 r-rent 2026-10-01T00:00:00Z`.
+   listed, beside one row journey 90 wrote past the rules: its
+   `rec-r-stuck-<ms>`, whose `recurringId` is `r-stuck`, the old shape of a
+   stalled rule's posting. **Pass:** every other id is 32 lower-case hex
+   characters, and none starts `rec-`. The rule is named in the row's own
+   `recurringId`, never in its id. The ids differ from run to run, because
+   each rule's salt is drawn at random on the first claim that posts for it.
+   The run of 2026-10-11 listed fourteen rows: the four seeded rules' twelve
+   postings since August, the one journey 90's fresh stalled rule posted,
+   and that `rec-` row. Among them was
+   `59181599e7f43b97f5050bba44382b4b r-rent 2026-10-01T00:00:00Z`.
 2. **One recomputed outside the app.** The id is the first 32 hex
-   characters of the SHA-256 of `JSON.stringify(['rec', ruleId, occurrence
-   ms])` (`opaque-id.utils.ts`). Take a line's rule and date:
+   characters of the SHA-256 of `JSON.stringify(['rec', salt, ruleId,
+   occurrence ms])` (`recurringPostingId`, exported from `recurring.service.ts`
+   and built over `opaqueRowId` in `opaque-id.utils.ts`), where
+   the salt is kept on the rule. Only the owner reads a rule, so read the
+   salt as the owner, past the rules:
 
    ```bash
-   node -e 'const [k,r,t]=process.argv.slice(1);console.log(require("crypto").createHash("sha256").update(JSON.stringify([k,r,Date.parse(t)])).digest("hex").slice(0,32))' rec r-rent 2026-10-01T00:00:00Z
-   # 0c7934c0cfef279744d803d345889ea4
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/recurring/r-rent" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).fields.salt.stringValue))'
+   # <salt>
    ```
 
-   **Pass:** the digest printed is the line's id. Take the time from the
-   row's `date`, not from the calendar: it is the occurrence the claim
-   walked to, which in the first run fell at midnight UTC.
-3. **A posting shared, and its copy.** On `/transactions` for this month,
-   *Gym membership*'s menu → *Share with…* → check *Chen home* → **Save**,
-   as in journey 69. **Pass:** nothing is refused, and the row wears
-   *Shared · Chen home*: the rules took a copy of a row whose id is a
-   digest. Past the rules, the copy is `<alex-uid>_<hex>`, where `<hex>` is
-   the posting's own id from step 1, and it names that id as its source:
+   Then take a line's rule and date, and print the salted digest beside the
+   unsalted one, `['rec', ruleId, occurrence ms]`, the id ADR 0173 named a
+   posting by:
+
+   ```bash
+   node -e 'const h=a=>require("crypto").createHash("sha256").update(JSON.stringify(a)).digest("hex").slice(0,32);const [r,salt,t]=process.argv.slice(1);const ms=Date.parse(t);console.log(h(["rec",salt,r,ms]),h(["rec",r,ms]))' r-rent <salt> 2026-10-01T00:00:00Z
+   # <salted> <unsalted>
+   ```
+
+   **Pass:** the salt is 32 lower-case hex characters, the first digest
+   printed is the line's id, and the second is no id step 1 listed. Take
+   the time from the row's `date`, not from the calendar: it is the
+   occurrence the claim walked to, which fell at midnight UTC. The salt and
+   the salted digest are per run. In the run of 2026-10-11 the salt was
+   `ff2620e749c94e777af5c16851615f1e`, the digests
+   `59181599e7f43b97f5050bba44382b4b` and
+   `0c7934c0cfef279744d803d345889ea4`; the second is the id the run of
+   2026-10-10 found for the same posting, before the salt. A household
+   member reads the copy's date and may have seen the rule's id, but never
+   reads the salt, so it cannot rebuild the first.
+3. **A posting shared, and its copy.** Journey 90's step 2 shared this
+   month's *Gym membership* into Chen home. Open `/transactions` for this
+   month. **Pass:** the row wears *Shared · Chen home*: the rules took a
+   copy of a row whose id is a digest. Past the rules, the copy is
+   `<alex-uid>_<hex>`, where `<hex>` is the posting's own id from step 1,
+   and it names that id as its source:
 
    ```bash
    curl -s -H 'Authorization: Bearer owner' "$FS/households/chen-home/ledger/<alex-uid>_<hex>" |
@@ -6030,9 +6109,10 @@ that says neither which rule posted it, nor when, nor when a scan was queued
    # <hex> Gym membership
    ```
 
-   The first run's copy ended in `ec5f85af…`, the digest of `r-gym` at
-   `2026-10-02T00:00:00Z`. Shot: `89-shared-posting.png`, the row and its
-   chip. Then `/household/chen-home`:
+   The copy's id is per run as well. In the run of 2026-10-11 it ended in
+   `21ff05bb…`, the salted digest of `r-gym` at `2026-10-02T00:00:00Z`.
+   Shot: `89-shared-posting.png`, the row and its chip. Then
+   `/household/chen-home`:
 
    ```js
    [...document.querySelectorAll('app-household-overview .overview-row')]
@@ -6041,20 +6121,23 @@ that says neither which rule posted it, nor when, nor when a scan was queued
 
    **Pass:** `true`: the household page renders the copy. Shot:
    `89-household-copy.png`.
-4. **A queued scan's seed.** On `/ai`, journey 87's entry, still queued
-   after its failed drain:
+4. **A queued scan's seed.** On `/ai`, journey 90's entry, still queued
+   after its failed drain. **Clear Queue** took journey 87's before journey
+   90 ran ([the run order](#emulator-journeys)), so it is the only one:
 
    ```js
    const queue = ng.getComponent(document.querySelector('app-ai-settings-page')).offlineQueue;
    (await queue.getPendingImages()).map(i => [i.id, i.rowSeed]);
    ```
 
-   **Pass:** `img_<ms>_<random>` beside a 32-hex `rowSeed`. The queue id
-   still holds the moment the photo was queued, and its rows are named from
-   the seed and their position (`queueRowTxId`), never from the queue id.
-   No row lands from it in this venue, which has no provider. `offlineQueue`
-   is private, TypeScript's word, which the running page does not enforce,
-   as step 4 of journey 87 says.
+   **Pass:** one entry, `img_<ms>_<random>` beside a 32-hex `rowSeed`, both
+   per run; the run of 2026-10-11 read `img_1791694746591_0ckfnud` and
+   `a14f5b04e1322f1344dda304a29d58c0`. The queue id still holds the moment
+   the photo was queued, and its rows are named from the seed and their
+   position (`queueRowTxId`), never from the queue id. No row lands from it
+   in this venue, which has no provider. `offlineQueue` is private,
+   TypeScript's word, which the running page does not enforce, as step 4 of
+   journey 87 says.
 
 **What stays in the specs, and why.**
 
@@ -6064,26 +6147,576 @@ that says neither which rule posted it, nor when, nor when a scan was queued
 - **A drained row at its digest** needs a provider.
   `offline-queue-processor.service.smoke.spec.ts`, *a drained receipt lands
   with its photo attached*, reads the row at a 32-hex id.
-- **The probe and clear of a missing copy at a digest id.** Step 3 writes a
-  copy and nothing else. `firestore-rules.smoke.spec.ts` holds the rest:
-  *lets a member copy a row whose id is an opaque digest, and probe and
-  clear a missing one*.
-- **Rows that keep revealing ids**: postings from before the change, rows
-  of an entry the earlier app queued, and rows a `/data` restore writes.
-  Once a household has seen a rule's id in one of them, step 2's
-  recomputation over a later copy's date confirms that rule's postings too.
-  They are ADR 0173's Known gaps, and nothing here reads them.
+- **The probe and clear of a missing copy at a digest id.** Journey 90's
+  share writes a copy and nothing else. `firestore-rules.smoke.spec.ts`
+  holds the rest: *lets a member copy a row whose id is an opaque digest,
+  and probe and clear a missing one*.
+- **Rows that keep revealing ids**: postings from before ADR 0173, rows of
+  an entry the earlier app queued, and rows a `/data` restore writes. They
+  are ADR 0173's Known gaps, and nothing here reads them. A rule's id seen
+  in one of them no longer confirms that rule's later postings, because
+  step 2's recomputation needs the salt, which only the owner reads.
+  Postings written without a salt, under ADR 0173's digest or by an earlier
+  app still running, stay linkable that way: ADR 0174's Known gaps.
 
 **Cleanup.** **Clear Queue** on `/ai`'s Offline Queue card takes journey
-87's entry; otherwise the next pre-flight's clean does (check 8). The
-second run found the card reading 0 over that failed entry after a reload,
-with **Sync Now** and **Clear Queue** disabled, until the count was taken
-again by hand. The count now follows the signed-in account, so the card
-reads 1 and **Clear Queue** works (*fix(ui): the offline queue card counts
-what is waiting after a reload*). The claimed postings, the share and its
-copy go with the emulators at the [teardown](#teardown).
+90's entry; otherwise the next pre-flight's clean does (check 8). The
+second run of 2026-10-10 found the card reading 0 over a failed entry after
+a reload, with **Sync Now** and **Clear Queue** disabled, until the count
+was taken again by hand. The count now follows the signed-in account, so the
+card reads 1 and **Clear Queue** works (*fix(ui): the offline queue card
+counts what is waiting after a reload*). The claimed postings, the share and
+its copy go with the emulators at the [teardown](#teardown).
 
 Two shots: the shared posting's chip, and its copy on Chen home's page.
+
+### 90. Salted postings, stalled rules and one read
+
+**Emulators**, as Alex, at `http://localhost:4300` and a desktop width of
+1024px or more, after journey 88 and **Clear Queue** on `/ai`
+([the run order](#emulator-journeys)), so the queue is empty when step 6
+queues its own scan. A recurring posting's id is now keyed by a salt kept on
+its rule, which only the owner reads. A rule whose walk cannot advance looks
+for its stuck occurrence under every id it may already hold before it posts
+it. And the queue drain reads each entry once
+([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md),
+[recurring.md](recurring.md), [household.md](household.md),
+[receipt-import.md](receipt-import.md)). This journey reads each where it
+lands: past the rules, on a household's copy, and in the page's IndexedDB.
+
+1. **Each posting is keyed by its rule's salt.** The seed's rules hold no
+   salt, so the claim on Alex's first load drew one for each and stored it
+   with the postings. Read `r-rent` as the owner, past the rules
+   ([Reading past the rules](#reading-past-the-rules)), and rebuild each of
+   its postings' ids outside the app:
+
+   ```bash
+   node --input-type=module -e '
+   import { createHash } from "node:crypto";
+   const [FS, uid, rule] = process.argv.slice(1);
+   const get = p => fetch(`${FS}/${p}`, { headers: { Authorization: "Bearer owner" } }).then(r => r.json());
+   const digest = a => createHash("sha256").update(JSON.stringify(a)).digest("hex").slice(0, 32);
+   const f = (await get(`users/${uid}/recurring/${rule}`)).fields, salt = f.salt?.stringValue;
+   const rows = ((await get(`users/${uid}/transactions?pageSize=300`)).documents ?? [])
+     .filter(d => d.fields.recurringId?.stringValue === rule);
+   const ids = new Set(rows.map(d => d.name.split("/").pop()));
+   console.log(salt, /^[0-9a-f]{32}$/.test(salt ?? ""), f.nextOccurrence.timestampValue);
+   for (const d of rows) {
+     const id = d.name.split("/").pop(), at = d.fields.date.timestampValue, ms = Date.parse(at);
+     console.log(id, at, id === digest(["rec", salt, rule, ms]), ids.has(digest(["rec", rule, ms])));
+   }' "$FS" <alex-uid> r-rent
+   # <salt> true <the 1st of next month>
+   # <hex> <occurrence> true false
+   ```
+
+   **Pass:** the salt, `true` for its shape, and the 1st of next month, the
+   pointer the claim moved past every due occurrence. Then one line per
+   posting since August, each ending `true false`: its id is the digest of
+   `['rec', salt, 'r-rent', occurrence ms]`, and the unsalted digest,
+   `['rec', 'r-rent', occurrence ms]`, names no row. The salt and the ids are
+   per run. The first run read the salt `ff2620e749c94e777af5c16851615f1e`,
+   the pointer `2026-11-01T00:00:00Z`, and three postings: `1a03f16a…` on
+   August 1st, `aeb20e26…` on September 1st and
+   `59181599e7f43b97f5050bba44382b4b` on October 1st.
+2. **A shared posting's copy names the salted id.** On `/transactions` for
+   this month, *Gym membership*'s menu → *Share with…* → check *Chen home*
+   → **Save**, as in journey 69. **Pass:** nothing is refused, and the row
+   wears *Shared · Chen home*. Both runs ticked the box from the console,
+   diagnostic-grade: the first because the pane's screenshots froze, the
+   second because the pane's accessibility tree hides the box. A tick by
+   pointer is still owed. Then read
+   the copy against `r-gym`'s salt:
+
+   ```bash
+   node --input-type=module -e '
+   import { createHash } from "node:crypto";
+   const [FS, uid] = process.argv.slice(1);
+   const get = p => fetch(`${FS}/${p}`, { headers: { Authorization: "Bearer owner" } }).then(r => r.json());
+   const digest = a => createHash("sha256").update(JSON.stringify(a)).digest("hex").slice(0, 32);
+   const salt = (await get(`users/${uid}/recurring/r-gym`)).fields.salt.stringValue;
+   const copies = ((await get("households/chen-home/ledger?pageSize=300")).documents ?? [])
+     .filter(d => d.name.split("/").pop().startsWith(`${uid}_`)
+       && d.fields.description?.stringValue === "Gym membership");
+   for (const d of copies) {
+     const at = d.fields.date.timestampValue, ms = Date.parse(at), source = d.fields.sourceId.stringValue;
+     console.log(d.name.split("/").pop(), at,
+       source === digest(["rec", salt, "r-gym", ms]), source === digest(["rec", "r-gym", ms]));
+   }' "$FS" <alex-uid>
+   # <alex-uid>_<hex> <occurrence> true false
+   ```
+
+   **Pass:** one copy, at this month's occurrence, ending `true false`: its
+   `sourceId` is the salted digest, and the unsalted one is not it. A member
+   reads the copy's date, and may have seen the rule's id on a row of the
+   old shape, but never reads the salt, so the two no longer rebuild the
+   source. The first run's copy was
+   `<alex-uid>_21ff05bb037d20389fdf3667df7fb3be`, at
+   `2026-10-02T00:00:00Z`, under a salt beginning `4578be19`. Journey 89's
+   step 3 reads the same copy as its own, and takes its shots.
+3. **Two rules that cannot advance.** A monthly rule with `dayOfMonth: -60`
+   is accepted by the rules and the service today, and its walk stalls on
+   its first step (ADR 0174's *Departures from the issue*). Write two such
+   rules past the rules, each $5 of Bills & Utilities, starting and pointing
+   at midnight UTC on the 5th, with `updatedAt` there too. Beside the first,
+   write the row an older build posted for that date, at its old id
+   `rec-r-stuck-<ms>`. The second has no row. Before the 5th of a month has
+   come, the script takes the 5th of the month before.
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const at = new Date(); at.setUTCDate(5); at.setUTCHours(0, 0, 0, 0);
+   if (at > new Date()) at.setUTCMonth(at.getUTCMonth() - 1);
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const t = d => ({ timestampValue: d.toISOString() }), b = v => ({ booleanValue: v });
+   const put = (path, fields) => fetch(`${FS}/users/${uid}/${path}`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) }).then(r => `${path} ${r.status}`);
+   const rule = id => ({ userId: s(uid), name: s(id), type: s("expense"), amount: n(5), currency: s("USD"),
+     categoryId: s("bills"), description: s(id),
+     frequency: { mapValue: { fields: { type: s("monthly"), interval: n(1), dayOfMonth: n(-60) } } },
+     startDate: t(at), nextOccurrence: t(at), isActive: b(true), createdAt: t(at), updatedAt: t(at) });
+   const legacy = { userId: s(uid), type: s("expense"), amount: n(5), currency: s("USD"),
+     amountInBaseCurrency: n(5), exchangeRate: n(1), categoryId: s("bills"), description: s("r-stuck"),
+     date: t(at), createdAt: t(at), updatedAt: t(at), isRecurring: b(true), recurringId: s("r-stuck") };
+   console.log(await put("recurring/r-stuck", rule("r-stuck")));
+   console.log(await put("recurring/r-stuck-fresh", rule("r-stuck-fresh")));
+   console.log(await put(`transactions/rec-r-stuck-${at.getTime()}`, legacy));' "$FS" <alex-uid>
+   # recurring/r-stuck 200
+   # recurring/r-stuck-fresh 200
+   # transactions/rec-r-stuck-<ms> 200
+   ```
+
+   Bills & Utilities already has this month's rent, so the $5 rows add no
+   legend entry and cannot take the new-category chip. Journey 92 counts
+   them in its total.
+4. **The first load.** Load `/dashboard`, whose catch-up claims every due
+   rule. Then read both rules and their rows past the rules, as a separate
+   step, and again until it stops changing:
+
+   ```bash
+   node --input-type=module -e '
+   import { createHash } from "node:crypto";
+   const [FS, uid] = process.argv.slice(1);
+   const get = p => fetch(`${FS}/${p}`, { headers: { Authorization: "Bearer owner" } }).then(r => r.json());
+   const digest = a => createHash("sha256").update(JSON.stringify(a)).digest("hex").slice(0, 32);
+   const rows = (await get(`users/${uid}/transactions?pageSize=300`)).documents ?? [];
+   for (const rule of ["r-stuck", "r-stuck-fresh"]) {
+     const f = (await get(`users/${uid}/recurring/${rule}`)).fields, salt = f.salt?.stringValue;
+     const mine = rows.filter(d => d.fields.recurringId?.stringValue === rule).map(d => {
+       const id = d.name.split("/").pop(), ms = Date.parse(d.fields.date.timestampValue);
+       return salt && id === digest(["rec", salt, rule, ms]) ? `${id} (salted)` : id;
+     });
+     console.log(rule, "salt", salt ?? "none", "updatedAt", f.updatedAt.timestampValue, "rows", mine.join(", "));
+   }' "$FS" <alex-uid>
+   # r-stuck salt none updatedAt <the 5th> rows rec-r-stuck-<ms>
+   # r-stuck-fresh salt <salt> updatedAt <this load> rows <hex> (salted)
+   ```
+
+   **Pass:** `r-stuck` keeps its one row, the `rec-` one. It has no salt,
+   and its `updatedAt` is still the seeded one: the claim found the stuck
+   occurrence under its old id, and wrote neither a row nor the rule.
+   `r-stuck-fresh` has one row, marked salted, a salt, and an `updatedAt`
+   from this load: it posted its stuck occurrence once, under the salt it
+   drew, and stored the salt in the same update. The first run read, for
+   `r-stuck`, the `rec-` row alone, no salt and `2026-10-05T00:00:00Z`; for
+   `r-stuck-fresh`, one row `3b62318a…` under a salt beginning `8bec16c4`,
+   written at `04:58:26.438Z`.
+5. **The second load.** Reload `/dashboard`, and read step 4's lines again.
+   **Pass:** `r-stuck` reads as before. `r-stuck-fresh` still has its one
+   row and the `updatedAt` step 4 read: the lookup found its occurrence
+   under the salted id, and an update that would carry only `updatedAt` is
+   not sent. Before ADR 0174 each load rewrote the stalled occurrence's row
+   and its rule, and the first load after each change of the id's shape
+   posted the occurrence once more, under the new id, beside the old row.
+   Shot: `90-stalled-rows.png`,
+   `/transactions` with the two $5 rows on the 5th, one for each rule.
+6. **The drain reads once.** On `/import/file`, queue a scan offline as
+   journey 87's step 4 does, naming the image `e2e-90-receipt.png`.
+   **Pass:** the offline card, *1 image queued for processing when online*,
+   and one entry, `'pending'`. Shot: `90-queued-offline.png`. Then, before
+   going online, log the app's reads and writes of the queue's store. Keep
+   the pane in view, so the app does not find the network again before the
+   log is in place, and keep the page where it is until the log is read:
+
+   ```js
+   const log = []; window.e2eQueueLog = log;
+   const { get, put } = IDBObjectStore.prototype;
+   IDBObjectStore.prototype.get = function (key) {
+     if (this.name === 'pending-images') log.push(['get', String(key)]);
+     return get.apply(this, arguments);
+   };
+   IDBObjectStore.prototype.put = function (value) {
+     if (this.name === 'pending-images') log.push(['put', value.id, value.status]);
+     return put.apply(this, arguments);
+   };
+   'logging';
+   ```
+
+   Then `window.dispatchEvent(new Event('online'))`, and run journey 87's
+   step 4 read again, as a separate console evaluation, until it stops
+   changing. It reads through `getPendingImages`, which makes no single
+   `get`. Then:
+
+   ```js
+   const queue = ng.getComponent(document.querySelector('app-import-wizard')).importService.offlineQueue;
+   const [entry] = await queue.getPendingImages();
+   [entry.status, entry.retryCount, entry.lastError,
+     window.e2eQueueLog.filter(([, id]) => id === entry.id).map(([op, , status]) => status ? `${op} ${status}` : op)];
+   ```
+
+   **Pass:** `'failed'`, 1, `'AI_CLOUD_UNAVAILABLE'`, and
+   `['get', 'put processing', 'get', 'get', 'put failed']`. The first `get`
+   and `put` are the *processing* status write, and the last two the
+   *failed* one: each status write reads the entry before it writes it. The
+   one `get` between them is the processor's read of the entry, where there
+   were three before ADR 0174. This is diagnostic-grade, and recorded as
+   such: the log sits under the app's own calls, and the unit spec owns the
+   count. A reload puts both methods back. The first run's entry was
+   `img_1791694746591_0ckfnud`, with the `rowSeed`
+   `a14f5b04e1322f1344dda304a29d58c0`, and its log read as above. The failed
+   attempt lands in Import History beside journey 87's, filed as no
+   provider the same way.
+
+**What stays in the specs, and why.**
+
+- **A stalled rule whose earlier row sits at the unsalted digest.** Steps 3
+  to 5 meet the `rec-` id and the salted one, and no build here posts at
+  the unsalted digest on demand. The unit case *skips an occurrence already
+  posted at the unsalted digest* holds it.
+  `recurring.service.smoke.spec.ts` runs the other two against the
+  emulator: *does not post the occurrence an older build already posted
+  under its own id* and *posts the stuck occurrence once and leaves the rule
+  alone on the next catch-up*.
+- **The salt's shape in the rules.** Step 3 writes past the rules. The
+  `firestore-rules.smoke.spec.ts` cases under *salt* refuse a malformed one
+  on a create and on an update, and accept a rule with none.
+- **A restore that keeps a file's salt.** `backup-restore.smoke.spec.ts`:
+  *keeps the salt a file holds, and gives a rule whose file has none a fresh
+  one*.
+- **An account change between two reads of one drain**, which one read
+  leaves no room for. This venue cannot change the account inside one
+  drain. *calls peekQueuedImage once and makes no other read of the entry*
+  and *opens no handle when the record is missing or is another account's*
+  hold it. An account change *after* that read, while the key read and the
+  model call run, is not closed. The owner is checked once, before them,
+  and the rows and photo are written to whoever is signed in when they are
+  written. Issue #486 leaves that window open, and no case covers it.
+
+**Cleanup.** The queued entry is journey 89's to read, and its cleanup
+clears it. A reload put the store's methods back (step 6). The salts the
+claim stored, the share and its copy, and the two stalled rules and their
+rows go with the emulators at the [teardown](#teardown).
+
+Two shots: the two stalled rules' rows, and the scan queued offline.
+
+### 91. Import History in the reader's language
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+89 ([the run order](#emulator-journeys)), with journey 87's failed receipt
+still in Import History. A whole-import failure now keeps the code it was
+refused with. Import History reads a failed record that names neither a row
+nor a class as a sentence about the record, in the reader's language
+([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md),
+[receipt-import.md](receipt-import.md)). Only a refused completion reaches
+that path, after the rows have landed, and this venue cannot make the rules
+refuse one on demand. So the records are written past the rules, in the
+shape such a refusal leaves.
+
+1. **Two whole-import failures, past the rules.** `e2e-91-whole` carries
+   the code `permission-denied` beside its message, as a record written now
+   does. `e2e-91-legacy` carries the message alone, as one written before
+   the code was kept does. Both are failed, with no `errorType` and nothing
+   naming a row, and both store the English the refusal threw:
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const record = (name, error) => ({ userId: s(uid), importedAt: { timestampValue: new Date().toISOString() },
+     source: s("csv"), fileType: s("bank_csv"), fileName: s(name), fileSize: n(2048),
+     transactionCount: n(0), successCount: n(0), skippedCount: n(0), errorCount: n(0),
+     totalIncome: n(0), totalExpenses: n(0), duplicatesSkipped: n(0), status: s("failed"),
+     errors: { arrayValue: { values: [{ mapValue: { fields: error } }] } } });
+   const put = (id, fields) => fetch(`${FS}/users/${uid}/imports/${id}`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) }).then(r => `${id} ${r.status}`);
+   const message = s("Missing or insufficient permissions.");
+   console.log(await put("e2e-91-whole", record("e2e-91-whole.csv", { message, code: s("permission-denied") })));
+   console.log(await put("e2e-91-legacy", record("e2e-91-legacy.csv", { message })));' "$FS" <alex-uid>
+   # e2e-91-whole 200
+   # e2e-91-legacy 200
+   ```
+
+2. **In Japanese.** Settings → Profile → **Language** → 日本語, a write to
+   the emulators. Then `/import/history`:
+
+   ```js
+   const read = name => {
+     const card = [...document.querySelectorAll('.history-item')].find(c => c.textContent.includes(name));
+     return [card.querySelector('.failure-class')?.textContent.trim() ?? null,
+       [...card.querySelectorAll('.errors li')].map(li => li.textContent.trim()),
+       card.textContent.includes('Missing or insufficient permissions')];
+   };
+   [read('e2e-91-whole.csv'), read('e2e-91-legacy.csv')];
+   ```
+
+   **Pass:** each card has no failure line (`null`), one error line, and
+   none of its stored English (`false`). The coded record reads
+   *接続が切断されたため、このインポートの記録を完了できませんでした。取引はすでに一覧に入っている可能性があるため、もう一度インポートする前にご確認ください。*
+   Its code is a connection code: `permission-denied` is read as one for a
+   whole import, as it is for a row. The other reads
+   *このインポートの記録を完了できませんでした。取引はすでに一覧に入っている可能性があるため、もう一度インポートする前にご確認ください。*
+   Its prose names no code, so it reads as unknown, which is ADR 0175's
+   Known gap for a record written before the code was kept. Neither card
+   shows a failure line, because a whole import is not a receipt attempt
+   and has no class. Shot: `91-whole-import-ja.png`.
+3. **In Traditional Chinese.** **Language** → 繁體中文, and step 2's read
+   again. Then journey 87's card:
+
+   ```js
+   const card = [...document.querySelectorAll('.history-item')]
+     .find(c => c.textContent.includes('e2e-87-receipt.png'));
+   [card.querySelector('.failure-class').textContent.trim(),
+     [...card.querySelectorAll('.errors li')].map(li => li.textContent.trim())];
+   ```
+
+   **Pass:** the coded record reads
+   *因連線中斷，此次匯入的紀錄無法完成。其中的交易可能已在你的清單中，重新匯入前請先確認。*
+   and the other *此次匯入的紀錄無法完成。其中的交易可能已在你的清單中，重新匯入前請先確認。*,
+   each with no failure line and none of its stored English. Journey 87's
+   card reads *尚未設定 AI 供應商* above
+   *尚未設定 AI 供應商。請在「設定 → AI 處理」中新增 API 金鑰。*: the drain that
+   failed for want of a provider, in the third language after journey 88's
+   two. Shot: `91-whole-import-tc.png`.
+4. **In English.** **Language** → **English**, and step 2's read again.
+   **Pass:** the coded record reads *This import's record could not be
+   finished because the connection dropped. Its transactions may already be
+   in your list, so check before importing again.* The other reads *This
+   import's record could not be finished. Its transactions may already be
+   in your list, so check before importing again.* Each has no failure
+   line, and *Missing or insufficient permissions.* is on neither card.
+   Shot: `91-whole-import-en.png`.
+
+   The sentences say the record could not be finished, not that nothing was
+   saved, because what reaches this path is a completion refused after its
+   rows landed. A sentence saying nothing was saved would invite the
+   duplicate import the check guards against.
+
+**What stays in the specs, and why.**
+
+- **The refusal that writes the record.** No real completion is refused on
+  demand here. `ai-import.service.spec.ts` holds the code the confirm's
+  catch keeps, *keeps the code a refused completion carried on the failed
+  import's entry*, and the pin *should fail the import and rethrow when
+  completion throws*, which leaves the key out for a plain `Error`.
+  `import-history.component.smoke.spec.ts` renders a stored record: *a
+  stored whole-import failure's error line comes from the catalog, not the
+  English it stored*.
+- **Every key an error line can return.** `i18n:check` reads literal keys,
+  and these are returned from functions. *finds every sentence an error
+  line can read in the English catalog* holds them in `en.json`, and
+  `translation-keys.spec.ts` holds ja and tc to the same keys.
+- **A drain whose key read fails**, which stays a connection problem. This
+  venue cannot fail that read on demand. `receipt-attempt.service.spec.ts`
+  holds it: *reads the keys when the attempt fails, not when it begins* and
+  *keeps a drain under network, with its engine slots, while the provider's
+  absence is not known (pin)*.
+- **A cold offline start with no key set.** Journey 87's drain, whose card
+  this journey reads, takes the warm path: its keys were read online before
+  the scan was queued offline. The drain waits for the key read before it
+  opens its attempt, so a cold start is filed as no provider too. *waits
+  for the account's key read before it opens the attempt or hands the photo
+  on* holds the order, and the drain smoke's *a failed drain leaves the
+  card's count at 1, and a reload counts it again once signed in* starts
+  with the keys not loaded and reads `no_provider` against the emulator.
+
+**Cleanup.** The language is back on English (step 4). The two records go
+with the emulators at the [teardown](#teardown).
+
+Three shots: the two records in Japanese, in Traditional Chinese with
+journey 87's card, and in English.
+
+### 92. One tie rule
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, last of the
+run ([the run order](#emulator-journeys)). It counts journey 88's
+`e2e-tie-food` beside this month's *Gym membership*, $35 each, and journey
+90's two $5 rows in Bills & Utilities. Every category list now ranks figures
+rounded to the cent, larger first, and an exact tie by category id
+([ADR 0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md),
+[dashboard.md](dashboard.md), [insights.md](insights.md),
+[rag-insights.md](rag-insights.md), [smart-search.md](smart-search.md)).
+Each list read here arrives newest first, so a tie whose higher id is dated
+later would read the other way by arrival.
+
+1. **The Categories tab.** `/reports?tab=categories`, before step 3 writes
+   two categories at $150, which would push the $35 pair out of the
+   legend's six slots:
+
+   ```js
+   const tab = document.querySelector('app-category-breakdown');
+   [ng.getComponent(tab).chartTotals().filter(c => c.total === 35).map(c => c.categoryId),
+     [...tab.querySelectorAll('.categories-accordion .category-name')].map(n => n.firstChild.textContent.trim()),
+     [...tab.querySelectorAll('app-spending-chart .legend-name')].map(n => n.textContent.trim())];
+   ```
+
+   **Pass:** `['food', 'health']`, and *Food & Drinks* directly before
+   *Health & Wellness* in the accordion and the legend alike, as on the
+   dashboard (journey 88's step 1). The first run's legend ended *Home &
+   Garden, Food & Drinks, Health & Wellness*: the pair sits fifth and
+   sixth. Shot: `92-categories-tie.png`.
+2. **An income tie, through the toggle.** Write two income rows past the
+   rules: $100 of Investments at noon on the 1st, and $100 of Rental &
+   Property a minute later, so the higher id arrives first.
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid, type, amount, ...pairs] = process.argv.slice(1);
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const t = d => ({ timestampValue: d.toISOString() });
+   for (const [i, pair] of pairs.entries()) {
+     const [id, categoryId] = pair.split(":");
+     const at = new Date(); at.setDate(1); at.setHours(12, i, 0, 0);
+     const fields = { userId: s(uid), type: s(type), amount: n(amount), currency: s("USD"),
+       amountInBaseCurrency: n(amount), exchangeRate: n(1), categoryId: s(categoryId), description: s(id),
+       date: t(at), createdAt: t(at), updatedAt: t(at), isRecurring: { booleanValue: false } };
+     const res = await fetch(`${FS}/users/${uid}/transactions/${id}`, { method: "PATCH",
+       headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+       body: JSON.stringify({ fields }) });
+     console.log(id, res.status);
+   }' "$FS" <alex-uid> income 100 e2e-92-inv:investments e2e-92-rent:rental
+   # e2e-92-inv 200
+   # e2e-92-rent 200
+   ```
+
+   Load `/reports?tab=categories` again, and press **Income** in the toggle
+   above the chart. Then:
+
+   ```js
+   const tab = document.querySelector('app-category-breakdown');
+   [ng.getComponent(tab).chartTotals().map(c => [c.categoryId, c.total]),
+     [...tab.querySelectorAll('.categories-accordion .category-name')].map(n => n.firstChild.textContent.trim()),
+     [...tab.querySelectorAll('app-spending-chart .legend-name')].map(n => n.textContent.trim())];
+   ```
+
+   **Pass:** `[['employment', 6800], ['investments', 100], ['rental',
+   100]]`, and *Investments* directly before *Rental & Property* in the
+   accordion and the legend. The first run switched the side by setting the
+   tab's `selectedType` signal from the console, state only and
+   diagnostic-grade. The toggle is what a reader presses, and the second
+   run presses it. Shot: `92-income-tie.png`.
+3. **The new-category chip.** On `/transactions`, read the chips first:
+
+   ```js
+   [ng.getComponent(document.querySelector('app-insight-chips')).chips().map(c => c.id),
+     [...document.querySelectorAll('app-insight-chips .insight-chip span')].map(s => s.textContent.trim())];
+   ```
+
+   The first run read `['new:bills_electricity', 'top:bills']`: the
+   Electric bill, $96.30, is the largest category new this month. Write two
+   expense rows: $150 of Gifts & Donations at noon on the 1st, and $150 of
+   Pets a minute later, with step 2's command and the arguments
+   `expense 150 e2e-92-gifts:gifts e2e-92-pets:pets`. Neither category has
+   a row last month, which is all the new-category chip compares against
+   (the seed's only Gifts and Pets rows are dated June 2026), so each is
+   new. With that June row, each has fewer than four rows in its six-month
+   baseline window, short of the four an unusual-amount chip needs. Load
+   `/transactions` again and read the chips. **Pass:**
+   `['new:gifts', 'top:bills']`, a chip reading *New this month: Gifts &
+   Donations*, and no chip naming Pets: the two changes tie at $150, above
+   the Electric bill, and the tie goes to the lower id.
+   Shot: `92-new-chip.png`.
+4. **A stored answer, refreshed.** A *top categories* answer, stored with
+   stale groups in the wrong order, is refreshed on the history page.
+   Refresh recomputes through `replayAggregate`, which needs no provider.
+   Write the whole record past the rules, so the update rules accept the
+   Refresh's write: an aggregate, `topCategories` with a limit of 3, over
+   this month's expenses, as day keys.
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+   const day = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const t = d => ({ timestampValue: d.toISOString() });
+   const group = id => ({ mapValue: { fields: { categoryId: s(id), total: n(1) } } });
+   const fields = { userId: s(uid), schemaVersion: n(2), kind: s("aggregate"),
+     query: s("top 3 expense categories this month"), operation: s("topCategories"), limit: n(3),
+     scope: { mapValue: { fields: { type: s("expense"), startDate: s(day(new Date(y, m, 1))),
+       endDate: s(day(new Date(y, m + 1, 0))) } } },
+     baseCurrency: s("USD"), currency: s("USD"), value: n(0), transactionCount: n(0),
+     groups: { arrayValue: { values: ["bills", "pets", "gifts"].map(group) } },
+     pinned: { booleanValue: false }, computedAt: t(now), lastUsedAt: t(now) };
+   const res = await fetch(`${FS}/users/${uid}/searchAnswers/e2e-top-tie`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) });
+   console.log(res.status);' "$FS" <alex-uid>
+   # 200
+   ```
+
+   Then load `/search-history` directly, press the record's question, *top
+   3 expense categories this month*, to expand it, and press **Refresh**.
+   Read the card:
+
+   ```js
+   [...document.querySelectorAll('app-nl-answer-card .answer-groups li > span:first-child')]
+     .map(s => s.textContent.trim());
+   ```
+
+   **Pass:** the toast *Answer updated*, and `['Bills & Utilities', 'Gifts
+   & Donations', 'Pets']`. Then the stored groups, past the rules:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/searchAnswers/e2e-top-tie" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).fields.groups.arrayValue.values.map(v=>{const f=v.mapValue.fields;return f.categoryId.stringValue+" "+(f.total.doubleValue??f.total.integerValue)}).join(", ")))'
+   # bills 2306.3, gifts 150, pets 150
+   ```
+
+   **Pass:** those three, in that order. Bills & Utilities holds the rent's
+   2200, journey 90's two $5 rows and the Electric bill's 96.30, rolled up
+   into its parent. Gifts & Donations stands before Pets at 150, the tie in
+   id order. The first run read exactly these figures. Shot:
+   `92-answer-refreshed.png`.
+
+   **What the first run found.** The history page loaded no category
+   catalog. On a direct load of `/search-history`, the card named every
+   group *Other*, and the Refresh rolled nothing up to its parent: it stored
+   `bills` at 2210, without the Electric bill. The search dialog had the
+   same gap when it was opened from a page that loads no catalog. Both now
+   load the catalog for as long as they are open (*fix(ui): the search
+   history and the search dialog load the category catalog*). The re-check
+   after the fix read the names and figures above. It pressed the row and
+   **Refresh** from the console, and the second run presses them by pointer.
+
+**What stays in the specs, and why.**
+
+- **A tie that only rounding makes.** Two totals that differ below a cent
+  print the same and now tie, but every figure here is whole cents. Unit
+  cases hold it on each list: *counts a total that differs only by float
+  noise as a tie* on the Categories tab, *ranks changes that tie once
+  rounded to the cent by id* for the category changes, and *ranks a tie
+  between cent-rounded totals by id when float noise separates the sums*
+  for a search.
+- **The AI summary's grounding**, its *Category changes vs. previous
+  period* block, needs a provider. `spending-insight.utils.spec.ts` holds
+  its order under *a tie in the absolute change*.
+- **The unusual-amount chips' tie at their cap** needs four or more rows in the
+  baseline window of each of two categories and a tie at the two-chip cap.
+  `insight-chips.service.spec.ts`: *names the categories of the lowest row
+  ids when anomalies tie at the cap*.
+- **The same orders against the emulator.**
+  `reports-categories.smoke.spec.ts`, *lists two categories with equal
+  totals in category id order, on each side of the toggle*, and
+  `nl-search.service.smoke.spec.ts`, *ranks a tie among parents at the
+  limit by category id*.
+
+**Cleanup.** The four rows and the stored answer go with the emulators at
+the [teardown](#teardown).
+
+Four shots: the expense tie on the Categories tab, the income tie, the
+new-category chip, and the refreshed answer.
 
 ## Evidence
 
@@ -6121,9 +6754,12 @@ account (journey 80); a review card at a real phone's width, a viewport
 query Karma's fixed 756px window cannot apply (journey 79); and colours as a
 browser paints them in both themes, links that cross a real router and a
 lock screen, and a real header at three widths, on an account nothing real
-stands behind (journeys 81 to 86); and the motion of the real providers,
+stands behind (journeys 81 to 86); the motion of the real providers,
 which no spec boots, the one worker a real origin registers, and the ids the
-app writes, read back past the rules (journeys 87 to 89).
+app writes, read back past the rules (journeys 87 to 89); and a salt only
+the owner reads, stalled rules left alone across real loads, the reads a
+real IndexedDB serves, a record's lines in three languages, and one tie rule
+on every list a real page paints (journeys 90 to 92).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -6147,7 +6783,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 89 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 92 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -6161,9 +6797,16 @@ overlay's animation), a worker the build emits or the app registers, the
 offline queue's capture or its drain on `online`, or the review step's
 notices; 88 the category fold or a list it ranks, `formatTime` or
 `formatNumber` or a page that shows them, the intake's ceiling or the
-dropzone's refusal, or Import History's lines; and 89 how a row's id is
+dropzone's refusal, or Import History's lines; 89 how a row's id is
 chosen — `opaqueRowId`, the recurring claim, the queue's `rowSeed` and
-`queueRowTxId` — or a copy's id and the rules that take it.
+`queueRowTxId` — or a copy's id and the rules that take it; 90 a posting's
+salt — `recurringPostingId`, the salt a rule is created, claimed or restored
+with, or the rules that check it — the claim's lookup for a stalled rule, or
+the drain's reads of a queued entry; 91 Import History's error lines or
+failure labels, what a failed import's record keeps, or how the receipt
+classifier files a failure; and 92 the order of a category list — the
+Categories tab, the category changes and their chip, or a search's top
+categories — or the category catalog a page or the search dialog loads.
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.

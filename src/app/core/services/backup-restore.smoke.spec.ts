@@ -30,6 +30,7 @@ import { CurrencyService } from './currency.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { TranslationService } from './translation.service';
 import { ExportData } from './export.service';
+import { isSeed } from '../utils/opaque-id.utils';
 import {
   Category,
   CategoryMemoryEntry,
@@ -293,6 +294,53 @@ describe('Backup restore (emulator smoke test)', () => {
     const postedFor = (id: string) => posted.filter(row => row.recurringId === id);
     expect(postedFor(paused)).toEqual([]);
     expect(postedFor(active).length).toBeGreaterThan(0);
+  }, 30000);
+
+  // #486: the salt keys the ids a rule's postings take, and only the document
+  // holds it. The unit spec sees the options the restore builds; only a real
+  // write shows what the rules let through and what lands.
+  it('keeps the salt a file holds, and gives a rule whose file has none a fresh one', async () => {
+    const kept = track('recurring', `backup-restore-smoke-salted-${run}`);
+    const bare = track('recurring', `backup-restore-smoke-unsalted-${run}`);
+    const malformed = track('recurring', `backup-restore-smoke-badsalt-${run}`);
+    const FILE_SALT = 'fedcba9876543210fedcba9876543210';
+
+    const rule = (id: string, salt?: string): RecurringTransaction => ({
+      id,
+      userId: uid,
+      name: 'Rent',
+      type: 'expense',
+      amount: 1000,
+      currency: 'USD',
+      categoryId: 'housing_rent',
+      description: 'Rent',
+      frequency: { type: 'monthly', interval: 1 },
+      startDate: Timestamp.fromDate(new Date(2026, 0, 1, 9)),
+      nextOccurrence: Timestamp.fromDate(new Date(2026, 0, 1, 9)),
+      isActive: true,
+      ...(salt === undefined ? {} : { salt }),
+    } as RecurringTransaction);
+
+    const summary = await service.restore(emptyBackup({
+      recurring: [rule(kept, FILE_SALT), rule(bare), rule(malformed, 'NOT-A-SEED')],
+    }));
+
+    // The malformed salt is not a skip: createRecurring replaces it before
+    // the write, so the rules never see it.
+    expect(summary.skipped).toEqual([]);
+    expect(summary.recurring).toBe(3);
+
+    expect((await readRaw('recurring', kept))['salt']).toBe(FILE_SALT);
+
+    const fresh = (await readRaw('recurring', bare))['salt'];
+    expect(isSeed(fresh)).toBeTrue();
+
+    const replaced = (await readRaw('recurring', malformed))['salt'];
+    expect(isSeed(replaced)).toBeTrue();
+    expect(replaced).not.toBe('NOT-A-SEED');
+    // Each draws its own: a shared salt would make the rules' postings
+    // collide wherever their ids and times did.
+    expect(new Set([FILE_SALT, fresh, replaced]).size).toBe(3);
   }, 30000);
 
   it('restores the same insight snapshot twice with nothing skipped', async () => {

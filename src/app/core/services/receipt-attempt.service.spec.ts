@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import {
   ReceiptAttemptService,
   buildReceiptImportPayload,
@@ -9,8 +9,16 @@ import {
 import { AnalyticsService } from './analytics.service';
 import { ImportHistoryService } from './import-history.service';
 import { AuthService } from './auth.service';
+import { PwaService } from './pwa.service';
+import { ProviderKeyService } from './provider-key.service';
 import { ReceiptAttemptDiagnostics } from './ai-types';
-import { AI_NO_PROVIDER, AI_QUEUED_OFFLINE, ReceiptProcessingError } from '../utils/ai-error.utils';
+import { ImportHistory, ProviderSecrets } from '../../models';
+import {
+  AI_CLOUD_UNAVAILABLE,
+  AI_NO_PROVIDER,
+  AI_QUEUED_OFFLINE,
+  ReceiptProcessingError,
+} from '../utils/ai-error.utils';
 
 /**
  * The one producer of receipt_import and the one writer of a failed-attempt
@@ -20,6 +28,16 @@ import { AI_NO_PROVIDER, AI_QUEUED_OFFLINE, ReceiptProcessingError } from '../ut
  */
 describe('ReceiptAttemptService', () => {
   const cloud: ReceiptAttemptDiagnostics = { engine: 'cloud', provider: 'gemini', durationMs: 3200 };
+
+  /**
+   * What the strategy raises when no cloud provider can be reached: the
+   * sentinel, wrapped with the diagnostics of a cloud pass that never named a
+   * provider.
+   */
+  const cloudUnavailable = (): ReceiptProcessingError => new ReceiptProcessingError(
+    { engine: 'cloud', provider: null, durationMs: 1, errorType: 'network', retryable: true },
+    new Error(AI_CLOUD_UNAVAILABLE)
+  );
 
   describe('buildReceiptImportPayload', () => {
     it('fills every dimension with none when nothing ran', () => {
@@ -101,6 +119,31 @@ describe('ReceiptAttemptService', () => {
       // the record the honest class is that nothing was configured.
       expect(classifyReceiptFailure(new Error(AI_NO_PROVIDER)).failure).toBe('no_provider');
     });
+
+    it('files the cloud sentinel under no_provider, with no diagnostics, when no provider is known to be set', () => {
+      // A drain that ran online with no key: the cloud pass it reports never
+      // reached a provider, so nothing about it belongs on the record.
+      for (const error of [new Error(AI_CLOUD_UNAVAILABLE), cloudUnavailable()]) {
+        expect(classifyReceiptFailure(error, { providerAbsent: true }))
+          .withContext(error.name)
+          .toEqual({ failure: 'no_provider', diagnostics: null, message: 'No AI provider is configured.' });
+      }
+    });
+
+    it('keeps the cloud sentinel under network while the provider is not known to be absent (pin)', () => {
+      const wrapped = cloudUnavailable();
+      for (const error of [new Error(AI_CLOUD_UNAVAILABLE), wrapped]) {
+        expect(classifyReceiptFailure(error).failure).withContext(`${error.name}, no context`).toBe('network');
+        expect(classifyReceiptFailure(error, { providerAbsent: false }).failure)
+          .withContext(`${error.name}, providerAbsent false`)
+          .toBe('network');
+      }
+      expect(classifyReceiptFailure(wrapped, { providerAbsent: false }).diagnostics).toBe(wrapped.diagnostics);
+    });
+
+    it('keeps a real connection failure under network when no provider is set (pin)', () => {
+      expect(classifyReceiptFailure(new Error('Failed to fetch'), { providerAbsent: true }).failure).toBe('network');
+    });
   });
 
   describe('provenanceOf', () => {
@@ -119,6 +162,10 @@ describe('ReceiptAttemptService', () => {
     let service: ReceiptAttemptService;
     let analytics: jasmine.SpyObj<AnalyticsService>;
     let history: jasmine.SpyObj<ImportHistoryService>;
+    // Online, with the keys read and none of them set: the one state in which
+    // a provider's absence is known rather than guessed.
+    let pwa: { isOnline: WritableSignal<boolean> };
+    let providerKeys: { keys: WritableSignal<ProviderSecrets | null>; loadFailed: WritableSignal<boolean> };
     const files = [
       new File(['aaaa'], 'first.jpg', { type: 'image/jpeg' }),
       new File(['bb'], 'second.jpg', { type: 'image/jpeg' }),
@@ -128,15 +175,84 @@ describe('ReceiptAttemptService', () => {
       analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', ['trackReceiptImport']);
       history = jasmine.createSpyObj<ImportHistoryService>('ImportHistoryService', ['saveImportHistory']);
       history.saveImportHistory.and.resolveTo('hist-1');
+      pwa = { isOnline: signal(true) };
+      providerKeys = { keys: signal<ProviderSecrets | null>({}), loadFailed: signal(false) };
       TestBed.configureTestingModule({
         providers: [
           ReceiptAttemptService,
           { provide: AnalyticsService, useValue: analytics },
           { provide: ImportHistoryService, useValue: history },
           { provide: AuthService, useValue: { userId: signal<string | null>('user-1') } },
+          { provide: PwaService, useValue: pwa },
+          { provide: ProviderKeyService, useValue: providerKeys },
         ],
       });
       service = TestBed.inject(ReceiptAttemptService);
+    });
+
+    /** The one record a queued scan's failed drain writes. */
+    async function drainFails(): Promise<Omit<ImportHistory, 'id'>> {
+      history.saveImportHistory.calls.reset();
+      service.begin('queue', 'receipt_image', files).failed(cloudUnavailable());
+      await Promise.resolve();
+      expect(history.saveImportHistory).toHaveBeenCalledTimes(1);
+      return history.saveImportHistory.calls.mostRecent().args[0];
+    }
+
+    it('files a drain that failed online with no provider set as no_provider, with no engine slots', async () => {
+      const written = await drainFails();
+
+      expect(written).toEqual(jasmine.objectContaining({
+        door: 'queue',
+        status: 'failed',
+        errorType: 'no_provider',
+        errors: [{ message: 'No AI provider is configured.' }],
+      }));
+      for (const slot of ['engine', 'durationMs', 'provider', 'fellBackFrom']) {
+        expect(slot in written).withContext(slot).toBeFalse();
+      }
+      expect(analytics.trackReceiptImport).not.toHaveBeenCalled();
+    });
+
+    it('reads the keys when the attempt fails, not when it begins', async () => {
+      // The keys are read when the attempt fails, so a load that lands while
+      // the attempt runs is seen. The drain itself waits for the key read
+      // before it opens its attempt, so for a drain they stay unknown only
+      // when that read failed.
+      providerKeys.keys.set(null);
+      const attempt = service.begin('queue', 'receipt_image', files);
+      providerKeys.keys.set({});
+      attempt.failed(cloudUnavailable());
+      await Promise.resolve();
+
+      expect(history.saveImportHistory).toHaveBeenCalledWith(
+        jasmine.objectContaining({ door: 'queue', errorType: 'no_provider' })
+      );
+    });
+
+    it('keeps a drain under network, with its engine slots, while the provider\'s absence is not known (pin)', async () => {
+      const unknowns: [string, () => void][] = [
+        ['offline', () => pwa.isOnline.set(false)],
+        ['keys still loading', () => providerKeys.keys.set(null)],
+        ['keys could not be read', () => providerKeys.loadFailed.set(true)],
+        ['a Gemini key', () => providerKeys.keys.set({ gemini: 'gemini-key' })],
+        ['an OpenAI key', () => providerKeys.keys.set({ openai: 'openai-key' })],
+        ['a Claude key', () => providerKeys.keys.set({ claude: 'claude-key' })],
+      ];
+      for (const [state, arrange] of unknowns) {
+        pwa.isOnline.set(true);
+        providerKeys.keys.set({});
+        providerKeys.loadFailed.set(false);
+        arrange();
+
+        expect(await drainFails()).withContext(state).toEqual(jasmine.objectContaining({
+          door: 'queue',
+          errorType: 'network',
+          engine: 'cloud',
+          durationMs: 1,
+          errors: [{ message: 'Cloud AI is not reachable.' }],
+        }));
+      }
     });
 
     it('sends exactly one event per handle, whichever branch settles it first', () => {
@@ -272,11 +388,15 @@ describe('ReceiptAttemptService', () => {
           { provide: AnalyticsService, useValue: analytics },
           { provide: ImportHistoryService, useValue: history },
           { provide: AuthService, useValue: { userId: signal<string | null>(null) } },
+          { provide: PwaService, useValue: pwa },
+          { provide: ProviderKeyService, useValue: providerKeys },
         ],
       });
       TestBed.inject(ReceiptAttemptService).begin('form', 'receipt_image', files).failed(new Error('x'));
       await Promise.resolve();
       expect(history.saveImportHistory).not.toHaveBeenCalled();
+      // The terminal ran to its end: the event follows the record on the form door.
+      expect(analytics.trackReceiptImport).toHaveBeenCalledTimes(1);
     });
   });
 });

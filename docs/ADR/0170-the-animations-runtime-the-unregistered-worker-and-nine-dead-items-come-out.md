@@ -1,11 +1,39 @@
 # 170. The animations runtime, the unregistered worker and nine dead items come out
 
-**Status:** Accepted, implemented · **Date:** 2026-10-10 · **Issues:** #437
+**Status:** Accepted, implemented; amended by
+[0175](0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)
+· **Date:** 2026-10-10 · **Issues:** #437
 
 Reference documentation lives in [../performance.md](../performance.md),
 [../pwa.md](../pwa.md), [../share-import.md](../share-import.md),
 [../receipt-import.md](../receipt-import.md) and
 [../import-fields.md](../import-fields.md).
+
+**Amended by
+[0175](0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md).**
+The history's error lines are still read through the catalog, by the
+readings described below. Two statements no longer hold:
+
+- **Under *Things that only became apparent while building*,** that a drain
+  which failed online for want of a provider says to add a key, not to check
+  the connection. Its line, `import.errorCloudUnavailable`, named both
+  causes, and its class label above it read *Connection problem*. Such a
+  drain is now filed as `no_provider` when the attempt knows no provider is
+  set: the device online, the keys read without a failure, and none set.
+  Its card then reads *No AI provider configured* above
+  `import.errorNoProvider`, with no *Cloud* chip and no duration. A drain
+  that cannot know, offline or with the keys still loading, is still filed
+  as `network` and reads as before.
+- **The entry *A whole-import failure still shows its stored English in the
+  import history*.** `failImport` now keeps the refusal's Firestore code
+  beside its message. The history reads a failed record with no class and
+  nothing naming a row through `wholeImportFailureKey`, which shares
+  `importFailureKey`'s reading of a code and its prose, as a sentence about
+  the record in the reader's language: `import.wholeFailedConnection` or
+  `import.wholeFailedUnknown`. A record written before the code was kept is
+  placed by its prose alone. The follow-up that entry named, a class of the
+  path's own, was not needed: no class is stored, and the code is read
+  instead.
 
 Applies [0048](0048-a-dead-capability-is-removed-not-guarded.md), one
 removal per commit.

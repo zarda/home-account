@@ -6,6 +6,7 @@ import {
   OfflineQueueService,
   QUEUE_CLOSED_FOR_UPGRADE,
   QUEUE_NOT_SIGNED_IN,
+  queuedImageFile,
   queueRowTxId,
 } from './offline-queue.service';
 import { PwaService } from './pwa.service';
@@ -112,8 +113,8 @@ describe('OfflineQueueService', () => {
       const first = await service.queueImage(imageFile('a.jpg'));
       const second = await service.queueImage(imageFile('b.jpg'));
       const seeds = [
-        (await service.getQueuedImage(first))?.rowSeed,
-        (await service.getQueuedImage(second))?.rowSeed,
+        (await service.peekQueuedImage(first))?.rowSeed,
+        (await service.peekQueuedImage(second))?.rowSeed,
       ];
 
       expect(first).toMatch(/^img_/);
@@ -138,14 +139,19 @@ describe('OfflineQueueService', () => {
   describe('retrieval and conversion', () => {
     it('reads a queued image back as a File', async () => {
       const id = await service.queueImage(imageFile('receipt.jpg'));
-      const queued = await service.getQueuedImage(id);
+      const queued = await service.peekQueuedImage(id);
       expect(queued?.fileName).toBe('receipt.jpg');
-      const file = await service.getQueuedImageAsFile(id);
-      expect(file?.name).toBe('receipt.jpg');
+
+      // A File has no own keys, so toEqual would call any two of them equal.
+      const file = queuedImageFile(queued!);
+      expect(file.name).toBe('receipt.jpg');
+      expect(file.type).toBe('image/jpeg');
+      expect(file.size).toBe(3);
+      expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([1, 2, 3]);
     });
 
-    it('returns null for a missing image file', async () => {
-      expect(await service.getQueuedImageAsFile('nope')).toBeNull();
+    it('returns undefined for a missing image', async () => {
+      expect(await service.peekQueuedImage('nope')).toBeUndefined();
     });
   });
 
@@ -153,7 +159,7 @@ describe('OfflineQueueService', () => {
     it('updates image status and increments retry count on error', async () => {
       const id = await service.queueImage(imageFile());
       expect(await service.updateImageStatus(id, 'failed', 'boom')).toBeTrue();
-      const img = await service.getQueuedImage(id);
+      const img = await service.peekQueuedImage(id);
       expect(img?.status).toBe('failed');
       expect(img?.retryCount).toBe(1);
       expect(img?.lastError).toBe('boom');
@@ -318,7 +324,7 @@ describe('OfflineQueueService', () => {
 
     it('degrades gracefully on reads and clears', async () => {
       expect(await service.getPendingImages()).toEqual([]);
-      expect(await service.getQueuedImage('x')).toBeUndefined();
+      expect(await service.peekQueuedImage('x')).toBeUndefined();
       expect(await service.getSyncLog()).toEqual([]);
       await service.removeImage('x');
       await service.clearCompleted();
@@ -389,15 +395,14 @@ describe('OfflineQueueService', () => {
       expect(pending.map(i => i.id)).toEqual([id]);
     });
 
-    it('does not hand a foreign image to a caller by id', async () => {
+    it('peek is owner-blind; the processor checks the owner', async () => {
       const id = await service.queueImage(imageFile());
 
       userId.set('user-b');
 
-      expect(await service.getQueuedImage(id)).toBeUndefined();
-      expect(await service.getQueuedImageAsFile(id)).toBeNull();
-      // peek is the deliberate exception, so the processor can tell "not mine"
-      // apart from "gone".
+      // The drain's one read hands back the record whoever is signed in, so
+      // the processor can tell "not mine" apart from "gone" on the owner it
+      // carries, and checks it before the photo is built or handed on.
       expect((await service.peekQueuedImage(id))?.userId).toBe('user-a');
     });
 
@@ -487,7 +492,7 @@ describe('OfflineQueueService', () => {
       await service.clearCompleted();
       await service.clearFailed();
       // Still there, taking up space, reachable only by id.
-      expect((await service.getQueuedImage(id))?.status).toBe('processing');
+      expect((await service.peekQueuedImage(id))?.status).toBe('processing');
     });
 
     it('reclaims a stranded image on the next launch', async () => {

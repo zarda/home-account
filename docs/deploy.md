@@ -2,9 +2,10 @@
 
 Every push to `main` that passes the full CI pipeline deploys itself; which
 targets ship is decided by what the push changed. This doc is the runbook:
-the classification, the secrets, the service account, the manual overrides,
-and the checks that stay human. The reasoning and the rejected alternatives
-are in [ADR 0077](ADR/0077-merges-deploy-what-they-changed.md); the version
+the classification, the secrets, the Hosting site, the service account, the
+manual overrides, and the checks that stay human. The reasoning and the
+rejected alternatives are in
+[ADR 0077](ADR/0077-merges-deploy-what-they-changed.md); the version
 scheme is in [ADR 0078](ADR/0078-the-version-is-the-year-the-month-and-a-count.md).
 
 ## What deploys when
@@ -105,6 +106,25 @@ through CI, and their lifecycle (set, verify, re-pin) is
 [feedback.md](feedback.md)'s runbook, not this one. A rotation affects the
 two functions that bind them, and one full `--only functions` deploy re-pins
 both.
+
+## The Hosting site
+
+`deploy-web` publishes to the project's default Hosting site, `home-accounter`
+(`https://home-accounter.web.app`), which Firebase created along with the
+project. Projects created on or after October 15, 2026 no longer get that site
+up front: a CLI deploy to a project that has none fails with
+`404 Site Not Found`. `home-accounter` is unaffected —
+`npx firebase hosting:sites:list --project home-accounter` lists its site —
+but any new real project (a staging copy, a rebuild from scratch) needs its
+site created once, before its first deploy:
+
+```bash
+npx firebase hosting:sites:create <site-id> --project <project-id>
+```
+
+The site id is normally the project id; if that `.web.app` subdomain is
+already taken, choose another. The `demo-home-account` emulator project never
+deploys and needs nothing.
 
 ## The service account
 

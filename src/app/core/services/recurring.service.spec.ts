@@ -7,7 +7,8 @@ import {
   MAX_OCCURRENCES_PER_CLAIM,
   INVALID_FREQUENCY_ERROR,
   UNREADABLE_SCHEDULE_ERROR,
-  RULE_ENDED_ERROR
+  RULE_ENDED_ERROR,
+  recurringPostingId
 } from './recurring.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -16,7 +17,7 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
-import { opaqueRowId } from '../utils/opaque-id.utils';
+import { isSeed, opaqueRowId } from '../utils/opaque-id.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -36,6 +37,9 @@ describe('RecurringService', () => {
   const DAY = 24 * 60 * 60 * 1000;
 
   const monthly: RecurringFrequency = { type: 'monthly', interval: 1 };
+  // 32 lower-case hex characters, a salt the claim keeps. Anything else it
+  // replaces with a fresh draw, and no spec could name the ids that follow.
+  const FIXTURE_SALT = '00112233445566778899aabbccddeeff';
 
   const createRecurring = (overrides: Partial<RecurringTransaction> = {}): RecurringTransaction => {
     const nextOccurrence = overrides.nextOccurrence ?? Timestamp.fromDate(new Date(2024, 1, 1));
@@ -60,6 +64,9 @@ describe('RecurringService', () => {
       startDate: nextOccurrence,
       nextOccurrence,
       isActive: true,
+      // Before the overrides, so { salt: undefined } is a rule written before
+      // rules held a salt.
+      salt: FIXTURE_SALT,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
       ...overrides
@@ -68,9 +75,16 @@ describe('RecurringService', () => {
 
   // Firestore-transaction stub: getDocRef returns path-carrying refs and
   // runTransaction hands the callback a tx whose get() serves docs from
-  // serverDocs, mirroring the fresh server read of a real transaction.
+  // serverDocs, mirroring the fresh server read of a real transaction. Like
+  // the SDK's, that tx refuses a read once it has written.
   interface FakeDocRef { path: string }
   let serverDocs: Map<string, RecurringTransaction>;
+  // Every other document a claim may read: a posted occurrence, a history
+  // line. serverDocs keeps the rules, typed as rules, so a spec that reads a
+  // rule back needs no cast.
+  let serverRows: Map<string, unknown>;
+  // The path of every read a transaction was served, across all of them.
+  let txGetPaths: string[];
   let txSet: jasmine.Spy;
   let txUpdate: jasmine.Spy;
 
@@ -78,15 +92,88 @@ describe('RecurringService', () => {
     serverDocs.set(`users/user123/recurring/${rule.id}`, rule);
   };
 
+  const seedServerDoc = (path: string, data: unknown): void => {
+    serverRows.set(path, data);
+  };
+
+  const READ_AFTER_WRITE_ERROR =
+    'Firestore transactions require all reads to be executed before all writes.';
+
+  /**
+   * The tx one runTransaction call hands its callback. The SDK rejects a read
+   * issued after a write, so a claim that wrote before it read would fail
+   * against the server and pass against a fake that allowed it. `written`
+   * lives here, one per call, and is never derived from the shared txSet and
+   * txUpdate spies: a drain runs several claims, and a later claim's first read
+   * must not see an earlier claim's writes. `commit` is how a stub writes an
+   * update back into serverDocs.
+   */
+  const newTransaction = (commit?: (ref: FakeDocRef, update: Record<string, unknown>) => void) => {
+    let written = false;
+    return {
+      get: (ref: FakeDocRef) => {
+        if (written) {
+          return Promise.reject(new Error(READ_AFTER_WRITE_ERROR));
+        }
+        txGetPaths.push(ref.path);
+        const doc = (serverDocs.get(ref.path) ?? serverRows.get(ref.path)) as
+          RecurringTransaction | undefined;
+        return Promise.resolve({
+          exists: () => doc !== undefined,
+          id: ref.path.split('/').pop(),
+          data: () => doc
+        });
+      },
+      set: (...args: unknown[]) => {
+        written = true;
+        return txSet(...args);
+      },
+      update: (ref: FakeDocRef, update: Record<string, unknown>) => {
+        written = true;
+        txUpdate(ref, update);
+        commit?.(ref, update);
+      }
+    };
+  };
+
   const txSetPaths = (): string[] =>
     txSet.calls.allArgs().map(args => (args[0] as FakeDocRef).path);
 
-  /** Where a claim posts the occurrence of `ruleId` falling due at `when`. */
-  const occurrencePath = async (ruleId: string, when: Date): Promise<string> =>
+  /**
+   * Where a claim posts the occurrence of `ruleId` falling due at `when`, keyed
+   * by the salt the rule holds. Every fixture rule holds FIXTURE_SALT.
+   */
+  const occurrencePath = async (
+    ruleId: string,
+    when: Date,
+    salt: string = FIXTURE_SALT
+  ): Promise<string> =>
+    `users/user123/transactions/${await recurringPostingId({ id: ruleId, salt }, when.getTime())}`;
+
+  /** Where a build before the salt posted the same occurrence: a digest with no key. */
+  const unsaltedOccurrencePath = async (ruleId: string, when: Date): Promise<string> =>
     `users/user123/transactions/${await opaqueRowId('rec', ruleId, when.getTime())}`;
+
+  /** Where an older build posted the same occurrence: the rule and the time, in clear. */
+  const legacyOccurrencePath = (ruleId: string, when: Date): string =>
+    `users/user123/transactions/rec-${ruleId}-${when.getTime()}`;
+
+  /**
+   * Every read a claim of a rule stalled on `when` is served, in order: the
+   * rule, then each id the stuck occurrence may already stand under. A rule
+   * holding a well-formed salt adds the salted id to the two older ones.
+   */
+  const stalledReads = async (ruleId: string, when: Date, salt?: string): Promise<string[]> => [
+    `users/user123/recurring/${ruleId}`,
+    legacyOccurrencePath(ruleId, when),
+    await unsaltedOccurrencePath(ruleId, when),
+    ...(salt === undefined ? [] : [await occurrencePath(ruleId, when, salt)])
+  ];
 
   const installTransactionStub = (): void => {
     serverDocs = new Map();
+    serverRows = new Map();
+    txGetPaths = [];
     txSet = jasmine.createSpy('tx.set');
     txUpdate = jasmine.createSpy('tx.update');
 
@@ -94,18 +181,7 @@ describe('RecurringService', () => {
       ((path: string) => ({ path })) as unknown as FirestoreService['getDocRef']
     );
     mockFirestoreService.runTransaction.and.callFake(updateFn => {
-      const tx = {
-        get: (ref: FakeDocRef) => {
-          const doc = serverDocs.get(ref.path);
-          return Promise.resolve({
-            exists: () => doc !== undefined,
-            id: ref.path.split('/').pop(),
-            data: () => doc
-          });
-        },
-        set: txSet,
-        update: txUpdate
-      };
+      const tx = newTransaction();
       return updateFn(tx as unknown as Parameters<typeof updateFn>[0]);
     });
   };
@@ -115,6 +191,7 @@ describe('RecurringService', () => {
       'subscribeToCollection',
       'subscribeToDocument',
       'addDocument',
+      'setDocument',
       'updateDocument',
       'deleteDocument',
       'getDocument',
@@ -377,6 +454,67 @@ describe('RecurringService', () => {
     it('should reset isLoading after completion', async () => {
       await service.createRecurring(dto);
       expect(service.isLoading()).toBeFalse();
+    });
+
+    // #486: the salt keys the ids a rule's postings take, so every new rule
+    // holds one from its first write, on whichever path writes it.
+    describe('the salt', () => {
+      const HANDED = '0123456789abcdef0123456789abcdef';
+
+      it('gives a rule written by addDocument a seed', async () => {
+        await service.createRecurring(dto);
+
+        const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+        expect(isSeed((data as Record<string, unknown>)['salt'])).toBeTrue();
+      });
+
+      it('gives a rule written at a chosen id a seed', async () => {
+        await service.createRecurring(dto, { id: 'chosen' });
+
+        const [path, data] = mockFirestoreService.setDocument.calls.mostRecent().args;
+        expect(path).toBe('users/user123/recurring/chosen');
+        expect(isSeed((data as Record<string, unknown>)['salt'])).toBeTrue();
+      });
+
+      it('draws a different seed for each rule', async () => {
+        await service.createRecurring(dto);
+        await service.createRecurring(dto);
+
+        const salts = mockFirestoreService.addDocument.calls.allArgs()
+          .map(args => (args[1] as Record<string, unknown>)['salt']);
+        expect(salts.length).toBe(2);
+        expect(salts[0]).not.toBe(salts[1]);
+      });
+
+      it('keeps a well-formed salt it is handed', async () => {
+        await service.createRecurring(dto, { id: 'chosen', salt: HANDED });
+
+        const [, data] = mockFirestoreService.setDocument.calls.mostRecent().args;
+        expect((data as Record<string, unknown>)['salt']).toBe(HANDED);
+      });
+
+      it('keeps a well-formed salt it is handed on the addDocument path', async () => {
+        await service.createRecurring(dto, { salt: HANDED });
+
+        const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+        expect((data as Record<string, unknown>)['salt']).toBe(HANDED);
+      });
+
+      for (const [label, bad] of [
+        ['an upper-case one', HANDED.toUpperCase()],
+        ['a short one', 'abc123'],
+        ['an empty one', ''],
+        ['one with a non-hex character', 'g'.repeat(32)]
+      ] as const) {
+        it(`replaces ${label} with a fresh seed`, async () => {
+          await service.createRecurring(dto, { id: 'chosen', salt: bad });
+
+          const [, data] = mockFirestoreService.setDocument.calls.mostRecent().args;
+          const salt = (data as Record<string, unknown>)['salt'];
+          expect(isSeed(salt)).toBeTrue();
+          expect(salt).not.toBe(bad);
+        });
+      }
     });
   });
 
@@ -849,6 +987,79 @@ describe('RecurringService', () => {
     });
   });
 
+  // #486: the id a posting takes. The known answer is the salted pin in
+  // opaque-id.utils.spec.ts, so the argument order is checked here too.
+  describe('recurringPostingId', () => {
+    it('keys the digest by the rule\'s salt, a key no call site can leave out', async () => {
+      expect(await recurringPostingId({ id: 'rule1', salt: FIXTURE_SALT }, 1))
+        .toBe('e3e86f902d84ead0754cf709449f6596');
+      // @ts-expect-error salt is a required key, so a call site cannot reach the unsalted digest by omission
+      await recurringPostingId({ id: 'rule1' }, 1);
+    });
+  });
+
+  // The real SDK rejects a read issued after a write in the same transaction.
+  // A fake that allowed it would let a claim read in the wrong place and still
+  // pass every unit case, so the fakes enforce the order themselves. These
+  // cases drive the stub directly, with no claim in between.
+  describe('the claim transaction stub', () => {
+    const READ_AFTER_WRITE =
+      'Firestore transactions require all reads to be executed before all writes.';
+    const rowPath = 'users/user123/transactions/seeded';
+
+    it('refuses a read after a write in one transaction, with the SDK message', async () => {
+      seedServerDoc(rowPath, { amount: 1 });
+      const ref = mockFirestoreService.getDocRef(rowPath);
+
+      await expectAsync(
+        mockFirestoreService.runTransaction(async tx => {
+          tx.set(ref, { amount: 2 });
+          await tx.get(ref);
+        })
+      ).toBeRejectedWithError(READ_AFTER_WRITE);
+
+      // The write did go through the stub and the refused read was not served,
+      // so the rejection came from the ordering and from nothing else.
+      expect(txSet).toHaveBeenCalledTimes(1);
+      expect(txGetPaths).toEqual([]);
+    });
+
+    it('lets a second transaction read after the first wrote', async () => {
+      seedServerDoc(rowPath, { amount: 1 });
+      const ref = mockFirestoreService.getDocRef(rowPath);
+
+      await expectAsync(
+        mockFirestoreService.runTransaction(async tx => {
+          tx.set(ref, { amount: 2 });
+          await tx.get(ref);
+        })
+      ).toBeRejectedWithError(READ_AFTER_WRITE);
+
+      // txSet has been called by now. The order is a property of one
+      // transaction and not of the shared spies, or this read would be
+      // refused and a multi-claim drain would swallow it as offline.
+      const seen = await mockFirestoreService.runTransaction(async tx => (await tx.get(ref)).exists());
+
+      expect(seen).toBeTrue();
+      expect(txGetPaths).toEqual([rowPath]);
+    });
+
+    it('serves a rule from serverDocs and any other path from serverRows', async () => {
+      seedServerRule(createRecurring({ id: 'ruleA' }));
+      seedServerDoc(rowPath, { amount: 1 });
+      const rulePath = 'users/user123/recurring/ruleA';
+
+      const seen = await mockFirestoreService.runTransaction(async tx => [
+        (await tx.get(mockFirestoreService.getDocRef(rulePath))).exists(),
+        (await tx.get(mockFirestoreService.getDocRef(rowPath))).exists(),
+        (await tx.get(mockFirestoreService.getDocRef('users/user123/transactions/absent'))).exists()
+      ]);
+
+      expect(seen).toEqual([true, true, false]);
+      expect(txGetPaths).toEqual([rulePath, rowPath, 'users/user123/transactions/absent']);
+    });
+  });
+
   describe('processRecurringTransactions', () => {
     it('should return empty array when not authenticated', async () => {
       (mockAuthService.userId as jasmine.Spy).and.returnValue(null);
@@ -928,35 +1139,53 @@ describe('RecurringService', () => {
     // The default stub never commits tx.update back to serverDocs, which is
     // fine for single-claim tests but would make a drain loop re-read the
     // unadvanced pointer forever. This variant commits updates and counts
-    // occurrence writes per transaction, like the real server would.
+    // occurrence writes per transaction, like the real server would. Updates
+    // are buffered and committed only when the callback resolves: like the
+    // SDK, a rejected callback commits nothing.
     function installCommittingTransactionStub(): number[] {
       const setsPerClaim: number[] = [];
       mockFirestoreService.runTransaction.and.callFake(async updateFn => {
         const before = txSet.calls.count();
-        const tx = {
-          get: (ref: FakeDocRef) => {
-            const doc = serverDocs.get(ref.path);
-            return Promise.resolve({
-              exists: () => doc !== undefined,
-              id: ref.path.split('/').pop(),
-              data: () => doc
-            });
-          },
-          set: txSet,
-          update: (ref: FakeDocRef, update: Record<string, unknown>) => {
-            txUpdate(ref, update);
-            const doc = serverDocs.get(ref.path);
-            if (doc) {
-              serverDocs.set(ref.path, { ...doc, ...update } as RecurringTransaction);
-            }
-          }
-        };
+        const pending: [FakeDocRef, Record<string, unknown>][] = [];
+        const tx = newTransaction((ref, update) => {
+          pending.push([ref, update]);
+        });
         const result = await updateFn(tx as unknown as Parameters<typeof updateFn>[0]);
+        for (const [ref, update] of pending) {
+          const doc = serverDocs.get(ref.path);
+          if (doc) {
+            serverDocs.set(ref.path, { ...doc, ...update } as RecurringTransaction);
+          }
+        }
         setsPerClaim.push(txSet.calls.count() - before);
         return result;
       });
       return setsPerClaim;
     }
+
+    it('the committing stub refuses a read after a write too, and a later transaction reads', async () => {
+      installCommittingTransactionStub();
+      seedServerRule(createRecurring({ id: 'ordered' }));
+      const path = 'users/user123/recurring/ordered';
+      const ref = mockFirestoreService.getDocRef(path);
+
+      await expectAsync(
+        mockFirestoreService.runTransaction(async tx => {
+          tx.update(ref, { isActive: false });
+          await tx.get(ref);
+        })
+      ).toBeRejectedWithError(
+        'Firestore transactions require all reads to be executed before all writes.'
+      );
+
+      // The update reached the stub, but the rejected transaction committed
+      // nothing: the next transaction reads the rule unchanged, and its read
+      // succeeds, so the flag is per transaction here as well.
+      expect(txUpdate).toHaveBeenCalledTimes(1);
+      const seen = await mockFirestoreService.runTransaction(async tx => (await tx.get(ref)).data());
+      expect((seen as RecurringTransaction).isActive).toBeTrue();
+      expect(txGetPaths).toEqual([path]);
+    });
 
     it('drains a daily rule dormant for years across capped claims', async () => {
       const setsPerClaim = installCommittingTransactionStub();
@@ -980,6 +1209,11 @@ describe('RecurringService', () => {
       // Deterministic ids and a monotonically advancing pointer: no
       // occurrence was posted twice across the claims.
       expect(new Set(txSetPaths()).size).toBe(total);
+
+      // Pin: the cap ends each walk on its count and not on a stall, so no claim
+      // looked up an earlier row; every read was the rule's.
+      expect(txGetPaths.length).toBe(setsPerClaim.length);
+      expect(txGetPaths.every(path => path === 'users/user123/recurring/dormant')).toBeTrue();
 
       // The committed pointer ends past now, so the next catch-up no-ops.
       const finalRule = serverDocs.get('users/user123/recurring/dormant')!;
@@ -1167,21 +1401,46 @@ describe('RecurringService', () => {
     });
 
     // A shared row's household copy carries the row's id, so the id must not
-    // tell a member which rule posted it or when it fell due (#466).
+    // tell a member which rule posted it or when it fell due (#466), nor be
+    // one a member who has seen the rule's id can rebuild from the copy's date
+    // (#486).
     it('posts at an opaque id that names neither the rule nor the due time, the same on every claim', async () => {
+      installCommittingTransactionStub();
       const due = new Date(Date.now() - 3 * DAY);
-      const rule = createRecurring({ id: 'rent-rule', nextOccurrence: Timestamp.fromDate(due) });
+      const rulePath = 'users/user123/recurring/rent-rule';
+      const rule = createRecurring({
+        id: 'rent-rule',
+        nextOccurrence: Timestamp.fromDate(due),
+        salt: undefined
+      });
       seedServerRule(rule);
 
-      // The default stub never commits the advanced pointer, so the second run
-      // claims the same occurrence again, as a racing or retried claim would.
       await service.processRecurringTransactions([rule]);
+
+      // The first claim drew the rule a salt and committed it with the pointer.
+      const committed = serverDocs.get(rulePath)!.salt as string;
+      expect(isSeed(committed)).toBeTrue();
+
+      // Put the pointer back and keep the salt, as a retried or racing claim
+      // finds the rule. Without this the second claim reads the advanced
+      // pointer and answers null.
+      serverDocs.set(rulePath, {
+        ...serverDocs.get(rulePath)!,
+        nextOccurrence: Timestamp.fromDate(due)
+      });
+
       await service.processRecurringTransactions([rule]);
 
       const ids = txSetPaths().map(path => path.split('/').pop()!);
       expect(ids.length).toBe(2);
       expect(new Set(ids).size).toBe(1);
-      expect(ids[0]).toBe(await opaqueRowId('rec', 'rent-rule', due.getTime()));
+      expect(ids[0]).toBe(await recurringPostingId({ id: 'rent-rule', salt: committed }, due.getTime()));
+      expect(ids[0]).not.toBe(await opaqueRowId('rec', 'rent-rule', due.getTime()));
+      // The salt is written once, by the claim that drew it.
+      const updates = txUpdate.calls.allArgs().map(args => args[1] as Record<string, unknown>);
+      expect(updates.length).toBe(2);
+      expect(updates[0]['salt']).toBe(committed);
+      expect('salt' in updates[1]).toBeFalse();
       expect(ids[0]).toMatch(/^[0-9a-f]{32}$/);
       expect(ids[0]).not.toContain('rent-rule');
       expect(ids[0]).not.toContain(String(due.getTime()));
@@ -1264,6 +1523,319 @@ describe('RecurringService', () => {
 
       expect(txSet).toHaveBeenCalledTimes(1);
       expect(result).toEqual([]);
+      // The stuck date is looked up at every id it may already stand under,
+      // after the rule is read and before anything is written.
+      expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
+    });
+
+    describe('a rule whose walk cannot advance', () => {
+      const rulePath = (id: string): string => `users/user123/recurring/${id}`;
+      const lastClaim = () => mockFirestoreService.runTransaction.calls.mostRecent().returnValue;
+
+      const stuckRule = (id: string, due: Date, overrides: Partial<RecurringTransaction> = {}) =>
+        createRecurring({
+          id,
+          frequency: { type: 'daily', interval: 0 },
+          nextOccurrence: Timestamp.fromDate(due),
+          ...overrides
+        });
+
+      // A rule stalled on its second step: the walk posts 1 March, steps to 21
+      // March, and finds the step after that lands on 21 March again. Interval
+      // 1 and a now past 21 March are what end the walk on the break and not on
+      // the date it is posting until.
+      const march = new Date(2026, 2, 1, 9);
+      const twentyFirst = new Date(2026, 2, 21, 9);
+      const advancingRule = () =>
+        createRecurring({
+          id: 'adv',
+          frequency: { type: 'monthly', interval: 1, dayOfMonth: -10 },
+          startDate: Timestamp.fromDate(march),
+          nextOccurrence: Timestamp.fromDate(march)
+        });
+
+      const withAprilNow = async (run: () => Promise<void>): Promise<void> => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 3, 15));
+          await run();
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      };
+
+      it('skips an occurrence already posted at its earlier id', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        const result = await service.processRecurringTransactions([rule]);
+
+        // A skip behind the claim's swallowing catch looks the same as a claim
+        // that threw, so the claim's own answer and the reads it was served
+        // prove it ran and found the row.
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+      });
+
+      it('skips an occurrence already posted at the unsalted digest', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+        seedServerDoc(await unsaltedOccurrencePath('stuck', due), {});
+
+        const result = await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+      });
+
+      // #486: a rule holding a salt posted its stuck date under the salted id,
+      // so that is a third place the date may already stand.
+      it('skips an occurrence already posted at its salted id, after three distinct lookups', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+        seedServerDoc(await occurrencePath('stuck', due), {});
+
+        const result = await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
+        expect(new Set(txGetPaths.slice(1)).size).toBe(3);
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+      });
+
+      // Pin: a claim that posts nothing writes nothing, a drawn salt included.
+      // A saltless rule keeps no salt until something posts under one.
+      it('writes no salt to a saltless rule whose stuck date is already posted', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due, { salt: undefined });
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due));
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+      });
+
+      // Pin: a malformed salt keys nothing, so it adds no lookup, and it is not
+      // replaced by a claim that posts nothing.
+      it('writes no salt over a malformed one when the stuck date is already posted', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due, { salt: 'NOT-HEX' });
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due));
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).not.toHaveBeenCalled();
+      });
+
+      // Pin: nothing stands under any of its ids, so the stuck date posts once,
+      // as it did before the lookup existed.
+      it('posts a stalled occurrence once when no earlier row exists', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due);
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        const posted = await occurrencePath('stuck', due);
+        await expectAsync(lastClaim()).toBeResolvedTo(
+          jasmine.objectContaining({ postedIds: [posted.split('/').pop()!] })
+        );
+        expect(txSetPaths()).toEqual([posted]);
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const [, data] = txUpdate.calls.mostRecent().args;
+        expect((data as { nextOccurrence: Timestamp }).nextOccurrence.toDate()).toEqual(due);
+      });
+
+      it('posts what advanced and skips only the stuck date that is already posted', async () => {
+        await withAprilNow(async () => {
+          const rule = advancingRule();
+          seedServerRule(rule);
+          seedServerDoc(legacyOccurrencePath('adv', twentyFirst), {});
+
+          await service.processRecurringTransactions([rule]);
+
+          await expectAsync(lastClaim()).toBeResolvedTo(
+            jasmine.objectContaining({
+              postedIds: [(await occurrencePath('adv', march)).split('/').pop()!]
+            })
+          );
+          expect(txGetPaths).toEqual(await stalledReads('adv', twentyFirst, FIXTURE_SALT));
+          expect(txSetPaths()).toEqual([await occurrencePath('adv', march)]);
+          // The pointer still lands on the stuck date, which is where the next
+          // claim finds the walk stalled again.
+          const [, data] = txUpdate.calls.mostRecent().args;
+          expect((data as { nextOccurrence: Timestamp }).nextOccurrence.toDate())
+            .toEqual(twentyFirst);
+        });
+      });
+
+      it('posts both dates when nothing stands under the stuck date', async () => {
+        await withAprilNow(async () => {
+          const rule = advancingRule();
+          seedServerRule(rule);
+
+          await service.processRecurringTransactions([rule]);
+
+          expect(txGetPaths).toEqual(await stalledReads('adv', twentyFirst, FIXTURE_SALT));
+          expect(txSetPaths()).toEqual([
+            await occurrencePath('adv', march),
+            await occurrencePath('adv', twentyFirst)
+          ]);
+        });
+      });
+
+      it('still deactivates an ended rule whose stuck date is already posted', async () => {
+        const due = new Date(Date.now() - 3 * DAY);
+        const rule = stuckRule('stuck', due, {
+          endDate: Timestamp.fromDate(new Date(Date.now() - 1 * DAY))
+        });
+        seedServerRule(rule);
+        seedServerDoc(legacyOccurrencePath('stuck', due), {});
+
+        await service.processRecurringTransactions([rule]);
+
+        await expectAsync(lastClaim()).toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
+        expect(txGetPaths).toEqual(await stalledReads('stuck', due, FIXTURE_SALT));
+        expect(txSet).not.toHaveBeenCalled();
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const [ref, data] = txUpdate.calls.mostRecent().args;
+        expect((ref as FakeDocRef).path).toBe(rulePath('stuck'));
+        // Nothing posted, so the pointer and the processed stamp stay where
+        // they were; the pause is the one change the claim makes.
+        expect(Object.keys(data as object).sort()).toEqual(['isActive', 'updatedAt']);
+        expect((data as { isActive: boolean }).isActive).toBeFalse();
+      });
+
+      // Pin: a walk that ends on the date it posts until reads the rule and
+      // nothing else, so only a stalled walk pays for the lookups.
+      it('reads only the rule when the walk advances', async () => {
+        const rule = createRecurring({
+          id: 'daily',
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(new Date(Date.now() - 2 * DAY))
+        });
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txSet).toHaveBeenCalled();
+        expect(txGetPaths).toEqual([rulePath('daily')]);
+      });
+    });
+
+    // #486: a posting's id is keyed by a salt only its rule holds. The claim
+    // settles the salt from its own read of the rule, and writes one only in
+    // the update that moves the pointer, so only when something posts.
+    describe('the salt a posting is keyed by', () => {
+      const OTHER_SEED = 'ffeeddccbbaa99887766554433221100';
+
+      /** A daily rule 2.5 days late: three occurrences, at due, due+1d and due+2d. */
+      const lateDailyRule = (id: string, overrides: Partial<RecurringTransaction> = {}) => {
+        const due = new Date(Date.now() - 2.5 * DAY);
+        const rule = createRecurring({
+          id,
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(due),
+          ...overrides
+        });
+        return { rule, dates: [due, addDays(due, 1), addDays(due, 2)] };
+      };
+
+      it('draws a saltless rule a salt and writes it with the pointer it moves', async () => {
+        const { rule, dates } = lateDailyRule('bare', { salt: undefined });
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+        const salt = update['salt'] as string;
+        expect(isSeed(salt)).toBeTrue();
+        expect(update['nextOccurrence']).toBeDefined();
+        expect(txSetPaths()).toEqual(
+          await Promise.all(dates.map(date => occurrencePath('bare', date, salt)))
+        );
+      });
+
+      it('posts under a stored well-formed salt and writes the rule no salt', async () => {
+        const { rule, dates } = lateDailyRule('salted');
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txSetPaths()).toEqual(
+          await Promise.all(dates.map(date => occurrencePath('salted', date, FIXTURE_SALT)))
+        );
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(update['nextOccurrence']).toBeDefined();
+        expect('salt' in update).toBeFalse();
+      });
+
+      it('replaces a malformed stored salt on a rule that posts', async () => {
+        const { rule, dates } = lateDailyRule('bad-salt', { salt: 'NOT-HEX' });
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions([rule]);
+
+        expect(txUpdate).toHaveBeenCalledTimes(1);
+        const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+        const salt = update['salt'] as string;
+        expect(isSeed(salt)).toBeTrue();
+        expect(update['nextOccurrence']).toBeDefined();
+        expect(txSetPaths()).toEqual(
+          await Promise.all(dates.map(date => occurrencePath('bad-salt', date, salt)))
+        );
+      });
+
+      // The work list can be older than the rule: another device may have
+      // posted under a salt it drew since. The claim's own read is the copy
+      // the salt comes from, whatever the work list held.
+      ([
+        ['no salt', { salt: undefined }],
+        ['the fixture salt', {}]
+      ] as const).forEach(([label, overrides]) => {
+        it(`takes the salt from the claim's own read when the work list holds ${label}`, async () => {
+          const due = new Date(Date.now() - 3 * DAY);
+          const listed = createRecurring({
+            id: 'raced-salt',
+            nextOccurrence: Timestamp.fromDate(due),
+            ...overrides
+          });
+          seedServerRule(createRecurring({
+            id: 'raced-salt',
+            nextOccurrence: Timestamp.fromDate(due),
+            salt: OTHER_SEED
+          }));
+
+          await service.processRecurringTransactions([listed]);
+
+          expect(txSetPaths()).toEqual([await occurrencePath('raced-salt', due, OTHER_SEED)]);
+          expect(txUpdate).toHaveBeenCalledTimes(1);
+          const update = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+          expect('salt' in update).toBeFalse();
+        });
+      });
     });
 
     // The interval never reaches the walk as a plain number here: it reaches

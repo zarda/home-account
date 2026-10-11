@@ -304,6 +304,16 @@ service cloud.firestore {
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }
 
+    // A rule's salt keys the ids its postings are written under, so it is the
+    // one shape the client draws: 32 lower-case hex characters. The key is
+    // optional (a rule written before the field has none until its next
+    // posting), and a removed key passes: the update clause only checks a
+    // salt the write touches.
+    function saltValid(d) {
+      return !('salt' in d)
+        || (d.salt is string && d.salt.matches('^[0-9a-f]{32}$'));
+    }
+
     function recurringCreateValid(userId) {
       let d = request.resource.data;
       return d.userId == userId
@@ -322,7 +332,8 @@ service cloud.firestore {
         && d.startDate is timestamp
         && d.nextOccurrence is timestamp
         && d.isActive is bool
-        && recurringOptionalsValid(d);
+        && recurringOptionalsValid(d)
+        && saltValid(d);
     }
 
     function recurringUpdateValid(userId) {
@@ -341,6 +352,7 @@ service cloud.firestore {
         && (!touched('nextOccurrence')
             || ('nextOccurrence' in d && d.nextOccurrence is timestamp))
         && (!touched('isActive') || ('isActive' in d && d.isActive is bool))
+        && (!touched('salt') || saltValid(d))
         && recurringOptionalsValid(d);
     }
 

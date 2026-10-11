@@ -1181,6 +1181,8 @@
     "rowFailedAmount": "此筆交易的金額無法儲存。請確認金額後再試一次。",
     "rowFailedConnection": "儲存前連線中斷。請檢查你的網路連線後再試一次。",
     "rowFailedUnknown": "此列因不明原因無法儲存。請再試一次，或將其移除。",
+    "wholeFailedConnection": "因連線中斷，此次匯入的紀錄無法完成。其中的交易可能已在你的清單中，重新匯入前請先確認。",
+    "wholeFailedUnknown": "此次匯入的紀錄無法完成。其中的交易可能已在你的清單中，重新匯入前請先確認。",
     "importingRow": "正在匯入第 {{done}} 筆，共 {{total}} 筆...",
     "importPhotosSkipped": "交易已儲存，但已達圖片儲存上限，{{count}} 張收據照片未附加",
     "importPhotosFailed": "交易已儲存，但有 {{count}} 張收據照片無法上傳，可從該筆交易再次附加。",

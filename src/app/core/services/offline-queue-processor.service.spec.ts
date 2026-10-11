@@ -10,6 +10,8 @@ import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
 import { CategoryService } from './category.service';
+import { ProviderKeyService } from './provider-key.service';
+import { ProviderSecrets } from '../../models';
 import { createCategory } from './testing/test-data';
 import { opaqueRowId } from '../utils/opaque-id.utils';
 
@@ -42,10 +44,6 @@ async function waitForFrozenClock(pred: () => boolean, hops = 200): Promise<void
     await Promise.resolve();
   }
   throw new Error('timed out waiting for condition');
-}
-
-function imageFile(name = 'r.jpg'): File {
-  return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/jpeg' });
 }
 
 function extracted(overrides: Partial<ProcessedTransaction> = {}): ProcessedTransaction {
@@ -94,19 +92,19 @@ describe('OfflineQueueProcessorService', () => {
   let translation: jasmine.SpyObj<TranslationService>;
   let userId: WritableSignal<string | null>;
   let attempts: ReturnType<typeof attemptStub>;
+  let providerKeys: jasmine.SpyObj<ProviderKeyService>;
 
   beforeEach(() => {
+    // Only the drain's one read and its status write: a call to any other
+    // member of the queue throws, and the drain's catch writes 'failed'.
     queue = jasmine.createSpyObj<OfflineQueueService>('OfflineQueueService', [
-      'getQueuedImage',
-      'getQueuedImageAsFile',
       'peekQueuedImage',
       'updateImageStatus',
     ]);
     queue.updateImageStatus.and.resolveTo(true);
-    queue.peekQueuedImage.and.resolveTo(undefined);
     // An entry the previous build queued, with no seed, unless a case seeds
     // one: its rows keep the `${id}-${index}` ids that build wrote.
-    queue.getQueuedImage.and.callFake(async (id: string) => queuedImage({ id }));
+    queue.peekQueuedImage.and.callFake(async (id: string) => queuedImage({ id }));
 
     userId = signal<string | null>('user-a');
 
@@ -126,6 +124,10 @@ describe('OfflineQueueProcessorService', () => {
     translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
     attempts = attemptStub();
+    // The account's keys, which the drain waits for before it opens its
+    // attempt: already read unless a case holds the read.
+    providerKeys = jasmine.createSpyObj<ProviderKeyService>('ProviderKeyService', ['resolve']);
+    providerKeys.resolve.and.resolveTo({});
     // One entry on each side of the ledger, so a suggestion can be checked
     // against the side of the row it was read for.
     const categories = signal([
@@ -144,6 +146,7 @@ describe('OfflineQueueProcessorService', () => {
         { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: CategoryService, useValue: { categories } },
+        { provide: ProviderKeyService, useValue: providerKeys },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -160,8 +163,6 @@ describe('OfflineQueueProcessorService', () => {
 
   describe('process-queued-image', () => {
     it('writes what the AI read to the ledger and marks the image completed', async () => {
-      const file = imageFile();
-      queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(
         processingResult([extracted({ notes: 'Onigiri — JPY 180', suggestedCategoryId: 'food' })]),
       );
@@ -169,7 +170,7 @@ describe('OfflineQueueProcessorService', () => {
       dispatchImage('img_1');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      expect(ai.processReceipt).toHaveBeenCalledWith(file);
+      expect(ai.processReceipt).toHaveBeenCalledOnceWith(jasmine.any(File));
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.objectContaining({
           type: 'expense',
@@ -185,7 +186,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('writes each row at an id derived from the queue row and its position', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
       );
@@ -208,7 +208,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('writes row 1 at the id the helper names, and a replay asks the ledger for that same id', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
       );
@@ -226,7 +225,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('skips a row that already landed instead of posting it twice', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
       );
@@ -250,7 +248,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('completes without a second write when every row already landed', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
       );
@@ -266,7 +263,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('tells the user how many transactions the queued receipt produced', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
       );
@@ -280,7 +276,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('falls back to the catch-all category when the model suggested none', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted({ suggestedCategoryId: undefined })]));
 
       dispatchImage('img_1');
@@ -290,7 +285,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('files a row named for the other side of the ledger under its own side\'s catch-all', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([
           extracted({ suggestedCategoryId: 'employment_salary' }),
@@ -313,7 +307,6 @@ describe('OfflineQueueProcessorService', () => {
       // — this door has no review to ask the question on, and the grade is not
       // a stored field. A refund slip the regex lane filed as income, nothing
       // categorized: the lane names no category and says it tried none.
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([
           extracted({
@@ -339,7 +332,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('marks the image failed when the AI read nothing off it', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([]));
 
       dispatchImage('img_4');
@@ -355,7 +347,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('marks the image failed when none of the extracted rows could be written', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
       transactions.addTransaction.and.rejectWith(new Error('INVALID_TRANSACTION_AMOUNT'));
 
@@ -371,7 +362,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('fails a partial batch on a transient failure so the queue can retry the rows that did not land', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk' })]),
       );
@@ -398,8 +388,6 @@ describe('OfflineQueueProcessorService', () => {
     // fixtures below guard the door against a reader that one day returns
     // more, rather than describing anything it receives today.
     it('attaches the photo when the reader placed the row on no image at all', async () => {
-      const file = imageFile();
-      queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
 
       dispatchImage('img_21');
@@ -408,16 +396,16 @@ describe('OfflineQueueProcessorService', () => {
       // One row carrying neither an index nor a receipt id: what a drained
       // receipt actually arrives as. The drain is holding the one photo that
       // row was read off, so the row claims it.
+      const file = ai.processReceipt.calls.mostRecent().args[0];
       expect(transactions.addTransaction).toHaveBeenCalledTimes(1);
-      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
+      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toHaveSize(1);
+      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles?.[0]).toBe(file);
       expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({
         id: await queueRowTxId({ id: 'img_21', rowSeed: undefined }, 0),
       });
     });
 
     it('attaches the photo to the first row of each receipt the reader numbered', async () => {
-      const file = imageFile();
-      queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(processingResult([
         extracted({ imageIndex: 0, receiptId: 1 }),
         extracted({ imageIndex: 0, receiptId: 1, description: 'Kiosk' }),
@@ -434,7 +422,9 @@ describe('OfflineQueueProcessorService', () => {
       // two rows off one receipt would each upload the same photograph, so
       // only the first of a group carries it, while two receipts printed on
       // one photo are a different case: the photo is evidence for both.
-      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toEqual([file]);
+      const file = ai.processReceipt.calls.mostRecent().args[0];
+      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles).toHaveSize(1);
+      expect(transactions.addTransaction.calls.argsFor(0)[0].receiptFiles?.[0]).toBe(file);
       expect(transactions.addTransaction.calls.argsFor(0)[1]).toEqual({
         id: await queueRowTxId({ id: 'img_9', rowSeed: undefined }, 0),
       });
@@ -442,14 +432,14 @@ describe('OfflineQueueProcessorService', () => {
       expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({
         id: await queueRowTxId({ id: 'img_9', rowSeed: undefined }, 1),
       });
-      expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toEqual([file]);
+      expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles).toHaveSize(1);
+      expect(transactions.addTransaction.calls.argsFor(2)[0].receiptFiles?.[0]).toBe(file);
       expect(transactions.addTransaction.calls.argsFor(2)[1]).toEqual({
         id: await queueRowTxId({ id: 'img_9', rowSeed: undefined }, 2),
       });
     });
 
     it('falls back to the bare row when the photo is refused, and counts it', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
       let call = 0;
       transactions.addTransaction.and.callFake(() =>
@@ -476,8 +466,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('hands the photo on when the row that was to carry it is refused', async () => {
-      const file = imageFile();
-      queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(processingResult([
         extracted({ amount: 0.4 }),
         extracted({ description: 'Kiosk' }),
@@ -499,7 +487,9 @@ describe('OfflineQueueProcessorService', () => {
       // decision nothing knew until the write. The photo is evidence for the
       // whole receipt, so it goes to the row behind the refused one rather
       // than past it.
-      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
+      const file = ai.processReceipt.calls.mostRecent().args[0];
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toHaveSize(1);
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles?.[0]).toBe(file);
       expect(transactions.addTransaction.calls.argsFor(1)[1]).toEqual({
         id: await queueRowTxId({ id: 'img_16', rowSeed: undefined }, 1),
       });
@@ -512,7 +502,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('counts the photo too when the row it was handed to cannot take it either', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([
         extracted({ amount: 0.4 }),
         extracted({ description: 'Kiosk' }),
@@ -535,8 +524,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('counts a photo no row of the receipt the reader numbered could take', async () => {
-      const file = imageFile();
-      queue.getQueuedImageAsFile.and.resolveTo(file);
       ai.processReceipt.and.resolveTo(processingResult([
         extracted({ imageIndex: 0, receiptId: 1, amount: 0.4 }),
         extracted({ imageIndex: 0, receiptId: 2, description: 'Bakery' }),
@@ -555,7 +542,9 @@ describe('OfflineQueueProcessorService', () => {
       // own, so nothing is left that could carry the first receipt's. That
       // picture is lost exactly the way a refused upload loses one, and
       // counts.
-      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toEqual([file]);
+      const file = ai.processReceipt.calls.mostRecent().args[0];
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles).toHaveSize(1);
+      expect(transactions.addTransaction.calls.argsFor(1)[0].receiptFiles?.[0]).toBe(file);
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_18', 'completed');
       expect(translation.t).toHaveBeenCalledWith(
         'settings.transactionsImportedPartial', { count: 1, skipped: 2 },
@@ -563,7 +552,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('fails the image when the bare retry after a refused photo fails too', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
       transactions.addTransaction.and.callFake((dto) =>
         dto.receiptFiles
@@ -584,7 +572,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('completes the image and reports the rows an unreadable amount kept out', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([
         extracted(),
         extracted({ description: 'Kiosk', amount: 0.4 }),
@@ -611,7 +598,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('still fails the image when another row\'s error is transient', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([
         extracted({ amount: 0.4 }),
         extracted({ description: 'Kiosk' }),
@@ -633,7 +619,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('re-refuses a skipped row on a later pass without storing it', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([
         extracted(),
         extracted({ description: 'Kiosk', amount: 0.4 }),
@@ -670,7 +655,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('marks the image failed (with the error) when AI processing throws', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.rejectWith(new Error('AI unavailable'));
 
       dispatchImage('img_2');
@@ -679,36 +663,70 @@ describe('OfflineQueueProcessorService', () => {
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_2', 'failed', 'AI unavailable');
     });
 
-    it('marks the image failed and skips AI when the file is missing', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(null);
-
-      dispatchImage('img_3');
-      await waitFor(() => queue.updateImageStatus.calls.any());
-
-      expect(ai.processReceipt).not.toHaveBeenCalled();
-      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_3', 'failed', 'Image not found in queue');
-    });
-
-    it('marks the image failed and writes nothing when its record is gone after the file was read', async () => {
-      // The entry was deleted, or changed owner, between the two reads. A
-      // missing record must not be taken for an entry without a seed: that
-      // would write a seeded entry's rows at the names that show its time.
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
-      queue.getQueuedImage.and.resolveTo(undefined);
+    it('calls peekQueuedImage once and makes no other read of the entry', async () => {
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
 
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The double answers nothing else, so any other read would throw and
+      // the drain's catch would write 'failed' where this reads 'completed'.
+      expect(queue.peekQueuedImage).toHaveBeenCalledOnceWith('img_1');
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+    });
+
+    it('builds the photo from the record it read', async () => {
+      queue.peekQueuedImage.and.resolveTo(queuedImage({
+        fileName: 'from-record.png',
+        mimeType: 'image/png',
+        size: 4,
+        data: new Uint8Array([9, 8, 7, 6]).buffer,
+      }));
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // A File has no own keys, so toEqual would call any two of them equal:
+      // the photo is held to the record field by field, then by identity.
+      expect(ai.processReceipt).toHaveBeenCalledTimes(1);
+      const file = ai.processReceipt.calls.mostRecent().args[0];
+      expect(file.name).toBe('from-record.png');
+      expect(file.type).toBe('image/png');
+      expect(file.size).toBe(4);
+      expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([9, 8, 7, 6]);
+      expect(transactions.addTransaction.calls.mostRecent().args[0].receiptFiles?.[0]).toBe(file);
+    });
+
+    // A pin: it passes before this fix. The row ids and the status writes are
+    // keyed by the id the drain was dispatched, never by the id the record
+    // happens to carry, so a record whose own id differs cannot move them.
+    it('keys the row ids and status writes by the dispatched id, not the record\'s', async () => {
+      queue.peekQueuedImage.and.resolveTo(queuedImage({ id: 'img_record' }));
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+      expect(transactions.addTransaction.calls.mostRecent().args[1]).toEqual({
+        id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0),
+      });
+    });
+
+    it('marks the image failed and skips AI when its record is missing', async () => {
+      queue.peekQueuedImage.and.resolveTo(undefined);
+
       dispatchImage('img_3');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      expect(ai.processReceipt).not.toHaveBeenCalled();
-      expect(transactions.hasTransaction).not.toHaveBeenCalled();
-      expect(transactions.addTransaction).not.toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledOnceWith('img_3', 'failed', 'Image not found in queue');
+      expect(ai.processReceipt).not.toHaveBeenCalled();
+      expect(transactions.addTransaction).not.toHaveBeenCalled();
     });
 
     it('opens a queue-door handle and reports success', async () => {
       const diagnostics = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 5 };
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo({ ...processingResult([extracted()]), diagnostics });
 
       dispatchImage('img_1');
@@ -719,7 +737,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('reports nothing_extracted and the thrown error through the handle', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([]));
       dispatchImage('img_4');
       await waitFor(() => queue.updateImageStatus.calls.any());
@@ -732,25 +749,57 @@ describe('OfflineQueueProcessorService', () => {
       expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
     });
 
-    it('opens no handle for a missing file or another account\'s image', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(null);
+    it('opens no handle when the record is missing or is another account\'s', async () => {
+      queue.peekQueuedImage.and.resolveTo(undefined);
       dispatchImage('img_3');
       await waitFor(() => queue.updateImageStatus.calls.any());
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_3', 'failed', 'Image not found in queue']]);
       expect(attempts.service.begin).not.toHaveBeenCalled();
 
+      queue.updateImageStatus.calls.reset();
       queue.peekQueuedImage.and.resolveTo(queuedImage({ userId: 'user-b' }));
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       dispatchImage('img_5');
-      await waitFor(() => queue.updateImageStatus.calls.count() === 2);
+      await waitFor(() => queue.updateImageStatus.calls.any());
+      // Written back pending and never failed: failing it would spend one of
+      // its owner's retries on an account switch.
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_5', 'pending']]);
       expect(attempts.service.begin).not.toHaveBeenCalled();
-      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_5', 'pending');
+      expect(ai.processReceipt).not.toHaveBeenCalled();
+    });
+
+    // #487. After a cold offline start the key read the reconnect starts is
+    // still in flight when the drain runs, and a failure filed before it
+    // lands cannot say whether a key is set. The drain waits for that read,
+    // with the keys not yet loaded, before it opens its attempt.
+    it('waits for the account\'s key read before it opens the attempt or hands the photo on', async () => {
+      let settle!: (keys: ProviderSecrets) => void;
+      providerKeys.resolve.and.returnValue(new Promise<ProviderSecrets>((resolve) => { settle = resolve; }));
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.peekQueuedImage.calls.any());
+      // Long enough for a drain that did not wait to have opened its attempt
+      // and written its outcome.
+      await new Promise((r) => setTimeout(r, 25));
+
+      expect(providerKeys.resolve).toHaveBeenCalledTimes(1);
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+      expect(ai.processReceipt).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).not.toHaveBeenCalled();
+
+      // The read lands, and the drain goes on to the end.
+      settle({});
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(attempts.service.begin.calls.mostRecent().args[0]).toBe('queue');
+      expect(ai.processReceipt).toHaveBeenCalledTimes(1);
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
     });
 
     it('carries location, tags, period and recurring through the one mapper', async () => {
       // The queue used to hand-build its DTO with seven fields, so exactly the
       // receipts most likely to be foreign — queued because the phone was
       // offline — lost the address the model read (ADR 0059).
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted({
         location: { name: 'Shibuya 1-2-3' }, tags: ['travel'], period: 'monthly', isRecurring: false,
       })]));
@@ -766,7 +815,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('writes no empty slot for a row that carries none', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted({ notes: undefined })]));
 
       dispatchImage('img_8');
@@ -784,7 +832,6 @@ describe('OfflineQueueProcessorService', () => {
     it('writes a queued yen fraction whole', async () => {
       // No review card ever sees a drained row, so the mapper is the only
       // thing standing between what the reader said and the ledger.
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted({ amount: 179.4, currency: 'JPY' })]));
 
       dispatchImage('img_11');
@@ -796,7 +843,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('never writes a review mark', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted({ currencyFellBack: true, currency: 'USD' })]));
 
       dispatchImage('img_9');
@@ -806,7 +852,6 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('warns when the closed queue could not record the outcome', async () => {
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
       queue.updateImageStatus.and.resolveTo(false);
       const consoleWarnSpy = spyOn(console, 'warn');
@@ -839,8 +884,7 @@ describe('OfflineQueueProcessorService', () => {
     }
 
     async function drainTwoRows(entry: Partial<QueuedImage>): Promise<(string | undefined)[]> {
-      queue.getQueuedImage.and.resolveTo(queuedImage({ id: QUEUE_ID, createdAt: QUEUED_AT, ...entry }));
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      queue.peekQueuedImage.and.resolveTo(queuedImage({ id: QUEUE_ID, createdAt: QUEUED_AT, ...entry }));
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
       );
@@ -858,7 +902,7 @@ describe('OfflineQueueProcessorService', () => {
       expect(written).toEqual(expected);
       // A replay asks for exactly the ids the first pass wrote.
       expect(transactions.hasTransaction.calls.allArgs()).toEqual(expected.map((rowId) => [rowId]));
-      expect(queue.getQueuedImage).toHaveBeenCalledOnceWith(QUEUE_ID);
+      expect(queue.peekQueuedImage).toHaveBeenCalledOnceWith(QUEUE_ID);
       expect(queue.updateImageStatus).toHaveBeenCalledWith(QUEUE_ID, 'completed');
     });
 
@@ -894,7 +938,6 @@ describe('OfflineQueueProcessorService', () => {
       jasmine.clock().install();
       jasmine.clock().mockDate(now);
       try {
-        queue.getQueuedImageAsFile.and.resolveTo(imageFile());
         ai.processReceipt.and.resolveTo(
           processingResult([extracted({ date: new Date(2024, 5, 1), fieldConfidence: { date: 0.3 } })]),
         );
@@ -911,7 +954,6 @@ describe('OfflineQueueProcessorService', () => {
 
     it('keeps a confident queued row\'s date', async () => {
       const original = new Date(2024, 5, 1);
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted({ date: original, fieldConfidence: { date: 0.9 } })]),
       );
@@ -930,21 +972,20 @@ describe('OfflineQueueProcessorService', () => {
     // receipt straight into account B's ledger.
     it('does not write a queued image belonging to another account', async () => {
       queue.peekQueuedImage.and.resolveTo(queuedImage({ userId: 'user-a' }));
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       userId.set('user-b');
 
       dispatchImage('img_1');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      expect(transactions.addTransaction).not.toHaveBeenCalled();
-      expect(ai.processReceipt).not.toHaveBeenCalled();
       // Pending, not failed — it belongs to A and is still perfectly good.
-      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'pending');
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+      expect(ai.processReceipt).not.toHaveBeenCalled();
+      expect(transactions.addTransaction).not.toHaveBeenCalled();
     });
 
     it('processes a queued image for the account that captured it', async () => {
       queue.peekQueuedImage.and.resolveTo(queuedImage({ userId: 'user-a' }));
-      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
       userId.set('user-a');
 

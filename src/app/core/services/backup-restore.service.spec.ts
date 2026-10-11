@@ -633,6 +633,36 @@ describe('BackupRestoreService', () => {
     });
   });
 
+  // #486: the salt keys the ids a rule's postings take. The export carries
+  // the whole document, so only the restore's own options can lose it. A
+  // stalled rule restored under a new one would post its stuck occurrence
+  // again, because the claim's lookup asks only the new salt's id.
+  describe('the salt', () => {
+    const SALT = 'fedcba9876543210fedcba9876543210';
+
+    it('hands a rule\'s salt on beside its id and flag', async () => {
+      await service.restore(backup({
+        recurring: [recurringRule({ id: 'r-salted', salt: SALT })],
+      }));
+
+      expect(recurring.createRecurring).toHaveBeenCalledWith(
+        jasmine.anything(), { id: 'r-salted', isActive: true, salt: SALT });
+    });
+
+    // PIN (passes before the change): a rule written before the salt existed
+    // is restored with exactly { id, isActive }. Jasmine reads an own key
+    // holding undefined as a mismatch, so the salt is spread in only when the
+    // file holds one.
+    it('sends no salt key for a rule saved without one', async () => {
+      await service.restore(backup({ recurring: [recurringRule({ id: 'r-unsalted' })] }));
+
+      expect(recurring.createRecurring).toHaveBeenCalledWith(
+        jasmine.anything(), { id: 'r-unsalted', isActive: true });
+      const options = recurring.createRecurring.calls.mostRecent().args[1] as object;
+      expect('salt' in options).toBeFalse();
+    });
+  });
+
   // Restoring the same file twice is supposed to be a no-op, but the rules
   // demand a strictly higher revision on every snapshot rewrite, so the second
   // run reported every month as skipped in the one flow built to be idempotent.

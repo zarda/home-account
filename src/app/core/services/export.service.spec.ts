@@ -17,7 +17,7 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService, createMockUser } from './testing/mock-auth.service';
-import { createTransaction, createCategory, createCategoryHierarchy } from './testing/test-data';
+import { createTransaction, createCategory, createCategoryHierarchy, createRecurring } from './testing/test-data';
 import { parseCsvRows } from '../utils/csv.utils';
 import { Timestamp } from '@angular/fire/firestore';
 import type { Transaction } from '../../models';
@@ -819,6 +819,28 @@ describe('ExportService', () => {
       expect(parsed.transactions[1]).toEqual(JSON.parse(JSON.stringify(privateRow)));
       // A file without share keys is a complete 1.5 file: a restore reads nothing from them.
       expect(parsed.version).toBe('1.5');
+    });
+
+    // PIN (passes before the change): the file is the only copy of a rule's
+    // salt a restore can read back, and the export strips a key only where it
+    // says so, as it does for share keys above. A rule without one stays
+    // without one.
+    it('carries a rule\'s salt as read', async () => {
+      const salted = createRecurring({ id: 'r-salted', salt: 'fedcba9876543210fedcba9876543210' });
+      const unsalted = createRecurring({ id: 'r-unsalted' });
+
+      const blob = service.exportToJSON({
+        transactions: [],
+        categories: [],
+        recurring: [salted, unsalted],
+        exportDate: new Date().toISOString(),
+        version: BACKUP_SCHEMA_VERSION,
+      });
+      const parsed = JSON.parse(await blob.text());
+
+      expect(parsed.recurring[0].salt).toBe('fedcba9876543210fedcba9876543210');
+      expect(parsed.recurring[0]).toEqual(JSON.parse(JSON.stringify(salted)));
+      expect('salt' in parsed.recurring[1]).toBeFalse();
     });
 
     it('leaves the rows it was handed as they were', () => {

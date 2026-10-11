@@ -147,6 +147,22 @@ describe('InsightChipsService', () => {
     expect(chip!.filters.categoryId).toBe('pets');
   });
 
+  // #488: two categories new this month with the same change name the lower
+  // id on every load, not whichever the expense rows listed first.
+  it('names the lower category id when two new categories tie', () => {
+    setup(
+      [expense(30, 'transport', currentDate), expense(30, 'pets', currentDate)],
+      [{ categoryId: 'food', total: 40 }]
+    );
+
+    const chips = service.chips();
+    expect(chips.length).toBe(1);
+    expect(chips[0].kind).toBe('newCategory');
+    expect(chips[0].id).toBe('new:pets');
+    expect(chips[0].labelParams['category']).toBe('Pets');
+    expect(chips[0].filters.categoryId).toBe('pets');
+  });
+
   it('builds a top-category chip only with at least 3 transactions', () => {
     setup([
       expense(30, 'food', currentDate),
@@ -182,6 +198,22 @@ describe('InsightChipsService', () => {
   it('skips the top-category chip below 3 transactions', () => {
     setup([expense(30, 'food', currentDate), expense(20, 'food', currentDate)]);
     expect(service.chips().length).toBe(0);
+  });
+
+  // #488: three categories flag an outlier of the same amount and the cap is
+  // two chips, so the row id decides which category goes without. The rows
+  // arrive in descending id order, so the arrival order would name food.
+  it('names the categories of the lowest row ids when anomalies tie at the cap', () => {
+    setup([
+      ...baselineFor('food'),
+      ...baselineFor('pets'),
+      ...baselineFor('transport'),
+      expense(100, 'food', currentDate, { id: 'row-c' }),
+      expense(100, 'pets', currentDate, { id: 'row-b' }),
+      expense(100, 'transport', currentDate, { id: 'row-a' }),
+    ]);
+
+    expect(service.chips().map(c => c.id)).toEqual(['anomaly:transport', 'anomaly:pets']);
   });
 
   it('orders anomaly chips before the others', () => {

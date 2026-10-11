@@ -38,7 +38,8 @@ says so.
 - [ADR 0157](ADR/0157-a-transaction-is-private-until-its-owner-shares-it-and-a-household-sees-a-faithful-copy.md)
   — a transaction is private until its owner shares it, and a household sees
   a faithful copy. Amended by 0173: the ids the app picks for a recurring
-  posting and for a queued scan's rows are opaque digests.
+  posting and for a queued scan's rows are opaque digests. 0174 keys a
+  posting's digest by a salt only its rule holds.
 - [ADR 0158](ADR/0158-an-account-holds-up-to-ten-memberships-each-named-by-an-index-it-owns.md)
   — an account holds up to ten memberships, each named by an index it owns.
 - [ADR 0159](ADR/0159-a-copy-follows-its-row-in-a-commit-of-its-own-and-a-sweep-repairs-what-the-follow-ups-miss.md)
@@ -77,11 +78,15 @@ counts toward, or its base-currency snapshot (`baseCurrency`, `exchangeRate`,
 rows of a scan queued offline, are 32 lower-case hex characters: a digest
 that does not spell the rule, the day it fell due, the image or when it was
 queued
-([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)),
-though a member who already knows a rule's id can test a copy against it
-([Known gaps](#known-gaps)).
+([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
+A recurring posting's digest is also keyed by a salt kept on its rule, which
+only the owner reads, so a member who knows a rule's id still cannot rebuild
+the ids of its postings
+([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)),
+except for postings written before the salt, or by a copy of the app from
+before it still running ([Known gaps](#known-gaps)).
 Some older rows still carry ids that say more: a recurring posting written
-before that change is `rec-{ruleId}-{occurrenceMs}`, and a row read off an
+before ADR 0173 is `rec-{ruleId}-{occurrenceMs}`, and a row read off an
 image the earlier app queued is `img_{queuedMs}_{random}-{index}`. For those
 rows the copy data tells a member, though no screen shows it, which shared
 rows one recurring rule posted — the recurring link the fields leave out —
@@ -1482,18 +1487,25 @@ the first sign.
   restore writes a row back at the id its file holds, whatever its shape.
   Even an opaque id leaves the content: the copies of one rule's postings
   share their description, amount and category, and each copy's date is its
-  day, so a member can still group them by eye, and confirm them for a
-  rule whose id the household has seen (the next gap). The join disclosure
-  describes what the page shows and does not mention the id.
-- **A rule's id, once a household has seen it, links its later postings.**
-  The digest is unkeyed, and its inputs are the rule's id and the occurrence
-  time, which a copy's `date` holds to the millisecond. Once one of the rows
-  above has shown a household a rule's id — a posting written before the
-  change, one an earlier app still running posted, a restored row — a
-  member can recompute the digest over any later copy's date and match it
-  against the copy's `sourceId`, so every later posting of that rule stays
-  linkable to it. A secret salt per rule, kept where no member reads it,
-  would close this; it is a decision for the owner and not taken yet
+  day, so a member can still group them by eye, and confirm the ones
+  written without a salt for a rule whose id the household has seen (the
+  next gap). The join disclosure describes what the page shows and does not
+  mention the id.
+- **A rule's id, once a household has seen it, links its postings written
+  without a salt.** A posting's id is now a digest keyed by a salt kept on
+  its rule, which no member reads, so a rule's id and a copy's date are not
+  enough to rebuild it
+  ([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
+  The postings named without it are not keyed: those written under ADR
+  0173's digest of the rule's id and the occurrence time alone, before the
+  salt arrived, and those written by a copy of an app from before the salt
+  that is still running. Once one of the rows above has shown a household
+  a rule's id — a posting written before ADR 0173, one an app from before
+  it still running posted, a restored row — a member can recompute that
+  digest over such a copy's date, which a copy holds to the millisecond,
+  and match it against the copy's `sourceId`. Nothing migrates those rows,
+  and an older app keeps writing them until every tab and installed app
+  runs the update
   ([ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md)).
 - A member's new name or picture reaches the others only once that member's
   own page opens after the change; a member who never opens it again stays as

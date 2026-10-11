@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed, effect, untracked, OnDestroy } fr
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
-import { opaqueRowId, toHex } from '../utils/opaque-id.utils';
+import { newSeed, opaqueRowId } from '../utils/opaque-id.utils';
 
 // Database schema
 interface OfflineQueueDB extends DBSchema {
@@ -111,9 +111,13 @@ export async function queueRowTxId(
   return item.rowSeed ? opaqueRowId('scan', item.rowSeed, index) : `${item.id}-${index}`;
 }
 
-/** 128 random bits as 32 lower-case hex characters, for `QueuedImage.rowSeed`. */
-function newRowSeed(): string {
-  return toHex(crypto.getRandomValues(new Uint8Array(16)));
+/**
+ * The File a queued record was made from, rebuilt from the bytes it holds.
+ * It takes a record already read rather than an id, so the drain reads the
+ * entry once and checks the owner on it before the photo is built or handed on.
+ */
+export function queuedImageFile(record: Pick<QueuedImage, 'data' | 'fileName' | 'mimeType'>): File {
+  return new File([record.data], record.fileName, { type: record.mimeType });
 }
 
 @Injectable({ providedIn: 'root' })
@@ -274,8 +278,9 @@ export class OfflineQueueService implements OnDestroy {
    *   schema, and a bump fires `blocking`/`blocked` at every other open tab.
    * - **Not scoped by owner**, unlike everything else here. At open time there
    *   is usually nobody signed in yet, and `ownedBy()` would leave another
-   *   account's row wedged forever. Ownership is still enforced at every read,
-   *   at dispatch, and again by the processor before it writes.
+   *   account's row wedged forever. Ownership is still enforced on every
+   *   listing, at dispatch, and by the processor on the record it reads, before
+   *   anything is written.
    * - **Charged a retry.** Without one, a row whose processing reliably kills
    *   the tab strands and re-strands on every launch, burning an AI call each
    *   time. With one it retires to `failed` after MAX_RETRY_COUNT — visible,
@@ -361,7 +366,7 @@ export class OfflineQueueService implements OnDestroy {
       createdAt: Date.now(),
       status: 'pending',
       retryCount: 0,
-      rowSeed: newRowSeed(),
+      rowSeed: newSeed(),
     };
 
     await this.db.put('pending-images', queuedImage);
@@ -395,36 +400,18 @@ export class OfflineQueueService implements OnDestroy {
   }
 
   /**
-   * Get a queued image by ID, provided the signed-in account owns it.
-   */
-  async getQueuedImage(id: string): Promise<QueuedImage | undefined> {
-    if (!this.db) return undefined;
-    const image = await this.db.get('pending-images', id);
-    return image && image.userId === this.currentUserId() ? image : undefined;
-  }
-
-  /**
    * Get a queued image by ID regardless of owner.
    *
-   * Only for deciding what to do with someone else's item — never for
-   * processing one. The processor uses it to tell "not mine, leave it for its
-   * own account" apart from "gone", which are different outcomes.
+   * This is the drain's one read of an entry: the processor takes the owner,
+   * the photo (`queuedImageFile`) and the row seed off the record it
+   * returns. It is owner-blind on purpose. "Another account's, leave it for
+   * them" and "gone" are different outcomes, and only the unfiltered record
+   * tells them apart, so the processor checks the owner on that record
+   * before it builds the photo, hands it on or writes anything.
    */
   async peekQueuedImage(id: string): Promise<QueuedImage | undefined> {
     if (!this.db) return undefined;
     return this.db.get('pending-images', id);
-  }
-
-  /**
-   * Convert queued image back to File.
-   */
-  async getQueuedImageAsFile(id: string): Promise<File | null> {
-    const queuedImage = await this.getQueuedImage(id);
-    if (!queuedImage) return null;
-
-    return new File([queuedImage.data], queuedImage.fileName, {
-      type: queuedImage.mimeType,
-    });
   }
 
   /**

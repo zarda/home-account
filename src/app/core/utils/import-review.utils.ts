@@ -106,36 +106,81 @@ const CONNECTION_CODES = new Set([
   'permission-denied', 'unavailable', 'deadline-exceeded', 'resource-exhausted',
 ]);
 
+/** What stopped a write an import made, as far as the stored error can say. */
+export type ImportFailureFamily = 'amount' | 'connection' | 'unknown';
+
 /**
- * The catalog key a failed row's own reason resolves to.
+ * The family a stored import error belongs to.
  *
- * The wizard re-offers a row a confirm attempt refused. A Firestore rejection
- * keeps its identifier and its prose apart — `code` is the stable one
- * (`permission-denied`, `unavailable`, …), `message` is text meant for a
- * console ("Missing or insufficient permissions.") that never contains the
- * code as a substring — so `code` is read first and decides the connection
- * reason on its own. `message` is read only for the amount guard's own
- * sentinel, which is a code masquerading as a message because
- * `transaction.service` throws no Firestore error, and as a fallback ladder
- * for an error with no code at all (a `TypeError` off a dropped `fetch`,
- * still worth reading the way `parseAIError` reads a provider's own
- * failure). Anything neither reading places is unknown rather than a guess
- * at what actually stopped the row.
+ * A Firestore rejection keeps its identifier and its prose apart — `code` is
+ * the stable one (`permission-denied`, `unavailable`, …), `message` is text
+ * meant for a console ("Missing or insufficient permissions.") that never
+ * contains the code as a substring — so a code is read first and decides on
+ * its own: a connection code is a connection, any other code is unknown, and
+ * neither falls through to a guess at the prose. An empty code is no code.
+ * `message` is read only for the amount guard's own sentinel, which is a code
+ * masquerading as a message because `transaction.service` throws no Firestore
+ * error, and as a fallback ladder for an error with no code at all (a
+ * `TypeError` off a dropped `fetch`, still worth reading the way
+ * `parseAIError` reads a provider's own failure). A message that is not a
+ * string — a restored record keeps whatever it was given — reads as empty.
+ * Anything neither reading places is unknown rather than a guess at what
+ * actually stopped the write.
  */
-export function importFailureKey(error: { message: string; code?: string }): string {
-  if (error.message === 'INVALID_TRANSACTION_AMOUNT') return 'import.rowFailedAmount';
+export function importFailureFamily(error: { message?: unknown; code?: string }): ImportFailureFamily {
+  if (error.message === 'INVALID_TRANSACTION_AMOUNT') return 'amount';
   if (error.code) {
-    return CONNECTION_CODES.has(error.code) ? 'import.rowFailedConnection' : 'import.rowFailedUnknown';
+    return CONNECTION_CODES.has(error.code) ? 'connection' : 'unknown';
   }
-  const lower = error.message.toLowerCase();
+  const lower = typeof error.message === 'string' ? error.message.toLowerCase() : '';
   if (
     lower.includes('permission-denied') ||
     lower.includes('unavailable') ||
     lower.includes('network')
   ) {
-    return 'import.rowFailedConnection';
+    return 'connection';
   }
-  return 'import.rowFailedUnknown';
+  return 'unknown';
+}
+
+/** A refused row's sentence, per family. */
+export const ROW_FAILURE_KEYS: Readonly<Record<ImportFailureFamily, string>> = {
+  amount: 'import.rowFailedAmount',
+  connection: 'import.rowFailedConnection',
+  unknown: 'import.rowFailedUnknown',
+};
+
+/**
+ * A whole import's sentence, per family.
+ *
+ * The amount guard refuses one row, never a whole import, so a whole-import
+ * error read as amount is a shape nothing writes and says no more than
+ * unknown does.
+ */
+export const WHOLE_IMPORT_FAILURE_KEYS: Readonly<Record<ImportFailureFamily, string>> = {
+  amount: 'import.wholeFailedUnknown',
+  connection: 'import.wholeFailedConnection',
+  unknown: 'import.wholeFailedUnknown',
+};
+
+/**
+ * The catalog key a failed row's own reason resolves to.
+ *
+ * The wizard re-offers a row a confirm attempt refused, and Import History
+ * lists the rows a record kept; both read the reason through
+ * `importFailureFamily`.
+ */
+export function importFailureKey(error: { message: string; code?: string }): string {
+  return ROW_FAILURE_KEYS[importFailureFamily(error)];
+}
+
+/**
+ * The catalog key a whole import's failure resolves to: the error
+ * `failImport` stores when the confirm itself was refused, which names no
+ * row.
+ */
+export function wholeImportFailureKey(error: { message?: unknown; code?: string }): string {
+  return WHOLE_IMPORT_FAILURE_KEYS[importFailureFamily(error)];
 }
 
 /**

@@ -94,7 +94,7 @@ the only thing standing between you and a second copy.
 | Transactions | id, amount, currency, the historical rate and base-currency figure, category, description, date, note, tags, location, period, `createdAt`, the recurring link, the goal link and its figure | — | receipt images; the share keys (`sharedWith`), which the export leaves out |
 | Categories | id, name, icon, colour, type, parent, display order, deleted-or-not | — | the built-in categories, which are generated rather than stored |
 | Budgets | id, category, name, amount, currency, period, dates, alert threshold, active-or-not | `spent`, from the restored ledger | — |
-| Recurring rules | id, name, type, amount, currency, category, description, frequency, dates, **paused-or-not** | `nextOccurrence`, from today | `lastProcessed` |
+| Recurring rules | id, name, type, amount, currency, category, description, frequency, dates, the reminder lead (`remindDaysBefore`), the `salt` its postings' ids are keyed by (a rule whose file holds none, or one that is not 32 lower-case hex characters, draws a fresh one), **paused-or-not** | `nextOccurrence`, from today | `lastProcessed` |
 | Goals | id, kind, name, target, currency, target date, checklist items, note, contributed balance, active-or-not | `linkedAmount`, from the restored ledger | — |
 | Monthly insights | the whole snapshot, at its month-key id | — | — |
 | Saved searches | id, the query, its label, pinned-or-not, when it was last used | — | — |
@@ -229,7 +229,9 @@ it joined the DTO and the restore's copy so a split purchase's rows keep
 their shared id coming back in, with nothing to recompute and no bump.
 `sharedWith` took neither path: the export leaves it out and the restore
 never writes it ([above](#a-shared-row-comes-back-private)), again with no
-bump.
+bump. A recurring rule's `salt` needed none either: the restore hands it to
+`createRecurring` beside the rule's id, and nothing is recomputed from it
+([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
 
 ## Privacy
 
