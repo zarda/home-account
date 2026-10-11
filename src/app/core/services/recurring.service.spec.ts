@@ -68,14 +68,65 @@ describe('RecurringService', () => {
 
   // Firestore-transaction stub: getDocRef returns path-carrying refs and
   // runTransaction hands the callback a tx whose get() serves docs from
-  // serverDocs, mirroring the fresh server read of a real transaction.
+  // serverDocs, mirroring the fresh server read of a real transaction. Like
+  // the SDK's, that tx refuses a read once it has written.
   interface FakeDocRef { path: string }
   let serverDocs: Map<string, RecurringTransaction>;
+  // Every other document a claim may read: a posted occurrence, a history
+  // line. serverDocs keeps the rules, typed as rules, so a spec that reads a
+  // rule back needs no cast.
+  let serverRows: Map<string, unknown>;
+  // The path of every read a transaction was served, across all of them.
+  let txGetPaths: string[];
   let txSet: jasmine.Spy;
   let txUpdate: jasmine.Spy;
 
   const seedServerRule = (rule: RecurringTransaction): void => {
     serverDocs.set(`users/user123/recurring/${rule.id}`, rule);
+  };
+
+  const seedServerDoc = (path: string, data: unknown): void => {
+    serverRows.set(path, data);
+  };
+
+  const READ_AFTER_WRITE_ERROR =
+    'Firestore transactions require all reads to be executed before all writes.';
+
+  /**
+   * The tx one runTransaction call hands its callback. The SDK rejects a read
+   * issued after a write, so a claim that wrote before it read would fail
+   * against the server and pass against a fake that allowed it. `written`
+   * lives here, one per call, and is never derived from the shared txSet and
+   * txUpdate spies: a drain runs several claims, and a later claim's first read
+   * must not see an earlier claim's writes. `commit` is how a stub writes an
+   * update back into serverDocs.
+   */
+  const newTransaction = (commit?: (ref: FakeDocRef, update: Record<string, unknown>) => void) => {
+    let written = false;
+    return {
+      get: (ref: FakeDocRef) => {
+        if (written) {
+          return Promise.reject(new Error(READ_AFTER_WRITE_ERROR));
+        }
+        txGetPaths.push(ref.path);
+        const doc = (serverDocs.get(ref.path) ?? serverRows.get(ref.path)) as
+          RecurringTransaction | undefined;
+        return Promise.resolve({
+          exists: () => doc !== undefined,
+          id: ref.path.split('/').pop(),
+          data: () => doc
+        });
+      },
+      set: (...args: unknown[]) => {
+        written = true;
+        return txSet(...args);
+      },
+      update: (ref: FakeDocRef, update: Record<string, unknown>) => {
+        written = true;
+        txUpdate(ref, update);
+        commit?.(ref, update);
+      }
+    };
   };
 
   const txSetPaths = (): string[] =>
@@ -87,6 +138,8 @@ describe('RecurringService', () => {
 
   const installTransactionStub = (): void => {
     serverDocs = new Map();
+    serverRows = new Map();
+    txGetPaths = [];
     txSet = jasmine.createSpy('tx.set');
     txUpdate = jasmine.createSpy('tx.update');
 
@@ -94,18 +147,7 @@ describe('RecurringService', () => {
       ((path: string) => ({ path })) as unknown as FirestoreService['getDocRef']
     );
     mockFirestoreService.runTransaction.and.callFake(updateFn => {
-      const tx = {
-        get: (ref: FakeDocRef) => {
-          const doc = serverDocs.get(ref.path);
-          return Promise.resolve({
-            exists: () => doc !== undefined,
-            id: ref.path.split('/').pop(),
-            data: () => doc
-          });
-        },
-        set: txSet,
-        update: txUpdate
-      };
+      const tx = newTransaction();
       return updateFn(tx as unknown as Parameters<typeof updateFn>[0]);
     });
   };
@@ -849,6 +891,68 @@ describe('RecurringService', () => {
     });
   });
 
+  // The real SDK rejects a read issued after a write in the same transaction.
+  // A fake that allowed it would let a claim read in the wrong place and still
+  // pass every unit case, so the fakes enforce the order themselves. These
+  // cases drive the stub directly, with no claim in between.
+  describe('the claim transaction stub', () => {
+    const READ_AFTER_WRITE =
+      'Firestore transactions require all reads to be executed before all writes.';
+    const rowPath = 'users/user123/transactions/seeded';
+
+    it('refuses a read after a write in one transaction, with the SDK message', async () => {
+      seedServerDoc(rowPath, { amount: 1 });
+      const ref = mockFirestoreService.getDocRef(rowPath);
+
+      await expectAsync(
+        mockFirestoreService.runTransaction(async tx => {
+          tx.set(ref, { amount: 2 });
+          await tx.get(ref);
+        })
+      ).toBeRejectedWithError(READ_AFTER_WRITE);
+
+      // The write did go through the stub and the refused read was not served,
+      // so the rejection came from the ordering and from nothing else.
+      expect(txSet).toHaveBeenCalledTimes(1);
+      expect(txGetPaths).toEqual([]);
+    });
+
+    it('lets a second transaction read after the first wrote', async () => {
+      seedServerDoc(rowPath, { amount: 1 });
+      const ref = mockFirestoreService.getDocRef(rowPath);
+
+      await expectAsync(
+        mockFirestoreService.runTransaction(async tx => {
+          tx.set(ref, { amount: 2 });
+          await tx.get(ref);
+        })
+      ).toBeRejectedWithError(READ_AFTER_WRITE);
+
+      // txSet has been called by now. The order is a property of one
+      // transaction and not of the shared spies, or this read would be
+      // refused and a multi-claim drain would swallow it as offline.
+      const seen = await mockFirestoreService.runTransaction(async tx => (await tx.get(ref)).exists());
+
+      expect(seen).toBeTrue();
+      expect(txGetPaths).toEqual([rowPath]);
+    });
+
+    it('serves a rule from serverDocs and any other path from serverRows', async () => {
+      seedServerRule(createRecurring({ id: 'ruleA' }));
+      seedServerDoc(rowPath, { amount: 1 });
+      const rulePath = 'users/user123/recurring/ruleA';
+
+      const seen = await mockFirestoreService.runTransaction(async tx => [
+        (await tx.get(mockFirestoreService.getDocRef(rulePath))).exists(),
+        (await tx.get(mockFirestoreService.getDocRef(rowPath))).exists(),
+        (await tx.get(mockFirestoreService.getDocRef('users/user123/transactions/absent'))).exists()
+      ]);
+
+      expect(seen).toEqual([true, true, false]);
+      expect(txGetPaths).toEqual([rulePath, rowPath, 'users/user123/transactions/absent']);
+    });
+  });
+
   describe('processRecurringTransactions', () => {
     it('should return empty array when not authenticated', async () => {
       (mockAuthService.userId as jasmine.Spy).and.returnValue(null);
@@ -928,35 +1032,53 @@ describe('RecurringService', () => {
     // The default stub never commits tx.update back to serverDocs, which is
     // fine for single-claim tests but would make a drain loop re-read the
     // unadvanced pointer forever. This variant commits updates and counts
-    // occurrence writes per transaction, like the real server would.
+    // occurrence writes per transaction, like the real server would. Updates
+    // are buffered and committed only when the callback resolves: like the
+    // SDK, a rejected callback commits nothing.
     function installCommittingTransactionStub(): number[] {
       const setsPerClaim: number[] = [];
       mockFirestoreService.runTransaction.and.callFake(async updateFn => {
         const before = txSet.calls.count();
-        const tx = {
-          get: (ref: FakeDocRef) => {
-            const doc = serverDocs.get(ref.path);
-            return Promise.resolve({
-              exists: () => doc !== undefined,
-              id: ref.path.split('/').pop(),
-              data: () => doc
-            });
-          },
-          set: txSet,
-          update: (ref: FakeDocRef, update: Record<string, unknown>) => {
-            txUpdate(ref, update);
-            const doc = serverDocs.get(ref.path);
-            if (doc) {
-              serverDocs.set(ref.path, { ...doc, ...update } as RecurringTransaction);
-            }
-          }
-        };
+        const pending: [FakeDocRef, Record<string, unknown>][] = [];
+        const tx = newTransaction((ref, update) => {
+          pending.push([ref, update]);
+        });
         const result = await updateFn(tx as unknown as Parameters<typeof updateFn>[0]);
+        for (const [ref, update] of pending) {
+          const doc = serverDocs.get(ref.path);
+          if (doc) {
+            serverDocs.set(ref.path, { ...doc, ...update } as RecurringTransaction);
+          }
+        }
         setsPerClaim.push(txSet.calls.count() - before);
         return result;
       });
       return setsPerClaim;
     }
+
+    it('the committing stub refuses a read after a write too, and a later transaction reads', async () => {
+      installCommittingTransactionStub();
+      seedServerRule(createRecurring({ id: 'ordered' }));
+      const path = 'users/user123/recurring/ordered';
+      const ref = mockFirestoreService.getDocRef(path);
+
+      await expectAsync(
+        mockFirestoreService.runTransaction(async tx => {
+          tx.update(ref, { isActive: false });
+          await tx.get(ref);
+        })
+      ).toBeRejectedWithError(
+        'Firestore transactions require all reads to be executed before all writes.'
+      );
+
+      // The update reached the stub, but the rejected transaction committed
+      // nothing: the next transaction reads the rule unchanged, and its read
+      // succeeds, so the flag is per transaction here as well.
+      expect(txUpdate).toHaveBeenCalledTimes(1);
+      const seen = await mockFirestoreService.runTransaction(async tx => (await tx.get(ref)).data());
+      expect((seen as RecurringTransaction).isActive).toBeTrue();
+      expect(txGetPaths).toEqual([path]);
+    });
 
     it('drains a daily rule dormant for years across capped claims', async () => {
       const setsPerClaim = installCommittingTransactionStub();
