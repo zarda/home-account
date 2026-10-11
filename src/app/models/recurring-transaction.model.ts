@@ -18,6 +18,9 @@ export interface RecurringTransaction {
   nextOccurrence: Timestamp;
   lastProcessed?: Timestamp;
   remindDaysBefore?: number;     // absent = no reminder; 0 = on the day
+  // A 32-hex secret that keys the postings' ids; read only by the owner.
+  // Absent on a rule written before this field, until its next posting.
+  salt?: string;
   isActive: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;

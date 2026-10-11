@@ -189,7 +189,7 @@ export class RecurringService {
    */
   async createRecurring(
     data: CreateRecurringDTO,
-    options?: { id?: string; isActive?: boolean }
+    options?: { id?: string; isActive?: boolean; salt?: string }
   ): Promise<string> {
     this.isLoading.set(true);
 
