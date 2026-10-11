@@ -34,7 +34,6 @@ import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { Category, Transaction, baseCurrencyOf} from '../../models';
 import { AccessibilityService } from '../../core/services/accessibility.service';
 import {
-  groupExpensesByCategory,
   sumByType,
 } from '../../core/utils/transaction-aggregation.utils';
 import { addMonths, clampToEndOfToday, yearWindow } from '../../core/utils/transaction-date.utils';
@@ -151,9 +150,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
   totalIncome = computed(() => this.typeTotals().income);
   totalExpenses = computed(() => this.typeTotals().expense);
   balance = computed(() => this.typeTotals().balance);
-
-  categoryTotals = computed(
-    () => groupExpensesByCategory(this.transactions(), t => this.toBaseCurrency(t)));
 
   ngOnInit(): void {
     // Categories are period-independent: one live subscription for the page's
