@@ -183,6 +183,19 @@ describe('AiSearchDialogComponent', () => {
       expect(chips).toContain('≥ 50');
     });
 
+    // The catalog may not hold the id: a deleted custom category, an id from
+    // another device, a signal that has not warmed. The chip names it by the
+    // transaction list's Unknown key (the stub echoes keys), never a literal
+    // English word and never the catch-all's own name.
+    it('names a category chip the catalog lacks by the Unknown key', async () => {
+      await searchWith({ kind: 'filter', filters: { categoryId: 'deleted-custom' } });
+
+      const chips = Array.from(
+        fixture.nativeElement.querySelectorAll('.summary-chip'),
+        (el) => (el as HTMLElement).textContent?.trim());
+      expect(chips).toEqual(['common.unknownCategory']);
+    });
+
     it('apply hands the filters off and navigates to the transactions page', async () => {
       const filters = { categoryId: 'food' };
       await searchWith({ kind: 'filter', filters });

@@ -7,6 +7,7 @@ import { CurrencyService } from './currency.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import { CategoryTotal, RAG_TIER_CONFIGS, Transaction, TransactionFilters, baseCurrencyOf} from '../../models';
+import { categoryDisplayName } from '../utils/category-display.utils';
 import {
   computeAmountAnomalies,
   computeCategoryDeltas,
@@ -184,7 +185,7 @@ export class InsightChipsService {
   }
 
   private categoryName(categoryId: string): string {
-    const category = this.categoryService.categories().find(c => c.id === categoryId);
-    return category?.name ? this.translationService.t(category.name) : 'Other';
+    return categoryDisplayName(
+      this.categoryService.categories(), categoryId, key => this.translationService.t(key));
   }
 }

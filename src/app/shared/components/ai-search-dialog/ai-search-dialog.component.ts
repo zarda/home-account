@@ -18,6 +18,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { categoryDisplayName } from '../../../core/utils/category-display.utils';
 import { isImeComposition } from '../../../core/utils/keyboard.utils';
 import {
   recordToAnswer,
@@ -257,7 +258,8 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
         filters.type === 'expense' ? 'common.expense' : 'common.income'));
     }
     if (filters.categoryId) {
-      parts.push(this.categoryName(filters.categoryId));
+      parts.push(categoryDisplayName(
+        this.categoryService.categories(), filters.categoryId, key => this.translationService.t(key)));
     }
     if (filters.goalId) {
       parts.push(this.goalName(filters.goalId));
@@ -286,16 +288,11 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     return `${start} – ${end}`;
   }
 
-  categoryName(categoryId: string): string {
-    const category = this.categoryService.categories().find(c => c.id === categoryId);
-    return category?.name ? this.translationService.t(category.name) : 'Other';
-  }
-
   goalName(goalId: string): string {
     const goal = this.goalService.goals().find(g => g.id === goalId)
       ?? this.fallbackGoals().find(g => g.id === goalId);
-    // Unlike categoryName: no t() (goal names are the user's own text, not
-    // i18n keys) and no 'Other' (a missing goal reads better as its id).
+    // Unlike a category: no t() (goal names are the user's own text, not
+    // i18n keys) and no Unknown (a missing goal reads better as its id).
     return goal?.name ?? goalId;
   }
 

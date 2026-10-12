@@ -1,5 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { CATEGORY_FALLBACK_COLOR, Category } from '../../models';
+import { categoryDisplayName, categoryNameOrUnknown } from '../utils/category-display.utils';
 import { TranslationService } from './translation.service';
 
 @Injectable({ providedIn: 'root' })
@@ -7,11 +8,11 @@ export class CategoryHelperService {
   private translationService = inject(TranslationService);
 
   /**
-   * Gets the category name from a categories map (translated)
+   * Gets the category name from a categories map (translated), or Unknown in
+   * the reader's language for an id the map does not hold.
    */
   getCategoryName(categoryId: string, categories: Map<string, Category>): string {
-    const name = categories.get(categoryId)?.name;
-    return name ? this.translationService.t(name) : this.unknown();
+    return categoryNameOrUnknown(categories.get(categoryId)?.name, key => this.translationService.t(key));
   }
 
   /**
@@ -29,11 +30,11 @@ export class CategoryHelperService {
   }
 
   /**
-   * Gets the category name from a categories array (translated)
+   * Gets the category name from a categories array (translated), or Unknown in
+   * the reader's language for an id the array does not hold.
    */
   getCategoryNameFromArray(categoryId: string, categories: Category[]): string {
-    const category = categories.find(c => c.id === categoryId);
-    return category?.name ? this.translationService.t(category.name) : this.unknown();
+    return categoryDisplayName(categories, categoryId, key => this.translationService.t(key));
   }
 
   /**
@@ -50,13 +51,5 @@ export class CategoryHelperService {
   getCategoryColorFromArray(categoryId: string, categories: Category[]): string {
     const category = categories.find(c => c.id === categoryId);
     return category?.color || CATEGORY_FALLBACK_COLOR;
-  }
-
-  /**
-   * A category id this map does not hold, such as a deleted category. Shown,
-   * never stored, so it is in the reader's language.
-   */
-  private unknown(): string {
-    return this.translationService.t('common.unknownCategory');
   }
 }

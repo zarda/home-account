@@ -92,6 +92,24 @@ describe('NlAnswerCardComponent', () => {
     expect(rows[0]).toContain('USD 80.00');
   });
 
+  // A cold category signal, a deleted custom category and an id from another
+  // device all reach the card as an id the catalog cannot name. The stub echoes
+  // keys, so the fallback is the transaction list's Unknown key, never a
+  // literal English word and never the catch-all's own name (ADR 0036).
+  it('names a group the catalog lacks by the Unknown key, beside one it resolves', () => {
+    render(sumAnswer({
+      operation: 'topCategories',
+      groups: [
+        { categoryId: 'food', total: 80 },
+        { categoryId: 'deleted-custom', total: 15 },
+      ],
+    }));
+    const names = Array.from(
+      fixture.nativeElement.querySelectorAll('.answer-groups li > span:first-child'),
+      (el) => (el as HTMLElement).textContent?.trim());
+    expect(names).toEqual(['Food & Drinks', 'common.unknownCategory']);
+  });
+
   it('shows the empty state instead of a number when nothing matched', () => {
     render(sumAnswer({ transactionCount: 0 }));
     expect(fixture.nativeElement.querySelector('.answer-empty')).toBeTruthy();
