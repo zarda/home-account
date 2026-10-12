@@ -122,4 +122,58 @@ describe('safe-area insets', () => {
     // leaves the variables as each inset's one owner.
     expect(capacitorConfig.ios?.contentInset).toBe('never');
   });
+
+  /** Every style rule in the global sheet, with the media query it sits under. */
+  function globalRules(): { media: string | null; rule: CSSStyleRule }[] {
+    const found: { media: string | null; rule: CSSStyleRule }[] = [];
+    const walk = (rules: CSSRuleList, media: string | null) => {
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSStyleRule) found.push({ media, rule });
+        else if (rule instanceof CSSMediaRule) walk(rule.cssRules, rule.media.mediaText);
+      }
+    };
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        walk(sheet.cssRules, null);
+      } catch {
+        // A cross-origin sheet refuses cssRules; ours are all same-origin.
+      }
+    }
+    return found;
+  }
+
+  const rootSelectors = (rule: CSSStyleRule) =>
+    rule.selectorText.split(',').map((s) => s.trim());
+
+  it('sizes the Home Screen app to the whole screen, so the bottom nav sits on its edge', () => {
+    // Launched from the Home Screen (viewport-fit=cover, black-translucent),
+    // iOS lays the page out 62 pt short of an iPhone 17 Pro's 874 — screen
+    // minus the status bar — and 100%, dvh and svh all resolve to that. The
+    // bar is fixed to bottom: 0 of a viewport no taller than the page, so it
+    // floated 62 pt above the edge until a pull on the page let iOS grow the
+    // viewport, and dropped back after the keyboard closed. lvh is the whole
+    // screen there (no toolbar to collapse); a page that tall gives iOS the
+    // room. Karma cannot be a Home Screen app, so this pins the rule; the
+    // geometry was measured on the iPhone 17 Pro simulator, iOS 26.2.
+    const standalone = globalRules().filter(
+      ({ media, rule }) =>
+        media?.includes('display-mode: standalone') && rule.style.minHeight === '100lvh'
+    );
+    const covered = standalone.flatMap(({ rule }) => rootSelectors(rule));
+    expect(covered).toContain('html');
+    expect(covered).toContain('body');
+  });
+
+  it('leaves a Safari tab its dynamic height', () => {
+    // In a tab, lvh is the height with the toolbar collapsed: 40 pt taller
+    // than what is on screen while it shows. A page that tall would scroll
+    // under the toolbar, so the floor belongs to the Home Screen app alone.
+    const unscoped = globalRules().filter(
+      ({ media, rule }) =>
+        !media?.includes('display-mode: standalone') &&
+        rule.style.minHeight.includes('lvh') &&
+        rootSelectors(rule).some((s) => s === 'html' || s === 'body')
+    );
+    expect(unscoped.map(({ rule }) => rule.cssText)).toEqual([]);
+  });
 });
