@@ -462,7 +462,7 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.173` |
+| | Base (`7b693953`) | `26.10.175` |
 |---|---|---|
 | ERROR | 40 | 53 |
 | WARN | 38 | 60 |
@@ -477,7 +477,8 @@ LOG fell to zero because `no-console` now bans `console.log` outright; the five
 lines over the base when it was first recorded (43 ERROR and 40 WARN) are
 expected-failure paths in new specs, and so are the ten ERROR and twenty WARN
 lines above that earlier figure, which came from specs added since; the wave
-that recorded `26.10.173` added none. **Rendering
+that recorded `26.10.173` added none, and neither did the one that
+recorded `26.10.175`. **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.
