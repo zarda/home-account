@@ -7,15 +7,16 @@
 // a picture.
 //
 // Chromium comes from the ui-audit harness's install so this folder needs no
-// dependencies of its own. Usage: node render.mjs
+// dependencies of its own, and is loaded only when a render launches it.
+// Usage: node render.mjs
 //
 // It draws every fixture, the device-only ones included. probe.mjs reads
 // CASE_IDS alone, so a device fixture costs no model request and has no
 // baseline entry; it is a picture to push into the iOS simulator.
-import { chromium } from '../ui-audit/tools/node_modules/playwright/index.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { childEnv } from './key-variables.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'receipts');
@@ -37,10 +38,26 @@ function chromiumPath() {
   return fs.existsSync(app) ? app : undefined;
 }
 
-export async function render({ quiet = false } = {}) {
+/** Playwright's Chromium, imported at the launch so that importing this file loads no browser. */
+async function playwrightChromium() {
+  const { chromium } = await import('../ui-audit/tools/node_modules/playwright/index.mjs');
+  return chromium;
+}
+
+/**
+ * `env` is the whole environment Chromium is launched with. probe.mjs passes
+ * one without the API key variables in every mode, and so does this file run
+ * on its own; left out, Playwright hands Chromium a copy of this process's
+ * own. `launcher` stands in for Playwright's Chromium, so the probe's
+ * self-test can see what a launch is handed without starting a browser.
+ */
+export async function render({ quiet = false, env, launcher } = {}) {
   fs.mkdirSync(OUT, { recursive: true });
   const executablePath = chromiumPath();
-  const browser = await chromium.launch(executablePath ? { executablePath } : {});
+  const browser = await (launcher ?? await playwrightChromium()).launch({
+    ...(executablePath ? { executablePath } : {}),
+    ...(env ? { env } : {}),
+  });
   try {
     // deviceScaleFactor 2: a phone photograph of a receipt is not 1x, and the
     // extra detail is what the model actually gets in production.
@@ -60,8 +77,16 @@ export async function render({ quiet = false } = {}) {
   return OUT;
 }
 
+/**
+ * What `node render.mjs` runs: every fixture, printing each size, with
+ * Chromium handed the same child environment the probe hands it.
+ */
+export function renderStandalone({ env = process.env, launcher } = {}) {
+  return render({ env: childEnv(env), launcher });
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   console.log('rendering fixtures...');
-  const out = await render();
+  const out = await renderStandalone();
   console.log('->', out);
 }
