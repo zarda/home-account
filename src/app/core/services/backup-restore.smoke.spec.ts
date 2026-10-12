@@ -24,7 +24,7 @@ import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/stora
 
 import { BackupRestoreService } from './backup-restore.service';
 import { TransactionService } from './transaction.service';
-import { RecurringService } from './recurring.service';
+import { RecurringService, INVALID_FREQUENCY_ERROR } from './recurring.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
@@ -341,6 +341,59 @@ describe('Backup restore (emulator smoke test)', () => {
     // Each draws its own: a shared salt would make the rules' postings
     // collide wherever their ids and times did.
     expect(new Set([FILE_SALT, fresh, replaced]).size).toBe(3);
+  }, 30000);
+
+  // #490: a file can carry a rule whose day, month or weekday sits outside its
+  // range, and the restore hands it to createRecurring as it stands. The unit
+  // spec sees the refusal; only a real restore shows that the rows beside the
+  // refused ones still land and that nothing of the refused ones was written.
+  it('skips a rule whose day, month or weekday is out of range and restores the rest', async () => {
+    const day = track('recurring', `backup-restore-smoke-r-day-${run}`);
+    const month = track('recurring', `backup-restore-smoke-r-month-${run}`);
+    const weekday = track('recurring', `backup-restore-smoke-r-dow-${run}`);
+    const valid = track('recurring', `backup-restore-smoke-r-ok-${run}`);
+
+    const rule = (id: string, frequency: RecurringTransaction['frequency']): RecurringTransaction => ({
+      id,
+      userId: uid,
+      name: 'Rent',
+      type: 'expense',
+      amount: 1000,
+      currency: 'USD',
+      categoryId: 'housing_rent',
+      description: 'Rent',
+      frequency,
+      startDate: Timestamp.fromDate(new Date(2026, 0, 1, 9)),
+      nextOccurrence: Timestamp.fromDate(new Date(2026, 0, 1, 9)),
+      isActive: true,
+    } as RecurringTransaction);
+
+    // The valid rule sits between the refused ones: a refusal is a skip, and
+    // the loop goes on to the rows after it.
+    const summary = await service.restore(emptyBackup({
+      recurring: [
+        rule(day, { type: 'monthly', interval: 1, dayOfMonth: -60 }),
+        rule(valid, { type: 'monthly', interval: 1, dayOfMonth: 15 }),
+        rule(month, { type: 'yearly', interval: 1, monthOfYear: -20 }),
+        rule(weekday, { type: 'weekly', interval: 1, dayOfWeek: 9 }),
+      ],
+    }));
+
+    expect(summary.skipped).toEqual([
+      { section: 'recurring', id: day, reason: INVALID_FREQUENCY_ERROR },
+      { section: 'recurring', id: month, reason: INVALID_FREQUENCY_ERROR },
+      { section: 'recurring', id: weekday, reason: INVALID_FREQUENCY_ERROR },
+    ]);
+    expect(summary.recurring).toBe(1);
+
+    expect((await readRaw('recurring', valid))['frequency'])
+      .toEqual({ type: 'monthly', interval: 1, dayOfMonth: 15 });
+
+    // An owner read, past the service: a refusal after the write would still
+    // show in skipped, and only the read shows nothing was left behind.
+    for (const id of [day, month, weekday]) {
+      expect((await getDoc(doc(firestore, `users/${uid}/recurring/${id}`))).exists()).toBeFalse();
+    }
   }, 30000);
 
   it('restores the same insight snapshot twice with nothing skipped', async () => {

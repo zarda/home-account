@@ -45,10 +45,15 @@ interface RuleSchedule {
 export const MAX_OCCURRENCES_PER_CLAIM = 400;
 
 /**
- * Thrown when a frequency could never advance: a zero, negative or non-finite
- * interval. Every walk over a rule's occurrences asks the frequency for the
- * next date; one that answers with the same date — or with an Invalid Date —
- * turns that walk into a loop with no exit.
+ * Thrown when a frequency could never advance, or names a day, weekday or
+ * month outside its range. validateFrequency throws it for an interval below
+ * 1 or not finite, and for a day of the month outside 1-31, a month outside
+ * 1-12 or a weekday outside 0-6, values whose walk would still advance (a day
+ * of 32, a weekday of 9) included. resumeRecurring also throws it from its
+ * step test, for a stored type the step's switch does not know. Every walk
+ * over a rule's occurrences asks the frequency for the next date; one that
+ * answers with the same date — or with an Invalid Date — turns that walk into
+ * a loop with no exit.
  */
 export const INVALID_FREQUENCY_ERROR = 'INVALID_RECURRING_FREQUENCY';
 
@@ -417,14 +422,14 @@ export class RecurringService {
     // the count from the moment it happened to be resumed.
     const nextOccurrence = this.calculateNextOccurrence(schedule.start, recurring.frequency);
 
-    // validateFrequency only catches an interval that can never advance; a
-    // stored frequency.type outside the four known kinds falls through
-    // calculateNextOccurrenceFromDate's switch unchanged and answers the
-    // start back too. A start already due that comes back unmoved is that
-    // failure, not a legitimate answer — calculateNextOccurrence's own
-    // future-start branch is the only other case that returns the start
-    // unchanged, and it is excluded here because that date has not arrived,
-    // so nothing was skipped.
+    // validateFrequency catches an interval that can never advance and a day,
+    // weekday or month outside its range; a stored frequency.type outside the
+    // four known kinds falls through calculateNextOccurrenceFromDate's switch
+    // unchanged and answers the start back too. A start already due that
+    // comes back unmoved is that failure, not a legitimate answer —
+    // calculateNextOccurrence's own future-start branch is the only other
+    // case that returns the start unchanged, and it is excluded here because
+    // that date has not arrived, so nothing was skipped.
     if (
       schedule.start.getTime() <= Date.now() &&
       !(nextOccurrence.getTime() > schedule.start.getTime())
@@ -932,8 +937,8 @@ export class RecurringService {
    * The frequency is checked first because `calculateNextOccurrence` answers
    * the start date itself for an interval that could never advance: storing
    * that would leave the rule permanently due, which is worse than leaving it
-   * inert. That guard only names one refusal (interval); it does not cover
-   * every way a frequency can fail to advance — a `type` outside the four
+   * inert. That guard names the interval and the three ranges; it does not
+   * cover every way a frequency can fail to advance — a `type` outside the four
    * known kinds falls through `calculateNextOccurrenceFromDate`'s switch
    * unchanged and also answers the start back. So a single step off the
    * start is taken and checked as well: whichever guard catches it, storing
@@ -949,7 +954,7 @@ export class RecurringService {
     try {
       this.validateFrequency(rule.frequency);
     } catch {
-      console.warn('[Recurring] Leaving a pointer unrepaired, the interval cannot advance:', rule.id);
+      console.warn('[Recurring] Leaving a pointer unrepaired, the frequency cannot advance or is out of range:', rule.id);
       return;
     }
 
@@ -998,7 +1003,8 @@ export class RecurringService {
   }
 
   /**
-   * Reject a frequency no walk over its occurrences could ever finish.
+   * Reject a frequency no walk over its occurrences could ever finish, or one
+   * that names a day, weekday or month outside the range the model documents.
    *
    * `Number.isFinite` covers NaN and ±Infinity, which a restored or
    * hand-edited document can carry and which make every date comparison
@@ -1006,9 +1012,32 @@ export class RecurringService {
    * matches the rule in firestore.rules, which has to keep accepting older
    * documents even though nothing guarantees their interval was stored as
    * an integer.
+   *
+   * The three ranges are `dayOfMonth` 1-31, `monthOfYear` 1-12 and
+   * `dayOfWeek` 0-6. Each key is optional, and once present is a finite
+   * number inside its range: null, a string and NaN are refused with the
+   * rest. The low values are the ones that stall. A day of 0 or less falls
+   * on the last day of the month before the one the step lands in, or earlier
+   * still, and a month of 0 or less in the year before it, so the step can
+   * land on or before the date it started from and the rule is permanently
+   * due. A high day clamps to the month and a high month or weekday wraps, so
+   * the rule still advances, only on a date it was not given. The weekly step
+   * takes its week first, so a weekday outside 0-6 never stalls and is
+   * refused for being wrong.
    */
   private validateFrequency(frequency: RecurringFrequency): void {
-    if (!(Number.isFinite(frequency.interval) && frequency.interval >= 1)) {
+    const inRange = (v: number | undefined, lo: number, hi: number) =>
+      v === undefined || (Number.isFinite(v) && v >= lo && v <= hi);
+
+    if (
+      !(
+        Number.isFinite(frequency.interval) &&
+        frequency.interval >= 1 &&
+        inRange(frequency.dayOfMonth, 1, 31) &&
+        inRange(frequency.monthOfYear, 1, 12) &&
+        inRange(frequency.dayOfWeek, 0, 6)
+      )
+    ) {
       throw new Error(INVALID_FREQUENCY_ERROR);
     }
   }
