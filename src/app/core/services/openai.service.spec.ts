@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import type OpenAI from 'openai';
 import { OpenAIService } from './openai.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
@@ -6,6 +7,9 @@ import { TranslationService } from './translation.service';
 import { Category, Transaction, MonthlyTotal, Budget, currencyDecimalPlaces } from '../../models';
 import { createCategory, createTransaction } from './testing';
 import { RawTransaction, PreviousPeriodData } from './gemini.service';
+import { ProviderResponse } from './cloud-llm-provider.base';
+import { PromptId, RenderedPrompt, languageInstruction, renderPrompt } from '../prompts';
+import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 
 /**
  * A minimal stand-in for the OpenAI Responses API client. The service only
@@ -989,6 +993,122 @@ describe('OpenAIService', () => {
       expect(result.dateColumn).toBe('date');
       expect(result.descriptionColumn).toBe('description');
       expect(result.amountColumn).toBe('amount');
+    });
+  });
+
+  // #468. The Responses API names why it stopped early in incomplete_details,
+  // and output_text is the text of whatever message items arrived, so an
+  // answer cut short can still parse. Only the token ceiling marks it cut
+  // short; the other reason the SDK types, content_filter, leaves the answer
+  // that arrived to be read. Pinned through both translation methods because
+  // they are the only operations on this transport that read that flag.
+  describe('incomplete answers', () => {
+    const ANSWER = JSON.stringify({ translation: 'Rice ball 150', sourceLanguage: 'Japanese' });
+
+    type IncompleteReason = NonNullable<OpenAI.Responses.Response['incomplete_details']>['reason'];
+
+    /** A Responses API result, as much of it as the transport reads. */
+    function incomplete(
+      outputText: string,
+      reason: IncompleteReason
+    ): Pick<OpenAI.Responses.Response, 'output_text' | 'incomplete_details'> {
+      return { output_text: outputText, incomplete_details: { reason } };
+    }
+
+    const entryPoints = [
+      { name: 'translateText', translate: () => service.translateText('おにぎり 150') },
+      {
+        name: 'translateReceiptImage',
+        translate: () => service.translateReceiptImage('data:image/jpeg;base64,AAAA'),
+      },
+    ];
+
+    for (const { name, translate } of entryPoints) {
+      describe(`through ${name}`, () => {
+        let fake: FakeResponsesClient;
+
+        beforeEach(() => {
+          fake = makeFakeClient();
+          setClient(fake);
+        });
+
+        it('refuses an answer cut off at the token ceiling, though what arrived parses', async () => {
+          fake.responses.create.and.resolveTo(incomplete(ANSWER, 'max_output_tokens'));
+
+          await expectAsync(translate()).toBeRejectedWithError(AI_ANSWER_INCOMPLETE);
+        });
+
+        it('reads an answer the content filter marked incomplete', async () => {
+          fake.responses.create.and.resolveTo(incomplete(ANSWER, 'content_filter'));
+
+          const translated = await translate();
+
+          expect(translated).toEqual({ text: 'Rice ball 150', sourceLanguage: 'Japanese' });
+        });
+
+        it('refuses an empty answer cut off at the token ceiling as incomplete, not unparseable', async () => {
+          // The message is the error's identity: without the flag the empty
+          // text reaches JSON.parse, and the SyntaxError it throws carries a
+          // message of its own.
+          fake.responses.create.and.resolveTo(incomplete('', 'max_output_tokens'));
+
+          await expectAsync(translate()).toBeRejectedWithError(AI_ANSWER_INCOMPLETE);
+        });
+      });
+    }
+
+    it('flags a reasoning-only answer the real SDK reads off the wire', async () => {
+      // The cases above hand the transport a result the spec wrote. This one
+      // runs the vendor's own client over a canned wire answer, so output_text
+      // is what the SDK derives from the output items: a reasoning item and
+      // no message, which is what arrives when the budget runs out before the
+      // answer starts. The fetch goes in through the SDK's own option and
+      // nothing leaves the browser; stubbing the global would not reach it,
+      // because the SDK captured that one when it loaded.
+      const raw = {
+        id: 'resp_1',
+        object: 'response',
+        status: 'incomplete',
+        incomplete_details: { reason: 'max_output_tokens' },
+        output: [{ type: 'reasoning', id: 'rs_1', summary: [] }],
+      };
+      const fakeFetch = jasmine.createSpy('fetch').and.callFake(() =>
+        Promise.resolve(
+          new Response(JSON.stringify(raw), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        )
+      );
+      const { default: RealOpenAI } = await import('openai');
+      spyOn(service as unknown as { loadSdk: () => Promise<unknown> }, 'loadSdk').and.resolveTo({
+        default: class extends RealOpenAI {
+          constructor(options?: ConstructorParameters<typeof RealOpenAI>[0]) {
+            super({ ...options, fetch: fakeFetch, maxRetries: 0 });
+          }
+        },
+      });
+
+      await service.reinitialize('test-key');
+
+      await expectAsync(service.translateText('おにぎり 150')).toBeRejectedWithError(
+        AI_ANSWER_INCOMPLETE
+      );
+      expect(fakeFetch).toHaveBeenCalledTimes(1);
+      expect(fakeFetch.calls.mostRecent().args[0]).toMatch(/\/responses$/);
+
+      const transport = service as unknown as {
+        sendText: (promptId: PromptId, rendered: RenderedPrompt) => Promise<ProviderResponse>;
+      };
+      const response = await transport.sendText(
+        'translateNote',
+        renderPrompt('translateNote', {
+          text: 'おにぎり 150',
+          languageInstruction: languageInstruction('en'),
+        })
+      );
+
+      expect(response).toEqual({ text: '', truncated: true });
     });
   });
 
