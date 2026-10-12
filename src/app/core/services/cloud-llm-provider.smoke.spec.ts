@@ -16,6 +16,7 @@ import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { NoteTranslationService } from './note-translation.service';
 import { ProviderKeyService } from './provider-key.service';
+import { AIStrategyService } from './ai-strategy.service';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { stripProviderKeys } from './testing/provider-keys';
@@ -216,16 +217,56 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     // and stores nothing. reinitializeGemini — the method AIStrategyService
     // calls on a model switch — reads the key back from Firestore, so this is
     // the path the app actually takes.
-    await TestBed.inject(ProviderKeyService).setKey('gemini', 'fake-key-for-the-smoke');
+    const keys = TestBed.inject(ProviderKeyService);
+    await keys.setKey('gemini', 'fake-key-for-the-smoke');
+    try {
+      await expectAsync(
+        facade.reinitializeGemini(DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL),
+      ).toBeResolved();
 
-    await expectAsync(
-      facade.reinitializeGemini(DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL),
-    ).toBeResolved();
+      expect(gemini.isAvailable()).toBeTrue();
+      // Gemini is the only provider with a separate vision handle, so a vision
+      // default that failed to build would leave it text-only rather than down.
+      expect(gemini.capabilities.vision).toBeTrue();
+      expect(gemini.lastError()).toBeNull();
+    } finally {
+      // Stored under the suite's one account, where every later case would
+      // read it, and jasmine runs the cases in a random order.
+      await keys.setKey('gemini', undefined);
+    }
+  });
 
-    expect(gemini.isAvailable()).toBeTrue();
-    // Gemini is the only provider with a separate vision handle, so a vision
-    // default that failed to build would leave it text-only rather than down.
-    expect(gemini.capabilities.vision).toBeTrue();
-    expect(gemini.lastError()).toBeNull();
+  it('says the providers are ready only once a stored key has armed Gemini', async () => {
+    // What the queue drain waits on before it sends a photo. The key read
+    // lands first and the SDK import comes after it, so a wait that ended at
+    // the read would find Gemini still down and the photo would be filed as
+    // failed. The fake key only builds a local handle, as above.
+    const keys = TestBed.inject(ProviderKeyService);
+    await keys.setKey('gemini', 'fake-key-for-the-smoke');
+    try {
+      await facade.resetProviders();
+      expect(gemini.isAvailable()).toBeFalse();
+
+      const strategy = TestBed.inject(AIStrategyService);
+      const ready = await strategy.cloudProvidersReady();
+      const armed = gemini.isAvailable();
+
+      expect(ready).toBeTrue();
+      expect(armed).toBeTrue();
+      expect(facade.availableProviders()).toEqual(['gemini']);
+    } finally {
+      await keys.setKey('gemini', undefined);
+    }
+  });
+
+  it('says the providers are ready, with none up, when the account stores no key', async () => {
+    // The control for the case above: with nothing stored the wait still
+    // answers once the read has landed, and it arms nothing.
+    const strategy = TestBed.inject(AIStrategyService);
+
+    await expectAsync(strategy.cloudProvidersReady()).toBeResolvedTo(true);
+
+    expect(TestBed.inject(ProviderKeyService).keys()).toEqual({});
+    expect(facade.hasAnyCloudProvider()).toBeFalse();
   });
 });

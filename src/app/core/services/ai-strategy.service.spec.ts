@@ -183,6 +183,236 @@ describe('AIStrategyService', () => {
     });
   });
 
+  describe('cloud provider readiness', () => {
+    // The queue drain asks this before it sends a photo. A drain that ran
+    // ahead of the bring-up found no provider and filed the photo as failed,
+    // so the answer has to cover the whole bring-up for the current account
+    // and connectivity: the key read and the SDK import after it.
+    function deferred() {
+      let resolve!: () => void;
+      const promise = new Promise<void>(res => (resolve = res));
+      return { promise, resolve };
+    }
+
+    const settle = () => new Promise<void>(resolve => setTimeout(resolve));
+
+    function track(ready: Promise<boolean>) {
+      const state: { settled: boolean; value?: boolean } = { settled: false };
+      void ready.then(value => {
+        state.settled = true;
+        state.value = value;
+      });
+      return state;
+    }
+
+    it('settles only once the providers are up, not when the keys are read', async () => {
+      authUserId.set('user-a');
+      const service = createService('web');
+      cloudMock.initializeProviders.calls.reset();
+      const sdkLoaded = deferred();
+      cloudMock.initializeProviders.and.callFake(async () => {
+        await Promise.resolve({}); // the key read, already answered
+        await sdkLoaded.promise; // the provider SDK's import, still loading
+      });
+
+      const ready = track(service.cloudProvidersReady());
+      await settle();
+
+      expect(ready.settled).toBeFalse();
+
+      sdkLoaded.resolve();
+      await settle();
+
+      expect(ready.settled).toBeTrue();
+      expect(ready.value).toBeTrue();
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the bring-up itself when it is asked before the effect has run', async () => {
+      authUserId.set('user-a');
+      const service = createService('web');
+      cloudMock.initializeProviders.calls.reset();
+
+      const ready = service.cloudProvidersReady();
+
+      // Started before its first await, so the effect finds it in flight.
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+
+      TestBed.flushEffects();
+
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+      await expectAsync(ready).toBeResolvedTo(true);
+    });
+
+    it("joins the reconnect's bring-up rather than starting another", async () => {
+      const online = signal(true);
+      pwaMock.isOnline.and.callFake(online);
+      authUserId.set('user-a');
+      const service = createService('web');
+      TestBed.flushEffects();
+
+      online.set(false);
+      TestBed.flushEffects();
+
+      const reconnect = deferred();
+      cloudMock.initializeProviders.and.returnValue(reconnect.promise);
+      const before = cloudMock.initializeProviders.calls.count();
+      online.set(true);
+      TestBed.flushEffects();
+      // The reconnect started one, and that is the one still loading.
+      expect(cloudMock.initializeProviders.calls.count()).toBe(before + 1);
+
+      cloudMock.initializeProviders.calls.reset();
+      const ready = track(service.cloudProvidersReady());
+      await settle();
+
+      expect(ready.settled).toBeFalse();
+      expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+
+      reconnect.resolve();
+      await settle();
+
+      expect(ready.settled).toBeTrue();
+      expect(ready.value).toBeTrue();
+      expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+    });
+
+    it('answers false once the account has signed out', async () => {
+      authUserId.set('user-a');
+      const service = createService('web');
+      TestBed.flushEffects();
+      authUserId.set(null);
+      TestBed.flushEffects();
+      cloudMock.initializeProviders.calls.reset();
+
+      await expectAsync(service.cloudProvidersReady()).toBeResolvedTo(false);
+      expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+    });
+
+    it('answers false when the account signs out during the wait, and starts nothing for no one (pin)', async () => {
+      // Each pass reads the account afresh: one read before the wait would
+      // carry the departed account past it, start a bring-up for no one and
+      // answer true.
+      authUserId.set('user-a');
+      const service = createService('web');
+      cloudMock.initializeProviders.calls.reset();
+      const held = deferred();
+      cloudMock.initializeProviders.and.returnValue(held.promise);
+
+      const ready = track(service.cloudProvidersReady());
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+
+      cloudMock.initializeProviders.calls.reset();
+      cloudMock.initializeProviders.and.resolveTo();
+      authUserId.set(null);
+      TestBed.flushEffects();
+      // The sign-out reached the strategy: it reset the providers it had up.
+      expect(cloudMock.resetProviders).toHaveBeenCalledTimes(1);
+
+      held.resolve();
+      await settle();
+
+      expect(ready.settled).toBeTrue();
+      expect(ready.value).toBeFalse();
+      expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+    });
+
+    it('answers false when the device went offline during the wait', async () => {
+      const online = signal(true);
+      pwaMock.isOnline.and.callFake(online);
+      authUserId.set('user-a');
+      const service = createService('web');
+      cloudMock.initializeProviders.calls.reset();
+      const onlineBringUp = deferred();
+      cloudMock.initializeProviders.and.returnValue(onlineBringUp.promise);
+
+      const ready = track(service.cloudProvidersReady());
+      online.set(false);
+      cloudMock.initializeProviders.and.resolveTo();
+      onlineBringUp.resolve();
+      await settle();
+
+      expect(ready.settled).toBeTrue();
+      expect(ready.value).toBeFalse();
+      // The answer comes after a bring-up for the offline state, not off the
+      // one that was started while online.
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits for the newer bring-up when connectivity changes during the wait', async () => {
+      const online = signal(false);
+      pwaMock.isOnline.and.callFake(online);
+      authUserId.set('user-a');
+      const service = createService('web');
+      cloudMock.initializeProviders.calls.reset();
+      const offlineBringUp = deferred();
+      const reconnect = deferred();
+      cloudMock.initializeProviders.and.returnValues(offlineBringUp.promise, reconnect.promise);
+
+      const ready = track(service.cloudProvidersReady());
+      online.set(true);
+      TestBed.flushEffects();
+
+      // The reconnect started the newer one on top of the drain's own.
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(2);
+
+      offlineBringUp.resolve();
+      await settle();
+
+      expect(ready.settled).toBeFalse();
+
+      reconnect.resolve();
+      await settle();
+
+      expect(ready.settled).toBeTrue();
+      expect(ready.value).toBeTrue();
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits for the newest bring-up when connectivity drops and returns during the wait', async () => {
+      const online = signal(true);
+      pwaMock.isOnline.and.callFake(online);
+      authUserId.set('user-a');
+      const service = createService('web');
+      cloudMock.initializeProviders.calls.reset();
+      const first = deferred();
+      const newest = deferred();
+      cloudMock.initializeProviders.and.returnValues(first.promise, Promise.resolve(), newest.promise);
+
+      const ready = track(service.cloudProvidersReady());
+      online.set(false);
+      TestBed.flushEffects();
+      online.set(true);
+      TestBed.flushEffects();
+
+      // Back on the state the wait began in, but on a newer bring-up than
+      // the one it is waiting for.
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(3);
+
+      first.resolve();
+      await settle();
+
+      expect(ready.settled).toBeFalse();
+
+      newest.resolve();
+      await settle();
+
+      expect(ready.settled).toBeTrue();
+      expect(ready.value).toBeTrue();
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(3);
+    });
+
+    it('still answers when the bring-up fails', async () => {
+      authUserId.set('user-a');
+      const service = createService('web');
+      cloudMock.initializeProviders.calls.reset();
+      cloudMock.initializeProviders.and.rejectWith(new Error('x'));
+
+      await expectAsync(service.cloudProvidersReady()).toBeResolvedTo(true);
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('routing', () => {
     it('should not use native OCR on the web', () => {
       const service = createService('web');
