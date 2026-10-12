@@ -29,7 +29,12 @@ import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import { isSeed, opaqueRowId } from '../utils/opaque-id.utils';
 import { prefillFromGroup } from '../utils/recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
-import { integerField, patchFieldsAsOwner } from './testing/emulator-admin';
+import {
+  integerField,
+  mapField,
+  patchFieldsAsOwner,
+  stringField
+} from './testing/emulator-admin';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -558,12 +563,12 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   /**
    * A rule whose walk cannot advance stands on its pointer: the step after the
    * stuck date does not land past it, so every claim walks to the same date.
-   * Day -60 of a month is the shape that does it and that the rules accept
-   * (they pin the interval, not the day). The claim has to ask the server
-   * whether that date is already posted before it posts it again, and what it
-   * asks is not visible from the rows alone: a claim that threw looks the same
-   * as one that found the row. The spy on the claim supplies what each one
-   * resolved to.
+   * Day -60 of a month is the shape that does it, and it is written as the
+   * owner so the seed does not depend on what the rules accept of a day. The
+   * claim has to ask the server whether that date is already posted before it
+   * posts it again, and what it asks is not visible from the rows alone: a
+   * claim that threw looks the same as one that found the row. The spy on the
+   * claim supplies what each one resolved to.
    */
   describe('a rule whose walk cannot advance', () => {
     /** Far enough in the past that it was stamped by nothing in this run. */
@@ -587,8 +592,14 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
 
     const rulePath = (id: string): string => `users/${uid}/recurring/${id}`;
 
-    const seedStalledRule = (id: string, due: Date): Promise<void> =>
-      setDoc(doc(firestore, rulePath(id)), {
+    /**
+     * Written whole through the client with a valid frequency, then broken as
+     * the owner, so the stalled day never depends on a client write the rules
+     * may refuse. The owner patch touches `frequency` alone, so `updatedAt`
+     * stays at SEEDED_AT for the cases that assert it.
+     */
+    const seedStalledRule = async (id: string, due: Date): Promise<void> => {
+      await setDoc(doc(firestore, rulePath(id)), {
         userId: uid,
         name: 'Stalled',
         type: 'expense',
@@ -596,13 +607,21 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
         currency: 'USD',
         categoryId: 'food_coffee',
         description: 'Stalled',
-        frequency: { type: 'monthly', interval: 1, dayOfMonth: -60 },
+        frequency: { type: 'monthly', interval: 1 },
         startDate: Timestamp.fromDate(due),
         nextOccurrence: Timestamp.fromDate(due),
         isActive: true,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.fromDate(SEEDED_AT)
       });
+      await patchFieldsAsOwner(rulePath(id), {
+        frequency: mapField({
+          type: stringField('monthly'),
+          interval: integerField(1),
+          dayOfMonth: integerField(-60)
+        })
+      });
+    };
 
     /** The rows of the rule `id`, by their ids. */
     const rowsOf = async (id: string): Promise<string[]> => {

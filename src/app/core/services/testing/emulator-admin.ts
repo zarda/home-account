@@ -23,8 +23,17 @@ const FIRESTORE_EMULATOR_ORIGIN = 'http://127.0.0.1:8080';
 /** The demo project every smoke suite runs against. */
 const PROJECT_ID = 'demo-home-account';
 
-/** One Firestore REST typed value, e.g. `{ integerValue: '5' }` or `{ booleanValue: true }`. */
-export type EmulatorField = Record<string, string | boolean>;
+/**
+ * One Firestore REST typed value, e.g. `{ integerValue: '5' }`,
+ * `{ booleanValue: true }` or, for a map, `{ mapValue: { fields: { … } } }`.
+ * The map's entries are `EmulatorField`s themselves; a type alias cannot name
+ * itself in a union with a record (TS2456), so the nesting is spelled through
+ * the `fields` object.
+ */
+export type EmulatorField = Record<
+  string,
+  string | boolean | { fields: Record<string, EmulatorField> }
+>;
 
 /** REST carries integers as strings; a bare number would arrive as a double. */
 export function integerField(value: number): EmulatorField {
@@ -42,6 +51,11 @@ export function stringField(value: string): EmulatorField {
 /** REST carries a boolean as a JSON boolean, not as a string. */
 export function booleanField(value: boolean): EmulatorField {
   return { booleanValue: value };
+}
+
+/** A map, e.g. a rule's `frequency`; build its entries with the encoders above. */
+export function mapField(fields: Record<string, EmulatorField>): EmulatorField {
+  return { mapValue: { fields } };
 }
 
 function documentUrl(path: string): string {
@@ -76,10 +90,10 @@ export async function setDocumentAsOwner(
  * backtick-quoted the way a Firestore field-path segment would need.
  *
  * This is what a bad-state fixture needs, and `setDocumentAsOwner` cannot
- * stand in for it: the client rules require both timestamps on a create, a
+ * stand in for it: the client rules require both timestamps on a create, and a
  * document that lacks the field every enumeration orders by is never read back
- * at all, and the encoders above cannot express a rule's `frequency` map. So a
- * rule is written whole through the client SDK and only then broken here.
+ * at all. So a rule is written whole through the client SDK and only then
+ * broken here.
  */
 export async function patchFieldsAsOwner(
   path: string,
