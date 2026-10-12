@@ -73,7 +73,7 @@ import {
   createMockUser,
   provideNoMotion,
 } from '../../../../core/services/testing';
-import { AIImportService } from '../../../../core/services/ai-import.service';
+import { AIImportService, IMPORT_NOT_STARTED } from '../../../../core/services/ai-import.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { AIStrategyService } from '../../../../core/services/ai-strategy.service';
 import { NativeReceiptService } from '../../../../core/services/native-receipt.service';
@@ -89,8 +89,15 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { TranslationService } from '../../../../core/services/translation.service';
 import { INVALID_AMOUNT_ERROR } from '../../../../core/services/transaction.service';
 import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
-import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
+import {
+  CategorizedImportTransaction,
+  DEFAULT_USER_PREFERENCES,
+  ImportHistory,
+  ImportResult,
+  ImportSource
+} from '../../../../models';
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
+import { errorCode } from '../../../../core/utils/firebase-error.utils';
 import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
 import {
   fallbackCategoryFor,
@@ -3590,6 +3597,57 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'an import the rules refuse before its record opens says nothing was written',
+    async () => {
+      // The refusal is the emulator's own. importCreateValid takes only the
+      // four sources it lists, so a record opened under any other is turned
+      // away by the first write confirmImport makes, before a single row is
+      // attempted. The unit suite can only reject a mock; this is the code
+      // the wizard will read off the cause.
+      stubReceiptSeams();
+
+      const importService = TestBed.inject(AIImportService);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const row: CategorizedImportTransaction = {
+        id: 'not-started-1',
+        description: 'Refused coffee',
+        amount: 5,
+        currency: 'USD',
+        date: new Date(2026, 7, 14),
+        type: 'expense',
+        suggestedCategoryId: 'other_expense',
+        categoryConfidence: 0.9,
+        isDuplicate: false,
+        selected: true
+      };
+
+      const rejection = await importService
+        .confirmImport([row], 'not-started.csv', 1, 'xml' as ImportSource, 'generic_csv')
+        .then(() => undefined, (error: Error) => error);
+
+      // The rejection is the positive proof the two reads below lean on: an
+      // empty result would also hold if the call had never reached Firestore.
+      expect(rejection?.message).toBe(IMPORT_NOT_STARTED);
+      expect(errorCode(rejection?.cause)).toBe('permission-denied');
+
+      const imports = await getDocs(collection(firestore, `users/${uid}/imports`));
+      expect(imports.docs.filter(d => d.data()['fileName'] === 'not-started.csv').length)
+        .withContext('no history record opened for the refused import')
+        .toBe(0);
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      expect(after.docs.filter(d => !before.has(d.id)).length)
+        .withContext('no transaction was written behind the refusal')
+        .toBe(0);
     },
     30000
   );

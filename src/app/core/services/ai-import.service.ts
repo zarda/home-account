@@ -96,6 +96,12 @@ import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 export const IMPORT_READBACK_FAILED = 'IMPORT_HISTORY_READBACK_FAILED';
 
 /**
+ * Thrown when the import was refused before its history record opened, so
+ * nothing was written. The refusal rides on `cause`.
+ */
+export const IMPORT_NOT_STARTED = 'IMPORT_NOT_STARTED';
+
+/**
  * The read-back follows an acknowledged write, so the snapshot normally
  * arrives from the local cache in milliseconds; this bounds how long the
  * confirm step can hang when the listener errors or never fires.
@@ -1451,16 +1457,21 @@ export class AIImportService {
     const skippedDuplicates = transactions.filter(t => t.isDuplicate && !t.selected).length;
     const userId = this.authService.userId();
 
-    if (!userId) throw new Error('User not authenticated');
+    if (!userId) throw new Error(IMPORT_NOT_STARTED, { cause: new Error('User not authenticated') });
 
     // Create pending import history
-    const historyId = await this.importHistoryService.createPendingImport(
-      fileName,
-      fileSize,
-      source,
-      fileType,
-      provenance
-    );
+    let historyId: string;
+    try {
+      historyId = await this.importHistoryService.createPendingImport(
+        fileName,
+        fileSize,
+        source,
+        fileType,
+        provenance
+      );
+    } catch (error) {
+      throw new Error(IMPORT_NOT_STARTED, { cause: error });
+    }
 
     let successCount = 0;
     let errorCount = 0;

@@ -6,6 +6,7 @@ import {
   AIImportService,
   AI_NO_PROVIDER,
   AI_QUEUED_OFFLINE,
+  IMPORT_NOT_STARTED,
   IMPORT_READBACK_FAILED,
   IMPORT_READBACK_TIMEOUT_MS,
 } from './ai-import.service';
@@ -3190,12 +3191,35 @@ describe('AIImportService', () => {
       );
     });
 
-    it('should throw when user is not authenticated', async () => {
+    it('refuses as not started, naming the sign-in, when nobody is signed in', async () => {
       (authService.userId as jasmine.Spy).and.returnValue(null);
 
-      await expectAsync(
-        service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image')
-      ).toBeRejectedWithError(/not authenticated/);
+      const rejection = await service
+        .confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image')
+        .then(() => undefined, (error: Error) => error);
+
+      expect(rejection?.message).toBe(IMPORT_NOT_STARTED);
+      expect((rejection?.cause as Error | undefined)?.message).toBe('User not authenticated');
+      expect(importHistoryService.createPendingImport).not.toHaveBeenCalled();
+    });
+
+    it('refuses as not started, carrying the refusal, when the history record cannot open', async () => {
+      const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+      });
+      importHistoryService.createPendingImport.and.returnValue(Promise.reject(denied));
+
+      const rejection = await service
+        .confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image')
+        .then(() => undefined, (error: Error) => error);
+
+      // The rejection is the positive proof: the two "not called" lines below
+      // would also hold if the call had failed some other way.
+      expect(rejection?.message).toBe(IMPORT_NOT_STARTED);
+      expect(rejection?.cause).toBe(denied);
+      // No record opened, so there is none to stamp failed and no row written.
+      expect(importHistoryService.failImport).not.toHaveBeenCalled();
+      expect(transactionService.addTransaction).not.toHaveBeenCalled();
     });
 
     it('should save selected transactions and return the history record', async () => {
