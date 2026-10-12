@@ -405,6 +405,22 @@ html, body {
   color: var(--text-primary);
 }
 
+/* Launched from the Home Screen, iOS lays the page out a status bar short of
+   the screen (812 of an iPhone 17 Pro's 874 pt): 100%, dvh and svh all
+   resolve to that, and so did the viewport the fixed bottom nav is pinned
+   to. The bar floated 62 pt above the edge until a pull on the page let iOS
+   grow the viewport, and dropped back whenever the keyboard closed. lvh is
+   the whole screen there, and a page that tall gives iOS room for the full
+   viewport at launch. Standalone only: in a Safari tab lvh is the
+   toolbar-collapsed height, taller than what is on screen, and the page
+   would scroll under the toolbar. Pinned by safe-area.spec.ts. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    min-height: 100lvh;
+  }
+}
+
 /* Tailwind's preflight paints a placeholder gray-400 in every theme: 2.54:1
    on white. A form field's placeholder is Material's, in a more specific
    rule, so this reaches only the inputs that are not form fields. */
