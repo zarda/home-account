@@ -217,10 +217,10 @@ export class ReceiptAttemptService {
   /**
    * Whether no provider is known to be set, read when the attempt fails, so a
    * key load that lands while the attempt runs is seen. The queue's drain
-   * waits for the account's key read before it opens its attempt, so a drain
-   * stays network only when that read itself failed. Only an online device
-   * whose keys were read and hold none can say so; keys not loaded, or a read
-   * that failed, say nothing either way.
+   * waits for the account's providers, whose bring-up reads the keys first,
+   * before it opens its attempt, so a drain stays network only when that read
+   * itself failed. Only an online device whose keys were read and hold none
+   * can say so; keys not loaded, or a read that failed, say nothing either way.
    */
   private providerAbsent(): boolean {
     const keys = this.providerKeys.keys();

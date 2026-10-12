@@ -10,8 +10,6 @@ import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
 import { CategoryService } from './category.service';
-import { ProviderKeyService } from './provider-key.service';
-import { ProviderSecrets } from '../../models';
 import { createCategory } from './testing/test-data';
 import { opaqueRowId } from '../utils/opaque-id.utils';
 
@@ -92,7 +90,6 @@ describe('OfflineQueueProcessorService', () => {
   let translation: jasmine.SpyObj<TranslationService>;
   let userId: WritableSignal<string | null>;
   let attempts: ReturnType<typeof attemptStub>;
-  let providerKeys: jasmine.SpyObj<ProviderKeyService>;
 
   beforeEach(() => {
     // Only the drain's one read and its status write: a call to any other
@@ -108,7 +105,10 @@ describe('OfflineQueueProcessorService', () => {
 
     userId = signal<string | null>('user-a');
 
-    ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt']);
+    ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt', 'cloudProvidersReady']);
+    // The account's providers, which the drain waits for before it opens its
+    // attempt: already up unless a case holds them.
+    ai.cloudProvidersReady.and.resolveTo(true);
     transactions = jasmine.createSpyObj<TransactionService>('TransactionService', [
       'addTransaction',
       'hasTransaction',
@@ -124,10 +124,6 @@ describe('OfflineQueueProcessorService', () => {
     translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
     attempts = attemptStub();
-    // The account's keys, which the drain waits for before it opens its
-    // attempt: already read unless a case holds the read.
-    providerKeys = jasmine.createSpyObj<ProviderKeyService>('ProviderKeyService', ['resolve']);
-    providerKeys.resolve.and.resolveTo({});
     // One entry on each side of the ledger, so a suggestion can be checked
     // against the side of the row it was read for.
     const categories = signal([
@@ -146,7 +142,6 @@ describe('OfflineQueueProcessorService', () => {
         { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: CategoryService, useValue: { categories } },
-        { provide: ProviderKeyService, useValue: providerKeys },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -767,13 +762,14 @@ describe('OfflineQueueProcessorService', () => {
       expect(ai.processReceipt).not.toHaveBeenCalled();
     });
 
-    // #487. After a cold offline start the key read the reconnect starts is
-    // still in flight when the drain runs, and a failure filed before it
-    // lands cannot say whether a key is set. The drain waits for that read,
-    // with the keys not yet loaded, before it opens its attempt.
-    it('waits for the account\'s key read before it opens the attempt or hands the photo on', async () => {
-      let settle!: (keys: ProviderSecrets) => void;
-      providerKeys.resolve.and.returnValue(new Promise<ProviderSecrets>((resolve) => { settle = resolve; }));
+    // #487, #490. After a cold offline start the bring-up the reconnect
+    // starts is still in flight when the drain runs: the key read, and the
+    // provider SDK's import after it. A failure filed before it lands cannot
+    // say whether a key is set, so the drain waits for the account's
+    // providers before it opens its attempt.
+    it('waits for the account\'s providers before it opens the attempt or hands the photo on', async () => {
+      let settle!: (ready: boolean) => void;
+      ai.cloudProvidersReady.and.returnValue(new Promise<boolean>((resolve) => { settle = resolve; }));
       ai.processReceipt.and.resolveTo(processingResult([extracted()]));
 
       dispatchImage('img_1');
@@ -782,18 +778,35 @@ describe('OfflineQueueProcessorService', () => {
       // and written its outcome.
       await new Promise((r) => setTimeout(r, 25));
 
-      expect(providerKeys.resolve).toHaveBeenCalledTimes(1);
+      expect(ai.cloudProvidersReady).toHaveBeenCalledTimes(1);
       expect(attempts.service.begin).not.toHaveBeenCalled();
       expect(ai.processReceipt).not.toHaveBeenCalled();
       expect(queue.updateImageStatus).not.toHaveBeenCalled();
 
-      // The read lands, and the drain goes on to the end.
-      settle({});
+      // The providers are up, and the drain goes on to the end.
+      settle(true);
       await waitFor(() => queue.updateImageStatus.calls.any());
 
       expect(attempts.service.begin.calls.mostRecent().args[0]).toBe('queue');
       expect(ai.processReceipt).toHaveBeenCalledTimes(1);
       expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+    });
+
+    // Offline again, or signed out, before the providers came up. The entry
+    // waits for the next sync rather than failing for something that is not
+    // its fault.
+    it('hands the entry back pending, its retry unspent, when the providers are not up', async () => {
+      ai.cloudProvidersReady.and.resolveTo(false);
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // No error with it, so the queue spends no retry.
+      expect(ai.cloudProvidersReady).toHaveBeenCalledTimes(1);
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+      expect(ai.processReceipt).not.toHaveBeenCalled();
     });
 
     it('carries location, tags, period and recurring through the one mapper', async () => {
@@ -978,6 +991,30 @@ describe('OfflineQueueProcessorService', () => {
       await waitFor(() => queue.updateImageStatus.calls.any());
 
       // Pending, not failed — it belongs to A and is still perfectly good.
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+      expect(ai.processReceipt).not.toHaveBeenCalled();
+      expect(transactions.addTransaction).not.toHaveBeenCalled();
+    });
+
+    // The wait is an await between the owner check and the photo going out,
+    // so the check is made again once it ends.
+    it('hands the entry back pending when another account signs in during the wait', async () => {
+      let settle!: (ready: boolean) => void;
+      ai.cloudProvidersReady.and.returnValue(new Promise<boolean>((resolve) => { settle = resolve; }));
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.peekQueuedImage.calls.any());
+      await new Promise((r) => setTimeout(r, 25));
+
+      userId.set('user-b');
+      // Up, for the account now signed in.
+      settle(true);
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // Past the first owner check: this is the one after the wait.
+      expect(ai.cloudProvidersReady).toHaveBeenCalledTimes(1);
       expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
       expect(attempts.service.begin).not.toHaveBeenCalled();
       expect(ai.processReceipt).not.toHaveBeenCalled();

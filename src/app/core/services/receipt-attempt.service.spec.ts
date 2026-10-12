@@ -216,9 +216,9 @@ describe('ReceiptAttemptService', () => {
 
     it('reads the keys when the attempt fails, not when it begins', async () => {
       // The keys are read when the attempt fails, so a load that lands while
-      // the attempt runs is seen. The drain itself waits for the key read
-      // before it opens its attempt, so for a drain they stay unknown only
-      // when that read failed.
+      // the attempt runs is seen. The drain itself waits for the account's
+      // providers, whose bring-up reads the keys first, before it opens its
+      // attempt, so for a drain they stay unknown only when that read failed.
       providerKeys.keys.set(null);
       const attempt = service.begin('queue', 'receipt_image', files);
       providerKeys.keys.set({});
