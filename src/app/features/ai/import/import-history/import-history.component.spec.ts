@@ -1136,6 +1136,85 @@ describe('ImportHistoryComponent, error lines in the reader\'s language', () => 
     expect(lines.length).withContext('the card rendered its error line').toBe(1);
     expect(fixture.nativeElement.querySelector('.failure-class')).toBeNull();
   });
+
+  // failImport writes the status and the error and never the counts, so a
+  // whole import the rules refused after its rows landed holds a
+  // successCount of 0 that nothing counted. The tiles would assert it.
+  describe('the figures of a record that was never counted', () => {
+    const statsGrid = () => fixture.nativeElement.querySelector('.stats-grid') as HTMLElement | null;
+
+    it('shows no figures for a whole-import failure, and still says why it failed', () => {
+      const lines = render([wholeImportFailure({
+        message: 'Missing or insufficient permissions.',
+        code: 'permission-denied',
+      })]);
+
+      // The error line is the positive proof that the card rendered this
+      // record, so the grid's absence below is not an empty page.
+      expect(lines).toEqual(['import.wholeFailedConnection']);
+      expect(statsGrid()).withContext('the tiles').toBeNull();
+      expect(fixture.nativeElement.querySelector('.stat')).withContext('a tile').toBeNull();
+    });
+
+    it('shows no figures for a record left pending, whose counts were never written', () => {
+      // A completion refused and the failImport after it refused or never
+      // answered, or a tab closed mid-write: the record keeps the 0 it was
+      // opened with and the pending status, though rows may have landed.
+      render([record({ status: 'pending', fileName: 'pending.csv', successCount: 0, errorCount: 0 })]);
+
+      // The card's title is the positive proof that this record rendered, so
+      // the grid's absence below is not an empty page.
+      expect(fixture.nativeElement.querySelector('mat-card-title')?.textContent?.trim()).toBe('pending.csv');
+      expect(statsGrid()).withContext('the tiles').toBeNull();
+    });
+
+    it('shows its figures for a completed record, even one that carries a bare error line (pin)', () => {
+      // The error line is what a whole-import failure also carries, so only
+      // the status keeps this record's tiles.
+      render([record({ status: 'completed', successCount: 10, errorCount: 0, errors: [{ message: 'Import failed' }] })]);
+
+      const tiles = Array.from((statsGrid() as HTMLElement).querySelectorAll('.stat'));
+      expect(tiles.length).withContext('tiles drawn').toBeGreaterThanOrEqual(3);
+      expect(tiles[0].querySelector('.value')?.textContent?.trim()).toBe('10');
+    });
+
+    it('shows its figures for a failed attempt that has a class, where nothing landed and 0 is true (pin)', () => {
+      render([failedAttempt('no_provider', 'No AI provider is set.')]);
+
+      const tiles = Array.from((statsGrid() as HTMLElement).querySelectorAll('.stat'));
+      expect(tiles[0].querySelector('.value')?.textContent?.trim()).toBe('0');
+    });
+
+    it('shows its figures for a failed record whose errors name rows, since its counts were taken (pin)', () => {
+      render([record({ status: 'failed', successCount: 0, errorCount: 2, errors: [rowError('row-1'), rowError('row-2')] })]);
+
+      expect(statsGrid()).withContext('the tiles').not.toBeNull();
+    });
+
+    it('shows its figures for a failed record whose errors name a row only by its description (pin)', () => {
+      // Every record the confirm loop wrote before rows were matched by id.
+      render([record({ status: 'failed', successCount: 0, errorCount: 1, errors: [{ message: 'network error', originalValue: 'Tea' }] })]);
+
+      expect(statsGrid()).withContext('the tiles').not.toBeNull();
+    });
+
+    it('shows its figures when one error among several names a row (pin)', () => {
+      render([record({
+        status: 'failed',
+        successCount: 0,
+        errorCount: 2,
+        errors: [{ message: 'Import failed' }, rowError('row-1')],
+      })]);
+
+      expect(statsGrid()).withContext('the tiles').not.toBeNull();
+    });
+
+    it('shows its figures for a failed record that holds no error line at all (pin)', () => {
+      render([record({ status: 'failed', successCount: 0, errorCount: 0 })]);
+
+      expect(statsGrid()).withContext('the tiles').not.toBeNull();
+    });
+  });
 });
 
 /** A dotted catalog key's value in one catalog tree, or undefined. */

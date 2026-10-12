@@ -103,21 +103,51 @@ function errorLineKey(item: ImportHistory, error: ImportError): string | null {
     if (own) return own;
     if (item.errorType) return FAILURE_SENTENCE_KEYS[item.errorType];
   }
-  if (
-    item.status === 'failed' &&
-    !item.errorType &&
-    error.transactionId === undefined &&
-    error.originalValue === undefined
-  ) {
+  if (item.status === 'failed' && !item.errorType && !namesRow(error)) {
     return wholeImportFailureKey(error);
   }
-  if (
-    (error.transactionId !== undefined || error.originalValue !== undefined) &&
-    typeof error.message === 'string'
-  ) {
+  if (namesRow(error) && typeof error.message === 'string') {
     return importFailureKey(error);
   }
   return null;
+}
+
+/** Whether the error names the row it is about, by its id or by the description every record the loop ever wrote carries. */
+function namesRow(error: ImportError): boolean {
+  return error.transactionId !== undefined || error.originalValue !== undefined;
+}
+
+/**
+ * Whether the import itself was refused, as `failImport` files it: a failed
+ * record with no class, whose every error names no row.
+ *
+ * Its counts were never written. `failImport` stamps the status and the
+ * error, and only `completeImport` writes `successCount` and the totals, so
+ * a record whose completion was refused after the rows landed holds the 0
+ * the record was opened with, and its error line says the transactions may
+ * already be in the list. The card shows no figures for it: a 0 there would
+ * be a count nothing took.
+ *
+ * Not a receipt attempt's failure, which has a class and where nothing
+ * landed, and not a loop that refused its rows, whose errors name them and
+ * whose counts were taken. A failed record with no error line says nothing
+ * about how it ended, so its figures stay.
+ */
+export function isWholeImportFailure(item: ImportHistory): boolean {
+  const errors = item.errors ?? [];
+  return item.status === 'failed' && !item.errorType && errors.length > 0 && !errors.some(namesRow);
+}
+
+/**
+ * Whether the record's counts were never written, so the card shows no
+ * figures for it: a whole-import failure, or a record still pending. Only
+ * `completeImport` writes the counts, and a record stays pending when its
+ * completion was refused and the `failImport` after it was refused too or
+ * never answered, or when the tab closed mid-write. Rows may have landed
+ * either way, so the 0 it was opened with is a count nothing took.
+ */
+export function figuresUncounted(item: ImportHistory): boolean {
+  return item.status === 'pending' || isWholeImportFailure(item);
 }
 
 @Component({
@@ -151,6 +181,9 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
 
   importHistory = signal<ImportHistory[]>([]);
   isLoading = signal(true);
+
+  /** Bound as a field because the template cannot reach an imported function. */
+  readonly figuresUncounted = figuresUncounted;
 
   private subscription?: Subscription;
 
