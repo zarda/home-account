@@ -177,11 +177,10 @@ describe('prompt registry', () => {
   });
 
   it('never lists a run of country codes, in any prompt', () => {
-    // Covers all fourteen registered prompts, the five receipt ones
-    // included — their own describe blocks below assert the country field
-    // exists, not this tripwire, so this loop is the only place a
-    // categorization, search or insights prompt growing the same mistake
-    // would be caught.
+    // Covers every registered prompt, the receipt ones included — their own
+    // describe blocks below assert the country field exists, not this
+    // tripwire, so this loop is the only place a categorization, search or
+    // insights prompt growing the same mistake would be caught.
     for (const id of PROMPT_IDS) {
       expect(render(id))
         .withContext(`${id} lists a run of two-letter codes`)

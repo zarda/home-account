@@ -27,10 +27,13 @@ export type PromptResponseKind = 'json' | 'markdown' | 'plainText';
  * written per call site per provider, which is how Gemini ended up categorizing
  * at `temperature: 0.05` while OpenAI and Claude passed nothing at all.
  *
- * `maxOutputTokens` reaches every transport. `temperature` reaches the models
- * that accept one: Gemini always, Claude only before Opus 4.6, OpenAI never
- * while the catalog is GPT-5. That is a limit of the transports, not a gap in
- * the registry — the declared value stays required, and `acceptsSampling` in
+ * `maxOutputTokens` reaches every transport. `temperature` reaches every Gemini
+ * and Gemma model, and a Claude id once it is flagged `acceptsSampling` (the
+ * vendor's page or a probe shows it takes one). It reaches no OpenAI id,
+ * whatever the flag says: the OpenAI transport sends none and never reads the
+ * flag, so reaching one takes the transport changing as well as a flag
+ * (openai.service.ts). That is a limit of the transports, not a gap in the
+ * registry — the declared value stays required, and `acceptsSampling` in
  * `config/ai-models.ts` is where a model's answer is recorded. ADR 0043.
  */
 export interface RenderedPrompt {

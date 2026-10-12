@@ -53,8 +53,11 @@ export const DEFAULT_TEXT_MODEL = 'gemini-3.5-flash-lite';
 export const DEFAULT_VISION_MODEL = 'gemini-3.5-flash-lite';
 
 // OpenAI models (multimodal — one model serves text and vision)
-// None accepts sampling: the Responses API rejects `temperature` for the whole
-// GPT-5 family, and every id offered here is GPT-5.
+// The app sends OpenAI no `temperature`, whatever `acceptsSampling` says: the
+// OpenAI transport never reads the flag. The vendor documents one only at
+// reasoning effort `none` on GPT-5.4, so no id is flagged, and sending one
+// takes a probe showing an id accepts it and the transport changing to spread
+// it (openai.service.ts), not a flag alone.
 // gpt-5.4-nano is deprecated (shutdown 2027-04-01, replacement gpt-6-luna) and
 // kept selectable. ADR 0177.
 export const OPENAI_MODELS: AIModelOption[] = [
@@ -66,9 +69,11 @@ export const OPENAI_MODELS: AIModelOption[] = [
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
 
 // Anthropic Claude models (multimodal)
-// Anthropic removed sampling for models released after Claude Opus 4.6: the SDK
-// types `temperature` @deprecated and the API rejects any value but 1.0 with a
-// 400. Haiku 4.5 predates that line and still accepts it; the other two do not.
+// The SDK types `temperature` @deprecated: models released after Claude Opus 4.6
+// do not support setting it, 1.0 is accepted for backwards compatibility, and any
+// other value is rejected with a 400. A model is flagged `acceptsSampling` only
+// once the vendor's page or a probe shows it takes one, and a newly added id
+// stays unflagged until then.
 export const CLAUDE_MODELS: AIModelOption[] = [
   { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Recommended)' },
   { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' },

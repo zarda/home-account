@@ -9,6 +9,7 @@ import { Category, MonthlyTotal } from '../../models';
 import { createCategory } from './testing/test-data';
 import { JSON_ONLY_PREAMBLE, languageInstruction, renderPrompt } from '../prompts';
 import { environment } from '../../../environments/environment';
+import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL, acceptsSampling } from '../config/ai-models';
 
 /**
  * The three providers must send the *same* prompt for the same task.
@@ -398,8 +399,8 @@ describe('provider prompt parity', () => {
     });
   });
 
-  // #263. The registry declares a temperature for all fourteen prompts, but a
-  // seam can only carry what the transport accepts, and the three differ.
+  // #263. The registry declares a temperature for every prompt, but a seam can
+  // only carry what the transport accepts, and the three differ.
   describe('the declared temperature', () => {
     const rows = [{ description: 'X', amount: 1, date: new Date('2026-07-01') }];
 
@@ -433,19 +434,27 @@ describe('provider prompt parity', () => {
       expect(claudeEnvelope()['temperature']).toBe(declared());
     });
 
-    it('is omitted for a Claude model released after Opus 4.6, which rejects any value but 1.0', async () => {
-      // Sending it would be a 400, not a sharper answer. Both post-4.6 ids are
-      // covered because the default is one of them.
-      claude.setModel('claude-sonnet-5');
-      await categorizeEverywhere();
-      expect('temperature' in claudeEnvelope()).toBeFalse();
+    it('is omitted for every Claude model not proven to accept it', async () => {
+      // Sending one to a model released after Claude Opus 4.6 would be a 400,
+      // not a sharper answer. The ids come from the catalog rather than a list
+      // written here, so a model added later is held to the same answer until
+      // it is flagged, and the default is among them.
+      const rejecting = CLAUDE_MODELS.filter(model => !acceptsSampling(model.id));
+      expect(rejecting.map(model => model.id)).toContain(DEFAULT_CLAUDE_MODEL);
 
-      claude.setModel('claude-opus-4-8');
-      await categorizeEverywhere();
-      expect('temperature' in claudeEnvelope()).toBeFalse();
+      for (const { id } of rejecting) {
+        claudeClient.messages.create.calls.reset();
+        claude.setModel(id);
+        await categorizeEverywhere();
+
+        // The positive proof first: a request went out for this very id, so
+        // the absence below is read off its envelope and not a stale one.
+        expect(claudeEnvelope()['model']).withContext(id).toBe(id);
+        expect('temperature' in claudeEnvelope()).withContext(id).toBeFalse();
+      }
     });
 
-    it('is omitted for OpenAI, because the GPT-5 Responses API rejects it', async () => {
+    it('is omitted for OpenAI, whose models are not proven to accept it', async () => {
       await categorizeEverywhere();
       expect('temperature' in openaiEnvelope()).toBeFalse();
     });

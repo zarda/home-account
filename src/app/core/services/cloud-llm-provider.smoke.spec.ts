@@ -49,7 +49,7 @@ stripProviderKeys();
  * members the façade calls that are not on the adapter interface — Gemini's
  * clear() and the OpenAI/Claude model switches — which a refactor can drop
  * without any compile error, because nothing in the interface mentions them.
- * The catalog sweep at the end goes one step further and still stops short of
+ * The model catalog sweep below goes one step further and still stops short of
  * a vendor: it arms one provider at a time with a hand-made client and reads
  * the request each catalog id would send.
  *
