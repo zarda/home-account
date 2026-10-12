@@ -3403,7 +3403,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const service = TestBed.inject(AIImportService);
       // The wizard's own confirm ends in router.navigate, and provideRouter([])
       // has nowhere to send it.
-      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
 
       const before = new Set(
         (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
@@ -3463,6 +3463,14 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
       const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
       expect(landed.map(d => d['amount'] as number).sort((a, b) => a - b)).toEqual([554, 555]);
+
+      // Every row saved, so the wizard leaves for the list and replaces the
+      // review in history: Back from the list must not land on a Confirm
+      // whose Import would write both rows a second time.
+      expect(navigate).toHaveBeenCalledOnceWith(
+        ['/transactions'],
+        jasmine.objectContaining({ replaceUrl: true, queryParams: { showAll: 'true' } })
+      );
 
       // Material binds aria-valuenow to value in determinate mode, so the
       // attribute is the bar's own figure rather than a class the test picked.
