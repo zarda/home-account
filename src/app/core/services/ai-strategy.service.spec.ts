@@ -12,7 +12,12 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { NativeReceiptService } from './native-receipt.service';
 import { ProcessingResult } from './ai-types';
 import { ParsedReceipt, MultiImageExtractedTransaction } from './gemini.service';
-import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import {
+  DEFAULT_CLAUDE_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_TEXT_MODEL,
+  DEFAULT_VISION_MODEL,
+} from '../config/ai-models';
 import { AI_PREFERENCES_SCHEMA_VERSION } from '../config/ai-model-migrations';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 
@@ -1155,6 +1160,27 @@ describe('AIStrategyService', () => {
       expect(stored.textModel).toBe('gemma-4-26b-a4b-it');
     });
 
+    // A pin: it passes on arrival, because the first save writes the merged
+    // object and not the patch. Nothing is stored until one of the five
+    // settings the blob holds changes, auto sync or a model choice, and that
+    // change writes every model id and the schema stamp. A later move of the
+    // catalog's defaults never reaches this user: the stored ids outrank the
+    // defaults, and the migration skips a blob that carries the current stamp.
+    it('stores the whole blob, every model id included, on the first change of any one setting', () => {
+      const service = createService('web');
+      expect(localStorage.getItem(PREFERENCES_STORAGE_KEY)).toBeNull();
+
+      service.updatePreferences({ autoSync: false });
+
+      const stored = JSON.parse(localStorage.getItem(PREFERENCES_STORAGE_KEY)!);
+      expect(stored.autoSync).toBeFalse();
+      expect(stored.textModel).toBe(DEFAULT_TEXT_MODEL);
+      expect(stored.visionModel).toBe(DEFAULT_VISION_MODEL);
+      expect(stored.openaiModel).toBe(DEFAULT_OPENAI_MODEL);
+      expect(stored.claudeModel).toBe(DEFAULT_CLAUDE_MODEL);
+      expect(stored.schemaVersion).toBe(AI_PREFERENCES_SCHEMA_VERSION);
+    });
+
     // The success arm used to print `[AIStrategy] Models updated
     // successfully:` with both model ids. ADR 0123's rule took it out and
     // no-console keeps it out; the failure arm still errors, and the
@@ -1197,8 +1223,9 @@ describe('AIStrategyService', () => {
 
     /**
      * A stored blob outranks the catalog by design, so moving the defaults on
-     * does nothing for anyone who has ever opened this settings page. These
-     * two are the load path either side of the schema stamp.
+     * does nothing for anyone who has ever changed auto sync or a model
+     * choice: that first change stored every model id. These two are the load
+     * path either side of the schema stamp.
      */
     describe('a stored blob naming a superseded model', () => {
       /** Default for both text and vision until it was shut down upstream. */
