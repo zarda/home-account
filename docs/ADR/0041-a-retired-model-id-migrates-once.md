@@ -1,8 +1,36 @@
 # 41. A retired model id migrates once, and the catalog keeps the choice
 
-**Status:** Accepted, implemented · **Date:** 2026-08-14
+**Status:** Accepted, implemented; amended by
+[0177](0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md)
+· **Date:** 2026-08-14
 
 Reference documentation lives in [../ai-models.md](../ai-models.md).
+
+**Amended by
+[0177](0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md).**
+The migration below stands: the stamp inside the blob, the pass that runs
+once, the order that migrates before it merges, and the two invariants that
+hold the catalog to the map. Two statements no longer hold as written:
+
+- **Under *Context*,** that anyone who has ever opened **Settings → AI**
+  has all four model ids written to `localStorage`. Opening the page writes
+  nothing. Changing any one of the five settings the blob holds, auto sync
+  or one of the four model choices, writes the whole blob: all four ids and
+  the stamp. The provider order, the RAG level and the API keys are saved
+  elsewhere and never write it. So a moved `DEFAULT_*` reaches only an
+  install that has never changed auto sync or a model choice.
+- **Under *Consequences*,** that the next retirement is one map entry and
+  one catalog edit. Every save writes the stamp, and the first load of an
+  older blob adds it, so a map entry added now reaches only a blob written
+  before the stamp existed, on a device that has not loaded the app since.
+  A rule that runs on every load, and moves only an id the catalog
+  no longer lists, is recorded in 0177 as deferred. Its deadline is
+  2027-04-01, when OpenAI shuts down `gpt-5.4-nano`.
+
+The OpenAI and Claude ids still have no map entries. They were read
+against their vendors' pages on 2026-10-11 and again on 2026-10-12, and
+each provider's ids now carry their own date. No id either list offers is
+shut down, and `gpt-5.4-nano`, deprecated on 2026-10-01, stays selectable.
 
 ## Context
 

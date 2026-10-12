@@ -45,9 +45,9 @@ reverse — why a thing is the way it is, not how to use it.
 | [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
 | [0039](0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md) | A share arrives typed, and the stash answers only to its owner | Accepted; amends 0019 | 2026-08-14 |
 | [0040](0040-the-native-seams-answer-to-xctest.md) | The native seams answer to XCTest, and the plugins stay shells | Accepted | 2026-08-14 |
-| [0041](0041-a-retired-model-id-migrates-once.md) | A retired model id migrates once, and the catalog keeps the choice | Accepted | 2026-08-14 |
+| [0041](0041-a-retired-model-id-migrates-once.md) | A retired model id migrates once, and the catalog keeps the choice | Accepted; amended by 0177 | 2026-08-14 |
 | [0042](0042-a-derived-figure-agrees-with-the-set-that-produced-it.md) | A derived figure agrees with the set that produced it, and a cached one keys on all of it | Accepted; catch-up-read gap closed by 0044, cache-key gap by 0148 | 2026-08-14 |
-| [0043](0043-a-declared-setting-reaches-every-transport-that-accepts-it.md) | A declared generation setting reaches every transport that accepts it | Accepted; amends 0025 | 2026-08-14 |
+| [0043](0043-a-declared-setting-reaches-every-transport-that-accepts-it.md) | A declared generation setting reaches every transport that accepts it | Accepted; amends 0025; amended by 0177 | 2026-08-14 |
 | [0044](0044-the-catch-up-work-list-comes-from-the-server.md) | The catch-up work list is answered by the server or not at all | Accepted; extends 0034; closes a gap of 0042 | 2026-08-15 |
 | [0045](0045-a-confidence-grade-names-its-source.md) | A confidence grade names its source, and the CSV import asks the real categorizer | Accepted; unresolved-name gap closed by 0046, status-string gap by 0118, precedence gap by 0147, Settings-CSV gap by 0150, unread-warning gap by 0170 | 2026-08-15 |
 | [0046](0046-an-unrecognized-category-name-is-not-a-category.md) | An unrecognized category name is not a category | Accepted; closes a gap of 0045; keyword-fallback gap closed by 0147 | 2026-08-15 |
@@ -181,6 +181,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0174](0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md) | A posting's digest carries a salt only its rule holds, and the drain reads once | Accepted; amends 0173; closes a gap of 0014 and a gap of 0173; narrows a gap of 0173 | 2026-10-11 |
 | [0175](0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md) | A whole-import failure reads in the reader's language, and a drain with no provider says so | Accepted; applies 0036; amends 0065 and 0170; closes a gap of 0170 | 2026-10-11 |
 | [0176](0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md) | Every category list breaks a tie by id over cent-rounded totals | Accepted; closes a gap of 0171 | 2026-10-11 |
+| [0177](0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md) | The catalog dates its vendors, and adds only what is no worse than the default | Accepted; amends 0041 and 0043 | 2026-10-12 |
 
 ## What belongs here
 
