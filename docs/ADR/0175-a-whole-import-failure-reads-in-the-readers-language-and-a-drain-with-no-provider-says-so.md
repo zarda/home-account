@@ -1,8 +1,39 @@
 # 175. A whole-import failure reads in the reader's language, and a drain with no provider says so
 
-**Status:** Accepted, implemented · **Date:** 2026-10-11 · **Issues:** #487
+**Status:** Accepted, implemented; amended by
+[0178](0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)
+· **Date:** 2026-10-11 · **Issues:** #487
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md).
+
+**Amended by
+[0178](0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md).**
+The family reader, its two tables, the reading in `errorLineKey` and the
+`no_provider` filing stand. Three statements below no longer hold as
+written:
+
+- **Under *A drain with no provider is filed as no provider*,** that
+  `OfflineQueueProcessorService` injects `ProviderKeyService` and awaits
+  `resolve()` after the ownership check. The drain now awaits
+  `AIStrategyService.cloudProvidersReady()`: the bring-up of the cloud
+  providers for the signed-in account and the current connection, which
+  reads the keys first and then imports the provider SDK. The processor no
+  longer injects `ProviderKeyService`. A bring-up whose key read failed
+  still answers, so such a drain still goes on and is filed `network`. The
+  owner is checked again after the wait, and a wait that ends signed out,
+  offline or under another account puts the entry back to pending without
+  spending a retry.
+- **Under the same heading,** that the drain smoke's failed-drain case
+  finds the keys loaded by the drain's own read. The smoke stubs the
+  strategy, and its readiness stub makes that read in the bring-up's place.
+- **The entry *The wizard's toast still shows the English*,** where it says
+  the toast put the thrown message into every language. Only English did:
+  the ja and tc values of `import.importFailed` had no slot for it, and
+  showed a bare *Import failed* in their own language, with no reason. The
+  wizard now reads a refused completion through `wholeImportFailureKey`,
+  drops the rows it submitted and leaves for Import History. A refusal
+  before the record opened stays on Confirm with `import.importFailed`,
+  reworded to say nothing was saved, with no slot in any language.
 
 Applies [0036](0036-a-user-facing-string-lives-in-the-catalog.md): the last
 error line an in-app writer leaves on an Import History card stops showing

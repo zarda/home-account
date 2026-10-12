@@ -78,18 +78,21 @@ reaches it.
 Two gates cover the two halves.
 
 **`npm run material:check`** (`scripts/check-material-imports.mjs`, a CI step
-after *Check direction*) parses each `@Component`'s `imports:` array and the
-template it declares, and fails when a listed Material module contributes no
-selector that template uses. What it proves is bounded on purpose:
+after *Check direction*) holds two rules. The first parses each
+`@Component`'s `imports:` array and the template it declares, and fails when
+a listed Material module contributes no selector that template uses. The
+second is about one select's empty option (below). What the first proves is
+bounded on purpose:
 
 - A table maps **29 Material modules** to their full transitively-exported
   selector sets, spelled as the installed `@angular/material` spells them.
-  `--self-test` (43 cases) asserts every string in it against the selectors
-  the installed package actually declares, plus the three re-export edges it
-  leans on (List → Divider, Input → FormField, Select → Option). A
-  Material upgrade that renames a selector fails the self-test, where the
-  fix is the table — not the app, where the fix would look like deleting a
-  live import.
+  `--self-test` asserts every string in it against the selectors the
+  installed package actually declares, plus the three re-export edges it
+  leans on (List → Divider, Input → FormField, Select → Option); its 60
+  cases cover the second rule's fixtures too, so it prints
+  `check-material-imports self-test: 60 passed`. A Material upgrade that
+  renames a selector fails the self-test, where the fix is the table — not
+  the app, where the fix would look like deleting a live import.
 - Matching is lenient in every direction but one: an attribute selector
   matches on its attribute alone, bare and bound spellings both count, and
   commented-out markup counts as a use. Every leniency can only miss a dead
@@ -97,7 +100,7 @@ selector that template uses. What it proves is bounded on purpose:
 - What it skips is **counted and named in the output**: provider-only
   modules (`MatNativeDateModule` exports no selector, so a template says
   nothing about whether the component needs it) and any module not in the
-  table. A live run prints `Checked 293 Mat*Module entries across 89
+  table. A live run prints `Checked 360 Mat*Module entries across 103
   components`, the skips, `No unparsed files.` and the findings. A file whose
   `@Component(` count exceeds the decorators the parser could read is listed
   as unparsed and fails the run: a component the gate cannot see is reported,
@@ -108,6 +111,28 @@ a Material module it has not used before: add its name with the selector set
 the package exports for it, and run `npm run material:check` — the self-test
 fails on a misspelling immediately. Until it is in the table, its entries are
 skipped and counted rather than checked, and the run says so by name.
+
+**A select that offers a null option can select it.** Material reads an
+option whose value is `null` or `undefined` as a reset option unless the
+select sets `canSelectNullableOptions`, so a field whose model holds `null`
+showed empty, with its label sitting unfloated inside it, whatever the option
+was labelled: *Same day as the start date*, *Off*, *None*. The browser run for
+#490 met it on four selects, the recurring dialog's day and reminder and the
+transaction form's budget period and goal, and the second rule followed
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md),
+under the class rule of
+[ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md)). In any
+template under `src/app`, a `<mat-select>` whose body holds a `<mat-option`
+bound `[value]="null"` must carry `canSelectNullableOptions` on its opening
+tag; only a literal `false` there fails, and a bound expression is trusted.
+The body runs to the select's own `</mat-select>`, matched exactly, so a
+`<mat-select-trigger>` ahead of the options does not end it, and HTML
+comments are masked first. A live run prints `Checked 41 mat-select elements
+across 96 templates (3 offer a null option).` It cannot see an option whose
+null comes from data (the reminder select's, which the dialog's real-template
+spec covers), an option bound to `undefined` (the five *All* options in the
+transaction filters, which show empty for the same reason and are left as a
+product call), or an inline `template:`.
 
 **`unusedStandaloneImports: "error"`** in `tsconfig.json`'s
 `angularCompilerOptions` covers the half Angular can see. It was measured at

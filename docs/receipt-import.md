@@ -686,7 +686,51 @@ to set was deleted rather than translated: the overlay renders under
 ([ADR 0124](ADR/0124-the-camera-door-names-its-step-and-a-status-nobody-could-see-is-deleted.md)).
 When every row saved but the summary read-back fails, the wizard says so and
 moves on; the full record, including per-row errors, is on the Import History
-page.
+page. **A finished import leaves no way back into its review.** Saved whole,
+or saved with its read-back failed, the wizard drops the rows it submitted and
+replaces itself in the browser's history as it moves to the transactions list
+(`replaceUrl`), so Back does not rebuild a review whose rows already landed.
+That navigation is not awaited, and one that fails to load is swallowed, so
+the round's notice stands over a review with nothing left to import. The
+camera and form doors hand their review to the wizard in `history.state`, and
+the wizard reads it from there on every construction, so the handoff is taken
+out of the wizard's entry once Import is pressed, before the write. A write
+that never started wrote nothing, so its refusal puts the handoff back and a
+reload offers the review again, unless an earlier round of the wizard reached
+the record; the review itself stays in memory, so Import retries it with its
+photos. Every other outcome leaves the handoff out: after a partial import the
+rows that failed stay on screen, and a reload drops them, even when a later
+press is refused before its record opens. A browser that refuses the history
+write (WebKit throws a `SecurityError` when the history is written too often)
+leaves the handoff where it was, and the import goes on; only on that path can
+a reload offer rows already written. The header's back arrow is disabled while
+the write runs. A wizard closed while the write ran raises its notice,
+navigates nowhere and puts nothing back.
+
+**A whole import that is refused says what was written.** The confirm splits
+on whether the import's history record had opened
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)):
+
+- **Before it opened**, nothing was written: nobody was signed in, or the
+  rules turned the record away. The service throws `IMPORT_NOT_STARTED`, with
+  the refusal as its `cause`. The wizard stays on Confirm with its rows, its
+  selection and its step as they were, so Import retries a write that never
+  happened, and says *The import could not start, so nothing was saved.
+  Check your connection and try again.* (`import.importFailed`). The sentence
+  has no slot for the thrown text in any language.
+- **After it opened**, the rows may have landed; in practice this is a
+  completion the rules refused. The notice reads the refusal the way Import
+  History reads the record, through `wholeImportFailureKey` by its code and
+  then its message: the record could not be finished, and its transactions
+  may already be in the list. The rows it submitted are dropped first — a
+  row left unticked was never submitted and stays — and the wizard then
+  leaves for Import History, replacing itself in the browser's history. The
+  service writes rows with no id of their own, so a second Import over them
+  would land every one again; dropping them before the navigation means even
+  a navigation that never arrives leaves nothing to press twice. There the
+  record's card reads the same sentence and shows no figures, since the
+  refused completion never wrote its counts (see *A record's error lines*
+  below).
 
 **No door leaves a bar behind it.** All six extraction doors clear the flag,
 the step and the bar together in one `endRun()`, so a run that has ended owns
@@ -893,10 +937,11 @@ attempt knows it, which needs the device online, its keys read without a
 failure, and none of them set. It stores the no-provider sentence, so its
 card reads *No AI provider configured* above `import.errorNoProvider`, with
 no *Cloud* chip and no duration, as the camera's does. The drain waits for
-the account's key read before it opens its attempt, so a cold offline start
-does not stop it knowing. A drain that could not know, offline or because
-that read failed, is filed as a connection failure, and its stored sentence
-reads back as
+the account's cloud providers to come up before it opens its attempt, and
+their bring-up reads the keys first, so a cold offline start does not stop it
+knowing ([below](#offline-capture-and-the-queue)). A drain that could not
+know, because the connection dropped after the wait or the key read failed,
+is filed as a connection failure, and its stored sentence reads back as
 `import.errorCloudUnavailable`, which says to check the connection or add
 a key ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
 Any other failed attempt's line is a catalog sentence for its error class:
@@ -921,6 +966,17 @@ the code was kept is placed by its text alone (see *What still bounds
 coverage*). A whole-import failure shows no class label, since it is not a
 receipt attempt
 ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
+Nor does its card show the figure tiles. Only `completeImport` writes the
+transaction count and the totals, and `failImport` stamps the status and the
+error, so a record whose completion was refused still holds the zeros it was
+opened with, though its rows may have landed: a 0 there would be a count
+nothing took. A record left `pending` shows none either, for the same
+reason: its completion was refused and the `failImport` after it was refused
+too or never answered, or the tab closed mid-write. A failed receipt attempt,
+where nothing landed and 0 is true, and a failed import whose errors name its
+rows, whose counts were taken, keep their tiles (`isWholeImportFailure` and
+`figuresUncounted`,
+[ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
 The first three lines show, and the rest fold into *+{others} more*
 (`import.moreErrors`). A line in no shape the app writes, one naming no row
 on a record that did not fail or a row's line with no message, as a restore
@@ -1044,6 +1100,24 @@ open and possibly nobody looking — so there is no review step: what the model
 read goes straight into the ledger. They are ordinary transactions afterwards,
 editable like any other.
 
+**A drain waits for its account's providers.** Before it opens its attempt
+or hands the photo on, the drain asks the strategy whether the cloud providers
+are up for the signed-in account (`AIStrategyService.cloudProvidersReady()`).
+The providers come up in the strategy once per account and again on each
+change of connectivity: the key read, then the provider SDK's import. The
+wait joins that bring-up when the reconnect has started it, starts it when it
+has not, and answers at once when the providers are already up. When the
+account or the connection changes during the wait, it follows the newer
+bring-up. Then three things send the entry back to pending with no error, so
+no retry is spent: nobody signed in, another account signed in during the
+wait, or the device offline once it ends. A pending entry is dispatched again
+by the next `online` event or **Sync Now**. A bring-up whose key read failed
+still answers, and the drain goes on. Before this, the drain waited for the
+key read alone, so a keyed account's first drain after a cold offline start
+could reach the cloud path before the providers were up, be filed
+*Connection problem* and spend one of its three retries
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+
 A date the reader doubted is resolved on the drain's own rule — the same
 `resolveImportDate` the review lanes use, run at the moment the row is written.
 So such a row is dated the day the queue drained rather than a day nobody read,
@@ -1075,6 +1149,8 @@ seed off that one record, so the three cannot disagree. An entry whose record
 is gone fails as *Image not found in queue*, and one another account owns goes
 back to pending without spending a retry
 ([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
+The owner is checked again after the provider wait above, for the account
+that may have signed in while it ran.
 One helper names those rows: `queueRowTxId`, in
 `offline-queue.service.ts` beside the code that mints the queue id. The
 drain's photo plan, its existence check and its write all take the id from
@@ -1183,23 +1259,28 @@ names the image and the status it dropped, with the drain's warning beside it.
   captured after another tab has taken the database to a newer version is met
   as an ordinary could-not-store failure rather than as the closed-queue state
   the AI settings page names; the page has to be reloaded first.
-- **An import that failed outright says less than it could in two places.**
-  Import History reads it in the reader's language, but a record written
-  before the refusal's code was kept holds only the message, and a rules
-  refusal's text never names its code. So *Missing or insufficient
+- **An old record of an import that failed outright says less than it
+  could.** Import History reads it in the reader's language, but a record
+  written before the refusal's code was kept holds only the message, and a
+  rules refusal's text never names its code. So *Missing or insufficient
   permissions.* on such a record reads as the could-not-finish sentence
-  rather than the connection one. And the wizard's toast for the same
-  failure, `import.importFailed`, still puts the thrown error's message, a
-  Firestore client sentence in English, into every language; reading it the
-  way the history does is a follow-up
+  rather than the connection one
   ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
 - **A drain whose key read fails still says *Connection problem*.** The
-  drain waits for the account's key read before it opens its attempt, so it
-  is filed as a connection failure only when that read itself fails. Nothing
-  then says whether a key is set, so the record carries the sentence that
-  names both causes, even on a device with no key. It never claims no
-  provider on a device that has one
-  ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
+  drain waits for the account's providers, whose bring-up reads the keys
+  first, so it is filed as a connection failure only when that read itself
+  fails. Nothing then says whether a key is set, so the record carries the
+  sentence that names both causes, even on a device with no key. It never
+  claims no provider on a device that has one. And the read is not tried
+  again until the account or the connection changes: the next drain joins
+  the finished bring-up for the same account and connectivity
+  ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md),
+  [ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+- **A drain killed while it waits spends a retry.** The entry is marked
+  *processing* while the drain waits for the providers, and the wait has no
+  time limit. A tab closed or an app swiped away then is swept back to
+  pending at the next launch at the cost of one retry, as any interrupted
+  drain is.
 
 If a receipt fails for any other reason, that is a bug rather than a
 limitation. Diagnosing one starts on the Import History page: the failed
