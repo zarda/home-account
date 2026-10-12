@@ -6,7 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 
 import { ImportWizardComponent } from './import-wizard.component';
-import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -1371,6 +1371,10 @@ describe('ImportWizardComponent', () => {
       const file = new File([''], 'test.csv', { type: 'text/csv' });
       component.selectedFiles.set([file]);
       component.extractedTransactions.set(mockTransactions);
+      // Resolved, never bare: a refused import leaves for Import History
+      // without awaiting the navigation, and a bare spy answers undefined,
+      // which has no `.catch` to call.
+      mockRouter.navigate.and.resolveTo(true);
     });
 
     it('should call confirmImport on service', fakeAsync(() => {
@@ -1568,18 +1572,180 @@ describe('ImportWizardComponent', () => {
       expect(component.isImporting()).toBeFalse();
     }));
 
-    it('should handle import failure gracefully', fakeAsync(() => {
-      mockImportService.confirmImport.and.returnValue(Promise.reject(new Error('Import failed')));
+    describe('when the confirm is refused', () => {
+      // The fake TranslationService echoes the key it is handed, so each
+      // reading below is the key the wizard resolved to and never the
+      // sentence: which key a refusal reads is this file's to pin, the
+      // wording is the catalogs'.
+      const rulesRefusal = (): Error =>
+        Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
+      const lookups = (wanted: string) =>
+        mockTranslationService.t.calls.allArgs().filter(([key]) => key === wanted);
+      const importFailedLookups = () => lookups('import.importFailed');
 
-      // Should not throw
-      expect(() => {
-        component.confirmImport();
-        tick();
-      }).not.toThrow();
+      beforeEach(() => {
+        // The seal's mirror of the ticked rows. A reviewer who ticked both
+        // has both in it, and the refusal must not leave it that way.
+        component.selectedTransactionIds.set(new Set(['txn1', 'txn2']));
+      });
 
-      expect(component.isImporting()).toBeFalse();
-      expect(notifications.error).toHaveBeenCalledWith('import.importFailed');
-    }));
+      describe('after its record opened', () => {
+        // The service has already written the rows: what refused is the
+        // record's completion, or anything past the first write. Whatever
+        // the wizard keeps on Confirm would be offered a second time.
+        const cases: [string, () => Error, string][] = [
+          ['by its code, a rules refusal', rulesRefusal, 'import.wholeFailedConnection'],
+          ['by its message, any other failure', () => new Error('Import failed'), 'import.wholeFailedUnknown'],
+        ];
+
+        for (const [label, refusal, key] of cases) {
+          it(`reads ${label} through the whole-import key, never the thrown text`, async () => {
+            mockImportService.confirmImport.and.rejectWith(refusal());
+
+            await component.confirmImport();
+
+            expect(notifications.error).toHaveBeenCalledOnceWith(key, { durationMs: 5000 });
+            expect(importFailedLookups()).toEqual([]);
+            expect(component.isImporting()).toBeFalse();
+          });
+        }
+
+        it('drops the submitted rows before it leaves, so a second confirm has nothing to write', async () => {
+          mockImportService.confirmImport.and.rejectWith(rulesRefusal());
+          let seen: { count: number; mirror: number } | undefined;
+          mockRouter.navigate.and.callFake(() => {
+            seen = { count: component.selectedCount(), mirror: component.selectedTransactionIds().size };
+            return Promise.resolve(true);
+          });
+
+          await component.confirmImport();
+
+          // Read inside the navigation: a drop that came after it would
+          // leave the rows up for as long as the route takes to load.
+          expect(seen).toEqual({ count: 0, mirror: 0 });
+          expect(mockRouter.navigate).toHaveBeenCalledOnceWith(
+            ['/import/history'],
+            jasmine.objectContaining({ replaceUrl: true })
+          );
+        });
+
+        it('drops only the submitted rows, with their checks and receipt marks', async () => {
+          const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
+            ...mockTransactions[0], id, selected, isDuplicate,
+          });
+          const check = (transactionId: string): DuplicateCheck => ({
+            transactionId, isDuplicate: true, matchType: 'exact', existingTransactionId: `stored-${transactionId}`, confidence: 1,
+          });
+          // A deselected duplicate was never submitted and is named in no
+          // record, so it stays as the reviewer left it.
+          component.extractedTransactions.set([row('a', true), row('dup', false, true), row('b', true)]);
+          component.selectedTransactionIds.set(new Set(['a', 'b']));
+          component.receiptRowIds.set(new Set(['a', 'dup']));
+          component.duplicateChecks.set([check('a'), check('dup')]);
+          mockImportService.confirmImport.and.rejectWith(rulesRefusal());
+
+          await component.confirmImport();
+
+          expect(component.extractedTransactions()).toEqual([row('dup', false, true)]);
+          expect(component.duplicateChecks()).toEqual([check('dup')]);
+          expect([...component.receiptRowIds()]).toEqual(['dup']);
+          expect(component.selectedTransactionIds().size).toBe(0);
+          expect(mockRouter.navigate).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not move the stepper: there is no review left to return to', async () => {
+          // Pin. The partial path hands the failed rows back on Review; here
+          // nothing is handed back, and the wizard leaves for Import History.
+          const stepper = { selectedIndex: 3 };
+          component.stepper = stepper as unknown as MatStepper;
+          mockImportService.confirmImport.and.rejectWith(rulesRefusal());
+
+          await component.confirmImport();
+          fixture.detectChanges();
+          TestBed.tick();
+
+          expect(notifications.error).toHaveBeenCalledTimes(1);
+          expect(stepper.selectedIndex).toBe(3);
+        });
+
+        it('does not leave for Import History once the wizard is destroyed', async () => {
+          mockImportService.confirmImport.and.rejectWith(rulesRefusal());
+          fixture.destroy();
+
+          await component.confirmImport();
+
+          // The notice and the drop still ran, so the missing navigation is
+          // the guard's doing and not a refusal that never reached the branch.
+          expect(notifications.error).toHaveBeenCalledOnceWith('import.wholeFailedConnection', { durationMs: 5000 });
+          expect(component.selectedCount()).toBe(0);
+          expect(mockRouter.navigate).not.toHaveBeenCalled();
+        });
+
+        it('resolves, with the rows already dropped, when the navigation fails to load', async () => {
+          // A navigation nobody caught is reported through console.error and
+          // fails nothing by itself, so the spy is what shows it was caught.
+          const logged = spyOn(console, 'error');
+          mockImportService.confirmImport.and.rejectWith(rulesRefusal());
+          mockRouter.navigate.and.rejectWith(new Error('chunk load'));
+
+          await expectAsync(component.confirmImport()).toBeResolved();
+          // A turn of the event loop: an unhandled rejection is reported once
+          // the microtasks have drained.
+          await new Promise<void>(resolve => setTimeout(resolve));
+
+          expect(notifications.error).toHaveBeenCalledOnceWith('import.wholeFailedConnection', { durationMs: 5000 });
+          expect(component.selectedCount()).toBe(0);
+          expect(mockRouter.navigate).toHaveBeenCalledTimes(1);
+          expect(logged).not.toHaveBeenCalled();
+        });
+      });
+
+      describe('before its record opened', () => {
+        beforeEach(() => {
+          mockImportService.confirmImport.and.rejectWith(
+            new Error(IMPORT_NOT_STARTED, { cause: rulesRefusal() })
+          );
+        });
+
+        it('says nothing was saved, in a sentence with no slot for the thrown text', async () => {
+          await component.confirmImport();
+
+          expect(importFailedLookups()).toEqual([['import.importFailed', undefined]]);
+          expect(notifications.error).toHaveBeenCalledTimes(1);
+          expect(notifications.error.calls.mostRecent().args[0]).toBe('import.importFailed');
+          expect(notifications.error.calls.mostRecent().args[1]).toEqual({ durationMs: 5000 });
+          expect(component.isImporting()).toBeFalse();
+        });
+
+        it('keeps the rows, the selection and the page: nothing landed, so the reviewer retries', async () => {
+          // Pin. The not-started branch returns ahead of the row drop, so this
+          // holds on the code as it stands; it fails when a later edit moves
+          // the drop above that branch and takes the reviewer's rows with it.
+          await component.confirmImport();
+
+          expect(notifications.error).toHaveBeenCalledTimes(1);
+          expect(mockRouter.navigate).not.toHaveBeenCalled();
+          expect(component.selectedCount()).toBe(2);
+          expect(component.selectedTransactionIds().size).toBe(2);
+          expect(component.extractedTransactions().map(t => t.id)).toEqual(['txn1', 'txn2']);
+        });
+      });
+
+      it('still reads a failed read-back as saved, in neither failure voice', async () => {
+        // Pin. The rows landed and only the summary read failed: the third
+        // refusal keeps its own branch ahead of both of the above.
+        mockImportService.confirmImport.and.rejectWith(new Error(IMPORT_READBACK_FAILED));
+
+        await component.confirmImport();
+
+        expect(notifications.info).toHaveBeenCalledOnceWith('import.importSavedHistoryUnavailable');
+        expect(notifications.error).not.toHaveBeenCalled();
+        expect(importFailedLookups()).toEqual([]);
+        expect(lookups('import.wholeFailedConnection')).toEqual([]);
+        expect(lookups('import.wholeFailedUnknown')).toEqual([]);
+        expect(mockRouter.navigate).toHaveBeenCalledOnceWith(['/transactions'], { queryParams: { showAll: 'true' } });
+      });
+    });
 
     it('keeps the failed rows selected and the deselected ones as they were after a partial import', fakeAsync(() => {
       const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({

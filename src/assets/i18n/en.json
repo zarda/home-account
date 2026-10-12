@@ -1275,7 +1275,7 @@
       "one": "Successfully imported {{count}} transaction",
       "other": "Successfully imported {{count}} transactions"
     },
-    "importFailed": "Import failed: {{error}}",
+    "importFailed": "The import could not start, so nothing was saved. Check your connection and try again.",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
     "importPartialSetAside": {
       "one": "{{count}} row failed to save twice and was set aside — reselect it to try again",

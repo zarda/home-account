@@ -1175,7 +1175,7 @@
     "duplicatesSkipped": "スキップした重複",
     "confirmImport": "{{count}}件の取引をインポート",
     "importComplete": "{{count}}件の取引をインポートしました",
-    "importFailed": "インポート失敗",
+    "importFailed": "インポートを開始できなかったため、何も保存されていません。接続を確認してもう一度お試しください。",
     "importPartial": "{{total}}件中{{success}}件をインポートしました（{{failed}}件は保存できませんでした）",
     "importPartialSetAside": "{{count}}件が2回保存に失敗したため除外されました。もう一度試すには選択し直してください",
     "rowFailedAmount": "この取引の金額を保存できませんでした。金額を確認してもう一度お試しください。",

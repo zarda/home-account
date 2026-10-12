@@ -10,7 +10,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -42,6 +42,7 @@ import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
+import { errorCode } from '../../../../core/utils/firebase-error.utils';
 import {
   ReviewNotices,
   importFailureKey,
@@ -50,6 +51,7 @@ import {
   reviewNoticesFrom,
   rowIsUnfilled,
   sumByCurrency,
+  wholeImportFailureKey,
 } from '../../../../core/utils/import-review.utils';
 
 /**
@@ -1118,14 +1120,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
             if (!row.selected) setAside.push(row);
             return row;
           });
-        const keptIds = new Set(kept.map(t => t.id));
-
-        this.extractedTransactions.set(kept);
-        this.keepReceiptRows(keptIds);
-        this.duplicateChecks.update(checks =>
-          checks.filter(c => keptIds.has(c.transactionId) && !failedIds.has(c.transactionId))
-        );
-        this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
+        this.keepOnlyRows(kept, failedIds);
 
         // One notice for the round, since a snackbar replaces the one before
         // it: the rows set aside this round — counted, not named, since each
@@ -1169,13 +1164,69 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         });
         return;
       }
-      const message = this.t('import.importFailed', {
-        error: error instanceof Error ? error.message : 'Unknown error'
+      if (error instanceof Error && error.message === IMPORT_NOT_STARTED) {
+        // Refused before the history record opened — signed out, or the
+        // record turned away — so nothing was written. The rows, the
+        // selection and the step stay exactly as they were: pressing Import
+        // again retries a write that never happened rather than repeating
+        // one that did. The refusal itself rides on `cause`; the sentence
+        // says what the reader can act on, in their language.
+        this.raiseRoundNotice('error', [this.t('import.importFailed')]);
+        return;
+      }
+      // Anything else came after the record opened, where the rows may have
+      // landed: a refused completion, or a failure part-way through the
+      // write. Read the way Import History reads the same record, by the
+      // error's code and then its message, and never by the thrown text,
+      // which is a client sentence in English.
+      const key = wholeImportFailureKey({
+        message: error instanceof Error ? error.message : undefined,
+        code: errorCode(error),
       });
-      this.notifications.error(message);
+      this.raiseRoundNotice('error', [this.t(key)]);
+
+      // The submitted rows are dropped before the wizard leaves, so even a
+      // navigation that never arrives offers no second Import over rows the
+      // write may already have taken: the service writes them with no id of
+      // their own, and a second confirm would land every one again. The seal
+      // above keeps the list unchanged during the write, so the selected
+      // rows are the ones submitted. A row the reviewer deselected was never
+      // submitted and stays as it was, the way the partial path keeps it.
+      this.keepOnlyRows(this.extractedTransactions().filter(t => !t.selected));
+
+      // Import History holds the record, failed, with the reason it names.
+      // Not awaited, and a failed chunk load swallowed here: left to the
+      // global handler it would replace the notice above with a generic one.
+      // A wizard destroyed while the write was in flight has nowhere to
+      // leave from, and navigating from it would pull a reader who has
+      // already moved on to another page away from it.
+      if (!this.destroyRef.destroyed) {
+        this.router.navigate(['/import/history'], { replaceUrl: true }).catch(() => undefined);
+      }
     } finally {
       this.isImporting.set(false);
     }
+  }
+
+  /**
+   * Narrow the review to `kept`: the rows themselves, their receipt marks,
+   * the duplicate checks that describe them and the mirror of the ticked
+   * ones, all from the one list, so no part of the review goes on describing
+   * a row that has left. `dropChecksFor` names rows that stay but whose
+   * check is cleared, since a verdict about a failed write says nothing
+   * about the second try it is being offered for.
+   */
+  private keepOnlyRows(
+    kept: CategorizedImportTransaction[],
+    dropChecksFor?: ReadonlySet<string>
+  ): void {
+    const keptIds = new Set(kept.map(t => t.id));
+    this.extractedTransactions.set(kept);
+    this.keepReceiptRows(keptIds);
+    this.duplicateChecks.update(checks =>
+      checks.filter(c => keptIds.has(c.transactionId) && !dropChecksFor?.has(c.transactionId))
+    );
+    this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
   }
 
   /**
