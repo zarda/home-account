@@ -122,10 +122,11 @@ export class RecurringTransactionsComponent implements OnInit {
         await this.recurringService.resumeRecurring(recurring.id);
         this.notifications.success(this.t('settings.recurringResumed'));
       } catch (error) {
-        // The interval refusal and the ended-rule refusal each get their own
-        // copy naming the fix; every other rejection (an unreadable schedule
-        // included) falls back to the generic message, matching every other
-        // failed action on this page.
+        // The refusal of a schedule that cannot advance (an interval below 1,
+        // or a day, weekday or month outside its range) and the ended-rule
+        // refusal each get their own copy naming the fix; every other
+        // rejection (an unreadable schedule included) falls back to the
+        // generic message, matching every other failed action on this page.
         const key = error instanceof Error && error.message === INVALID_FREQUENCY_ERROR
           ? 'settings.recurringResumeInvalidFrequency'
           : error instanceof Error && error.message === RULE_ENDED_ERROR

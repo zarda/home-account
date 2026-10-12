@@ -94,6 +94,7 @@ describe('RecurringFormDialogComponent', () => {
         'settings.everyDay': 'Every day',
         'settings.everyNDays': `Every ${params?.['n']} days`,
         'settings.everyMonthOn': `Every month on the ${params?.['day']}${params?.['suffix']}`,
+        'settings.everyWeekday': `Every ${params?.['day']}`,
         'settings.everyYear': 'Every year',
         'settings.addRecurring': 'Add Recurring Transaction',
         'settings.editRecurring': 'Edit Recurring Transaction',
@@ -428,6 +429,186 @@ describe('RecurringFormDialogComponent', () => {
       expect(editComponent.startDate).toEqual(new Date(2024, 0, 1));
       expect(editComponent.hasEndDate).toBeFalse();
       expect(editComponent.endDate).toBeNull();
+    });
+  });
+
+  // The services refuse a day, weekday or month outside its range on every
+  // path, and a refused resume names this form as the place the rule is put
+  // right. A day of -60 or a weekday of 9 is what an older build, a restore or
+  // a hand edit can leave behind, and a select holding a value none of its
+  // options carries shows nothing while the old value rides along to the save.
+  // So the form opens such a field on its fallback, and the save no longer
+  // sends the stored value back.
+  describe('a rule stored outside its ranges', () => {
+    // 1 January 2024 fell on a Monday, which is neither the stored weekday
+    // below nor the weekday that stored value wraps to.
+    const START = new Date(2024, 0, 1);
+
+    function ruleWith(frequency: RecurringTransaction['frequency']): RecurringTransaction {
+      return {
+        id: 'rec1',
+        name: 'Test',
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'cat1',
+        description: '',
+        frequency,
+        startDate: Timestamp.fromDate(START),
+        isActive: true
+      } as RecurringTransaction;
+    }
+
+    async function createEditComponent(
+      recurring: RecurringTransaction
+    ): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const editFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      editFixture.detectChanges();
+      return editFixture.componentInstance;
+    }
+
+    function savedFrequency(): Record<string, unknown> {
+      expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
+      return (mockDialogRef.close.calls.mostRecent().args[0] as { frequency: Record<string, unknown> })
+        .frequency;
+    }
+
+    for (const stored of [-60, 0, 32]) {
+      it(`opens a monthly rule stored on day ${stored} on the start date's day, and saves without it`, async () => {
+        const editComponent = await createEditComponent(
+          ruleWith({ type: 'monthly', interval: 1, dayOfMonth: stored })
+        );
+
+        expect(editComponent.dayOfMonth).toBeNull();
+        expect(editComponent.frequencyPreview).toBe('Every month on the 1st');
+
+        editComponent.save();
+
+        expect(savedFrequency()).toEqual({ type: 'monthly', interval: 1 });
+      });
+    }
+
+    it('opens a yearly rule stored on day 32 on the start date too', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'yearly', interval: 1, dayOfMonth: 32 })
+      );
+
+      expect(editComponent.dayOfMonth).toBeNull();
+    });
+
+    it('opens a day that is not a whole number on the start date too', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 15.5 })
+      );
+
+      expect(editComponent.dayOfMonth).toBeNull();
+    });
+
+    it("opens a weekly rule stored on weekday 9 on the start date's weekday, and saves it", async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 9 })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(START.getDay());
+      expect(editComponent.frequencyPreview).toContain('Monday');
+
+      editComponent.save();
+
+      expect(savedFrequency()).toEqual({ type: 'weekly', interval: 1, dayOfWeek: 1 });
+    });
+
+    it('opens a weekday that is not a whole number on the start date too', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 2.5 })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(START.getDay());
+    });
+
+    // A stored null is a weekday that is there and out of range: the services
+    // and the rules refuse it the way they refuse 9, so it is not the absent
+    // key the last pin below keeps. Only a raw write made before the rules
+    // deploy can have stored it.
+    it("opens a weekly rule stored with a null weekday on the start date's weekday, and saves it", async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: null as unknown as number })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(START.getDay());
+      expect(editComponent.frequencyPreview).toContain('Monday');
+
+      editComponent.save();
+
+      expect(savedFrequency()).toEqual({ type: 'weekly', interval: 1, dayOfWeek: START.getDay() });
+    });
+
+    // Pins: a value inside its range opens as itself, the ends of the range
+    // included, and a weekday of 0 (Sunday) is a value and not an absence.
+    it('opens a monthly rule on day 15 as day 15 (pin)', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 15 })
+      );
+
+      expect(editComponent.dayOfMonth).toBe(15);
+      expect(editComponent.frequencyPreview).toBe('Every month on the 15th');
+    });
+
+    it('opens the first and last day of a month as themselves (pin)', async () => {
+      expect(
+        (await createEditComponent(ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 1 }))).dayOfMonth
+      ).toBe(1);
+      expect(
+        (await createEditComponent(ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 31 }))).dayOfMonth
+      ).toBe(31);
+    });
+
+    it('opens a weekly rule on weekday 3 as Wednesday (pin)', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 3 })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(3);
+      expect(editComponent.frequencyPreview).toContain('Wednesday');
+    });
+
+    it('opens the weekdays at both ends of the range as themselves (pin)', async () => {
+      expect(
+        (await createEditComponent(ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 0 }))).dayOfWeek
+      ).toBe(0);
+      expect(
+        (await createEditComponent(ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 6 }))).dayOfWeek
+      ).toBe(6);
+    });
+
+    // A weekly rule that never named a weekday is a valid rule, so opening it
+    // is not a repair and an unrelated edit must not write a weekday into it.
+    it('leaves a weekly rule that names no weekday without one (pin)', async () => {
+      const editComponent = await createEditComponent(ruleWith({ type: 'weekly', interval: 1 }));
+
+      expect(editComponent.dayOfWeek).toBeNull();
+
+      editComponent.save();
+
+      expect(savedFrequency()).toEqual({ type: 'weekly', interval: 1 });
     });
   });
 

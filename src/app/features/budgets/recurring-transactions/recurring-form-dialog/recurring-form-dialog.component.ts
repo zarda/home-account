@@ -23,6 +23,14 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
+/**
+ * Whether a stored value is one the select it fills can show: a whole number
+ * inside the range its options span. The services accept a fractional day,
+ * but no option carries one.
+ */
+const isWholeNumberIn = (value: unknown, lo: number, hi: number): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= lo && value <= hi;
+
 export interface RecurringFormDialogData {
   /** An existing rule to edit. */
   recurring?: RecurringTransaction;
@@ -232,7 +240,15 @@ export class RecurringFormDialogComponent implements OnInit {
     this.frequencyType = recurring.frequency.type;
     this.interval = recurring.frequency.interval;
     this.dayOfWeek = recurring.frequency.dayOfWeek ?? null;
-    this.dayOfMonth = recurring.frequency.dayOfMonth ?? null;
+    // The services refuse a day outside 1-31 and a weekday outside 0-6 on
+    // every path, and a refused resume names this form as where the rule is
+    // put right. A select holding a value none of its options carries shows
+    // nothing and hands the old value back to the save, so such a day opens
+    // on "same day as the start date" (the key is then left out of the save)
+    // and such a weekday on the start date's own, set once the start is known.
+    this.dayOfMonth = isWholeNumberIn(recurring.frequency.dayOfMonth, 1, 31)
+      ? recurring.frequency.dayOfMonth
+      : null;
     // Every reader refuses a rule whose stored dates are not the timestamps
     // they claim to be, and names this form as where such a rule is put
     // right — so this is the one surface that has to accept them. A start
@@ -240,6 +256,12 @@ export class RecurringFormDialogComponent implements OnInit {
     // unreadable end is read as no end date, the way the engine's own walk
     // reads it.
     this.startDate = toDate(recurring.startDate) ?? new Date();
+    // A weekly rule that names no weekday is a valid rule and keeps none; only
+    // a stored weekday that is present and out of range is replaced, a stored
+    // null included, which the services and the rules refuse as they refuse 9.
+    if ('dayOfWeek' in recurring.frequency && !isWholeNumberIn(recurring.frequency.dayOfWeek, 0, 6)) {
+      this.dayOfWeek = this.startDate.getDay();
+    }
     this.remindDaysBefore = recurring.remindDaysBefore ?? null;
     const endDate = toDate(recurring.endDate);
     if (endDate) {

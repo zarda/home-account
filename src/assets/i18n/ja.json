@@ -650,7 +650,7 @@
     "recurringUpdated": "定期取引を更新しました",
     "recurringUpdateFailed": "定期取引の更新に失敗しました",
     "recurringResumeFailed": "定期取引の再開に失敗しました",
-    "recurringResumeInvalidFrequency": "再開できません：この定期取引の間隔が進みません。ルールを編集して間隔を1以上にしてください。",
+    "recurringResumeInvalidFrequency": "再開できません：この定期取引のスケジュールが進みません。ルールを編集して、間隔と日付を確認してください。",
     "recurringResumeEnded": "再開できません：この定期取引の終了日を過ぎています。先に終了日を編集してください。",
     "deleteRecurringTitle": "定期取引を削除",
     "deleteRecurringMessage": "「{{name}}」を削除してもよろしいですか？既存の取引には影響しません。",
