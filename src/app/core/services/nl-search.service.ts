@@ -13,9 +13,11 @@ import { AnalyticsService } from './analytics.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import { dayKey, endOfDay, monthWindow } from '../utils/transaction-date.utils';
+import { defaultCategories, mergeCategories } from '../utils/category-merge.utils';
 import {
   AggregateAnswer,
   AggregateOperation,
+  Category,
   NlSearchFallbackReason,
   NlSearchResult,
   SearchIntent,
@@ -57,16 +59,17 @@ export class NlSearchService {
       return this.keywordFallback(trimmed, this.pwaService.isOnline() ? 'noProvider' : 'offline');
     }
 
-    // After the availability guard: offline or without a key this falls back
-    // to a purely local keyword search, and counting that as AI usage would
-    // overstate exactly the cost this event exists to weigh.
-    this.analytics.trackAiAssistUsed({ feature: 'search' });
-
     try {
-      const intent = await this.cloudLLMProvider.interpretSearchQuery(
-        trimmed,
-        await this.buildContext()
-      );
+      const catalog = await this.categoryCatalog();
+      const context = await this.buildContext(catalog);
+      // Counted only once the provider request is about to be made: after the
+      // availability guard, since offline or without a key this falls back to
+      // a purely local keyword search, and after the catalog reads, since one
+      // that fails falls back the same way before the model is asked.
+      // Counting either as AI usage would overstate exactly the cost this
+      // event exists to weigh.
+      this.analytics.trackAiAssistUsed({ feature: 'search' });
+      const intent = await this.cloudLLMProvider.interpretSearchQuery(trimmed, context);
       if (intent.kind === 'filter') {
         // Recorded for the same reason an aggregate is: the model call has
         // already been paid for, and reopening the record replays the scope
@@ -80,7 +83,7 @@ export class NlSearchService {
           );
         return { kind: 'filter', filters: intent.filters };
       }
-      const answer = await this.computeAggregate(intent);
+      const answer = await this.computeAggregate(intent, catalog);
       // Fire-and-forget, like recordRecent: a history write must never delay
       // or fail the answer the user is waiting on.
       void this.answerHistory.recordAnswer(trimmed, intent, answer);
@@ -102,7 +105,10 @@ export class NlSearchService {
     filters: TransactionFilters,
     limit: number,
   ): Promise<AggregateAnswer> {
-    return this.computeAggregate({ kind: 'aggregate', operation, filters, limit });
+    const needsCatalog =
+      operation === 'topCategories' || !!filters.categoryId || !!filters.searchQuery;
+    const catalog = needsCatalog ? await this.categoryCatalog() : [];
+    return this.computeAggregate({ kind: 'aggregate', operation, filters, limit }, catalog);
   }
 
   /**
@@ -121,8 +127,8 @@ export class NlSearchService {
     };
   }
 
-  private async buildContext(): Promise<SearchQueryContext> {
-    const categories = this.categoryService.categories().filter(c => c.isActive);
+  private async buildContext(catalog: Category[]): Promise<SearchQueryContext> {
+    const categories = catalog.filter(c => c.isActive);
     const nameOf = (id: string) => {
       const category = categories.find(c => c.id === id);
       return category?.name ? this.translationService.t(category.name) : 'Other';
@@ -145,6 +151,24 @@ export class NlSearchService {
       goals,
       budgets,
     };
+  }
+
+  /**
+   * The categories a search resolves names and parents against. The published
+   * signal when a page has warmed it, otherwise the account's stored rows over
+   * the built-ins, read once: a signal nothing subscribed to holds neither, so
+   * no child would roll up and the model would be told of no category at all.
+   * Online, a warm signal is never empty (the built-ins are merged in) and
+   * sign-out empties it. Offline, the SDK can publish a first snapshot from a
+   * cache that never held the query, so the signal can hold the built-ins
+   * alone, and the length test reads that as warm: no stored category is
+   * read, and a stored custom child is not rolled up (ADR 0178, Known gaps).
+   */
+  private async categoryCatalog(): Promise<Category[]> {
+    const published = this.categoryService.categories();
+    return published.length
+      ? published
+      : mergeCategories(defaultCategories(), await this.categoryService.exportAll());
   }
 
   /**
@@ -179,7 +203,8 @@ export class NlSearchService {
   }
 
   private async computeAggregate(
-    intent: Extract<SearchIntent, { kind: 'aggregate' }>
+    intent: Extract<SearchIntent, { kind: 'aggregate' }>,
+    catalog: Category[]
   ): Promise<AggregateAnswer> {
     const baseCurrency = this.baseCurrency();
     const scope = this.resolveScope(intent.filters);
@@ -192,7 +217,7 @@ export class NlSearchService {
       scope.startDate!, scope.endDate!
     );
     const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
-    const matches = this.applyScope(fetched, scope, toBase);
+    const matches = this.applyScope(fetched, scope, toBase, catalog);
     const answer: AggregateAnswer = {
       operation: intent.operation,
       value: 0,
@@ -231,7 +256,7 @@ export class NlSearchService {
         answer.currency = baseCurrency;
         const totals = new Map<string, number>();
         for (const t of matches) {
-          const groupId = this.rollUpToParent(t.categoryId);
+          const groupId = this.rollUpToParent(t.categoryId, catalog);
           totals.set(groupId, (totals.get(groupId) ?? 0) + toBase(t));
         }
         // Rounded to cents before the sort, and ordered as the shared category
@@ -275,7 +300,8 @@ export class NlSearchService {
   private applyScope(
     transactions: Transaction[],
     scope: TransactionFilters,
-    toBase: (t: Transaction) => number
+    toBase: (t: Transaction) => number,
+    catalog: Category[]
   ): Transaction[] {
     let result = transactions;
 
@@ -285,7 +311,7 @@ export class NlSearchService {
     if (scope.categoryId) {
       const target = scope.categoryId;
       result = result.filter(
-        t => t.categoryId === target || this.parentOf(t.categoryId) === target
+        t => t.categoryId === target || this.parentOf(t.categoryId, catalog) === target
       );
     }
     if (scope.currency) {
@@ -311,23 +337,23 @@ export class NlSearchService {
 
     return applyClientTransactionFilters(result, {
       searchQuery: scope.searchQuery,
-    }, { categoryNames: this.categoryNamesMap() });
+    }, { categoryNames: this.categoryNamesMap(catalog) });
   }
 
-  private categoryNamesMap(): Map<string, string> {
+  private categoryNamesMap(catalog: Category[]): Map<string, string> {
     const map = new Map<string, string>();
-    for (const c of this.categoryService.categories()) {
+    for (const c of catalog) {
       map.set(c.id, this.translationService.t(c.name));
     }
     return map;
   }
 
-  private parentOf(categoryId: string): string | undefined {
-    return this.categoryService.categories().find(c => c.id === categoryId)?.parentId;
+  private parentOf(categoryId: string, catalog: Category[]): string | undefined {
+    return catalog.find(c => c.id === categoryId)?.parentId;
   }
 
-  private rollUpToParent(categoryId: string): string {
-    return this.parentOf(categoryId) ?? categoryId;
+  private rollUpToParent(categoryId: string, catalog: Category[]): string {
+    return this.parentOf(categoryId, catalog) ?? categoryId;
   }
 
   private baseCurrency(): string {

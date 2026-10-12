@@ -29,6 +29,7 @@ describe('NlSearchService', () => {
   let analytics: jasmine.SpyObj<AnalyticsService>;
   let goalService: { goals: jasmine.Spy; exportAll: jasmine.Spy };
   let budgetService: { budgets: jasmine.Spy; exportAll: jasmine.Spy };
+  let categoryService: { categories: jasmine.Spy; exportAll: jasmine.Spy };
 
   function expense(amount: number, categoryId: string, overrides: Partial<Transaction> = {}): Transaction {
     return createTransaction({
@@ -71,7 +72,11 @@ describe('NlSearchService', () => {
       exportAll: jasmine.createSpy('exportAll').and.resolveTo([]),
     };
 
-    const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
+    // The warm list is what a page that subscribed to categories published.
+    // A cold case empties it with `categories.and.returnValue([])`, and the
+    // one-shot read behind it is `exportAll`.
+    categoryService = jasmine.createSpyObj('CategoryService', ['categories', 'exportAll']);
+    categoryService.exportAll.and.resolveTo([]);
     categoryService.categories.and.returnValue([
       createCategory({ id: 'food', name: 'Food & Drinks', type: 'expense' }),
       createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense', parentId: 'food' }),
@@ -190,6 +195,195 @@ describe('NlSearchService', () => {
       expect(budgetService.exportAll).toHaveBeenCalled();
       const context = cloudLLMProvider.interpretSearchQuery.calls.mostRecent().args[1];
       expect(context.goals).toEqual([{ id: 'g1', name: 'Japan trip' }]);
+    });
+  });
+
+  describe('category catalog', () => {
+    describe('when no page has warmed the signal', () => {
+      // Search opens from anywhere (ADR 0009), and a signal nothing subscribed
+      // to holds no built-ins either. The catalog is then the built-ins with
+      // the account's stored categories merged over them, read once.
+      beforeEach(() => {
+        categoryService.categories.and.returnValue([]);
+      });
+
+      const customChild = () => createCategory({
+        id: 'mine',
+        userId: 'user-1',
+        name: 'Mine',
+        type: 'expense',
+        parentId: 'bills',
+        order: 900,
+        isDefault: false,
+      });
+
+      it('rolls a built-in child into its parent in a topCategories replay', async () => {
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(50, 'bills'),
+          expense(30, 'bills_electricity'),
+        ]);
+
+        const answer = await service.replayAggregate('topCategories', {}, 3);
+
+        expect(answer.groups).toEqual([{ categoryId: 'bills', total: 80 }]);
+        expect(categoryService.exportAll).toHaveBeenCalledTimes(1);
+      });
+
+      it('rolls a stored custom child into its parent', async () => {
+        categoryService.exportAll.and.resolveTo([customChild()]);
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(50, 'mine'),
+          expense(30, 'bills_electricity'),
+        ]);
+
+        const answer = await service.replayAggregate('topCategories', {}, 3);
+
+        expect(answer.groups).toEqual([{ categoryId: 'bills', total: 80 }]);
+      });
+
+      it('narrows a replay to a parent category over its children', async () => {
+        categoryService.exportAll.and.resolveTo([customChild()]);
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(50, 'mine'),
+          expense(30, 'bills_electricity'),
+          expense(99, 'transport'),
+        ]);
+
+        const answer = await service.replayAggregate('sum', { categoryId: 'bills' }, 3);
+
+        expect(answer.transactionCount).toBe(2);
+        expect(answer.value).toBe(80);
+      });
+
+      it('matches search text against the name of a category it read', async () => {
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(30, 'bills_electricity', { description: 'Monthly payment' }),
+          expense(40, 'transport', { description: 'Monthly payment' }),
+        ]);
+
+        const answer = await service.replayAggregate('sum', { searchQuery: 'electricity' }, 3);
+
+        expect(answer.transactionCount).toBe(1);
+        expect(answer.value).toBe(30);
+      });
+
+      it('hands the model the built-in catalog, a child named under its parent', async () => {
+        mockIntent({ kind: 'filter', filters: {} });
+
+        await service.search('anything');
+
+        const context = cloudLLMProvider.interpretSearchQuery.calls.mostRecent().args[1];
+        expect(context.categories).toContain(jasmine.objectContaining({
+          id: 'bills_electricity',
+          name: 'categoryNames.bills / categoryNames.electricity',
+        }));
+      });
+
+      it('reads the catalog once for an aggregate search, for the context and the answer', async () => {
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(50, 'bills'),
+          expense(30, 'bills_electricity'),
+        ]);
+        mockIntent({ kind: 'aggregate', operation: 'topCategories', filters: {}, limit: 3 });
+
+        const result = await service.search('top categories this month');
+
+        expect(result.kind).toBe('answer');
+        if (result.kind === 'answer') {
+          expect(result.answer.groups).toEqual([{ categoryId: 'bills', total: 80 }]);
+        }
+        expect(categoryService.exportAll).toHaveBeenCalledTimes(1);
+      });
+
+      // Pin: a sum with no category and no text never consults the catalog.
+      it('does not read the catalog for a sum that names no category and no text', async () => {
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(80, 'food'),
+          expense(20, 'food'),
+        ]);
+
+        const answer = await service.replayAggregate('sum', {}, 3);
+
+        expect(answer.value).toBe(100);
+        expect(categoryService.exportAll).not.toHaveBeenCalled();
+      });
+
+      it('falls back to keywords, before the model is asked, when the catalog cannot be read', async () => {
+        const warn = spyOn(console, 'warn');
+        categoryService.exportAll.and.rejectWith(new Error('permission-denied'));
+        mockIntent({ kind: 'filter', filters: {} });
+
+        const result = await service.search('coffee');
+
+        expect(result.kind).toBe('keywordFallback');
+        if (result.kind === 'keywordFallback') {
+          expect(result.reason).toBe('error');
+        }
+        expect(cloudLLMProvider.interpretSearchQuery).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalled();
+      });
+
+      it('counts no AI use when the catalog cannot be read, since no provider request is made', async () => {
+        // ai_assist_used counts a provider request really made
+        // (docs/analytics.md), and this search falls back before the model
+        // is asked.
+        const warn = spyOn(console, 'warn');
+        categoryService.exportAll.and.rejectWith(new Error('permission-denied'));
+        mockIntent({ kind: 'filter', filters: {} });
+
+        const result = await service.search('coffee');
+
+        expect(result.kind).toBe('keywordFallback');
+        if (result.kind === 'keywordFallback') {
+          expect(result.reason).toBe('error');
+        }
+        expect(analytics.trackAiAssistUsed).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalled();
+      });
+
+      it('rejects a topCategories replay when the catalog cannot be read', async () => {
+        categoryService.exportAll.and.rejectWith(new Error('permission-denied'));
+
+        await expectAsync(service.replayAggregate('topCategories', {}, 3))
+          .toBeRejectedWithError('permission-denied');
+      });
+    });
+
+    describe('when a page has warmed the signal', () => {
+      // Pin: a published list is never empty (the built-ins are merged in), so
+      // it is the catalog and the collection is not read.
+      it('never reads the collection for a search', async () => {
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(50, 'food_groceries'),
+          expense(30, 'food_restaurants'),
+        ]);
+        mockIntent({ kind: 'aggregate', operation: 'topCategories', filters: {}, limit: 3 });
+
+        const result = await service.search('top categories this month');
+
+        expect(result.kind).toBe('answer');
+        if (result.kind === 'answer') {
+          expect(result.answer.groups).toEqual([{ categoryId: 'food', total: 80 }]);
+        }
+        expect(categoryService.exportAll).not.toHaveBeenCalled();
+      });
+
+      // Pin: the same for a replay, across all three reasons it would need one.
+      it('never reads the collection for a replay', async () => {
+        transactionService.getTransactionsInRangeOnce.and.resolveTo([
+          expense(50, 'food_groceries', { description: 'Weekly shop' }),
+          expense(30, 'food_restaurants', { description: 'Weekly shop' }),
+        ]);
+
+        const ranked = await service.replayAggregate('topCategories', {}, 3);
+        const narrowed = await service.replayAggregate('sum', { categoryId: 'food' }, 3);
+        const searched = await service.replayAggregate('sum', { searchQuery: 'Groceries' }, 3);
+
+        expect(ranked.groups).toEqual([{ categoryId: 'food', total: 80 }]);
+        expect(narrowed.value).toBe(80);
+        expect(searched.value).toBe(50);
+        expect(categoryService.exportAll).not.toHaveBeenCalled();
+      });
     });
   });
 
