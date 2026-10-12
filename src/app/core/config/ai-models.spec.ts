@@ -106,6 +106,26 @@ describe('AI model catalog', () => {
       expect(acceptsSampling('claude-opus-4-8')).toBeFalse();
     });
 
+    it('offers the current Sonnet without a sampling flag', () => {
+      // Both halves are asserted: an absent entry would satisfy the second on
+      // its own, because `undefined?.acceptsSampling` is undefined too.
+      const sonnet = CLAUDE_MODELS.find(model => model.id === 'claude-sonnet-5-5');
+
+      expect(sonnet).toBeDefined();
+      expect(sonnet?.name).toBe('Claude Sonnet 5.5');
+      expect(sonnet?.acceptsSampling).toBeUndefined();
+      expect(acceptsSampling('claude-sonnet-5-5')).toBeFalse();
+    });
+
+    it('flags only claude-haiku-4-5 as accepting sampling in CLAUDE_MODELS', () => {
+      // A model is flagged when a probe or the vendor's page shows it takes
+      // the parameter, never because it is new. Adding an entry and copying a
+      // flag from its neighbour is the mistake this holds the list against.
+      const flagged = CLAUDE_MODELS.filter(model => model.acceptsSampling).map(model => model.id);
+
+      expect(flagged).toEqual(['claude-haiku-4-5']);
+    });
+
     it('leaves the Claude default on the rejecting side, which the transport must handle', () => {
       // Stated rather than assumed: if this ever flips, the gate in
       // ClaudeService.samplingParams stops being exercised by default.

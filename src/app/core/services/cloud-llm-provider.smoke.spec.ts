@@ -17,7 +17,15 @@ import { ClaudeService } from './claude.service';
 import { NoteTranslationService } from './note-translation.service';
 import { ProviderKeyService } from './provider-key.service';
 import { AIStrategyService } from './ai-strategy.service';
-import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import {
+  AIModelOption,
+  CLAUDE_MODELS,
+  DEFAULT_TEXT_MODEL,
+  DEFAULT_VISION_MODEL,
+  OPENAI_MODELS,
+  acceptsSampling,
+} from '../config/ai-models';
+import { languageInstruction, renderPrompt } from '../prompts';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { stripProviderKeys } from './testing/provider-keys';
 silenceFirebaseWarnings();
@@ -41,6 +49,9 @@ stripProviderKeys();
  * members the façade calls that are not on the adapter interface — Gemini's
  * clear() and the OpenAI/Claude model switches — which a refactor can drop
  * without any compile error, because nothing in the interface mentions them.
+ * The catalog sweep at the end goes one step further and still stops short of
+ * a vendor: it arms one provider at a time with a hand-made client and reads
+ * the request each catalog id would send.
  *
  * Runs only under the emulators:
  *   npm run smoke
@@ -201,6 +212,131 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     // methods call it, so nothing else would fail to compile if it went.
     expect(() => facade.setOpenAIModel('gpt-smoke-test')).not.toThrow();
     expect(() => facade.setClaudeModel('claude-smoke-test')).not.toThrow();
+  });
+
+  describe('model catalog sweep', () => {
+    // Each provider is armed by hand: its fake client is assigned and its
+    // availability signal set, through a cast. Not through updateProviderApiKey,
+    // which builds the vendor's real SDK client around whatever key it is
+    // handed, and a fake key must never be one request away from a vendor host.
+    interface Armable {
+      client: unknown;
+      available: { set(value: boolean): void };
+    }
+    const internals = (provider: OpenAIService | ClaudeService): Armable =>
+      provider as unknown as Armable;
+
+    const NOTE = 'おにぎり 150';
+    const ANSWER = JSON.stringify({ translation: 'Rice ball 150', sourceLanguage: 'Japanese' });
+    // The request the catalog must not put on the wire: neither transport sends
+    // a reasoning, thinking or effort setting, and a vendor that defaults one on
+    // is answered by the token budget rather than by a parameter.
+    const NEVER_SENT = ['reasoning', 'thinking', 'output_config'];
+
+    /** The temperature the registry declares for the prompt the sweep sends. */
+    const declaredTemperature = () =>
+      renderPrompt('translateNote', {
+        text: NOTE,
+        languageInstruction: languageInstruction('en'),
+      }).temperature;
+
+    interface Sweep {
+      provider: 'openai' | 'claude';
+      swept: OpenAIService | ClaudeService;
+      other: OpenAIService | ClaudeService;
+      models: AIModelOption[];
+      select: (modelId: string) => void;
+      /** The swept fake's request method, and the client around it. */
+      request: jasmine.Spy;
+      sweptClient: unknown;
+      /** The same for the provider that must stay out of it. */
+      tripwire: jasmine.Spy;
+      otherClient: unknown;
+    }
+
+    async function sweepCatalog(sweep: Sweep): Promise<void> {
+      // The other provider is reset the way sign-out leaves it, then handed a
+      // fake that would record any request routed to it. Its availability
+      // signal stays down, which is what the façade routes on, so a call
+      // landing on it would be a routing failure and not a pass.
+      await sweep.other.reinitialize();
+      internals(sweep.other).client = sweep.otherClient;
+
+      internals(sweep.swept).client = sweep.sweptClient;
+      internals(sweep.swept).available.set(true);
+
+      expect(facade.availableProviders()).toEqual([sweep.provider]);
+      expect(facade.resolveProvider('translation')).toBe(sweep.provider);
+
+      for (const { id } of sweep.models) {
+        sweep.request.calls.reset();
+        sweep.select(id);
+
+        const translated = await facade.translateText(NOTE);
+
+        // The positive proof every negative below hangs on: one request left
+        // through the swept fake, and its answer made it all the way back.
+        expect(translated).withContext(id).toEqual({
+          text: 'Rice ball 150',
+          sourceLanguage: 'Japanese',
+        });
+        expect(sweep.request.calls.count()).withContext(id).toBe(1);
+
+        const envelope = sweep.request.calls.mostRecent().args[0] as Record<string, unknown>;
+        expect(envelope['model']).withContext(id).toBe(id);
+        expect('temperature' in envelope)
+          .withContext(`${id}: temperature present`)
+          .toBe(acceptsSampling(id));
+        if (acceptsSampling(id)) {
+          expect(envelope['temperature']).withContext(id).toBe(declaredTemperature());
+        }
+        for (const key of NEVER_SENT) {
+          expect(key in envelope).withContext(`${id}: ${key}`).toBeFalse();
+        }
+      }
+
+      expect(sweep.tripwire).not.toHaveBeenCalled();
+    }
+
+    it('sends every OpenAI id as its own model, with no sampling, reasoning or effort key', async () => {
+      const request = jasmine.createSpy('responses.create').and.resolveTo({ output_text: ANSWER });
+      const tripwire = jasmine
+        .createSpy('messages.create')
+        .and.rejectWith(new Error('routed to Claude'));
+
+      await sweepCatalog({
+        provider: 'openai',
+        swept: openai,
+        other: claude,
+        models: OPENAI_MODELS,
+        select: id => facade.setOpenAIModel(id),
+        request,
+        sweptClient: { responses: { create: request } },
+        tripwire,
+        otherClient: { messages: { create: tripwire } },
+      });
+    });
+
+    it('sends every Claude id as its own model, with temperature only where the catalog accepts it', async () => {
+      const request = jasmine.createSpy('messages.create').and.resolveTo({
+        content: [{ type: 'text', text: ANSWER }],
+      });
+      const tripwire = jasmine
+        .createSpy('responses.create')
+        .and.rejectWith(new Error('routed to OpenAI'));
+
+      await sweepCatalog({
+        provider: 'claude',
+        swept: claude,
+        other: openai,
+        models: CLAUDE_MODELS,
+        select: id => facade.setClaudeModel(id),
+        request,
+        sweptClient: { messages: { create: request } },
+        tripwire,
+        otherClient: { responses: { create: tripwire } },
+      });
+    });
   });
 
   it('arms Gemini on the catalog defaults the app actually boots with', async () => {
