@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * Two rules over Material usage, the second written at the end of this
+ * header.
+ *
  * Fails when a component's `imports: [...]` names a Material NgModule whose
  * template uses none of that module's selectors.
  *
@@ -65,6 +68,32 @@
  *     listed in `imports` and unused in the template. That one Angular does
  *     see: it is NG8113, raised as an error by the extendedDiagnostics block
  *     in tsconfig.json.
+ *
+ * The second rule: a `<mat-select>` that offers a null option can select it.
+ * Material (22.1.4) reads an option whose value is null or undefined as a
+ * reset option unless the select sets `canSelectNullableOptions`, so a model
+ * holding null shows an empty trigger with its label unfloated, whatever the
+ * option is labelled ("Same day as the start date", "Off", "None"). In any
+ * `*.html` under src/app, a `<mat-select …>` whose body, up to its own
+ * `</mat-select>` (matched exactly, so a `<mat-select-trigger>` ahead of the
+ * options does not end it), holds a `<mat-option` bound `[value]="null"` must
+ * carry `canSelectNullableOptions` on its opening tag. The app-wide
+ * `MAT_SELECT_CONFIG` is not the fix: it would change every select in the app,
+ * the eager ones included (the transaction form is one, through the static
+ * import in core/services/quick-add.service.ts), so the attribute is set on
+ * the select that needs it. Only a literal `false` on the attribute fails the
+ * check; a bound expression is trusted.
+ *
+ * What the second rule cannot see:
+ *   - An option whose null comes from data. The recurring dialog's reminder
+ *     select is `@for (option of reminderOptions)`, and `reminderOptions` in
+ *     the .ts begins `{ value: null, … }`; no template says so. That select
+ *     carries the attribute, and the dialog's real-template spec
+ *     (recurring-form-dialog.component.spec.ts) is what covers it.
+ *   - An option bound `[value]="undefined"`, which Material reads the same way.
+ *     The rule names null only: the five "All" options in the transaction
+ *     filters are bound to undefined, and they are not covered here.
+ *   - An inline `template:` in a .ts file. None holds a select today.
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -403,14 +432,101 @@ function walk(dir, found = []) {
   return found;
 }
 
+function walkTemplates(dir, found = []) {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) walkTemplates(path, found);
+    else if (entry.endsWith('.html')) found.push(path);
+  }
+  return found;
+}
+
+/** An option bound to null. */
+const NULLABLE_VALUE = /\[value\]\s*=\s*(?:"\s*null\s*"|'\s*null\s*')/;
+
+/** `canSelectNullableOptions`, bare or bound, with its literal value captured when it has one. */
+const CAN_SELECT_NULLABLE =
+  /(?<![\w.$-])\[?canSelectNullableOptions\]?(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?(?![\w-])/;
+
+/** `template` with every `<!-- -->` comment blanked to spaces, newlines kept. */
+function maskHtmlComments(template) {
+  return template.replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\n]/g, ' '));
+}
+
+/**
+ * The offset just past the `>` that closes the tag opened at `at`, with
+ * quoted attribute values respected so a `>` inside one (`[disabled]="a > b"`)
+ * does not end the tag early, or -1.
+ */
+function tagEnd(template, at) {
+  let quote = null;
+  for (let i = at; i < template.length; i++) {
+    const ch = template[i];
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '>') return i + 1;
+  }
+  return -1;
+}
+
+/**
+ * Every `<mat-select>` in a template, with whether its body offers a null
+ * option and whether its opening tag carries `canSelectNullableOptions`. A
+ * literal `false` on the attribute does not count as carrying it. Comments are
+ * masked first, so a commented-out option or attribute is neither a null
+ * option nor a fix.
+ */
+function readSelects(template) {
+  const masked = maskHtmlComments(template);
+  const selects = [];
+  const open = /<\s*mat-select(?![\w-])/g;
+  let match;
+  while ((match = open.exec(masked)) !== null) {
+    const openEnd = tagEnd(masked, match.index);
+    if (openEnd === -1) continue;
+    const openingTag = masked.slice(match.index, openEnd);
+    // Matched exactly: a bare `</mat-select` prefix would also end the body at
+    // `</mat-select-trigger>` and leave the options after a trigger unscanned.
+    const close = /<\/\s*mat-select\s*>/g;
+    close.lastIndex = openEnd;
+    const closing = close.exec(masked);
+    const closeAt = closing === null ? -1 : closing.index;
+    const body = openingTag.endsWith('/>') || closeAt === -1 ? '' : masked.slice(openEnd, closeAt);
+
+    let offersNull = false;
+    const option = /<\s*mat-option(?![\w-])/g;
+    let each;
+    while (!offersNull && (each = option.exec(body)) !== null) {
+      const end = tagEnd(body, each.index);
+      if (end !== -1 && NULLABLE_VALUE.test(body.slice(each.index, end))) offersNull = true;
+    }
+
+    const attribute = CAN_SELECT_NULLABLE.exec(openingTag);
+    const literal = attribute === null ? null : (attribute[1] ?? attribute[2] ?? '').trim();
+    selects.push({
+      index: match.index,
+      offersNull,
+      carriesAttribute: attribute !== null && literal !== 'false'
+    });
+  }
+  return selects;
+}
+
 function run() {
   const findings = [];
   const untabled = new Map();
   const providerOnly = new Map();
   const unparsed = [];
+  const nullSelects = [];
   let components = 0;
   let entries = 0;
   let templateless = 0;
+  let templates = 0;
+  let selects = 0;
+  let nullOffering = 0;
 
   for (const file of walk(SOURCE_DIR)) {
     const source = readFileSync(file, 'utf8');
@@ -449,6 +565,19 @@ function run() {
     }
   }
 
+  for (const file of walkTemplates(SOURCE_DIR)) {
+    templates++;
+    const template = readFileSync(file, 'utf8');
+    for (const select of readSelects(template)) {
+      selects++;
+      if (!select.offersNull) continue;
+      nullOffering++;
+      if (!select.carriesAttribute) {
+        nullSelects.push(`${relative('.', file)}:${lineOf(template, select.index)}`);
+      }
+    }
+  }
+
   const named = counts =>
     [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([name, n]) => `${name} (${n})`).join(', ');
   const total = counts => [...counts.values()].reduce((sum, n) => sum + n, 0);
@@ -471,6 +600,11 @@ function run() {
     unparsed.length === 0
       ? 'No unparsed files.'
       : `${unparsed.length} file(s) unparsed: ${unparsed.join(', ')}`
+  );
+
+  console.log(
+    `Checked ${selects} mat-select elements across ${templates} templates ` +
+      `(${nullOffering} offer a null option).`
   );
 
   if (unparsed.length > 0) {
@@ -499,11 +633,23 @@ function run() {
     );
   }
 
-  if (unparsed.length > 0 || findings.length > 0) {
+  if (nullSelects.length > 0) {
+    console.error(`\n${nullSelects.length} mat-select(s) offer a null option but cannot select it:\n`);
+    for (const site of nullSelects.sort()) console.error(`  ${site}`);
+    console.error(
+      '\nMaterial reads an option whose value is null or undefined as a reset option, so a model\n' +
+        'holding null shows an empty trigger with its label unfloated, whatever the option says.\n' +
+        'Add `canSelectNullableOptions` to the <mat-select>. Set it on the element, not through\n' +
+        'MAT_SELECT_CONFIG: the config would change every select in the app.\n'
+    );
+  }
+
+  if (unparsed.length > 0 || findings.length > 0 || nullSelects.length > 0) {
     process.exit(1);
   }
 
   console.log('Every Material module a component declares is used by its template.');
+  console.log('Every mat-select that offers a null option can select it.');
 }
 
 /** Every selector string the installed package declares, commas split out. */
@@ -681,6 +827,102 @@ class A {}
   // The two skip buckets, which are what makes the table's coverage legible.
   check('a provider-only module is named, not checked', PROVIDER_ONLY.has('MatNativeDateModule') && !('MatNativeDateModule' in MODULE_SELECTORS), true);
   check('a module outside the table has no selectors to match', moduleUsed('MatSidenavModule', '<mat-sidenav></mat-sidenav>'), false);
+
+  // The second rule. A select that offers a null option has to carry
+  // `canSelectNullableOptions`; `unselectable` is what the run reports: the
+  // line of each select that offers one and does not.
+  const unselectable = template =>
+    readSelects(template)
+      .filter(select => select.offersNull && !select.carriesAttribute)
+      .map(select => lineOf(template, select.index));
+  const noneOption = '<mat-option [value]="null">None</mat-option>';
+  const dayOption = '<mat-option [value]="1">One</mat-option>';
+
+  check(
+    'a select with a null option and no attribute is reported',
+    unselectable(`<mat-select formControlName="x">${noneOption}${dayOption}</mat-select>`),
+    [1]
+  );
+  check(
+    'a select with a null option and the attribute passes',
+    unselectable(`<mat-select formControlName="x" canSelectNullableOptions>${noneOption}${dayOption}</mat-select>`),
+    []
+  );
+  check(
+    'a select with no null option passes',
+    unselectable(`<mat-select formControlName="x">${dayOption}</mat-select>`),
+    []
+  );
+  check(
+    'a bound canSelectNullableOptions counts',
+    unselectable(`<mat-select [canSelectNullableOptions]="true">${noneOption}</mat-select>`),
+    []
+  );
+  check(
+    'a literal false on the attribute does not count',
+    unselectable(`<mat-select [canSelectNullableOptions]="false">${noneOption}</mat-select>\n<mat-select canSelectNullableOptions="false">${noneOption}</mat-select>`),
+    [1, 2]
+  );
+  check(
+    'a > inside an attribute value does not end the opening tag early',
+    unselectable(`<mat-select [disabled]="a > b" canSelectNullableOptions>${noneOption}</mat-select>`),
+    []
+  );
+  check(
+    'a null option outside any select is not reported',
+    unselectable(`<mat-option [value]="null">None</mat-option>`),
+    []
+  );
+  check(
+    'a null option binds to its own select, not the next one',
+    unselectable(`<mat-select canSelectNullableOptions>${noneOption}</mat-select>\n<mat-select>${dayOption}</mat-select>`),
+    []
+  );
+  check(
+    'the select that lacks the attribute is the one reported by line',
+    unselectable(`<mat-select canSelectNullableOptions>${noneOption}</mat-select>\n<mat-select>\n${noneOption}\n</mat-select>`),
+    [2]
+  );
+  check(
+    'the null option spelled across lines still counts',
+    unselectable(`<mat-select>\n<mat-option\n  [value]="null"\n>None</mat-option>\n</mat-select>`),
+    [1]
+  );
+  check(
+    'a string "null" and an option named for null are not a null option',
+    unselectable(`<mat-select><mat-option [value]="'null'">x</mat-option><mat-option value="null">y</mat-option><mat-option [value]="nullable">z</mat-option></mat-select>`),
+    []
+  );
+  check(
+    'a commented-out null option does not count',
+    unselectable(`<mat-select><!-- ${noneOption} -->${dayOption}</mat-select>`),
+    []
+  );
+  check(
+    'a commented-out select does not lend its attribute to the next one',
+    unselectable(`<!-- <mat-select canSelectNullableOptions> -->\n<mat-select>${noneOption}</mat-select>`),
+    [2]
+  );
+  check(
+    'mat-select-trigger opening tag is not a select',
+    readSelects('<mat-select-trigger>x</mat-select-trigger>').length,
+    0
+  );
+  check(
+    'a trigger ahead of the options does not cut the select body short',
+    unselectable(`<mat-select><mat-select-trigger>x</mat-select-trigger>${noneOption}</mat-select>`),
+    [1]
+  );
+  check(
+    'a trigger ahead of the options does not over-flag a select that carries the attribute',
+    unselectable(`<mat-select canSelectNullableOptions><mat-select-trigger>x</mat-select-trigger>${noneOption}</mat-select>`),
+    []
+  );
+  check(
+    'a self-closed select has no options to offer',
+    readSelects('<mat-select />').map(select => select.offersNull),
+    [false]
+  );
 
   const failed = cases.filter(c => !c.ok);
   for (const c of cases) {

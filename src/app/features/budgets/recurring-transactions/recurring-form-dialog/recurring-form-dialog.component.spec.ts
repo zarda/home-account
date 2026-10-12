@@ -1116,3 +1116,117 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
     });
   });
 });
+
+/**
+ * Material treats an option whose value is null or undefined as a reset
+ * option unless the select sets `canSelectNullableOptions`: a model holding
+ * null then shows nothing, whatever the option is labelled. Two of this
+ * dialog's selects carry a null that is a real choice, "same day as the start
+ * date" and "Off", so each has to show its own label with the field's label
+ * floated over it. The reminder's null comes from `reminderOptions`, data the
+ * `material:check` gate cannot see, so this is the cover for it.
+ */
+describe('RecurringFormDialogComponent, a select whose empty option is a choice', () => {
+  let fixture: ComponentFixture<RecurringFormDialogComponent>;
+  let component: RecurringFormDialogComponent;
+
+  const rule = (overrides: Partial<RecurringTransaction> = {}): RecurringTransaction =>
+    ({
+      id: 'rec1',
+      name: 'Rent',
+      type: 'expense',
+      amount: 100,
+      currency: 'USD',
+      categoryId: 'cat1',
+      description: '',
+      frequency: { type: 'monthly', interval: 1 },
+      startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+      isActive: true,
+      ...overrides
+    }) as RecurringTransaction;
+
+  async function render(recurring: RecurringTransaction): Promise<void> {
+    await TestBed.configureTestingModule({
+      imports: [RecurringFormDialogComponent],
+      providers: [
+        { provide: MatDialogRef, useValue: jasmine.createSpyObj('MatDialogRef', ['close']) },
+        { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal({
+              preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+            })
+          }
+        },
+        { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+        { provide: CurrencyService, useValue: { currencies: signal([]) } },
+        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        provideNoMotion()
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RecurringFormDialogComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    // ngModel hands the value to the select a microtask after the first pass.
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  /** What the field named `label` shows: its select's trigger text and whether its label floats. */
+  function shown(label: string): { text: string | undefined; floated: boolean } {
+    const field = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-form-field'))
+      .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+    expect(field).withContext(`the ${label} field`).toBeTruthy();
+    return {
+      text: field!.querySelector('.mat-mdc-select-value')?.textContent?.trim(),
+      floated: field!.querySelector('.mdc-floating-label--float-above') !== null
+    };
+  }
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  it('shows "same day as the start date" for a monthly rule that names no day', async () => {
+    await render(rule());
+
+    expect(component.dayOfMonth).toBeNull();
+    expect(shown('settings.onDay')).toEqual({ text: 'settings.onDaySameAsStart', floated: true });
+  });
+
+  it('shows "Off" for a rule that has no reminder', async () => {
+    await render(rule());
+
+    expect(component.remindDaysBefore).toBeNull();
+    expect(shown('settings.reminder')).toEqual({ text: 'settings.reminderOff', floated: true });
+  });
+
+  it('shows the day and the lead a rule names (pin)', async () => {
+    await render(rule({ frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 }, remindDaysBefore: 3 }));
+
+    expect(shown('settings.onDay')).toEqual({ text: '15', floated: true });
+    expect(shown('settings.reminder')).toEqual({ text: 'settings.reminderDaysBefore', floated: true });
+  });
+
+  it('writes null and shows the empty option once it is picked after a value', async () => {
+    await render(rule({ frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 }, remindDaysBefore: 3 }));
+    const selectIn = (label: string) =>
+      fixture.debugElement
+        .queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).closest('mat-form-field')
+          ?.querySelector('mat-label')?.textContent?.trim() === label)!
+        .injector.get(MatSelect);
+    const flush = () => fixture.detectChanges();
+
+    chooseOption(selectIn('settings.onDay'), null, flush);
+    chooseOption(selectIn('settings.reminder'), null, flush);
+
+    expect(component.dayOfMonth).toBeNull();
+    expect(component.remindDaysBefore).toBeNull();
+    expect(shown('settings.onDay').text).toBe('settings.onDaySameAsStart');
+    expect(shown('settings.reminder').text).toBe('settings.reminderOff');
+  });
+});

@@ -3470,6 +3470,75 @@ describe('TransactionFormComponent, through its own template', () => {
     });
   });
 
+  // Material treats an option whose value is null as a reset option unless the
+  // select sets `canSelectNullableOptions`: a control holding null then shows
+  // nothing, whatever the option is labelled. The period and the goal each
+  // carry a null that is a real choice, "None".
+  describe("a select's empty option", () => {
+    const goal: Goal = {
+      id: 'g1', userId: 'u1', kind: 'saving', name: 'Emergency fund', targetAmount: 1000, contributedAmount: 0,
+      currency: 'USD', isActive: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    };
+
+    const selectOf = (name: string) => el().querySelector(`mat-select[formControlName="${name}"]`) as HTMLElement;
+    const shown = (name: string) => ({
+      text: selectOf(name).querySelector('.mat-mdc-select-value')?.textContent?.trim(),
+      floated: selectOf(name).closest('mat-form-field')!.querySelector('.mdc-floating-label--float-above') !== null,
+    });
+
+    /** Renders, then lets the controls hand their values to the selects, which they do a microtask later. */
+    async function renderSettled(data?: { mode: 'add' | 'edit'; transaction?: Transaction }): Promise<void> {
+      render(data);
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    it('shows None for a purchase with no budget period', async () => {
+      await renderSettled();
+
+      expect(component.form.get('period')?.value).toBeNull();
+      expect(shown('period')).toEqual({ text: 'transactions.none', floated: true });
+    });
+
+    it('shows None for a purchase linked to no goal', async () => {
+      activeGoals.set([goal]);
+      await renderSettled();
+
+      expect(component.goalOptions().map(each => each.id)).toEqual(['g1']);
+      expect(component.form.get('goalId')?.value).toBeNull();
+      expect(shown('goalId')).toEqual({ text: 'transactions.none', floated: true });
+    });
+
+    it('shows the period and the goal a purchase names (pin)', async () => {
+      activeGoals.set([goal]);
+      await renderSettled({
+        mode: 'edit',
+        transaction: createTransaction({ id: 'tx-1', categoryId: 'food', period: 'monthly', goalId: 'g1', goalAmount: 10 }),
+      });
+
+      expect(shown('period')).toEqual({ text: 'transactions.monthly', floated: true });
+      expect(shown('goalId')).toEqual({ text: 'Emergency fund', floated: true });
+    });
+
+    it('writes null and shows None once it is picked after a period and a goal', async () => {
+      activeGoals.set([goal]);
+      await renderSettled({
+        mode: 'edit',
+        transaction: createTransaction({ id: 'tx-1', categoryId: 'food', period: 'monthly', goalId: 'g1', goalAmount: 10 }),
+      });
+      const selects = fixture.debugElement.queryAll(By.directive(MatSelect)).map(node => node.injector.get(MatSelect));
+      const flush = () => fixture.detectChanges();
+
+      chooseOption(selects.find(each => each.options.some(option => option.value === 'monthly'))!, null, flush);
+      chooseOption(selects.find(each => each.options.some(option => option.value === 'g1'))!, null, flush);
+
+      expect(component.form.get('period')?.value).toBeNull();
+      expect(component.form.get('goalId')?.value).toBeNull();
+      expect(shown('period').text).toBe('transactions.none');
+      expect(shown('goalId').text).toBe('transactions.none');
+    });
+  });
+
   describe('colours', () => {
     const THEMES = ['light', 'dark'] as const;
     // A real data URI: the strips render an <img> for each receipt, and an
