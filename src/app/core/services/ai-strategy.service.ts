@@ -131,11 +131,14 @@ export class AIStrategyService {
   /** Account and connectivity state the cloud providers were last brought up for. */
   private providersInitializedFor = signal<string | null>(null);
 
+  /** The latest bring-up, which a caller waiting on the providers joins. */
+  private initialization: Promise<void>;
+
   constructor() {
     // Apply the stored model selection at startup so the first request honors
     // the user's choice from AI settings. Keys, if any, arrive with the effect
     // below once the account resolves.
-    void this.initializeCloudProviders();
+    this.initialization = this.initializeCloudProviders();
 
     // Probe native capabilities (Mac environment, Apple Intelligence)
     if (this.canUseNative()) {
@@ -174,12 +177,52 @@ export class AIStrategyService {
         return;
       }
 
-      const attempt = `${userId}:${online}`;
-      if (this.providersInitializedFor() === attempt) return;
-
-      this.providersInitializedFor.set(attempt);
-      void this.initializeCloudProviders();
+      void this.bringUpFor(`${userId}:${online}`);
     });
+  }
+
+  /**
+   * Start the bring-up for an account and connectivity state, unless it is
+   * already the one started last, and return the bring-up for it.
+   *
+   * The effect and cloudProvidersReady() both come through here, so whichever
+   * arrives first starts it and the other joins it. A write from outside the
+   * effect re-runs the effect once, and it stops here on the same attempt.
+   */
+  private bringUpFor(attempt: string): Promise<void> {
+    if (this.providersInitializedFor() !== attempt) {
+      this.providersInitializedFor.set(attempt);
+      this.initialization = this.initializeCloudProviders();
+    }
+    return this.initialization;
+  }
+
+  /**
+   * Resolves once the cloud providers are up for the signed-in account: the
+   * key read and the provider SDK's import after it, not the key read alone.
+   *
+   * A caller that arrives before the effect starts the bring-up itself, before
+   * its first await; one that arrives later joins the bring-up in flight. When
+   * the account or connectivity changes during the wait, it waits for the
+   * newer bring-up instead. A bring-up that fails still answers, with whatever
+   * came up. Answers false when no one is signed in or the device is offline,
+   * so the caller can leave its work for later.
+   */
+  async cloudProvidersReady(): Promise<boolean> {
+    for (let waited: Promise<void> | null = null; ;) {
+      const userId = this.authService.userId();
+      const online = this.pwaService.isOnline();
+      if (!userId) return false;
+
+      // Still the latest since the last wait, so that bring-up was the current
+      // one. Compared by identity, not by state: a state that changes and
+      // changes back during the wait has started a newer bring-up for it.
+      const bringUp = this.bringUpFor(`${userId}:${online}`);
+      if (bringUp === waited) return online;
+
+      waited = bringUp;
+      await bringUp.catch(() => undefined);
+    }
   }
 
   /**

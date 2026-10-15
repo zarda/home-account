@@ -35,6 +35,9 @@ import {
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
+import en from '../../../../assets/i18n/en.json';
+import ja from '../../../../assets/i18n/ja.json';
+import tc from '../../../../assets/i18n/tc.json';
 
 describe('RecurringTransactionsComponent', () => {
   let component: RecurringTransactionsComponent;
@@ -117,7 +120,7 @@ describe('RecurringTransactionsComponent', () => {
         'settings.recurringUpdateFailed': 'Failed to update recurring transaction',
         'settings.recurringResumeFailed': 'Failed to resume recurring transaction',
         'settings.recurringResumeInvalidFrequency':
-          "Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1.",
+          "Cannot resume: this rule's schedule cannot advance. Edit the rule and check its interval and day.",
         'settings.recurringResumeEnded':
           "Cannot resume: this rule's end date has passed. Edit the end date first.",
         'settings.recurringDeleted': 'Recurring transaction deleted',
@@ -268,7 +271,7 @@ describe('RecurringTransactionsComponent', () => {
       expect(notifications.success).toHaveBeenCalledWith('Recurring transaction resumed');
     }));
 
-    it('tells the user when a resume is refused for its interval', fakeAsync(() => {
+    it('tells the user when a resume is refused because the schedule cannot advance', fakeAsync(() => {
       const pausedRecurring = { ...mockRecurring[0], isActive: false };
       mockRecurringService.resumeRecurring.and.rejectWith(new Error(INVALID_FREQUENCY_ERROR));
 
@@ -276,7 +279,7 @@ describe('RecurringTransactionsComponent', () => {
       tick();
 
       expect(notifications.error).toHaveBeenCalledWith(
-        "Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1."
+        "Cannot resume: this rule's schedule cannot advance. Edit the rule and check its interval and day."
       );
       expect(notifications.success).not.toHaveBeenCalled();
     }));
@@ -799,5 +802,30 @@ describe('RecurringTransactionsComponent', () => {
         flush();
       }));
     });
+  });
+});
+
+// The refusal a resume shows when the schedule cannot advance. The component
+// spec above mocks the TranslationService, and Karma serves no catalogs, so
+// the sentences the user reads are checked here against the files themselves.
+describe('settings.recurringResumeInvalidFrequency, the copy of a refused resume', () => {
+  const KEY = 'recurringResumeInvalidFrequency';
+
+  it('en names the schedule and its day, and no longer blames the interval alone', () => {
+    const copy = en.settings[KEY];
+
+    expect(copy).toContain('schedule');
+    expect(copy).toContain('interval and day');
+    expect(copy).not.toContain('interval of at least 1');
+  });
+
+  it('ja names the schedule, and no longer asks only for an interval of 1 or more', () => {
+    expect(ja.settings[KEY]).toContain('スケジュール');
+    expect(ja.settings[KEY]).not.toContain('1以上');
+  });
+
+  it('tc names the schedule, and no longer asks only for an interval of at least 1', () => {
+    expect(tc.settings[KEY]).toContain('排程');
+    expect(tc.settings[KEY]).not.toContain('至少 1');
   });
 });

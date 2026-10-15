@@ -274,6 +274,10 @@ service cloud.firestore {
 
     // ---- recurring ----
 
+    function boundedOrAbsent(f, k, lo, hi) {
+      return !(k in f) || (f[k] is number && f[k] >= lo && f[k] <= hi);
+    }
+
     // The interval floor is enforced here because an interval below one is
     // not a preference, it is a rule that can never advance — the occurrence
     // walks that read it loop until the tab dies. `is number` is kept rather
@@ -284,12 +288,24 @@ service cloud.firestore {
     // untouched either way: the update path only evaluates this when
     // `frequency` is affected.) NaN fails `>= 1` as well, which closes the
     // same hole for a write that does not come from the app at all.
+    //
+    // The day, weekday and month are optional keys, and once present each is
+    // a number inside the range the model documents: a day of 1 to 31, a month
+    // of 1 to 12, a weekday of 0 to 6. A day or a month below one builds a
+    // date on or before the one it started from, the interval's hole by
+    // another road; above its range one still advances, but on a date the
+    // rule was not given. A `null`, a string and NaN are out of range too. A
+    // rule already stored outside the bounds keeps taking every update that
+    // leaves `frequency` alone, for the same reason as above.
     function frequencyValid(f) {
       return f is map
         && f.keys().hasAll(['type', 'interval'])
         && f.type in ['daily', 'weekly', 'monthly', 'yearly']
         && f.interval is number
-        && f.interval >= 1;
+        && f.interval >= 1
+        && boundedOrAbsent(f, 'dayOfMonth', 1, 31)
+        && boundedOrAbsent(f, 'monthOfYear', 1, 12)
+        && boundedOrAbsent(f, 'dayOfWeek', 0, 6);
     }
 
     // No upper bound on the reminder lead: the ceiling is a product choice

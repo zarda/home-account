@@ -203,11 +203,13 @@ export class ClaudeService extends CloudLLMProviderBase {
   /**
    * The prompt's declared temperature, on the models that still take one.
    *
-   * Anthropic removed sampling for models released after Claude Opus 4.6 — the
-   * SDK types `temperature` `@deprecated` and the API rejects any value but 1.0
-   * with a 400. Two of the three ids in `CLAUDE_MODELS` are past that line,
-   * including the default, so sending the registry's 0.05–0.3 unconditionally
-   * would fail every request rather than sharpen it.
+   * The SDK types `temperature` `@deprecated`: models released after Claude
+   * Opus 4.6 do not support setting it, 1.0 is accepted for backwards
+   * compatibility, and any other value is rejected with a 400. Only an id
+   * flagged `acceptsSampling` in `CLAUDE_MODELS` is sent one, and the default is
+   * not flagged, so sending the registry's declared temperatures (0 for the two
+   * translation prompts, up to 0.3 elsewhere) unconditionally would fail every
+   * request rather than sharpen it.
    *
    * One helper for both transports rather than a literal in each: the vision
    * and text envelopes are edited independently, and an inline spread in only

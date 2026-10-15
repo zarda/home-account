@@ -62,8 +62,25 @@ opened first from a page that loads no catalog, searched against an empty
 list. Every group then read *Other*, and a Refresh stored its groups
 without rolling them up
 ([ADR 0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md)).
-A question submitted before the catalog's first snapshot arrives still
-sees the empty list (see *Known gaps*).
+
+**A search does not wait for the catalog's first snapshot; it reads the
+catalog once.** On an account with no custom categories and a device that
+never synced the query, that snapshot waits for the server. So when the
+published list is still empty, the search reads the account's stored
+categories once from the server (`CategoryService.exportAll`) and merges them
+over the built-in defaults, as the published list itself does. The list is
+resolved once per call and handed to the model's list, the scope and the
+roll-up alike, so one answer never mixes two states of the catalog. It is not
+written into the published list, which stays the subscription's. A published
+list that is not empty is used as it is, with no read
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+
+- **A search** resolves it before the model is asked. If the read fails, the
+  search falls back to keywords like any other failed interpretation, before
+  the model is paid.
+- **A Refresh** reads it only when its answer needs a catalog: a top-categories
+  answer, a category scope, or search text, which is matched against category
+  names. Any other Refresh reads nothing for it.
 
 ## Goals and budgets in a question
 
@@ -86,7 +103,10 @@ transaction carries (see
   to this period, and a category the model named itself is never overwritten.
 
 Both catalogs list only active goals and budgets, and are fetched on demand
-when no open page has already loaded them. The confirmation chips resolve a
+when no open page has already loaded them, the way the category catalog is
+(above): one server read each. Unlike the category catalog's read, which a
+Refresh also makes, theirs are made only on the search path, behind the same
+connectivity check the model call needs. The confirmation chips resolve a
 goal's display name the same way — the published signal when a page has
 warmed it, otherwise one uncached read the first time an interpretation
 carries a `goalId`. A live `getGoals()` subscription in the dialog was
@@ -97,10 +117,12 @@ one-shot read is the same route the catalog itself took to reach the model.
 
 Offline, without a configured AI provider, or when interpretation fails, the
 same box degrades to a plain keyword search with a notice saying which of the
-three happened. Only this fallback path records into the recent-searches list
-(`savedSearches`), on purpose: a recent search replays as a substring match,
-which is useful for "starbucks" and useless for an interpreted sentence.
-Interpreted searches get their own memory instead — below.
+three happened. A cold category catalog that cannot be read counts as a
+failed interpretation, and falls back before the model is asked. Only this
+fallback path records into the recent-searches list (`savedSearches`), on
+purpose: a recent search replays as a substring match, which is useful for
+"starbucks" and useless for an interpreted sentence. Interpreted searches get
+their own memory instead — below.
 
 ## The search history
 
@@ -145,6 +167,21 @@ or from a dead button. Both outcomes notify — `aiSearch.historyRefreshed` and
 `aiSearch.historyRefreshFailed` — and the failure is logged. This holds on
 both surfaces: the dialog's opened snapshot and the history page's expanded
 row run the same three steps and report them the same way.
+
+**Some offline Refreshes fail.** The rows are read from the cache when the
+device is offline, but the cold catalog read above is the server's only
+([one-shot-reads.md](one-shot-reads.md#the-searchs-category-catalog-490)).
+So offline, before the catalog's first snapshot has arrived, a Refresh of a
+top-categories answer, a category scope or search text fails with
+`aiSearch.historyRefreshFailed`, and the stored answer keeps what it held.
+Every other offline Refresh answers from the cache as before. The
+alternative was a stored answer with its groups not rolled up, which is the
+failure the read exists to prevent. That window is short, though: once the
+SDK decides it is offline, the listener can publish a first snapshot from a
+cache that never held the query, the built-ins alone, and from then on the
+search takes the catalog as loaded and reads nothing. A Refresh then answers,
+and a stored custom child is not rolled up in what it stores (see *Known
+gaps*).
 
 **The same question is one record.** Re-asking a question whose kind and
 resolved scope match an existing record reuses it — refreshing its figures for
@@ -196,13 +233,19 @@ than a copy. The description line returns after a refresh.
 - A search that falls back to keyword matching is not recorded here at all; it
   goes to the recent-searches list instead, because there was no
   interpretation to store.
-- A question submitted in the dialog, or a Refresh on this page, before the
-  category catalog's first snapshot arrives is interpreted, scoped and
-  rolled up without the catalog, and what it stores keeps those groups. The
-  window is short only when the persistent cache holds a result for the
-  catalog's query. An account with no custom categories, on a device that
-  has never synced that query, has none, so the first snapshot waits for
-  the server.
+- An offline Refresh of a top-categories answer, a category scope or search
+  text fails while the catalog's first snapshot has not arrived (see *Some
+  offline Refreshes fail*). It works once the device is online, or once a
+  page has loaded the catalog.
+- Offline, on a device whose cache never held the catalog's query, that
+  first snapshot can be the built-ins alone: the SDK publishes from the
+  cache once it decides it is offline, empty or not. The search takes any
+  published list as the catalog, so a Refresh of a top-categories answer
+  then stores a custom child un-rolled, over what the answer held. Treating
+  a list with no stored category as unloaded would fail every such offline
+  Refresh on an account with no custom categories, so it is left
+  ([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
 - A record written or refreshed while the catalog was empty, before the
-  history page and the dialog loaded it, keeps its un-rolled groups until
-  it is refreshed again. Nothing migrates it.
+  history page and the dialog loaded it and before a search read a cold
+  catalog, keeps its un-rolled groups until it is refreshed again. Nothing
+  migrates it.

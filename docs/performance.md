@@ -78,18 +78,21 @@ reaches it.
 Two gates cover the two halves.
 
 **`npm run material:check`** (`scripts/check-material-imports.mjs`, a CI step
-after *Check direction*) parses each `@Component`'s `imports:` array and the
-template it declares, and fails when a listed Material module contributes no
-selector that template uses. What it proves is bounded on purpose:
+after *Check direction*) holds two rules. The first parses each
+`@Component`'s `imports:` array and the template it declares, and fails when
+a listed Material module contributes no selector that template uses. The
+second is about one select's empty option (below). What the first proves is
+bounded on purpose:
 
 - A table maps **29 Material modules** to their full transitively-exported
   selector sets, spelled as the installed `@angular/material` spells them.
-  `--self-test` (43 cases) asserts every string in it against the selectors
-  the installed package actually declares, plus the three re-export edges it
-  leans on (List → Divider, Input → FormField, Select → Option). A
-  Material upgrade that renames a selector fails the self-test, where the
-  fix is the table — not the app, where the fix would look like deleting a
-  live import.
+  `--self-test` asserts every string in it against the selectors the
+  installed package actually declares, plus the three re-export edges it
+  leans on (List → Divider, Input → FormField, Select → Option); its 60
+  cases cover the second rule's fixtures too, so it prints
+  `check-material-imports self-test: 60 passed`. A Material upgrade that
+  renames a selector fails the self-test, where the fix is the table — not
+  the app, where the fix would look like deleting a live import.
 - Matching is lenient in every direction but one: an attribute selector
   matches on its attribute alone, bare and bound spellings both count, and
   commented-out markup counts as a use. Every leniency can only miss a dead
@@ -97,7 +100,7 @@ selector that template uses. What it proves is bounded on purpose:
 - What it skips is **counted and named in the output**: provider-only
   modules (`MatNativeDateModule` exports no selector, so a template says
   nothing about whether the component needs it) and any module not in the
-  table. A live run prints `Checked 293 Mat*Module entries across 89
+  table. A live run prints `Checked 360 Mat*Module entries across 103
   components`, the skips, `No unparsed files.` and the findings. A file whose
   `@Component(` count exceeds the decorators the parser could read is listed
   as unparsed and fails the run: a component the gate cannot see is reported,
@@ -108,6 +111,28 @@ a Material module it has not used before: add its name with the selector set
 the package exports for it, and run `npm run material:check` — the self-test
 fails on a misspelling immediately. Until it is in the table, its entries are
 skipped and counted rather than checked, and the run says so by name.
+
+**A select that offers a null option can select it.** Material reads an
+option whose value is `null` or `undefined` as a reset option unless the
+select sets `canSelectNullableOptions`, so a field whose model holds `null`
+showed empty, with its label sitting unfloated inside it, whatever the option
+was labelled: *Same day as the start date*, *Off*, *None*. The browser run for
+#490 met it on four selects, the recurring dialog's day and reminder and the
+transaction form's budget period and goal, and the second rule followed
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md),
+under the class rule of
+[ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md)). In any
+template under `src/app`, a `<mat-select>` whose body holds a `<mat-option`
+bound `[value]="null"` must carry `canSelectNullableOptions` on its opening
+tag; only a literal `false` there fails, and a bound expression is trusted.
+The body runs to the select's own `</mat-select>`, matched exactly, so a
+`<mat-select-trigger>` ahead of the options does not end it, and HTML
+comments are masked first. A live run prints `Checked 41 mat-select elements
+across 96 templates (3 offer a null option).` It cannot see an option whose
+null comes from data (the reminder select's, which the dialog's real-template
+spec covers), an option bound to `undefined` (the five *All* options in the
+transaction filters, which show empty for the same reason and are left as a
+product call), or an inline `template:`.
 
 **`unusedStandaloneImports: "error"`** in `tsconfig.json`'s
 `angularCompilerOptions` covers the half Angular can see. It was measured at
@@ -158,11 +183,52 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.408 MB | 2.7 MB |
+| Initial bundle | 2.409 MB | 2.7 MB |
 
-Against 2,407,839 bytes (JavaScript 2,376,948, stylesheet 30,891, in 59
+Against 2,408,995 bytes (JavaScript 2,378,043, stylesheet 30,952, in 59
 initial files), measured by `npm run build:analyze` from a clean production
-build on 2026-10-11.
+build on 2026-10-14.
+
+The warning went up again, to 2.409 MB, when the work of #490 and #468 put the
+initial bundle 843 bytes over the 2.408 MB it stood at; it moved to the whole
+kilobyte above the figure and no more. That work grew the initial JavaScript by
+1,004 bytes (from 2,376,948) and left the stylesheet alone. All of it lands in
+initial chunks, but not all of it is code the first screen runs. Measured per input from the build's
+own stats, against the same figures at `697c13ab`: `ai-strategy.service.ts`
+took 424 bytes, the wait a queued scan makes for its account's providers to be
+up (the memoised bring-up, and the loop that follows a newer one when the
+account or the connection changes during the wait). `nl-search.service.ts`, in
+the entry chunk because the header reaches the AI search dialog, took 268: a
+search or a Refresh reads the category catalog once when the signal is still
+empty, and threads that one list through the scope, the names and the roll-up.
+`recurring.service.ts` took 206: a rule's day, weekday and month are held to
+their ranges wherever the interval already was. `ai-import.service.ts` took
+145: a refusal before the import's record opened is told apart from one after
+it. `offline-queue-processor.service.ts` took 106: the drain asks the strategy
+whether the providers are up, and puts the entry back without spending a retry
+when they are not. `ai-models.ts` took 58, for the Claude Sonnet 5.5 entry; its
+dated source lines are comments and cost nothing. The import wizard's handling
+of both refusals, and the recurring dialog's repair of a day out of range, are
+in lazy chunks. The other inputs moved by one to three bytes each, which is the
+minifier renaming around the changed modules. The final build adds 152 bytes to
+those figures. Sixty are JavaScript in the transaction form's chunk, which is
+initial because `quick-add.service.ts` imports the form, where the commit
+"fix(ui): a select's empty option shows its own label" lets the period and goal
+selects show their *None* option. Sixty-one are stylesheet, from the home-screen
+bottom bar's rules in `styles.scss`, which #494 merged into main while this work
+was open. The commit "fix(ui): a category the catalog cannot name reads Unknown
+in the reader's language", as first committed, came to 18 bytes less with the
+renames around it as measured (2,408,965 to 2,408,947), and 17 less against
+the 2,408,964 recorded before it; nobody has explained the one byte between the
+two baselines. The answer card and the AI search dialog, both in the entry
+chunk, shared one copy of the name rule where each had kept its own. The branch
+review's fixes after it added 48 bytes of JavaScript, all of it in initial
+chunks: the rule moved into core, into a module of its own in the entry chunk,
+`core/utils/category-display.utils.ts`, reading `common.unknownCategory`, a
+longer key than the one it read before, and the search counting its AI use
+only after its catalog reads. The import wizard's and Import
+History's fixes, and `CategoryHelperService` and the insight chips, which read
+the moved rule, are in lazy chunks.
 
 The warning went back up, to 2.408 MB, when the work of #486, #487 and #488
 put the initial bundle 647 bytes over the 2.407 MB it had been lowered to; it
@@ -244,8 +310,8 @@ effect on the account, a `catch` for the recount's read and the release of
 its handle on destroy: +192 bytes (2,406,419 to 2,406,611), 100 of them the
 effect and 92 the `catch` and the release.
 
-The warning stands at 2.408 MB. The final build leaves 161 bytes of headroom
-under it (2,408,000 less 2,407,839), which is now less than the 501 bytes the
+The warning stands at 2.409 MB. The final build leaves 5 bytes of headroom
+under it (2,409,000 less 2,408,995), which is now less than the 501 bytes the
 main branch had under the 2.472 MB warning at `8a6e2c9a` (2,471,499 bytes). `about.component.ts` and
 `feedback.service.ts` import `package.json` whole, but a version string of the
 same length adds nothing of its own. The bump from 26.10.171 to 26.10.172 moved

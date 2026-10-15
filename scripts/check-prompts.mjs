@@ -89,21 +89,22 @@ const SINGLE_PROVIDER = {
 };
 
 /**
- * Providers whose models cannot take the declared sampling settings, and why.
+ * Providers with no model flagged as taking the declared sampling settings, and why.
  *
  * Same convention as SINGLE_PROVIDER above: an entry names the reason, so
  * closing a gap means deleting a line rather than widening one. The registry
  * makes `temperature` a required property of every prompt, and Gemini has
  * honoured it since ADR 0005 — but a seam can only carry what the transport
- * accepts, and two vendors have since withdrawn the parameter.
+ * accepts, and vendors have since restricted the parameter.
  *
  * An exempted provider must still be *reachable*: `acceptsSampling` in
  * config/ai-models.ts is per model, so a provider is listed here only when no
- * model in its catalog takes one. Claude is deliberately absent — it gates per
- * model and reads the declared value, which is what this check requires.
+ * model in its catalog is flagged `acceptsSampling`. Claude is deliberately
+ * absent — it gates per model and reads the declared value, which is what this
+ * check requires.
  */
 const SAMPLING_EXEMPT = {
-  openai: 'the Responses API rejects an explicit temperature for the GPT-5 family, and every id in OPENAI_MODELS is GPT-5',
+  openai: 'the app sends OpenAI no temperature: the vendor documents one only at reasoning effort none on GPT-5.4, and no model in OPENAI_MODELS is flagged acceptsSampling',
 };
 
 /** What a provider file must mention to count as honouring the declared value. */
@@ -164,7 +165,7 @@ const HINTS = {
     'against the runtime tables. A list written here is a ceiling on what can be read.',
   sampling: () =>
     'Either read rendered.temperature in the adapter — gated on acceptsSampling() when ' +
-    'only some of its models take one — or add a SAMPLING_EXEMPT entry naming why none can.',
+    'only some of its models are flagged — or add a SAMPLING_EXEMPT entry naming why none is.',
 };
 
 const fail = (message, sites = [], hint = 'parity') => failures.push({ message, sites, hint });

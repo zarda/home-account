@@ -1,10 +1,45 @@
 # 43. A declared generation setting reaches every transport that accepts it
 
-**Status:** Accepted, implemented · **Date:** 2026-08-14 · **Issues:** #263
+**Status:** Accepted, implemented; amended by
+[0177](0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md)
+· **Date:** 2026-08-14 · **Issues:** #263
 
 Amends [0025](0025-provider-variation-lives-in-the-transport-seam.md). Reference
 documentation lives in [../prompts.md](../prompts.md) and
 [../ai-models.md](../ai-models.md).
+
+**Amended by
+[0177](0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md).**
+The decision below stands: a transport sends the declared temperature to
+every model flagged `acceptsSampling`, an unknown id answers false, and
+OpenAI is named in `SAMPLING_EXEMPT`. Four statements no longer hold as
+written:
+
+- **Under *Context*, the reason OpenAI is sent no temperature.** It says
+  the Responses API refuses an explicit temperature on every GPT-5 model,
+  and that the catalog holds nothing else. OpenAI's guide for GPT-5.4
+  documents `temperature` at reasoning effort `none`, that model's default,
+  and an error at any other effort. It says nothing for `gpt-5.4-mini`,
+  `gpt-5.4-nano` and `gpt-5.5`. The app still sends OpenAI no temperature,
+  and no OpenAI id is flagged until a probe shows it takes one. The
+  omission stands, for that reason.
+- **Under *Context*, the count of Claude ids past the line.** As of 0177,
+  `CLAUDE_MODELS` holds four ids, and three are unflagged:
+  `claude-sonnet-5`, `claude-sonnet-5-5` and `claude-opus-4-8`. The line is
+  worded one way wherever it is named, as the SDK words it: models released
+  after Claude Opus 4.6 do not support setting the parameter. No comment
+  counts the ids on either side of it.
+- **Under *What is asserted, and where*,** that the parity spec checks the
+  two post-4.6 Claude ids. It loops over every Claude id not flagged
+  `acceptsSampling`, so an id added without the flag is covered on arrival.
+- **In the last section, that nothing in the repo can check the flag
+  against a live API.** `docs/model-probe/probe.mjs` now sends the app's
+  own OpenAI and Claude envelopes, by hand, with a key read from the
+  environment. It has not been run against either vendor. By default it
+  sends a temperature exactly where the flag does, so a run would catch a
+  flagged model that refuses one. With `--sampling force` it sends the
+  declared temperature to any OpenAI or Claude id, so a run can also show
+  whether an unflagged model takes one.
 
 ## Context
 

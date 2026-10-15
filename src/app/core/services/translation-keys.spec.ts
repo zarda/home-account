@@ -145,6 +145,21 @@ describe('translation files', () => {
       expect(drift.join('; ')).toBe('', `placeholder drift in ${name}`);
     });
   }
+
+  // An allow-list entry says English has a slot a translation may leave out.
+  // Once English drops the slot too, the entry excuses nothing, and it would
+  // go on excusing the next string someone words the same way — so a stale
+  // one fails here instead of lingering (ADR 0145). It passes while every
+  // entry is current, as they all are today, and fails only once a slot goes
+  // stale: it guards the next English edit, not this one.
+  it('lists only optional slots that English interpolates', () => {
+    const stale = Object.entries(OPTIONAL_PLACEHOLDERS).flatMap(([key, slots]) => {
+      const wanted = placeholders(leafValue(en, key));
+      return slots.filter(slot => !wanted.has(slot)).map(slot => `${key} (${slot})`);
+    });
+
+    expect(stale.join(', ')).toBe('', `optional placeholders ${REFERENCE} no longer has`);
+  });
 });
 
 /**
@@ -159,9 +174,6 @@ const OPTIONAL_PLACEHOLDERS: Record<string, string[]> = {
   // 15 號, where an appended "th" would simply be wrong.
   'settings.everyMonthOn': ['suffix'],
   'settings.everyNMonthsOn': ['suffix'],
-  // The underlying error text is English whatever the locale, so ja and tc
-  // report the failure rather than switching script mid-sentence.
-  'import.importFailed': ['error'],
 };
 
 /** The `{{name}}` slots a value interpolates; for a plural object, the union across members. */

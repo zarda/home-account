@@ -341,7 +341,7 @@
       <!-- Period (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.budgetPeriod' | translate }}</mat-label>
-        <mat-select formControlName="period">
+        <mat-select formControlName="period" canSelectNullableOptions>
           <mat-option [value]="null">{{ 'transactions.none' | translate }}</mat-option>
           @for (period of periods; track period.value) {
             <mat-option [value]="period.value">{{ period.label }}</mat-option>
@@ -354,7 +354,7 @@
       @if (goalOptions().length > 0 && !splitParts().length) {
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>{{ 'transactions.goal' | translate }}</mat-label>
-          <mat-select formControlName="goalId">
+          <mat-select formControlName="goalId" canSelectNullableOptions>
             <mat-option [value]="null">{{ 'transactions.none' | translate }}</mat-option>
             @for (goal of goalOptions(); track goal.id) {
               <mat-option [value]="goal.id">{{ goalLabel(goal) }}</mat-option>

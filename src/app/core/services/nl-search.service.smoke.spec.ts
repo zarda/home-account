@@ -48,13 +48,15 @@ silenceFirebaseWarnings();
  *
  * The catalog half proves the other seam: the goal and budget lists reach the
  * model's context even when no page has warmed either signal, which is the
- * normal case for a search opened from the dashboard.
+ * normal case for a search opened from the dashboard. The category catalog
+ * does the same from a cold category signal, for the roll-up as well as for
+ * the model's list.
  *
  * Runs only under the emulators:
  *   npm run test:smoke
  * (CI wraps it with `firebase emulators:exec --only auth,storage,firestore`.)
  */
-describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
+describe('NlSearchService goal and budget scope, ties and the cold category catalog (emulator smoke test)', () => {
   const FIRESTORE_HOST = '127.0.0.1';
   const FIRESTORE_PORT = 8080;
   const AUTH_URL = 'http://127.0.0.1:9099';
@@ -83,9 +85,10 @@ describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
     ...(goalId ? { goalId, goalAmount: amount } : {})
   });
 
-  // A row for the tie case: the same stored shape as `row`, in a category and
-  // on a day of its own. It is written by that case alone, in September, so
-  // the August window every other case pins never sees it.
+  // A row in a category and on a day of its own, in the same stored shape as
+  // `row`. Two cases write through it: the tie case in September, and the
+  // cold category catalog's roll-up in October. Neither month is the August
+  // window the goal and budget cases pin, so those never see these rows.
   const tieRow = (id: string, categoryId: string, amount: number, date: Date) => ({
     ...row(id, amount),
     categoryId,
@@ -197,7 +200,12 @@ describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
           }
         },
         { provide: SearchHistoryService, useValue: { recordRecent: () => Promise.resolve() } },
-        { provide: SearchAnswerHistoryService, useValue: { recordAnswer: () => Promise.resolve() } },
+        {
+          provide: SearchAnswerHistoryService,
+          // A filter reading is recorded too; without recordFilter a search
+          // that interprets to a filter threw into the keyword fallback.
+          useValue: { recordAnswer: () => Promise.resolve(), recordFilter: () => Promise.resolve() }
+        },
         { provide: AnalyticsService, useValue: { trackAiAssistUsed: () => undefined } },
         { provide: StorageService, useValue: {} },
         { provide: ReceiptQuotaService, useValue: { invalidateCount: () => undefined } }
@@ -314,4 +322,87 @@ describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
       anchor: '2026-01-10'
     }));
   }, 30000);
+
+  // The category half of the same seam. Nothing in this TestBed subscribed to
+  // CategoryService, so its signal is empty and holds no built-in either: the
+  // rollup and the model's catalog come from one stored read merged over the
+  // built-ins. October holds these rows alone (every other case pins August or
+  // September), and the rows and the custom category are deleted in a `finally`.
+  describe('from a cold category catalog', () => {
+    const CHILD_ID = 'nl-smoke-cold-mine';
+    const childPath = () => `users/${uid}/categories/${CHILD_ID}`;
+
+    // The shape categoryCreateValid accepts: every required field and the
+    // owner stamp, plus the parent the rollup follows.
+    const customChild = () => ({
+      userId: uid,
+      name: 'Mine',
+      icon: 'category',
+      color: '#607D8B',
+      type: 'expense',
+      order: 900,
+      isActive: true,
+      isDefault: false,
+      parentId: 'bills'
+    });
+
+    it('rolls a built-in child and a stored custom child into their parent', async () => {
+      const rows = [
+        tieRow('nl-smoke-cold-bills', 'bills', 10, new Date(2026, 9, 3, 12)),
+        tieRow('nl-smoke-cold-electricity', 'bills_electricity', 20, new Date(2026, 9, 4, 12)),
+        tieRow('nl-smoke-cold-custom', CHILD_ID, 40, new Date(2026, 9, 5, 12)),
+        tieRow('nl-smoke-cold-transport', 'transport', 5, new Date(2026, 9, 6, 12))
+      ];
+      const listener = spyOn(TestBed.inject(FirestoreService), 'subscribeToCollection')
+        .and.callThrough();
+
+      try {
+        await setDoc(doc(firestore, childPath()), customChild());
+        await Promise.all(rows.map(({ id, ...data }) =>
+          setDoc(doc(firestore, `users/${uid}/transactions/${id}`), { ...data, userId: uid })
+        ));
+        expect(TestBed.inject(CategoryService).categories()).toEqual([]);
+
+        const answer = await service.replayAggregate(
+          'topCategories',
+          { startDate: new Date(2026, 9, 1), endDate: new Date(2026, 9, 31, 23, 59, 59, 999) },
+          5
+        );
+
+        // Four groups without the catalog: 'bills', 'bills_electricity', the
+        // custom id and 'transport'.
+        expect(answer.groups).toEqual([
+          { categoryId: 'bills', total: 70 },
+          { categoryId: 'transport', total: 5 }
+        ]);
+        // The read is one-shot: no listener opened to warm the signal.
+        expect(listener).not.toHaveBeenCalled();
+      } finally {
+        await Promise.all([
+          deleteDoc(doc(firestore, childPath())).catch(() => undefined),
+          ...rows.map(t =>
+            deleteDoc(doc(firestore, `users/${uid}/transactions/${t.id}`)).catch(() => undefined)
+          )
+        ]);
+      }
+    }, 30000);
+
+    it('sends the model the built-in and the stored categories together', async () => {
+      interpretSearchQuery.and.resolveTo({ kind: 'filter', filters: {} });
+
+      try {
+        await setDoc(doc(firestore, childPath()), customChild());
+
+        const result = await service.search('what did I spend on bills');
+
+        expect(result.kind).toBe('filter');
+        const context = interpretSearchQuery.calls.mostRecent().args[1];
+        const ids = context.categories.map((c: { id: string }) => c.id);
+        expect(ids).toContain('bills_electricity');
+        expect(ids).toContain(CHILD_ID);
+      } finally {
+        await deleteDoc(doc(firestore, childPath())).catch(() => undefined);
+      }
+    }, 30000);
+  });
 });

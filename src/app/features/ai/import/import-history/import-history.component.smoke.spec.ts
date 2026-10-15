@@ -392,4 +392,21 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     expect(card.textContent).not.toContain('Missing or insufficient permissions.');
     expect(card.querySelector('.failure-class')).toBeNull();
   }, 20000);
+
+  // failImport never writes the counts, so the record holds the 0 it was
+  // opened with, and its own error line says the rows may already be in the
+  // list. The card shows no tiles rather than a 0 nothing counted. The line
+  // is the positive proof the card rendered this record, and the failed
+  // receipt attempt beside it keeps its tiles, where nothing landed.
+  it('a stored whole-import failure shows no figures it never counted', async () => {
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 6,
+      'all six seeded records');
+
+    const card = cardFor('smoke-whole-import-failed.csv');
+    expect(Array.from(card.querySelectorAll('.errors li')).map(li => li.textContent?.trim()))
+      .toEqual(['import.wholeFailedConnection']);
+    expect(card.querySelector('.stats-grid')).toBeNull();
+    expect(cardFor('smoke-failed-receipt.jpg').querySelector('.stats-grid')).not.toBeNull();
+  }, 20000);
 });

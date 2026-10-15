@@ -10,7 +10,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -42,6 +42,7 @@ import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
+import { errorCode } from '../../../../core/utils/firebase-error.utils';
 import {
   ReviewNotices,
   importFailureKey,
@@ -50,6 +51,7 @@ import {
   reviewNoticesFrom,
   rowIsUnfilled,
   sumByCurrency,
+  wholeImportFailureKey,
 } from '../../../../core/utils/import-review.utils';
 
 /**
@@ -127,6 +129,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   fromCamera = false;
   isMultiImage = false;
   private cameraImportResult: ImportResult | null = null;
+  // A round of this wizard reached the history record, so rows may have
+  // landed: the handed-over review, which still holds them, must not go back
+  // into the history entry after a later round that never started.
+  private recordReached = false;
   // Which door actually ran the extraction the state carries — the camera
   // dialog's own capture by default, since it is the door that predates
   // this field; a producer that is not the camera (the transaction form's
@@ -1031,6 +1037,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async confirmImport(): Promise<void> {
     this.isImporting.set(true);
+    this.consumeHandedOverReview();
 
     try {
       const batch = this.batchDescriptor();
@@ -1056,6 +1063,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.sourceImageFiles(),
         provenance
       );
+      this.recordReached = true;
 
       // Rows that saved without their photos. Said as sentences of their own
       // rather than folded into a failure count, because "partial" here would
@@ -1118,14 +1126,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
             if (!row.selected) setAside.push(row);
             return row;
           });
-        const keptIds = new Set(kept.map(t => t.id));
-
-        this.extractedTransactions.set(kept);
-        this.keepReceiptRows(keptIds);
-        this.duplicateChecks.update(checks =>
-          checks.filter(c => keptIds.has(c.transactionId) && !failedIds.has(c.transactionId))
-        );
-        this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
+        this.keepOnlyRows(kept, failedIds);
 
         // One notice for the round, since a snackbar replaces the one before
         // it: the rows set aside this round — counted, not named, since each
@@ -1153,29 +1154,143 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       const photoMissing = photoSentences.some(sentence => !!sentence);
       this.raiseRoundNotice(photoMissing ? 'info' : 'success', [message, ...photoSentences]);
 
-      // Navigate back to transactions with showAll to see imported data
-      this.router.navigate(['/transactions'], {
-        queryParams: { showAll: 'true' }
-      });
+      // Navigate back to transactions with showAll to see imported data.
+      this.leaveForTransactions();
     } catch (error) {
+      const notStarted = error instanceof Error && error.message === IMPORT_NOT_STARTED;
+      if (!notStarted) this.recordReached = true;
       if (error instanceof Error && error.message === IMPORT_READBACK_FAILED) {
         // The rows were saved; only the summary read-back failed. Presenting
         // that as a failed import would invite a retry that duplicates the
         // batch — say what happened and continue to the list. The full
         // record, including any per-row errors, is on the Import History page.
         this.notifications.info(this.t('import.importSavedHistoryUnavailable'));
-        this.router.navigate(['/transactions'], {
-          queryParams: { showAll: 'true' }
-        });
+        this.leaveForTransactions();
         return;
       }
-      const message = this.t('import.importFailed', {
-        error: error instanceof Error ? error.message : 'Unknown error'
+      if (notStarted) {
+        // Refused before the history record opened — signed out, or the
+        // record turned away — so nothing was written. The rows, the
+        // selection and the step stay exactly as they were: pressing Import
+        // again retries a write that never happened rather than repeating
+        // one that did, and a handed-over review goes back into the history
+        // entry, so a reload offers it again, unless an earlier round reached
+        // the record and may have landed some of its rows. The refusal itself
+        // rides on `cause`; the sentence says what the reader can act on, in
+        // their language.
+        this.restoreHandedOverReview();
+        this.raiseRoundNotice('error', [this.t('import.importFailed')]);
+        return;
+      }
+      // Anything else came after the record opened, where the rows may have
+      // landed: a refused completion, or a failure part-way through the
+      // write. Read the way Import History reads the same record, by the
+      // error's code and then its message, and never by the thrown text,
+      // which is a client sentence in English.
+      const key = wholeImportFailureKey({
+        message: error instanceof Error ? error.message : undefined,
+        code: errorCode(error),
       });
-      this.notifications.error(message);
+      this.raiseRoundNotice('error', [this.t(key)]);
+
+      // The submitted rows are dropped before the wizard leaves, so even a
+      // navigation that never arrives offers no second Import over rows the
+      // write may already have taken: the service writes them with no id of
+      // their own, and a second confirm would land every one again. The seal
+      // above keeps the list unchanged during the write, so the selected
+      // rows are the ones submitted. A row the reviewer deselected was never
+      // submitted and stays as it was, the way the partial path keeps it.
+      this.keepOnlyRows(this.extractedTransactions().filter(t => !t.selected));
+
+      // Import History holds the record, failed, with the reason it names.
+      // Not awaited, and a failed chunk load swallowed here: left to the
+      // global handler it would replace the notice above with a generic one.
+      // A wizard destroyed while the write was in flight has nowhere to
+      // leave from, and navigating from it would pull a reader who has
+      // already moved on to another page away from it.
+      if (!this.destroyRef.destroyed) {
+        this.router.navigate(['/import/history'], { replaceUrl: true }).catch(() => undefined);
+      }
     } finally {
       this.isImporting.set(false);
     }
+  }
+
+  /**
+   * Take a handed-over review out of the wizard's history entry, once, before
+   * the write (ADR 0082, the rule `stripShareParams` follows). The camera and
+   * form doors put the whole review in that entry, and ngOnInit reads it on
+   * every construction: left there, Back or a reload into the entry would
+   * offer every row again, whichever way the write ended — the header's back
+   * arrow mid-write, a partial import that keeps only the failed rows, a
+   * failed navigation. Run while the entry is still the current one, and only
+   * for a handed-over review. The entry's other keys stay, the router's own
+   * among them, and the review itself stays in memory, so a write that never
+   * started is retried with its photos, and goes back into the entry for a
+   * reload when no earlier round reached the record
+   * (`restoreHandedOverReview`).
+   *
+   * Through `history` itself, the object ngOnInit reads the review from, and
+   * not Angular's Location: under test the platform's location is a stand-in
+   * that never reaches the browser history, so a consume made through it would
+   * leave the entry ngOnInit reads untouched there.
+   *
+   * A browser that refuses the write (WebKit throws a SecurityError when the
+   * history is written too often) leaves the handoff where it was: the import
+   * goes on, unsealed when it ends, and a reload may then offer the review
+   * again, as it did before this consume. Only on that rare path can rows
+   * already written be offered a second time.
+   */
+  private consumeHandedOverReview(): void {
+    if (!this.fromCamera) return;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { importResult: _consumed, ...rest } = (history.state ?? {}) as Record<string, unknown>;
+    try {
+      history.replaceState(rest, '');
+    } catch {
+      // The handoff stays; see above.
+    }
+  }
+
+  /**
+   * Put a handed-over review back into the wizard's history entry after a
+   * write that never started, when no earlier round of this wizard reached
+   * the record: nothing was written, so a reload may offer the review again,
+   * as it did before Import was pressed. Once a round has reached the record,
+   * as a partial import does, the handoff still holds rows that may have
+   * landed, so a later refusal puts nothing back. Every other ending leaves
+   * it consumed. A wizard torn down during the write puts nothing back, since
+   * the current entry is then another page's; and a browser that refuses the
+   * write leaves the entry as it is, the way the consume does.
+   */
+  private restoreHandedOverReview(): void {
+    if (!this.fromCamera || !this.cameraImportResult || this.destroyRef.destroyed || this.recordReached) return;
+    try {
+      history.replaceState({ ...(history.state ?? {}), importResult: this.cameraImportResult }, '');
+    } catch {
+      // The entry stays consumed; see above.
+    }
+  }
+
+  /**
+   * Narrow the review to `kept`: the rows themselves, their receipt marks,
+   * the duplicate checks that describe them and the mirror of the ticked
+   * ones, all from the one list, so no part of the review goes on describing
+   * a row that has left. `dropChecksFor` names rows that stay but whose
+   * check is cleared, since a verdict about a failed write says nothing
+   * about the second try it is being offered for.
+   */
+  private keepOnlyRows(
+    kept: CategorizedImportTransaction[],
+    dropChecksFor?: ReadonlySet<string>
+  ): void {
+    const keptIds = new Set(kept.map(t => t.id));
+    this.extractedTransactions.set(kept);
+    this.keepReceiptRows(keptIds);
+    this.duplicateChecks.update(checks =>
+      checks.filter(c => keptIds.has(c.transactionId) && !dropChecksFor?.has(c.transactionId))
+    );
+    this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
   }
 
   /**
@@ -1218,6 +1333,29 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       },
       { injector: this.injector }
     );
+  }
+
+  /**
+   * Leave a finished import for the transaction list, showing every row so
+   * the imported ones are in view.
+   *
+   * The review is replaced in history rather than left behind it: Back from
+   * the list would otherwise land on a wizard whose rows were just written,
+   * and a second Import there would write them all again. The submitted rows
+   * are dropped first, the way a refused completion drops them, so even a
+   * navigation that never arrives leaves no Import armed over them; and it is
+   * not awaited, with a failed chunk load swallowed, since the global handler
+   * would replace the round's notice with a generic one. A wizard destroyed
+   * during the write has nowhere to leave from, and the reader has already
+   * moved on, so nothing is navigated.
+   */
+  private leaveForTransactions(): void {
+    this.keepOnlyRows(this.extractedTransactions().filter(t => !t.selected));
+    if (this.destroyRef.destroyed) return;
+    this.router.navigate(['/transactions'], {
+      replaceUrl: true,
+      queryParams: { showAll: 'true' }
+    }).catch(() => undefined);
   }
 
   goBack(): void {

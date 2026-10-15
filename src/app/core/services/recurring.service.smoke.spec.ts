@@ -25,11 +25,18 @@ import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { RecurringService, MAX_OCCURRENCES_PER_CLAIM, recurringPostingId } from './recurring.service';
-import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
+import { addDays, dateAtClampedDay, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import { isSeed, opaqueRowId } from '../utils/opaque-id.utils';
 import { prefillFromGroup } from '../utils/recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
-import { integerField, patchFieldsAsOwner } from './testing/emulator-admin';
+import {
+  getDocumentAsOwner,
+  integerField,
+  mapField,
+  patchFieldsAsOwner,
+  stringField,
+  timestampField
+} from './testing/emulator-admin';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -72,7 +79,9 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   const STUCK_FRESH_ID = 'smoke-stalled-fresh';
   /** The rule seeded the way a build before #486 wrote it: with no salt. */
   const SALTLESS_ID = 'smoke-saltless';
-  const IDS = [RULE_ID, BAD_ID, DOUBLE_ID, STUCK_ID, STUCK_FRESH_ID, SALTLESS_ID];
+  /** The stalled rule whose broken day an edit leaves out. */
+  const REPAIRED_ID = 'smoke-stalled-repaired';
+  const IDS = [RULE_ID, BAD_ID, DOUBLE_ID, STUCK_ID, STUCK_FRESH_ID, SALTLESS_ID, REPAIRED_ID];
 
   beforeAll(async () => {
     app = initializeApp(
@@ -558,12 +567,12 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
   /**
    * A rule whose walk cannot advance stands on its pointer: the step after the
    * stuck date does not land past it, so every claim walks to the same date.
-   * Day -60 of a month is the shape that does it and that the rules accept
-   * (they pin the interval, not the day). The claim has to ask the server
-   * whether that date is already posted before it posts it again, and what it
-   * asks is not visible from the rows alone: a claim that threw looks the same
-   * as one that found the row. The spy on the claim supplies what each one
-   * resolved to.
+   * Day -60 of a month is the shape that does it, and it is written as the
+   * owner so the seed does not depend on what the rules accept of a day. The
+   * claim has to ask the server whether that date is already posted before it
+   * posts it again, and what it asks is not visible from the rows alone: a
+   * claim that threw looks the same as one that found the row. The spy on the
+   * claim supplies what each one resolved to.
    */
   describe('a rule whose walk cannot advance', () => {
     /** Far enough in the past that it was stamped by nothing in this run. */
@@ -587,8 +596,14 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
 
     const rulePath = (id: string): string => `users/${uid}/recurring/${id}`;
 
-    const seedStalledRule = (id: string, due: Date): Promise<void> =>
-      setDoc(doc(firestore, rulePath(id)), {
+    /**
+     * Written whole through the client with a valid frequency, then broken as
+     * the owner, so the stalled day never depends on a client write the rules
+     * may refuse. The owner patch touches `frequency` alone, so `updatedAt`
+     * stays at SEEDED_AT for the cases that assert it.
+     */
+    const seedStalledRule = async (id: string, due: Date): Promise<void> => {
+      await setDoc(doc(firestore, rulePath(id)), {
         userId: uid,
         name: 'Stalled',
         type: 'expense',
@@ -596,13 +611,21 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
         currency: 'USD',
         categoryId: 'food_coffee',
         description: 'Stalled',
-        frequency: { type: 'monthly', interval: 1, dayOfMonth: -60 },
+        frequency: { type: 'monthly', interval: 1 },
         startDate: Timestamp.fromDate(due),
         nextOccurrence: Timestamp.fromDate(due),
         isActive: true,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.fromDate(SEEDED_AT)
       });
+      await patchFieldsAsOwner(rulePath(id), {
+        frequency: mapField({
+          type: stringField('monthly'),
+          interval: integerField(1),
+          dayOfMonth: integerField(-60)
+        })
+      });
+    };
 
     /** The rows of the rule `id`, by their ids. */
     const rowsOf = async (id: string): Promise<string[]> => {
@@ -612,6 +635,14 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
 
     const updatedAtOf = async (id: string): Promise<Date> =>
       ((await getDoc(doc(firestore, rulePath(id)))).data()!['updatedAt'] as Timestamp).toDate();
+
+    /** The rule `id` as the owner route reads it, rules and client SDK out of the way. */
+    const storedAsOwner = async (id: string): Promise<Record<string, Record<string, unknown>>> =>
+      (await getDocumentAsOwner(rulePath(id)))!;
+
+    /** The pointer of the rule `id`, whole to the millisecond. */
+    const pointerOf = async (id: string): Promise<Date> =>
+      new Date(((await storedAsOwner(id))['nextOccurrence'] as { timestampValue: string }).timestampValue);
 
     it('does not post the occurrence an older build already posted under its own id', async () => {
       const claim = spyOn(service as unknown as Claimer, 'claimDueOccurrences').and.callThrough();
@@ -682,6 +713,60 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
         .toBeResolvedTo(jasmine.objectContaining({ postedIds: [] }));
       expect(await rowsOf(STUCK_FRESH_ID)).toEqual([postedId]);
       expect(await updatedAtOf(STUCK_FRESH_ID)).toEqual(stamped);
+    }, 60000);
+
+    // The way out the refused resume names: the edit form opens the rule with
+    // its broken day left unset and saves the schedule without it. Written
+    // here as that save, so it runs the service's refusal, the rules' bounds
+    // on a rule that already stands outside them, and the pointer's recompute
+    // together against the real store.
+    //
+    // Pin: it passes on the code before the ranges too, since the rules and
+    // the service then accepted both the -60 seed and the rewrite. What it
+    // holds is that the bounds leave this way out open: the rewrite without
+    // the day is accepted, the pointer is recomputed, and the rule walks.
+    it('a stalled rule repaired through an update walks again', async () => {
+      const claim = spyOn(service as unknown as Claimer, 'claimDueOccurrences').and.callThrough();
+      const due = stuckDue();
+      await seedStalledRule(REPAIRED_ID, due);
+      // The walk lands a month on, on the day the rule's start names.
+      const walked = dateAtClampedDay(due.getFullYear(), due.getMonth() + 1, due.getDate(), due);
+
+      await expectAsync(
+        service.updateRecurring(REPAIRED_ID, { frequency: { type: 'monthly', interval: 1 } })
+      ).toBeResolved();
+
+      const frequency = ((await storedAsOwner(REPAIRED_ID))['frequency']['mapValue'] as {
+        fields: Record<string, unknown>;
+      }).fields;
+      expect(Object.keys(frequency).sort()).toEqual(['interval', 'type']);
+      const repaired = await pointerOf(REPAIRED_ID);
+      expect(repaired).toEqual(walked);
+      expect(repaired.getTime()).toBeGreaterThan(Date.now());
+
+      // Not due, so this pass leaves the rule alone. The healthy rule of
+      // beforeEach posting its backlog shows the pass ran at all, and the
+      // pointer read shows the repaired rule was not walked by it.
+      await service.catchUpRecurringTransactions();
+
+      expect((await postedDayKeys()).length).toBeGreaterThan(0);
+      expect(await rowsOf(REPAIRED_ID)).toEqual([]);
+      expect(await pointerOf(REPAIRED_ID)).toEqual(repaired);
+
+      // Put the pointer back on the date it stood stuck on: the repaired
+      // rule now claims that one occurrence and moves on from it.
+      await patchFieldsAsOwner(rulePath(REPAIRED_ID), { nextOccurrence: timestampField(due) });
+      await service.catchUpRecurringTransactions();
+
+      const salt = (await getDoc(doc(firestore, rulePath(REPAIRED_ID)))).data()!['salt'] as string;
+      expect(isSeed(salt)).toBeTrue();
+      const postedId = await recurringPostingId({ id: REPAIRED_ID, salt }, due.getTime());
+      const claims = claim.calls.all().filter(call => call.args[0] === REPAIRED_ID);
+      expect(claims.length).toBe(1);
+      await expectAsync(claims[0].returnValue)
+        .toBeResolvedTo(jasmine.objectContaining({ postedIds: [postedId] }));
+      expect(await rowsOf(REPAIRED_ID)).toEqual([postedId]);
+      expect((await pointerOf(REPAIRED_ID)).getTime()).toBeGreaterThan(Date.now());
     }, 60000);
   });
 });

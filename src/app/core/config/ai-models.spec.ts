@@ -89,21 +89,47 @@ describe('AI model catalog', () => {
       }
     });
 
-    it('answers false for every OpenAI model while the catalog is GPT-5', () => {
-      // The Responses API rejects an explicit temperature for that family, so
-      // openai.service.ts sends none — and check-prompts.mjs holds it to a
-      // named exemption for exactly this reason.
+    it('answers false for every OpenAI model, none of them proven to accept sampling', () => {
+      // The vendor documents a temperature only at reasoning effort `none` on
+      // GPT-5.4, so openai.service.ts sends none — and check-prompts.mjs holds
+      // it to a named exemption for exactly this reason.
       for (const { id } of OPENAI_MODELS) {
         expect(acceptsSampling(id)).withContext(id).toBeFalse();
       }
     });
 
-    it('splits the Claude catalog at Opus 4.6', () => {
-      // Anthropic rejects any value but 1.0 on models released after it, which
-      // is why this is per model rather than per provider.
-      expect(acceptsSampling('claude-haiku-4-5')).toBeTrue();
-      expect(acceptsSampling('claude-sonnet-5')).toBeFalse();
-      expect(acceptsSampling('claude-opus-4-8')).toBeFalse();
+    it('answers false for every Claude model not flagged as accepting sampling', () => {
+      // Anthropic rejects any value but 1.0 on models released after Claude
+      // Opus 4.6, which is why this is per model rather than per provider.
+      // The unflagged ids come from the catalog rather than a list written
+      // here, so a model added later is held to the same answer until the
+      // vendor's page or a probe flags it.
+      const unflagged = CLAUDE_MODELS.filter(model => !model.acceptsSampling);
+
+      expect(unflagged).not.toEqual([]);
+      for (const { id } of unflagged) {
+        expect(acceptsSampling(id)).withContext(id).toBeFalse();
+      }
+    });
+
+    it('offers the current Sonnet without a sampling flag', () => {
+      // Both halves are asserted: an absent entry would satisfy the second on
+      // its own, because `undefined?.acceptsSampling` is undefined too.
+      const sonnet = CLAUDE_MODELS.find(model => model.id === 'claude-sonnet-5-5');
+
+      expect(sonnet).toBeDefined();
+      expect(sonnet?.name).toBe('Claude Sonnet 5.5');
+      expect(sonnet?.acceptsSampling).toBeUndefined();
+      expect(acceptsSampling('claude-sonnet-5-5')).toBeFalse();
+    });
+
+    it('flags only claude-haiku-4-5 as accepting sampling in CLAUDE_MODELS', () => {
+      // A model is flagged when a probe or the vendor's page shows it takes
+      // the parameter, never because it is new. Adding an entry and copying a
+      // flag from its neighbour is the mistake this holds the list against.
+      const flagged = CLAUDE_MODELS.filter(model => model.acceptsSampling).map(model => model.id);
+
+      expect(flagged).toEqual(['claude-haiku-4-5']);
     });
 
     it('leaves the Claude default on the rejecting side, which the transport must handle', () => {

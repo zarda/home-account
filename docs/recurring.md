@@ -39,14 +39,20 @@ name a day, it is where every later occurrence takes its day from — see
 |---|---|---|
 | `type` | `daily`, `weekly`, `monthly`, `yearly` | always |
 | `interval` | every N days / weeks / months / years | always; the form blocks zero and below, and 1 is the real floor ([below](#what-makes-a-rule-valid)) |
-| `dayOfWeek` | 0–6, Sunday is 0 | for weekly rules |
-| `dayOfMonth` | 1–31 | offered for monthly **and** yearly rules, and may be left unset |
-| `monthOfYear` | 1–12 | never — a yearly rule takes its month from `startDate` |
+| `dayOfWeek` | 0–6, Sunday is 0; optional, and refused outside that range ([below](#what-makes-a-rule-valid)) | for weekly rules |
+| `dayOfMonth` | 1–31; optional, and refused outside that range | offered for monthly **and** yearly rules, and may be left unset |
+| `monthOfYear` | 1–12; optional, and refused outside that range | never — a yearly rule takes its month from `startDate` |
+
+Each of the last three is checked only when the key is present, and absent is
+the usual case. Once present it must be a number inside its range: `null`, a
+string and `NaN` are refused with the rest, by the service and by the rules
+alike.
 
 `dayOfMonth` is offered, not required. The day select's first entry is **Same
-day as the start date**, and picking it stores no `dayOfMonth` at all — the
-schedule then takes its day from `startDate` every time it steps, which is the
-case the anchor below exists for. A save rewrites the whole `frequency` map, so
+day as the start date**, and the field shows it whenever no day is stored.
+Picking it stores no `dayOfMonth` at all — the schedule then takes its day from
+`startDate` every time it steps, which is the case the anchor below exists
+for. A save rewrites the whole `frequency` map, so
 an omitted day really is gone from the stored document, and a rule that names no
 day still names none after an edit to its name, its amount, or anything else on
 the form.
@@ -213,11 +219,13 @@ not that guess. The catch-up rewrites it before the due filter and writes that
 one field alone; the rule is never due in the run that repaired it, because the
 new pointer is the first occurrence after now rather than a backfill, so the
 stretch the rule sat unreadable is not owed. Two checks stand before the write —
-the interval floor, and then the computed date itself, which has to move past the
-start — and either one leaves the pointer as it was and names the rule in a
-warning. A recomputed date beyond a readable end date is not written either: the
-rule is deactivated instead, because it can never post again and an active rule
-with a date it cannot reach is exactly the lie the Upcoming card would show.
+the frequency check (the interval floor and the three ranges,
+[below](#what-makes-a-rule-valid)), and then the computed date itself, which
+has to move past the start — and either one leaves the pointer as it was and
+names the rule in a warning. A recomputed date beyond a readable end date is
+not written either: the rule is deactivated instead, because it can never post
+again and an active rule with a date it cannot reach is exactly the lie the
+Upcoming card would show.
 
 **No pointer at all — the rule is invisible.** Every enumeration of the
 collection is ordered by `nextOccurrence`, and Firestore omits a document that
@@ -385,20 +393,26 @@ nothing at all: the rule stays paused, with its pointer, its active flag and its
 
 | Why it refuses | What the list says | What to do about it |
 |---|---|---|
-| the interval cannot advance | *Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1.* | edit the rule and give it an interval of 1 or more |
+| the schedule cannot advance, or names a day, weekday or month outside its range | *Cannot resume: this rule's schedule cannot advance. Edit the rule and check its interval and day.* | edit the rule: give it an interval of 1 or more, and look at its day, which the dialog opens as one it can show |
 | the end date has already passed | *Cannot resume: this rule's end date has passed. Edit the end date first.* | move the end date or remove it; a rule that is genuinely finished can be deleted instead |
 | the start date cannot be read | *Failed to resume recurring transaction* | edit the rule and set a start date, or delete it ([above](#a-rule-the-engine-cannot-read)) |
 
-The first two name the field to change, because for them it is one field. The
-third shares the page's generic failure copy: there is no short instruction for a
-document whose stored start date is not a date.
+The first two say where to look. The first covers every way a frequency can
+fail: an interval below 1, a day, weekday or month outside its range, and a
+stored `type` outside the four known kinds, whose computed date does not move
+past the start. The third shares the page's generic failure copy: there is no
+short instruction for a document whose stored start date is not a date.
 
-Resume applies the same interval floor the create and edit forms do, which it
-used to skip on the grounds that a toggle had nowhere to show an error. It has
-one now, so a rule saved with an unusable interval is reported rather than
-silently resumed onto a pointer that was immediately due
+Resume applies the same frequency check the create and edit forms do — the
+interval floor and the three ranges — which it used to skip on the grounds that
+a toggle had nowhere to show an error. It has one now, so a rule saved with an
+unusable frequency is reported rather than silently resumed onto a pointer that
+was immediately due
 ([ADR 0014](ADR/0014-recurrence-guards-and-anchors.md) has the floor's
-reasoning).
+reasoning, [ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)
+the ranges'). A rule whose day or weekday is out of range is refused even when
+its walk would still advance, a day of 32 say: resuming it would put it back on
+a day nobody chose.
 
 ## Reminders
 
@@ -413,6 +427,7 @@ lead, in whole days:
 
 The form offers **Off** plus a fixed ladder — same day, 1, 2, 3, 7, 14 and 30
 days — and stores `null` for Off, which an edit writes as an explicit removal.
+A rule with no reminder opens with **Off** in the field.
 The ladder is a product choice: `firestore.rules` accepts any non-negative
 whole number and deliberately sets **no ceiling**, because a bound written
 there would refuse the restore of a rule any earlier build allowed. The service
@@ -485,14 +500,31 @@ than the one before it, and every walk over the rule's occurrences is a loop tha
 advances by asking for exactly that. Fractional intervals below 1 truncate to no
 movement at all, which is why the floor is 1 rather than "greater than zero".
 
-The floor is stated three times, in three different vocabularies, and a fourth
+A day, weekday or month outside its range is the same hole by another road, or
+a schedule nobody chose. Which values stall depends on the interval, and the
+ranges refuse all of them:
+
+| Value | What the walk does with it |
+|---|---|
+| `dayOfMonth: 0` | The step lands on the last day of the month before its target. At interval 1 that is the start month's last day, where the walk stalls; at interval 2 or more it advances. |
+| a negative `dayOfMonth` | A day of -k lands k days before the last day of the month before its target. At interval 1 the walk stalls: at once when that falls on or before the date it left (a day of -60), otherwise after one step (a day of -1 from 15 January lands on the 30th and stays there). At a larger interval a small negative day still advances, onto a day nobody chose, and a larger one stalls or advances depending on the interval (a day of -60 advances from interval 4). |
+| `dayOfMonth: NaN` | The step is an Invalid Date, and the walk stalls at once. |
+| `dayOfMonth` above 31 | The day clamps to the month's last, and the walk advances. |
+| `monthOfYear` 0 or below | The step lands a year earlier than its target for a month from 0 to -11 (in month 12 + m), two years earlier for -12 to -23, and so on. Where the interval is longer than that many years, the walk advances every time, onto a month nobody chose and at a shorter step than its interval (a month of 0 at interval 2 posts every December, every year). Where it is not, the walk stalls: at once when the step falls on or before the date it left, otherwise after one step. |
+| `monthOfYear` 13 or above | The month rolls into the next year, and the walk advances. |
+| `dayOfWeek` outside 0–6 | The weekly step adds its 7 × interval days first, so the walk advances, onto a weekday nobody chose. |
+
+A stalled walk is the case [the catch-up engine](#the-catch-up-engine) keeps to
+one row; an advancing one posts, every time, on a day the rule was not given.
+
+The checks are stated three times, in three different vocabularies, and a fourth
 layer stands behind them for the documents they never had a say over:
 
 | Layer | What it does | What you see |
 |---|---|---|
-| The dialog | keeps **Save** disabled at an interval of zero or less, and floors its number input at 1 | the button stays greyed |
-| `RecurringService` | throws `INVALID_RECURRING_FREQUENCY` from create, update and resume, before anything is written | the surrounding action reports a failure |
-| `firestore.rules` | denies any write whose `frequency.interval` is not a number ≥ 1 | permission denied |
+| The dialog | keeps **Save** disabled at an interval of zero or less, and floors its number input at 1; its selects offer only days 1–31 and weekdays 0–6, and it never writes `monthOfYear` | the button stays greyed |
+| `RecurringService` | `validateFrequency` throws `INVALID_RECURRING_FREQUENCY` from create, update and resume, before anything is written, when the interval is not a finite number ≥ 1 or a day, weekday or month is present and not a finite number in its range; the pointer repair asks the same question and warns | the surrounding action reports a failure |
+| `firestore.rules` | `frequencyValid` denies any write whose `frequency.interval` is not a number ≥ 1, or whose `dayOfMonth`, `monthOfYear` or `dayOfWeek` is present and not a number in its range; on an update it is asked only when the write touches `frequency` | permission denied |
 | The reader | narrows a stored document on the way in: every schedule date is coerced, and a rule whose `startDate` is not a date it can read is answered as having no schedule at all | the rule is skipped rather than acted on, and named in the browser console |
 
 The client layers exist so a refusal can be explained; the rules layer exists
@@ -500,15 +532,40 @@ because a restore, an older build on a second device, and anything holding the
 account credentials all reach the document directly. The reader exists because
 none of the three reaches a document that is already stored — the rest of that
 case is [A rule the engine cannot read](#a-rule-the-engine-cannot-read).
+Neither the service nor the rules test for a whole number, so a day of 15.5
+passes both, as an interval of 1.5 does
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+
+### A rule already stored outside the ranges
+
+The ranges arrived after rules could be stored without them, so a rule written
+before can still hold `dayOfMonth: -60`. Nothing rewrites it for you. The rules
+check `frequency` only when an update touches it, so such a rule keeps taking
+every other update — the catch-up's claim, a rename, a pause — and the claim
+itself checks no range. One that stalls posts its stuck occurrence once and then
+nothing; one that advances keeps posting on the days it computes. Resume refuses
+it, and so does the pointer repair if its pointer ever needs one.
+
+Editing it is the repair. The dialog opens a stored day that is not a whole
+number from 1 to 31 as **Same day as the start date**, and a stored weekday that
+is not a whole number from 0 to 6 as the start date's own weekday — the day a
+weekly rule lands on when it names none. A weekly rule that names no weekday
+still names none. Nothing is written until you press **Save**, and the save
+leaves the bad day out, so the rules take the rewrite. Saving a new frequency
+recomputes the pointer to the first occurrence after now, as any change of
+schedule does, so the occurrences the rule missed while it was stalled are not
+posted.
 
 ### Restoring a backup that contains a bad rule
 
 A restore replays the file verbatim, so a hand-edited or very old backup can carry
-a rule the current build refuses. That rule is **skipped**, not fatal: the restore
-finishes the rest of the file and Data Management reports `N records restored, M
-skipped`, naming the sections, with the per-row reasons in the browser console.
-Everything else in the backup — including the other recurring rules — restores
-normally.
+a rule the current build refuses — an interval below 1, or a day, weekday or
+month outside its range. That rule is **skipped**, not fatal: the service
+refuses it before anything is written, the restore finishes the rest of the file
+and Data Management reports `N records restored, M skipped`, naming the
+sections, with the per-row reasons (`INVALID_RECURRING_FREQUENCY`) in the browser
+console. Everything else in the backup — including the other recurring rules —
+restores normally.
 
 ### A restored rule keeps its pause
 
@@ -529,8 +586,9 @@ restore carries verbatim.
 ## Known gaps
 
 ADR 0141 (#432) repairs a rule in a bad state where its data allows and
-refuses one where it does not. The first five gaps below are what remains
-after it: the data it will not guess at, and what it still reports badly.
+refuses one where it does not, and ADR 0178 (#490) holds a rule's day, weekday
+and month to their ranges. The first seven gaps below are what remains after
+them: the data neither will guess at, and what is still reported badly.
 
 - **A rule the reader cannot use stays that way until you touch it.** A start
   date that is not a date, and an absent pointer, are both left where they
@@ -538,29 +596,44 @@ after it: the data it will not guess at, and what it still reports badly.
   or deleting the rule is the only way out, and the absent-pointer case needs
   a backup to get that far ([above](#a-rule-the-engine-cannot-read)).
 - **A rule already stored with a frequency that cannot advance is made
-  harmless, not repaired.** An interval below 1 is one such frequency. A day
-  of month or month of year out of range is another, and neither the service
-  nor the rules check those two, so a restore or a direct write can still
-  store one. Catch-up posts the single occurrence the pointer names once;
-  every later run finds it under one of its ids and writes nothing, neither
-  the row nor the rule ([above](#the-catch-up-engine),
+  harmless, not repaired.** An interval below 1 is one such frequency, and so
+  is a day of month or month of year below its range wherever
+  [the table above](#what-makes-a-rule-valid) says its walk stalls. The service
+  and the rules refuse both on every write now, but a rule stored before keeps
+  what it holds ([above](#a-rule-already-stored-outside-the-ranges)), and a
+  write that skips the rules, through the Admin SDK or the console, can
+  still store one. Catch-up posts the single occurrence the pointer names
+  once; every later run finds it under one of its ids and writes nothing,
+  neither the row nor the rule ([above](#the-catch-up-engine),
   [ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
   A second row such a rule gained under
   [ADR 0173](ADR/0173-a-new-rows-id-is-an-opaque-digest-and-names-neither-its-rule-nor-its-scan.md),
   at the digest beside its `rec-` row, is an ordinary row and stays. Nothing
-  picks a corrected frequency on the user's behalf. What ADR 0141 changed is
-  only the resume half, which now refuses such a rule by name instead of
-  reporting success.
-- **The interval refusal answers for more than the interval.** Resume raises
-  `INVALID_RECURRING_FREQUENCY` for a stored `frequency.type` outside the four
-  known kinds as well, and for a day of month below 1 when that leaves the
-  computed date back on the one it started from. The message names the
-  interval, which for those two is the wrong field to go and change.
+  picks a corrected frequency on the user's behalf, and nothing tells the
+  owner: resume refuses such a rule by name, and the edit dialog opens it
+  ready to save, but only when the owner goes there.
+- **A rule stored out of range that still advances keeps posting, and is
+  refused on resume.** A day above 31 clamps, a weekday outside 0–6 wraps,
+  and a day or month below its range advances wherever
+  [the table above](#what-makes-a-rule-valid) says so (a day of 0 at
+  interval 2), so the claim keeps posting such a rule on days it was not
+  given. Resume and the pointer repair refuse it, where before both went
+  ahead. Edit the rule first.
+- **A repaired rule does not post what it missed.** Saving a corrected
+  frequency moves the pointer to the first occurrence after now, so the
+  occurrences that fell due while the rule was stalled are never posted.
+  Enter any that were really paid by hand.
+- **A bad type is told to check the interval and the day.** Resume raises
+  `INVALID_RECURRING_FREQUENCY` for a stored `frequency.type` outside the
+  four known kinds too. The sentence's first half, that the schedule cannot
+  advance, is true; the type is the field to change, and the dialog shows it
+  empty.
 - **A rule that cannot advance is never deactivated for its end date.** When
-  the pointer repair meets a rule whose interval cannot advance it stops there
-  and warns, and the branch that would have deactivated an ended rule sits
-  after that check — so the same console warning is written on every catch-up
-  run and nothing else changes. Fix the interval, or delete the rule.
+  the pointer repair meets a rule whose frequency cannot advance or is out of
+  range it stops there and warns, and the branch that would have deactivated
+  an ended rule sits after that check — so the same console warning is
+  written on every catch-up run and nothing else changes. Fix the frequency,
+  or delete the rule.
 - **A failed pause is silent.** The toggle now reports every way a resume can
   fail, but its pause half still has no catch, so a pause that does not land
   leaves the rule active with nothing on screen to say so.
@@ -584,3 +657,6 @@ after it: the data it will not guess at, and what it still reports badly.
   predates, the lookup asks the new salt's id, finds nothing, and posts it
   again. Later runs find that row
   ([ADR 0174](ADR/0174-a-postings-digest-carries-a-salt-only-its-rule-holds-and-the-drain-reads-once.md)).
+- **The dialog drops a stored `monthOfYear`.** The form never loads the
+  key, so any save rewrites the frequency without it, in range or not, and a
+  yearly rule then takes its month from its start date.

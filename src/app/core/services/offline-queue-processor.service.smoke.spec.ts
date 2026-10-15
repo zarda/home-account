@@ -210,7 +210,10 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   beforeEach(async () => {
     // Mutable so a test can queue as one account and sync as another.
     signedInAs.set(uid);
-    ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt']);
+    ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt', 'cloudProvidersReady']);
+    // The drain waits for the account's providers first; up unless a case
+    // says otherwise.
+    ai.cloudProvidersReady.and.resolveTo(true);
     await configure();
     await queue.clearAll();
   });
@@ -356,10 +359,14 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   // to follow the account.
   it('a failed drain leaves the card\'s count at 1, and a reload counts it again once signed in', async () => {
     // The venue holds no secrets document, so the keys read as none set. They
-    // are not read here first: the drain waits for that read itself (#487),
-    // so it fails online with its provider's absence known, not guessed.
+    // are not read here first: the drain waits for the account's providers
+    // (#487, #490), and their bring-up is what reads the keys. The strategy
+    // is stubbed, so its readiness makes that read in the bring-up's place,
+    // and the drain fails online with its provider's absence known, not
+    // guessed.
     const providerKeys = TestBed.inject(ProviderKeyService);
     expect(providerKeys.keys()).toBeNull();
+    ai.cloudProvidersReady.and.callFake(() => providerKeys.resolve().then(() => true));
 
     ai.processReceipt.and.rejectWith(new Error('AI_CLOUD_UNAVAILABLE'));
     const id = await queue.queueImage(receiptFile('unread.jpg'));
@@ -379,7 +386,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
       );
       return imports.some((i) => i.fileName === 'unread.jpg' && i.door === 'queue' && i.errorType === 'no_provider');
     });
-    // The drain's own read is the one that loaded them.
+    // The read the drain waited for is the one that loaded them.
     expect([providerKeys.keys(), providerKeys.loadFailed()]).toEqual([{}, false]);
 
     // A reload: the database opens with nobody signed in yet.
@@ -395,6 +402,31 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     await waitFor(() => queue.pendingCount() === 1, 3000).catch(() => undefined);
     expect(queue.pendingCount()).toBe(1);
   }, 30000);
+
+  // #490. A drain that runs before the account's providers can come up,
+  // offline again or signed out, hands the scan back for the next sync. It is
+  // the owner check's own write, with no error, so the scan keeps its retries
+  // and Import History holds nothing for it.
+  it('a drain whose providers are not up leaves the scan pending, its retries unspent', async () => {
+    reads(864.2, 'Smoke providers not up');
+    const id = await queue.queueImage(receiptFile('waiting.jpg'));
+    // As syncQueue leaves it before dispatching, so the processor handing it
+    // back is an observable transition rather than a no-op.
+    await queue.updateImageStatus(id, 'processing');
+
+    ai.cloudProvidersReady.and.resolveTo(false);
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+
+    await waitFor(async () => (await queue.peekQueuedImage(id))?.status === 'pending');
+    const entry = await queue.peekQueuedImage(id);
+    expect(entry?.retryCount).toBe(0);
+    expect(entry?.lastError).toBeUndefined();
+    expect(ai.cloudProvidersReady).toHaveBeenCalled();
+    expect(ai.processReceipt).not.toHaveBeenCalled();
+
+    const imports = await firestoreService.getCollection<{ fileName: string }>(`users/${uid}/imports`);
+    expect(imports.some((i) => i.fileName === 'waiting.jpg')).toBeFalse();
+  }, 20000);
 
   // #151. A queued image that reads nothing used to leave no trace outside
   // the IndexedDB row's lastError. Now it is a failed record in Import

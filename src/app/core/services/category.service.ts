@@ -99,9 +99,16 @@ export class CategoryService {
   }
 
   /**
-   * One-shot read of the account's own categories, for the backup export.
-   * Server-only: cache-served categories are safe for the app but not for a
-   * backup, which must reflect what is actually stored.
+   * One-shot read of the account's own categories, for the backup export and
+   * for the search (NlSearchService merges it over the built-ins). Both search
+   * surfaces subscribe to categories; the search reads this for the window
+   * before that subscription's first snapshot, while the signal is empty.
+   *
+   * Server-only, for both callers: the backup must reflect what is actually
+   * stored, and the search must not store a roll-up made from a cache that
+   * never held the query (docs/one-shot-reads.md). So it rejects offline: a
+   * search that reaches it then falls back to keywords, and a Refresh whose
+   * answer needs the catalog reports that it failed.
    *
    * Not the `categories` signal: that holds the built-in defaults merged in,
    * and only whatever a subscription happened to deliver.

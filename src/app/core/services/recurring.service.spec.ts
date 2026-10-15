@@ -771,6 +771,137 @@ describe('RecurringService', () => {
 
       expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
     });
+
+    // The three ranges the model documents beside the fields: a day of month
+    // in 1-31, a month of the year in 1-12 and a day of the week in 0-6. Each
+    // rejection is paired with the write it must not make, and each of the
+    // three doors a frequency enters by is asked: a create, the restore's
+    // create under a given id, and an update. The non-numbers are the shapes a
+    // restored or hand-edited document can carry, and the rules refuse them
+    // too.
+    const asNumber = (value: unknown): number => value as number;
+    const outOfRange: readonly [string, RecurringFrequency][] = [
+      ['dayOfMonth 0', { type: 'monthly', interval: 1, dayOfMonth: 0 }],
+      ['dayOfMonth -60', { type: 'monthly', interval: 1, dayOfMonth: -60 }],
+      ['dayOfMonth 32', { type: 'monthly', interval: 1, dayOfMonth: 32 }],
+      ['dayOfMonth null', { type: 'monthly', interval: 1, dayOfMonth: asNumber(null) }],
+      ['dayOfMonth NaN', { type: 'monthly', interval: 1, dayOfMonth: NaN }],
+      ["dayOfMonth '15'", { type: 'monthly', interval: 1, dayOfMonth: asNumber('15') }],
+      ['monthOfYear 0', { type: 'yearly', interval: 1, monthOfYear: 0 }],
+      ['monthOfYear -20', { type: 'yearly', interval: 1, monthOfYear: -20 }],
+      ['monthOfYear 13', { type: 'yearly', interval: 1, monthOfYear: 13 }],
+      ['dayOfWeek -1', { type: 'weekly', interval: 1, dayOfWeek: -1 }],
+      ['dayOfWeek 7', { type: 'weekly', interval: 1, dayOfWeek: 7 }],
+      ['dayOfWeek null', { type: 'weekly', interval: 1, dayOfWeek: asNumber(null) }]
+    ];
+
+    for (const [label, frequency] of outOfRange) {
+      it(`rejects ${label} on create before writing anything`, async () => {
+        await expectAsync(
+          service.createRecurring(futureDto(frequency))
+        ).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+        expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+      });
+
+      it(`rejects ${label} on the restore's create under a given id`, async () => {
+        await expectAsync(
+          service.createRecurring(futureDto(frequency), { id: 'restored' })
+        ).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+        expect(mockFirestoreService.setDocument).not.toHaveBeenCalled();
+      });
+
+      it(`rejects ${label} on update before touching the document`, async () => {
+        await expectAsync(
+          service.updateRecurring('r1', { frequency })
+        ).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      });
+    }
+
+    // Pins: every bound is inclusive, and a key that is not there is not a
+    // value out of range. Each accepted frequency is stored as given.
+    const inRange: readonly [string, RecurringFrequency][] = [
+      ['dayOfMonth 1', { type: 'monthly', interval: 1, dayOfMonth: 1 }],
+      ['dayOfMonth 31', { type: 'monthly', interval: 1, dayOfMonth: 31 }],
+      ['monthOfYear 1', { type: 'yearly', interval: 1, monthOfYear: 1 }],
+      ['monthOfYear 12', { type: 'yearly', interval: 1, monthOfYear: 12 }],
+      ['dayOfWeek 0', { type: 'weekly', interval: 1, dayOfWeek: 0 }],
+      ['dayOfWeek 6', { type: 'weekly', interval: 1, dayOfWeek: 6 }],
+      ['no day, weekday or month named', { type: 'monthly', interval: 1 }]
+    ];
+
+    for (const [label, frequency] of inRange) {
+      it(`accepts ${label} on create`, async () => {
+        await expectAsync(service.createRecurring(futureDto(frequency))).toBeResolvedTo('new-rec-id');
+
+        const [, stored] = mockFirestoreService.addDocument.calls.mostRecent().args;
+        expect((stored as { frequency: RecurringFrequency }).frequency).toEqual(frequency);
+      });
+
+      it(`accepts ${label} on update`, async () => {
+        await service.updateRecurring('r1', { frequency });
+
+        const [, stored] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+        expect((stored as { frequency: RecurringFrequency }).frequency).toEqual(frequency);
+      });
+    }
+
+    it('refuses to resume a rule stored with a day of month of -60', async () => {
+      // Pin: the resume's step test caught this before the ranges did, and
+      // the refusal now comes from validateFrequency ahead of it. Either way
+      // nothing is written.
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 8, 19));
+        mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+          createRecurring({
+            id: 'r1',
+            frequency: { type: 'monthly', interval: 1, dayOfMonth: -60 },
+            startDate: Timestamp.fromDate(new Date(2024, 0, 15))
+          })
+        ));
+
+        await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    // Pins: a day of 32 and a weekday of 9 still advance, so the resume's step
+    // test lets them through and only the ranges refuse them. Without these,
+    // a resume that stopped checking the ranges would pass every case above,
+    // since the step test refuses -60 on its own.
+    const advancing: readonly [string, RecurringFrequency][] = [
+      ['a day of month of 32', { type: 'monthly', interval: 1, dayOfMonth: 32 }],
+      ['a weekday of 9', { type: 'weekly', interval: 1, dayOfWeek: 9 }]
+    ];
+
+    for (const [label, frequency] of advancing) {
+      it(`refuses to resume a rule stored with ${label}, though its walk would advance (pin)`, async () => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(new Date(2026, 8, 19));
+          mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+            createRecurring({
+              id: 'r1',
+              frequency,
+              startDate: Timestamp.fromDate(new Date(2024, 0, 15))
+            })
+          ));
+
+          await expectAsync(service.resumeRecurring('r1')).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+          expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      });
+    }
   });
 
   describe('deleteRecurring', () => {
@@ -837,9 +968,9 @@ describe('RecurringService', () => {
     });
 
     it('refuses to resume a rule whose frequency type cannot advance', async () => {
-      // validateFrequency only checks the interval; a type outside the four
-      // known kinds is the other way a stored frequency can never advance,
-      // and it slips past that guard.
+      // validateFrequency checks the interval and the three ranges; a type
+      // outside the four known kinds is the other way a stored frequency can
+      // never advance, and it slips past that guard.
       jasmine.clock().install();
       try {
         jasmine.clock().mockDate(new Date(2026, 8, 19));
@@ -2060,6 +2191,26 @@ describe('RecurringService', () => {
           .toEqual([jasmine.stringContaining('[Recurring]'), 'stuck']);
       });
 
+      it('leaves a rule whose day is out of range unrepaired and says so', async () => {
+        const warn = spyOn(console, 'warn');
+        const rule = createRecurring({
+          id: 'out-of-range',
+          frequency: { type: 'monthly', interval: 1, dayOfMonth: -60 },
+          startDate: anchor(),
+          nextOccurrence: unreadable
+        });
+
+        await service.processRecurringTransactions([rule]);
+
+        // A day below 1 builds a date on or before the start, so the rule
+        // would be due forever: the range refusal stops the repair before
+        // any step is taken, and the warning names it.
+        expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.calls.mostRecent().args.slice(0, 2))
+          .toEqual([jasmine.stringContaining('out of range'), 'out-of-range']);
+      });
+
       it('leaves a rule whose frequency type cannot advance unrepaired and says so', async () => {
         const warn = spyOn(console, 'warn');
         const rule = createRecurring({
@@ -2071,9 +2222,10 @@ describe('RecurringService', () => {
 
         await service.processRecurringTransactions([rule]);
 
-        // validateFrequency only names the interval refusal; an unknown
-        // `type` passes it and falls through calculateNextOccurrenceFromDate's
-        // switch unchanged, so the computed result has to be checked too.
+        // validateFrequency names the interval and the three ranges (day,
+        // weekday, month); an unknown `type` passes it and falls through
+        // calculateNextOccurrenceFromDate's switch unchanged, so the computed
+        // result has to be checked too.
         expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.calls.mostRecent().args.slice(0, 2))

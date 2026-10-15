@@ -73,7 +73,8 @@ import {
   createMockUser,
   provideNoMotion,
 } from '../../../../core/services/testing';
-import { AIImportService } from '../../../../core/services/ai-import.service';
+import { AIImportService, IMPORT_NOT_STARTED } from '../../../../core/services/ai-import.service';
+import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { AIStrategyService } from '../../../../core/services/ai-strategy.service';
 import { NativeReceiptService } from '../../../../core/services/native-receipt.service';
@@ -89,8 +90,15 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { TranslationService } from '../../../../core/services/translation.service';
 import { INVALID_AMOUNT_ERROR } from '../../../../core/services/transaction.service';
 import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
-import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
+import {
+  CategorizedImportTransaction,
+  DEFAULT_USER_PREFERENCES,
+  ImportHistory,
+  ImportResult,
+  ImportSource
+} from '../../../../models';
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
+import { errorCode } from '../../../../core/utils/firebase-error.utils';
 import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
 import {
   fallbackCategoryFor,
@@ -3395,7 +3403,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const service = TestBed.inject(AIImportService);
       // The wizard's own confirm ends in router.navigate, and provideRouter([])
       // has nowhere to send it.
-      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
 
       const before = new Set(
         (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
@@ -3455,6 +3463,14 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
       const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
       expect(landed.map(d => d['amount'] as number).sort((a, b) => a - b)).toEqual([554, 555]);
+
+      // Every row saved, so the wizard leaves for the list and replaces the
+      // review in history: Back from the list must not land on a Confirm
+      // whose Import would write both rows a second time.
+      expect(navigate).toHaveBeenCalledOnceWith(
+        ['/transactions'],
+        jasmine.objectContaining({ replaceUrl: true, queryParams: { showAll: 'true' } })
+      );
 
       // Material binds aria-valuenow to value in determinate mode, so the
       // attribute is the bar's own figure rather than a class the test picked.
@@ -3590,6 +3606,180 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'an import the rules refuse before its record opens says nothing was written',
+    async () => {
+      // The refusal is the emulator's own. importCreateValid takes only the
+      // four sources it lists, so a record opened under any other is turned
+      // away by the first write confirmImport makes, before a single row is
+      // attempted. The unit suite can only reject a mock; this is the code
+      // the wizard will read off the cause.
+      stubReceiptSeams();
+
+      const importService = TestBed.inject(AIImportService);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const row: CategorizedImportTransaction = {
+        id: 'not-started-1',
+        description: 'Refused coffee',
+        amount: 5,
+        currency: 'USD',
+        date: new Date(2026, 7, 14),
+        type: 'expense',
+        suggestedCategoryId: 'other_expense',
+        categoryConfidence: 0.9,
+        isDuplicate: false,
+        selected: true
+      };
+
+      const rejection = await importService
+        .confirmImport([row], 'not-started.csv', 1, 'xml' as ImportSource, 'generic_csv')
+        .then(() => undefined, (error: Error) => error);
+
+      // The rejection is the positive proof the two reads below lean on: an
+      // empty result would also hold if the call had never reached Firestore.
+      expect(rejection?.message).toBe(IMPORT_NOT_STARTED);
+      expect(errorCode(rejection?.cause)).toBe('permission-denied');
+
+      const imports = await getDocs(collection(firestore, `users/${uid}/imports`));
+      expect(imports.docs.filter(d => d.data()['fileName'] === 'not-started.csv').length)
+        .withContext('no history record opened for the refused import')
+        .toBe(0);
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      expect(after.docs.filter(d => !before.has(d.id)).length)
+        .withContext('no transaction was written behind the refusal')
+        .toBe(0);
+    },
+    30000
+  );
+
+  it(
+    'an import whose completion the rules refuse reads in the catalog, lands once, and leaves for its record',
+    async () => {
+      // The rows are written for real; what is refused is the completion
+      // that closes the record, the one step a unit suite can only mock.
+      // failImport stays real under the real rules, so the record the
+      // wizard sends the reader to is the one the refusal left.
+      stubReceiptSeams();
+      history.replaceState({}, '');
+
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate').and.resolveTo(true);
+      const translation = TestBed.inject(TranslationService);
+      const refusal = Object.assign(
+        new Error('Missing or insufficient permissions.'),
+        { code: 'permission-denied' }
+      );
+      spyOn(TestBed.inject(ImportHistoryService), 'completeImport').and.rejectWith(refusal);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const importButton = () =>
+        host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
+      const names = ['Refused kindling', 'Refused charcoal'];
+
+      try {
+        component.onFilesSelected([
+          new File(
+            [JSON.stringify({
+              transactions: [
+                { description: 'Refused kindling', amount: -561, type: 'expense', date: { seconds: 1709596800 } },
+                { description: 'Refused charcoal', amount: -562, type: 'expense', date: { seconds: 1709596800 } }
+              ]
+            })],
+            'refused-completion.json',
+            { type: 'application/json' }
+          )
+        ]);
+        await component.processFiles();
+        await until(fixture, () => component.extractedTransactions().length === 2);
+
+        component.stepper.selectedIndex = 3;
+        fixture.detectChanges();
+        expect(component.selectedCount()).toBe(2);
+        expect(importButton().disabled)
+          .withContext('the reviewer can press Import before the refusal')
+          .toBeFalse();
+
+        importButton().click();
+        // The press seals the wizard in the same task it is made in, and the
+        // seal lifts only when the confirm has run to its end, whichever way
+        // it ended: the reads below mean nothing before that.
+        expect(component.isImporting()).toBeTrue();
+        await until(fixture, () => !component.isImporting());
+
+        const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+        const landed = after.docs.filter(d => !before.has(d.id));
+        expect(landed.map(d => d.data()['amount'] as number).sort((a, b) => a - b))
+          .withContext('each row landed once')
+          .toEqual([561, 562]);
+
+        const imports = await getDocs(collection(firestore, `users/${uid}/imports`));
+        const record = imports.docs.find(d => d.data()['fileName'] === 'refused-completion.json');
+        expect(record?.data()['status']).toBe('failed');
+        const errors = record?.data()['errors'] as ImportHistory['errors'];
+        expect(errors?.length).toBe(1);
+        expect(errors?.[0].code).toBe('permission-denied');
+
+        // Karma loads no catalog, so the notice is the bare key on both
+        // sides: what this pins is which key the refusal is read through,
+        // never the sentence the catalogs carry.
+        const notice = (): string => document.querySelector('.snackbar-error')?.textContent ?? '';
+        const wanted = translation.t('import.wholeFailedConnection');
+        expect(wanted).withContext('an empty key would match any notice').not.toBe('');
+        // The last notice read, since the snackbar is gone after its five
+        // seconds and a failure should name what was on screen instead.
+        let seen = notice();
+        const deadline = Date.now() + 5000;
+        while (!seen.includes(wanted) && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+          fixture.detectChanges();
+          seen = notice() || seen;
+        }
+        expect(seen).toContain(wanted);
+
+        expect(navigate).toHaveBeenCalledOnceWith(
+          ['/import/history'],
+          jasmine.objectContaining({ replaceUrl: true })
+        );
+        // The rows the write took are gone from Confirm, so Import has
+        // nothing to press on a second time.
+        expect(component.selectedCount()).toBe(0);
+        expect(importButton().disabled).toBeTrue();
+      } finally {
+        // The case's own rows, found again rather than remembered, so a
+        // failure half-way through still leaves the ledger as it was.
+        TestBed.inject(MatSnackBar).dismiss();
+        const [transactions, imports] = await Promise.all([
+          getDocs(collection(firestore, `users/${uid}/transactions`)),
+          getDocs(collection(firestore, `users/${uid}/imports`))
+        ]);
+        await Promise.all([
+          ...transactions.docs
+            .filter(d => !before.has(d.id) && names.includes(d.data()['description']))
+            .map(d => deleteDoc(d.ref)),
+          ...imports.docs
+            .filter(d => d.data()['fileName'] === 'refused-completion.json')
+            .map(d => deleteDoc(d.ref))
+        ]);
+        fixture.destroy();
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
     },
     30000
   );

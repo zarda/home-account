@@ -94,6 +94,7 @@ describe('RecurringFormDialogComponent', () => {
         'settings.everyDay': 'Every day',
         'settings.everyNDays': `Every ${params?.['n']} days`,
         'settings.everyMonthOn': `Every month on the ${params?.['day']}${params?.['suffix']}`,
+        'settings.everyWeekday': `Every ${params?.['day']}`,
         'settings.everyYear': 'Every year',
         'settings.addRecurring': 'Add Recurring Transaction',
         'settings.editRecurring': 'Edit Recurring Transaction',
@@ -428,6 +429,186 @@ describe('RecurringFormDialogComponent', () => {
       expect(editComponent.startDate).toEqual(new Date(2024, 0, 1));
       expect(editComponent.hasEndDate).toBeFalse();
       expect(editComponent.endDate).toBeNull();
+    });
+  });
+
+  // The services refuse a day, weekday or month outside its range on every
+  // path, and a refused resume names this form as the place the rule is put
+  // right. A day of -60 or a weekday of 9 is what an older build, a restore or
+  // a hand edit can leave behind, and a select holding a value none of its
+  // options carries shows nothing while the old value rides along to the save.
+  // So the form opens such a field on its fallback, and the save no longer
+  // sends the stored value back.
+  describe('a rule stored outside its ranges', () => {
+    // 1 January 2024 fell on a Monday, which is neither the stored weekday
+    // below nor the weekday that stored value wraps to.
+    const START = new Date(2024, 0, 1);
+
+    function ruleWith(frequency: RecurringTransaction['frequency']): RecurringTransaction {
+      return {
+        id: 'rec1',
+        name: 'Test',
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'cat1',
+        description: '',
+        frequency,
+        startDate: Timestamp.fromDate(START),
+        isActive: true
+      } as RecurringTransaction;
+    }
+
+    async function createEditComponent(
+      recurring: RecurringTransaction
+    ): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const editFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      editFixture.detectChanges();
+      return editFixture.componentInstance;
+    }
+
+    function savedFrequency(): Record<string, unknown> {
+      expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
+      return (mockDialogRef.close.calls.mostRecent().args[0] as { frequency: Record<string, unknown> })
+        .frequency;
+    }
+
+    for (const stored of [-60, 0, 32]) {
+      it(`opens a monthly rule stored on day ${stored} on the start date's day, and saves without it`, async () => {
+        const editComponent = await createEditComponent(
+          ruleWith({ type: 'monthly', interval: 1, dayOfMonth: stored })
+        );
+
+        expect(editComponent.dayOfMonth).toBeNull();
+        expect(editComponent.frequencyPreview).toBe('Every month on the 1st');
+
+        editComponent.save();
+
+        expect(savedFrequency()).toEqual({ type: 'monthly', interval: 1 });
+      });
+    }
+
+    it('opens a yearly rule stored on day 32 on the start date too', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'yearly', interval: 1, dayOfMonth: 32 })
+      );
+
+      expect(editComponent.dayOfMonth).toBeNull();
+    });
+
+    it('opens a day that is not a whole number on the start date too', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 15.5 })
+      );
+
+      expect(editComponent.dayOfMonth).toBeNull();
+    });
+
+    it("opens a weekly rule stored on weekday 9 on the start date's weekday, and saves it", async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 9 })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(START.getDay());
+      expect(editComponent.frequencyPreview).toContain('Monday');
+
+      editComponent.save();
+
+      expect(savedFrequency()).toEqual({ type: 'weekly', interval: 1, dayOfWeek: 1 });
+    });
+
+    it('opens a weekday that is not a whole number on the start date too', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 2.5 })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(START.getDay());
+    });
+
+    // A stored null is a weekday that is there and out of range: the services
+    // and the rules refuse it the way they refuse 9, so it is not the absent
+    // key the last pin below keeps. Only a raw write made before the rules
+    // deploy can have stored it.
+    it("opens a weekly rule stored with a null weekday on the start date's weekday, and saves it", async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: null as unknown as number })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(START.getDay());
+      expect(editComponent.frequencyPreview).toContain('Monday');
+
+      editComponent.save();
+
+      expect(savedFrequency()).toEqual({ type: 'weekly', interval: 1, dayOfWeek: START.getDay() });
+    });
+
+    // Pins: a value inside its range opens as itself, the ends of the range
+    // included, and a weekday of 0 (Sunday) is a value and not an absence.
+    it('opens a monthly rule on day 15 as day 15 (pin)', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 15 })
+      );
+
+      expect(editComponent.dayOfMonth).toBe(15);
+      expect(editComponent.frequencyPreview).toBe('Every month on the 15th');
+    });
+
+    it('opens the first and last day of a month as themselves (pin)', async () => {
+      expect(
+        (await createEditComponent(ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 1 }))).dayOfMonth
+      ).toBe(1);
+      expect(
+        (await createEditComponent(ruleWith({ type: 'monthly', interval: 1, dayOfMonth: 31 }))).dayOfMonth
+      ).toBe(31);
+    });
+
+    it('opens a weekly rule on weekday 3 as Wednesday (pin)', async () => {
+      const editComponent = await createEditComponent(
+        ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 3 })
+      );
+
+      expect(editComponent.dayOfWeek).toBe(3);
+      expect(editComponent.frequencyPreview).toContain('Wednesday');
+    });
+
+    it('opens the weekdays at both ends of the range as themselves (pin)', async () => {
+      expect(
+        (await createEditComponent(ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 0 }))).dayOfWeek
+      ).toBe(0);
+      expect(
+        (await createEditComponent(ruleWith({ type: 'weekly', interval: 1, dayOfWeek: 6 }))).dayOfWeek
+      ).toBe(6);
+    });
+
+    // A weekly rule that never named a weekday is a valid rule, so opening it
+    // is not a repair and an unrelated edit must not write a weekday into it.
+    it('leaves a weekly rule that names no weekday without one (pin)', async () => {
+      const editComponent = await createEditComponent(ruleWith({ type: 'weekly', interval: 1 }));
+
+      expect(editComponent.dayOfWeek).toBeNull();
+
+      editComponent.save();
+
+      expect(savedFrequency()).toEqual({ type: 'weekly', interval: 1 });
     });
   });
 
@@ -933,5 +1114,119 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
         });
       }
     });
+  });
+});
+
+/**
+ * Material treats an option whose value is null or undefined as a reset
+ * option unless the select sets `canSelectNullableOptions`: a model holding
+ * null then shows nothing, whatever the option is labelled. Two of this
+ * dialog's selects carry a null that is a real choice, "same day as the start
+ * date" and "Off", so each has to show its own label with the field's label
+ * floated over it. The reminder's null comes from `reminderOptions`, data the
+ * `material:check` gate cannot see, so this is the cover for it.
+ */
+describe('RecurringFormDialogComponent, a select whose empty option is a choice', () => {
+  let fixture: ComponentFixture<RecurringFormDialogComponent>;
+  let component: RecurringFormDialogComponent;
+
+  const rule = (overrides: Partial<RecurringTransaction> = {}): RecurringTransaction =>
+    ({
+      id: 'rec1',
+      name: 'Rent',
+      type: 'expense',
+      amount: 100,
+      currency: 'USD',
+      categoryId: 'cat1',
+      description: '',
+      frequency: { type: 'monthly', interval: 1 },
+      startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+      isActive: true,
+      ...overrides
+    }) as RecurringTransaction;
+
+  async function render(recurring: RecurringTransaction): Promise<void> {
+    await TestBed.configureTestingModule({
+      imports: [RecurringFormDialogComponent],
+      providers: [
+        { provide: MatDialogRef, useValue: jasmine.createSpyObj('MatDialogRef', ['close']) },
+        { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal({
+              preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+            })
+          }
+        },
+        { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+        { provide: CurrencyService, useValue: { currencies: signal([]) } },
+        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        provideNoMotion()
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RecurringFormDialogComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    // ngModel hands the value to the select a microtask after the first pass.
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  /** What the field named `label` shows: its select's trigger text and whether its label floats. */
+  function shown(label: string): { text: string | undefined; floated: boolean } {
+    const field = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-form-field'))
+      .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+    expect(field).withContext(`the ${label} field`).toBeTruthy();
+    return {
+      text: field!.querySelector('.mat-mdc-select-value')?.textContent?.trim(),
+      floated: field!.querySelector('.mdc-floating-label--float-above') !== null
+    };
+  }
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  it('shows "same day as the start date" for a monthly rule that names no day', async () => {
+    await render(rule());
+
+    expect(component.dayOfMonth).toBeNull();
+    expect(shown('settings.onDay')).toEqual({ text: 'settings.onDaySameAsStart', floated: true });
+  });
+
+  it('shows "Off" for a rule that has no reminder', async () => {
+    await render(rule());
+
+    expect(component.remindDaysBefore).toBeNull();
+    expect(shown('settings.reminder')).toEqual({ text: 'settings.reminderOff', floated: true });
+  });
+
+  it('shows the day and the lead a rule names (pin)', async () => {
+    await render(rule({ frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 }, remindDaysBefore: 3 }));
+
+    expect(shown('settings.onDay')).toEqual({ text: '15', floated: true });
+    expect(shown('settings.reminder')).toEqual({ text: 'settings.reminderDaysBefore', floated: true });
+  });
+
+  it('writes null and shows the empty option once it is picked after a value', async () => {
+    await render(rule({ frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 }, remindDaysBefore: 3 }));
+    const selectIn = (label: string) =>
+      fixture.debugElement
+        .queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).closest('mat-form-field')
+          ?.querySelector('mat-label')?.textContent?.trim() === label)!
+        .injector.get(MatSelect);
+    const flush = () => fixture.detectChanges();
+
+    chooseOption(selectIn('settings.onDay'), null, flush);
+    chooseOption(selectIn('settings.reminder'), null, flush);
+
+    expect(component.dayOfMonth).toBeNull();
+    expect(component.remindDaysBefore).toBeNull();
+    expect(shown('settings.onDay').text).toBe('settings.onDaySameAsStart');
+    expect(shown('settings.reminder').text).toBe('settings.reminderOff');
   });
 });

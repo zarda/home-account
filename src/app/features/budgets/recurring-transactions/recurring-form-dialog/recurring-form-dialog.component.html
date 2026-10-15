@@ -109,7 +109,7 @@
     @if (showDayOfMonth) {
       <mat-form-field appearance="outline">
         <mat-label>{{ 'settings.onDay' | translate }}</mat-label>
-        <mat-select [(ngModel)]="dayOfMonth">
+        <mat-select [(ngModel)]="dayOfMonth" canSelectNullableOptions>
           <mat-option [value]="null">{{ 'settings.onDaySameAsStart' | translate }}</mat-option>
           @for (day of daysOfMonth; track day) {
             <mat-option [value]="day">{{ day }}</mat-option>
@@ -161,7 +161,7 @@
     <!-- Reminder -->
     <mat-form-field appearance="outline">
       <mat-label>{{ 'settings.reminder' | translate }}</mat-label>
-      <mat-select [(ngModel)]="remindDaysBefore">
+      <mat-select [(ngModel)]="remindDaysBefore" canSelectNullableOptions>
         @for (option of reminderOptions; track option.value) {
           <mat-option [value]="option.value">{{ option.label }}</mat-option>
         }

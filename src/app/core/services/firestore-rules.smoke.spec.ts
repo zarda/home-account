@@ -37,6 +37,7 @@ import {
   getDocumentAsOwner,
   deleteDocumentAsOwner,
   integerField,
+  mapField,
   timestampField,
   stringField,
   EmulatorField,
@@ -978,6 +979,132 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    // A day or a month below one lands on or before the date it was built
+    // from, so a rule carrying it never moves past its start and is due
+    // forever; a day, month or weekday above its range advances, but on a date
+    // the rule was not given. The service refuses all of them, but a restore,
+    // an older build or a raw SDK call reach this document directly. Each key
+    // is optional, and once present it is a number inside its range: a `null`,
+    // a string and NaN are out of it.
+    describe('schedule bounds', () => {
+      const OUT_OF_RANGE: readonly (readonly [string, Record<string, unknown>])[] = [
+        ['a dayOfMonth of 0', { type: 'monthly', interval: 1, dayOfMonth: 0 }],
+        ['a dayOfMonth of 32', { type: 'monthly', interval: 1, dayOfMonth: 32 }],
+        ['a null dayOfMonth', { type: 'monthly', interval: 1, dayOfMonth: null }],
+        ['a NaN dayOfMonth', { type: 'monthly', interval: 1, dayOfMonth: NaN }],
+        ['a string dayOfMonth', { type: 'monthly', interval: 1, dayOfMonth: '15' }],
+        ['a monthOfYear of 0', { type: 'yearly', interval: 1, monthOfYear: 0 }],
+        ['a monthOfYear of 13', { type: 'yearly', interval: 1, monthOfYear: 13 }],
+        ['a dayOfWeek of -1', { type: 'weekly', interval: 1, dayOfWeek: -1 }],
+        ['a dayOfWeek of 7', { type: 'weekly', interval: 1, dayOfWeek: 7 }]
+      ];
+
+      // Pin: today's rules read none of the three keys, so every value on the
+      // boundary passes before and after the clauses land.
+      const IN_RANGE: readonly (readonly [string, Record<string, unknown>])[] = [
+        ['a dayOfMonth of 1', { type: 'monthly', interval: 1, dayOfMonth: 1 }],
+        ['a dayOfMonth of 31', { type: 'monthly', interval: 1, dayOfMonth: 31 }],
+        ['a monthOfYear of 1', { type: 'yearly', interval: 1, monthOfYear: 1 }],
+        ['a monthOfYear of 12', { type: 'yearly', interval: 1, monthOfYear: 12 }],
+        ['a dayOfWeek of 0', { type: 'weekly', interval: 1, dayOfWeek: 0 }],
+        ['a dayOfWeek of 6', { type: 'weekly', interval: 1, dayOfWeek: 6 }],
+        ['all three on their ceilings', { type: 'yearly', interval: 1, dayOfMonth: 31, monthOfYear: 12, dayOfWeek: 6 }],
+        ['no day, month or weekday named', { type: 'daily', interval: 1 }]
+      ];
+
+      for (const [what, frequency] of OUT_OF_RANGE) {
+        it(`rejects a create with ${what}`, async () => {
+          await expectDenied(
+            setDoc(doc(firestore, path('recurring')), validRecurring({ frequency })),
+            `${what} on create`
+          );
+        });
+
+        it(`rejects an update rewriting the frequency to ${what}`, async () => {
+          const p = path('recurring');
+          await setDoc(doc(firestore, p), validRecurring());
+          await expectDenied(updateDoc(doc(firestore, p), { frequency }), `${what} on update`);
+        });
+      }
+
+      for (const [what, frequency] of IN_RANGE) {
+        it(`accepts a create with ${what}`, async () => {
+          await expectAllowed(
+            setDoc(doc(firestore, path('recurring')), validRecurring({ frequency })),
+            `${what} on create`
+          );
+        });
+
+        it(`accepts an update rewriting the frequency to ${what}`, async () => {
+          const p = path('recurring');
+          await setDoc(doc(firestore, p), validRecurring());
+          await expectAllowed(updateDoc(doc(firestore, p), { frequency }), `${what} on update`);
+        });
+      }
+
+      // A rule stored before the bounds can hold any day, and the clauses sit
+      // behind touched('frequency'): every write that leaves the schedule
+      // alone keeps passing. The rule is written whole with the client and
+      // its day is broken afterwards with an owner patch, because the create
+      // clause would refuse it.
+      describe('on a rule stored outside them', () => {
+        const seedStalled = async (p: string): Promise<void> => {
+          await setDoc(doc(firestore, p), validRecurring());
+          await patchFieldsAsOwner(p, {
+            frequency: mapField({
+              type: stringField('monthly'),
+              interval: integerField(1),
+              dayOfMonth: integerField(-60)
+            })
+          });
+          // The seed has to have landed, or every pin below would pass for
+          // want of a bad rule to be tolerant of.
+          expect((await getDoc(doc(firestore, p))).data()?.['frequency'])
+            .toEqual({ type: 'monthly', interval: 1, dayOfMonth: -60 });
+        };
+
+        // Pin: the occurrence claim touches the pointer and the stamps only.
+        it('accepts the occurrence claim update', async () => {
+          const p = path('recurring');
+          await seedStalled(p);
+          await expectAllowed(
+            updateDoc(doc(firestore, p), {
+              updatedAt: Timestamp.now(),
+              nextOccurrence: Timestamp.now(),
+              lastProcessed: Timestamp.now()
+            }),
+            'the claim beside a day of -60'
+          );
+        });
+
+        // Pin: a rename leaves the schedule alone.
+        it('accepts a rename', async () => {
+          const p = path('recurring');
+          await seedStalled(p);
+          await expectAllowed(updateDoc(doc(firestore, p), { name: 'Renamed' }), 'a rename beside a day of -60');
+        });
+
+        // Pin: the way out is an edit that names a schedule inside the ranges.
+        it('accepts rewriting the frequency into range', async () => {
+          const p = path('recurring');
+          await seedStalled(p);
+          await expectAllowed(
+            updateDoc(doc(firestore, p), { frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 } }),
+            'a day of 15 over a day of -60'
+          );
+        });
+
+        it('rejects rewriting the frequency to another day outside the range', async () => {
+          const p = path('recurring');
+          await seedStalled(p);
+          await expectDenied(
+            updateDoc(doc(firestore, p), { frequency: { type: 'monthly', interval: 1, dayOfMonth: -59 } }),
+            'a day of -59 over a day of -60'
+          );
+        });
+      });
+    });
+
     // The occurrence claim runs inside a transaction; a rejection there would
     // stall recurring posting rather than fail a single row.
     it('accepts the occurrence claim update', async () => {
@@ -1159,9 +1286,9 @@ describe('firestore.rules (emulator smoke test)', () => {
       });
 
       // Pin: the clause sits behind touched(), so a rule that already holds a
-      // malformed salt stays editable for every other field. `frequency` is
+      // malformed salt stays editable for every other field. The rule is
       // written whole with the client and the salt is broken afterwards,
-      // because `setDocumentAsOwner` cannot express the `frequency` map.
+      // because the create clause would refuse it.
       it('accepts a rename on a rule already holding a malformed salt', async () => {
         const p = path('recurring');
         await setDoc(doc(firestore, p), validRecurring());

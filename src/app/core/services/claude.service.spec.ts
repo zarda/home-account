@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import type Anthropic from '@anthropic-ai/sdk';
 import { ClaudeService } from './claude.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
@@ -6,6 +7,7 @@ import { TranslationService } from './translation.service';
 import { Category, Transaction, MonthlyTotal, Budget, currencyDecimalPlaces } from '../../models';
 import { createCategory, createTransaction } from './testing';
 import { RawTransaction, PreviousPeriodData } from './gemini.service';
+import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 
 /**
  * Stand-in for the Anthropic Messages client. The service only calls
@@ -936,6 +938,87 @@ describe('ClaudeService', () => {
       expect(result.descriptionColumn).toBe('description');
       expect(result.amountColumn).toBe('amount');
     });
+  });
+
+  // #468. A model that reasons before it answers puts its thinking ahead of
+  // the text, as a thinking block (empty when its content is omitted) or a
+  // redacted one, and a budget spent mid-thought leaves only the thinking.
+  // The transport reads the text block wherever it sits, and only the token
+  // ceiling marks an answer cut short. Pinned through both translation
+  // methods because they are the only operations on this transport that read
+  // that flag.
+  describe('reads past a reasoning block', () => {
+    const ANSWER = JSON.stringify({ translation: 'Rice ball 150', sourceLanguage: 'Japanese' });
+
+    const text = (value: string): Anthropic.Messages.TextBlock =>
+      ({ type: 'text', text: value, citations: null });
+    const thinking = (value: string): Anthropic.Messages.ThinkingBlock =>
+      ({ type: 'thinking', thinking: value, signature: 'sig' });
+    const redactedThinking = (): Anthropic.Messages.RedactedThinkingBlock =>
+      ({ type: 'redacted_thinking', data: 'opaque' });
+
+    /** A Messages API result, as much of it as the transport reads. */
+    function message(
+      content: Anthropic.Messages.ContentBlock[],
+      stopReason: Anthropic.Messages.StopReason
+    ): Pick<Anthropic.Messages.Message, 'content' | 'stop_reason'> {
+      return { content, stop_reason: stopReason };
+    }
+
+    const entryPoints = [
+      { name: 'translateText', translate: () => service.translateText('おにぎり 150') },
+      {
+        name: 'translateReceiptImage',
+        translate: () => service.translateReceiptImage('data:image/jpeg;base64,AAAA'),
+      },
+    ];
+
+    for (const { name, translate } of entryPoints) {
+      describe(`through ${name}`, () => {
+        let fake: FakeMessagesClient;
+
+        beforeEach(() => {
+          fake = makeFakeClient();
+          setClient(fake);
+        });
+
+        it('reads the text after an empty thinking block', async () => {
+          fake.messages.create.and.resolveTo(message([thinking(''), text(ANSWER)], 'end_turn'));
+
+          const translated = await translate();
+
+          expect(translated).toEqual({ text: 'Rice ball 150', sourceLanguage: 'Japanese' });
+        });
+
+        it('reads the text after a redacted thinking block', async () => {
+          fake.messages.create.and.resolveTo(message([redactedThinking(), text(ANSWER)], 'end_turn'));
+
+          const translated = await translate();
+
+          expect(translated).toEqual({ text: 'Rice ball 150', sourceLanguage: 'Japanese' });
+        });
+
+        it('refuses a thinking block cut off at the token ceiling as incomplete', async () => {
+          // No text block arrived, so the text is empty: without the flag this
+          // would surface as an unparseable answer rather than a cut-off one.
+          fake.messages.create.and.resolveTo(
+            message([thinking('The receipt lists')], 'max_tokens')
+          );
+
+          await expectAsync(translate()).toBeRejectedWithError(AI_ANSWER_INCOMPLETE);
+        });
+
+        it('reads a whole answer that stopped for a refusal', async () => {
+          // The control: a stop reason other than the ceiling does not mark
+          // the answer cut short.
+          fake.messages.create.and.resolveTo(message([text(ANSWER)], 'refusal'));
+
+          const translated = await translate();
+
+          expect(translated).toEqual({ text: 'Rice ball 150', sourceLanguage: 'Japanese' });
+        });
+      });
+    }
   });
 
   describe('private helpers exercised through public methods', () => {

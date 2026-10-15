@@ -760,7 +760,7 @@
     "recurringUpdated": "Recurring transaction updated",
     "recurringUpdateFailed": "Failed to update recurring transaction",
     "recurringResumeFailed": "Failed to resume recurring transaction",
-    "recurringResumeInvalidFrequency": "Cannot resume: this rule's interval cannot advance. Edit the rule and set an interval of at least 1.",
+    "recurringResumeInvalidFrequency": "Cannot resume: this rule's schedule cannot advance. Edit the rule and check its interval and day.",
     "recurringResumeEnded": "Cannot resume: this rule's end date has passed. Edit the end date first.",
     "deleteRecurringTitle": "Delete Recurring Transaction",
     "deleteRecurringMessage": "Are you sure you want to delete \"{{name}}\"? This will not affect existing transactions.",
@@ -1275,7 +1275,7 @@
       "one": "Successfully imported {{count}} transaction",
       "other": "Successfully imported {{count}} transactions"
     },
-    "importFailed": "Import failed: {{error}}",
+    "importFailed": "The import could not start, so nothing was saved. Check your connection and try again.",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
     "importPartialSetAside": {
       "one": "{{count}} row failed to save twice and was set aside — reselect it to try again",

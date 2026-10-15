@@ -442,6 +442,56 @@ The emulator smoke could not have shown the defect, for the reason
 [below](#when-you-add-another-one): its client has no persistent cache, so
 the listener's first emission there is already complete.
 
+## The search's category catalog (#490)
+
+`NlSearchService` reads the category catalog to interpret a question, to take
+a category's children into a scope, and to roll a top category up to its
+parent before the answer is stored. It reads the published
+`CategoryService.categories` signal, which a page's subscription fills. When
+that list is still empty, before the first snapshot has arrived, the search
+reads the account's stored categories once through
+`CategoryService.exportAll()` and merges them over the built-in defaults, as
+the signal does ([smart-search.md](smart-search.md),
+[ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+The list is read once per call and threaded through, never re-read, and it is
+not written into the signal.
+
+`getCollectionFromServer`, the strict variant, because `exportAll()` is the
+backup's read and is already server-only, and for two reasons of its own:
+
+- **The cold window is exactly when the cache is empty.** The first snapshot
+  is slow when the persistent cache holds no result for the catalog's query:
+  an account with no custom categories, on a device that never synced it.
+  `getCollection` offline answers from that same cache, so it would hand back
+  no stored categories at all, and the merge would be the built-ins alone. A
+  custom child would then go un-rolled into a stored answer, which is the
+  defect the read exists to stop.
+- **A wrong roll-up is persisted.** `recordAnswer` and a Refresh both store
+  the groups as computed. A Refresh that fails leaves the stored answer as it
+  was, and says so; one that answers from an empty cache overwrites a good
+  answer with a wrong one, silently.
+
+On the search path the read sits behind the model's own connectivity check,
+so offline it never runs. On a Refresh it does not: offline, before the first
+snapshot, a Refresh whose answer needs the catalog (a top-categories answer, a
+category scope, or search text) rejects and reports
+`aiSearch.historyRefreshFailed`. Any other Refresh reads no catalog, and its
+rows still come from `getTransactionsInRangeOnce`, cache included.
+
+**The strict read guards only an empty signal.** The search decides the
+catalog is cold by the published list's length. Once the SDK decides it is
+offline, the listener publishes a first snapshot from the cache even when the
+cache never held the query, and that snapshot merges to the built-ins alone,
+which is not empty. The search then takes it as the catalog and makes no
+read, so an offline Refresh of a top-categories answer over a stored custom
+child stores the child un-rolled, the outcome the first reason above
+describes. The window in which a Refresh fails is only the one before the SDK
+reports offline. Treating a list with no stored row as cold would fail every
+offline Refresh of such an answer on an account with no custom categories, so
+this is recorded as a gap
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)'s
+Known gaps) rather than closed.
+
 ## The deliberate live readers
 
 These are not exceptions to the rule — they are the other question. The
@@ -459,8 +509,10 @@ purpose: a rendered name is rendered-and-corrected, exactly what the cache is
 good for. So the goal service has two enumerations — `listAll()`
 (`getCollection`) for the caller that paints, `exportAll()`
 (`getCollectionFromServer`) for the caller that writes a file the deletion
-gate trusts — sharing one options builder. `nl-search`'s own fallbacks stay
-server-only, because they already sit behind a connectivity gate.
+gate trusts — sharing one options builder. `nl-search`'s goal and budget
+fallbacks stay server-only, because they sit behind the search's connectivity
+gate. Its category fallback is server-only on a Refresh too, where no such
+gate stands, for the reasons [above](#the-searchs-category-catalog-490).
 
 Tightening a shared read is where this comes up: check every caller before
 moving a method to the strict variant, because one of them may be painting.
@@ -497,6 +549,7 @@ moving a method to the strict variant, because one of them may be painting.
 | `getEarliestTransactionDateFromServer` | the month and year pickers' floor (dashboard, reports, transactions) | `getCollectionFromServer` (one row, oldest first) | **rejects; the pickers keep the cap and get no floor** |
 | `getTransactionsInRangeFromServer` ×2 (the nudge's gate) | whether the Monday nudge is booked or retired | `getCollectionFromServer` | **rejects; the nudge is booked** |
 | `getUpcomingScheduleFromServer` | whether a bill link's *absent* sends the user to the recurring rules | `getCollectionFromServer` | **rejects; the rules page is the answer** |
+| `exportAll` (categories), from `NlSearchService` | a search's category list while the signal is empty: the model's list, a scope, a stored answer's roll-up | `getCollectionFromServer`, merged over the built-ins | **rejects; a search falls back to keywords, a Refresh that needs the catalog reports failure** |
 
 ## The gate
 

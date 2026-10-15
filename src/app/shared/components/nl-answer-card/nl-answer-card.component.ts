@@ -5,6 +5,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { categoryDisplayName } from '../../../core/utils/category-display.utils';
 import { AggregateAnswer, TransactionFilters } from '../../../models';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
@@ -73,7 +74,7 @@ export class NlAnswerCardComponent {
   }
 
   categoryName(categoryId: string): string {
-    const category = this.categoryService.categories().find(c => c.id === categoryId);
-    return category?.name ? this.translationService.t(category.name) : 'Other';
+    return categoryDisplayName(
+      this.categoryService.categories(), categoryId, key => this.translationService.t(key));
   }
 }

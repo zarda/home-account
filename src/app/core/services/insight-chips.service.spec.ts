@@ -195,6 +195,23 @@ describe('InsightChipsService', () => {
     expect(chips[0].labelParams['category']).toBe('Food');
   });
 
+  // A category the catalog cannot name (deleted, or from another device) is
+  // shown, so the chip reads the transaction list's Unknown key (the stub
+  // echoes keys), never a literal English word and never the catch-all's own
+  // name.
+  it('names a chip for a category the catalog lacks by the Unknown key', () => {
+    setup([
+      expense(30, 'deleted-custom', currentDate),
+      expense(30, 'deleted-custom', currentDate),
+      expense(30, 'deleted-custom', currentDate),
+    ]);
+
+    const chips = service.chips();
+    expect(chips.length).toBe(1);
+    expect(chips[0].id).toBe('top:deleted-custom');
+    expect(chips[0].labelParams['category']).toBe('common.unknownCategory');
+  });
+
   it('skips the top-category chip below 3 transactions', () => {
     setup([expense(30, 'food', currentDate), expense(20, 'food', currentDate)]);
     expect(service.chips().length).toBe(0);

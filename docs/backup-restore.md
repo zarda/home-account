@@ -198,9 +198,13 @@ the preview panel above it. Afterwards one of two things is reported:
   reason for each row, goes to the browser console. A restore never abandons
   the rest of the file over one bad row.
 
-A row is skipped when the write itself failed — a rule saved with a frequency
-the app now refuses, a transaction whose amount the rules reject, a network
-error mid-restore. Re-running the same file is safe and is usually the fix.
+A row is skipped when its write is refused or fails — a rule saved with a
+frequency the app now refuses (an interval below 1, or a day, weekday or month
+outside its range, listed as `INVALID_RECURRING_FREQUENCY` and refused before
+anything is written), a transaction whose amount the rules reject, a network
+error mid-restore. Re-running the same file is safe, and is the fix for a
+network error; a refused row is refused again until the file is corrected or
+the rule is made by hand ([recurring.md](recurring.md#restoring-a-backup-that-contains-a-bad-rule)).
 
 ## Versions
 

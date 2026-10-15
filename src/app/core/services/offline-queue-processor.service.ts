@@ -12,7 +12,6 @@ import { TranslationService } from './translation.service';
 import { AuthService } from './auth.service';
 import { ReceiptAttemptService } from './receipt-attempt.service';
 import { CategoryService } from './category.service';
-import { ProviderKeyService } from './provider-key.service';
 import { ProcessedTransaction } from './ai-types';
 import { imageMetadataOf, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
@@ -51,7 +50,6 @@ export class OfflineQueueProcessorService implements OnDestroy {
   private authService = inject(AuthService);
   private receiptAttempts = inject(ReceiptAttemptService);
   private categoryService = inject(CategoryService);
-  private providerKeys = inject(ProviderKeyService);
 
   private imageHandler = (event: Event): void => {
     const { id } = (event as CustomEvent<{ id: string }>).detail;
@@ -101,14 +99,21 @@ export class OfflineQueueProcessorService implements OnDestroy {
 
       const file = queuedImageFile(queued);
 
-      // The account's key read comes first (#487). After a cold offline start
-      // the read the reconnect starts is still in flight when this runs, and
+      // The account's providers come up first (#487, #490): the key read and
+      // the provider SDK's import after it. After a cold offline start the
+      // bring-up the reconnect starts is still in flight when this runs, and
       // the cloud path refuses with one sentinel for both no connection and
-      // no provider, so a failure filed before the read lands cannot say
-      // which. This joins that read, or starts one; keys already loaded
-      // answer at once. A read that fails resolves too, with its failure
-      // recorded, and the attempt then stays a network one.
-      await this.providerKeys.resolve();
+      // no provider, so a failure filed before it lands cannot say which.
+      // This joins that bring-up, or starts one; providers already up answer
+      // at once. A key read that fails ends the bring-up too, with its failure
+      // recorded, so the drain goes on and the attempt stays a network one.
+      // Offline or signed out by then, or another account signed in during
+      // the wait: back to 'pending' with no error, as above, so no retry is
+      // spent on it.
+      if (!(await this.aiStrategy.cloudProvidersReady()) || queued.userId !== this.authService.userId()) {
+        await this.queue.updateImageStatus(id, 'pending');
+        return;
+      }
 
       // Door 'queue': the attempt record is written, no event is sent — the
       // capture already sent queued_offline (docs/analytics.md).
