@@ -9,7 +9,8 @@ import {
   getFirestore,
   connectFirestoreEmulator,
   Firestore,
-  Timestamp
+  Timestamp,
+  serverTimestamp
 } from '@angular/fire/firestore';
 import { HouseholdPlansService } from './household-plans.service';
 import { HouseholdLedgerService } from './household-ledger.service';
@@ -557,6 +558,54 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
       () => peerStack.plans.goals().find(line => line.goal.id === goalId)?.contributed === 25,
       "the peer's view of the contribution"
     );
+    expectQuiet();
+  }, 60000);
+
+  // The emulator, not the service: a refused commit is closed without waking
+  // the commits queued on its locks, which then sleep out the emulator's 2 s
+  // lock wait unless some other lock request comes first (#492). In the runs
+  // that failed, the refused commit was a copy of a goal's resend that Chrome
+  // sent again after its connection closed, still running when the
+  // contribution asked for the goal. Here the peer's commit holds the goal on
+  // purpose: twenty contributions its rules admit, then a change of the
+  // goal's currency they refuse, so the goal stays locked while the twenty are
+  // judged, and the owner's contribution sent beside it queues on the goal.
+  // The two come from the two accounts' clients because one client's SDK
+  // sends its transactions' commits one after another, never together. The smoke
+  // runs keep the emulator's waiters awake (scripts/emulator-ticker.mjs); with
+  // the ticker off (EMULATOR_TICK_MS=0) the contribution waits 2 s and is
+  // refused, and this fails.
+  it('keeps no commit waiting out the emulator lock wait behind a refused commit on its goal', async () => {
+    const TRIALS = 5;
+    const HELD_BY = 20;
+    /** Well under the emulator's 2 s lock wait, and far over a commit's usual tens of milliseconds. */
+    const BOUND_MS = 1500;
+    const householdId = await formWithPeer();
+    const goalId = await ownerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
+    const goalPath = `households/${householdId}/goals/${goalId}`;
+    const gen = ownerStack.household.household()!.createdAt;
+    const holder = (): BatchOp[] => [
+      ...Array.from({ length: HELD_BY }, (): BatchOp => ({
+        op: 'set',
+        path: `${goalPath}/contributions/${ownerStack.plans.newId()}`,
+        data: { gen, memberUid: peer.uid, amount: 1, date: Timestamp.fromDate(now), createdAt: serverTimestamp() },
+        stamp: false
+      })),
+      { op: 'update', path: goalPath, data: { currency: 'EUR' }, stamp: 'server' }
+    ];
+
+    for (let trial = 1; trial <= TRIALS; trial++) {
+      const refused = peerStack.firestore.commitOnline(holder()).then(() => 'landed', (error: unknown) => (error as { code?: string }).code);
+      const started = performance.now();
+      const took = await ownerStack.plans.addContribution(goalId, 1, now).then(
+        () => performance.now() - started,
+        (error: unknown) => `refused after ${Math.round(performance.now() - started)} ms: ${String(error)}`
+      );
+      expect(await refused).withContext(`trial ${trial}: the holder`).toBe('permission-denied');
+      expect(took).withContext(`trial ${trial}: the contribution, in ms`).toBeLessThan(BOUND_MS);
+      if (typeof took !== 'number' || took >= BOUND_MS) break;
+    }
+    expect((await listDocumentIdsAsOwner(`${goalPath}/contributions`)).length).toBe(TRIALS);
     expectQuiet();
   }, 60000);
 });
