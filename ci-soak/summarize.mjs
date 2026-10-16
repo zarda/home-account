@@ -67,6 +67,31 @@ export function parseCsv(text) {
   return body.filter(cells => cells.join(',') !== header.join(',')).map(cells => Object.fromEntries(header.map((name, i) => [name, cells[i] ?? ''])));
 }
 
+/** A loaded round's zoned lane in one log: New York's run ends at its first TOTAL line, Tokyo's follows. */
+export function splitDates(text) {
+  const lines = text.split(/\r?\n/);
+  const end = lines.findIndex(line => /TOTAL: /.test(stripAnsi(line)));
+  if (end < 0) return { ny: text, tokyo: null };
+  const rest = lines.slice(end + 1).join('\n');
+  return { ny: lines.slice(0, end + 1).join('\n'), tokyo: /TOTAL: |Executed \d+ of/.test(stripAnsi(rest)) ? rest : null };
+}
+
+/** The zone logs a round left: utc.log and dates.log for a loaded round, ny.log and tokyo.log otherwise. */
+function zoneTexts(dir) {
+  const read = name => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), 'utf8') : null);
+  const texts = [];
+  const utc = read('utc.log');
+  if (utc !== null) texts.push(['utc', utc]);
+  const dates = read('dates.log');
+  if (dates !== null) {
+    const { ny, tokyo } = splitDates(dates);
+    texts.push(['ny', ny], ['tokyo', tokyo]);
+  } else {
+    texts.push(['ny', read('ny.log')], ['tokyo', read('tokyo.log')]);
+  }
+  return texts;
+}
+
 /** The rows for one round directory: New York always, Tokyo only once New York passed (the lane's &&). */
 export function roundRows(dir, shard, round, arm) {
   const triggered = existsSync(join(dir, 'sidecar.ndjson')) && readFileSync(join(dir, 'sidecar.ndjson'), 'utf8').includes('"trigger"');
@@ -74,17 +99,17 @@ export function roundRows(dir, shard, round, arm) {
   const copies = existsSync(join(dir, 'copies.json')) ? JSON.parse(readFileSync(join(dir, 'copies.json'), 'utf8')) : {};
   const copyCells = zone => (copies[zone] ? [copies[zone].extra, copies[zone].resent] : ['', '']);
   const rows = [];
-  for (const [zone] of ZONES) {
-    const path = join(dir, `${zone}.log`);
-    const zoneLog = existsSync(path) ? readZoneLog(readFileSync(path, 'utf8')) : null;
+  for (const [zone, text] of zoneTexts(dir)) {
+    const zoneLog = text === null ? null : readZoneLog(text);
     if (!zoneLog || !zoneLog.total) {
       rows.push([shard, round, arm, zone, 'harness', '', '', '', '', '', triggered ? 'yes' : 'no', '', '']);
+      if (zone === 'utc') continue;
       break;
     }
     const { total, failing, targetFailed, gap } = zoneLog;
     const result = total.failed > 0 ? 'fail' : 'pass';
     rows.push([shard, round, arm, zone, result, total.failed + total.succeeded, total.failed, targetFailed ? 'yes' : 'no', failing.join(' | '), gap, triggered ? 'yes' : 'no', ...copyCells(zone)]);
-    if (result !== 'pass') break;
+    if (zone !== 'utc' && result !== 'pass') break;
   }
   return rows.map(csvRow).join('\n');
 }
@@ -110,8 +135,8 @@ const pct = value => (Number.isFinite(value) ? `${(100 * value).toFixed(1)}%` : 
 export function summarize(rows) {
   const arms = [...new Set(rows.map(row => row.arm))].sort();
   const out = ['# Lock soak', ''];
-  out.push('| Arm | Rounds | Target failed (rounds) | Rate per round (95% Wilson) | New York exposures / target fails | Tokyo exposures / target fails | Other failures | Harness | Triggers | Zone runs with extra copies (of which target failed) | Re-sent commit POSTs |');
-  out.push('|---|---|---|---|---|---|---|---|---|---|---|');
+  out.push('| Arm | Rounds | Target failed (rounds) | Rate per round (95% Wilson) | UTC exposures / target fails | New York exposures / target fails | Tokyo exposures / target fails | Other failures | Harness | Triggers | Zone runs with extra copies (of which target failed) | Re-sent commit POSTs |');
+  out.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
   const sizing = [];
   for (const arm of arms) {
     const armRows = rows.filter(row => row.arm === arm);
@@ -121,7 +146,7 @@ export function summarize(rows) {
       if (!rounds.has(key)) rounds.set(key, []);
       rounds.get(key).push(row);
     }
-    const ran = [...rounds.values()].filter(group => group.some(row => row.zone === 'ny' && row.result !== 'harness'));
+    const ran = [...rounds.values()].filter(group => group.some(row => (row.zone === 'ny' || row.zone === 'utc') && row.result !== 'harness'));
     const targetRounds = ran.filter(group => group.some(row => row.target_failed === 'yes')).length;
     const zone = name => {
       const reached = armRows.filter(row => row.zone === name && row.result !== 'harness');
@@ -135,8 +160,8 @@ export function summarize(rows) {
     const withExtra = traced.filter(row => Number(row.extra_copies) > 0);
     const copyCell = traced.length ? `${withExtra.length} of ${traced.length} (${withExtra.filter(row => row.target_failed === 'yes').length})` : '–';
     const resent = traced.length ? String(traced.reduce((sum, row) => sum + Number(row.resent_posts || 0), 0)) : '–';
-    out.push(`| ${arm} | ${ran.length} | ${targetRounds} | ${pct(w.p)} (${pct(w.low)}–${pct(w.high)}) | ${zone('ny')} | ${zone('tokyo')} | ${other} | ${harness} | ${triggers} | ${copyCell} | ${resent} |`);
-    if (arm === 'plain' || arm === 'control') sizing.push({ arm, w });
+    out.push(`| ${arm} | ${ran.length} | ${targetRounds} | ${pct(w.p)} (${pct(w.low)}–${pct(w.high)}) | ${zone('utc')} | ${zone('ny')} | ${zone('tokyo')} | ${other} | ${harness} | ${triggers} | ${copyCell} | ${resent} |`);
+    if (arm === 'plain' || arm.startsWith('control')) sizing.push({ arm, w });
   }
   out.push('');
   for (const { arm, w } of sizing) {
@@ -196,7 +221,13 @@ function selfTest() {
     const copied = parseCsv([csvRow(COLUMNS), roundRows(mk('copied', { 'ny.log': pass, 'tokyo.log': pass, 'copies.json': '{"ny":{"extra":2,"resent":1},"tokyo":{"extra":0,"resent":0}}' }), 2, 1, 'traced')].join('\n'));
     assert(copied[0].extra_copies === '2' && copied[0].resent_posts === '1' && copied[1].extra_copies === '0', 'carries the copy counts');
     assert(summarize(copied).includes('| 1 of 2 (0) | 1 |'), 'summarizes zone runs with extra copies');
-    assert(summary.includes('| 3 / 1 | 2 / 0 |'), 'counts exposures by zone, Tokyo only when reached');
+    assert(summary.includes('| 0 / 0 | 3 / 1 | 2 / 0 |'), 'counts exposures by zone, Tokyo only when reached');
+    const loaded = parseCsv([csvRow(COLUMNS), roundRows(mk('loaded', { 'utc.log': pass, 'dates.log': `${pass}\n${targetFail}` }), 3, 1, 'control-loaded')].join('\n'));
+    assert(loaded.map(row => `${row.zone}:${row.result}:${row.target_failed}`).join(' ') === 'utc:pass:no ny:pass:no tokyo:fail:yes',
+      `a loaded round reads UTC, then New York and Tokyo from one log (got ${loaded.map(row => row.zone + ':' + row.result).join(' ')})`);
+    const loadedNyFail = parseCsv([csvRow(COLUMNS), roundRows(mk('loadednyfail', { 'utc.log': otherFail, 'dates.log': targetFail }), 3, 2, 'control-loaded')].join('\n'));
+    assert(loadedNyFail.map(row => row.zone).join(' ') === 'utc ny', 'a UTC failure still reads the zoned lane, and a New York failure ends it');
+    assert(summarize(loaded).includes('| control-loaded | 1 | 1 |'), 'a loaded round counts once');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

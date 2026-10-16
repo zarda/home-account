@@ -19,17 +19,36 @@ jobs:
   soak:
     name: ${{ matrix.arm }} ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       max-parallel: 16
+      # A loaded round runs CI's two smoke steps, the UTC lane then the zoned
+      # one, each as the arm's package.json has it: control is the tree before
+      # #492's fix, candidate the fix (ci-soak/candidate.patch).
       matrix:
-        arm: [plain, traced]
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        include:
+          - { arm: control-loaded, shard: 1, rounds: 12, timeout: 75 }
+          - { arm: control-loaded, shard: 2, rounds: 12, timeout: 75 }
+          - { arm: control-loaded, shard: 3, rounds: 12, timeout: 75 }
+          - { arm: control-loaded, shard: 4, rounds: 12, timeout: 75 }
+          - { arm: control-loaded, shard: 5, rounds: 12, timeout: 75 }
+          - { arm: control-loaded, shard: 6, rounds: 12, timeout: 75 }
+          - { arm: control-loaded, shard: 7, rounds: 12, timeout: 75 }
+          - { arm: control-loaded, shard: 8, rounds: 12, timeout: 75 }
+          - { arm: candidate-loaded, shard: 1, rounds: 12, timeout: 75 }
+          - { arm: candidate-loaded, shard: 2, rounds: 12, timeout: 75 }
+          - { arm: candidate-loaded, shard: 3, rounds: 12, timeout: 75 }
+          - { arm: candidate-loaded, shard: 4, rounds: 12, timeout: 75 }
+          - { arm: candidate-loaded, shard: 5, rounds: 12, timeout: 75 }
+          - { arm: candidate-loaded, shard: 6, rounds: 12, timeout: 75 }
+          - { arm: candidate-loaded, shard: 7, rounds: 12, timeout: 75 }
+          # Fifty rounds in a row on one runner: the issue's consecutive rounds.
+          - { arm: candidate-loaded, shard: 50, rounds: 50, timeout: 240 }
     env:
       ARM: ${{ matrix.arm }}
       SHARD: ${{ matrix.shard }}
-      ROUNDS: 12
+      ROUNDS: ${{ matrix.rounds }}
       BASE_SHA: 6d355ba0
       OUT: ${{ github.workspace }}/ci-soak-out
 
