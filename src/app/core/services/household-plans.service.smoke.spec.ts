@@ -278,18 +278,43 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     localStorage.removeItem(ledgerJournalKey(account.uid));
   }
 
+  /** What each delivery of one commit came to: 'landed', or the code it was refused with. */
+  interface Delivery {
+    paths: string[];
+    first: string;
+    second: string;
+  }
+
   /**
    * Every plan commit the account's FirestoreService makes lands, and is
    * then sent again, as the transaction runner sends an attempt again when
    * its answer was lost (ADR 0156): the resend of a create is judged as a
-   * change to what the first made.
+   * change to what the first made. Each delivery's outcome is kept, so a
+   * case can show the second was refused, not let through; a second that is
+   * never sent, because the first failed, reads 'not sent'.
    */
-  function deliverTwice(firestore: FirestoreService): void {
+  function deliverTwice(firestore: FirestoreService): Delivery[] {
+    const deliveries: Delivery[] = [];
     const commit = firestore.commitOnline.bind(firestore);
+    const outcome = (error: unknown): string => String((error as { code?: unknown } | null)?.code ?? error);
     spyOn(firestore, 'commitOnline').and.callFake(async (ops: readonly BatchOp[]) => {
-      await commit(ops);
-      return commit(ops);
+      const delivery: Delivery = { paths: ops.map(op => op.path), first: 'landed', second: 'not sent' };
+      deliveries.push(delivery);
+      try {
+        await commit(ops);
+      } catch (error) {
+        delivery.first = outcome(error);
+        throw error;
+      }
+      try {
+        await commit(ops);
+        delivery.second = 'landed';
+      } catch (error) {
+        delivery.second = outcome(error);
+        throw error;
+      }
     });
+    return deliveries;
   }
 
   /**
@@ -499,7 +524,7 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
 
   it('resolves a budget, a goal and a contribution each delivered twice', async () => {
     const householdId = await formWithPeer();
-    deliverTwice(ownerStack.firestore);
+    const deliveries = deliverTwice(ownerStack.firestore);
 
     const budgetId = await ownerStack.plans.createBudget({
       name: 'Food', categoryIds: ['food'], amount: 100, currency: 'USD', period: 'monthly', startDate: defaultBudgetStart('monthly', now)
@@ -507,6 +532,24 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     const goalId = await ownerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
     const contributionId = await ownerStack.plans.addContribution(goalId, 25, now);
 
+    // Each create resolved because the service recognised a delivery that
+    // landed, never because the rules let a resend through: every create met
+    // a refusal, and no second delivery landed. A resend is refused over its
+    // creation time (a plan) or as any change at all (a contribution). Chrome
+    // can make the first delivery's answer a refusal by itself, sending it
+    // again after its connection closed while the first copy lands (#492):
+    // the copy that landed is then recognised and the second never sent. A
+    // refusal is all this can see, though; a resend refused because a rule's
+    // lookup lost its lock reads the same.
+    expect(deliveries.map(({ paths, first, second }) => ({
+      paths,
+      refused: first === 'permission-denied' || second === 'permission-denied',
+      secondLanded: second === 'landed'
+    }))).toEqual([
+      { paths: [`households/${householdId}/budgets/${budgetId}`], refused: true, secondLanded: false },
+      { paths: [`households/${householdId}/goals/${goalId}`], refused: true, secondLanded: false },
+      { paths: [`households/${householdId}/goals/${goalId}/contributions/${contributionId}`], refused: true, secondLanded: false }
+    ]);
     expect(await listDocumentIdsAsOwner(`households/${householdId}/budgets`)).toEqual([budgetId]);
     expect(await listDocumentIdsAsOwner(`households/${householdId}/goals`)).toEqual([goalId]);
     expect(await listDocumentIdsAsOwner(`households/${householdId}/goals/${goalId}/contributions`)).toEqual([contributionId]);
