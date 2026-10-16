@@ -1,0 +1,134 @@
+name: Lock soak
+
+# Runs the zoned smoke lane in rounds, each round in a fresh emulator, to
+# measure how often the household plans case meets the emulator's lock wait
+# (#492) and to keep what each failing round leaves behind. This branch is
+# never merged; nothing here deploys or reads a secret.
+on:
+  push:
+    branches: [ci/household-plans-lock-soak]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lock-soak-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    name: ${{ matrix.arm }} ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        arm: [plain, traced]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    env:
+      ARM: ${{ matrix.arm }}
+      SHARD: ${{ matrix.shard }}
+      ROUNDS: 12
+      BASE_SHA: 6d355ba0
+      OUT: ${{ github.workspace }}/ci-soak-out
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The same stubs as ci.yml: type-checking needs .vscode/environment.ts.
+      - name: Create local environment stubs
+        run: |
+          mkdir -p .vscode
+          cat > .vscode/environment.ts << 'EOF'
+          export const environment = {
+            production: false,
+            firebase: {
+              apiKey: 'ci-stub',
+              authDomain: 'ci-stub',
+              projectId: 'ci-stub',
+              storageBucket: 'ci-stub',
+              messagingSenderId: 'ci-stub',
+              appId: 'ci-stub',
+              measurementId: 'ci-stub'
+            },
+            donationUrlPaypal: ''
+          };
+          EOF
+
+      - name: Set up Java (Firebase emulators)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache the emulator jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('package-lock.json') }}
+
+      - name: Prepare the arm
+        run: bash ci-soak/arm.sh
+
+      # A heap dump holds the emulator's environment, and the artifacts are
+      # public: no runner token may reach the processes the rounds start.
+      - name: Run the rounds
+        run: |
+          env -u ACTIONS_RUNTIME_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RESULTS_URL -u ACTIONS_CACHE_URL -u GITHUB_TOKEN bash ci-soak/rounds.sh
+
+      - name: Upload the round table
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: soak-csv-${{ matrix.arm }}-${{ matrix.shard }}
+          path: ci-soak-out/rounds.csv
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload the kept rounds
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: soak-bundle-${{ matrix.arm }}-${{ matrix.shard }}
+          path: ci-soak-out/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  summarize:
+    name: Summary
+    needs: soak
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Download the round tables
+        uses: actions/download-artifact@v8
+        with:
+          pattern: soak-csv-*
+          path: csv
+
+      - name: Summarize
+        run: node ci-soak/summarize.mjs --summary csv/*/rounds.csv >> "$GITHUB_STEP_SUMMARY"
