@@ -176,7 +176,7 @@ index 00000000..783b072c
 +  else process.exit(await run(argv));
 +}
 diff --git a/src/app/core/services/household-plans.service.smoke.spec.ts b/src/app/core/services/household-plans.service.smoke.spec.ts
-index 0d162ae1..f66209f0 100644
+index 0d162ae1..57e900b6 100644
 --- a/src/app/core/services/household-plans.service.smoke.spec.ts
 +++ b/src/app/core/services/household-plans.service.smoke.spec.ts
 @@ -9,7 +9,8 @@ import {
@@ -246,24 +246,32 @@ index 0d162ae1..f66209f0 100644
  
      const budgetId = await ownerStack.plans.createBudget({
        name: 'Food', categoryIds: ['food'], amount: 100, currency: 'USD', period: 'monthly', startDate: defaultBudgetStart('monthly', now)
-@@ -507,6 +533,16 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
+@@ -507,6 +533,24 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
      const goalId = await ownerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
      const contributionId = await ownerStack.plans.addContribution(goalId, 25, now);
  
-+    // Each create resolved because the service recognised its first
-+    // delivery, never because the rules let the second through: a resend is
-+    // refused over its creation time (a plan) or as any change at all (a
-+    // contribution). A refusal is all this can see, though; a resend refused
-+    // because a rule's lookup lost its lock reads the same.
-+    expect(deliveries).toEqual([
-+      { paths: [`households/${householdId}/budgets/${budgetId}`], first: 'landed', second: 'permission-denied' },
-+      { paths: [`households/${householdId}/goals/${goalId}`], first: 'landed', second: 'permission-denied' },
-+      { paths: [`households/${householdId}/goals/${goalId}/contributions/${contributionId}`], first: 'landed', second: 'permission-denied' }
++    // Each create resolved because the service recognised a delivery that
++    // landed, never because the rules let a resend through: every create met
++    // a refusal, and no second delivery landed. A resend is refused over its
++    // creation time (a plan) or as any change at all (a contribution). Chrome
++    // can make the first delivery's answer a refusal by itself, sending it
++    // again after its connection closed while the first copy lands (#492):
++    // the copy that landed is then recognised and the second never sent. A
++    // refusal is all this can see, though; a resend refused because a rule's
++    // lookup lost its lock reads the same.
++    expect(deliveries.map(({ paths, first, second }) => ({
++      paths,
++      refused: first === 'permission-denied' || second === 'permission-denied',
++      secondLanded: second === 'landed'
++    }))).toEqual([
++      { paths: [`households/${householdId}/budgets/${budgetId}`], refused: true, secondLanded: false },
++      { paths: [`households/${householdId}/goals/${goalId}`], refused: true, secondLanded: false },
++      { paths: [`households/${householdId}/goals/${goalId}/contributions/${contributionId}`], refused: true, secondLanded: false }
 +    ]);
      expect(await listDocumentIdsAsOwner(`households/${householdId}/budgets`)).toEqual([budgetId]);
      expect(await listDocumentIdsAsOwner(`households/${householdId}/goals`)).toEqual([goalId]);
      expect(await listDocumentIdsAsOwner(`households/${householdId}/goals/${goalId}/contributions`)).toEqual([contributionId]);
-@@ -516,4 +552,52 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
+@@ -516,4 +560,52 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
      );
      expectQuiet();
    }, 60000);
