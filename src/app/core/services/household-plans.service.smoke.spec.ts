@@ -8,6 +8,8 @@ import { getAuth, connectAuthEmulator, signInAnonymously } from '@angular/fire/a
 import {
   getFirestore,
   connectFirestoreEmulator,
+  disableNetwork,
+  enableNetwork,
   Firestore,
   Timestamp,
   serverTimestamp
@@ -224,11 +226,25 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     });
   }
 
-  /** The owner forms a household and the peer joins it, both through the service; both pages open on it. */
-  async function formWithPeer(): Promise<string> {
+  /** The owner forms a household and the peer joins it, both through the service. */
+  async function form(): Promise<string> {
     const householdId = await ownerStack.household.create('Home');
     await seedInvite(householdId);
     await peerStack.household.accept(householdId);
+    return householdId;
+  }
+
+  /**
+   * Both pages open on `householdId`, and only on it. Each account's client
+   * lives for the whole file, and its cache still lists the household an
+   * earlier case formed: forgetMemberships deletes that index entry on the
+   * server, behind the client, and the membership itself stays live. So a
+   * page that has just connected can first follow the cached household, with
+   * both its members and its plans, until the server lists the new one; a
+   * wait on status, members and plans alone passes there, and the case then
+   * writes into the earlier household.
+   */
+  async function openOn(householdId: string): Promise<void> {
     for (const view of [ownerStack, peerStack]) {
       view.household.select(householdId);
       view.household.connect();
@@ -237,9 +253,15 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     }
     await waitFor(
       () => [ownerStack, peerStack].every(view =>
-        view.household.status() === 'member' && view.household.members().length === 2 && !view.plans.loading()),
-      "both members to list both members and the household's plans"
+        view.household.household()?.id === householdId && view.household.members().length === 2 && !view.plans.loading()),
+      "both members to open the household just formed, listing both members and its plans"
     );
+  }
+
+  /** The owner forms a household and the peer joins it; both pages open on it. */
+  async function formWithPeer(): Promise<string> {
+    const householdId = await form();
+    await openOn(householdId);
     return householdId;
   }
 
@@ -498,6 +520,55 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
 
     expect(await getDocumentAsOwner(`households/${householdId}/goals/${goalId}`)).toBeNull();
     expect(await listDocumentIdsAsOwner(contributions)).toEqual([]);
+    expectQuiet();
+  }, 60000);
+
+  // Each account's client keeps, in its cache, the household an earlier case
+  // formed: forgetMemberships deletes the index entry on the server only, and
+  // that membership stays live. Offline, a page that connects can answer only
+  // from the cache, so it follows the earlier household, its members and plans
+  // included, until the server lists the new one. Taking both clients offline
+  // while the pages open holds that window open for as long as the case
+  // likes; what the case writes after the open must still land in the
+  // household just formed.
+  it('opens both pages on the household just formed, never on one an earlier formation left in the cache', async () => {
+    const earlier = await formWithPeer();
+    // Only `earlier` is cached: any entry an earlier case left has been
+    // answered as gone, so the offline pages below can follow nothing else.
+    await waitFor(
+      () => [ownerStack, peerStack].every(view => view.household.memberships().map(m => m.householdId).join() === earlier),
+      'both indexes to list only the household just formed'
+    );
+    for (const view of [ownerStack, peerStack]) {
+      view.plans.setHousehold(null);
+      view.ledger.setHousehold(null);
+      view.household.disconnect();
+    }
+    for (const account of [owner, peer]) await forgetMemberships(account);
+    const later = await form();
+
+    await Promise.all([owner, peer].map(account => disableNetwork(account.firestore)));
+    let online = false;
+    try {
+      const opened = openOn(later);
+      await eventually(
+        async () => [ownerStack, peerStack].every(view => view.household.household()?.id === earlier && !view.plans.loading()),
+        'both pages to follow the cached household, plans and all'
+      );
+      // Long enough for the open's wait to look at that state again.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await Promise.all([owner, peer].map(account => enableNetwork(account.firestore)));
+      online = true;
+      await opened;
+    } finally {
+      if (!online) await Promise.all([owner, peer].map(account => enableNetwork(account.firestore).catch(() => undefined)));
+    }
+
+    const goalId = await peerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
+    expect(await getDocumentAsOwner(`households/${later}/goals/${goalId}`)).withContext('the goal, in the household just formed')
+      .not.toBeNull();
+    expect(await getDocumentAsOwner(`households/${earlier}/goals/${goalId}`)).withContext('the goal, in the earlier household')
+      .toBeNull();
     expectQuiet();
   }, 60000);
 
