@@ -354,9 +354,9 @@ describe('HouseholdService (emulator smoke test)', () => {
     const householdId = await formWithPeer();
     ownerService.connect();
     peerService.connect();
-    await waitFor(() => peerService.status() === 'member' && peerService.members().length === 2,
+    await waitFor(() => peerService.household()?.id === householdId && peerService.members().length === 2,
       'the peer\'s live membership');
-    await waitFor(() => ownerService.status() === 'member', 'the owner\'s live membership');
+    await waitFor(() => ownerService.household()?.id === householdId, 'the owner\'s live membership');
 
     await ownerService.remove(peer.uid);
 
@@ -376,13 +376,13 @@ describe('HouseholdService (emulator smoke test)', () => {
     const householdId = await formWithPeer();
     ownerService.connect();
     peerService.connect();
-    await waitFor(() => peerService.status() === 'member', 'the peer\'s live membership');
+    await waitFor(() => peerService.household()?.id === householdId, 'the peer\'s live membership');
 
     await peerService.leave();
 
     await waitFor(() => peerService.status() === 'none', 'the peer to see no membership');
     expect(peerService.lostAccess()).toBeFalse();
-    await waitFor(() => ownerService.members().length === 1, 'the owner to list itself alone');
+    await waitFor(() => ownerService.household()?.id === householdId && ownerService.members().length === 1, 'the owner to list itself alone');
     expect(await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`)).toBeNull();
     expect(await indexOf(peer, householdId)).toBeNull();
     await waitFor(() => peerService.memberships().length === 0, 'the peer to list no membership');
@@ -394,9 +394,9 @@ describe('HouseholdService (emulator smoke test)', () => {
     const pending = await seedInvite(householdId, owner.uid, `ghost-${Date.now()}`);
     ownerService.connect();
     peerService.connect();
-    await waitFor(() => ownerService.status() === 'member' && ownerService.sentInvites().length === 1,
+    await waitFor(() => ownerService.household()?.id === householdId && ownerService.sentInvites().length === 1,
       'the owner\'s live membership and its pending invite');
-    await waitFor(() => peerService.status() === 'member', 'the peer\'s live membership');
+    await waitFor(() => peerService.household()?.id === householdId, 'the peer\'s live membership');
 
     await ownerService.dissolve();
 
@@ -421,7 +421,7 @@ describe('HouseholdService (emulator smoke test)', () => {
     const householdId = await formWithPeer();
     const pending = await seedInvite(householdId, owner.uid, `ghost-${Date.now()}`);
     ownerService.connect();
-    await waitFor(() => ownerService.status() === 'member' && ownerService.sentInvites().length === 1,
+    await waitFor(() => ownerService.household()?.id === householdId && ownerService.sentInvites().length === 1,
       'the owner\'s live membership and its pending invite');
     deliverTwice(TestBed.inject(FirestoreService));
 
@@ -442,7 +442,7 @@ describe('HouseholdService (emulator smoke test)', () => {
   it('finishes both of two dissolves sent at once', async () => {
     const householdId = await formWithPeer();
     ownerService.connect();
-    await waitFor(() => ownerService.status() === 'member', 'the owner\'s live membership');
+    await waitFor(() => ownerService.household()?.id === householdId, 'the owner\'s live membership');
 
     await Promise.all([ownerService.dissolve(), ownerService.dissolve()]);
 
@@ -724,7 +724,7 @@ describe('HouseholdService (emulator smoke test)', () => {
       await seedRow(peer, 'gone2');
       await peerSharing.share(['gone1', 'gone2'], householdId);
       ownerService.connect();
-      await waitFor(() => ownerService.status() === 'member' && ownerService.members().length === 2,
+      await waitFor(() => ownerService.household()?.id === householdId && ownerService.members().length === 2,
         'the owner to list both members');
       const reports: [number, number][] = [];
 

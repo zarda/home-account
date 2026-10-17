@@ -1,8 +1,17 @@
 # 156. A dissolve that finds its household already gone finishes instead of failing
 
-**Status:** Accepted, implemented · **Date:** 2026-09-26 · **Issues:** #71
+**Status:** Accepted, implemented; amended by
+[0181](0181-a-refused-commit-on-the-emulator-wakes-nobody-and-the-smoke-runs-keep-its-waiters-awake.md)
+· **Date:** 2026-09-26 · **Issues:** #71
 
 Reference documentation lives in [../household.md](../household.md).
+
+**Amended by [0181](0181-a-refused-commit-on-the-emulator-wakes-nobody-and-the-smoke-runs-keep-its-waiters-awake.md).** The dissolve, its
+transaction read and its known gaps stand. What changes is the claim below
+that a failed run's emulator log explains a rare smoke failure: the log
+keeps every refused operation and none that succeeded, so it shows that a
+commit waited, never what it waited for. 0181 names what did, and keeps
+the smoke runs' lock waiters awake.
 
 Extends [0152](0152-a-household-is-a-membership-and-a-member-reads-the-others-records-without-owning-them.md),
 whose dissolve ends in one commit that deletes the household with the

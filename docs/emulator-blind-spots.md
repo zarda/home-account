@@ -574,6 +574,85 @@ service-account credential is configured here, so nothing in this project can
 count such rows across every account — which is why the guarded form is load
 bearing rather than belt-and-braces.
 
+## A commit refused after the emulator's 2 s lock wait (#492)
+
+This is another red run that says nothing about the tree it ran: a commit the
+rules would admit, refused because a lock it waited for was never handed on.
+The smoke lanes now prevent it (below); this section is how to recognise it if
+it comes back, and why the fix is where it is.
+
+**How to recognise it.**
+- In the Karma log, a commit's `RPC 'Commit' … failed` warning arrives about
+  **2.03 s** after the commit before it. On a passing run the commits of a
+  case are a few tens of milliseconds apart.
+- The refusal takes one of two forms:
+  - `ABORTED: Transaction lock timeout.` The commit's own locks waited. The
+    SDK's transaction runner retries it.
+  - `permission-denied`, with `Service call error. Function: [get]` on a
+    document that exists. A rules lookup waited. This is not retried, and the
+    service reports it as `household.errors.refused`.
+- In the emulator's own log (below), the second before the refusal has **no
+  new connections at all**, while the suite around it opens 150 to 250 a
+  second. Nothing was running; something was asleep.
+- **The tell:** count the refusals the log records for each document the
+  case wrote. More refusals than the client sent means a copy the client
+  never made.
+
+**What happens.** The emulator (`cloud-firestore-emulator-v1.22.0.jar`, read
+with `javap -c -p`) locks every document a commit writes, and every document
+its rules `get()`, before it judges the rules.
+- **A refused commit is closed without waking anything.**
+  `FirestoreEmulatorHelper.commitHelper` closes the refused transaction, and
+  `EmulatorTransactionManager.close()` neither releases its locks nor wakes
+  the commits queued on them. The locks are reclaimed only by the next lock
+  request, from anyone, which looks through every waiting commit.
+- **Until then, a queued commit sleeps.** It waits out the lock wait,
+  `CloudFirestoreV1.LOCK_ACQUIRE_TIMEOUT`, two seconds, compiled in with no
+  flag to change it.
+- **Chrome makes the refused commit.** It sends a commit again when the
+  connection it went out on closes before the answer (`net_error -100`), and
+  the emulator still runs the first copy. In the failed runs:
+  - the second copy of a goal's resend started 28 ms after the client already
+    had the first copy's refusal;
+  - it locked the goal in the same millisecond the next commit's rules asked
+    to read it;
+  - it was refused, and the contribution slept until its lookup failed.
+- **Waiting on listings would not help.** Every listener of both members had
+  answered before the contribution was sent. Listener opens take no locks at
+  all: the emulator reads a snapshot for them.
+
+**What the smoke lanes do about it.** `npm run smoke` and `npm run smoke:dates`
+run their tests through `scripts/emulator-ticker.mjs`, which writes one
+document as the emulator's owner every 200 ms
+([testing.md](testing.md#the-emulators-lock-wait-and-the-ticker)). An owner
+write skips the rules but takes locks like any commit, so a stranded commit
+waits one interval at most.
+- No case changed what it proves, and no retry or longer timeout was added.
+- `household-plans.service.smoke.spec.ts` holds the goal with a refused commit
+  on purpose and fails, every time, with the ticker off (`EMULATOR_TICK_MS=0`).
+
+**What the emulator's log can and cannot say.** CI uploads it as the
+`firestore-debug-log` artifact when a run fails (14 days).
+- **What it keeps:** the JVM's output, every refused or failed operation with
+  its rules trace, and one line per new connection, at one-second resolution.
+- **What it never keeps:** a successful operation. So it can confirm this
+  signature, but it cannot say what held a lock.
+- The `debug_log_level=FINE` property firebase-tools passes does nothing in
+  1.22.0.
+
+**How the holder was named.** [ADR 0181](ADR/0181-a-refused-commit-on-the-emulator-wakes-nobody-and-the-smoke-runs-keep-its-waiters-awake.md)
+names it from a soak of the zoned lane on GitHub's runners. Each round
+recorded:
+- a thread dump and a heap dump of the emulator, taken while a commit waited;
+- JFR attached by `jcmd`;
+- the emulator's `/requests` feed;
+- Chrome's net log;
+- a trace of every Firestore call both members made.
+
+**What to do.** On a branch, re-run. On `main` a red `ci` job skips both
+deploys; [deploy.md](deploy.md#when-the-ci-job-fails-on-main) says how to
+get the merge out.
+
 ## A loaded smoke run can stop one Firestore client
 
 Every blind spot above is a green run that misses something. This one is the
@@ -617,7 +696,10 @@ and six beside eight, stopped twice, once under each, both times on `c050`;
 on an idle machine it has not been seen. A count of loaded runs cannot
 compare two trees: at one stop in six runs, six loaded runs of a tree all
 come through about one time in three, so six clean runs do not clear a
-tree, and a stopped one does not implicate it.
+tree, and a stopped one does not implicate it. The #492 soak met both on
+GitHub's runners too: in about one round in thirty when a round ran the UTC
+smoke lane and then the zoned one back to back, as CI does, with or without
+the ticker. It met neither in 240 rounds of the zoned lane alone.
 
 **Where.** Both times the client that stopped was the `firestore.rules`
 suite's own: `firestore-rules.smoke.spec.ts` builds its own app and Firestore
@@ -692,6 +774,7 @@ top-level `node_modules/@firebase/firestore` (4.16.0, from `firebase`
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 | A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
 | An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, in both schemes forced through `ThemeService`, at 756px with unserved i18n; above the frame's fold, plus five cards scrolled into view | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| A commit refused after the emulator's 2 s lock wait | the smoke lanes run through a ticker that keeps the emulator's lock waiters awake; a case that holds a goal with a refused commit fails with the ticker off | `scripts/emulator-ticker.mjs`, `household-plans.service.smoke.spec.ts`, above |
 | An SDK assertion from a CPU-starved run | nothing: re-run on an idle machine; the signature (`c050` hanging the suite, or `ca9` then `b815`) tells it apart | above |
 
 ## When you add another one
