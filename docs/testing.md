@@ -53,9 +53,14 @@ three signed in at the same time, and each tier has its own shape for that.
   `ledger-share.smoke.spec.ts` needs a third client, a stale second device
   of the owner's, so it keeps one full client (the owner's real service) and
   makes the peer and that device Lite clients.
-- **No household smoke case goes offline.** A full client that disables its
-  network with a write queued stalls every other client's emulator traffic
-  for tens of seconds, and the whole run with it. That a copy's commit is
+- **No household smoke case goes offline with a write queued.** A full client
+  that disables its network with a write queued stalls every other client's
+  emulator traffic for tens of seconds, and the whole run with it. One case
+  goes offline with nothing queued:
+  `household-plans.service.smoke.spec.ts`'s cached-household case takes both
+  clients offline while the pages open, and writes only once they are back.
+  It needs offline because only then can a page answer from nothing but its
+  cache (below). That a copy's commit is
   issued behind its row's is pinned from the mock's call-order log in
   `ledger-share.service.spec.ts` and `transaction.service.spec.ts` ('issue,
   then follow, then await'); that the commits then land in that order after
@@ -97,6 +102,56 @@ are compared by `npm run ledger:check`, a script with a `--self-test`
 rather than a spec, because the emulator enforces no composite and nothing
 at run time compares the pairs
 ([emulator-blind-spots.md](emulator-blind-spots.md)).
+
+## The emulator's lock wait, and the ticker
+
+The Firestore emulator closes a commit its rules refuse without waking the
+commits queued on that commit's locks. They wait for the next lock request
+from anyone, or for the emulator's 2 s lock wait to run out, after which a
+rules lookup fails and the commit is refused. Chrome makes such refused
+commits by itself, re-sending a commit whose connection closed while the
+emulator still runs the first copy, so a smoke case could fail on a commit
+the rules admit ([emulator-blind-spots.md](emulator-blind-spots.md#a-commit-refused-after-the-emulators-2-s-lock-wait-492), #492).
+
+- **What the ticker does.** `npm run smoke` and `npm run smoke:dates` run their
+  tests through `scripts/emulator-ticker.mjs`. While the tests run, it writes
+  `_emulatorTicker/tick` as the emulator's owner every `EMULATOR_TICK_MS`
+  (200 by default). That is the other lock request, so a stranded commit
+  waits one interval at most.
+- **Turning it off.** `EMULATOR_TICK_MS=0` runs the tests without the ticker.
+  `household-plans.service.smoke.spec.ts`'s refused-commit case then fails
+  every time, which is how the ticker is known to work.
+- **The self-test.** Both scripts run `node scripts/emulator-ticker.mjs
+  --self-test` first.
+- **What a case may rely on.** Only the waking. The ticker's document is the
+  only one in its collection and nothing reads it, so a case must not list
+  root collections or count every document in the project.
+- **Making commits overlap on purpose.** A case that wants two commits on the
+  emulator at once must send them from two clients. One client's SDK sends
+  its transactions' commits one after another (they share its async queue),
+  so two `commitOnline` calls from one stack never meet on the server.
+
+## A page opens first on the household its cache remembers
+
+Each account's client is made once per spec file, so its cache outlives a
+case. `forgetMemberships` deletes the previous case's index entries on the
+server, over REST and behind the client, and leaves those memberships live.
+- **What a connecting page sees first.** When a page connects in the next
+  case, `HouseholdService`'s index listener first answers from that cache. It
+  lists only the earlier household, and the service falls back to it
+  (`selectedHouseholdId`, earliest joined live) with that household's cached
+  members and plans, until the server lists the new one.
+- **Why a wait must name the household.** A wait on status, members and
+  `plans.loading()` alone passes inside that window. A case that then writes
+  through the plans writes into the earlier household: one soak round wrote
+  a goal and thirteen contributions there, and the case's REST read of the
+  household it formed found none (#492).
+- **The fix.** The household specs' `openOn` waits for
+  `household()?.id === householdId` on both stacks.
+- **Its pin.** A case holds the window open offline and checks where the next
+  goal lands.
+- **Not in production.** There an index entry is deleted only once its
+  membership has ended, so the rules refuse a stale household's writes.
 
 ## The stub-template rule
 

@@ -67,6 +67,35 @@ can see:
   [feedback.md](feedback.md) records; the `secrets:set` convenience redeploy
   is still to be declined.
 
+## When the ci job fails on main
+
+Both deploy jobs need the `ci` job (`needs: [ci, changes]`), so a merge whose
+`ci` job fails deploys nothing: the hosting, the rules and the functions stay
+as the last green merge left them, and nothing tells anyone. PR #491's merge
+(`697c13ab`) waited a day this way (#492).
+
+**First, read the failure.** A smoke refusal that lands about 2 s after the
+commit before it, or an SDK assertion from a starved machine, says nothing
+about the merge ([emulator-blind-spots.md](emulator-blind-spots.md)). Anything
+else is a real failure, and its fix is a new merge.
+
+**Then get the merge out, one of two ways.** Either is a production deploy,
+and the owner's call.
+
+- **Re-run failed jobs** on the failed run. This runs `ci` again for the same
+  commit and, once it is green, the deploy jobs it skipped. Each deploy job
+  re-checks `main` before it deploys: the stand-down step (`ci.yml`'s "Stand
+  down if a newer commit changes what this job deploys", in both jobs).
+  - **If `main` has not moved** since that commit, or has moved only by changes
+    the job does not deploy, the job deploys that commit.
+  - **If a newer commit changed what it deploys,** it stands down and leaves the
+    release to the newer commit's own run, which deploys only if its own `ci`
+    is green.
+- **A dispatch** (Actions → **CI** → *Run workflow* on `main`) with
+  **deploy_web** checked, and **deploy_functions** too when the merge touched
+  `functions/**` or `firebase.json`. This runs `ci` on `main`'s tip and deploys
+  the tip, so it also ships whatever merged after the failed commit.
+
 ## Secrets: two inventories
 
 **GitHub Actions secrets** (repo → Settings → Secrets → Actions) feed the

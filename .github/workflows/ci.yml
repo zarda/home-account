@@ -293,9 +293,11 @@ jobs:
       - name: Smoke date specs (non-UTC zones)
         run: npm run smoke:dates
 
-      # A smoke failure that happens once in many runs is explained by what the
-      # emulator refused: its log keeps every refused operation with its time
-      # and its rules trace. Whichever emulator run failed wrote it last.
+      # The emulator's log keeps every refused operation with its time and its
+      # rules trace, and a line per new connection, but no operation that
+      # succeeded: it shows what was refused and when, never what held a lock
+      # (docs/emulator-blind-spots.md). Whichever emulator run failed wrote it
+      # last.
       - name: Upload emulator log
         if: failure()
         uses: actions/upload-artifact@v7

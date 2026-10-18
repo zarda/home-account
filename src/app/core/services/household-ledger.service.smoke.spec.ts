@@ -210,7 +210,14 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
     });
   }
 
-  /** The owner forms a household and the peer joins it, both through the service; both pages open on it. */
+  /**
+   * The owner forms a household and the peer joins it, both through the
+   * service; both pages open on it, and only on it. Each account's client
+   * lives for the whole file, so a page that has just connected can first
+   * follow the household an earlier case formed, from its cache, with both
+   * members (testing.md, "A page opens first on the household its cache
+   * remembers"); the wait names the household for that reason.
+   */
   async function formWithPeer(): Promise<string> {
     const householdId = await ownerStack.household.create('Home');
     await seedInvite(householdId);
@@ -221,8 +228,9 @@ describe('HouseholdLedgerService (emulator smoke test)', () => {
       view.ledger.setPeriod(AUGUST);
     }
     await waitFor(
-      () => [ownerStack, peerStack].every(view => view.household.status() === 'member' && view.household.members().length === 2),
-      'both members to list both members'
+      () => [ownerStack, peerStack].every(view =>
+        view.household.household()?.id === householdId && view.household.members().length === 2),
+      'both members to open the household just formed and list both members'
     );
     return householdId;
   }

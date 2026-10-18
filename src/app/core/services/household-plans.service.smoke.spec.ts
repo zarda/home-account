@@ -8,8 +8,11 @@ import { getAuth, connectAuthEmulator, signInAnonymously } from '@angular/fire/a
 import {
   getFirestore,
   connectFirestoreEmulator,
+  disableNetwork,
+  enableNetwork,
   Firestore,
-  Timestamp
+  Timestamp,
+  serverTimestamp
 } from '@angular/fire/firestore';
 import { HouseholdPlansService } from './household-plans.service';
 import { HouseholdLedgerService } from './household-ledger.service';
@@ -223,11 +226,25 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     });
   }
 
-  /** The owner forms a household and the peer joins it, both through the service; both pages open on it. */
-  async function formWithPeer(): Promise<string> {
+  /** The owner forms a household and the peer joins it, both through the service. */
+  async function form(): Promise<string> {
     const householdId = await ownerStack.household.create('Home');
     await seedInvite(householdId);
     await peerStack.household.accept(householdId);
+    return householdId;
+  }
+
+  /**
+   * Both pages open on `householdId`, and only on it. Each account's client
+   * lives for the whole file, and its cache still lists the household an
+   * earlier case formed: forgetMemberships deletes that index entry on the
+   * server, behind the client, and the membership itself stays live. So a
+   * page that has just connected can first follow the cached household, with
+   * both its members and its plans, until the server lists the new one; a
+   * wait on status, members and plans alone passes there, and the case then
+   * writes into the earlier household.
+   */
+  async function openOn(householdId: string): Promise<void> {
     for (const view of [ownerStack, peerStack]) {
       view.household.select(householdId);
       view.household.connect();
@@ -236,9 +253,15 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     }
     await waitFor(
       () => [ownerStack, peerStack].every(view =>
-        view.household.status() === 'member' && view.household.members().length === 2 && !view.plans.loading()),
-      "both members to list both members and the household's plans"
+        view.household.household()?.id === householdId && view.household.members().length === 2 && !view.plans.loading()),
+      "both members to open the household just formed, listing both members and its plans"
     );
+  }
+
+  /** The owner forms a household and the peer joins it; both pages open on it. */
+  async function formWithPeer(): Promise<string> {
+    const householdId = await form();
+    await openOn(householdId);
     return householdId;
   }
 
@@ -278,18 +301,43 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     localStorage.removeItem(ledgerJournalKey(account.uid));
   }
 
+  /** What each delivery of one commit came to: 'landed', or the code it was refused with. */
+  interface Delivery {
+    paths: string[];
+    first: string;
+    second: string;
+  }
+
   /**
    * Every plan commit the account's FirestoreService makes lands, and is
    * then sent again, as the transaction runner sends an attempt again when
    * its answer was lost (ADR 0156): the resend of a create is judged as a
-   * change to what the first made.
+   * change to what the first made. Each delivery's outcome is kept, so a
+   * case can show the second was refused, not let through; a second that is
+   * never sent, because the first failed, reads 'not sent'.
    */
-  function deliverTwice(firestore: FirestoreService): void {
+  function deliverTwice(firestore: FirestoreService): Delivery[] {
+    const deliveries: Delivery[] = [];
     const commit = firestore.commitOnline.bind(firestore);
+    const outcome = (error: unknown): string => String((error as { code?: unknown } | null)?.code ?? error);
     spyOn(firestore, 'commitOnline').and.callFake(async (ops: readonly BatchOp[]) => {
-      await commit(ops);
-      return commit(ops);
+      const delivery: Delivery = { paths: ops.map(op => op.path), first: 'landed', second: 'not sent' };
+      deliveries.push(delivery);
+      try {
+        await commit(ops);
+      } catch (error) {
+        delivery.first = outcome(error);
+        throw error;
+      }
+      try {
+        await commit(ops);
+        delivery.second = 'landed';
+      } catch (error) {
+        delivery.second = outcome(error);
+        throw error;
+      }
     });
+    return deliveries;
   }
 
   /**
@@ -475,6 +523,55 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     expectQuiet();
   }, 60000);
 
+  // Each account's client keeps, in its cache, the household an earlier case
+  // formed: forgetMemberships deletes the index entry on the server only, and
+  // that membership stays live. Offline, a page that connects can answer only
+  // from the cache, so it follows the earlier household, its members and plans
+  // included, until the server lists the new one. Taking both clients offline
+  // while the pages open holds that window open for as long as the case
+  // likes; what the case writes after the open must still land in the
+  // household just formed.
+  it('opens both pages on the household just formed, never on one an earlier formation left in the cache', async () => {
+    const earlier = await formWithPeer();
+    // Only `earlier` is cached: any entry an earlier case left has been
+    // answered as gone, so the offline pages below can follow nothing else.
+    await waitFor(
+      () => [ownerStack, peerStack].every(view => view.household.memberships().map(m => m.householdId).join() === earlier),
+      'both indexes to list only the household just formed'
+    );
+    for (const view of [ownerStack, peerStack]) {
+      view.plans.setHousehold(null);
+      view.ledger.setHousehold(null);
+      view.household.disconnect();
+    }
+    for (const account of [owner, peer]) await forgetMemberships(account);
+    const later = await form();
+
+    await Promise.all([owner, peer].map(account => disableNetwork(account.firestore)));
+    let online = false;
+    try {
+      const opened = openOn(later);
+      await eventually(
+        async () => [ownerStack, peerStack].every(view => view.household.household()?.id === earlier && !view.plans.loading()),
+        'both pages to follow the cached household, plans and all'
+      );
+      // Long enough for the open's wait to look at that state again.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await Promise.all([owner, peer].map(account => enableNetwork(account.firestore)));
+      online = true;
+      await opened;
+    } finally {
+      if (!online) await Promise.all([owner, peer].map(account => enableNetwork(account.firestore).catch(() => undefined)));
+    }
+
+    const goalId = await peerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
+    expect(await getDocumentAsOwner(`households/${later}/goals/${goalId}`)).withContext('the goal, in the household just formed')
+      .not.toBeNull();
+    expect(await getDocumentAsOwner(`households/${earlier}/goals/${goalId}`)).withContext('the goal, in the earlier household')
+      .toBeNull();
+    expectQuiet();
+  }, 60000);
+
   it("says a link to a copy that is gone is refused for the copy's sake, the runner not retrying it", async () => {
     const householdId = await formWithPeer();
     const goalId = await ownerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
@@ -499,7 +596,7 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
 
   it('resolves a budget, a goal and a contribution each delivered twice', async () => {
     const householdId = await formWithPeer();
-    deliverTwice(ownerStack.firestore);
+    const deliveries = deliverTwice(ownerStack.firestore);
 
     const budgetId = await ownerStack.plans.createBudget({
       name: 'Food', categoryIds: ['food'], amount: 100, currency: 'USD', period: 'monthly', startDate: defaultBudgetStart('monthly', now)
@@ -507,6 +604,24 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
     const goalId = await ownerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
     const contributionId = await ownerStack.plans.addContribution(goalId, 25, now);
 
+    // Each create resolved because the service recognised a delivery that
+    // landed, never because the rules let a resend through: every create met
+    // a refusal, and no second delivery landed. A resend is refused over its
+    // creation time (a plan) or as any change at all (a contribution). Chrome
+    // can make the first delivery's answer a refusal by itself, sending it
+    // again after its connection closed while the first copy lands (#492):
+    // the copy that landed is then recognised and the second never sent. A
+    // refusal is all this can see, though; a resend refused because a rule's
+    // lookup lost its lock reads the same.
+    expect(deliveries.map(({ paths, first, second }) => ({
+      paths,
+      refused: first === 'permission-denied' || second === 'permission-denied',
+      secondLanded: second === 'landed'
+    }))).toEqual([
+      { paths: [`households/${householdId}/budgets/${budgetId}`], refused: true, secondLanded: false },
+      { paths: [`households/${householdId}/goals/${goalId}`], refused: true, secondLanded: false },
+      { paths: [`households/${householdId}/goals/${goalId}/contributions/${contributionId}`], refused: true, secondLanded: false }
+    ]);
     expect(await listDocumentIdsAsOwner(`households/${householdId}/budgets`)).toEqual([budgetId]);
     expect(await listDocumentIdsAsOwner(`households/${householdId}/goals`)).toEqual([goalId]);
     expect(await listDocumentIdsAsOwner(`households/${householdId}/goals/${goalId}/contributions`)).toEqual([contributionId]);
@@ -514,6 +629,54 @@ describe('HouseholdPlansService (emulator smoke test)', () => {
       () => peerStack.plans.goals().find(line => line.goal.id === goalId)?.contributed === 25,
       "the peer's view of the contribution"
     );
+    expectQuiet();
+  }, 60000);
+
+  // The emulator, not the service: a refused commit is closed without waking
+  // the commits queued on its locks, which then sleep out the emulator's 2 s
+  // lock wait unless some other lock request comes first (#492). In the runs
+  // that failed, the refused commit was a copy of a goal's resend that Chrome
+  // sent again after its connection closed, still running when the
+  // contribution asked for the goal. Here the peer's commit holds the goal on
+  // purpose: twenty contributions its rules admit, then a change of the
+  // goal's currency they refuse, so the goal stays locked while the twenty are
+  // judged, and the owner's contribution sent beside it queues on the goal.
+  // The two come from the two accounts' clients because one client's SDK
+  // sends its transactions' commits one after another, never together. The smoke
+  // runs keep the emulator's waiters awake (scripts/emulator-ticker.mjs); with
+  // the ticker off (EMULATOR_TICK_MS=0) the contribution waits 2 s and is
+  // refused, and this fails.
+  it('keeps no commit waiting out the emulator lock wait behind a refused commit on its goal', async () => {
+    const TRIALS = 5;
+    const HELD_BY = 20;
+    /** Well under the emulator's 2 s lock wait, and far over a commit's usual tens of milliseconds. */
+    const BOUND_MS = 1500;
+    const householdId = await formWithPeer();
+    const goalId = await ownerStack.plans.createGoal({ name: 'Trip', targetAmount: 500, currency: 'USD' });
+    const goalPath = `households/${householdId}/goals/${goalId}`;
+    const gen = ownerStack.household.household()!.createdAt;
+    const holder = (): BatchOp[] => [
+      ...Array.from({ length: HELD_BY }, (): BatchOp => ({
+        op: 'set',
+        path: `${goalPath}/contributions/${ownerStack.plans.newId()}`,
+        data: { gen, memberUid: peer.uid, amount: 1, date: Timestamp.fromDate(now), createdAt: serverTimestamp() },
+        stamp: false
+      })),
+      { op: 'update', path: goalPath, data: { currency: 'EUR' }, stamp: 'server' }
+    ];
+
+    for (let trial = 1; trial <= TRIALS; trial++) {
+      const refused = peerStack.firestore.commitOnline(holder()).then(() => 'landed', (error: unknown) => (error as { code?: string }).code);
+      const started = performance.now();
+      const took = await ownerStack.plans.addContribution(goalId, 1, now).then(
+        () => performance.now() - started,
+        (error: unknown) => `refused after ${Math.round(performance.now() - started)} ms: ${String(error)}`
+      );
+      expect(await refused).withContext(`trial ${trial}: the holder`).toBe('permission-denied');
+      expect(took).withContext(`trial ${trial}: the contribution, in ms`).toBeLessThan(BOUND_MS);
+      if (typeof took !== 'number' || took >= BOUND_MS) break;
+    }
+    expect((await listDocumentIdsAsOwner(`${goalPath}/contributions`)).length).toBe(TRIALS);
     expectQuiet();
   }, 60000);
 });
