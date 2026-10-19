@@ -12,6 +12,7 @@ import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { ReadableOnPipe } from '../../../shared/pipes/readable-on.pipe';
+import { categoryDisplayName } from '../../../core/utils/category-display.utils';
 
 interface CategoryTotal {
   categoryId: string;
@@ -82,10 +83,8 @@ export class SpendingChartComponent {
     const top = this.topCategories();
     const categories = this.categories();
 
-    const getCategoryName = (categoryId: string): string => {
-      const category = categories.find(c => c.id === categoryId);
-      return category?.name ? this.translationService.t(category.name) : 'Unknown';
-    };
+    const getCategoryName = (categoryId: string): string =>
+      categoryDisplayName(categories, categoryId, key => this.translationService.t(key));
 
     const getCategoryColor = (categoryId: string): string => {
       const category = categories.find(c => c.id === categoryId);
@@ -139,8 +138,7 @@ export class SpendingChartComponent {
   }
 
   getCategoryName(categoryId: string): string {
-    const category = this.categories().find(c => c.id === categoryId);
-    return category?.name ? this.translationService.t(category.name) : 'Unknown';
+    return categoryDisplayName(this.categories(), categoryId, key => this.translationService.t(key));
   }
 
   getCategoryColor(categoryId: string): string {

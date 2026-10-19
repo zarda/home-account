@@ -360,9 +360,11 @@ describe('CategoryBreakdownComponent', () => {
   // donut's drill-down being left unwired, nor read what the stylesheet
   // paints. Re-configure to render the REAL breakdown template with the
   // chart swapped for a stub.
-  async function renderRealTemplate(): Promise<ComponentFixture<CategoryBreakdownComponent>> {
+  async function renderRealTemplate(
+    t: (key: string) => string = key => key
+  ): Promise<ComponentFixture<CategoryBreakdownComponent>> {
     TestBed.resetTestingModule();
-    const mockTranslationService = { t: (key: string) => key, currentLocale: signal('en') };
+    const mockTranslationService = { t, currentLocale: signal('en') };
     await TestBed.configureTestingModule({
       imports: [CategoryBreakdownComponent],
       providers: [
@@ -489,6 +491,26 @@ describe('CategoryBreakdownComponent', () => {
         .toBeLessThanOrEqual(item.getBoundingClientRect().right + 1);
 
       host.remove();
+    });
+  });
+
+  // #497: a category the catalog lacks reads in the reader's language. The
+  // stub marks what it translates, so a name translated twice, once in the
+  // breakdown and again by a pipe in the template, shows as ‹‹…›› where an
+  // echo of the key could not tell the two apart.
+  describe('a category the catalog lacks (real template)', () => {
+    it('names its panel in the reader\'s language, translated once like a named one', async () => {
+      const realFixture = await renderRealTemplate(key => `‹${key}›`);
+      realFixture.componentInstance.transactions = [
+        mockTransactions[0],
+        { ...mockTransactions[0], id: 'orphan', categoryId: 'gone', amount: 300, amountInBaseCurrency: 300 },
+      ];
+      realFixture.detectChanges();
+
+      // The count sits inside the name, as " (N)".
+      const names = Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('.category-name'))
+        .map(el => (el.textContent ?? '').replace(/\s*\(\d+\)\s*$/, '').trim());
+      expect(names).toEqual(['‹common.unknownCategory›', '‹Food & Drinks›']);
     });
   });
 

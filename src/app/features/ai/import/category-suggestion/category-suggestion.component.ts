@@ -9,6 +9,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 import { CategoryRowType, categoryFitsType } from '../../../../core/utils/categorization.utils';
+import { categoryDisplayName } from '../../../../core/utils/category-display.utils';
 
 @Component({
   selector: 'app-category-suggestion',
@@ -54,10 +55,9 @@ export class CategorySuggestionComponent {
       .sort((a, b) => this.translateName(a.name).localeCompare(this.translateName(b.name)));
   });
 
-  categoryName = computed(() => {
-    const category = this.categories().find(c => c.id === this.suggestedCategoryId());
-    return category?.name ? this.translateName(category.name) : 'Unknown';
-  });
+  categoryName = computed(() =>
+    categoryDisplayName(this.categories(), this.suggestedCategoryId(), name => this.translateName(name))
+  );
 
   translateName(name: string): string {
     return this.translationService.t(name);

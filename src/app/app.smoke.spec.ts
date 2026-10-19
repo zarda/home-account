@@ -39,6 +39,7 @@ import {
   connectFirestoreEmulator,
   collection,
   addDoc,
+  deleteDoc,
   doc,
   setDoc,
   Firestore,
@@ -574,6 +575,41 @@ describe('App routes (emulator smoke test)', () => {
         );
         await expectNoAxeViolationsInView('/dashboard', 'app-spending-chart .legend-list');
         await expectNoAxeViolationsInView('/dashboard', 'app-budget-progress');
+
+        // #497: an expense whose category the catalog lacks (one deleted, or
+        // written on another device) names its legend row with the catalog's
+        // word for one, in the reader's language. No catalog is served here,
+        // so the row reads the key, where the English literal it replaced
+        // read "Unknown". Above every seeded total, so it ranks in the
+        // legend's top six; deleted before any other page can read it.
+        const legendNames = (): string[] =>
+          Array.from(harness.routeNativeElement?.querySelectorAll('app-spending-chart .legend-name') ?? [])
+            .map(el => el.textContent?.trim() ?? '');
+        const goneRef = await addDoc(collection(firestore, `users/${uid}/transactions`), {
+          userId: uid,
+          type: 'expense',
+          categoryId: 'smoke-gone',
+          amount: 100,
+          currency: 'USD',
+          amountInBaseCurrency: 100,
+          exchangeRate: 1,
+          description: 'Gone category row',
+          date: Timestamp.now(),
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          isRecurring: false
+        });
+        try {
+          await waitForDom('the legend row of a category the catalog lacks', () =>
+            legendNames().includes('common.unknownCategory')
+          );
+          expect(legendNames()).withContext('legend names').not.toContain('Unknown');
+        } finally {
+          await deleteDoc(goneRef);
+        }
+        await waitForDom('the legend without the deleted row', () =>
+          !legendNames().includes('common.unknownCategory')
+        );
 
         await expectPage('/transactions', 'transactions.title', 'Blue Bottle Coffee');
         await expectPage('/budgets', 'budget.title', 'Groceries Budget');

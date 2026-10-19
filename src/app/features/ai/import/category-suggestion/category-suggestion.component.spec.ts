@@ -6,6 +6,7 @@ import { MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 import { CategorySuggestionComponent } from './category-suggestion.component';
 import { CATEGORY_FALLBACK_COLOR, Category } from '../../../../models';
 import { EffectiveTheme, ThemeService } from '../../../../core/services/theme.service';
+import { TranslationService } from '../../../../core/services/translation.service';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
@@ -202,12 +203,17 @@ describe('CategorySuggestionComponent', () => {
       expect(component.categoryName()).toBe('Food & Dining');
     });
 
-    it('should return Unknown when category not found', () => {
+    it('names a category the catalog lacks in the reader\'s language', () => {
+      // The catalog's own word, as the Japanese catalog has it: an English
+      // literal in its place reads as neither.
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake((key: string) =>
+        key === 'common.unknownCategory' ? '不明' : key
+      );
       fixture.componentRef.setInput('categories', mockCategories);
       fixture.componentRef.setInput('suggestedCategoryId', 'nonexistent');
       fixture.detectChanges();
 
-      expect(component.categoryName()).toBe('Unknown');
+      expect(component.categoryName()).toBe('不明');
     });
   });
 

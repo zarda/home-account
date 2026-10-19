@@ -688,6 +688,40 @@ describe('SpendingAnalysisComponent', () => {
     });
   });
 
+  // #497: a category the catalog lacks reads in the reader's language. The
+  // stub marks what it translates, so a name translated twice, once in the
+  // ranking and again by a pipe in the template, shows as ‹‹…›› where an
+  // echo of the key could not tell the two apart.
+  describe('a category the catalog lacks (real template)', () => {
+    it('names its row in the reader\'s language, translated once like a named one', async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SpendingAnalysisComponent],
+        providers: [
+          provideAppCharts(),
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: { t: (key: string) => `‹${key}›`, getIntlLocale: () => 'en-US' } },
+          provideNoMotion()
+        ]
+      }).compileComponents();
+
+      const renderFixture = TestBed.createComponent(SpendingAnalysisComponent);
+      const instance = renderFixture.componentInstance;
+      instance.transactions = [
+        makeTransaction('expense', 100, new Date(2024, 5, 10)),
+        { ...makeTransaction('expense', 300, new Date(2024, 5, 12)), categoryId: 'gone' }
+      ];
+      instance.categories = mockCategories;
+      instance.dateRange = { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) };
+      renderFixture.detectChanges();
+
+      const names = Array.from(
+        (renderFixture.nativeElement as HTMLElement).querySelectorAll('.category-details .category-name')
+      ).map(el => (el.textContent ?? '').trim());
+      expect(names).toEqual(['‹common.unknownCategory›', '‹Food & Drinks›']);
+    });
+  });
+
   describe('colours, as painted (real template)', () => {
     const THEMES = ['light', 'dark'] as const;
     let renderFixture: ComponentFixture<SpendingAnalysisComponent>;

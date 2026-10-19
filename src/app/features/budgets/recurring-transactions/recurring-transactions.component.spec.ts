@@ -129,6 +129,9 @@ describe('RecurringTransactionsComponent', () => {
         'common.close': 'Close',
         'common.delete': 'Delete',
         'common.moreActionsFor': `More actions for ${params?.['description']}`,
+        // As the Japanese catalog has it, so an English literal in its place
+        // reads as neither.
+        'common.unknownCategory': '不明',
         'Food & Drinks': 'Food & Drinks'
       };
       return translations[key] || key;
@@ -216,9 +219,9 @@ describe('RecurringTransactionsComponent', () => {
       expect(name).toBe('Food & Drinks');
     });
 
-    it('should return Unknown for missing category', () => {
+    it('names a category the catalog lacks in the reader\'s language', () => {
       const name = component.getCategoryName('nonexistent');
-      expect(name).toBe('Unknown');
+      expect(name).toBe('不明');
     });
 
     it('should get category icon', () => {

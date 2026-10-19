@@ -13,6 +13,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CATEGORY_FALLBACK_COLOR, RecurringTransaction, Category, CreateRecurringDTO } from '../../../models';
 import { toDate } from '../../../core/utils/transaction-date.utils';
+import { categoryDisplayName } from '../../../core/utils/category-display.utils';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
@@ -84,8 +85,7 @@ export class RecurringTransactionsComponent implements OnInit {
   }
 
   getCategoryName(categoryId: string): string {
-    const category = this.categories().find(c => c.id === categoryId);
-    return category?.name ? this.translationService.t(category.name) : 'Unknown';
+    return categoryDisplayName(this.categories(), categoryId, key => this.translationService.t(key));
   }
 
   getCategoryIcon(categoryId: string): string {
