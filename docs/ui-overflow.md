@@ -291,7 +291,8 @@ outlined select's notch, the gap in the top border its floated label sits in,
 is capped at the field's width less 60px, the room a resting label leaves for
 the arrow. Material 22.1.4 lifts that cap to less 24px only under
 `.mdc-text-field--label-floating`, a class its form field no longer sets, so
-in the transaction filters' 108px selects a floated *Category* read
+in the transaction filters' selects, 108px wide at a 1024px pane while the
+grid held six fixed tracks, a floated *Category* read
 *Categor*: cut mid-word, with no ellipsis and no way to read the rest. One
 global rule in `styles.scss` gives the notch Material's floated cap under
 `.mdc-notched-outline--notched`, the class the outline does set. A floated

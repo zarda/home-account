@@ -1524,21 +1524,236 @@ describe('TransactionFiltersComponent', () => {
     }));
   });
 
-  describe('grid tracks (#450)', () => {
-    it('lays the filter grid out in three columns once expanded', () => {
-      // The 640px rule is what renders here; the 1024px, 6-column rule above
-      // it is not observable in Karma's window.
-      expect(window.innerWidth)
-        .withContext('Karma window; the >=640px filter-grid rule is what renders')
-        .toBeGreaterThanOrEqual(640);
+  // A date field's input gets what is left of the field after its 12 px start
+  // padding and the 44 px calendar button. The grid's fixed tracks, six to a
+  // row at a 1024 px pane, left 40 px of it for a date 86 px wide, and a
+  // 375 px phone's two cut one by 2 px. The widths below are the grid's own,
+  // the panel's inner width, near what three panes leave it rather than each
+  // one measured: 312 px was read on a 375 px phone, 257 px takes that
+  // phone's chrome from a 320 px one, and 702 px is a little wide of the
+  // 696 px at most that a 1024 px pane leaves beside its sidebar. Karma's
+  // window renders no media rule from 1024 px up, so a case below reads the
+  // stylesheet to hold that none sets the tracks: the grid's own width lays
+  // them out at every pane.
+  describe('a filter date beside its calendar button', () => {
+    const GRID_WIDTHS_PX = [702, 312, 257] as const;
+    // Karma serves none of the app's fonts, so the face is pinned as in the
+    // narrow-select cases above: the Linux runner's DejaVu Sans has Verdana's
+    // digit widths, and Material's fields read their face from the tokens.
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
 
+    const host = () => fixture.nativeElement as HTMLElement;
+
+    /** Opens the panel on 10/10/2026 to 10/10/2026, then lets ngModel hand each date input its value. */
+    function render(): void {
+      host().style.display = 'block';
+      host().style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host().style.setProperty(token, FACE);
+      }
+      const filters: TransactionFilters = { startDate: new Date(2026, 9, 10), endDate: new Date(2026, 9, 10) };
+      component.presetFilters = filters;
+      component.ngOnChanges({ presetFilters: new SimpleChange(undefined, filters, false) });
+      component.expanded.set(true);
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    /** Constrains the component's host so the grid inside the panel's padding is `width` px wide. */
+    function layOut(width: number): HTMLElement {
+      const panel = getComputedStyle(host().querySelector('.filter-panel')!);
+      host().style.width = `${width + parseFloat(panel.paddingInlineStart) + parseFloat(panel.paddingInlineEnd)}px`;
+      const grid = host().querySelector<HTMLElement>('.filter-grid')!;
+      expect(grid.getBoundingClientRect().width).withContext('the grid width, px').toBeCloseTo(width, 0);
+      return grid;
+    }
+
+    function dateInputs(): HTMLInputElement[] {
+      const inputs = Array.from(host().querySelectorAll<HTMLInputElement>('.filter-grid input.mat-datepicker-input'));
+      expect(inputs.length).withContext('the From and To inputs').toBe(2);
+      return inputs;
+    }
+
+    function wrapperOf(element: Element): HTMLElement {
+      return element.closest('mat-form-field')!.querySelector<HTMLElement>('.mat-mdc-text-field-wrapper')!;
+    }
+
+    function columnsOf(grid: HTMLElement): number {
+      return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+    }
+
+    /** What a date field needs, read off the page: its start padding, its calendar button and ten digits of the input's own font. */
+    function dateFieldNeedPx(input: HTMLInputElement): number {
+      const start = parseFloat(getComputedStyle(wrapperOf(input)).paddingInlineStart);
+      const button = input.closest('mat-form-field')!.querySelector('.mat-mdc-form-field-icon-suffix')!.getBoundingClientRect().width;
+      expect(start + button).withContext('start padding and calendar button, px').toBeCloseTo(56, 0);
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position: absolute; visibility: hidden; width: 10ch';
+      input.parentElement!.appendChild(probe);
+      const tenDigits = probe.getBoundingClientRect().width;
+      probe.remove();
+      expect(tenDigits).withContext("ten digits of the input's font, px").toBeGreaterThan(0);
+      return start + button + tenDigits;
+    }
+
+    // The tracks follow the grid's width and nothing else. A rule keyed to the
+    // viewport from 1024 px up is what set six of them at a 1024 px pane, and
+    // Karma's 756 px window renders no such rule, so the stylesheet is read
+    // instead: no media query sets the tracks, and exactly one rule does, the
+    // floored auto-fit list the cases around this one lay out.
+    it('sets the tracks in one rule that no media query overrides', () => {
+      const unconditional: string[] = [];
+      const underMedia: string[] = [];
+      const visit = (rules: CSSRuleList, media: string | null): void => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSStyleRule && /\.filter-grid(?![\w-])/.test(rule.selectorText) && rule.style.gridTemplateColumns) {
+            if (media === null) {
+              unconditional.push(rule.style.gridTemplateColumns);
+            } else {
+              underMedia.push(`@media ${media} { ${rule.style.gridTemplateColumns} }`);
+            }
+          }
+          if (rule instanceof CSSGroupingRule) {
+            visit(rule.cssRules, rule instanceof CSSMediaRule ? rule.conditionText : media);
+          }
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue; // a cross-origin sheet; nothing this app injects is one
+        }
+        visit(rules, null);
+      }
+
+      expect(underMedia)
+        .withContext('.filter-grid tracks set under a media query, which reads the viewport, not the grid')
+        .toEqual([]);
+      expect(unconditional)
+        .withContext('.filter-grid tracks set outside any media query')
+        .toEqual([jasmine.stringMatching(/^repeat\(auto-fit, minmax\(min\(100%, .+\), 1fr\)\)$/)]);
+    });
+
+    it('shows the whole of a ten-character date beside its calendar button, at a 1024 px pane and on both phones', fakeAsync(() => {
+      render();
+
+      for (const width of GRID_WIDTHS_PX) {
+        layOut(width);
+        dateInputs().forEach((input, index) => {
+          const which = `${index === 0 ? 'From' : 'To'} in a ${width} px grid`;
+          expect(input.value).withContext(`${which}: the date shown`).toBe('10/10/2026');
+          expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
+          expect(input.scrollWidth)
+            .withContext(`${which}: width of the date, px, against the input's`)
+            .toBeLessThanOrEqual(input.clientWidth);
+        });
+      }
+    }));
+
+    it("gives a date field's end padding to its date, as Material does beside an icon suffix", fakeAsync(() => {
+      render();
+      layOut(GRID_WIDTHS_PX[0]);
+
+      for (const input of dateInputs()) {
+        const wrapper = getComputedStyle(wrapperOf(input));
+        expect(wrapper.paddingInlineStart).withContext('a date field: start padding').toBe('12px');
+        expect(wrapper.paddingInlineEnd).withContext('a date field: end padding, beside the calendar button').toBe('0px');
+      }
+    }));
+
+    // Pin: the compact padding stays on every field without a button.
+    it('keeps the end padding of a compact field with no calendar button (pin)', fakeAsync(() => {
+      render();
+      layOut(GRID_WIDTHS_PX[0]);
+
+      const minAmount = Array.from(host().querySelectorAll('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === 'Min Amount');
+      expect(minAmount).withContext('the Min Amount field').toBeTruthy();
+      expect(minAmount!.querySelector('.mat-mdc-form-field-icon-suffix')).withContext('Min Amount has no suffix').toBeNull();
+      const wrapper = getComputedStyle(wrapperOf(minAmount!));
+      expect(wrapper.paddingInlineStart).withContext('Min Amount: start padding').toBe('12px');
+      expect(wrapper.paddingInlineEnd).withContext('Min Amount: end padding').toBe('12px');
+    }));
+
+    // Pin: a 1024 px pane's grid still sets fields side by side, and none of
+    // them is narrower than the start padding, the button and ten digits of
+    // the input's own font. Its tracks stretch well past the floor, so this
+    // bounds the floor only from far below; the next case lays one out at it.
+    it('lays a 702 px grid out in more than one column, no field narrower than a date needs (pin)', fakeAsync(() => {
+      render();
+      const grid = layOut(GRID_WIDTHS_PX[0]);
+
+      expect(columnsOf(grid)).withContext('columns in a 702 px grid').toBeGreaterThan(1);
+
+      const need = dateFieldNeedPx(dateInputs()[0]);
+      for (const field of Array.from(grid.querySelectorAll('mat-form-field'))) {
+        const label = field.querySelector('mat-label')?.textContent?.trim();
+        expect(field.getBoundingClientRect().width)
+          .withContext(`${label} field width, px, against what a date needs`)
+          .toBeGreaterThanOrEqual(need - 0.5);
+      }
+    }));
+
+    // Pin: the narrowest grid that still sets two fields side by side lays
+    // each track out at its floor, so it is where 56 px and 10ch are put to
+    // the test. The step is searched for rather than worked out from the
+    // floor, since tracks stretch to fill whatever width they are given and
+    // a floor too small would pass at any width computed from the right one.
+    // Every digit of the pinned face is as wide as any other, so 10/10/2026
+    // is as wide as any ten-character date.
+    it('shows the whole of a date in the narrowest grid that holds two columns (pin)', fakeAsync(() => {
+      const SEARCH_FROM_PX = 400;
+      const SEARCH_DOWN_TO_PX = 200;
+      render();
+
+      expect(columnsOf(layOut(SEARCH_FROM_PX)))
+        .withContext(`columns in a ${SEARCH_FROM_PX} px grid, where the search starts`)
+        .toBe(2);
+      let width = SEARCH_FROM_PX;
+      while (width > SEARCH_DOWN_TO_PX && columnsOf(layOut(width - 1)) === 2) {
+        width--;
+      }
+      expect(columnsOf(layOut(width - 1)))
+        .withContext(`columns in a ${width - 1} px grid, the widest that no longer holds two`)
+        .toBe(1);
+      const grid = layOut(width);
+      expect(columnsOf(grid)).withContext(`columns in a ${width} px grid, 1 px wider`).toBe(2);
+
+      const inputs = dateInputs();
+      const need = dateFieldNeedPx(inputs[0]);
+      inputs.forEach((input, index) => {
+        const which = `${index === 0 ? 'From' : 'To'} in a ${width} px grid`;
+        expect(input.value).withContext(`${which}: the date shown`).toBe('10/10/2026');
+        expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
+        expect(input.scrollWidth)
+          .withContext(`${which}: width of the date, px, against the input's`)
+          .toBeLessThanOrEqual(input.clientWidth);
+        expect(input.closest('mat-form-field')!.getBoundingClientRect().width)
+          .withContext(`${which}: field width, px, against what a date needs`)
+          .toBeGreaterThanOrEqual(need - 0.5);
+      });
+    }));
+  });
+
+  describe('grid tracks (#450)', () => {
+    it('lays the filter grid out in more than one column once expanded', () => {
+      // How many follows the grid's width and the input's font, which the
+      // date cases above pin; what this case holds is that the declaration
+      // parses. A dropped one leaves the grid a single column.
       component.expanded.set(true);
       fixture.detectChanges();
 
       const grid = fixture.nativeElement.querySelector('.filter-grid') as HTMLElement;
+      expect(grid.getBoundingClientRect().width)
+        .withContext("the grid in Karma's window, px: room for two date fields")
+        .toBeGreaterThan(400);
       expect(getComputedStyle(grid).gridTemplateColumns.split(' ').length)
-        .withContext('.filter-grid computed column count at >=640px')
-        .toBe(3);
+        .withContext('.filter-grid computed column count')
+        .toBeGreaterThan(1);
     });
   });
 
