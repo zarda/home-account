@@ -10,6 +10,7 @@ import { AuthService } from './auth.service';
 import { VisionOcrService } from './vision-ocr.service';
 import { AppleIntelligenceService } from './apple-intelligence.service';
 import { NativeReceiptService } from './native-receipt.service';
+import { ProviderKeyService } from './provider-key.service';
 import { ProcessingResult } from './ai-types';
 import { ParsedReceipt, MultiImageExtractedTransaction } from './gemini.service';
 import {
@@ -31,6 +32,7 @@ describe('AIStrategyService', () => {
   let visionMock: jasmine.SpyObj<VisionOcrService>;
   let appleMock: jasmine.SpyObj<AppleIntelligenceService>;
   let nativeMock: jasmine.SpyObj<NativeReceiptService>;
+  let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
 
   const imageFile = () => new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
 
@@ -116,6 +118,15 @@ describe('AIStrategyService', () => {
     nativeMock.processImage.and.resolveTo(nativeResult);
     nativeMock.processImages.and.resolveTo(nativeResult);
 
+    // The key write a save from settings makes. The bring-up's own key read
+    // goes through the façade, which is a double here.
+    providerKeysMock = jasmine.createSpyObj<ProviderKeyService>(
+      'ProviderKeyService',
+      ['setKey'],
+      { loadFailed: signal(false) }
+    );
+    providerKeysMock.setKey.and.resolveTo();
+
     TestBed.configureTestingModule({
       providers: [
         AIStrategyService,
@@ -125,6 +136,7 @@ describe('AIStrategyService', () => {
         { provide: VisionOcrService, useValue: visionMock },
         { provide: AppleIntelligenceService, useValue: appleMock },
         { provide: NativeReceiptService, useValue: nativeMock },
+        { provide: ProviderKeyService, useValue: providerKeysMock },
       ],
     });
   });
@@ -415,6 +427,371 @@ describe('AIStrategyService', () => {
 
       await expectAsync(service.cloudProvidersReady()).toBeResolvedTo(true);
       expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+    });
+
+    describe('a key saved in settings', () => {
+      // Settings → AI saves a key when its field blurs, and pressing Sync Now
+      // is what blurs it. The save is a Firestore write and then a bring-up;
+      // a drain that started during the write used to find the previous
+      // bring-up finished, send the photo to a provider the key had not
+      // reached, and spend one of the receipt's retries on it.
+      //
+      // Effects coalesce, so every signal write below is flushed on its own:
+      // two changes flushed together reach the effect as one.
+
+      /** A held key write: setKey answers when the case says. */
+      function heldWrite() {
+        let land!: () => void;
+        const promise = new Promise<void>(resolve => (land = resolve));
+        return { promise, land };
+      }
+
+      /** Settles without ever rejecting, so a refused save is read, not thrown. */
+      function watch(promise: Promise<unknown>) {
+        const state: { settled: boolean; error?: unknown } = { settled: false };
+        void promise.then(
+          () => {
+            state.settled = true;
+          },
+          (error: unknown) => {
+            state.settled = true;
+            state.error = error;
+          },
+        );
+        return state;
+      }
+
+      /** The account signed in at each bring-up, in call order. */
+      function bringUpAccounts(): (string | null)[] {
+        const accounts: (string | null)[] = [];
+        cloudMock.initializeProviders.and.callFake(async () => {
+          accounts.push(authUserId());
+        });
+        return accounts;
+      }
+
+      /** Signed in as A, with the effect's bring-up for A already up. */
+      async function signedInAndUp(): Promise<AIStrategyService> {
+        authUserId.set('user-a');
+        const service = createService('web');
+        TestBed.tick();
+        await settle();
+        cloudMock.initializeProviders.calls.reset();
+        return service;
+      }
+
+      /** Signed in as A, with the effect's bring-up for A (B0) still loading. */
+      function signedInWithBringUpHeld() {
+        authUserId.set('user-a');
+        const service = createService('web');
+        const b0 = deferred();
+        cloudMock.initializeProviders.and.returnValue(b0.promise);
+        cloudMock.initializeProviders.calls.reset();
+        TestBed.tick();
+        expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+        cloudMock.initializeProviders.calls.reset();
+        cloudMock.initializeProviders.and.resolveTo();
+        return { service, b0 };
+      }
+
+      it('writes the key before its first await, and brings the providers up once the write lands', async () => {
+        const service = await signedInAndUp();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        // Under way at once: a wait that starts in the same task sees it.
+        expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', 'k');
+        try {
+          await settle();
+          expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+          expect(save.settled).toBeFalse();
+        } finally {
+          write.land();
+        }
+        await settle();
+
+        expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+        expect(save).toEqual({ settled: true });
+        // The page used to arm the key itself, outside any bring-up.
+        expect(cloudMock.updateProviderApiKey).not.toHaveBeenCalled();
+      });
+
+      it('holds a wait that starts during the save until the bring-up after the write', async () => {
+        const service = await signedInAndUp();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+        const saveBringUp = deferred();
+        cloudMock.initializeProviders.and.returnValue(saveBringUp.promise);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        const ready = track(service.cloudProvidersReady());
+        try {
+          await settle();
+          // The account's providers were up, but not with the key being saved.
+          expect(ready.settled).toBeFalse();
+
+          write.land();
+          await settle();
+          expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+          expect(ready.settled).toBeFalse();
+        } finally {
+          write.land();
+          saveBringUp.resolve();
+        }
+        await settle();
+
+        expect(ready.settled).toBeTrue();
+        expect(ready.value).toBeTrue();
+        expect(save).toEqual({ settled: true });
+        expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+      });
+
+      it('moves a wait already joined to the bring-up in flight on to the save', async () => {
+        const { service, b0 } = signedInWithBringUpHeld();
+        const ready = track(service.cloudProvidersReady());
+        const saveBringUp = deferred();
+        cloudMock.initializeProviders.and.returnValue(saveBringUp.promise);
+
+        // The write lands at once; B0 is what it waits for.
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        try {
+          b0.resolve();
+          await settle();
+          // B0 is up, and the save's own bring-up is the one still loading.
+          expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+          expect(ready.settled).toBeFalse();
+        } finally {
+          b0.resolve();
+          saveBringUp.resolve();
+        }
+        await settle();
+
+        expect(ready.settled).toBeTrue();
+        expect(ready.value).toBeTrue();
+        expect(save).toEqual({ settled: true });
+      });
+
+      it('brings the saved key up only after the bring-up already in flight', async () => {
+        const { service, b0 } = signedInWithBringUpHeld();
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        try {
+          await settle();
+          // The write is in, and the save still waits its turn behind B0.
+          expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', 'k');
+          expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+          expect(save.settled).toBeFalse();
+        } finally {
+          b0.resolve();
+        }
+        await settle();
+
+        expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+        expect(save).toEqual({ settled: true });
+      });
+
+      it('rejects a refused write, and still holds a wait it took over until the bring-up in flight', async () => {
+        const { service, b0 } = signedInWithBringUpHeld();
+        const refusal = new Error('permission-denied');
+        providerKeysMock.setKey.and.rejectWith(refusal);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        const ready = track(service.cloudProvidersReady());
+        try {
+          await settle();
+          // Refused, but B0 has not come up: neither answers before it.
+          expect(ready.settled).toBeFalse();
+          expect(save.settled).toBeFalse();
+        } finally {
+          b0.resolve();
+        }
+        await settle();
+
+        expect(ready.settled).toBeTrue();
+        expect(ready.value).toBeTrue();
+        expect(save).toEqual({ settled: true, error: refusal });
+        // A write that did not land has nothing to bring up.
+        expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+      });
+
+      it('brings nothing up for an account that signed out before its write landed', async () => {
+        const service = await signedInAndUp();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', 'k');
+        try {
+          authUserId.set(null);
+          TestBed.tick();
+          expect(cloudMock.resetProviders).toHaveBeenCalledTimes(1);
+        } finally {
+          write.land();
+        }
+        await settle();
+
+        expect(save).toEqual({ settled: true });
+        expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+      });
+
+      it('brings up the next account once it signs in, and nothing for the departed save', async () => {
+        const service = await signedInAndUp();
+        const accounts = bringUpAccounts();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        try {
+          authUserId.set(null);
+          TestBed.tick();
+          authUserId.set('user-b');
+          TestBed.tick();
+        } finally {
+          write.land();
+        }
+        await settle();
+
+        expect(save).toEqual({ settled: true });
+        expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', 'k');
+        expect(accounts).toEqual(['user-b']);
+      });
+
+      it('brings a reconnect during the save up behind it', async () => {
+        const online = signal(true);
+        pwaMock.isOnline.and.callFake(online);
+        const service = await signedInAndUp();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+        const saveBringUp = deferred();
+        cloudMock.initializeProviders.and.returnValues(saveBringUp.promise, Promise.resolve(), Promise.resolve());
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        let ready: ReturnType<typeof track> | undefined;
+        try {
+          online.set(false);
+          TestBed.tick();
+          online.set(true);
+          TestBed.tick();
+          ready = track(service.cloudProvidersReady());
+          await settle();
+          // Two new attempts, and neither came up ahead of the write.
+          expect(cloudMock.initializeProviders).not.toHaveBeenCalled();
+          expect(ready.settled).toBeFalse();
+
+          write.land();
+          await settle();
+          // The save's bring-up first, and the reconnect's behind it.
+          expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+          expect(ready.settled).toBeFalse();
+        } finally {
+          write.land();
+          saveBringUp.resolve();
+        }
+        await settle();
+
+        // Then one for each attempt the reconnect started.
+        expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(3);
+        expect(ready).toEqual({ settled: true, value: true });
+        expect(save).toEqual({ settled: true });
+      });
+
+      it("brings the next account up at once, not behind the departed account's save", async () => {
+        const service = await signedInAndUp();
+        const accounts = bringUpAccounts();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        try {
+          authUserId.set(null);
+          TestBed.tick();
+          authUserId.set('user-b');
+          TestBed.tick();
+          // B's own bring-up, started while A's write is still out.
+          expect(accounts).toEqual(['user-b']);
+          const ready = track(service.cloudProvidersReady());
+          await settle();
+          expect(ready).toEqual({ settled: true, value: true });
+          expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', 'k');
+        } finally {
+          write.land();
+        }
+        await settle();
+
+        expect(save).toEqual({ settled: true });
+        expect(accounts).toEqual(['user-b']);
+      });
+
+      it('brings the next account up at once when the switch reaches the effect as one change', async () => {
+        const service = await signedInAndUp();
+        const accounts = bringUpAccounts();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        try {
+          // One flush for both writes: the effect never sees the sign-out, so
+          // nothing unlinks the save. Its account tag is what keeps B out.
+          authUserId.set(null);
+          authUserId.set('user-b');
+          TestBed.tick();
+          expect(cloudMock.resetProviders).not.toHaveBeenCalled();
+          expect(accounts).toEqual(['user-b']);
+          const ready = track(service.cloudProvidersReady());
+          await settle();
+          expect(ready).toEqual({ settled: true, value: true });
+          expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', 'k');
+        } finally {
+          write.land();
+        }
+        await settle();
+
+        expect(save).toEqual({ settled: true });
+        expect(accounts).toEqual(['user-b']);
+      });
+
+      it('brings the account up at once when it signs back in during the save it left behind', async () => {
+        // The account tag cannot tell the two sessions apart; the sign-out's
+        // unlink is what keeps the new one from queueing behind the old write.
+        const service = await signedInAndUp();
+        const accounts = bringUpAccounts();
+        const write = heldWrite();
+        providerKeysMock.setKey.and.returnValue(write.promise);
+
+        const save = watch(service.applyProviderKey('gemini', 'k'));
+        try {
+          authUserId.set(null);
+          TestBed.tick();
+          authUserId.set('user-a');
+          TestBed.tick();
+          expect(accounts).toEqual(['user-a']);
+          expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', 'k');
+        } finally {
+          write.land();
+        }
+        await settle();
+
+        // The write landed for the account signed in, so it is brought up too.
+        expect(save).toEqual({ settled: true });
+        expect(accounts).toEqual(['user-a', 'user-a']);
+      });
+
+      it('clears a key through the same write and a full bring-up', async () => {
+        const service = await signedInAndUp();
+        cloudMock.setOpenAIModel.calls.reset();
+        cloudMock.setClaudeModel.calls.reset();
+
+        await service.applyProviderKey('gemini', undefined);
+
+        expect(providerKeysMock.setKey).toHaveBeenCalledOnceWith('gemini', undefined);
+        // The whole bring-up on the stored model choices, as at sign-in.
+        expect(cloudMock.setOpenAIModel).toHaveBeenCalledOnceWith(DEFAULT_OPENAI_MODEL);
+        expect(cloudMock.setClaudeModel).toHaveBeenCalledOnceWith(DEFAULT_CLAUDE_MODEL);
+        expect(cloudMock.initializeProviders).toHaveBeenCalledOnceWith(DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL);
+        expect(cloudMock.updateProviderApiKey).not.toHaveBeenCalled();
+        expect(cloudMock.reinitializeGemini).not.toHaveBeenCalled();
+      });
     });
   });
 

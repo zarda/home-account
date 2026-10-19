@@ -406,6 +406,35 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     expect(TestBed.inject(ProviderKeyService).keys()).toEqual({});
     expect(facade.hasAnyCloudProvider()).toBeFalse();
   });
+
+  it('waits for a key saved through the strategy', async () => {
+    // A key saved in settings while the drain is about to wait: the wait has
+    // to cover the save's write and the bring-up after it, or the photo goes
+    // out to a Gemini the key has not reached. The fake key only builds a
+    // local handle, as above.
+    const strategy = TestBed.inject(AIStrategyService);
+    const keys = TestBed.inject(ProviderKeyService);
+    await expectAsync(strategy.cloudProvidersReady()).toBeResolvedTo(true);
+    expect(gemini.isAvailable()).toBeFalse();
+
+    try {
+      const save = strategy.applyProviderKey('gemini', 'fake-key-for-the-smoke');
+      const ready = await strategy.cloudProvidersReady();
+      const armed = gemini.isAvailable();
+
+      expect(ready).toBeTrue();
+      expect(armed).toBeTrue();
+
+      await save;
+      expect(keys.keys()).toEqual({ gemini: 'fake-key-for-the-smoke' });
+    } finally {
+      // Stored under the suite's one account, which every case reads.
+      await strategy.applyProviderKey('gemini', undefined);
+    }
+
+    expect(keys.keys()).toEqual({});
+    expect(gemini.isAvailable()).toBeFalse();
+  });
 });
 
 /**

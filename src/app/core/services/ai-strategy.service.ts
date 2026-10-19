@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { VisionOcrService } from './vision-ocr.service';
 import { AppleIntelligenceService } from './apple-intelligence.service';
 import { NativeReceiptService } from './native-receipt.service';
+import { ProviderKeyService } from './provider-key.service';
 import { ProcessedTransaction, ProcessingResult, ReceiptAttemptDiagnostics } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
@@ -68,6 +69,7 @@ export class AIStrategyService {
   private visionOcr = inject(VisionOcrService);
   private appleIntelligence = inject(AppleIntelligenceService);
   private nativeReceipt = inject(NativeReceiptService);
+  private providerKeys = inject(ProviderKeyService);
 
   // State signals
   private _preferences = signal<AIPreferences>(this.loadPreferences());
@@ -134,6 +136,12 @@ export class AIStrategyService {
   /** The latest bring-up, which a caller waiting on the providers joins. */
   private initialization: Promise<void>;
 
+  /**
+   * A key save whose write or bring-up is still out, and the account it is
+   * for. A new attempt for that account comes up behind it.
+   */
+  private pendingKeySave: { userId: string; done: Promise<void> } | null = null;
+
   constructor() {
     // Apply the stored model selection at startup so the first request honors
     // the user's choice from AI settings. Keys, if any, arrive with the effect
@@ -148,8 +156,8 @@ export class AIStrategyService {
 
     // Bring the cloud providers up once per signed-in account. The keys are
     // no longer part of the user document, so there is nothing else on `user`
-    // worth watching — a key the user edits in settings is applied directly by
-    // the settings page.
+    // worth watching — a key the user saves in settings goes through
+    // applyProviderKey(), which is a bring-up of its own.
     effect(() => {
       const userId = this.authService.userId();
       // Connectivity is a dependency on purpose: the keys are a separate
@@ -178,6 +186,9 @@ export class AIStrategyService {
           void this.cloudLLMProvider.resetProviders();
         }
         this.providersInitializedFor.set(null);
+        // A save still out for the departing account holds up no one's
+        // bring-up, and it brings nothing up once its write lands.
+        this.pendingKeySave = null;
         return;
       }
 
@@ -192,11 +203,20 @@ export class AIStrategyService {
    * The effect and cloudProvidersReady() both come through here, so whichever
    * arrives first starts it and the other joins it. A write from outside the
    * effect re-runs the effect once, and it stops here on the same attempt.
+   *
+   * A new attempt for the account a key save is still out for (a reconnect
+   * during the save, or the account's first attempt when the save came
+   * first) comes up behind that save, so it cannot answer ahead of the
+   * write. Another account's attempt never waits on it.
    */
   private bringUpFor(attempt: string): Promise<void> {
     if (this.providersInitializedFor() !== attempt) {
       this.providersInitializedFor.set(attempt);
-      this.initialization = this.initializeCloudProviders();
+      const save = this.pendingKeySave;
+      const account = attempt.slice(0, attempt.lastIndexOf(':'));
+      this.initialization = save?.userId === account
+        ? save.done.then(() => this.initializeCloudProviders())
+        : this.initializeCloudProviders();
     }
     return this.initialization;
   }
@@ -674,6 +694,40 @@ export class AIStrategyService {
       availableProviders: this.cloudLLMProvider.availableProviders(),
       providerStatus: this.cloudLLMProvider.providerStatus(),
     };
+  }
+
+  /**
+   * Save one provider's key, or clear it with undefined, and bring the
+   * providers up on it.
+   *
+   * Before this method's first await, the save becomes the bring-up a waiting
+   * caller joins. Pressing Sync Now is what blurs the key field, so the
+   * drain's wait starts while the write is still out, and it has to follow the
+   * save rather than answer off the bring-up before it. The save waits for its
+   * write and for the bring-up already in flight, then runs a full one, so
+   * saves come up one after another. A refused write rejects, with nothing
+   * brought up for it, but only once that earlier bring-up is up, so no wait
+   * it took over answers early. An account that signed out or switched before
+   * the write landed has nothing brought up for it.
+   */
+  applyProviderKey(provider: LLMProvider, apiKey: string | undefined): Promise<void> {
+    const userId = this.authService.userId();
+    // Started now: setKey reads the account before its first await.
+    const saved = this.providerKeys.setKey(provider, apiKey);
+    const previous = this.initialization;
+    const run = (async () => {
+      const [write] = await Promise.allSettled([saved, previous]);
+      if (write.status === 'rejected') throw write.reason;
+      if (!userId || this.authService.userId() !== userId) return;
+      return this.initializeCloudProviders().catch(() => undefined);
+    })();
+    const done = run.then(() => undefined, () => undefined);
+    this.initialization = done;
+    this.pendingKeySave = userId ? { userId, done } : null;
+    void done.then(() => {
+      if (this.pendingKeySave?.done === done) this.pendingKeySave = null;
+    });
+    return run.then(() => undefined);
   }
 
   /**
