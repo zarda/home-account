@@ -40,6 +40,7 @@ import {
   runAxe,
   settleAnimations,
   summarizeViolations,
+  textLines,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -1118,6 +1119,7 @@ describe('TransactionListComponent desktop hit boxes', () => {
 describe('TransactionListComponent desktop table width floor', () => {
   let fixture: ComponentFixture<TransactionListComponent>;
   let host: HTMLElement;
+  let dateFormat: jasmine.SpyObj<DateFormatService>;
 
   const txns: Transaction[] = [createTransaction({ id: 'a', amount: 10, description: 'Apple' })];
 
@@ -1127,7 +1129,7 @@ describe('TransactionListComponent desktop table width floor', () => {
       (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
     );
     currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
-    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
     dateFormat.formatDate.and.returnValue('date');
     dateFormat.formatRelativeDate.and.returnValue('rel');
     const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
@@ -1184,6 +1186,65 @@ describe('TransactionListComponent desktop table width floor', () => {
     expect(scroll.scrollWidth)
       .withContext('table-scroll scrollWidth vs clientWidth at the 704px floor')
       .toBeLessThanOrEqual(scroll.clientWidth + 1);
+  });
+
+  /**
+   * A row older than a week shows a short localized date: 10月11日 in ja, and
+   * the same string in tc. The date column's 90 px box leaves 66 px of text,
+   * which holds it at the default font scale, but the text grows with the
+   * account's font scale and the box did not: at Large (1.15) a four-digit
+   * date ran onto a second line, and at Extra large (1.3) a three-digit one
+   * too. CJK text breaks between any two characters, so the cell's min-content
+   * stayed small and the auto table layout never widened the column for it.
+   *
+   * Karma serves none of the app's fonts, so the host is pinned to Verdana,
+   * whose digits the Linux runner's DejaVu Sans matches; the table's cells
+   * take their face from the --mat-sys tokens rather than from the host. CJK
+   * glyphs fall back to whatever face the machine has, and to a narrower
+   * missing-glyph box where there is none, so the four-digit date at Extra
+   * large is the one wide enough to wrap in either.
+   */
+  describe('a Japanese date at the larger font scales', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    afterEach(() => document.documentElement.style.removeProperty('--app-font-scale'));
+
+    /** The date cells of one row per date in `shown`, at the given font scale. */
+    function renderDates(shown: string[], scale: number): HTMLElement[] {
+      document.documentElement.style.setProperty('--app-font-scale', String(scale));
+      host.style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-medium-font', '--mat-sys-title-small-font']) {
+        host.style.setProperty(token, FACE);
+      }
+      dateFormat.formatRelativeDate.and.callFake(date => shown[(date as Timestamp).toMillis()]);
+      fixture.componentRef.setInput(
+        'transactions',
+        shown.map((_, i) => createTransaction({ id: `d${i}`, amount: 10, description: 'Apple', date: Timestamp.fromMillis(i) }))
+      );
+      fixture.detectChanges();
+      const cells = Array.from(host.querySelectorAll<HTMLElement>('td .date-text'));
+      expect(cells.map(cell => cell.textContent?.trim()).sort()).withContext('the dates shown').toEqual([...shown].sort());
+      return cells;
+    }
+
+    /** Each date on one line, and the table still inside its 704 px floor. */
+    function expectOneLineEach(cells: HTMLElement[], scale: number): void {
+      for (const cell of cells) {
+        expect(textLines(cell)).withContext(`${cell.textContent?.trim()} at ${scale}: lines`).toBe(1);
+      }
+      const scroll = host.querySelector('.table-scroll') as HTMLElement;
+      expect(scroll.scrollWidth)
+        .withContext(`at ${scale}: table-scroll scrollWidth vs clientWidth at the 704px floor`)
+        .toBeLessThanOrEqual(scroll.clientWidth + 1);
+    }
+
+    it('keeps a four-digit date on one line at the Large font scale', () => {
+      expectOneLineEach(renderDates(['10月11日'], 1.15), 1.15);
+    });
+
+    it('keeps three- and four-digit dates on one line at the Extra large font scale', () => {
+      expectOneLineEach(renderDates(['10月1日', '10月11日'], 1.3), 1.3);
+    });
   });
 });
 
