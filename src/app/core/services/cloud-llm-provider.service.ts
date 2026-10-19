@@ -137,13 +137,21 @@ export class CloudLLMProviderService {
 
   /**
    * Update a specific provider's API key.
+   *
+   * A cleared Gemini key tears Gemini down. It is not handed to
+   * reinitialize(undefined), which falls back to the build's environment key
+   * and would leave Gemini armed after the user removed theirs.
    */
   async updateProviderApiKey(provider: LLMProvider, apiKey: string | undefined): Promise<void> {
     // Awaiting matters: initialization lazy-loads the provider SDK, and
     // availability checks made before it resolves would read a stale false
     switch (provider) {
       case 'gemini':
-        await this.geminiService.reinitialize(apiKey);
+        if (apiKey) {
+          await this.geminiService.reinitialize(apiKey);
+        } else {
+          this.geminiService.clear();
+        }
         break;
       case 'openai':
         await this.openaiService.reinitialize(apiKey);
@@ -170,12 +178,20 @@ export class CloudLLMProviderService {
    * Reads the generation but never takes one: a model switch is not a
    * bring-up, and bumping it would stop the bring-up in flight before OpenAI
    * and Claude came up.
+   *
+   * With no stored key Gemini is cleared, as initializeProviders does, rather
+   * than handed to reinitialize(undefined), which would arm it from the
+   * build's environment key.
    */
   async reinitializeGemini(textModelId?: string, visionModelId?: string): Promise<void> {
     const generation = this.generation;
     const apiKey = await this.providerKeys.getKey('gemini');
     // The key read landed after a reset or a newer bring-up.
     if (generation !== this.generation) return;
+    if (!apiKey) {
+      this.geminiService.clear();
+      return;
+    }
     await this.geminiService.reinitialize(apiKey, textModelId, visionModelId);
   }
 

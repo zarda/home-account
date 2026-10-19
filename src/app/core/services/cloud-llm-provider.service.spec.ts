@@ -470,9 +470,12 @@ describe('CloudLLMProviderService', () => {
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize).toHaveBeenCalledWith('k');
     });
 
-    it('accepts an undefined key (clearing it)', async () => {
+    // clear(), not reinitialize(undefined) — the latter re-arms Gemini from the
+    // environment key the build ships, so a cleared key would leave it up.
+    it('clears gemini for an undefined key rather than re-arming it', async () => {
       await service.updateProviderApiKey('gemini', undefined);
-      expect(gemini.reinitialize).toHaveBeenCalledWith(undefined);
+      expect((gemini as unknown as { clear: jasmine.Spy }).clear).toHaveBeenCalledTimes(1);
+      expect(gemini.reinitialize).not.toHaveBeenCalled();
     });
   });
 
@@ -496,10 +499,11 @@ describe('CloudLLMProviderService', () => {
       expect(gemini.reinitialize).toHaveBeenCalledWith('stored-key', 't', 'v');
     });
 
-    it('reinitializeGemini passes undefined when there is no key', async () => {
+    it('reinitializeGemini clears Gemini when there is no stored key', async () => {
       providerKeys.getKey.and.resolveTo(undefined);
-      await service.reinitializeGemini();
-      expect(gemini.reinitialize).toHaveBeenCalledWith(undefined, undefined, undefined);
+      await service.reinitializeGemini('t', 'v');
+      expect((gemini as unknown as { clear: jasmine.Spy }).clear).toHaveBeenCalledTimes(1);
+      expect(gemini.reinitialize).not.toHaveBeenCalled();
     });
   });
 
@@ -1193,5 +1197,91 @@ describe('CloudLLMProviderService over the real providers', () => {
     expect(openai.isAvailable()).withContext('OpenAI').toBeFalse();
     expect(facade.availableProviders()).toEqual([]);
     expect(built).withContext('clients built').toEqual([]);
+  });
+
+  // Without a key of its own, Gemini must stay down, not come up on the key the
+  // build ships: initializeProviders, a model switch and a cleared key all
+  // answer "no key" the same way. The literal is set inside each case and
+  // deleted after it; the describe's own blanking stays in force around it.
+  describe('with a build that ships its own Gemini key', () => {
+    const ENV_KEY = 'env-key-from-build';
+
+    afterEach(() => {
+      delete env.geminiApiKey;
+    });
+
+    /** Down everywhere a caller can read it, and never built on the environment key. */
+    function expectGeminiDown(): void {
+      expect(gemini.isAvailable()).withContext('isAvailable').toBeFalse();
+      expect(gemini.isAvailableSignal()).withContext('the signal').toBeFalse();
+      expect(facade.providerStatus().gemini).withContext('the façade status').toBeFalse();
+      expect(gemini.capabilities.vision).withContext('vision').toBeFalse();
+      expect(built).withContext('clients built').not.toContain(ENV_KEY);
+    }
+
+    it('a cleared key leaves Gemini down', async () => {
+      env.geminiApiKey = ENV_KEY;
+      openGate();
+
+      await facade.updateProviderApiKey('gemini', 'gA');
+      // The positive proof: a typed key arms, so the clear below has a client to take down.
+      expect(gemini.isAvailable()).withContext('armed on the typed key').toBeTrue();
+      expect(built).toEqual(['gA']);
+      built.length = 0;
+
+      await facade.updateProviderApiKey('gemini', undefined);
+
+      expectGeminiDown();
+      expect(built).withContext('clients built').toEqual([]);
+    });
+
+    // A pin: no caller passes '' today. The guard is truthiness because an
+    // empty key falls back to the build's key just as a missing one does.
+    it('an empty key leaves Gemini down', async () => {
+      env.geminiApiKey = ENV_KEY;
+      openGate();
+
+      await facade.updateProviderApiKey('gemini', 'gA');
+      expect(gemini.isAvailable()).withContext('armed on the typed key').toBeTrue();
+      expect(built).toEqual(['gA']);
+      built.length = 0;
+
+      await facade.updateProviderApiKey('gemini', '');
+
+      expectGeminiDown();
+      expect(built).withContext('clients built').toEqual([]);
+    });
+
+    it('a model switch with no stored key leaves Gemini down', async () => {
+      env.geminiApiKey = ENV_KEY;
+      openGate();
+
+      providerKeys.getKey.and.resolveTo('gA');
+      await facade.reinitializeGemini('t', 'v');
+      // The positive proof: with a stored key the same switch arms.
+      expect(gemini.isAvailable()).withContext('armed on the stored key').toBeTrue();
+      expect(gemini.capabilities.vision).withContext('vision on the stored key').toBeTrue();
+      expect(built).toEqual(['gA']);
+      built.length = 0;
+
+      providerKeys.getKey.and.resolveTo(undefined);
+      await facade.reinitializeGemini('t', 'v');
+
+      expectGeminiDown();
+      expect(built).withContext('clients built').toEqual([]);
+    });
+
+    // A pin: initializeProviders already clears rather than re-arming.
+    it('a keyless bring-up leaves Gemini down', async () => {
+      env.geminiApiKey = ENV_KEY;
+      openGate();
+      providerKeys.resolve.and.resolveTo({});
+
+      await facade.initializeProviders();
+
+      expectGeminiDown();
+      expect(facade.availableProviders()).toEqual([]);
+      expect(built).withContext('clients built').toEqual([]);
+    });
   });
 });

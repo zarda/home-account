@@ -350,10 +350,10 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     // only resolved server-side at the first generateContent call.
     //
     // The key goes through ProviderKeyService rather than
-    // updateProviderApiKey, which hands its argument straight to reinitialize
-    // and stores nothing. reinitializeGemini — the method AIStrategyService
-    // calls on a model switch — reads the key back from Firestore, so this is
-    // the path the app actually takes.
+    // updateProviderApiKey, which hands a key straight to reinitialize (and
+    // clears Gemini for none) and stores nothing. reinitializeGemini — the
+    // method AIStrategyService calls on a model switch — reads the key back
+    // from Firestore, so this is the path the app actually takes.
     const keys = TestBed.inject(ProviderKeyService);
     await keys.setKey('gemini', 'fake-key-for-the-smoke');
     try {
