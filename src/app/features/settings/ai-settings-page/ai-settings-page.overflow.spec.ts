@@ -8,7 +8,6 @@ import { AiSettingsPageComponent } from './ai-settings-page.component';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
-import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryMemoryService } from '../../../core/services/category-memory.service';
@@ -78,9 +77,6 @@ describe('overflow guard: the AI settings model selects', () => {
     // even though the queue is not what it measures.
     offlineQueueServiceMock.closedForUpgrade.and.returnValue(false);
 
-    const geminiServiceMock = jasmine.createSpyObj('GeminiService', ['isAvailable']);
-    geminiServiceMock.isAvailable.and.returnValue(true);
-
     // Gated true for Gemini alone: it is the only card this probe needs
     // rendered, and the fix under test applies to every `.model-field`
     // regardless of which provider it belongs to.
@@ -136,7 +132,6 @@ describe('overflow guard: the AI settings model selects', () => {
         { provide: AIStrategyService, useValue: strategyServiceMock },
         { provide: PwaService, useValue: pwaServiceMock },
         { provide: OfflineQueueService, useValue: offlineQueueServiceMock },
-        { provide: GeminiService, useValue: geminiServiceMock },
         { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
         { provide: AuthService, useValue: authServiceMock },
         { provide: ProviderKeyService, useValue: providerKeysMock },

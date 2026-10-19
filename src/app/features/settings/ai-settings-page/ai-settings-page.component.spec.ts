@@ -7,7 +7,6 @@ import { AiSettingsPageComponent } from './ai-settings-page.component';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
-import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryMemoryService } from '../../../core/services/category-memory.service';
@@ -25,7 +24,6 @@ describe('AiSettingsPageComponent', () => {
   let notifications: jasmine.SpyObj<NotificationService>;
   let pwaServiceMock: jasmine.SpyObj<PwaService>;
   let offlineQueueServiceMock: jasmine.SpyObj<OfflineQueueService>;
-  let geminiServiceMock: jasmine.SpyObj<GeminiService>;
   let cloudLLMProviderMock: jasmine.SpyObj<CloudLLMProviderService>;
   let authServiceMock: jasmine.SpyObj<AuthService>;
   let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
@@ -70,9 +68,6 @@ describe('AiSettingsPageComponent', () => {
     offlineQueueServiceMock.closedForUpgrade.and.returnValue(false);
     offlineQueueServiceMock.syncQueue.and.returnValue(Promise.resolve({ success: 0, failed: 0 }));
     offlineQueueServiceMock.clearAll.and.returnValue(Promise.resolve());
-
-    geminiServiceMock = jasmine.createSpyObj('GeminiService', ['isAvailable']);
-    geminiServiceMock.isAvailable.and.returnValue(true);
 
     cloudLLMProviderMock = jasmine.createSpyObj('CloudLLMProviderService', [
       'isProviderAvailable',
@@ -135,7 +130,6 @@ describe('AiSettingsPageComponent', () => {
         { provide: AIStrategyService, useValue: strategyServiceMock },
         { provide: PwaService, useValue: pwaServiceMock },
         { provide: OfflineQueueService, useValue: offlineQueueServiceMock },
-        { provide: GeminiService, useValue: geminiServiceMock },
         { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
         { provide: AuthService, useValue: authServiceMock },
         { provide: AnnouncerService, useValue: announcerMock },

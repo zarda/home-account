@@ -14,7 +14,6 @@ import { MatSelectModule } from '@angular/material/select';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
-import { GeminiService } from '../../../core/services/gemini.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -54,7 +53,6 @@ export class AiSettingsPageComponent implements OnInit {
   private strategyService = inject(AIStrategyService);
   private pwaService = inject(PwaService);
   private offlineQueue = inject(OfflineQueueService);
-  private geminiService = inject(GeminiService);
   private translationService = inject(TranslationService);
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private authService = inject(AuthService);
@@ -118,7 +116,6 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Computed from services
   isOnline = computed(() => this.pwaService.isOnline());
-  isGeminiAvailable = computed(() => this.geminiService.isAvailable());
   canUseCloud = computed(() => this.strategyService.canUseCloud());
   canUseNative = computed(() => this.strategyService.canUseNative());
   canUseAppleIntelligence = computed(() => this.strategyService.canUseAppleIntelligence());
