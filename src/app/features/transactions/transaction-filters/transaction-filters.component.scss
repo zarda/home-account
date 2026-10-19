@@ -262,6 +262,12 @@
 
 .compact-field {
   width: 100%;
+  // On the form field itself, not its infix: an outlined field's label sits
+  // in the notched outline, a sibling of the infix, and Material rests and
+  // floats it by this same height. The infix takes its 40 px and 8 px
+  // paddings from these two tokens as well.
+  --mat-form-field-container-height: 40px;
+  --mat-form-field-container-vertical-padding: 8px;
 }
 
 ::ng-deep .compact-field .mat-mdc-form-field-subscript-wrapper {
@@ -270,12 +276,6 @@
 
 ::ng-deep .compact-field .mat-mdc-text-field-wrapper {
   padding: 0 12px !important;
-}
-
-::ng-deep .compact-field .mat-mdc-form-field-infix {
-  padding-top: 8px !important;
-  padding-bottom: 8px !important;
-  min-height: 40px !important;
 }
 
 .clear-btn {

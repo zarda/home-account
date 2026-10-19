@@ -1383,6 +1383,58 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  // A compact field's box is 40 px tall. Material rests a label at half the
+  // container-height token and floats it by the same token, so the token has
+  // to say 40 px too, or every empty field's label rests low in its box.
+  describe("a compact field's label", () => {
+    /** Renders, lets ngModel hand each select its value a microtask later, then settles the label's float. */
+    const render = () => {
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    };
+
+    function field(label: string): { label: DOMRect; box: DOMRect; floated: boolean } {
+      const found = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+      expect(found).withContext(`the ${label} field`).toBeTruthy();
+      const floating = found!.querySelector('.mdc-floating-label')!;
+      return {
+        label: floating.getBoundingClientRect(),
+        box: found!.querySelector('.mat-mdc-text-field-wrapper')!.getBoundingClientRect(),
+        floated: floating.classList.contains('mdc-floating-label--float-above')
+      };
+    }
+
+    const centre = (rect: DOMRect) => rect.top + rect.height / 2;
+
+    it("rests an empty field's label at the centre of its box", fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+
+      const minAmount = field('Min Amount');
+      expect(minAmount.floated).withContext('the empty Min Amount label rests').toBeFalse();
+      expect(minAmount.box.height).withContext('the compact box, px').toBeCloseTo(40, 0);
+      expect(Math.abs(centre(minAmount.label) - centre(minAmount.box)))
+        .withContext('resting label centre off the box centre, px')
+        .toBeLessThanOrEqual(2);
+    }));
+
+    // Pin: a floated label already sat centred on the box's top edge (0 px
+    // off it, measured before the token moved); the fix must not shift it.
+    it('floats a filled field\'s label onto the top edge of its box, where it already sat (pin)', fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+
+      const type = field('Type');
+      expect(type.floated).withContext('Type reads All, so its label floats').toBeTrue();
+      expect(Math.abs(centre(type.label) - type.box.top))
+        .withContext('floated label centre off the box top edge, px')
+        .toBeLessThanOrEqual(1);
+    }));
+  });
+
   describe('grid tracks (#450)', () => {
     it('lays the filter grid out in three columns once expanded', () => {
       // The 640px rule is what renders here; the 1024px, 6-column rule above
