@@ -39,6 +39,7 @@ import { decodeTagsCell, encodeTagsCell, parseCsvRows, toCsvText, unguardCsvCell
 import { normalizeTags } from '../utils/tag.utils';
 import { locationSlot, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { resolveExactCategoryName } from '../utils/categorization.utils';
+import { categoryNameOrUnknown } from '../utils/category-display.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -264,9 +265,11 @@ export class ExportService {
     }
   }
 
-  // Helper: Get translated category name
+  // Helper: Get translated category name. A category the catalog lacks reads
+  // as the reader's own word for one, so every export names it the way the
+  // screens do.
   private getCategoryName(category: Category | undefined): string {
-    return category?.name ? this.translationService.t(category.name) : 'Unknown';
+    return categoryNameOrUnknown(category?.name, key => this.translationService.t(key));
   }
 
   // Export transactions to CSV

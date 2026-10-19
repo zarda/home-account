@@ -36,7 +36,8 @@ class MockTranslationService {
       'categoryNames.restaurants': 'Restaurants',
       'categoryNames.groceries': 'Groceries',
       'categoryNames.transport': 'Transportation',
-      'categoryNames.salary': 'Salary'
+      'categoryNames.salary': 'Salary',
+      'common.unknownCategory': '不明'
     };
     return translations[key] ?? key;
   }
@@ -269,7 +270,7 @@ describe('ExportService', () => {
       reader.readAsText(blob);
     });
 
-    it('should return Unknown for missing categories', (done) => {
+    it('names a missing category in the reader\'s language', (done) => {
       categoryService.categories.set([]);
 
       const transaction = createTransaction({
@@ -280,10 +281,22 @@ describe('ExportService', () => {
       const reader = new FileReader();
       reader.onload = () => {
         const content = reader.result as string;
-        expect(content).toContain('Unknown');
+        expect(content).toContain('不明');
+        expect(content).not.toContain('Unknown');
         done();
       };
       reader.readAsText(blob);
+    });
+
+    it('names a missing category in the reader\'s language in the summary format', async () => {
+      categoryService.categories.set([]);
+
+      const content = await service
+        .exportToCSV([createTransaction({ categoryId: 'non_existent_category' })], { format: 'summary' })
+        .text();
+
+      expect(content).toContain('不明');
+      expect(content).not.toContain('Unknown');
     });
 
     it('should translate category names in summary format', (done) => {
@@ -610,12 +623,12 @@ describe('ExportService', () => {
         expect(rows[1].length).toBe(rows[0].length);
       });
 
-      it('names a category the account no longer has', async () => {
+      it('names a category the account no longer has in the reader\'s language', async () => {
         categoryService.categories.set([]);
 
         const rows = await summaryRows([createTransaction({ categoryId: 'gone' })]);
 
-        expect(rows[1][rows[0].indexOf('Category')]).toBe('Unknown');
+        expect(rows[1][rows[0].indexOf('Category')]).toBe('不明');
       });
 
       it('writes a header-only file for no transactions', async () => {
@@ -1111,6 +1124,16 @@ describe('ExportService', () => {
 
       expect(result.length).toBe(1);
       expect(result[0].description).toBe(description);
+    });
+
+    it('reads a category the account no longer has back onto its type\'s catch-all', async () => {
+      // The exported word is the reader's own, which no shipped category is
+      // named, so the exact-name probe refuses it and the row is counted.
+      const result = await reimport([createTransaction({ categoryId: 'gone' })]);
+
+      expect(result[0].category).toBe('不明');
+      expect(result[0].categoryId).toBeUndefined();
+      expect(service.parseImportedData(result, 'USD')[0].categoryId).toBe('other_expense');
     });
 
     it('round-trips a description that begins with an apostrophe', async () => {
