@@ -120,6 +120,53 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   max-width: calc(100% - 24px);
 }
 
+/* A Material text-label button has a fixed height, 40px at the default
+   density, whatever its label does. Squeezed by a narrow row, the button
+   shrinks, the label wraps, and its extra lines paint above and below the
+   pill (履歴を見る took three lines in a 99px button on /data at 375px).
+   min-height: fit-content grows the box to its content, block padding and
+   border, so it holds a wrapped label, and leaves the height Material or a
+   component set wherever that sum is smaller.
+   For one line the sum is the taller of the label's line and its icon, 8px
+   of padding and the outline. line-height: 1.5 makes that line 1.5 times
+   the button's own font size wherever the button sits. Material's button
+   inherits its line-height, and an expansion panel's content sets 1.5rem, a
+   length that follows the account's font scale and not the label:
+   inherited, it would make a one-line outlined button there 41.2px at 1.3,
+   and the duplicate warning's 34px ones as well. With the unitless 1.5, a
+   one-line label at Material's 0.875rem or smaller keeps Material's 40px at
+   every font scale (an outlined button at 1.3: 27.3 + 8 + 2 = 37.3px), and
+   so does a 1rem label in a button with no outline (31.2 + 8 = 39.2px),
+   while no icon is taller than the label's line; Material's own 1.125rem
+   button icon is not. A height a component sets holds only while the sum
+   fits it: the duplicate warning's 34px does with its 0.75rem label (23.4 +
+   10 = 33.4px at 1.3), where a 0.875rem one would grow it from 1.15. A
+   larger label or icon adds to the sum, and so does a block padding a
+   component sets, which is why the about page's donate button and the
+   camera's Take photo pad only their inline sides. So does a block-level
+   child in the label: Material displays a mat-spinner as a block, stacked
+   above the text, so a busy button lays its spinner on the label's line
+   from its own stylesheet (the budget dialog's Save, the wizard's Import).
+   The line's half-leading keeps a wrapped label's ink inside the box, and
+   the 4px of block padding and the outline add to it: the room between the
+   ink and the edge is the three together, and the half-leading follows the
+   face (about 1.5px in the app's PT Sans).
+   Keyed on .mdc-button, which Material sets on the text-label appearances
+   only, so icon buttons and FABs keep their own sizing. At (0,1,1) the rule
+   outranks Material's own (0,1,0) button rules and yields to any component's
+   (0,2,0), whichever stylesheet reaches the page first (Karma's page loads
+   this one after the components', the app's before), so a component's own
+   min-height, padding or line-height still wins. So does Material's (0,2,0)
+   rule for a text button with an icon, which keeps no block padding; that
+   button draws no edge. One rule for every such button, not a copy per
+   screen. */
+a.mdc-button,
+button.mdc-button {
+  min-height: fit-content;
+  padding-block: 4px;
+  line-height: 1.5;
+}
+
 /* CSS Variables for Theming */
 :root {
   // Surface colors

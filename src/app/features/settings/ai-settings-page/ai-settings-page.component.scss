@@ -257,6 +257,19 @@
   }
 }
 
+// A card's actions wrap rather than squeezing: Material's row does not wrap,
+// so at 320px Test Key and Sync Now shrank to share it and took two lines.
+// The buttons keep flex: 0 1 auto, so lines are collected at their content
+// widths and a button that fits the row gets a line of its own; the shrink is
+// kept for one label wider than the row on its own, which then wraps inside a
+// button that grows with it (styles.scss). The row gap keeps the 48px touch
+// targets of two stacked 40px buttons from overlapping. G1.
+.provider-card mat-card-actions,
+.queue-actions {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
 .api-key-field {
   width: 100%;
 

@@ -78,7 +78,7 @@ one-class change.
 self-test of its own scanners and then compares the physical direction in
 `src/**/*.{scss,html}` against a frozen per-file baseline.
 
-Today: **98 hits in 33 files.** Every number in that map is a debt, and the
+Today: **97 hits in 33 files.** Every number in that map is a debt, and the
 only legal edits are downward.
 
 ### What counts as a hit
@@ -191,7 +191,7 @@ here, and the four other utility patterns never excluded it. The
 
 ## Still to do before an RTL locale renders correctly
 
-The conversion is the large item — 98 hits, 33 files — but it is not the only
+The conversion is the large item — 97 hits, 33 files — but it is not the only
 one. These are known, in scope for a first RTL locale, and out of scope for the
 groundwork; #445 tracks them with the conversion:
 

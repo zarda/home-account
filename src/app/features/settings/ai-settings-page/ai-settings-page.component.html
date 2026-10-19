@@ -459,7 +459,7 @@
             </div>
           </mat-card-content>
 
-          <mat-card-actions>
+          <mat-card-actions class="queue-actions">
             <button mat-button
                     (click)="syncQueue()"
                     [disabled]="pendingQueueCount() === 0 || !isOnline() || queueClosed() || queueSyncing()">

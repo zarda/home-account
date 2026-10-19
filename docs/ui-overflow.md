@@ -306,6 +306,64 @@ the infix: the label sits in the notched outline, a sibling of the infix, so
 an infix override left an empty field's resting label 9px below its box's
 centre.
 
+**A Material button's label can wrap, and its box cannot grow.** Material
+gives every text-label button (text, filled, elevated, outlined, tonal) a
+fixed 40px height. Squeezed by a narrow row, the button shrinks, the label
+wraps, and its extra lines paint above and below the pill, over whatever sits
+next to it: on `/data` at 375px, *履歴を見る* took three lines in a 99px button.
+One global rule in `styles.scss` puts `min-height: fit-content`, 4px of block
+padding and a unitless `line-height: 1.5` on `.mdc-button`, the class Material
+sets on the text-label appearances only, so icon buttons and FABs keep their
+own sizing. The box grows to its content, block padding and border, so it
+holds a wrapped label, and it keeps the height Material or a component set
+wherever that sum is smaller. For one line the sum is the taller of the
+label's line and its icon, the 8px of padding and the outline, and the
+line-height is what makes that line the label's own. A text button with an
+icon keeps no block padding, since Material's own (0,2,0) rule for it sets
+none, and it draws no outline, so its sum is the line alone. Material's
+button inherits its line-height, and an expansion panel's content sets
+1.5rem, a length that follows the account's font scale rather than the
+label: inherited, it would make a one-line outlined button in a panel 41.2px
+at Extra-large (1.3), and the duplicate warning's 34px buttons taller from
+1.15. With the unitless 1.5, a one-line label at Material's 0.875rem or
+smaller keeps Material's 40px at every font scale (37.3px for an outlined
+button at 1.3), and so does a 1rem label in a button with no outline
+(39.2px), as long as no icon is taller than the label's line; an outlined
+button with a 1rem label reaches 41.2px at 1.3. A height a component sets
+holds only while the sum fits it: the duplicate warning's 34px does with its
+0.75rem label (33.4px at 1.3), and a 0.875rem label there would grow it from
+1.15. A block padding a component sets is part of the sum as well. A button
+meant to keep its fixed height keeps its line, block padding and border
+within it, which is why the About page's donate button and the camera's
+*Take photo* now pad only their inline sides: their 12px and 16px above and
+below would have made them 48px and 56px. So is a block-level child in the
+label. Material displays a `mat-spinner` as a block, so one in the label
+stacks above the text, and the budget dialog's *Save* grew to 49px while it
+saved, 55.3px at 1.3, and the import wizard's *Import* to 51.2px at 1.3
+while it imported. Each now lays its spinner on the label's line from its
+component's stylesheet, whose encapsulated rule outranks Material's in
+either load order; the utility class *Save*'s spinner carried lost to
+Material's rule in the app, which lands after `styles.scss`, and won only in
+Karma. A button sized to its content
+(`block-size: auto` or `height: auto`, as the household cards' buttons and
+`/data`'s export buttons are) keeps its block padding, because that padding
+is part of the height it means to have. The room between a wrapped label's
+ink and the edge is the line's half-leading, which already keeps the ink
+inside the box, plus the 4px of padding and the outline where there is one.
+The half-leading follows the face: about 1.5px in the app's PT Sans, 2px in
+Verdana, which Karma's probes pin, and 2.5px in DejaVu Sans, which they
+fall back to on CI. The rule sits at (0,1,1), above Material's own
+(0,1,0) button rules and below any component's (0,2,0), because the two
+reach the page in opposite orders: Karma's page loads `styles.scss` after
+the components' styles, the app loads it before. At a
+component's own specificity it beat a household button's own padding in Karma,
+where the app would have let the button keep it. The rule is the net. The rows
+the browser run found squeezing (the Smart Import card's actions, a provider
+card's and the Offline Queue card's) also wrap now, so a label that fits its
+row on one line keeps it and the button moves to a line of its own. Each
+button keeps `flex: 0 1 auto`, so lines are collected at content width (G1)
+and only a label wider than the row on its own reaches the net.
+
 **Check:** no `scrollbar-width: none` or `::-webkit-scrollbar { display: none }`
 on a scrolling element.
 
@@ -513,12 +571,13 @@ swipe keeps a non-gesture route — the pinned menu.
 | `scripts/check-truncation.mjs` | G3 across the whole source, `npm run truncation:check` |
 | `shared/directives/tab-strip-scroll.directive.spec.ts` | the strip mechanics on a 300px host: no chevrons on an overflowing strip, a label container that really scrolls, a newly selected tab brought into view, the tab the arrow keys walk to kept in view, and a clicked tab staying put after the reader scrolled to it — the case Material's focus reset breaks |
 | `features/budgets/budgets.overflow.spec.ts`, `features/reports/reports.overflow.spec.ts` | the two opted-in pages: the chevrons never appear, and a `?tab=` deep link opens on its tab already in view |
-| `features/reports/<name>/<name>.overflow.spec.ts` for category-breakdown, monthly-comparison and spending-analysis, `features/settings/profile-settings/profile-settings.overflow.spec.ts`, and cases in `ai-settings-page.component.spec.ts` and `transaction-filters.component.spec.ts` | G2 as rendered: the column count of each repaired grid. Karma's window is 756px, so the three whose rules start at 768px or 1024px cannot be read as layout — those pin the repaired *declaration* through the CSSOM instead, where an invalid value serialises as an empty string |
+| `features/reports/<name>/<name>.overflow.spec.ts` for category-breakdown, monthly-comparison and spending-analysis, `features/settings/profile-settings/profile-settings.overflow.spec.ts`, and cases in `ai-settings-page.component.spec.ts` and `transaction-filters.component.spec.ts` | G2 as rendered: the column count of each repaired grid. Karma's window is 756px, so the three whose rules start at 768px or 1024px cannot be read as layout — those pin the repaired *declaration* through the CSSOM instead, where an invalid value serialises as an empty string. The filter grid's tracks now follow its width, so its case reads more than one column, which shows the declaration parses; the floor each track keeps, a date whole beside its calendar button, is pinned by the same file's *a filter date beside its calendar button*, which also reads the stylesheet for any media rule that would set the tracks |
 | `scripts/check-grid-tracks.mjs` | both halves of G2 across the whole source — the nested `minmax()` and a bare `fr` track with no floor — `npm run grid:check` |
 | `shared/layout/bottom-nav/bottom-nav.overflow.spec.ts`, `shared/components/period-selector/period-selector.overflow.spec.ts` | the two rows the account's own font scale breaks: a gutter between two fitted nav labels at 1.3 and at the default, and the calendar button staying beside the toggle group at 1.3 while the group stops at its content width on a desktop row |
 | `shared/layout/sidebar/sidebar.overflow.spec.ts`, `shared/layout/header/header.overflow.spec.ts` | the drawer never scrolls sideways to reach a nav row; the header avatar falls back to its placeholder on a load failure and recovers when the URL changes (the settings card's own case is in `settings.component.spec.ts`) |
 | `features/settings/ai-settings-page/ai-settings-page.overflow.spec.ts` | the longest catalog model name wraps in the select trigger instead of ellipsizing, at both font scales |
 | cases in `transaction-filters.component.spec.ts`, *a compact field's label* and *a select's label in a narrow compact field* | the filter grid's labels as rendered: an empty compact field's resting label within 2px of its 40px box's centre, with a floated one on the top edge; and, in a 108px select with the fonts pinned, a floated *Category* and *Currency* drawn whole while a resting label keeps the arrow's 60px |
+| cases in `data-management.component.spec.ts`, *a Material button whose label wraps* and *the Smart Import actions at phone width*, in `ai-settings-page.overflow.spec.ts`, *the AI settings card actions at phone width*, in `about.component.spec.ts`, *the donate button*, and in `camera-capture.component.spec.ts`, *keeps Take photo at Material's 40 px* | the button net as rendered, with the fonts pinned: in a 90px row, a wrapped label's ink inside a button that grew from 40px to hold it, in each of Material's five text-label appearances with and without an icon, and at least 4px inside its edge wherever the net's padding applies; a one-line label's button at exactly 40px at the default scale and at 1.3; in an open expansion panel at 1.15 and 1.3, a one-line outlined button at exactly 40px and one styled as the duplicate warning's at exactly 34px; the About page's donate button and the camera's *Take photo* at 40px at the default scale and at 1.3; an icon button and both FABs left to Material's sizing. And the three action rows the browser run found squeezing, in English: the Smart Import card's in its 261px row at 375px, and a provider card's and the Offline Queue card's at 320px, each label on one line inside its row, with each pair side by side where its row holds it, and stacked at 320px with the two 48px touch targets apart |
 | cases in `transaction-list.component.spec.ts`, `budget-progress-card.component.spec.ts`, `import-history.component.spec.ts`, `transactions.component.spec.ts` | the 40px targets — the note button, the receipt icon and the row actions trigger reaching it through the overhang while their glyph boxes stay 32px and unsized, the phone subtitle's inline **Retry** and **Calculate totals** reaching it the same way while their boxes stay the text's, and the budget card's menu trigger reaching it by its own box — plus the desktop table fitting its floor width without a sideways scrollbar, and an attachment id and an error message carrying a URL wrapping inside their cards |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 

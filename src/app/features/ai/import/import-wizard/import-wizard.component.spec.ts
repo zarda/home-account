@@ -24,6 +24,7 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  textLines,
   withTheme,
   provideNoMotion,
 } from '../../../../core/services/testing';
@@ -3209,6 +3210,40 @@ describe('ImportWizardComponent', () => {
       realFixture = TestBed.createComponent(ImportWizardComponent);
       realFixture.detectChanges();
     });
+
+    /**
+     * styles.scss grows a Material button to fit its content (min-height:
+     * fit-content). Material displays a mat-spinner as a block, so in the
+     * label it stacks above the text: 20 px over the 1rem label's 24 px line
+     * fills the 44 px at the default scale, and made Import 47.6 px at Large
+     * and 51.2 at Extra large the moment it was pressed. Laid on the label's
+     * line, it leaves Import at its 44.
+     *
+     * The face is pinned as docs/testing.md *Karma serves no fonts* says.
+     */
+    for (const scale of ['1', '1.15', '1.3'] as const) {
+      it(`keeps Import at its 44 px while it imports, at scale ${scale}`, () => {
+        const face = "Verdana, 'DejaVu Sans', sans-serif";
+        const host = realFixture.nativeElement as HTMLElement;
+        document.documentElement.style.setProperty('--app-font-scale', scale);
+        try {
+          host.style.fontFamily = face;
+          for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+            host.style.setProperty(token, face);
+          }
+          realFixture.componentInstance.isImporting.set(true);
+          realFixture.detectChanges();
+
+          const button = host.querySelector('.import-button') as HTMLElement | null;
+          expect(button?.querySelector('mat-spinner')).withContext('the spinner').toBeTruthy();
+          if (!button) return;
+          expect(textLines(button.querySelector('.mdc-button__label') as HTMLElement)).withContext('label lines').toBe(1);
+          expect(button.getBoundingClientRect().height).withContext('Import, px').toBe(44);
+        } finally {
+          document.documentElement.style.removeProperty('--app-font-scale');
+        }
+      });
+    }
 
     it('seals the header back arrow while the import is written', () => {
       // Leaving mid-write would take the reader off a wizard whose exits the

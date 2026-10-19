@@ -136,8 +136,15 @@
   }
 }
 
+// Wraps rather than squeezing: at 375px the two buttons shrank to share
+// 261px and both labels took two lines. Each keeps flex: 0 1 auto, so lines
+// are collected at the buttons' content widths and a button that fits the row
+// gets a line of its own; the shrink is kept for one label wider than the row
+// on its own, which then wraps inside a button that grows with it
+// (styles.scss). G1.
 .smart-import-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 16px;
 

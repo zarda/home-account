@@ -9,6 +9,16 @@ mat-dialog-actions {
   border-color: var(--border-primary);
 }
 
+// Save's spinner sits on its label's line. Material displays it as a block,
+// which stacked it above the text and, under styles.scss's button rule, grew
+// Save past Cancel while it saved. Encapsulated, this outranks Material's
+// rule in either load order; a utility class on the spinner did not.
+mat-dialog-actions mat-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-end: 8px;
+}
+
 // A category option's icon stays its direct child: MatOption puts anything
 // else into the label, whose text is the name typeahead matches.
 mat-option > mat-icon {
