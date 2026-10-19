@@ -219,8 +219,10 @@ describe('GeminiService', () => {
 
         await service.reinitialize(undefined);
 
-        // Deliberate: this is what brings Gemini up at app start. It is also
-        // exactly why sign-out must call clear() instead.
+        // Deliberate: this is how the constructor arms the build's key. That
+        // arm no longer survives start-up: the first bring-up either clears
+        // Gemini or arms the account's own key, and either supersedes it (ADR
+        // 0179). It is also exactly why sign-out must call clear() instead.
         expect(service.isAvailable()).toBeTrue();
       });
     });

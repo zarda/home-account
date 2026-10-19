@@ -162,8 +162,8 @@ describe('AIStrategyService', () => {
       expect(service).toBeTruthy();
     });
 
-    // The effect also runs once before auth resolves. Resetting there would
-    // clear the environment-key Gemini the constructor had just brought up.
+    // The effect also runs once before auth resolves, when nothing has been
+    // brought up for an account and there is nothing to tear down.
     it('does not reset on the first run before auth has resolved', () => {
       createService('web');
       TestBed.flushEffects();

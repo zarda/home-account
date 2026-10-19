@@ -162,14 +162,18 @@ export class AIStrategyService {
         // Sign-out. The providers are root singletons and a router navigation
         // does not touch them, so they have to be told. Guarded on having
         // actually been up: the effect also runs once at start-up before auth
-        // resolves, and resetting there would clear the environment-key Gemini
-        // the constructor just brought up.
+        // resolves, when there is nothing to tear down. The build's
+        // environment-key Gemini does not outlive start-up either way: the
+        // constructor's bring-up runs signed out and clears Gemini, and that
+        // clear supersedes the environment arm still loading its SDK.
         //
         // Driven from here rather than AuthService.signOut() because
         // ProviderKeyService injects AuthService — calling back the other way
         // would close a dependency cycle. The cost is that the reset lands a
         // microtask after sign-out resolves; sign-out navigates away, so
-        // nothing can reach a provider in that window.
+        // nothing can reach a provider in that window. A bring-up already in
+        // flight for the departing account is superseded by the counters (ADR
+        // 0179): once the reset lands, it arms nothing more.
         if (this.providersInitializedFor() !== null) {
           void this.cloudLLMProvider.resetProviders();
         }

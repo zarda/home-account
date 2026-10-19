@@ -544,4 +544,71 @@ describe('cloud LLM providers across an account switch', () => {
     expect(facade.availableProviders()).toEqual([]);
     expect(keys.keys()).toEqual({});
   });
+
+  // This time the bring-up waits on Gemini's import, with OpenAI's key still to
+  // arm after it. OpenAI's own check cannot stop that arm, which would start
+  // after the switch; only the bring-up knows it was superseded.
+  it("starts no further arm on the departing account's keys once its Gemini import lands", async () => {
+    const a = await freshUser();
+    signedInAs.set(a);
+    const keys = TestBed.inject(ProviderKeyService);
+    await keys.setKey('gemini', 'fake-key-for-the-smoke');
+    await keys.setKey('openai', 'fake-key-for-the-smoke');
+    let keysDeleted = false;
+
+    const facade = TestBed.inject(CloudLLMProviderService);
+    const gemini = TestBed.inject(GeminiService);
+    const openai = TestBed.inject(OpenAIService);
+    const claude = TestBed.inject(ClaudeService);
+
+    // Gemini's real import, held; OpenAI's runs free and is only counted.
+    const svc = gemini as unknown as { loadSdk(): Promise<unknown> };
+    const real = svc.loadSdk.bind(svc);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const geminiLoadSdk = spyOn(svc, 'loadSdk').and.callFake(() => gate.then(real));
+    const openaiLoadSdk = spyOn(
+      openai as unknown as { loadSdk(): Promise<unknown> },
+      'loadSdk'
+    ).and.callThrough();
+    // Before the strategy exists: its constructor starts the first bring-up.
+    const bringUps = spyOn(facade, 'initializeProviders').and.callThrough();
+
+    try {
+      const strategy = TestBed.inject(AIStrategyService);
+      TestBed.tick();
+      await waitFor(() => geminiLoadSdk.calls.count() > 0, "Gemini's import for A's key");
+
+      // Still as A, as above.
+      await keys.deleteAll();
+      keysDeleted = true;
+
+      await auth.signOut();
+      signedInAs.set(null);
+      TestBed.tick();
+
+      const b = await freshUser();
+      signedInAs.set(b);
+      TestBed.tick();
+
+      expect(await strategy.cloudProvidersReady()).toBeTrue();
+      expect(facade.hasAnyCloudProvider()).toBeFalse();
+    } finally {
+      release();
+      if (!keysDeleted && auth.currentUser?.uid === a && signedInAs() === a) {
+        await keys.deleteAll().catch(() => undefined);
+      }
+    }
+
+    // The positive proof: every held import resolved to the real SDK.
+    await Promise.all(geminiLoadSdk.calls.all().map(call => call.returnValue));
+    await Promise.all(bringUps.calls.all().map(call => call.returnValue));
+
+    expect(gemini.isAvailable()).withContext('Gemini').toBeFalse();
+    expect(openai.isAvailable()).withContext('OpenAI').toBeFalse();
+    expect(claude.isAvailable()).withContext('Claude').toBeFalse();
+    expect(facade.availableProviders()).toEqual([]);
+    expect(openaiLoadSdk.calls.count()).withContext("OpenAI's imports").toBe(0);
+    expect(keys.keys()).toEqual({});
+  });
 });
