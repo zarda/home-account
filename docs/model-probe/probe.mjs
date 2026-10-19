@@ -1263,6 +1263,10 @@ async function selfTest() {
     [['--provider', 'openai', '--effort', 'low'], 'an effort other than none', 'takes only none'],
     [['--repeat', '0'], '--repeat 0', '--repeat must be'],
     [['--repeat', String(MAX_REPEAT + 1)], `--repeat ${MAX_REPEAT + 1}`, '--repeat must be'],
+    // Each of these is a number Number() reads inside 1 to MAX_REPEAT, so only the pattern refuses it.
+    [['--repeat', '01'], '--repeat 01', '--repeat must be'],
+    [['--repeat', '2.5'], '--repeat 2.5', '--repeat must be'],
+    [['--repeat', '1e1'], '--repeat 1e1', '--repeat must be'],
     [['--prompts', 'small', '--update'], '--update without the receipt baseline', 'needs --prompts receipt'],
     [['--update', '--dry-run'], '--update with --dry-run', '--update and --dry-run'],
     [['--update', '--repeat', '2'], '--update with --repeat 2', 'combined with --repeat'],
@@ -1286,6 +1290,9 @@ async function selfTest() {
     && parseArgs(['--provider', 'claude', '--sampling', 'force']).opts?.sampling === 'force',
   'takes --sampling force on OpenAI and on Claude');
   check(parseArgs(['--update', '--sampling', 'auto']).opts?.sampling === 'auto', 'takes --sampling auto, the default, with --update');
+  check(MAX_REPEAT === 10, 'the --repeat bound is 10, as the README says');
+  check(parseArgs(['--repeat', String(MAX_REPEAT)]).opts?.repeat === MAX_REPEAT, `takes --repeat ${MAX_REPEAT}, the bound itself`);
+  check(parseArgs(['--repeat', '2']).opts?.repeat === 2, 'takes --repeat 2');
 
   // The redactor, one rule at a time.
   const looseOpenAI = ['sk', 'x'.repeat(24)].join('-');
@@ -1511,6 +1518,16 @@ async function selfTest() {
     check(!lines.some(line => line.includes('sampling: force')), `${tag}: the run header does not claim sampling was forced`);
   }
 
+  // --repeat: parseArgs takes the number, and only the loop turns it into requests. A loop that
+  // stopped reading it would send each prompt once and still print a header saying otherwise.
+  {
+    const { requests, lines } = await driveLoop(['--provider', 'gemini', '--prompts', 'small', '--repeat', '2']);
+    check(requests.length === 2 * smallIds.length,
+      `gemini --prompts small --repeat 2: the loop sent ${2 * smallIds.length} envelopes to the recorder (${requests.length})`);
+    check(smallIds.every(id => lines.some(line => line.startsWith(`--- ${id} #2 (dry run, not sent): `))),
+      'gemini --prompts small --repeat 2: every prompt prints its second request as #2');
+  }
+
   // The readers, on the two shapes a starved answer takes.
   const cut = readOpenAI({
     model: 'm', status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' },
@@ -1532,6 +1549,13 @@ async function selfTest() {
   );
   check(sameList(drift, ['  jp#1.country: baseline "JP" -> now "KR"']),
     'the drift block compares every run of a repeated receipt case, each under its own label');
+  // And the run that drifted is the last one: a compare of the first run alone reads this as no drift.
+  const lastDrift = driftLines(
+    { jp: { country: 'JP', currency: 'JPY', total: 538 } },
+    { jp: [{ country: 'JP', currency: 'JPY', total: 538 }, { country: 'KR', currency: 'JPY', total: 538 }] },
+  );
+  check(sameList(lastDrift, ['  jp#2.country: baseline "JP" -> now "KR"']),
+    'the drift block reports a drift on the last run of a repeated receipt case, as #2');
 
   // --update records answers. A failed call has none, and a baseline holding one would
   // report drift against nothing on every later run.
