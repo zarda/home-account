@@ -1,5 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, SimpleChange, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatSelect } from '@angular/material/select';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFiltersComponent } from './transaction-filters.component';
@@ -11,6 +13,7 @@ import { GoalService } from '../../../core/services/goal.service';
 import { Category, Goal, SavedSearch, TransactionFilters } from '../../../models';
 import {
   channels,
+  chooseOption,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -1174,6 +1177,97 @@ describe('TransactionFiltersComponent', () => {
         }
       });
     });
+  });
+
+  // Material reads an option whose value is null or undefined as a reset
+  // option unless the select sets `canSelectNullableOptions`: a filter holding
+  // undefined then shows an empty trigger with its label resting where the
+  // value belongs. Each select's first option, All, is bound to undefined, and
+  // it is a real choice: the one every filter starts on.
+  describe("a filter's All option", () => {
+    /** Renders, then lets ngModel hand each select its value, which it does a microtask later. */
+    const render = () => {
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+    };
+
+    /** What the field labelled `label` shows: its select's trigger text and whether its label floats. */
+    function shown(label: string): { text: string | undefined; floated: boolean } {
+      const field = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+      expect(field).withContext(`the ${label} field`).toBeTruthy();
+      return {
+        text: field!.querySelector('.mat-mdc-select-value')?.textContent?.trim(),
+        floated: field!.querySelector('.mdc-floating-label--float-above') !== null
+      };
+    }
+
+    const selectIn = (label: string): MatSelect =>
+      fixture.debugElement
+        .queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).closest('mat-form-field')
+          ?.querySelector('mat-label')?.textContent?.trim() === label)!
+        .injector.get(MatSelect);
+
+    it('shows All in Type, Category, Currency and Country with no filter set', fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+
+      for (const label of ['Type', 'Category', 'settings.currency', 'transactions.countryFilter']) {
+        expect(shown(label)).withContext(label).toEqual({ text: 'transactions.all', floated: true });
+      }
+    }));
+
+    it('shows All in Goal too once there is a goal to filter by', fakeAsync(() => {
+      mockGoalService.activeGoals.set([goal('g1')]);
+      component.expanded.set(true);
+      render();
+
+      expect(component.goalOptions.map(each => each.id)).toEqual(['g1']);
+      expect(shown('transactions.goalFilter')).toEqual({ text: 'transactions.all', floated: true });
+    }));
+
+    it('writes undefined, emits no type and shows All once All is picked after Income', fakeAsync(() => {
+      const emit = spyOn(component.filtersChanged, 'emit');
+      component.expanded.set(true);
+      render();
+
+      chooseOption(selectIn('Type'), 'income', render);
+      expect(component.filters.type).toBe('income');
+      expect(shown('Type').text).toBe('Income');
+      const emitted = emit.calls.count();
+
+      chooseOption(selectIn('Type'), undefined, render);
+
+      expect(component.filters.type).toBeUndefined();
+      expect(emit).toHaveBeenCalledTimes(emitted + 1);
+      expect('type' in emit.calls.mostRecent().args[0]!).toBeFalse();
+      expect(shown('Type')).toEqual({ text: 'transactions.all', floated: true });
+    }));
+
+    it('shows All again once Clear all empties the filters', fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+      chooseOption(selectIn('Type'), 'income', render);
+      expect(shown('Type').text).toBe('Income');
+
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.clear-btn')!.click();
+      render();
+
+      expect(component.filters).toEqual({});
+      expect(shown('Type')).toEqual({ text: 'transactions.all', floated: true });
+    }));
+
+    it('shows the type, currency and country a preset names (pin)', fakeAsync(() => {
+      component.expanded.set(true);
+      fixture.componentRef.setInput('presetFilters', { type: 'expense', currency: 'EUR', country: 'JP' });
+      render();
+
+      expect(shown('Type')).toEqual({ text: 'Expense', floated: true });
+      expect(shown('settings.currency')).toEqual({ text: 'EUR', floated: true });
+      expect(shown('transactions.countryFilter')).toEqual({ text: 'Japan', floated: true });
+    }));
   });
 
   describe('presetFilters input', () => {

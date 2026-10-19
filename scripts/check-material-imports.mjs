@@ -69,20 +69,21 @@
  *     see: it is NG8113, raised as an error by the extendedDiagnostics block
  *     in tsconfig.json.
  *
- * The second rule: a `<mat-select>` that offers a null option can select it.
- * Material (22.1.4) reads an option whose value is null or undefined as a
- * reset option unless the select sets `canSelectNullableOptions`, so a model
- * holding null shows an empty trigger with its label unfloated, whatever the
- * option is labelled ("Same day as the start date", "Off", "None"). In any
- * `*.html` under src/app, a `<mat-select …>` whose body, up to its own
- * `</mat-select>` (matched exactly, so a `<mat-select-trigger>` ahead of the
- * options does not end it), holds a `<mat-option` bound `[value]="null"` must
- * carry `canSelectNullableOptions` on its opening tag. The app-wide
- * `MAT_SELECT_CONFIG` is not the fix: it would change every select in the app,
- * the eager ones included (the transaction form is one, through the static
- * import in core/services/quick-add.service.ts), so the attribute is set on
- * the select that needs it. Only a literal `false` on the attribute fails the
- * check; a bound expression is trusted.
+ * The second rule: a `<mat-select>` that offers a null or undefined option
+ * can select it. Material (22.1.4) reads an option whose value is null or
+ * undefined as a reset option unless the select sets
+ * `canSelectNullableOptions`, so a model holding either shows an empty
+ * trigger with its label unfloated, whatever the option is labelled ("Same
+ * day as the start date", "Off", "None", "All"). In any `*.html` under
+ * src/app, a `<mat-select …>` whose body, up to its own `</mat-select>`
+ * (matched exactly, so a `<mat-select-trigger>` ahead of the options does not
+ * end it), holds a `<mat-option` bound `[value]="null"` or
+ * `[value]="undefined"` must carry `canSelectNullableOptions` on its opening
+ * tag. The app-wide `MAT_SELECT_CONFIG` is not the fix: it would change every
+ * select in the app, the eager ones included (the transaction form is one,
+ * through the static import in core/services/quick-add.service.ts), so the
+ * attribute is set on the select that needs it. Only a literal `false` on the
+ * attribute fails the check; a bound expression is trusted.
  *
  * What the second rule cannot see:
  *   - An option whose null comes from data. The recurring dialog's reminder
@@ -90,9 +91,10 @@
  *     the .ts begins `{ value: null, … }`; no template says so. That select
  *     carries the attribute, and the dialog's real-template spec
  *     (recurring-form-dialog.component.spec.ts) is what covers it.
- *   - An option bound `[value]="undefined"`, which Material reads the same way.
- *     The rule names null only: the five "All" options in the transaction
- *     filters are bound to undefined, and they are not covered here.
+ *   - An option bound to an expression that evaluates to undefined without
+ *     naming it, such as `[value]="void 0"`. The rule matches the literals
+ *     `null` and `undefined` and nothing else; no template spells an empty
+ *     option any other way today.
  *   - An inline `template:` in a .ts file. None holds a select today.
  */
 
@@ -441,8 +443,8 @@ function walkTemplates(dir, found = []) {
   return found;
 }
 
-/** An option bound to null. */
-const NULLABLE_VALUE = /\[value\]\s*=\s*(?:"\s*null\s*"|'\s*null\s*')/;
+/** An option bound to null or undefined. */
+const NULLABLE_VALUE = /\[value\]\s*=\s*(?:"\s*(?:null|undefined)\s*"|'\s*(?:null|undefined)\s*')/;
 
 /** `canSelectNullableOptions`, bare or bound, with its literal value captured when it has one. */
 const CAN_SELECT_NULLABLE =
@@ -473,11 +475,11 @@ function tagEnd(template, at) {
 }
 
 /**
- * Every `<mat-select>` in a template, with whether its body offers a null
- * option and whether its opening tag carries `canSelectNullableOptions`. A
- * literal `false` on the attribute does not count as carrying it. Comments are
- * masked first, so a commented-out option or attribute is neither a null
- * option nor a fix.
+ * Every `<mat-select>` in a template, with whether its body offers a null or
+ * undefined option and whether its opening tag carries
+ * `canSelectNullableOptions`. A literal `false` on the attribute does not
+ * count as carrying it. Comments are masked first, so a commented-out option
+ * or attribute is neither a nullable option nor a fix.
  */
 function readSelects(template) {
   const masked = maskHtmlComments(template);
@@ -604,7 +606,7 @@ function run() {
 
   console.log(
     `Checked ${selects} mat-select elements across ${templates} templates ` +
-      `(${nullOffering} offer a null option).`
+      `(${nullOffering} offer a null or undefined option).`
   );
 
   if (unparsed.length > 0) {
@@ -634,11 +636,11 @@ function run() {
   }
 
   if (nullSelects.length > 0) {
-    console.error(`\n${nullSelects.length} mat-select(s) offer a null option but cannot select it:\n`);
+    console.error(`\n${nullSelects.length} mat-select(s) offer a null or undefined option but cannot select it:\n`);
     for (const site of nullSelects.sort()) console.error(`  ${site}`);
     console.error(
       '\nMaterial reads an option whose value is null or undefined as a reset option, so a model\n' +
-        'holding null shows an empty trigger with its label unfloated, whatever the option says.\n' +
+        'holding either shows an empty trigger with its label unfloated, whatever the option says.\n' +
         'Add `canSelectNullableOptions` to the <mat-select>. Set it on the element, not through\n' +
         'MAT_SELECT_CONFIG: the config would change every select in the app.\n'
     );
@@ -649,7 +651,7 @@ function run() {
   }
 
   console.log('Every Material module a component declares is used by its template.');
-  console.log('Every mat-select that offers a null option can select it.');
+  console.log('Every mat-select that offers a null or undefined option can select it.');
 }
 
 /** Every selector string the installed package declares, commas split out. */
@@ -828,9 +830,9 @@ class A {}
   check('a provider-only module is named, not checked', PROVIDER_ONLY.has('MatNativeDateModule') && !('MatNativeDateModule' in MODULE_SELECTORS), true);
   check('a module outside the table has no selectors to match', moduleUsed('MatSidenavModule', '<mat-sidenav></mat-sidenav>'), false);
 
-  // The second rule. A select that offers a null option has to carry
-  // `canSelectNullableOptions`; `unselectable` is what the run reports: the
-  // line of each select that offers one and does not.
+  // The second rule. A select that offers a null or undefined option has to
+  // carry `canSelectNullableOptions`; `unselectable` is what the run reports:
+  // the line of each select that offers one and does not.
   const unselectable = template =>
     readSelects(template)
       .filter(select => select.offersNull && !select.carriesAttribute)
@@ -922,6 +924,35 @@ class A {}
     'a self-closed select has no options to offer',
     readSelects('<mat-select />').map(select => select.offersNull),
     [false]
+  );
+
+  // Undefined is read the same way as null: the transaction filters' "All".
+  const allOption = '<mat-option [value]="undefined">All</mat-option>';
+
+  check(
+    'a select with an undefined option and no attribute is reported',
+    unselectable(`<mat-select [(ngModel)]="x">${allOption}${dayOption}</mat-select>`),
+    [1]
+  );
+  check(
+    'a select with an undefined option and the attribute passes',
+    unselectable(`<mat-select [(ngModel)]="x" canSelectNullableOptions>${allOption}${dayOption}</mat-select>`),
+    []
+  );
+  check(
+    'the undefined option in single quotes, spaced, across lines still counts',
+    unselectable(`<mat-select>\n<mat-option\n  [value] = ' undefined '\n>All</mat-option>\n</mat-select>`),
+    [1]
+  );
+  check(
+    'a string "undefined" and an option named for undefined are not an undefined option',
+    unselectable(`<mat-select><mat-option [value]="'undefined'">x</mat-option><mat-option value="undefined">y</mat-option><mat-option [value]="undefinedish">z</mat-option></mat-select>`),
+    []
+  );
+  check(
+    'an undefined option ahead of an optgroup binds to its own select',
+    unselectable(`<mat-select canSelectNullableOptions>${dayOption}</mat-select>\n<mat-select>${allOption}\n<mat-optgroup label="Expense">${dayOption}</mat-optgroup>\n</mat-select>`),
+    [2]
   );
 
   const failed = cases.filter(c => !c.ok);

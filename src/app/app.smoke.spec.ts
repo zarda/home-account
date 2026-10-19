@@ -612,6 +612,26 @@ describe('App routes (emulator smoke test)', () => {
         );
 
         await expectPage('/transactions', 'transactions.title', 'Blue Bottle Coffee');
+        // #497: each filter's All option is bound to undefined, which Material
+        // reads as a reset unless the select can select it: the trigger then
+        // showed nothing and the field its resting label. With no filter set,
+        // every select reads All, the key here, as no catalog is served. No
+        // goal is seeded, so the goal select is absent and four render.
+        const filterTriggers = (): string[] =>
+          Array.from(harness.routeNativeElement?.querySelectorAll('.filter-grid mat-select') ?? [])
+            .map(select => select.querySelector('.mat-mdc-select-value')?.textContent?.trim() ?? '');
+        harness.routeNativeElement?.querySelector<HTMLElement>('app-transaction-filters .filter-toggle')?.click();
+        await waitForDom('the filter grid with its selects', () =>
+          !!harness.routeNativeElement?.querySelector('.filter-grid mat-select')
+        );
+        // ngModel hands each select its value a microtask after the first pass.
+        await new Promise(resolve => setTimeout(resolve));
+        harness.detectChanges();
+        expect(filterTriggers())
+          .withContext('the filter selects, Type, Category, Currency and Country')
+          .toEqual(Array<string>(4).fill('transactions.all'));
+        await expectNoAxeViolationsInView('/transactions', '.filter-grid');
+
         await expectPage('/budgets', 'budget.title', 'Groceries Budget');
         await expectNoAxeViolationsInView('/budgets', 'app-budget-overview');
         // BUDGET_TABS and REPORT_TABS are what the data hub's ?tab= links are

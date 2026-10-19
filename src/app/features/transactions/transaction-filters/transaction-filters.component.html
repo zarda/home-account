@@ -208,7 +208,7 @@
         <!-- Type -->
         <mat-form-field appearance="outline" class="compact-field">
           <mat-label>{{ 'transactions.type' | translate }}</mat-label>
-          <mat-select [(ngModel)]="filters.type" (selectionChange)="onFilterChange()">
+          <mat-select [(ngModel)]="filters.type" (selectionChange)="onFilterChange()" canSelectNullableOptions>
             <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
             <mat-option value="income">{{ 'common.income' | translate }}</mat-option>
             <mat-option value="expense">{{ 'common.expense' | translate }}</mat-option>
@@ -218,7 +218,7 @@
         <!-- Category -->
         <mat-form-field appearance="outline" class="compact-field">
           <mat-label>{{ 'transactions.category' | translate }}</mat-label>
-          <mat-select [(ngModel)]="filters.categoryId" (selectionChange)="onFilterChange()">
+          <mat-select [(ngModel)]="filters.categoryId" (selectionChange)="onFilterChange()" canSelectNullableOptions>
             <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
             <mat-optgroup [label]="'common.expense' | translate">
               @for (cat of categories; track cat.id) {
@@ -272,7 +272,7 @@
         <!-- Currency -->
         <mat-form-field appearance="outline" class="compact-field">
           <mat-label>{{ 'settings.currency' | translate }}</mat-label>
-          <mat-select [(ngModel)]="filters.currency" (selectionChange)="onFilterChange()">
+          <mat-select [(ngModel)]="filters.currency" (selectionChange)="onFilterChange()" canSelectNullableOptions>
             <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
             @for (curr of currencies; track curr.code) {
               <mat-option [value]="curr.code">{{ curr.code }}</mat-option>
@@ -283,7 +283,7 @@
         <!-- Country: server-side, like currency and the goal link -->
         <mat-form-field appearance="outline" class="compact-field">
           <mat-label>{{ 'transactions.countryFilter' | translate }}</mat-label>
-          <mat-select [(ngModel)]="filters.country" (selectionChange)="onFilterChange()">
+          <mat-select [(ngModel)]="filters.country" (selectionChange)="onFilterChange()" canSelectNullableOptions>
             <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
             @for (country of countryOptions; track country.code) {
               <mat-option [value]="country.code">{{ country.name }}</mat-option>
@@ -295,7 +295,7 @@
         @if (goalOptions.length > 0) {
           <mat-form-field appearance="outline" class="compact-field">
             <mat-label>{{ 'transactions.goalFilter' | translate }}</mat-label>
-            <mat-select [(ngModel)]="filters.goalId" (selectionChange)="onFilterChange()">
+            <mat-select [(ngModel)]="filters.goalId" (selectionChange)="onFilterChange()" canSelectNullableOptions>
               <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
               @for (goal of goalOptions; track goal.id) {
                 <mat-option [value]="goal.id">{{ goal.name }}</mat-option>
