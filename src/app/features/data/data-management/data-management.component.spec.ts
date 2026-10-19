@@ -13,7 +13,7 @@ import {
 } from '../../../core/services/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
@@ -41,7 +41,7 @@ import { CategoryMemoryService } from '../../../core/services/category-memory.se
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { Firestore } from '@angular/fire/firestore';
-import { Transaction } from '../../../models';
+import { Category, Transaction } from '../../../models';
 import { BACKUP_SECTIONS, NOT_IN_BACKUP } from '../../../core/services/export.service';
 import en from '../../../../assets/i18n/en.json';
 
@@ -91,10 +91,11 @@ describe('DataManagementComponent', () => {
     mockTransactionService.wipeTransactions.and.resolveTo({ deleted: 0, copiesPurged: 0 });
     mockTransactionService.exportAll.and.resolveTo([]);
 
-    mockCategoryService = jasmine.createSpyObj('CategoryService', ['exportAll'], {
+    mockCategoryService = jasmine.createSpyObj('CategoryService', ['exportAll', 'loadCategories'], {
       categories: signal([])
     });
     mockCategoryService.exportAll.and.returnValue(Promise.resolve([]));
+    mockCategoryService.loadCategories.and.returnValue(of([]));
 
     // Root-provided like InsightSnapshotService below: without stubs the real
     // services are constructed and their Firestore injection fails.
@@ -218,6 +219,38 @@ describe('DataManagementComponent', () => {
 
     it('should not show import preview initially', () => {
       expect(component.showImportPreview()).toBeFalse();
+    });
+  });
+
+  // The transactions CSV names each row's category from CategoryService's
+  // signal, and the CSV import resolves names against it; only a live
+  // loadCategories() subscription fills it, so the page must hold one.
+  describe('the category catalog', () => {
+    it('is subscribed to when the page opens', () => {
+      const catalog$ = new Subject<Category[]>();
+      mockCategoryService.loadCategories.and.returnValue(catalog$);
+
+      const page = TestBed.createComponent(DataManagementComponent);
+      page.detectChanges();
+
+      expect(mockCategoryService.loadCategories).toHaveBeenCalled();
+      expect(catalog$.observed).toBeTrue();
+      page.destroy();
+    });
+
+    it('is released when the page closes', () => {
+      const catalog$ = new Subject<Category[]>();
+      mockCategoryService.loadCategories.and.returnValue(catalog$);
+
+      const page = TestBed.createComponent(DataManagementComponent);
+      page.detectChanges();
+      // Positive proof first: without it the release below would pass for a
+      // page that never subscribed at all.
+      expect(catalog$.observed).toBeTrue();
+
+      page.destroy();
+
+      expect(catalog$.observed).toBeFalse();
     });
   });
 
@@ -992,7 +1025,12 @@ describe('DataManagementComponent, through its own template', () => {
         { provide: NotificationService, useValue: spy('NotificationService', ['success', 'error', 'info']) },
         { provide: ExportService, useValue: spy('ExportService', ['exportToJSON', 'exportTransactionsToCSV', 'downloadFile', 'parseImportFile']) },
         { provide: TransactionService, useValue: spy('TransactionService', ['exportAll', 'addTransaction', 'wipeTransactions']) },
-        { provide: CategoryService, useValue: spy('CategoryService', ['exportAll']) },
+        {
+          provide: CategoryService,
+          useValue: Object.assign(spy('CategoryService', ['exportAll']), {
+            loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
+          }),
+        },
         { provide: BudgetService, useValue: spy('BudgetService', ['exportAll']) },
         { provide: RecurringService, useValue: spy('RecurringService', ['exportAll']) },
         { provide: GoalService, useValue: spy('GoalService', ['exportAll']) },
