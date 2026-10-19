@@ -231,6 +231,29 @@ describe('GeminiService', () => {
       expect(service.isAvailableSignal()).toBeTrue();
     });
 
+    it('loads its SDK through the loadSdk seam and arms the key it was given', async () => {
+      const keys: string[] = [];
+      const model = { generateContent: jasmine.createSpy('generateContent') };
+      class FakeGoogleGenerativeAI {
+        constructor(key: string) { keys.push(key); }
+        getGenerativeModel(): typeof model { return model; }
+      }
+      const loadSpy = spyOn(
+        service as unknown as { loadSdk: () => Promise<unknown> },
+        'loadSdk'
+      ).and.resolveTo({ GoogleGenerativeAI: FakeGoogleGenerativeAI });
+
+      await service.reinitialize('k');
+
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+      expect(keys).toEqual(['k']);
+      const internal = service as unknown as { currentApiKey: string | null; textModel: unknown };
+      expect(internal.currentApiKey).toBe('k');
+      expect(internal.textModel).toBe(model);
+      expect(service.isAvailable()).toBeTrue();
+      expect(service.isAvailableSignal()).toBeTrue();
+    });
+
     it('switches models when the same key is reused with new model ids', async () => {
       await service.reinitialize('same-key');
       const internal = service as unknown as { textModel: { model?: unknown } };

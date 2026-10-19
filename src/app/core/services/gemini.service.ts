@@ -100,7 +100,7 @@ export class GeminiService extends CloudLLMProviderBase {
 
     try {
       // The SDK is loaded on demand to keep it out of the initial bundle
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const { GoogleGenerativeAI } = await this.loadSdk();
       this.genAI = new GoogleGenerativeAI(apiKey);
 
       this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
@@ -117,6 +117,11 @@ export class GeminiService extends CloudLLMProviderBase {
       this.currentApiKey = null;
       this.available.set(false);
     }
+  }
+
+  // Seam for the on-demand SDK import so the load step can be substituted.
+  protected loadSdk(): Promise<typeof import('@google/generative-ai')> {
+    return import('@google/generative-ai');
   }
 
   /**
