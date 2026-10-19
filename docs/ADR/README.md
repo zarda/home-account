@@ -183,6 +183,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0176](0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md) | Every category list breaks a tie by id over cent-rounded totals | Accepted; closes a gap of 0171; catalog gap narrowed by 0178 | 2026-10-11 |
 | [0177](0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md) | The catalog dates its vendors, and adds only what is no worse than the default | Accepted; amends 0041 and 0043 | 2026-10-12 |
 | [0178](0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md) | A schedule is held to its ranges, and a refusal says what was written | Accepted; amends 0175; closes a gap of 0141 and a gap of 0175; narrows gaps of 0174 and 0176 | 2026-10-12 |
+| [0179](0179-a-provider-arm-applies-only-if-nothing-superseded-it.md) | A provider arm applies only if nothing superseded it | Accepted; extends 0052 | 2026-10-19 |
 | [0181](0181-a-refused-commit-on-the-emulator-wakes-nobody-and-the-smoke-runs-keep-its-waiters-awake.md) | A refused commit on the emulator wakes nobody, and the smoke runs keep its waiters awake | Accepted; amends 0156 | 2026-10-17 |
 
 ## What belongs here

@@ -34,7 +34,7 @@ cache under Hosting's default headers.
 | `jspdf` + `jspdf-autotable` | ~388 kB | `ExportService.exportToPDF` |
 | `pdfjs-dist` | ~434 kB | `pdf-raster.utils.ts` |
 | `html2canvas` | ~203 kB | jspdf, on its own |
-| `openai`, `@anthropic-ai/sdk`, `@google/generative-ai` | — | the provider services' `loadSdk` |
+| `openai`, `@anthropic-ai/sdk`, `@google/generative-ai` | — | `OpenAIService`, `ClaudeService` and `GeminiService`, each through its own `loadSdk`; on a build that ships a Gemini key, `GeminiService`'s constructor starts Gemini's fetch at start-up, for an arm the first bring-up supersedes ([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)) |
 
 The rule is the same in every case: a dependency that serves one screen or
 one button is imported inside the function that needs it, never at module

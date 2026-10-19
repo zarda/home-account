@@ -1108,7 +1108,11 @@ change of connectivity: the key read, then the provider SDK's import. The
 wait joins that bring-up when the reconnect has started it, starts it when it
 has not, and answers at once when the providers are already up. When the
 account or the connection changes during the wait, it follows the newer
-bring-up. Then three things send the entry back to pending with no error, so
+bring-up. A bring-up that a sign-out or a newer bring-up superseded makes
+no further arm call, so the previous account's keys landing late cannot
+undo the answer the wait gives for this one
+([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)).
+Then three things send the entry back to pending with no error, so
 no retry is spent: nobody signed in, another account signed in during the
 wait, or the device offline once it ends. A pending entry is dispatched again
 by the next `online` event or **Sync Now**. A bring-up whose key read failed
