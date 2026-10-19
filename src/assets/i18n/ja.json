@@ -1427,6 +1427,7 @@
     "insightsSettings": "AIインサイト",
     "insightsSettingsHint": "支出インサイトの生成方法を設定します",
     "keysUnavailable": "保存されたAPIキーを読み込めませんでした。再接続してからこの画面を開き直してください。",
+    "keySaveFailed": "APIキーを保存できませんでした。もう一度お試しください。",
     "categoryMemoryTitle": "記憶したカテゴリ",
     "categoryMemoryHint": "インポート中にカテゴリを修正すると、次回から同じ店舗にはその選択が再利用され、AIに再度問い合わせません。",
     "categoryMemoryCount": "記憶している店舗数",

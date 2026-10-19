@@ -318,12 +318,32 @@ export class AiSettingsPageComponent implements OnInit {
     }
   }
 
+  /**
+   * The one way a key leaves this page: the strategy writes it and chains the
+   * provider bring-up the offline drain waits for. A refused write is reported
+   * here, so no rejection reaches the global error handler — and the field
+   * keeps what was typed, so the user can blur it again to retry. A refused
+   * clear leaves the key stored and its provider armed, so a field still
+   * empty when the refusal lands shows that key again, with its clear button
+   * to retry; one typed into meanwhile keeps the typing. A refused typed save
+   * never rewrites the field, even one emptied by hand since.
+   */
+  private async saveKey(provider: LLMProvider, value: string): Promise<void> {
+    try {
+      await this.strategyService.applyProviderKey(provider, value || undefined);
+    } catch (error) {
+      console.error('[AI Settings] API key not saved:', error);
+      this.notifications.error(this.translationService.t('aiPage.keySaveFailed'));
+      const field = { gemini: this.geminiApiKey, openai: this.openaiApiKey, claude: this.claudeApiKey }[provider];
+      if (!value && !field()) field.set(this.providerKeys.keys()?.[provider] ?? '');
+    }
+  }
+
   // Gemini API Key handling
   async onGeminiApiKeyChange(): Promise<void> {
     this.geminiTestResult.set(null);
     if (!this.keysLoaded()) return;
-    await this.providerKeys.setKey('gemini', this.geminiApiKey() || undefined);
-    await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey() || undefined);
+    await this.saveKey('gemini', this.geminiApiKey());
   }
 
   async testGeminiApiKey(): Promise<void> {
@@ -349,15 +369,14 @@ export class AiSettingsPageComponent implements OnInit {
   clearGeminiApiKey(): void {
     this.geminiApiKey.set('');
     this.geminiTestResult.set(null);
-    this.onGeminiApiKeyChange();
+    void this.onGeminiApiKeyChange();
   }
 
   // OpenAI API Key handling
   async onOpenaiApiKeyChange(): Promise<void> {
     this.openaiTestResult.set(null);
     if (!this.keysLoaded()) return;
-    await this.providerKeys.setKey('openai', this.openaiApiKey() || undefined);
-    await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey() || undefined);
+    await this.saveKey('openai', this.openaiApiKey());
   }
 
   async testOpenaiApiKey(): Promise<void> {
@@ -383,15 +402,14 @@ export class AiSettingsPageComponent implements OnInit {
   clearOpenaiApiKey(): void {
     this.openaiApiKey.set('');
     this.openaiTestResult.set(null);
-    this.onOpenaiApiKeyChange();
+    void this.onOpenaiApiKeyChange();
   }
 
   // Claude API Key handling
   async onClaudeApiKeyChange(): Promise<void> {
     this.claudeTestResult.set(null);
     if (!this.keysLoaded()) return;
-    await this.providerKeys.setKey('claude', this.claudeApiKey() || undefined);
-    await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey() || undefined);
+    await this.saveKey('claude', this.claudeApiKey());
   }
 
   async testClaudeApiKey(): Promise<void> {
@@ -417,7 +435,7 @@ export class AiSettingsPageComponent implements OnInit {
   clearClaudeApiKey(): void {
     this.claudeApiKey.set('');
     this.claudeTestResult.set(null);
-    this.onClaudeApiKeyChange();
+    void this.onClaudeApiKeyChange();
   }
 
   // Provider preferences

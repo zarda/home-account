@@ -1562,6 +1562,7 @@
     "insightsSettings": "AI Insights",
     "insightsSettingsHint": "Configure how your spending insights are generated",
     "keysUnavailable": "Could not load your saved API keys. Reconnect and reopen this page before editing them.",
+    "keySaveFailed": "Could not save the API key. Try again.",
     "categoryMemoryTitle": "Remembered categories",
     "categoryMemoryHint": "When you correct a category during an import, that choice is reused for the same merchant next time instead of asking the AI again.",
     "categoryMemoryCount": "Merchants remembered",

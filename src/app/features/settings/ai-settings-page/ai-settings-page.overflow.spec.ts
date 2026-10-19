@@ -55,6 +55,7 @@ describe('overflow guard: the AI settings model selects', () => {
       'canUseAppleIntelligence',
       'useNativeOCR',
       'platform',
+      'applyProviderKey',
     ]);
     strategyServiceMock.preferences.and.returnValue({ autoSync: true });
     strategyServiceMock.canUseCloud.and.returnValue(true);

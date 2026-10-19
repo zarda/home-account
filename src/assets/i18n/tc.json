@@ -1427,6 +1427,7 @@
     "insightsSettings": "AI 洞察",
     "insightsSettingsHint": "設定消費洞察的產生方式",
     "keysUnavailable": "無法載入已儲存的 API 金鑰。請重新連線後再開啟此頁面。",
+    "keySaveFailed": "無法儲存 API 金鑰，請重試。",
     "categoryMemoryTitle": "已記住的分類",
     "categoryMemoryHint": "在匯入時修正分類後，下次遇到相同商家會直接沿用該選擇，不再詢問 AI。",
     "categoryMemoryCount": "已記住的商家數量",
