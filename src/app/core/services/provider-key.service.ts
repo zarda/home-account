@@ -49,7 +49,12 @@ export class ProviderKeyService {
     this.authService.userId() === this.cachedUserId() ? this.cache() : null
   );
 
-  /** True when the most recent load could reach neither Firestore nor its cache. */
+  /**
+   * True when the signed-in account's most recent key load rejected: its read
+   * (offline with a cold cache, or refused) or the legacy-key migration's
+   * writes. A load that settles after its account left changes nothing; a
+   * saved key's write-through and clearCache() reset it.
+   */
   readonly loadFailed = computed(() => this.failed());
 
   private secretsPath(userId: string): string {
@@ -92,11 +97,20 @@ export class ProviderKeyService {
       );
       const stored = await this.migrateFromPreferences(userId, pickProviderSecrets(raw));
 
+      // The account can change during either await: the read, or the
+      // migration's own write. A departed account's keys must not become the
+      // cache, and its outcome must not touch the next account's failure flag.
+      if (this.authService.userId() !== userId) return {};
+
       this.cache.set(stored);
       this.cachedUserId.set(userId);
       this.failed.set(false);
       return stored;
     } catch (error) {
+      // A departed account's failure says nothing about the account signed
+      // in now: leave that account's flag as its own read set it.
+      if (this.authService.userId() !== userId) return {};
+
       // Offline with a cold persistent cache: getDoc rejects rather than
       // returning nothing. Leave the cache unpopulated so the next call
       // retries once a connection is back.
@@ -124,6 +138,12 @@ export class ProviderKeyService {
       { [provider]: value ?? deleteField() },
       true
     );
+
+    // The write landed in the account that started it. If another account is
+    // signed in by now, the cache, the in-flight read and the failure flag
+    // are that account's: neither the write-through nor the reset below may
+    // touch them.
+    if (this.authService.userId() !== userId) return;
 
     const known = this.keys();
     if (!known) {

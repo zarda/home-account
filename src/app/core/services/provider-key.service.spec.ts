@@ -361,4 +361,218 @@ describe('ProviderKeyService', () => {
       expect(firestore.deleteDocument).not.toHaveBeenCalled();
     });
   });
+
+  // A shared device: account A signs out while one of its reads or writes is
+  // still waiting on Firestore, and account B signs in. Whatever A's call
+  // brings back must leave B's cache, in-flight read and failure flag alone.
+  describe('a read or write that lands after an account change', () => {
+    function signIn(id: string, prefs: Partial<UserPreferences & LegacyProviderApiKeys> = {}): void {
+      userId.set(id);
+      currentUser.set(createMockUser(id, { preferences: prefs as UserPreferences }));
+    }
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      let reject!: (reason?: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    it('(a) a departed account\'s save leaves the next account\'s keys in the cache', async () => {
+      signIn('user-a');
+      firestore.getDocument.and.resolveTo({ openai: 'a-openai' });
+      await service.resolve();
+      const ack = deferred<void>();
+      firestore.setDocument.and.returnValue(ack.promise);
+
+      try {
+        const aSave = service.setKey('gemini', 'a-val');
+
+        signIn('user-b');
+        firestore.getDocument.and.resolveTo({ claude: 'b-claude' });
+        await expectAsync(service.resolve()).toBeResolvedTo({ claude: 'b-claude' });
+
+        ack.resolve();
+        await aSave;
+
+        expect(firestore.setDocument).toHaveBeenCalledOnceWith(
+          'users/user-a/secrets/providers',
+          { gemini: 'a-val' },
+          true
+        );
+        expect(service.keys()).toEqual({ claude: 'b-claude' });
+      } finally {
+        ack.resolve();
+      }
+    });
+
+    it('(a′) a departed account\'s save leaves the next account\'s failed read flagged', async () => {
+      signIn('user-a');
+      const ack = deferred<void>();
+      firestore.setDocument.and.returnValue(ack.promise);
+
+      try {
+        const aSave = service.setKey('gemini', 'a-val');
+
+        signIn('user-b');
+        spyOn(console, 'warn');
+        firestore.getDocument.and.rejectWith(new Error('unavailable'));
+        await service.resolve();
+        expect(service.loadFailed()).toBe(true);
+
+        ack.resolve();
+        await aSave;
+
+        expect(service.loadFailed()).toBe(true);
+      } finally {
+        ack.resolve();
+      }
+    });
+
+    it('(a″) a departed account\'s save keeps the next account\'s read in flight', async () => {
+      signIn('user-a');
+      const ack = deferred<void>();
+      firestore.setDocument.and.returnValue(ack.promise);
+      const bRead = deferred<Record<string, unknown> | null>();
+
+      try {
+        const aSave = service.setKey('gemini', 'a-val');
+
+        signIn('user-b');
+        firestore.getDocument.and.returnValue(bRead.promise);
+        const firstB = service.resolve();
+
+        ack.resolve();
+        await aSave;
+
+        // Still deduped onto the read already in flight, not a second one.
+        const secondB = service.resolve();
+        expect(firestore.getDocument.calls.allArgs()).toEqual([
+          ['users/user-b/secrets/providers'],
+        ]);
+
+        bRead.resolve({ gemini: 'b-gemini' });
+        await expectAsync(firstB).toBeResolvedTo({ gemini: 'b-gemini' });
+        await expectAsync(secondB).toBeResolvedTo({ gemini: 'b-gemini' });
+        expect(service.keys()).toEqual({ gemini: 'b-gemini' });
+      } finally {
+        ack.resolve();
+        bRead.resolve(null);
+      }
+    });
+
+    it('(b) a departed account\'s late read leaves the next account\'s keys in the cache', async () => {
+      signIn('user-a');
+      const aRead = deferred<Record<string, unknown> | null>();
+      firestore.getDocument.and.returnValue(aRead.promise);
+
+      try {
+        const aLoad = service.resolve();
+
+        signIn('user-b');
+        firestore.getDocument.and.resolveTo({ gemini: 'b-gemini' });
+        await expectAsync(service.resolve()).toBeResolvedTo({ gemini: 'b-gemini' });
+
+        aRead.resolve({ gemini: 'a-gemini' });
+
+        await expectAsync(aLoad).toBeResolvedTo({});
+        expect(service.keys()).toEqual({ gemini: 'b-gemini' });
+      } finally {
+        aRead.resolve(null);
+      }
+    });
+
+    // Staged on a good read for B: a rejection can only change a flag that
+    // is false, so this is the staging under which the case can fail.
+    it('(c) a departed account\'s failed read leaves the next account\'s good read unflagged', async () => {
+      signIn('user-a');
+      spyOn(console, 'warn');
+      const aRead = deferred<Record<string, unknown> | null>();
+      firestore.getDocument.and.returnValue(aRead.promise);
+
+      try {
+        const aLoad = service.resolve();
+
+        signIn('user-b');
+        firestore.getDocument.and.resolveTo({ gemini: 'b-gemini' });
+        await expectAsync(service.resolve()).toBeResolvedTo({ gemini: 'b-gemini' });
+        expect(service.loadFailed()).toBe(false);
+
+        aRead.reject(new Error('unavailable'));
+
+        await expectAsync(aLoad).toBeResolvedTo({});
+        expect(service.loadFailed()).toBe(false);
+        expect(service.keys()).toEqual({ gemini: 'b-gemini' });
+      } finally {
+        aRead.resolve(null);
+      }
+    });
+
+    // The opposite staging: B's own read failed, so the flag is true and a
+    // late good read for A is what could clear it.
+    it('(c′) a departed account\'s good read leaves the next account\'s failed read flagged', async () => {
+      signIn('user-a');
+      spyOn(console, 'warn');
+      const aRead = deferred<Record<string, unknown> | null>();
+      firestore.getDocument.and.returnValue(aRead.promise);
+
+      try {
+        const aLoad = service.resolve();
+
+        signIn('user-b');
+        firestore.getDocument.and.rejectWith(new Error('unavailable'));
+        await service.resolve();
+        expect(service.loadFailed()).toBe(true);
+
+        aRead.resolve({ gemini: 'a-gemini' });
+
+        await expectAsync(aLoad).toBeResolvedTo({});
+        expect(service.loadFailed()).toBe(true);
+        expect(service.keys()).toBeNull();
+      } finally {
+        aRead.resolve(null);
+      }
+    });
+
+    // The read for user-1 has come back and the migration's own write is
+    // what is still pending when the account changes, so a check placed
+    // only after the read would already have passed.
+    it('(d) a migration write that lands after an account change leaves the next account\'s keys in the cache', async () => {
+      withPreferences({ geminiApiKey: 'old-g' });
+      let enter: () => void = () => undefined;
+      const reached = new Promise<void>(resolve => (enter = resolve));
+      const ack = deferred<void>();
+      firestore.setDocument.and.callFake(() => {
+        enter();
+        return ack.promise;
+      });
+
+      try {
+        const aLoad = service.resolve();
+        // Switching before the write starts would let the migration's own
+        // first check bail, and the case would prove nothing about the cache.
+        await reached;
+
+        signIn('user-2');
+        firestore.getDocument.and.resolveTo({ gemini: 'user-2-key' });
+        await expectAsync(service.resolve()).toBeResolvedTo({ gemini: 'user-2-key' });
+
+        ack.resolve();
+
+        await expectAsync(aLoad).toBeResolvedTo({});
+        expect(firestore.setDocument).toHaveBeenCalledOnceWith(
+          SECRETS_PATH,
+          { gemini: 'old-g' },
+          true
+        );
+        expect(service.keys()).toEqual({ gemini: 'user-2-key' });
+        expect(auth.clearStoredProviderApiKeys).not.toHaveBeenCalled();
+      } finally {
+        ack.resolve();
+      }
+    });
+  });
 });
