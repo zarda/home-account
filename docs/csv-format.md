@@ -35,12 +35,22 @@ Note, Tags, Location, Period, Recurring
 |---|---|
 | `Date` | `yyyy-MM-dd`, the **local** calendar day the app displays — not the UTC rendering of the same instant |
 | `Type` | `income` or `expense` |
-| `Category` | the category's own translated name — never *Parent / Child* — in the locale that exported; `Unknown` for a row whose category id the catalogue does not hold |
+| `Category` | the category's own translated name — never *Parent / Child* — in the locale that exported; for a row whose category id the catalogue does not hold, that locale's word for an unknown category (`common.unknownCategory`: *Unknown*, *不明* or *未知*) |
 | `Amount` / `Amount (Base)` | plain decimals, never guarded, so `SUM()` works on the column |
 | `Tags` | joined with `; ` in one cell — or, when a tag contains `; ` or the join would start with `[`, a JSON array of strings (`["a; b","c"]`) |
 | `Location` | the place name only; coordinates and the country stay in the JSON backup |
 | `Period` | `weekly`, `monthly`, `yearly`, or empty |
 | `Recurring` | `true`, or empty |
+
+**The names come from the account's category catalog**, which each page that
+exports or imports loads for itself while it is open: Data Management and
+Reports both do. No shipped category is named *Unknown*, *不明* or *未知*, so a
+row exported under one of those words re-imports onto its type's catch-all
+and is counted with the unmatched rows, whichever locale wrote the file. Data
+Management once loaded no catalog of its own, so opened first, or from a
+page that loads none, it named every row's category unknown and matched none
+on the way back in
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
 
 ## What round-trips, and what does not
 
@@ -95,7 +105,7 @@ Type, Category, Amount, Currency, Transactions
 | | |
 |---|---|
 | `Type` | `income` or `expense` — a category carrying both yields **two rows**, never a netted one |
-| `Category` | the translated category name, as everywhere else |
+| `Category` | the translated category name, as everywhere else, in the locale that exported; *Unknown*, *不明* or *未知* for a category the catalogue does not hold |
 | `Amount` | the period total, a bare decimal so `SUM()` works on the column |
 | `Currency` | always the account's base currency, repeated on every row |
 | `Transactions` | how many rows are behind the total |
@@ -233,6 +243,13 @@ column, `debit` and `credit` are used instead.
 - **A category is matched by name, not by id.** A category deleted since the
   export, or two custom categories of one type sharing a name, take the
   catch-all; the preview says how many rows, not which.
+- **An export or import made before the catalog arrives names nothing.** The
+  page subscribes to the catalog when it opens and waits for nothing, so a
+  file exported, or a preview taken, before the first snapshot lands reads an
+  empty catalog: every row's category unknown on the way out, unmatched on
+  the way in. The first snapshot comes from the device's cache when the
+  cache holds the catalog; on a device that never synced it, it waits for
+  the server.
 - **An older file's Tags cell can be misread as JSON.** A cell written before
   the JSON form existed that happens to parse as an array of strings — the
   single tag `["x","y"]`, or the two tags `["a` and `b"]` joined as

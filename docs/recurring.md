@@ -393,7 +393,7 @@ nothing at all: the rule stays paused, with its pointer, its active flag and its
 
 | Why it refuses | What the list says | What to do about it |
 |---|---|---|
-| the schedule cannot advance, or names a day, weekday or month outside its range | *Cannot resume: this rule's schedule cannot advance. Edit the rule and check its interval and day.* | edit the rule: give it an interval of 1 or more, and look at its day, which the dialog opens as one it can show |
+| the schedule cannot advance, or names a day, weekday or month outside its range | *Cannot resume: this rule's schedule cannot advance. Edit the rule, check its interval and day, and save it first.* | edit the rule: give it an interval of 1 or more, and look at its day, which the dialog opens as one it can show; save it, even when every field already looks right, since the dialog's repair is written only on Save; then resume it, because the save leaves the rule paused |
 | the end date has already passed | *Cannot resume: this rule's end date has passed. Edit the end date first.* | move the end date or remove it; a rule that is genuinely finished can be deleted instead |
 | the start date cannot be read | *Failed to resume recurring transaction* | edit the rule and set a start date, or delete it ([above](#a-rule-the-engine-cannot-read)) |
 

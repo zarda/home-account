@@ -940,8 +940,9 @@ no *Cloud* chip and no duration, as the camera's does. The drain waits for
 the account's cloud providers to come up before it opens its attempt, and
 their bring-up reads the keys first, so a cold offline start does not stop it
 knowing ([below](#offline-capture-and-the-queue)). A drain that could not
-know, because the connection dropped after the wait or the key read failed,
-is filed as a connection failure, and its stored sentence reads back as
+know, because the connection dropped after the wait, or the key read failed
+and failed again when the wait read it once more, is filed as a connection
+failure, and its stored sentence reads back as
 `import.errorCloudUnavailable`, which says to check the connection or add
 a key ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
 Any other failed attempt's line is a catalog sentence for its error class:
@@ -1108,19 +1109,47 @@ change of connectivity: the key read, then the provider SDK's import. The
 wait joins that bring-up when the reconnect has started it, starts it when it
 has not, and answers at once when the providers are already up. When the
 account or the connection changes during the wait, it follows the newer
-bring-up. A bring-up that a sign-out or a newer bring-up superseded makes
-no further arm call, so the previous account's keys landing late cannot
-undo the answer the wait gives for this one
+bring-up. A key saved on the AI settings page is a bring-up too: the page
+saves through `AIStrategyService.applyProviderKey`, which makes the save the
+bring-up a wait joins before its first await, waits for the write and for
+the bring-up already in flight, and then brings the providers up on the
+stored keys. Pressing **Sync Now** is what blurs a key field, so the drain
+that press starts waits for the save its own blur began, rather than
+answering off the bring-up before it. A reconnect during the save comes up
+behind it, and another account's bring-up never waits on it. A bring-up
+that a sign-out or a newer bring-up superseded makes no further arm call, so
+the previous account's keys landing late cannot undo the answer the wait
+gives for this one
 ([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)).
 Then three things send the entry back to pending with no error, so
 no retry is spent: nobody signed in, another account signed in during the
-wait, or the device offline once it ends. A pending entry is dispatched again
-by the next `online` event or **Sync Now**. A bring-up whose key read failed
-still answers, and the drain goes on. Before this, the drain waited for the
-key read alone, so a keyed account's first drain after a cold offline start
-could reach the cloud path before the providers were up, be filed
-*Connection problem* and spend one of its three retries
+wait, or the device offline once it ends. A wait that joined a key save goes
+on at a sign-out or another account's sign-in even while the save's write is
+still out, which the Firestore SDK keeps until that account is current again.
+A pending entry is dispatched again by the next `online` event or
+**Sync Now**. A bring-up whose own key read failed while the device was
+online is read once more: the wait starts one more bring-up for the same
+account and connectivity, and answers on it, whatever that read finds. That
+is one fresh read per wait, shared by every wait on the same failed bring-up,
+and none offline, where the reconnect's bring-up reads the keys. A wait that
+moved on to a newer bring-up counts it as its fresh read, even a refused save
+or a bring-up that joined the read still out, so those two answer with no
+second read (see *Known gaps*). It goes by the bring-up's own outcome, not by
+`ProviderKeyService.loadFailed()`, which opening Settings → AI clears without
+bringing anything up. When the fresh read fails too, the wait still answers
+and the drain goes on
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
+Before the drain waited for its providers, it waited for the key read alone,
+so a keyed account's first drain after a cold offline start could reach the
+cloud path before the providers were up, be filed *Connection problem* and
+spend one of its three retries
 ([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+
+**Sync Now** stays enabled while a key is being saved: the press whose
+mousedown blurs the key field is the press that has to reach the queue, and
+the wait above is what makes it safe. It is disabled while a drain runs, and
+the page refuses a second press that lands before that render, so a double
+click starts one drain and reports it once.
 
 A date the reader doubted is resolved on the drain's own rule — the same
 `resolveImportDate` the review lanes use, run at the moment the row is written.
@@ -1270,16 +1299,29 @@ names the image and the status it dropped, with the drain's warning beside it.
   permissions.* on such a record reads as the could-not-finish sentence
   rather than the connection one
   ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md)).
-- **A drain whose key read fails still says *Connection problem*.** The
-  drain waits for the account's providers, whose bring-up reads the keys
-  first, so it is filed as a connection failure only when that read itself
-  fails. Nothing then says whether a key is set, so the record carries the
+- **A drain whose key read fails twice still says *Connection problem*.**
+  The drain waits for the account's providers, whose bring-up reads the
+  keys first, and reads them once more when that read failed online, so it
+  is filed as a connection failure only when the fresh read fails too. A
+  wait that moved on to a save whose write was refused, or to a bring-up
+  started while the account's read was still out, which joins that read,
+  counts it as its fresh read and is filed after the one failed read.
+  Nothing then says whether a key is set, so the record carries the
   sentence that names both causes, even on a device with no key. It never
-  claims no provider on a device that has one. And the read is not tried
-  again until the account or the connection changes: the next drain joins
-  the finished bring-up for the same account and connectivity
+  claims no provider on a device that has one. And only the drain's wait
+  reads again: a search or a scan finds the providers the failed bring-up
+  left down, until the account or the connection changes or a drain's fresh
+  read brings them up
   ([ADR 0175](ADR/0175-a-whole-import-failure-reads-in-the-readers-language-and-a-drain-with-no-provider-says-so.md),
-  [ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+  [ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
+- **A key saved offline holds a drain's wait until the device reconnects.**
+  The save waits for its write's acknowledgement, which offline waits for
+  the server, and a drain whose wait joined the save stays *processing*
+  until then, or until the account signs out or another account signs in,
+  which ends the save's hold at once. A reload in that window sweeps the
+  entry back to pending at the next launch, at the cost of one retry, as the
+  next entry says
+  ([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
 - **A drain killed while it waits spends a retry.** The entry is marked
   *processing* while the drain waits for the providers, and the wait has no
   time limit. A tab closed or an app swiped away then is swept back to

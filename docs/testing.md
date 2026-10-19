@@ -332,12 +332,13 @@ un-blanks a template or adds a binding.**
 Un-blanking also has a second gate: dropping `NO_ERRORS_SCHEMA` can surface a
 `Mat*Module` in an `imports:` array whose selector the template never uses,
 which `npm run material:check` fails (ADR 0128). Run it too. The same script
-holds a second rule (ADR 0178): a `<mat-select>` whose body offers an option
-bound `[value]="null"` must carry `canSelectNullableOptions`, or Material reads
-that option as a reset and the field shows empty, its label unfloated, while
-the model holds `null`. A spec that renders such a field reads the trigger's
-text (`.mat-mdc-select-value`) and whether the label floats, since a model
-assertion passes either way. The script's `--self-test` runs 60 cases across
+holds a second rule (ADR 0178, widened by ADR 0180): a `<mat-select>` whose
+body offers an option bound `[value]="null"` or `[value]="undefined"` must
+carry `canSelectNullableOptions`, or Material reads that option as a reset and
+the field shows empty, its label unfloated, while the model holds `null` or
+`undefined`. A spec that renders such a field reads the trigger's text
+(`.mat-mdc-select-value`) and whether the label floats, since a model
+assertion passes either way. The script's `--self-test` runs 65 cases across
 both rules.
 
 ### A real reload aborts the whole run

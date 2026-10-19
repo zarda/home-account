@@ -1,12 +1,36 @@
 # 178. A schedule is held to its ranges, and a refusal says what was written
 
-**Status:** Accepted, implemented · **Date:** 2026-10-12 · **Issues:** #490
+**Status:** Accepted, implemented; amended by
+[0180](0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)
+· **Date:** 2026-10-12 · **Issues:** #490
 
 Reference documentation lives in [../recurring.md](../recurring.md),
 [../backup-restore.md](../backup-restore.md),
 [../receipt-import.md](../receipt-import.md),
 [../smart-search.md](../smart-search.md) and
 [../one-shot-reads.md](../one-shot-reads.md).
+
+**Amended by
+[0180](0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md).**
+The ranges, the refusal's split on the record, the catalog read once per
+call and the drain's wait for its providers stand. Three statements below
+no longer hold as written:
+
+- **Under *A stored rule out of range is repaired by its owner*,** the
+  resume refusal's sentence. Under the same key it now reads *Cannot
+  resume: this rule's schedule cannot advance. Edit the rule, check its
+  interval and day, and save it first.*, because saving the repaired rule
+  leaves it paused and a Resume still follows. ja and tc say the same.
+- **Under *The drain waits for its providers*,** that the wait answers as
+  soon as the bring-up it waited for is still the current one. When that
+  bring-up's own key read failed while the device was online, the wait
+  first reads the keys once more, in a bring-up of its own for the same
+  attempt, and answers on that. A key saved on the AI settings page is
+  also a bring-up the wait joins.
+- **Under *What the browser runs found*,** that `material:check`'s
+  self-test runs 60 cases. Its second rule now holds an option bound
+  `[value]="undefined"` as it holds one bound to `null`, and the self-test
+  runs 65.
 
 This record takes the four parts of #490: a recurring rule's day, weekday
 and month held to their ranges, an import refusal that says what was
@@ -723,7 +747,10 @@ defect.
   drain waits for. A **Sync Now** pressed on the same page before that
   bring-up finishes joins the attempt's finished one, is told the providers
   are ready, and can still file the entry and spend a retry. The class
-  predates this record; closing it is a follow-up.
+  predates this record; closing it is a follow-up. *Closed by*
+  [0180](0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md):
+  the page saves through the strategy, and the save is the bring-up a wait
+  joins.
 - **A drain killed during the wait spends a retry.** The entry is marked
   processing while it waits, and the wait has no time limit, as the key
   wait before it had none. A tab closed or an app swiped away then is
@@ -750,7 +777,10 @@ defect.
   *All* options in the transaction filters are bound `[value]="undefined"`,
   which Material reads as a reset option the same way. The gate's rule
   names `null` only, and whether an unset filter should read *All* is a
-  product call left open.
+  product call left open. *Closed by*
+  [0180](0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md):
+  the owner chose *All*, the five selects set the attribute, and the rule
+  names `undefined` too.
 - **Offline, the catalog's length test can take the built-ins alone.**
   Once the SDK decides it is offline, the listener the search dialog and
   the history page open can publish a first snapshot from a cache that
@@ -773,7 +803,11 @@ defect.
   a class found by reading, and
   [0151](0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)
   forbids a freeze that would let those sites stand, so the gate waits for
-  a wave that fixes them.
+  a wave that fixes them. *Closed by*
+  [0180](0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md):
+  every displayed site reads the reader's word, and `i18n:check`'s fifth
+  scan holds the class, with the words stored on a row kept by the owner's
+  decision.
 - **The model-facing fallbacks stay English.** `cloud-llm-provider.base.ts`,
   `rag-context.service.ts` and the search context's `nameOf` in
   `nl-search.service.ts` still name a category they cannot resolve *Other*.

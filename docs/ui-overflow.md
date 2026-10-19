@@ -286,6 +286,25 @@ on one of those is belt-and-braces rather than the fix. A plain `<button>`
 wrapped around a bare `mat-icon` has no target at all, and measures the
 icon's own em box — which is where this earns its keep.
 
+**Material clips a floated select label to keep its arrow's room.** An
+outlined select's notch, the gap in the top border its floated label sits in,
+is capped at the field's width less 60px, the room a resting label leaves for
+the arrow. Material 22.1.4 lifts that cap to less 24px only under
+`.mdc-text-field--label-floating`, a class its form field no longer sets, so
+in the transaction filters' 108px selects a floated *Category* read
+*Categor*: cut mid-word, with no ellipsis and no way to read the rest. One
+global rule in `styles.scss` gives the notch Material's floated cap under
+`.mdc-notched-outline--notched`, the class the outline does set. A floated
+label sits on the top border, above the arrow, so it cannot overlap it, and a
+resting one keeps its room
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
+The same grid's compact fields take their 40px height from Material's own
+tokens on the form field, `--mat-form-field-container-height` and
+`--mat-form-field-container-vertical-padding`, never from paddings forced onto
+the infix: the label sits in the notched outline, a sibling of the infix, so
+an infix override left an empty field's resting label 9px below its box's
+centre.
+
 **Check:** no `scrollbar-width: none` or `::-webkit-scrollbar { display: none }`
 on a scrolling element.
 
@@ -498,6 +517,7 @@ swipe keeps a non-gesture route — the pinned menu.
 | `shared/layout/bottom-nav/bottom-nav.overflow.spec.ts`, `shared/components/period-selector/period-selector.overflow.spec.ts` | the two rows the account's own font scale breaks: a gutter between two fitted nav labels at 1.3 and at the default, and the calendar button staying beside the toggle group at 1.3 while the group stops at its content width on a desktop row |
 | `shared/layout/sidebar/sidebar.overflow.spec.ts`, `shared/layout/header/header.overflow.spec.ts` | the drawer never scrolls sideways to reach a nav row; the header avatar falls back to its placeholder on a load failure and recovers when the URL changes (the settings card's own case is in `settings.component.spec.ts`) |
 | `features/settings/ai-settings-page/ai-settings-page.overflow.spec.ts` | the longest catalog model name wraps in the select trigger instead of ellipsizing, at both font scales |
+| cases in `transaction-filters.component.spec.ts`, *a compact field's label* and *a select's label in a narrow compact field* | the filter grid's labels as rendered: an empty compact field's resting label within 2px of its 40px box's centre, with a floated one on the top edge; and, in a 108px select with the fonts pinned, a floated *Category* and *Currency* drawn whole while a resting label keeps the arrow's 60px |
 | cases in `transaction-list.component.spec.ts`, `budget-progress-card.component.spec.ts`, `import-history.component.spec.ts`, `transactions.component.spec.ts` | the 40px targets — the note button, the receipt icon and the row actions trigger reaching it through the overhang while their glyph boxes stay 32px and unsized, the phone subtitle's inline **Retry** and **Calculate totals** reaching it the same way while their boxes stay the text's, and the budget card's menu trigger reaching it by its own box — plus the desktop table fitting its floor width without a sideways scrollbar, and an attachment id and an error message carrying a URL wrapping inside their cards |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 

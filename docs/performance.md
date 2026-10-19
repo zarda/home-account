@@ -88,9 +88,9 @@ bounded on purpose:
   selector sets, spelled as the installed `@angular/material` spells them.
   `--self-test` asserts every string in it against the selectors the
   installed package actually declares, plus the three re-export edges it
-  leans on (List → Divider, Input → FormField, Select → Option); its 60
+  leans on (List → Divider, Input → FormField, Select → Option); its 65
   cases cover the second rule's fixtures too, so it prints
-  `check-material-imports self-test: 60 passed`. A Material upgrade that
+  `check-material-imports self-test: 65 passed`. A Material upgrade that
   renames a selector fails the self-test, where the fix is the table — not
   the app, where the fix would look like deleting a live import.
 - Matching is lenient in every direction but one: an attribute selector
@@ -112,27 +112,34 @@ the package exports for it, and run `npm run material:check` — the self-test
 fails on a misspelling immediately. Until it is in the table, its entries are
 skipped and counted rather than checked, and the run says so by name.
 
-**A select that offers a null option can select it.** Material reads an
-option whose value is `null` or `undefined` as a reset option unless the
-select sets `canSelectNullableOptions`, so a field whose model holds `null`
-showed empty, with its label sitting unfloated inside it, whatever the option
-was labelled: *Same day as the start date*, *Off*, *None*. The browser run for
-#490 met it on four selects, the recurring dialog's day and reminder and the
-transaction form's budget period and goal, and the second rule followed
+**A select that offers a null or undefined option can select it.** Material
+reads an option whose value is `null` or `undefined` as a reset option unless
+the select sets `canSelectNullableOptions`, so a field whose model holds
+either showed empty, with its label sitting unfloated inside it, whatever the
+option was labelled: *Same day as the start date*, *Off*, *None*, *All*. The
+browser run for #490 met it on four selects whose empty option holds `null`,
+the recurring dialog's day and reminder and the transaction form's budget
+period and goal,
+and the second rule followed
 ([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md),
 under the class rule of
-[ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md)). In any
-template under `src/app`, a `<mat-select>` whose body holds a `<mat-option`
-bound `[value]="null"` must carry `canSelectNullableOptions` on its opening
-tag; only a literal `false` there fails, and a bound expression is trusted.
-The body runs to the select's own `</mat-select>`, matched exactly, so a
-`<mat-select-trigger>` ahead of the options does not end it, and HTML
-comments are masked first. A live run prints `Checked 41 mat-select elements
-across 96 templates (3 offer a null option).` It cannot see an option whose
-null comes from data (the reminder select's, which the dialog's real-template
-spec covers), an option bound to `undefined` (the five *All* options in the
-transaction filters, which show empty for the same reason and are left as a
-product call), or an inline `template:`.
+[ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md)). The five
+*All* options in the transaction filters, bound to `undefined`, showed empty
+for the same reason; once the owner chose *All* for an unset filter, they took
+the attribute and the rule widened to them
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
+In any template under `src/app`, a `<mat-select>` whose body holds a
+`<mat-option` bound `[value]="null"` or `[value]="undefined"` must carry
+`canSelectNullableOptions` on its opening tag; only a literal `false` there
+fails, and a bound expression is trusted. The body runs to the select's own
+`</mat-select>`, matched exactly, so a `<mat-select-trigger>` ahead of the
+options does not end it, and HTML comments are masked first. A live run
+prints `Checked 41 mat-select elements across 96 templates (8 offer a null or
+undefined option).` It cannot see an option whose null comes from data (the
+reminder select's, which the dialog's real-template spec covers), an option
+bound to an expression that is undefined without naming it, such as
+`[value]="void 0"`, which no template writes today, or an inline
+`template:`.
 
 **`unusedStandaloneImports: "error"`** in `tsconfig.json`'s
 `angularCompilerOptions` covers the half Angular can see. It was measured at
