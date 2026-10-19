@@ -15,6 +15,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { GeminiService } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
+import { FirestoreService } from './firestore.service';
 import { NoteTranslationService } from './note-translation.service';
 import { ProviderKeyService } from './provider-key.service';
 import { AIStrategyService } from './ai-strategy.service';
@@ -434,6 +435,49 @@ describe('cloud LLM providers (emulator smoke test)', () => {
 
     expect(keys.keys()).toEqual({});
     expect(gemini.isAvailable()).toBeFalse();
+  });
+
+  it('reads the keys once more when the wait ends online after a failed read', async () => {
+    // A key read that fails while online leaves the bring-up keyless, and
+    // nothing starts another until connectivity changes: the drain's wait
+    // answered on it and the photo went to no provider. Only the first read
+    // of the secrets is refused; the wait's second read and the SDK import
+    // after it are real. The fake key only builds a local handle, as above.
+    const keys = TestBed.inject(ProviderKeyService);
+    await keys.setKey('gemini', 'fake-key-for-the-smoke');
+    try {
+      await facade.resetProviders();
+      expect(gemini.isAvailable()).toBeFalse();
+
+      const secrets = `users/${uid}/secrets/providers`;
+      const firestoreService = TestBed.inject(FirestoreService);
+      const callThrough = firestoreService.getDocument.bind(firestoreService);
+      let refused = false;
+      const read = spyOn(firestoreService, 'getDocument').and.callFake(
+        <T>(path: string): Promise<T | null> => {
+          if (path === secrets && !refused) {
+            refused = true;
+            return Promise.reject(new Error('Failed to get document because the client is offline.'));
+          }
+          return callThrough<T>(path);
+        }
+      );
+      const warn = spyOn(console, 'warn');
+
+      // Asked in the task the strategy is built in, so the start-up bring-up
+      // and the wait's own share the refused read: the only second read is
+      // the one the wait starts.
+      const strategy = TestBed.inject(AIStrategyService);
+      const ready = await strategy.cloudProvidersReady();
+      const armed = gemini.isAvailable();
+
+      expect(ready).toBeTrue();
+      expect(armed).toBeTrue();
+      expect(read.calls.allArgs()).toEqual([[secrets], [secrets]]);
+      expect(warn).toHaveBeenCalledOnceWith('[ProviderKey] Keys unavailable:', jasmine.any(Error));
+    } finally {
+      await keys.setKey('gemini', undefined);
+    }
   });
 });
 

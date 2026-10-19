@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CloudLLMProviderService, AIFeatureType } from './cloud-llm-provider.service';
 import { GeminiService, ParsedReceipt, CategorizedTransaction, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
@@ -77,6 +77,7 @@ describe('CloudLLMProviderService', () => {
   let claude: jasmine.SpyObj<ClaudeService>;
   let auth: jasmine.SpyObj<AuthService>;
   let providerKeys: jasmine.SpyObj<ProviderKeyService>;
+  let keyReadFailed: WritableSignal<boolean>;
 
   const sampleReceipt: ParsedReceipt = {
     merchant: 'Shop', amount: 5, currency: 'USD', date: new Date('2024-01-01'),
@@ -111,12 +112,12 @@ describe('CloudLLMProviderService', () => {
     auth = jasmine.createSpyObj<AuthService>('AuthService', ['currentUser']);
     auth.currentUser.and.returnValue(null);
 
-    providerKeys = jasmine.createSpyObj<ProviderKeyService>('ProviderKeyService', [
-      'resolve',
-      'getKey',
-      'setKey',
-      'clearCache',
-    ]);
+    keyReadFailed = signal(false);
+    providerKeys = jasmine.createSpyObj<ProviderKeyService>(
+      'ProviderKeyService',
+      ['resolve', 'getKey', 'setKey', 'clearCache'],
+      { loadFailed: keyReadFailed }
+    );
     providerKeys.resolve.and.resolveTo({});
     providerKeys.getKey.and.resolveTo(undefined);
     providerKeys.setKey.and.resolveTo(undefined);
@@ -235,6 +236,30 @@ describe('CloudLLMProviderService', () => {
       await service.initializeProviders('text-model', 'vision-model');
 
       expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    // The strategy's readiness wait reads the keys once more when the bring-up
+    // it waited on could not read them. The key service never rejects a read
+    // that failed: it answers {} and sets its flag, so the flag read as this
+    // bring-up's read lands is that read's own outcome.
+    it('reports a key read that failed', async () => {
+      providerKeys.resolve.and.callFake(async () => {
+        keyReadFailed.set(true);
+        return {};
+      });
+
+      expect(await service.initializeProviders()).toEqual({ keyReadFailed: true });
+    });
+
+    it('reports a key read that landed, after an earlier one had failed', async () => {
+      keyReadFailed.set(true);
+      providerKeys.resolve.and.callFake(async () => {
+        keyReadFailed.set(false);
+        return { gemini: 'g-key' };
+      });
+
+      expect(await service.initializeProviders()).toEqual({ keyReadFailed: false });
+      expect(gemini.reinitialize).toHaveBeenCalledOnceWith('g-key', undefined, undefined);
     });
   });
 
@@ -391,6 +416,29 @@ describe('CloudLLMProviderService', () => {
       expect(openaiArm()).toHaveBeenCalledOnceWith('oA');
       expect(claudeArm()).toHaveBeenCalledOnceWith('cA');
       expect(geminiClear()).not.toHaveBeenCalled();
+    });
+
+    it('reports its own failed read when a newer bring-up over the same read supersedes it', async () => {
+      const read = hold<ProviderSecrets>();
+      providerKeys.resolve.and.callFake(async () => {
+        const keys = await read.promise;
+        keyReadFailed.set(true);
+        return keys;
+      });
+
+      const first = service.initializeProviders();
+      const second = service.initializeProviders();
+      try {
+        await settle();
+        expect(providerKeys.resolve).toHaveBeenCalledTimes(2);
+      } finally {
+        read.release({});
+      }
+
+      // The first returns where it finds the generation moved.
+      expect(await first).toEqual({ keyReadFailed: true });
+      expect(await second).toEqual({ keyReadFailed: true });
+      expect(geminiClear()).toHaveBeenCalledTimes(1);
     });
 
     it('arms no Gemini model switch whose key read lands after a reset', async () => {

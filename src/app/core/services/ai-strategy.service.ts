@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed, effect } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { ParsedReceipt } from './gemini.service';
-import { CloudLLMProviderService } from './cloud-llm-provider.service';
+import { BringUpOutcome, CloudLLMProviderService } from './cloud-llm-provider.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
 import { VisionOcrService } from './vision-ocr.service';
@@ -40,6 +40,16 @@ const DEFAULT_PREFERENCES: AIPreferences = {
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
+
+/** The outcome of a bring-up that never reached a key read of its own. */
+const NOT_READ: BringUpOutcome = { keyReadFailed: false };
+
+/** What a key save's hold on a wait ends on (AIStrategyService.saveHold). */
+function newSaveHold(): { released: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const released = new Promise<void>(resolve => (release = resolve));
+  return { released, release };
+}
 
 /**
  * Confidence below which a result counts as "did not read the receipt".
@@ -134,13 +144,35 @@ export class AIStrategyService {
   private providersInitializedFor = signal<string | null>(null);
 
   /** The latest bring-up, which a caller waiting on the providers joins. */
-  private initialization: Promise<void>;
+  private initialization: Promise<BringUpOutcome>;
 
   /**
    * A key save whose write or bring-up is still out, and the account it is
    * for. A new attempt for that account comes up behind it.
    */
-  private pendingKeySave: { userId: string; done: Promise<void> } | null = null;
+  private pendingKeySave: { userId: string; done: Promise<BringUpOutcome> } | null = null;
+
+  /**
+   * Bumped on every run of the effect's signed-out branch: a sign-out, and
+   * also the start-up run before auth resolves and a connectivity change
+   * while no one is signed in. A key save, and an attempt queued behind one,
+   * brings nothing up once the count it took has moved, so nothing after a
+   * sign-out, even when the same account has signed back in.
+   */
+  private session = 0;
+
+  /**
+   * What a key save's hold on a wait ends on, besides the save itself. The
+   * effect releases it, and starts the next, on every signed-out run and on a
+   * run that finds another account signed in than the one the latest save is
+   * tagged with (pendingKeySave); each save takes the one current when it
+   * starts. A switch that reaches the effect as one change, after the next
+   * account has made a save of its own, is not seen this way (ADR 0180, Known
+   * gaps). The Firestore SDK
+   * keeps a departed account's write until that account is current again, so
+   * a wait on the write alone would sit until then.
+   */
+  private saveHold = newSaveHold();
 
   constructor() {
     // Apply the stored model selection at startup so the first request honors
@@ -187,11 +219,22 @@ export class AIStrategyService {
         }
         this.providersInitializedFor.set(null);
         // A save still out for the departing account holds up no one's
-        // bring-up, and it brings nothing up once its write lands.
+        // bring-up, and it brings nothing up once its write lands, even for
+        // the same account signed back in: that session's own bring-up reads
+        // the keys, and a second one would supersede it unseen by the wait.
+        // Nor does it hold a wait any longer, its write still out or not: a
+        // wait on it goes on now, and answers false or follows the next
+        // account's bring-up.
         this.pendingKeySave = null;
+        this.session++;
+        this.releaseSaves();
         return;
       }
 
+      // A switch to another account that reaches the effect as one change,
+      // with no signed-out run between, ends the departed save's hold too,
+      // while the latest save is still the departed account's.
+      if (this.pendingKeySave && this.pendingKeySave.userId !== userId) this.releaseSaves();
       void this.bringUpFor(`${userId}:${online}`);
     });
   }
@@ -207,18 +250,28 @@ export class AIStrategyService {
    * A new attempt for the account a key save is still out for (a reconnect
    * during the save, or the account's first attempt when the save came
    * first) comes up behind that save, so it cannot answer ahead of the
-   * write. Another account's attempt never waits on it.
+   * write. Another account's attempt never waits on it, and one queued
+   * behind the save brings nothing up once a sign-out has ended its session
+   * or another account is signed in.
    */
-  private bringUpFor(attempt: string): Promise<void> {
+  private bringUpFor(attempt: string): Promise<BringUpOutcome> {
     if (this.providersInitializedFor() !== attempt) {
       this.providersInitializedFor.set(attempt);
       const save = this.pendingKeySave;
       const account = attempt.slice(0, attempt.lastIndexOf(':'));
+      const session = this.session;
+      const stillOwn = () => this.session === session && this.authService.userId() === account;
       this.initialization = save?.userId === account
-        ? save.done.then(() => this.initializeCloudProviders())
+        ? save.done.then(() => (stillOwn() ? this.initializeCloudProviders() : NOT_READ))
         : this.initializeCloudProviders();
     }
     return this.initialization;
+  }
+
+  /** End every key save's hold on a wait, and start the next saves' hold. */
+  private releaseSaves(): void {
+    this.saveHold.release();
+    this.saveHold = newSaveHold();
   }
 
   /**
@@ -228,12 +281,36 @@ export class AIStrategyService {
    * A caller that arrives before the effect starts the bring-up itself, before
    * its first await; one that arrives later joins the bring-up in flight. When
    * the account or connectivity changes during the wait, it waits for the
-   * newer bring-up instead. A bring-up that fails still answers, with whatever
-   * came up. Answers false when no one is signed in or the device is offline,
-   * so the caller can leave its work for later.
+   * newer bring-up instead.
+   *
+   * A key save still out for the account is part of the wait: the write's
+   * acknowledgement, then the bring-up after it. A wait that joined a save
+   * whose write is not yet acknowledged does not answer false when the device
+   * goes offline, until the write is acknowledged: the offline bring-up comes
+   * up behind the save. A sign-out, or another account signing in, ends the
+   * save's hold at once, its write still out or not, so the wait answers false
+   * or follows the next account's bring-up.
+   *
+   * A bring-up whose own key read failed while online is read once more, once
+   * per call: the wait starts one fresh bring-up for the same attempt and
+   * answers on it, whatever that read finds. Waits on the same bring-up share
+   * the one fresh read. A wait that moved on to a newer bring-up counts that
+   * one as its fresh read, whether or not it read the keys itself: a save
+   * whose write was refused reads nothing, and a bring-up started while the
+   * account's read is still out joins that read (ADR 0180, Known gaps). It
+   * goes by the bring-up's own outcome, never by
+   * ProviderKeyService.loadFailed(): opening Settings → AI reads the keys for
+   * the page and clears that flag, and arms nothing. Offline nothing is read
+   * again; the reconnect's bring-up reads the keys.
+   *
+   * A bring-up that fails still answers, with whatever came up. Answers false
+   * when no one is signed in or the device is offline, so the caller can leave
+   * its work for later.
    */
   async cloudProvidersReady(): Promise<boolean> {
-    for (let waited: Promise<void> | null = null; ;) {
+    let freshRead = false;
+    let outcome: BringUpOutcome = NOT_READ;
+    for (let waited: Promise<BringUpOutcome> | null = null; ;) {
       const userId = this.authService.userId();
       const online = this.pwaService.isOnline();
       if (!userId) return false;
@@ -242,21 +319,31 @@ export class AIStrategyService {
       // one. Compared by identity, not by state: a state that changes and
       // changes back during the wait has started a newer bring-up for it.
       const bringUp = this.bringUpFor(`${userId}:${online}`);
-      if (bringUp === waited) return online;
+      if (bringUp === waited) {
+        if (!online || freshRead || !outcome.keyReadFailed) return online;
+        // Same attempt, read again. Installed as the latest bring-up, so a
+        // wait still on the failed one joins this read rather than its own.
+        this.initialization = this.initializeCloudProviders();
+        continue;
+      }
 
+      // Anything newer than the bring-up this call last waited on counts as
+      // its fresh read, even one that read nothing new: a refused save, or a
+      // bring-up that joined the read still out (see the docblock).
+      if (waited !== null) freshRead = true;
       waited = bringUp;
-      await bringUp.catch(() => undefined);
+      outcome = await bringUp.catch(() => NOT_READ);
     }
   }
 
   /**
    * (Re)initialize cloud providers with the persisted model selection.
    */
-  private async initializeCloudProviders(): Promise<void> {
+  private async initializeCloudProviders(): Promise<BringUpOutcome> {
     const prefs = this._preferences();
     this.cloudLLMProvider.setOpenAIModel(prefs.openaiModel ?? DEFAULT_OPENAI_MODEL);
     this.cloudLLMProvider.setClaudeModel(prefs.claudeModel ?? DEFAULT_CLAUDE_MODEL);
-    await this.cloudLLMProvider.initializeProviders(prefs.textModel, prefs.visionModel);
+    return this.cloudLLMProvider.initializeProviders(prefs.textModel, prefs.visionModel);
   }
 
   /**
@@ -707,21 +794,34 @@ export class AIStrategyService {
    * write and for the bring-up already in flight, then runs a full one, so
    * saves come up one after another. A refused write rejects, with nothing
    * brought up for it, but only once that earlier bring-up is up, so no wait
-   * it took over answers early. An account that signed out or switched before
-   * the write landed has nothing brought up for it.
+   * it took over answers early; the save then answers with that bring-up's
+   * outcome, so a wait that joined it still reads the keys again after a
+   * failed read. An account that signed out before the write landed has
+   * nothing brought up for it, even once it has signed back in, and a wait on
+   * the save goes on at the sign-out, not at the write, which the Firestore
+   * SDK keeps until that account is current again. A switch that reaches the
+   * effect as one change does the same only while this save is still the
+   * latest (ADR 0180, Known gaps).
    */
   applyProviderKey(provider: LLMProvider, apiKey: string | undefined): Promise<void> {
     const userId = this.authService.userId();
+    const session = this.session;
+    const hold = this.saveHold.released;
     // Started now: setKey reads the account before its first await.
     const saved = this.providerKeys.setKey(provider, apiKey);
     const previous = this.initialization;
     const run = (async () => {
       const [write] = await Promise.allSettled([saved, previous]);
       if (write.status === 'rejected') throw write.reason;
-      if (!userId || this.authService.userId() !== userId) return;
-      return this.initializeCloudProviders().catch(() => undefined);
+      if (!userId || this.session !== session || this.authService.userId() !== userId) return NOT_READ;
+      return this.initializeCloudProviders().catch(() => NOT_READ);
     })();
-    const done = run.then(() => undefined, () => undefined);
+    // The page's answer is run's; a wait's is done, which the account's
+    // leaving also ends.
+    const done = Promise.race([
+      run.then(o => o, () => previous.then(o => o, () => NOT_READ)),
+      hold.then(() => NOT_READ),
+    ]);
     this.initialization = done;
     this.pendingKeySave = userId ? { userId, done } : null;
     void done.then(() => {

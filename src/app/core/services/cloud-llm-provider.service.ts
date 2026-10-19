@@ -20,6 +20,11 @@ interface ProviderStatus {
   claude: boolean;
 }
 
+/** What one bring-up learned about its own key read. */
+export interface BringUpOutcome {
+  keyReadFailed: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CloudLLMProviderService {
   private geminiService = inject(GeminiService);
@@ -91,18 +96,27 @@ export class CloudLLMProviderService {
    * on them for the next one. Resolved therefore does not mean armed. The
    * only caller, AIStrategyService, compares bring-ups by identity, so its
    * readiness wait never answers for one that a newer bring-up superseded.
+   *
+   * Every return, a superseded one included, says whether this bring-up's
+   * key read failed. ProviderKeyService never rejects a failed read: it
+   * answers {} and sets loadFailed(), so the flag is taken as soon as the
+   * read lands, before a later read can change it. The strategy's readiness
+   * wait reads the keys once more on it.
    */
-  async initializeProviders(textModelId?: string, visionModelId?: string): Promise<void> {
+  async initializeProviders(textModelId?: string, visionModelId?: string): Promise<BringUpOutcome> {
     // Taking the next generation supersedes every bring-up before this one.
     const generation = ++this.generation;
     const { gemini, openai, claude } = await this.providerKeys.resolve();
+    // This read's own outcome: a failed read answers {} and sets the flag,
+    // so the flag is taken here, as the read lands, not later on.
+    const outcome: BringUpOutcome = { keyReadFailed: this.providerKeys.loadFailed() };
     // The key read landed after a reset or a newer bring-up.
-    if (generation !== this.generation) return;
+    if (generation !== this.generation) return outcome;
 
     if (gemini) {
       await this.geminiService.reinitialize(gemini, textModelId, visionModelId);
       // Superseded while Gemini armed: no fresh OpenAI or Claude arm.
-      if (generation !== this.generation) return;
+      if (generation !== this.generation) return outcome;
     } else {
       // Not reinitialize(undefined) — that re-arms from the environment key.
       this.geminiService.clear();
@@ -110,8 +124,9 @@ export class CloudLLMProviderService {
 
     await this.openaiService.reinitialize(openai);
     // Superseded while OpenAI armed: no fresh Claude arm.
-    if (generation !== this.generation) return;
+    if (generation !== this.generation) return outcome;
     await this.claudeService.reinitialize(claude);
+    return outcome;
   }
 
   /**

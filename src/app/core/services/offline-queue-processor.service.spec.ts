@@ -1059,6 +1059,7 @@ describe('OfflineQueueProcessorService: a key saved while Sync Now drains', () =
   let keyStored: boolean;
   let armed: boolean;
   let landWrite: () => void;
+  let userId: WritableSignal<string | null>;
 
   beforeEach(() => {
     queue = jasmine.createSpyObj<OfflineQueueService>('OfflineQueueService', [
@@ -1067,6 +1068,7 @@ describe('OfflineQueueProcessorService: a key saved while Sync Now drains', () =
     ]);
     queue.updateImageStatus.and.resolveTo(true);
     queue.peekQueuedImage.and.callFake(async (id: string) => queuedImage({ id }));
+    userId = signal<string | null>('user-a');
 
     const transactions = jasmine.createSpyObj<TransactionService>('TransactionService', [
       'addTransaction',
@@ -1098,6 +1100,7 @@ describe('OfflineQueueProcessorService: a key saved while Sync Now drains', () =
     ]);
     facade.initializeProviders.and.callFake(async () => {
       armed = keyStored;
+      return { keyReadFailed: false };
     });
     facade.resetProviders.and.resolveTo();
 
@@ -1142,7 +1145,7 @@ describe('OfflineQueueProcessorService: a key saved while Sync Now drains', () =
         { provide: TransactionService, useValue: transactions },
         { provide: NotificationService, useValue: notifications },
         { provide: TranslationService, useValue: translation },
-        { provide: AuthService, useValue: { userId: signal<string | null>('user-a'), currentUser: signal(null) } },
+        { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: CategoryService, useValue: { categories } },
         { provide: CloudLLMProviderService, useValue: facade },
@@ -1216,5 +1219,80 @@ describe('OfflineQueueProcessorService: a key saved while Sync Now drains', () =
 
     expect(strategy.processReceipt).toHaveBeenCalledTimes(1);
     expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+  });
+
+  it('holds the photo until the providers are up when the account signs back in during a save it left behind', async () => {
+    const strategy = start();
+    await strategy.cloudProvidersReady();
+    // The real façade's counters (ADR 0179): a bring-up arms only when no
+    // newer bring-up or reset started while its read was out. Each read is
+    // held, and finds the key once the write has landed.
+    let generation = 0;
+    const reads: (() => void)[] = [];
+    facade.resetProviders.and.callFake(async () => {
+      generation++;
+      armed = false;
+    });
+    facade.initializeProviders.and.callFake(async () => {
+      const mine = ++generation;
+      await new Promise<void>(resolve => reads.push(resolve));
+      if (mine === generation) armed = keyStored;
+      return { keyReadFailed: false };
+    });
+
+    const save = strategy.applyProviderKey('gemini', 'k');
+    try {
+      userId.set(null);
+      TestBed.tick();
+      userId.set('user-a');
+      TestBed.tick();
+      dispatchImage('img_1');
+      await new Promise((r) => setTimeout(r, 25));
+      landWrite();
+      await new Promise((r) => setTimeout(r, 25));
+      expect(strategy.processReceipt).not.toHaveBeenCalled();
+      reads[0]();
+      await waitFor(() => queue.updateImageStatus.calls.any());
+    } finally {
+      landWrite();
+      reads.forEach(read => read());
+    }
+    await save;
+
+    expect(strategy.processReceipt).toHaveBeenCalledTimes(1);
+    expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+  });
+
+  it('hands the photo back pending, its retry unspent, when the account signs out during a save whose write is still out', async () => {
+    const strategy = start();
+    await strategy.cloudProvidersReady();
+
+    const save = strategy.applyProviderKey('gemini', 'k');
+    try {
+      dispatchImage('img_1');
+      await new Promise((r) => setTimeout(r, 25));
+      // The drain's wait joined the save.
+      expect(queue.updateImageStatus).not.toHaveBeenCalled();
+
+      // The Firestore SDK keeps the departed account's write until that
+      // account is current again, so the write stays out until this case
+      // lands it, after the wait has answered.
+      userId.set(null);
+      TestBed.tick();
+      await new Promise((r) => setTimeout(r, 25));
+
+      // No error with it, so the queue spends no retry.
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
+      expect(strategy.processReceipt).not.toHaveBeenCalled();
+    } finally {
+      landWrite();
+    }
+    await save;
+    await new Promise((r) => setTimeout(r, 25));
+
+    // The write that landed later sent nothing and wrote nothing more.
+    expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
+    expect(strategy.processReceipt).not.toHaveBeenCalled();
+    expect(armed).toBeFalse();
   });
 });

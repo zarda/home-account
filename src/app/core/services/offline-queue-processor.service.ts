@@ -105,11 +105,15 @@ export class OfflineQueueProcessorService implements OnDestroy {
       // the cloud path refuses with one sentinel for both no connection and
       // no provider, so a failure filed before it lands cannot say which.
       // This joins that bring-up, or starts one; providers already up answer
-      // at once. A key read that fails ends the bring-up too, with its failure
-      // recorded, so the drain goes on and the attempt stays a network one.
-      // Offline or signed out by then, or another account signed in during
-      // the wait: back to 'pending' with no error, as above, so no retry is
-      // spent on it.
+      // at once. A key read that fails while online is read once more before
+      // the wait answers, except for a wait that moved on to a refused save
+      // or to a bring-up sharing the read still out (ADR 0180, Known gaps);
+      // when the read fails again, the bring-up still ends, so the drain goes
+      // on and the attempt stays a network one. Signed out by then, or another
+      // account signed in during the wait, even one that had joined a key
+      // save whose write is still out (a sign-out releases it; ADR 0180 names
+      // the one-change switch it may not), or offline once it ends: back to
+      // 'pending' with no error, as above, so no retry is spent on it.
       if (!(await this.aiStrategy.cloudProvidersReady()) || queued.userId !== this.authService.userId()) {
         await this.queue.updateImageStatus(id, 'pending');
         return;

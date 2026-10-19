@@ -175,7 +175,7 @@ function stubReceiptSeams(parsed?: ParsedReceipt): void {
   if (parsed) {
     cloudLLMProvider.parseReceipt.and.resolveTo(parsed);
   }
-  cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+  cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
   cloudLLMProvider.resetProviders.and.resolveTo(undefined);
   cloudLLMProvider.availableProviders.and.returnValue([]);
   cloudLLMProvider.providerStatus.and.returnValue({
@@ -623,7 +623,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
         raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
       );
-      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
       cloudLLMProvider.resetProviders.and.resolveTo(undefined);
       cloudLLMProvider.availableProviders.and.returnValue([]);
       cloudLLMProvider.providerStatus.and.returnValue({
@@ -727,7 +727,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
         raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
       );
-      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
       cloudLLMProvider.resetProviders.and.resolveTo(undefined);
       cloudLLMProvider.availableProviders.and.returnValue([]);
       cloudLLMProvider.providerStatus.and.returnValue({
@@ -915,7 +915,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // own vocabulary check is stubbed out along with the provider, so the
       // filter that has to drop 'invented' is the service's own.
       cloudLLMProvider.suggestTags.and.resolveTo([['coffee', 'invented']]);
-      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
       cloudLLMProvider.resetProviders.and.resolveTo(undefined);
       cloudLLMProvider.availableProviders.and.returnValue([]);
       cloudLLMProvider.providerStatus.and.returnValue({
@@ -1040,7 +1040,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       );
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
       cloudLLMProvider.parseReceipt.and.resolveTo(parsedReceipt);
-      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
       cloudLLMProvider.resetProviders.and.resolveTo(undefined);
       cloudLLMProvider.availableProviders.and.returnValue([]);
       cloudLLMProvider.providerStatus.and.returnValue({
@@ -1145,7 +1145,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       );
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
       cloudLLMProvider.parseReceipt.and.resolveTo(parsedReceipt);
-      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
       cloudLLMProvider.resetProviders.and.resolveTo(undefined);
       cloudLLMProvider.availableProviders.and.returnValue([]);
       cloudLLMProvider.providerStatus.and.returnValue({
@@ -1255,7 +1255,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
         raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
       );
-      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
       cloudLLMProvider.resetProviders.and.resolveTo(undefined);
       cloudLLMProvider.availableProviders.and.returnValue([]);
       cloudLLMProvider.providerStatus.and.returnValue({
