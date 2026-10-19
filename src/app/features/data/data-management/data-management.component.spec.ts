@@ -8,8 +8,10 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  textLines,
   withTheme,
   provideNoMotion,
+  TranslationStub,
 } from '../../../core/services/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
@@ -41,7 +43,7 @@ import { CategoryMemoryService } from '../../../core/services/category-memory.se
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { Firestore } from '@angular/fire/firestore';
-import { Category, Transaction } from '../../../models';
+import { Category, FONT_SCALES, Transaction } from '../../../models';
 import { BACKUP_SECTIONS, NOT_IN_BACKUP } from '../../../core/services/export.service';
 import en from '../../../../assets/i18n/en.json';
 
@@ -1228,6 +1230,160 @@ describe('DataManagementComponent, through its own template', () => {
     button('receiptImages.manage')?.click();
 
     expect(open).toHaveBeenCalled();
+  });
+
+  /**
+   * A CSV preview's dates are a column: a box of one width on every row, so
+   * the descriptions beside them start at one edge. `localeDate`'s medium
+   * style is May 10, 2026 in en and 2026年10月17日 in ja (tc renders the same
+   * string), so the box holds the widest of those on one line.
+   *
+   * Karma serves none of the app's fonts, so the host is pinned to Verdana,
+   * whose metrics the Linux runner's DejaVu Sans matches to within a few
+   * pixels, and its digits to a hundredth of one. Neither draws a CJK glyph:
+   * those fall back to whatever face the machine has, 1 em each where there is
+   * one, and to DejaVu's missing-glyph box, 0.6 em, where there is none.
+   * Verdana's digits are wider than PT Sans's, so in this face a Japanese date
+   * runs a few pixels past a box that holds it in the app's own. What holds in
+   * both, Verdana on the Mac and DejaVu Sans on the runner, with or without a
+   * CJK face, is that it ends before the description begins, and that is what
+   * the Japanese case asserts; the English one, in Latin glyphs only, asserts
+   * the box holds it, at the default font scale and at Extra large.
+   */
+  describe('a CSV preview date, in each language', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+    /** What `localeDate`'s medium style renders, by language and ISO day. */
+    const MEDIUM: Record<string, Record<string, string>> = {
+      en: { '2026-05-10': 'May 10, 2026', '2026-03-04': 'Mar 4, 2026' },
+      ja: { '2026-10-17': '2026年10月17日', '2026-03-04': '2026年3月4日' },
+    };
+
+    afterEach(() => document.documentElement.style.removeProperty('--app-font-scale'));
+
+    /**
+     * The preview a CSV of one row per day in `MEDIUM[language]` reaches, the
+     * rows' amounts in that order.
+     */
+    function preview(
+      language: string,
+      amounts = [10, 11]
+    ): { row: HTMLElement; date: HTMLElement; description: HTMLElement; amount: HTMLElement }[] {
+      const translation = TestBed.inject(TranslationService) as unknown as TranslationStub;
+      translation.currentLocale.set(language);
+      spyOn(TestBed.inject(LocaleFormatService), 'formatDate').and.callFake(
+        value => MEDIUM[translation.currentLocale()][(value as Date).toISOString().slice(0, 10)] ?? ''
+      );
+      el().style.fontFamily = FACE;
+      fixture.detectChanges();
+      component.importedTransactions.set(
+        Object.keys(MEDIUM[language]).map((day, i) => ({
+          date: new Date(`${day}T00:00:00Z`),
+          description: `Row ${i}`,
+          amount: amounts[i],
+          type: 'expense' as const,
+          currency: 'USD',
+        })) as never
+      );
+      component.showImportPreview.set(true);
+      fixture.detectChanges();
+
+      return (Array.from(el().querySelectorAll('.preview-item')) as HTMLElement[]).map(row => ({
+        row,
+        date: row.querySelector('.preview-date') as HTMLElement,
+        description: row.querySelector('.preview-desc') as HTMLElement,
+        amount: row.querySelector('.preview-amount') as HTMLElement,
+      }));
+    }
+
+    /** Where the laid-out text ends, which a box that does not wrap can overrun. */
+    function textEnd(element: Element): number {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getBoundingClientRect().right;
+    }
+
+    it('keeps a Japanese date on one line, ending before its description, in boxes of one width', () => {
+      const rows = preview('ja');
+      expect(rows.map(row => row.date.textContent?.trim())).toEqual(['2026年10月17日', '2026年3月4日']);
+
+      for (const { date, description } of rows) {
+        const shown = date.textContent?.trim();
+        expect(textLines(date)).withContext(`${shown} lines`).toBe(1);
+        expect(textEnd(date))
+          .withContext(`${shown} text end against its description's start, px`)
+          .toBeLessThanOrEqual(description.getBoundingClientRect().left);
+      }
+      expect(rows[1].date.getBoundingClientRect().width)
+        .withContext('the short date box against the long one, px')
+        .toBe(rows[0].date.getBoundingClientRect().width);
+    });
+
+    /** The English dates, each on one line inside its box, the boxes of one width. */
+    function expectEnglishDatesHeld(where: string): void {
+      const rows = preview('en');
+      expect(rows.map(row => row.date.textContent?.trim())).toEqual(['May 10, 2026', 'Mar 4, 2026']);
+
+      for (const { date } of rows) {
+        const shown = `${where}: ${date.textContent?.trim()}`;
+        expect(textLines(date)).withContext(`${shown} lines`).toBe(1);
+        expect(date.scrollWidth).withContext(`${shown} text width against its box, px`).toBeLessThanOrEqual(date.clientWidth);
+      }
+      expect(rows[1].date.getBoundingClientRect().width)
+        .withContext(`${where}: the short date box against the long one, px`)
+        .toBe(rows[0].date.getBoundingClientRect().width);
+    }
+
+    it('keeps an English date on one line, inside its box, in boxes of one width', () => {
+      expectEnglishDatesHeld('at the default font scale');
+    });
+
+    // Pin: the box is in em, so it grows with the text at Extra large, where
+    // May 10, 2026 is about 126 px in this face and a 105 px box would not hold it.
+    it('keeps an English date inside its box at the Extra large font scale (pin)', () => {
+      document.documentElement.style.setProperty('--app-font-scale', '1.3');
+      expectEnglishDatesHeld('at Extra large');
+    });
+
+    /**
+     * A 320 px phone leaves the preview 256 px, and each row 224 px with 200
+     * of content: the stylesheet's arithmetic. At Extra large the date box is
+     * 136.5 px and -$12,345.67 about 114 px in this face, and at the default
+     * scale 105 and 88, so at no scale do the date, the description's floor
+     * and the amount share a line; the row wraps, the description keeps its
+     * floor on whichever line it lands, and the amount still ends the row.
+     */
+    describe('the row at a 320 px phone', () => {
+      const DESCRIPTION_FLOOR_PX = 56;
+
+      it('keeps every part inside the row at every font scale, the description at its floor or wider', () => {
+        const host = el();
+        host.style.display = 'block';
+        host.style.width = '256px';
+        const rows = preview('en', [12345.67, 4.5]);
+        expect(rows.map(({ amount }) => amount.textContent?.trim())).toEqual(['-$12,345.67', '-$4.50']);
+
+        for (const scale of FONT_SCALES) {
+          document.documentElement.style.setProperty('--app-font-scale', String(scale));
+          for (const { row, date, description, amount } of rows) {
+            const shown = `at ${scale}: ${amount.textContent?.trim()}`;
+            const edges = row.getBoundingClientRect();
+            expect(edges.width).withContext(`${shown}: the row, px`).toBeCloseTo(224, 0);
+            const contentEnd = edges.right - parseFloat(getComputedStyle(row).paddingRight);
+            for (const [name, part] of [['date', date], ['description', description], ['amount', amount]] as const) {
+              expect(part.getBoundingClientRect().right)
+                .withContext(`${shown}: the ${name}'s end against the row's content edge, px`)
+                .toBeLessThanOrEqual(contentEnd);
+            }
+            expect(amount.getBoundingClientRect().right)
+              .withContext(`${shown}: the amount's end, on whichever line, against the row's content edge, px`)
+              .toBeCloseTo(contentEnd, 0);
+            expect(description.getBoundingClientRect().width)
+              .withContext(`${shown}: the description's width, px`)
+              .toBeGreaterThanOrEqual(DESCRIPTION_FLOOR_PX);
+          }
+        }
+      });
+    });
   });
 
   describe('colours, as painted', () => {
