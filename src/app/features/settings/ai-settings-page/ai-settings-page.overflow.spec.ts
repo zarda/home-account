@@ -69,13 +69,15 @@ describe('overflow guard: the AI settings model selects', () => {
     const offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',
       'closedForUpgrade',
+      'isSyncing',
       'syncQueue',
       'clearAll',
     ]);
     offlineQueueServiceMock.pendingCount.and.returnValue(0);
-    // The page's own template reads this one, so the probe has to answer it
+    // The page's own template reads these, so the probe has to answer them
     // even though the queue is not what it measures.
     offlineQueueServiceMock.closedForUpgrade.and.returnValue(false);
+    offlineQueueServiceMock.isSyncing.and.returnValue(false);
 
     // Gated true for Gemini alone: it is the only card this probe needs
     // rendered, and the fix under test applies to every `.model-field`

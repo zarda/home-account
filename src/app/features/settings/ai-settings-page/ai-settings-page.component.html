@@ -462,7 +462,7 @@
           <mat-card-actions>
             <button mat-button
                     (click)="syncQueue()"
-                    [disabled]="pendingQueueCount() === 0 || !isOnline() || queueClosed()">
+                    [disabled]="pendingQueueCount() === 0 || !isOnline() || queueClosed() || queueSyncing()">
               <mat-icon>sync</mat-icon>
               {{ 'aiPage.syncNow' | translate }}
             </button>

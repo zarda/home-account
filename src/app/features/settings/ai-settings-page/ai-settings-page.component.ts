@@ -126,6 +126,9 @@ export class AiSettingsPageComponent implements OnInit {
   // here can reopen it, so every write from here on is dropped and only the
   // console says so.
   queueClosed = computed(() => this.offlineQueue.closedForUpgrade());
+  // A drain already running answers a second call with nothing synced, so a
+  // second press must not reach it and claim a sync of its own.
+  queueSyncing = computed(() => this.offlineQueue.isSyncing());
   configuredProviderCount = computed(() => {
     let count = 0;
     if (this.cloudLLMProvider.isProviderAvailable('gemini')) count++;
@@ -458,6 +461,10 @@ export class AiSettingsPageComponent implements OnInit {
   }
 
   async syncQueue(): Promise<void> {
+    // The disabled button is not the guard: a second press landing before
+    // the render that disables it still reaches this method.
+    if (this.queueSyncing()) return;
+
     try {
       await this.offlineQueue.syncQueue();
       this.showToast('aiPage.queueSynced');

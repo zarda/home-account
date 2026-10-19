@@ -61,11 +61,13 @@ describe('AiSettingsPageComponent', () => {
     offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',
       'closedForUpgrade',
+      'isSyncing',
       'syncQueue',
       'clearAll',
     ]);
     offlineQueueServiceMock.pendingCount.and.returnValue(0);
     offlineQueueServiceMock.closedForUpgrade.and.returnValue(false);
+    offlineQueueServiceMock.isSyncing.and.returnValue(false);
     offlineQueueServiceMock.syncQueue.and.returnValue(Promise.resolve({ success: 0, failed: 0 }));
     offlineQueueServiceMock.clearAll.and.returnValue(Promise.resolve());
 
@@ -336,6 +338,34 @@ describe('AiSettingsPageComponent', () => {
       } finally {
         release();
       }
+    });
+
+    it('disables Sync while a sync is already running', () => {
+      offlineQueueServiceMock.isSyncing.and.returnValue(true);
+      const localFixture = renderWithQueue(3, false);
+      expect(findSyncButton(localFixture).disabled).toBeTrue();
+    });
+
+    it('does not report a sync it did not run while one is already running', async () => {
+      // The disabled button is not the guard: a second press landing before
+      // the first one's render, or a keyboard activation, still reaches the
+      // method, and the service then returns early with nothing synced.
+      const syncing = signal(true);
+      offlineQueueServiceMock.isSyncing.and.callFake(syncing);
+      const page = renderWithQueue(3, false).componentInstance;
+
+      await page.syncQueue();
+
+      expect(offlineQueueServiceMock.syncQueue).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+
+      // Positive proof: the same page, once the running sync ends, does sync
+      // and says so.
+      syncing.set(false);
+      await page.syncQueue();
+
+      expect(offlineQueueServiceMock.syncQueue).toHaveBeenCalledTimes(1);
+      expect(notifications.success).toHaveBeenCalledOnceWith('aiPage.queueSynced');
     });
 
     it('disables Clear when the queue closed for an upgrade', () => {
