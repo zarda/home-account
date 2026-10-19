@@ -831,13 +831,6 @@ export class AIStrategyService {
   }
 
   /**
-   * Update a cloud provider's API key.
-   */
-  updateCloudProviderApiKey(provider: LLMProvider, apiKey: string | undefined): void {
-    this.cloudLLMProvider.updateProviderApiKey(provider, apiKey);
-  }
-
-  /**
    * Suggest a category for a description, using whichever provider is
    * configured for categorization.
    *

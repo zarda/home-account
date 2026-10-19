@@ -2082,12 +2082,4 @@ describe('AIStrategyService', () => {
       expect(status.availableProviders).toEqual(['gemini']);
     });
   });
-
-  describe('updateCloudProviderApiKey', () => {
-    it('should delegate to the cloud provider service', () => {
-      const service = createService('web');
-      service.updateCloudProviderApiKey('gemini', 'key-123');
-      expect(cloudMock.updateProviderApiKey).toHaveBeenCalledWith('gemini', 'key-123');
-    });
-  });
 });
