@@ -106,6 +106,20 @@ mat-tab-group[appTabStripScroll] .mat-mdc-tab-list {
   border-block-end: 1px solid var(--border-primary);
 }
 
+/* An outlined select's notch is capped at the field's width less 60px, the
+   room a resting label leaves beside the arrow. Material lifts that cap to
+   less 24px only under .mdc-text-field--label-floating, a class its form
+   field no longer sets, so a floated label in a field narrower than the label
+   plus 60px was cut short ("Categor" in the filter grid's 108px selects). The
+   floated state is marked on the outline as .mdc-notched-outline--notched;
+   keyed on it, a floated label gets Material's own floated cap. It sits on
+   the top border, above the arrow, so it cannot overlap it, and a resting
+   label keeps the room it was given. One rule for every outlined select, not
+   a copy per screen. */
+.mat-mdc-form-field-type-mat-select.mat-form-field-appearance-outline .mdc-notched-outline--notched .mdc-notched-outline__notch {
+  max-width: calc(100% - 24px);
+}
+
 /* CSS Variables for Theming */
 :root {
   // Surface colors

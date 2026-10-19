@@ -1435,6 +1435,95 @@ describe('TransactionFiltersComponent', () => {
     }));
   });
 
+  // Material caps an outlined select's notch at the field's width less 60 px,
+  // the room a resting label leaves beside the arrow, and lifts the cap only
+  // under a class its form field no longer sets. A floated label sits on the
+  // top border, above the arrow, so the cap cut it short in any field narrower
+  // than the label plus 60 px: the filter grid's selects, 108 px wide at a
+  // 1024 px pane, drew "Categor" and "Currenc". styles.scss lifts the cap on
+  // the class that is set; Karma bundles styles.scss, so the rule is in force
+  // here as it is in the app.
+  describe("a select's label in a narrow compact field", () => {
+    const FIELD_WIDTH_PX = 108;
+
+    beforeEach(() => {
+      // The stub would render the currency label as its raw key, a word far
+      // longer than the field however it is cut.
+      const labels: Record<string, string> = {
+        'transactions.category': 'Category',
+        'settings.currency': 'Currency'
+      };
+      mockTranslationService.t.and.callFake((key: string) => labels[key] ?? key);
+    });
+
+    /** Renders at a pinned width and face, lets ngModel hand each select its value, then settles the label's float. */
+    function render(): void {
+      const host = fixture.nativeElement as HTMLElement;
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels. Material's fields take their face from the
+      // --mat-sys tokens rather than from the host.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      component.expanded.set(true);
+      fixture.detectChanges();
+      for (const each of Array.from(host.querySelectorAll<HTMLElement>('.filter-grid mat-form-field'))) {
+        each.style.width = `${FIELD_WIDTH_PX}px`;
+      }
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    function selectField(label: string): HTMLElement {
+      const found = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+      expect(found).withContext(`the ${label} field`).toBeTruthy();
+      expect(found!.querySelector('mat-select')).withContext(`the ${label} field holds a select`).toBeTruthy();
+      return found!;
+    }
+
+    it('shows the whole of a floated label, however narrow the field', fakeAsync(() => {
+      render();
+
+      for (const label of ['Category', 'Currency']) {
+        const field = selectField(label);
+        const floating = field.querySelector<HTMLElement>('.mdc-floating-label')!;
+        expect(field.getBoundingClientRect().width).withContext(`${label} field width, px`).toBeCloseTo(FIELD_WIDTH_PX, 0);
+        expect(floating.classList.contains('mdc-floating-label--float-above'))
+          .withContext(`${label} reads All, so its label floats`)
+          .toBeTrue();
+        expect(floating.scrollWidth).withContext(`${label} label: laid-out width, px`).toBeGreaterThan(0);
+        expect(floating.scrollWidth)
+          .withContext(`${label} label: width of the text, px, against the width left to draw it in`)
+          .toBeLessThanOrEqual(floating.clientWidth);
+      }
+    }));
+
+    // Pin: a resting label sits beside the arrow and keeps the room Material
+    // set aside for it; the lift is for a floated label only.
+    it("keeps the arrow's room for a resting label (pin)", fakeAsync(() => {
+      // Every filter starts on All, which floats its label, so a value that no
+      // option carries empties the trigger instead: the label rests.
+      component.filters.currency = 'ZZZ';
+      render();
+
+      const field = selectField('Currency');
+      expect(field.querySelector('.mdc-floating-label')!.classList.contains('mdc-floating-label--float-above'))
+        .withContext('an empty select rests its label')
+        .toBeFalse();
+      expect(field.querySelector('.mdc-notched-outline')!.classList.contains('mdc-notched-outline--notched'))
+        .withContext('a resting label leaves no notch cut in the border')
+        .toBeFalse();
+      expect(getComputedStyle(field.querySelector('.mdc-notched-outline__notch')!).maxWidth)
+        .withContext('the notch of a resting label: max-width')
+        .toBe('calc(100% - 60px)');
+    }));
+  });
+
   describe('grid tracks (#450)', () => {
     it('lays the filter grid out in three columns once expanded', () => {
       // The 640px rule is what renders here; the 1024px, 6-column rule above
