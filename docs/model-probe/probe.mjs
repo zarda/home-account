@@ -53,7 +53,7 @@ const SAMPLING_MODES = ['auto', 'force'];
 const VALUE_FLAGS = ['--provider', '--prompts', '--model', '--repeat', '--effort', '--sampling'];
 const SWITCHES = ['--raw', '--update', '--dry-run', '--self-test', '--help'];
 const MAX_REPEAT = 10;
-/** A model id as the vendors write one. The Gemini sender puts it in a URL path. */
+/** A model id as the vendors write one. The Gemini sender puts it in a URL path, encoded. */
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 const USAGE = `usage: node docs/model-probe/probe.mjs [flags]
@@ -145,8 +145,8 @@ function parseArgs(argv) {
 
 // ---------------------------------------------------------------------------
 // Printing. Every line goes through the one redactor: the keys this run holds,
-// an auth header whatever its value, a ?key= parameter, and anything shaped
-// like a key.
+// an auth header whatever its value, a ?key= parameter (no sender puts one in a
+// URL, so the mask is a second line), and anything shaped like a key.
 // ---------------------------------------------------------------------------
 
 const SECRETS = new Set();
@@ -679,9 +679,10 @@ async function makeSender(provider, { key, transport }) {
   }
 
   return async (model, body) => {
-    const res = await transport(`${BASE_URLS.gemini}/models/${encodeURIComponent(model)}:generateContent?key=${key}`, {
+    // The key goes in a header, as the app's own SDK sends it: a URL is kept by proxies and logs.
+    const res = await transport(`${BASE_URLS.gemini}/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new HttpError(res.status, await res.text());
@@ -1516,6 +1517,16 @@ async function selfTest() {
     check(requests.length > 0 && requests.every(request => wireView('gemini', request).sampling),
       `${tag}: every envelope carries a temperature, as it does without the flag`);
     check(!lines.some(line => line.includes('sampling: force')), `${tag}: the run header does not claim sampling was forced`);
+    // The key goes in x-goog-api-key, as the app's SDK sends it, never in the URL, where a proxy or a log would keep it.
+    check(requests.length > 0 && requests.every(request => {
+      const url = new URL(request.url);
+      return url.search === '' && !url.searchParams.has('key') && !request.url.includes(PLACEHOLDER_KEYS.gemini)
+        && request.headers['x-goog-api-key'] === PLACEHOLDER_KEYS.gemini;
+    }), `${tag}: every envelope goes to a URL with no query and no key, and carries the key in x-goog-api-key`);
+    const printedLines = lines.filter(line => /^--- .*\(dry run, not sent\): POST /.test(line));
+    check(printedLines.length === requests.length && printedLines.every(line => !line.includes('?'))
+      && lines.filter(line => line === '    x-goog-api-key: <KEY>').length === requests.length,
+    `${tag}: each printed request shows x-goog-api-key: <KEY> and a URL with no ?`);
   }
 
   // --repeat: parseArgs takes the number, and only the loop turns it into requests. A loop that
@@ -1600,6 +1611,11 @@ async function selfTest() {
     const url = new URL(request.url);
     check(request.method === 'POST' && url.host === HOSTS[c.provider] && url.pathname === REQUEST_PATHS[c.provider](c.model),
       `${tag}: POST ${HOSTS[c.provider]}${REQUEST_PATHS[c.provider](c.model)}`);
+    check(url.search === '' && !url.searchParams.has('key') && !request.url.includes(PLACEHOLDER_KEYS[c.provider]),
+      `${tag}: the request URL carries no query and no key`);
+    if (c.provider === 'gemini') {
+      check(request.headers['x-goog-api-key'] === PLACEHOLDER_KEYS.gemini, `${tag}: the key travels in the x-goog-api-key header`);
+    }
     const wire = wireView(c.provider, request);
     const wantSampling = c.provider === 'gemini' || c.sampling === 'force' || api.acceptsSampling(c.model);
     check(wire.model === c.model && wire.budget === sample.maxOutputTokens,
@@ -1767,16 +1783,18 @@ async function selfTest() {
       `${provider}: a sender handed no transport is refused before a client is built`);
   }
 
-  // The Gemini sender puts the model in its URL path, ahead of the key parameter. An id that
-  // reached it unencoded could move the key into a fragment or another parameter.
+  // The Gemini sender puts the model in its URL path and the key in a header. An id that reached
+  // it unencoded could end the path early and add a query or a fragment to the URL.
   const oddId = 'a#b?c';
   const geminiRecorder = makeRecorder(HOSTS.gemini, cannedAnswer('gemini', answer));
   const geminiSend = await makeSender('gemini', { key: PLACEHOLDER_KEYS.gemini, transport: geminiRecorder.fetch });
   await geminiSend(oddId, buildEnvelope('gemini', { model: oddId, rendered: sample, api }));
   const geminiUrl = new URL(geminiRecorder.requests[0].url);
   check(geminiUrl.pathname === `/v1beta/models/${encodeURIComponent(oddId)}:generateContent` && geminiUrl.hash === ''
-    && sameList([...geminiUrl.searchParams.keys()], ['key']),
-  'the Gemini sender encodes the model into its path, so no id moves the key out of its parameter');
+    && geminiUrl.search === '' && !geminiUrl.searchParams.has('key'),
+  'the Gemini sender encodes the model into its path, so no id adds a query or a fragment, and no key is in the URL');
+  check(geminiRecorder.requests[0].headers['x-goog-api-key'] === PLACEHOLDER_KEYS.gemini,
+    'the Gemini sender sends its key in the x-goog-api-key header');
 
   const strict = makeRecorder(HOSTS.openai, () => ({}));
   let refused = false;
