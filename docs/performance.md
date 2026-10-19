@@ -183,16 +183,86 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.409 MB | 2.7 MB |
+| Initial bundle | 2.412 MB | 2.7 MB |
 
-Against 2,408,995 bytes (JavaScript 2,378,043, stylesheet 30,952, in 59
+Against 2,411,435 bytes (JavaScript 2,380,239, stylesheet 31,196, in 60
 initial files), measured by `npm run build:analyze` from a clean production
-build on 2026-10-14.
+build on 2026-10-20.
 
-The warning went up again, to 2.409 MB, when the work of #490 and #468 put the
-initial bundle 843 bytes over the 2.408 MB it stood at; it moved to the whole
+The warning went up again, to 2.411 MB, when the work of #495 and #497 put the
+initial bundle 1,738 bytes over the 2.409 MB it stood at; it moved to the whole
 kilobyte above the figure and no more. That work grew the initial JavaScript by
-1,004 bytes (from 2,376,948) and left the stylesheet alone. All of it lands in
+1,744 bytes (from 2,378,042) and left the stylesheet alone. All of it lands in
+initial chunks, but not all of it is code the first screen runs. Measured per
+input from the build's own stats, against a rebuild of the work's base,
+`b8d400ac` (2,408,989 bytes there, five fewer than the 2,408,994 recorded when
+the work began; nobody has explained the five): `ai-strategy.service.ts` took
+939 bytes. A key saved in settings is now a bring-up of its own that a waiting
+caller joins (`applyProviderKey`, and the attempt that comes up behind a save
+still out for its account), the readiness wait reads the keys once more when
+its bring-up's own read failed, and the bring-up answers with that outcome; the
+setter nothing called went out. `cloud-llm-provider.service.ts` took 375: the
+bring-up guard, the generation a bring-up takes on entry and a reset bumps with
+its checks after each await, the outcome that names a failed key read, and the
+clear a removed Gemini key, or a model switch with no stored key, now makes.
+`gemini.service.ts` took 194, `cloud-llm-provider.base.ts` 130, and
+`openai.service.ts` and `claude.service.ts` 110 each, for the arm guard that
+stops a provider arm still loading its SDK from applying after a later
+reinitialize or a clear (the arm counter and its two methods in the base, a
+check after the SDK load and another in the failure branch of each service) and,
+in Gemini, for the seam through which it now loads its SDK.
+`provider-key.service.ts` took 127: the three checks that the signed-in account
+is still the one a read or a write started for, before its keys or its failure
+flag are touched. `export.service.ts` itself came to 6 bytes less, but its use
+of `categoryNameOrUnknown` gave
+`category-display.utils.ts` a second initial importer, so the module was cut out
+of the entry chunk into an initial chunk of its own, 132 bytes and the sixtieth
+initial file, and the cut costs the export and import lines around it: the
+entry chunk fell 90 bytes while the new chunk took 132 and the exporter's
+chunk, which it is imported into, 33. The prompt modules that share a chunk
+with the providers, and the receipt parser and native receipt service beside
+`ai-strategy.service.ts`, moved by one to thirteen bytes each, which is the
+minifier renaming around the changed modules. Twelve chunks whose source did not
+change moved by one byte each, the new content hashes leaving a chunk file name
+they import with a ninth character, as a version bump does (below). The work's
+edits to the AI settings page, the transaction filters, the dashboard chart, the
+reports, the recurring tab, the import wizard's category suggestions and the
+insight cards are in lazy chunks. After that measure (2,410,738 bytes), the four
+fixes the work's first browser run made, and the bump to 26.10.177, brought the
+figure to 2,410,890. The stylesheet took 156 bytes, the one rule that gives a
+floated select label Material's own floated cap; four initial chunks came out
+a byte smaller each, for the names their new content hashes import; the other
+three fixes, Sync Now's double press, the data page's category catalog and the
+compact filter field's resting label, are in lazy chunks. The bump alone moved
+nothing: the figure was 2,410,890 before it and after. The second browser
+run's fixes then brought it to 2,410,982. The stylesheet took 88 bytes more,
+the one rule that lets a Material text-label button grow with a wrapped label
+(its `min-height`, its block padding and its line height); the filter grid's
+tracks, the preview's date and row, the desktop table's date and the button
+rows of `/data` and `/ai` are in lazy chunks; and three initial chunks came
+out four bytes heavier between them, for the names their new content hashes
+import. The fixes of the whole-branch review then brought it to 2,411,095,
+95 bytes over 2.411 MB, so the warning moved once more, to the whole
+kilobyte above, 2.412 MB. The chunk that carries `ai-strategy.service.ts`
+took 115 bytes: a counter the strategy's signed-out branch bumps on every
+run, which a key save, and an attempt queued behind one, is tied to, so
+neither brings anything up in a session after the one it started in, and
+the outcome a refused save keeps from the bring-up it waited for. Two other
+initial chunks came out a byte smaller each, for the names the minifier
+gave. The stylesheet did not move, its button rule gaining only a comment;
+the busy spinners of the budget dialog and the import wizard and the AI
+page's refused clear are in lazy chunks. The review's second pass then
+brought it to 2,411,435, 565 bytes under 2.412 MB. The same chunk took 336
+bytes more: the hold a key save keeps on a wait, which the account's
+leaving releases, and the account an attempt queued behind a save checks
+besides the counter. The AI import service's chunk came out 4 bytes
+heavier, though nothing in it changed; the AI page's refused typed save is
+in a lazy chunk.
+
+The warning before it had gone up, to 2.409 MB, when the work of #490 and #468
+put the initial bundle 843 bytes over the 2.408 MB it stood at; it moved to the
+whole kilobyte above the figure and no more. That work grew the initial
+JavaScript by 1,004 bytes (from 2,376,948) and left the stylesheet alone. All of it lands in
 initial chunks, but not all of it is code the first screen runs. Measured per input from the build's
 own stats, against the same figures at `697c13ab`: `ai-strategy.service.ts`
 took 424 bytes, the wait a queued scan makes for its account's providers to be
@@ -310,8 +380,8 @@ effect on the account, a `catch` for the recount's read and the release of
 its handle on destroy: +192 bytes (2,406,419 to 2,406,611), 100 of them the
 effect and 92 the `catch` and the release.
 
-The warning stands at 2.409 MB. The final build leaves 5 bytes of headroom
-under it (2,409,000 less 2,408,995), which is now less than the 501 bytes the
+The warning stands at 2.412 MB. The final build leaves 565 bytes of headroom
+under it (2,412,000 less 2,411,435), which is now more than the 501 bytes the
 main branch had under the 2.472 MB warning at `8a6e2c9a` (2,471,499 bytes). `about.component.ts` and
 `feedback.service.ts` import `package.json` whole, but a version string of the
 same length adds nothing of its own. The bump from 26.10.171 to 26.10.172 moved
