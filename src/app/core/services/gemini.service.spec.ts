@@ -298,6 +298,158 @@ describe('GeminiService', () => {
   });
 
   // ----------------------------------------------------------------
+  // An arm superseded while its SDK loads
+  // ----------------------------------------------------------------
+  // A sign-out's clear(), or a newer key, can arrive while an earlier key is
+  // still waiting on the SDK import. Whatever the import brings back belongs to
+  // the latest call, not to the one that started it.
+  describe('an arm superseded while its SDK loads', () => {
+    afterEach(() => { delete env.geminiApiKey; });
+
+    /** An SDK import the case holds open, then lands or fails when it chooses. */
+    function holdImport(): { promise: Promise<unknown>; land(module: unknown): void; fail(error: Error): void } {
+      let land!: (module: unknown) => void;
+      let fail!: (error: Error) => void;
+      const promise = new Promise<unknown>((resolve, reject) => {
+        land = resolve;
+        fail = reject;
+      });
+      return { promise, land, fail };
+    }
+
+    /** The seam's fake module; each client records the key it was built with. */
+    function fakeSdk(): { sdk: unknown; keys: string[] } {
+      const keys: string[] = [];
+      const model = { generateContent: jasmine.createSpy('generateContent') };
+      class FakeGoogleGenerativeAI {
+        readonly apiKey: string;
+        constructor(key: string) {
+          this.apiKey = key;
+          keys.push(key);
+        }
+        getGenerativeModel(): typeof model { return model; }
+      }
+      return { sdk: { GoogleGenerativeAI: FakeGoogleGenerativeAI }, keys };
+    }
+
+    const internals = (s: GeminiService) =>
+      s as unknown as { genAI: { apiKey?: string } | null; currentApiKey: string | null };
+
+    function spyLoadSdk(): jasmine.Spy {
+      return spyOn(service as unknown as { loadSdk: () => Promise<unknown> }, 'loadSdk');
+    }
+
+    it('a clear() while the import is in flight leaves Gemini down', async () => {
+      const errorSpy = spyOn(console, 'error');
+      const { sdk, keys } = fakeSdk();
+      const held = holdImport();
+      const loadSpy = spyLoadSdk().and.returnValue(held.promise);
+
+      const arming = service.reinitialize('gem-a');
+      try {
+        service.clear();
+      } finally {
+        held.land(sdk);
+      }
+      await arming;
+
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+      expect(service.isAvailable()).toBeFalse();
+      expect(service.isAvailableSignal()).toBeFalse();
+      expect(service.capabilities.vision).toBeFalse();
+      expect(internals(service).currentApiKey).toBeNull();
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      // The positive proof: the same import, asked for again, does arm.
+      await service.reinitialize('gem-a');
+      expect(keys).toEqual(['gem-a']);
+      expect(service.isAvailable()).toBeTrue();
+    });
+
+    it('the later key wins when the earlier import lands last', async () => {
+      const { sdk, keys } = fakeSdk();
+      const heldA = holdImport();
+      const heldB = holdImport();
+      spyLoadSdk().and.returnValues(heldA.promise, heldB.promise);
+
+      const armingA = service.reinitialize('gem-a');
+      const armingB = service.reinitialize('gem-b');
+      try {
+        heldB.land(sdk);
+        await armingB;
+        heldA.land(sdk);
+        await armingA;
+      } finally {
+        heldA.land(sdk);
+        heldB.land(sdk);
+      }
+
+      expect(keys).withContext('clients built').toEqual(['gem-b']);
+      expect(internals(service).genAI?.apiKey).toBe('gem-b');
+      expect(internals(service).currentApiKey).toBe('gem-b');
+      expect(service.isAvailable()).toBeTrue();
+      expect(service.isAvailableSignal()).toBeTrue();
+      expect(service.capabilities.vision).toBeTrue();
+    });
+
+    it('a superseded import that fails touches nothing and logs nothing', async () => {
+      const errorSpy = spyOn(console, 'error');
+      const { sdk } = fakeSdk();
+      const heldA = holdImport();
+      spyLoadSdk().and.returnValues(heldA.promise, Promise.resolve(sdk));
+
+      const armingA = service.reinitialize('gem-a');
+      try {
+        await service.reinitialize('gem-b');
+        expect(internals(service).currentApiKey).withContext('armed before the failure').toBe('gem-b');
+        heldA.fail(new Error('chunk load failed'));
+        await armingA;
+      } finally {
+        heldA.land(sdk);
+      }
+
+      expect(internals(service).genAI?.apiKey).toBe('gem-b');
+      expect(internals(service).currentApiKey).toBe('gem-b');
+      expect(service.isAvailable()).toBeTrue();
+      expect(service.isAvailableSignal()).toBeTrue();
+      expect(service.capabilities.vision).toBeTrue();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    // The constructor's arm is the build's environment key, and it is
+    // fire-and-forget: a sign-out's clear() can land before its import does.
+    // A second instance, because the suite's own was built with the key
+    // blanked and its arm has long finished.
+    it("a clear() while the constructor's environment arm loads leaves the instance down", async () => {
+      env.geminiApiKey = 'env-key-from-build';
+      const { sdk } = fakeSdk();
+      const held = holdImport();
+      const loadSdkSpy = spyOn(
+        GeminiService.prototype as unknown as { loadSdk(): Promise<unknown> },
+        'loadSdk'
+      ).and.returnValue(held.promise);
+      const errorSpy = spyOn(console, 'error');
+
+      const fresh = TestBed.runInInjectionContext(() => new GeminiService());
+      try {
+        fresh.clear();
+      } finally {
+        held.land(sdk);
+      }
+      // The constructor's promise is discarded, so there is nothing to await:
+      // give the import's continuation a turn.
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(loadSdkSpy).toHaveBeenCalledTimes(1);
+      expect(fresh.isAvailable()).toBeFalse();
+      expect(fresh.isAvailableSignal()).toBeFalse();
+      expect(fresh.capabilities.vision).toBeFalse();
+      expect(internals(fresh).currentApiKey).toBeNull();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ----------------------------------------------------------------
   // parseReceipt
   // ----------------------------------------------------------------
   describe('parseReceipt', () => {

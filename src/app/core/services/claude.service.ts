@@ -20,7 +20,7 @@ export class ClaudeService extends CloudLLMProviderBase {
     // Claude is not initialized by default - requires user API key
   }
 
-  private async initialize(apiKey: string): Promise<void> {
+  private async initialize(apiKey: string, arm: number): Promise<void> {
     if (!apiKey || apiKey.trim() === '') {
       console.warn('Claude API key not provided');
       this.client = null;
@@ -37,6 +37,8 @@ export class ClaudeService extends CloudLLMProviderBase {
     try {
       // The SDK is loaded on demand to keep it out of the initial bundle
       const { default: Anthropic } = await this.loadSdk();
+      // A later reinitialize, or a sign-out's clear, owns the client now.
+      if (!this.isLatestArm(arm)) return;
       this.client = new Anthropic({
         apiKey: apiKey,
         // Same bring-your-own-key trust model as the OpenAI provider: the
@@ -48,6 +50,8 @@ export class ClaudeService extends CloudLLMProviderBase {
       this.currentApiKey = apiKey;
       this.available.set(true);
     } catch (error) {
+      // Nor may a superseded failure null a newer client or report itself.
+      if (!this.isLatestArm(arm)) return;
       console.error('Failed to initialize Claude:', error);
       this.client = null;
       this.currentApiKey = null;
@@ -64,8 +68,9 @@ export class ClaudeService extends CloudLLMProviderBase {
    * Reinitialize Claude with a new API key.
    */
   reinitialize(apiKey?: string): Promise<void> {
+    const arm = this.supersedeArms();
     if (apiKey) {
-      return this.initialize(apiKey);
+      return this.initialize(apiKey, arm);
     }
     this.client = null;
     this.currentApiKey = null;

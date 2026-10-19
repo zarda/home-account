@@ -26,6 +26,23 @@ function responseWith(text: string): { content: { type: 'text'; text: string }[]
   return { content: [{ type: 'text', text }] };
 }
 
+/** An SDK import the case holds open, then lands or fails when it chooses. */
+interface HeldImport {
+  promise: Promise<unknown>;
+  land(module: unknown): void;
+  fail(error: Error): void;
+}
+
+function holdImport(): HeldImport {
+  let land!: (module: unknown) => void;
+  let fail!: (error: Error) => void;
+  const promise = new Promise<unknown>((resolve, reject) => {
+    land = resolve;
+    fail = reject;
+  });
+  return { promise, land, fail };
+}
+
 describe('ClaudeService', () => {
   let service: ClaudeService;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
@@ -165,6 +182,96 @@ describe('ClaudeService', () => {
       expect(importSpy).toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalled();
       expect(service.isAvailable()).toBeFalse();
+    });
+  });
+
+  // A sign-out, or a newer key, can arrive while an earlier key is still
+  // waiting on the SDK import. Whatever the import brings back belongs to the
+  // latest call, not to the one that started it.
+  describe('an arm superseded while its SDK loads', () => {
+    /** Records the key each client was built with. */
+    class FakeAnthropic {
+      readonly apiKey: string;
+      constructor(opts: { apiKey: string }) {
+        this.apiKey = opts.apiKey;
+      }
+    }
+    const sdk = { default: FakeAnthropic };
+
+    const internals = () =>
+      service as unknown as { client: FakeAnthropic | null; currentApiKey: string | null };
+
+    function spyLoadSdk(): jasmine.Spy {
+      return spyOn(service as unknown as { loadSdk: () => Promise<unknown> }, 'loadSdk');
+    }
+
+    it('a clear while the import is in flight leaves Claude down', async () => {
+      const errorSpy = spyOn(console, 'error');
+      const held = holdImport();
+      const loadSpy = spyLoadSdk().and.returnValue(held.promise);
+
+      const arming = service.reinitialize('sk-ant-a');
+      try {
+        await service.reinitialize();
+      } finally {
+        held.land(sdk);
+      }
+      await arming;
+
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+      expect(service.isAvailable()).toBeFalse();
+      expect(service.isAvailableSignal()).toBeFalse();
+      expect(internals().client).toBeNull();
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      // The positive proof: the same import, asked for again, does arm.
+      await service.reinitialize('sk-ant-a');
+      expect(internals().client?.apiKey).toBe('sk-ant-a');
+    });
+
+    it('the later key wins when the earlier import lands last', async () => {
+      const heldA = holdImport();
+      const heldB = holdImport();
+      spyLoadSdk().and.returnValues(heldA.promise, heldB.promise);
+
+      const armingA = service.reinitialize('sk-ant-a');
+      const armingB = service.reinitialize('sk-ant-b');
+      try {
+        heldB.land(sdk);
+        await armingB;
+        heldA.land(sdk);
+        await armingA;
+      } finally {
+        heldA.land(sdk);
+        heldB.land(sdk);
+      }
+
+      expect(internals().client?.apiKey).toBe('sk-ant-b');
+      expect(internals().currentApiKey).toBe('sk-ant-b');
+      expect(service.isAvailable()).toBeTrue();
+      expect(service.isAvailableSignal()).toBeTrue();
+    });
+
+    it('a superseded import that fails touches nothing and logs nothing', async () => {
+      const errorSpy = spyOn(console, 'error');
+      const heldA = holdImport();
+      spyLoadSdk().and.returnValues(heldA.promise, Promise.resolve(sdk));
+
+      const armingA = service.reinitialize('sk-ant-a');
+      try {
+        await service.reinitialize('sk-ant-b');
+        expect(internals().client?.apiKey).withContext('armed before the failure').toBe('sk-ant-b');
+        heldA.fail(new Error('chunk load failed'));
+        await armingA;
+      } finally {
+        heldA.land(sdk);
+      }
+
+      expect(internals().client?.apiKey).toBe('sk-ant-b');
+      expect(internals().currentApiKey).toBe('sk-ant-b');
+      expect(service.isAvailable()).toBeTrue();
+      expect(service.isAvailableSignal()).toBeTrue();
+      expect(errorSpy).not.toHaveBeenCalled();
     });
   });
 

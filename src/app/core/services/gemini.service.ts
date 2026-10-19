@@ -69,10 +69,15 @@ export class GeminiService extends CloudLLMProviderBase {
 
   constructor() {
     super();
-    void this.initializeGemini();
+    void this.initializeGemini(this.supersedeArms());
   }
 
-  private async initializeGemini(customApiKey?: string, textModelId?: string, visionModelId?: string): Promise<void> {
+  private async initializeGemini(
+    arm: number,
+    customApiKey?: string,
+    textModelId?: string,
+    visionModelId?: string
+  ): Promise<void> {
     // Priority: custom key > environment key (if available)
     const apiKey = customApiKey || (environment as { geminiApiKey?: string }).geminiApiKey;
 
@@ -101,6 +106,8 @@ export class GeminiService extends CloudLLMProviderBase {
     try {
       // The SDK is loaded on demand to keep it out of the initial bundle
       const { GoogleGenerativeAI } = await this.loadSdk();
+      // A later reinitialize, or a sign-out's clear, owns the client now.
+      if (!this.isLatestArm(arm)) return;
       this.genAI = new GoogleGenerativeAI(apiKey);
 
       this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
@@ -110,6 +117,8 @@ export class GeminiService extends CloudLLMProviderBase {
       this.currentVisionModelId = finalVisionModel;
       this.available.set(true);
     } catch (error) {
+      // Nor may a superseded failure null a newer client or report itself.
+      if (!this.isLatestArm(arm)) return;
       console.error('[GeminiService] ✗ Failed to initialize:', error);
       this.genAI = null;
       this.textModel = null;
@@ -129,7 +138,7 @@ export class GeminiService extends CloudLLMProviderBase {
    * Used when user provides their own API key or changes model selection in settings.
    */
   reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): Promise<void> {
-    return this.initializeGemini(apiKey, textModelId, visionModelId);
+    return this.initializeGemini(this.supersedeArms(), apiKey, textModelId, visionModelId);
   }
 
   /**
@@ -141,6 +150,7 @@ export class GeminiService extends CloudLLMProviderBase {
    * departing account's key and leave it available to the next account.
    */
   clear(): void {
+    this.supersedeArms();
     this.genAI = null;
     this.textModel = null;
     this.visionModel = null;
