@@ -518,11 +518,11 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` |
-|---|---|---|
-| ERROR | 40 | 53 |
-| WARN | 38 | 60 |
-| LOG | 26 | **0** |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` |
+|---|---|---|---|
+| ERROR | 40 | 53 | 53 |
+| WARN | 38 | 60 | 60 |
+| LOG | 26 | **0** | **0** |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
@@ -533,8 +533,9 @@ LOG fell to zero because `no-console` now bans `console.log` outright; the five
 lines over the base when it was first recorded (43 ERROR and 40 WARN) are
 expected-failure paths in new specs, and so are the ten ERROR and twenty WARN
 lines above that earlier figure, which came from specs added since; the wave
-that recorded `26.10.173` added none, and neither did the one that
-recorded `26.10.175`. **Rendering
+that recorded `26.10.173` added none, and neither did the ones that
+recorded `26.10.175` and `26.10.177` (the latter's lines, deduplicated, match
+`26.10.176`'s one for one). **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.

@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with twelve permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 96.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 100.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,7 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 96
+there too; neither touches a household or calls a function. Journeys 81 to 100
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
@@ -58,11 +58,14 @@ a sign-in written past the rules, a posting shared into a household, two
 rules that cannot advance and a row of the old shape written past the rules,
 two failed import records written the same way, rows that tie and a stored
 answer written the same way, a rule outside its ranges written the same way
-and then repaired, imports the page is made to refuse, a stored answer
-refreshed over an emptied catalog, and the AI preferences a fresh origin
-stores. None of them calls a function, and only 82 and 89 open a household
-page: 82 to read a dialog it cancels, and 89 to read the copy of a posting
-journey 90 shared.
+and then repaired and resumed, imports the page is made to refuse, a stored
+answer refreshed over an emptied catalog, the AI preferences a fresh origin
+stores, the account signed out under a bring-up held in the page, an expense
+and a rule in a category no catalog holds written past the rules, a scan
+whose drain waits on a key save held in the page, and a goal written past
+the rules. None of them calls a function, and only 82 and 89 open a
+household page: 82 to read a dialog it cancels, and 89 to read the copy of a
+posting journey 90 shared.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -171,7 +174,11 @@ value the branch reworded rather than a key it added:
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).import.importFailed`
 reads *The import could not start, so nothing was saved. Check your
 connection and try again.* on this branch and *Import failed: {{error}}* on
-`697c13ab`. For another branch it is whatever that branch added. A
+`697c13ab`. For the provider guards, the saved key, the unknown category and
+the filters it is the served catalog again:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).aiPage.keySaveFailed`
+is defined on this branch and `undefined` on `b8d400ac`. For another branch
+it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
 
@@ -570,7 +577,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 96 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 100 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -820,7 +827,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 96 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 100 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -841,19 +848,28 @@ Chen home; the salted postings, the stalled rules and the one read of
 [ADR 0176](ADR/0176-every-category-list-breaks-a-tie-by-id-over-cent-rounded-totals.md)
 (92); the schedule bounds, the wizard's refusal and the cold catalog of
 [ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)
-(93 to 95); and the Claude list of
+(93 to 95); the Claude list of
 [ADR 0177](ADR/0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md)
-(96).
+(96); the provider guards of
+[ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md),
+met by the page's own sign-out (97); and the unknown category, the saved key
+and the filters of
+[ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)
+(98 to 100), whose reworded refusal journey 93 reads, and the resume after
+the save it asks for.
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
 [locale-formatting.md](locale-formatting.md), [recurring.md](recurring.md),
 [household.md](household.md), [smart-search.md](smart-search.md),
-[insights.md](insights.md), [backup-restore.md](backup-restore.md) and
-[ai-models.md](ai-models.md) describe what they drive.
+[insights.md](insights.md), [backup-restore.md](backup-restore.md),
+[ai-models.md](ai-models.md), [auth.md](auth.md), [i18n.md](i18n.md),
+[csv-format.md](csv-format.md), [data.md](data.md) and
+[ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, so they run in one emulator
-session, in this order:
+Journeys 87 to 96 build on one another's writes, and 97 to 100 on the
+language each one leaves, so 87 to 100 run in one emulator session, in this
+order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
 2. journey 88, which reads that drain's record in Import History;
@@ -872,7 +888,17 @@ session, in this order:
     empties the category signal and wraps `exportAll` until the next page
     load;
 11. journey 96, which starts by loading `/ai` directly, a full load, and
-    ends by switching the language back to English.
+    ends by switching the language back to English;
+12. journey 97, in English, which signs Alex out on `/ai` under a bring-up
+    held in the page, and ends by signing him back in, a full load;
+13. journey 98, which writes an expense and a rule in a category no catalog
+    holds, switches the language to 日本語, and deletes both, and any row the
+    rule posted, at its end;
+14. journey 99, still in Japanese, which queues a scan of its own into the
+    queue journey 89's cleanup emptied, drains it twice, and ends in English
+    with its queue and its records cleared;
+15. journey 100, which writes a goal, reads the filters in English and in
+    Japanese, and ends by switching the language back to English.
 
 A run of journeys 93 to 96 alone first re-runs the steps of 87, 88 and 90
 they rest on, as regressions, in this order: journey 87's steps 4 and 5,
@@ -917,6 +943,155 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
+Journeys 97 to 100 rest on none of the earlier journeys' writes. A run of
+them alone starts from a fresh seed, in English, and journey 99's Sync Now
+then drains the one scan it queued.
+
+The first run of journeys 97 to 100, on 2026-10-19, drove the branch that
+added them in this venue, served from that branch's own checkout. It did
+not keep the order above. It began, as regressions, with journey 87's steps
+4 and 5 and journey 88's steps 1 and 2. It then ran journey 93's steps 1 to
+3, journey 98 in the Japanese that step 3 left, journey 93's steps 4 to 7,
+with step 6 new, and journeys 97, 99 and 100. The rest of the regressions
+came after them: journey 96's step 1, journey 94's step 1, the bounds
+journey 83's step 1 names on `/transactions`'s filters (1 May 2026 to 31
+December 2027), not its year view, and journey 80's swap to Sam and back.
+Every step it ran passed. Its branch probe (check 1) found
+`aiPage.keySaveFailed`, and journey 93's reworded refusal, in the served
+catalog, and the page's resource list held no vendor host. The pane was
+hidden throughout, so, like the first run of journeys 93 to 96, it read
+each step by state, from the page's signals and DOM and past the rules, and
+kept those readings rather than shots. The shots journeys 93 and 97 to
+100 name were owed, and the second run below took them: its pane was
+hidden too, but its screenshots worked.
+
+It found four defects. Three are older than the branch, and the branch's
+own *All* options exposed the fourth. Each was fixed in a commit of its own
+whose spec failed first, and each fix was re-checked in the same venue:
+
+- *fix(ui): Sync Now cannot be pressed twice into one sync*. A double press
+  of Sync Now ran one sync and raised *Queue synced successfully* twice. It
+  was met in the run's sweep of `/ai`, on journey 87's failed entry, at the
+  Clear Queue the run order asks for, which that run made between journeys
+  88 and 93. Journey 99's step 4 now reads it, and the re-check after the
+  fix pressed it on journey 99's failed entry.
+- *fix: the data page loads the category catalog its CSV export and import
+  read*. `/data` never loaded the category catalog, so its CSV export named
+  every row's category unknown and its CSV import counted every row
+  unmatched. Journey 98 met it, at its step 6.
+- *fix(ui): a compact filter field's label rests inside its box*. The
+  resting label of every empty compact filter field sat 9px below its box's
+  centre. The run's sweep of the filter panel met it, and journey 100's
+  step 4 reads it.
+- *fix(ui): a floated select label is not cut short by the room kept for its
+  arrow*. Floated *Category* and *Currency* were cut mid-word in the narrow
+  filter selects, once the *All* options floated every label. The run met
+  it after the other three fixes were re-checked, in a diagnostic screenshot
+  of journey 100's step-1 panel taken before teardown and not kept, and a
+  measure of each label confirmed it: 64px of text in a 53px label. Journey
+  100's step 1, which then read only each select's label, value and float,
+  now reads it by each label's scroll width.
+
+The second run, the same day, drove the branch with those four fixes in,
+in the same venue, served from the same checkout, and its pre-flight passed
+checks 1 to 8. The pane was hidden but its screenshots worked, so it read
+each step by state, as the first run did, and also took the shots the
+steps it ran name: `80-reloaded-as-sam`, `80-signed-out`,
+`80-dashboard-as-alex`, `83-year-bounds`, `83-totals-retry`,
+`87-queued-offline`, `88-category-tie`, `94-not-started-en`,
+`96-claude-list`, `93-resume-refused-en`, `93-resume-refused-ja`,
+`93-edit-day-unset`, `93-resumed-after-save`, `97-signed-out`,
+`98-legend-unknown-ja`, `98-recurring-unknown-ja`,
+`98-breakdown-unknown-ja`, `98-csv-preview-ja`,
+`99-history-no-provider-ja`, `99-key-save-refused-ja`,
+`99-key-save-refused-en`, `100-filters-all-en`, `100-filters-375` and
+`100-filters-all-ja`. Like every run's, they are kept out of the repo
+([Evidence](#evidence)).
+
+It ran, as regressions, journey 80's steps 1 to 3, journey 83's steps 1
+and 2, journey 87's steps 4 and 5, journey 88's steps 1 and 2, journey 94's
+step 1 and journey 96's step 1. After a clip sweep of the app's layout,
+in English, it ran journey 93 whole, all seven steps, and then journeys 97,
+98 and 99. Journey 100 ran once the filter-date fix below was in the served
+tree, so its steps were read on the fixed grid. Last came a wrap sweep, in
+Japanese, Traditional Chinese and English. Every step passed. It ran none
+of journeys 89 to 92 or 95, nor the Clear Queue the order asks for after
+journey 88, so journey 99 found journey 87's failed entry still queued and
+cleared it first (its step 1). It made the readings the first run had left
+owed: journey 98's preview of the orphan's row on the fixed tree, journey
+99's held drain read twice, and journey 100's *From* and *To* at rest after
+Clear all. And it traced journey 97's second load to where it starts (its
+step 1).
+
+The clip sweep read `/ai`, `/dashboard`, `/reports`, the Recurring tab and
+`/transactions` at 1280 and 375px, in English. The wrap sweep, after
+journey 100, read those pages, `/data`, Import History, the Household page
+and Settings in Japanese at 1280 and 375px, with the clip detector beside
+it; `/ai`, `/data` and the main pages in Traditional Chinese at 375px; and
+`/data` and `/ai` in English at 375 and 320px. Each detector was first
+validated on a known positive: the clip detector on the filter dates, the
+wrap detector on the preview dates. The run found three defects and
+confirmed a fourth that a review named, each older than the branch, and
+each bullet below says where. Each fix is
+a commit of its own whose spec failed first, and each was re-measured on
+the served bundle: the filter grid from 320 to 1920px at the default font
+scale and from 320 to 1440px at Extra large (1.3); the data page's preview
+and buttons, and `/ai`'s, at 320 and 375px in all three languages at
+scales 1, 1.15 and 1.3; and the desktop table at each scale, in
+Traditional Chinese at 1280px, whose dates are the Japanese strings, and in
+English at 1024px; the Japanese read at 1280px was the one that confirmed
+the defect, before the fix. Nothing was
+cut and nothing overflowed. Where a Smart Import label still took two
+lines, in English at 320px at Extra large and in Japanese at the two
+larger scales, its button grew to hold it.
+
+- *fix(ui): a filter date is not cut short by its calendar button*. The
+  filter panel's *From* and *To* cut their dates: at 1024px a 40px input
+  showed `10/31` of an 86px date, and at 1280 and 375px a date lost 3px and
+  2px. The grid's tracks were set by the viewport, two, three or six of
+  them, and the compact rule put back the 12px of end padding Material
+  drops beside the calendar button. The clip sweep met it, and journey
+  100's step 1 records it.
+- *fix(ui): an import preview date stays on one line in every language*.
+  The data page's CSV preview held each date in a 90px box, and
+  2026年10月17日 broke before its 日 onto a second line in every row.
+  Journey 98 met it, at its step 6.
+- *fix(ui): a button grows with a wrapped label instead of painting past
+  its outline*. A Material text-label button squeezed by a narrow row kept
+  its fixed 40px, and its wrapped label painted above and below the pill:
+  on `/data` at 375px *履歴を見る* took three lines in a 99px button, and on
+  `/ai` a provider card's and the Offline Queue card's labels took two, the
+  same defect in a second place. The wrap sweep met both.
+- *fix(ui): a transaction's date stays on one line in the desktop table*.
+  The desktop table's date column let a Japanese date such as 10月11日
+  break onto a second line at the Large (1.15) and Extra large (1.3) font
+  scales. The review of the preview date's fix named it, the same defect in
+  another place, and the venue confirmed it.
+
+Two findings were left as they are. Every datepicker formats, parses and
+labels its dates in the browser's language, not the account's: its date
+adapter takes its locale once, at boot, from the browser, and no
+`MatDatepickerIntl` is provided, so on a Japanese account in an English
+browser the pickers show month-first dates and English names. That is
+older than the branch and reaches every datepicker in the app, so it is
+left for a follow-up (ADR 0180's *Known gaps*). And the bottom
+navigation's ダッシュボード, bold while active, wraps at `appFitText`'s 12px
+floor, which is G3 as written ([ui-overflow.md](ui-overflow.md)).
+
+Two hidden-pane traps cost it a second read, and neither is the app's. A
+first read after a resize or a font-scale change can catch a layout that
+has not settled, so read twice and keep the reading that holds. And a
+first read of a fitted label can come before it has settled: the bottom
+navigation's ダッシュボード first read as one line, and then, once the item
+was bold as the active one, as the two lines a screenshot already showed.
+Where a read and a screenshot disagree, read again
+([Panes and viewports](#panes-and-viewports)).
+
+[ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)'s
+*What the browser run found* records the first run, and
+[ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)'s
+*What the browser runs found* records both.
+
 Journey 87's other steps stand alone, and each journey's opening paragraph
 names what it reads from the ones before it.
 
@@ -929,7 +1104,7 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
 
-Journeys 79 to 96 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 100 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -1133,13 +1308,14 @@ page's own root component — `app-household` on `/household`,
 `app-transactions` on `/transactions`, `app-data-hub` on `/data`,
 `app-import-wizard` on `/import/file`, `app-import-history` on
 `/import/history`, `app-budgets` on `/budgets`, `app-settings` on
-`/settings`, `app-ai-settings-page` on `/ai`, `app-search-answer-history` on
-`/search-history`, and `app-dashboard` where a guard has landed the page on
-`/dashboard` — as in [Panes and viewports](#panes-and-viewports):
+`/settings`, `app-ai-settings-page` on `/ai`, `app-reports` on `/reports`,
+`app-search-answer-history` on `/search-history`, and `app-dashboard` where
+a guard has landed the page on `/dashboard` — as in
+[Panes and viewports](#panes-and-viewports):
 
 ```js
 for (let i = 0; i < 20; i++) await Promise.resolve();
-ng.applyChanges(ng.getComponent(document.querySelector('app-household, app-transactions, app-data-hub, app-import-wizard, app-import-history, app-budgets, app-settings, app-ai-settings-page, app-search-answer-history, app-dashboard')));
+ng.applyChanges(ng.getComponent(document.querySelector('app-household, app-transactions, app-data-hub, app-import-wizard, app-import-history, app-budgets, app-settings, app-ai-settings-page, app-reports, app-search-answer-history, app-dashboard')));
 document.querySelectorAll('.mat-mdc-dialog-component-host')
   .forEach(host => ng.applyChanges(ng.getComponent(host)));
 ```
@@ -1164,8 +1340,8 @@ survive a navigation.
 success, five for an error, two more for each further sentence of an
 import's notice — and a hidden pane's evaluations can sit further apart than
 that, so a notice can come and go between two reads and leave nothing in the
-page to find. The journeys that judge a notice, 93 to 95, read it where it
-is raised instead: they wrap the methods of the app's one
+page to find. The journeys that judge a notice, 93 to 95 and 99, read it
+where it is raised instead: they wrap the methods of the app's one
 `NotificationService`, which each of their pages holds as its
 `notifications`, and log each call before passing it on. Arm the log on
 the page's component, after each load and before the action; the selector
@@ -1199,9 +1375,10 @@ through the Firestore emulator's REST API with the owner token: journey 75
 writes a copy no client can reach, 84 a layout, 85 rules, 88 a row and a
 sign-in, 90 two rules that cannot advance and one's row of the old shape, 91
 two import records, 92 rows that tie and a stored answer, 93 a rule outside
-its ranges, which no client can write since ADR 0178, and 95 a stored
-answer, and 77 clears the database at its end; the superseded 60 and 63
-wrote a quota and a name.
+its ranges, which no client can write since ADR 0178, 95 a stored answer,
+98 an expense and a rule in a category no catalog holds, which it deletes
+the same way with any row the rule posted, and 100 a goal, and 77 clears
+the database at its end; the superseded 60 and 63 wrote a quota and a name.
 The seeded households are `chen-home` and `trip-fund`; one made in a journey
 is listed under its owner's index, `users/<uid>/households`. A copy's id is
 `<author-uid>_<row-id>`, and the seeded rows this month are `tx-hh-1` onwards
@@ -1335,10 +1512,14 @@ log, and run the ports check again: it prints nothing.
 | 90 | Salted postings, stalled rules and one read (emulators) | Each posting's id rebuilt outside the app from the salt its rule holds, read as the owner, with the unsalted digest naming no row; a shared posting's copy naming the salted id; two rules that cannot advance, one already posted under an old id, left unwritten across two loads; and one read of a queued entry between its two status writes | `90-stalled-rows.png`, `90-queued-offline.png` |
 | 91 | Import History in the reader's language (emulators) | Two whole-import failures written past the rules, read as sentences about the record in Japanese, Traditional Chinese and English with none of their stored English, and a drain that failed for want of a provider read in the third language | `91-whole-import-ja.png`, `91-whole-import-tc.png`, `91-whole-import-en.png` |
 | 92 | One tie rule (emulators) | A tie in category id order on the Categories tab, in its accordion and legend on both sides of the real toggle; the new-category chip naming the lower id; and a stored answer refreshed on the history page to its groups in id order, rolled up and named | `92-categories-tie.png`, `92-income-tie.png`, `92-new-chip.png`, `92-answer-refreshed.png` |
-| 93 | A schedule out of range (emulators) | A rule stored outside its ranges taking a pause, refusing a resume with a sentence about its schedule in English and Japanese, opening in the edit dialog on a day the dialog can show, saved into range through the rules, and a hand-built backup restored through the data page's real input that skips one | `93-resume-refused-en.png`, `93-resume-refused-ja.png`, `93-edit-day-unset.png`, `93-edit-day-unset-r3.png` |
+| 93 | A schedule out of range (emulators) | A rule stored outside its ranges taking a pause, refusing a resume with a sentence about its schedule in English and Japanese that asks for a save, opening in the edit dialog on a day the dialog can show, saved into range through the rules and then resumed with nothing posted, and a hand-built backup restored through the data page's real input that skips one | `93-resume-refused-en.png`, `93-resume-refused-ja.png`, `93-edit-day-unset.png`, `93-edit-day-unset-r3.png`, `93-resumed-after-save.png` |
 | 94 | A refused import (emulators) | A refusal before the record opened leaving the reviewer on Confirm with every row, one after it reading in Japanese and leaving for Import History with no way Back to Confirm, its card showing no figures, and a finished import's review gone from the real history | `94-not-started-en.png`, `94-refused-after-rows-ja.png`, `94-whole-import-card-fixed.png`, `94-refused-after-rows-ja-r3.png` |
 | 95 | A cold catalog (emulators) | A Refresh on the history page over an emptied catalog signal reading the stored categories once, a built-in child rolled into its parent in what it stores, and the groups the emptied signal cannot name read in the reader's language | `95-cold-refresh.png`, `95-cold-refresh-unknown-ja.png` |
 | 96 | The Claude list (emulators) | Claude Sonnet 5.5 in a real model select beside one Recommended, and one switch on a fresh origin storing every model id, with no request to a vendor | `96-claude-list.png` |
+| 97 | The page's own sign-out during a bring-up (emulators) | The header's real Sign Out, landing on `/login` with no reload while a bring-up is held at OpenAI's import, and that import, released only after the reset, arming nothing for the account that left | `97-signed-out.png` |
+| 98 | An unknown category in Japanese (emulators) | A category no catalog holds named 不明 where a Japanese reader meets it: the dashboard's legend and its spoken name, the Recurring tab, both report tabs and the donut, the three CSVs from Reports, and the data page's own CSV read back through its real preview | `98-legend-unknown-ja.png`, `98-recurring-unknown-ja.png`, `98-breakdown-unknown-ja.png`, `98-csv-preview-ja.png` |
+| 99 | A key saved while Sync Now drains (emulators) | A real press of Sync Now during a held key save leaving the scan processing, its retries unspent, until the save lands; a double press raising one notice for one sync; and a refused save's own sentence in Japanese and in English | `99-history-no-provider-ja.png`, `99-key-save-refused-ja.png`, `99-key-save-refused-en.png` |
+| 100 | The filters read All (emulators) | The five filter selects reading *All*, floated and whole, in a real layout in English and Japanese, a choice and *All* putting the list back, and the resting labels inside their boxes at 1024px and at a real 375px | `100-filters-all-en.png`, `100-filters-375.png`, `100-filters-all-ja.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating. A partial re-check after a fix adds
@@ -2728,7 +2909,10 @@ tracks; `/ai` reads 3 on `.provider-preferences-grid` and 2 on
 **Pass — Transactions.** The filter panel opens through its own signal
 (`ng.getComponent(document.querySelector('app-transaction-filters'))
 .expanded.set(true)`) rather than a click, because the grid is what is being
-read, not the trigger. `.filter-grid` reads 6 tracks at 1280px and 3 at 768px.
+read, not the trigger. `.filter-grid` reads 4 tracks at 768px and 6 at
+1280px. Its tracks follow the panel's width, as many as hold a date beside
+its calendar button, rather than a rule at a viewport width, so the count
+also falls at a larger font scale: these are the default scale's.
 
 A track count of 1 anywhere above is the defect: the declaration was dropped
 and the mobile default is what is painting.
@@ -4992,7 +5176,7 @@ every report the app's error handler logs (`global-error-handler.ts:39`).
      user menu names *Sam Lee* in both.
    - Shot: `80-reloaded-as-sam.png`, tab 1.
 2. **A sign-out from tab 2.** Arm both. In tab 2, the header's user menu →
-   **Sign Out** (`header.component.ts:153-156`).
+   **Sign Out** (`header.component.ts:208-211`).
    - **Pass, tab 2:** `{ marker: 'armed', fresh: false, path: '/login' }` —
      its own sign-out took it to the sign-in page and reloaded nothing. Its
      `departing` is recorded as a diagnostic: its own sign-out is not the
@@ -6840,10 +7024,12 @@ new-category chip, and the refreshed answer.
 recurring rule's day of the month, month and weekday are now held to their
 ranges, by the service and by the rules alike. A rule already stored outside
 them is left as it is: it takes every update that leaves its frequency
-alone, it refuses to resume with a sentence that names its schedule, and the
-edit dialog opens it on a day the dialog can show. A restore skips one, the
-way it skips any rule the service turns away
+alone, it refuses to resume with a sentence that names its schedule and asks
+for the edited rule to be saved first, the edit dialog opens it on a day the
+dialog can show, and once saved into range it resumes. A restore skips one,
+the way it skips any rule the service turns away
 ([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md),
+[ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md),
 [recurring.md](recurring.md), [backup-restore.md](backup-restore.md)).
 Journey 90's two stalled rules are left alone, and this journey seeds its
 own.
@@ -6893,9 +7079,11 @@ own.
    ([In a hidden pane](#in-a-hidden-pane)), then the menu again →
    **Resume**, and read `window.e2eNotices` and the rule's `isActive` again
    as a separate evaluation. **Pass:** one notice, `error`, *Cannot resume:
-   this rule's schedule cannot advance. Edit the rule and check its
-   interval and day.*, and `false`: the service refused before any write.
-   Shot: `93-resume-refused-en.png`, the notice over the list.
+   this rule's schedule cannot advance. Edit the rule, check its interval
+   and day, and save it first.*, and `false`: the service refused before any
+   write. The sentence asks for the save, which step 5 makes and step 6
+   resumes after. Shot: `93-resume-refused-en.png`, the notice over the
+   list.
 3. **In Japanese.** Settings → Profile → **Language** → 日本語, a write to
    the emulators. The select calls the profile component's
    `onLanguageChange`, which sets the locale and stores it on the user
@@ -6906,17 +7094,26 @@ own.
    const profile = ng.getComponent(document.querySelector('app-profile-settings'));
    profile.language = 'ja';
    await profile.onLanguageChange();
-   profile.translationService.currentLocale();
+   'changed';
    ```
 
-   It reads `'ja'`. A locale set on `TranslationService` alone does not
-   hold: `AuthService` hands the stored language back to it
-   (`syncFromDatabase`) whenever the user document arrives, and the first run's
-   first try, which did that, was back in English before the refusal was
-   read. Load `/budgets?tab=recurring` again, arm the log again — the load
-   dropped it — and press **再開** (*Resume*) on the rule's menu. **Pass:**
+   Then read the locale as a separate evaluation:
+
+   ```js
+   ng.getComponent(document.querySelector('app-profile-settings')).translationService.currentLocale();
+   ```
+
+   It reads `'ja'`. Read in the evaluation that awaited the change, the
+   locale can still be the old one: the second run of journeys 97 to 100, on
+   2026-10-19, read `'en'` there, and its next evaluation `'ja'`. A locale
+   set on `TranslationService` alone does not hold: `AuthService` hands the
+   stored language back to it (`syncFromDatabase`) whenever the user
+   document arrives, and the first run's first try, which did that, was back
+   in English before the refusal was read. Load `/budgets?tab=recurring`
+   again, arm the log again — the load dropped it — and press **再開**
+   (*Resume*) on the rule's menu. **Pass:**
    one notice, `error`,
-   *再開できません：この定期取引のスケジュールが進みません。ルールを編集して、間隔と日付を確認してください。*
+   *再開できません：この定期取引のスケジュールが進みません。先にルールを編集し、間隔と日付を確認して保存してください。*
    Shot: `93-resume-refused-ja.png`. Switch the language back to
    **English** the same way.
 4. **The day the dialog shows.** Load `/budgets?tab=recurring`, and the
@@ -6974,7 +7171,24 @@ own.
    salt and no row. A repair re-anchors the pointer past now, so the
    occurrences a rule missed while it stalled are not posted (ADR 0178's
    Known gaps).
-6. **A restore that skips one.** On `/data`, arm the notice log on
+6. **Resumed after the save.** Arm the notice log on
+   `app-recurring-transactions` again — step 4's load dropped it — then the
+   rule's menu → **Resume**, and read `window.e2eNotices` and the rule's
+   `isActive`, step 2's read, as a separate evaluation. **Pass:** one
+   notice, `success`, *Recurring transaction resumed*, and `true`: the
+   frequency the save wrote can advance, so the resume the refusal asked
+   for now goes through. Then step 5's script again:
+
+   ```bash
+   # {"type":{"stringValue":"monthly"},"interval":{"integerValue":"1"}} <the next 5th> active true salt none rows 0
+   ```
+
+   **Pass:** the same frequency, the pointer unchanged on the first 5th
+   after now, and the rule active, with no salt and no row. The repair moved
+   the pointer past now, so the resume has nothing due to post, and nothing
+   claims the rule before that 5th. Shot: `93-resumed-after-save.png`, the
+   notice over the list.
+7. **A restore that skips one.** On `/data`, arm the notice log on
    `app-data-management`, then hand the data page's hidden input a backup
    built in the page: version 1.5, no transactions, and one rule of the
    same shape, `r-93-restore`.
@@ -7027,9 +7241,10 @@ own.
   `recurring-form-dialog.component.spec.ts`, *opens a weekly rule stored on
   weekday 9 on the start date's weekday, and saves it*, holds the other
   branch, beside the monthly, yearly and fractional cases and their pins.
-- **A repaired rule that posts.** This journey's rule stays paused.
-  `recurring.service.smoke.spec.ts`, *a stalled rule repaired through an
-  update walks again*, repairs one against the emulator and claims it.
+- **A repaired rule that posts.** This journey's rule is resumed with its
+  pointer still ahead of now, on the first 5th after it, so it posts nothing
+  here. `recurring.service.smoke.spec.ts`, *a stalled rule repaired through
+  an update walks again*, repairs one against the emulator and claims it.
 - **A restore that keeps the rest.** The file here holds only the refused
   rule. `backup-restore.smoke.spec.ts`: *skips a rule whose day, month or
   weekday is out of range and restores the rest*.
@@ -7040,11 +7255,12 @@ own.
   refused because the schedule cannot advance*.
 
 **Cleanup.** The language is back on English (step 3). `r-93-stuck`,
-repaired and paused, goes with the emulators at the [teardown](#teardown);
+repaired and resumed, goes with the emulators at the [teardown](#teardown);
 `r-93-restore` was never stored.
 
-Three shots: the refused resume in English and in Japanese, and the day the
-dialog shows, which the third run takes again.
+Four shots: the refused resume in English and in Japanese, the day the
+dialog shows, which the third run takes again, and the resume after the
+save.
 
 ### 94. A refused import
 
@@ -7374,17 +7590,17 @@ recorded as such. The unit spec and the smoke own the cold window itself.
    no `bills_electricity` group. Journey 90's step 3 dates its two rows in
    the month before when the run falls before the 5th, and this journey's
    scope is the calendar month, so those rows count only from the 5th on:
-   the figure is that sum, not a constant. Journey 93's rule, paused before
-   any load could claim it, adds nothing. The first run, on the 12th, read
-   exactly the line above, 2306.3 for `bills`. It had run neither journey
-   88's step 1 nor journey 92, whose rows put `gifts 150, pets 150` after
-   `bills` instead, as journey 92's step 4 reads. Without the cold read
-   Electricity would stand apart from its parent, and `bills` would read
-   2210, the figure journey 92's first run stored before the history page
-   loaded a catalog. The third run, on a fresh seed where no page had
-   claimed the rent and journeys 90 and 92 had not run, read
-   `bills 96.3, food 64.2, shopping 42.75`: the Electric bill alone, rolled
-   into its parent.
+   the figure is that sum, not a constant. Journey 93's rule, resumed only
+   after its repair moved the pointer past now, adds nothing. The first run,
+   on the 12th, read exactly the line above, 2306.3 for `bills`. It had run
+   neither journey 88's step 1 nor journey 92, whose rows put
+   `gifts 150, pets 150` after `bills` instead, as journey 92's step 4
+   reads. Without the cold read Electricity would stand apart from its
+   parent, and `bills` would read 2210, the figure journey 92's first run
+   stored before the history page loaded a catalog. The third run, on a
+   fresh seed where no page had claimed the rent and journeys 90 and 92 had
+   not run, read `bills 96.3, food 64.2, shopping 42.75`: the Electric bill
+   alone, rolled into its parent.
 
 **What stays in the specs, and why.**
 
@@ -7419,8 +7635,8 @@ One shot: the refreshed answer's card, which the third run takes again.
 
 ### 96. The Claude list
 
-**Emulators**, as Alex, at a desktop width of 1024px or more, last of the
-run, still in Japanese ([the run order](#emulator-journeys)). The Claude
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+95, still in Japanese ([the run order](#emulator-journeys)). The Claude
 list now offers Claude Sonnet 5.5, after Claude Sonnet 5 (Recommended), and
 each provider's ids carry the day its vendor's pages were read
 ([ADR 0177](ADR/0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md),
@@ -7487,7 +7703,7 @@ and recorded as such.
    ([Panes and viewports](#panes-and-viewports)). Nothing could have gone,
    since the signal built no client; the check is that the poke itself
    sent nothing. Then **Language** → **English**, as journey 93's step 3
-   does, which ends the run's Japanese.
+   does, which ends the Japanese journey 94 began.
 
 **What stays in the specs, and why.**
 
@@ -7509,6 +7725,776 @@ language is back on English (step 3). The availability signal goes with the
 page on its next load.
 
 One shot: the open list.
+
+### 97. The page's own sign-out during a bring-up
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+96, in English ([the run order](#emulator-journeys)). A provider arm now
+applies only if nothing superseded it since it started. Each provider counts
+its arms and the façade counts its bring-ups, and the sign-out's reset moves
+both, so a bring-up still in flight for the departing account arms nothing
+once the reset lands
+([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md),
+[auth.md](auth.md#the-ai-providers-across-an-account-change)). The venue
+holds no key, and no key is ever sent to a vendor from it, so the journey
+holds a bring-up in the page: the key read is patched to answer a fake key,
+and OpenAI's SDK import is replaced by an in-page module with no transport,
+behind a gate the run opens. The fake key never leaves the page. State only,
+diagnostic-grade, and recorded as such; the sign-out is the page's own, a
+real click.
+
+1. **A bring-up held at OpenAI's import.** Load `/ai` directly, then:
+
+   ```js
+   const page = ng.getComponent(document.querySelector('app-ai-settings-page'));
+   window.__f = page.cloudLLMProvider;
+   window.__s = page.strategyService;
+   window.__loads97 = 0;
+   let open;
+   window.__gate97 = new Promise(resolve => { open = resolve; });
+   window.__release97 = () => open({ default: class {
+     constructor(o) { window.__armed97 = true; this.apiKey = o.apiKey; } } });
+   __f.providerKeys.resolve = () => Promise.resolve({ openai: 'e2e-97-not-a-key' });
+   __f.openaiService.loadSdk = () => { window.__loads97++; return window.__gate97; };
+   __s.providersInitializedFor();
+   ```
+
+   It reads `'<alex-uid>:true'`: the page's own bring-up has run. The façade
+   and the strategy are kept on `window` because Sign Out unmounts the page
+   they were reached from. `cloudLLMProvider`, `strategyService`,
+   `providerKeys`, `openaiService`, its `client` and
+   `providersInitializedFor` are private, and `loadSdk` protected,
+   TypeScript's words, which the running page does not enforce, as journey
+   14 says. Then, as a separate evaluation:
+
+   ```js
+   window.dispatchEvent(new Event('offline'));
+   void __s.cloudProvidersReady();
+   for (let i = 0; i < 20; i++) await Promise.resolve();
+   [window.__loads97, __s.providersInitializedFor()];
+   ```
+
+   **Pass:** at least one load, and `'<alex-uid>:false'`: a bring-up for
+   the offline attempt read the patched key, cleared Gemini, for which the
+   patched read answers no key, and is parked in OpenAI's import. The
+   device goes offline because a bring-up runs once per account and
+   connectivity state, and the online one has run. `cloudProvidersReady()`
+   is started by hand because it starts the bring-up for the new state
+   itself, through `bringUpFor`, before its first await; the effect would
+   start the same bring-up only on the tick after the change, which a
+   hidden pane throttles. Both runs read 1 here, and 2 after step 2's Sign
+   Out. The second run traced the second load, with a stack taken on
+   `reinitialize` and `loadSdk`, and it starts before Sign Out, at the
+   first interaction after this step, opening the user menu: the attempt
+   reads `'<alex-uid>:true'` there, and `isOnline()` is back to `true`.
+   That the hidden pane's page turning visible is what does it is read from
+   the code, not from the trace: `PwaService`'s `visibilitychange` re-check
+   (`pwa.service.ts:76-80`) puts the device back online, and the strategy's
+   effect brings up the online attempt. That bring-up's `reinitialize`
+   carries the patched key, so a second arm parks at the same gate. The
+   sign-out's reset, `reinitialize(undefined)`, supersedes both, and the
+   Pass reads the same for one load or two.
+2. **The page's own sign-out.** The header's user menu → **Sign Out**
+   (`header.component.ts:208-211`). **Pass:** `location.pathname` reads
+   `'/login'` and `window.__f` is still defined: the page awaited its
+   sign-out and navigated, and reloaded nothing. Then read, in separate
+   evaluations, until it holds:
+
+   ```js
+   __s.providersInitializedFor() === null;
+   ```
+
+   Only the strategy's sign-out branch sets it to `null`, right after it
+   starts the reset (`ai-strategy.service.ts:214-217`), and the reset moves
+   the façade's count and supersedes OpenAI's and Claude's arms before its
+   first await. A rendered `/login` proves nothing: the router has moved,
+   but a root effect runs only on a tick, and the strategy's has not had
+   one yet.
+3. **Released after the reset.** Only once step 2's read holds:
+
+   ```js
+   window.__release97();
+   for (let i = 0; i < 20; i++) await Promise.resolve();
+   [__f.providerStatus(), __f.openaiService.client, window.__armed97 === undefined];
+   ```
+
+   **Pass:** `[{ gemini: false, openai: false, claude: false }, null,
+   true]`. Every provider is down, OpenAI's client is null, and the fake
+   module's constructor never ran: the superseded arm built nothing, not
+   even a client for the reset to clear. The flag is compared in the page,
+   strictly, because a console tool hands `undefined` back as `null`.
+   Releasing before step 2's read holds proves nothing. The import then
+   lands before the reset, the reset clears what it built, and the
+   providers read down on `b8d400ac`, before the fix, too. Then the page's
+   own resource list:
+
+   ```js
+   performance.getEntriesByType('resource').map(e => e.name)
+     .filter(name => /anthropic|openai\.com|generativelanguage/.test(name));
+   ```
+
+   **Pass:** `[]`, as journey 96's step 3 reads it. The fake module has no
+   transport, so nothing could have gone; the check is that nothing did.
+   Shot: `97-signed-out.png`, the sign-in screen the page's own Sign Out
+   landed on.
+4. **Back as Alex.** Write Alex's record into local storage, the swap in
+   [Signing in a seeded account](#signing-in-a-seeded-account), and
+   reload. The load signs him in, puts the device back online, and drops
+   the patched read, the fake module, its gate and the flags with the page.
+   His welcome was skipped when he first signed in, so none opens.
+
+**What stays in the specs, and why.**
+
+- **The race itself, across two accounts.**
+  [ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)'s
+  Known gaps give the reason a run does not drive it, *The browser run does
+  not drive a sign-in during a held import*. In a pane, where this journey
+  runs, the app's sign-in popup takes the app's own tab like any load ([A
+  pane opens no popup](#panes-and-viewports)), and a load discards the
+  in-page fake SDK, its held gate and the `window` flag the Pass reads. In a
+  full desktop window the popup could sign the next account in without a
+  load, but that account's own bring-up would read the same patched key
+  through the same gate and set the flag itself. So this journey shows the
+  departing half alone. `cloud-llm-provider.smoke.spec.ts`, under *cloud LLM
+  providers across an account switch*, signs two anonymous accounts in and
+  out against the emulators, whose keys the emulator really stores: *arms
+  nothing on the departing account's key once the next account is signed in*
+  holds the departing bring-up in OpenAI's real import, and *starts no
+  further arm on the departing account's keys once its Gemini import lands*
+  holds it in Gemini's, with OpenAI still to arm.
+- **Each guard alone.** Each provider's spec, under *an arm superseded
+  while its SDK loads*; the façade's *a bring-up superseded by a reset or a
+  newer bring-up*, over spied providers, and *CloudLLMProviderService over
+  the real providers*, over fake modules behind one gate; and
+  `provider-key.service.spec.ts`, *a read or write that lands after an
+  account change*. Claude's checks have no smoke (ADR 0179's Known gaps).
+
+**Cleanup.** Step 4's load drops everything the journey put on the page,
+and the record it writes is Alex's own, as the pre-flight's was.
+
+One shot: the sign-in screen after the page's own Sign Out.
+
+### 98. An unknown category in Japanese
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+97 ([the run order](#emulator-journeys)). A category the catalog cannot
+name now reads `common.unknownCategory`, 不明 in Japanese, on every screen a
+reader meets it and in every export, where five screens and the exports
+wrote a literal *Unknown*
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md),
+[i18n.md](i18n.md), [csv-format.md](csv-format.md), [data.md](data.md)).
+The journey writes an expense and a rule in a category no catalog holds,
+and reads each surface in Japanese. The words a row stores, such as a
+description a parse wrote as *Unknown*, stay as stored, by the owner's
+decision (ADR 0180), and nothing here reads them.
+
+1. **A category no catalog holds, past the rules.** An expense this month,
+   $5,000, above every category's month total so that it leads each list,
+   and an active monthly rule, both in `e2e-98-gone`, an id no catalog
+   holds:
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const now = new Date(), at = new Date(now.getFullYear(), now.getMonth(), 1, 12);
+   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const t = d => ({ timestampValue: d.toISOString() }), b = v => ({ booleanValue: v });
+   const put = (path, fields) => fetch(`${FS}/users/${uid}/${path}`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) }).then(r => r.status);
+   console.log("transactions/e2e-98-gone", await put("transactions/e2e-98-gone", { userId: s(uid),
+     type: s("expense"), amount: n(5000), currency: s("USD"), amountInBaseCurrency: n(5000),
+     exchangeRate: n(1), categoryId: s("e2e-98-gone"), description: s("e2e-98-gone"),
+     date: t(at), createdAt: t(at), updatedAt: t(at), isRecurring: b(false) }));
+   console.log("recurring/r-98-gone", await put("recurring/r-98-gone", { userId: s(uid),
+     name: s("r-98-gone"), type: s("expense"), amount: n(5), currency: s("USD"),
+     categoryId: s("e2e-98-gone"), description: s("r-98-gone"),
+     frequency: { mapValue: { fields: { type: s("monthly"), interval: n(1), dayOfMonth: n(1) } } },
+     startDate: t(next), nextOccurrence: t(next), isActive: b(true),
+     createdAt: t(now), updatedAt: t(now) }), next.toISOString());' "$FS" <alex-uid>
+   # transactions/e2e-98-gone 200
+   # recurring/r-98-gone 200 <midnight UTC on the 1st of next month>
+   ```
+
+   The rule starts and points at midnight UTC on the 1st of next month, and
+   that is the point of it. Step 2 loads the dashboard, whose catch-up
+   (`dashboard.component.ts:456`) posts every occurrence of an active rule
+   that has come due. A rule seeded the way journey 93 seeds its own, on a
+   5th already past, would post a row in the orphan category on that load,
+   and the journey would be reading a row it did not write. A pointer in
+   the future posts nothing, and the Recurring tab lists the rule all the
+   same, which is what step 3 reads. The pointer is an instant, so it stays
+   ahead of now until the month turns in UTC, wherever the browser is.
+2. **In Japanese, the dashboard.** Settings → Profile → **Language** →
+   日本語, as journey 93's step 3 does; the language stays on 日本語 until
+   journey 99's step 5. Load `/dashboard`, flush it
+   ([In a hidden pane](#in-a-hidden-pane)), then read the Spending by
+   Category legend's first row:
+
+   ```js
+   const first = document.querySelector('app-dashboard app-spending-chart .legend-item');
+   [first.querySelector('.legend-name').textContent.trim(), first.getAttribute('aria-label')];
+   ```
+
+   **Pass:** `'不明'`, and a name that opens *不明の取引を表示*
+   (`dashboard.viewCategoryTransactions`, *View 不明 transactions*), then
+   the amount and the share. Shot: `98-legend-unknown-ja.png`.
+3. **The Recurring tab.** Load `/budgets?tab=recurring`, flush it, then:
+
+   ```js
+   [...document.querySelectorAll('app-recurring-transactions .recurring-card')]
+     .find(card => card.querySelector('.recurring-name').textContent.trim() === 'r-98-gone')
+     .querySelector('.recurring-category').textContent.trim();
+   ```
+
+   **Pass:** `'不明'`. The rule is read here, not on the Insights tab's
+   recurring list, which shows no category name. Shot:
+   `98-recurring-unknown-ja.png`.
+4. **Both report tabs.** Load `/reports?tab=analysis`, flush it, and read
+   `document.querySelector('app-spending-analysis .category-item .category-name').textContent.trim()`.
+   **Pass:** `'不明'`, first among **支出分析**'s (*Spending Analysis*'s)
+   top categories. Then load `/reports?tab=categories`, **カテゴリ別内訳**
+   (*Category Breakdown*), flush it, and:
+
+   ```js
+   [document.querySelector('app-category-breakdown .category-header .category-name').textContent.trim(),
+     document.querySelector('app-category-breakdown app-spending-chart .legend-name').textContent.trim()];
+   ```
+
+   **Pass:** `['不明 (1)', '不明']`: the first panel names it, with its one
+   row, and so does the donut's legend, which the dashboard's chart draws.
+   Shot: `98-breakdown-unknown-ja.png`.
+5. **The three CSVs from Reports.** Keep each file the page saves, in the
+   page, by standing in for the save picker that
+   `ExportService.downloadBlobWithPicker` asks first:
+
+   ```js
+   window.e2eFiles = [];
+   window.showSaveFilePicker = async ({ suggestedName }) => ({
+     createWritable: async () => ({
+       write: async blob => { window.e2eFiles.push([suggestedName, await blob.text()]); },
+       close: async () => {},
+     }),
+   });
+   'stubbed';
+   ```
+
+   The service takes the picker whenever the window has one, so nothing
+   reaches a download; a browser with no picker would fall back to a link,
+   which `URL.createObjectURL` and `HTMLAnchorElement.prototype.click` would
+   then have to be stubbed for instead. Then **エクスポート** (*Export*),
+   three times, each through the dialog's own **エクスポート**: CSV as it
+   opens, with **詳細情報を含める（メモ、タグ）** (*Include detailed
+   information (notes, tags)*) ticked, for the detailed file; CSV with it
+   unticked, for the summary; and the second CSV option,
+   *カテゴリ別の合計をスプレッドシート形式で* (*Totals per category as a
+   spreadsheet*), for the category summary. The dialog closes after each.
+   Then:
+
+   ```js
+   window.e2eFiles.map(([name, text]) => [name, text.split('\n').filter(line => line.includes('不明')).length]);
+   ```
+
+   **Pass:** three files, `transactions-<today>.csv` twice and
+   `category-summary-<today>.csv`, each with one line reading 不明, the
+   orphan's: every other row names its own category. Export through the
+   dialog's button, or its `export()`, and never `exportCSV()` or
+   `exportCategorySummaryCSV()` alone: each file's date comes from
+   `export()`, and the first run, calling them straight, got
+   `transactions-undefined.csv` twice and `category-summary-undefined.csv`,
+   the bypass's doing and not a defect. The second run, through the
+   dialog, read the three files dated `2026-10-19`, one 不明 line each.
+6. **The data page's CSV, and back through its preview.** Load `/data`
+   directly, a full load, so that no other page has loaded the catalog
+   before it, as when the defect below showed. Stand in for the picker
+   again, as in step 5 (the load dropped it), and read what the page
+   loaded:
+
+   ```js
+   ng.getComponent(document.querySelector('app-data-management')).categoryService.categories().length;
+   ```
+
+   It reads the catalog's size, 133 in the first run's re-check.
+   `categoryService` is private, TypeScript's word, which the running page
+   does not enforce. Then **取引CSV** (*Transactions CSV*), and:
+
+   ```js
+   const [name, text] = window.e2eFiles.at(-1);
+   const rows = text.trim().split('\n').slice(1);
+   [name, rows.length, rows.filter(row => row.includes('不明')).map(row => row.slice(0, 60))];
+   ```
+
+   **Pass:** every row of the account, and one line reading 不明, the line
+   of `e2e-98-gone`: each other row names its own category. Hand the same
+   text back to the data page's hidden input, as journey 53 does its file:
+
+   ```js
+   const dt = new DataTransfer();
+   dt.items.add(new File([window.e2eFiles.at(-1)[1]], 'e2e-98.csv', { type: 'text/csv' }));
+   const input = document.querySelector('app-data-management input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'handed';
+   ```
+
+   Then, as a separate evaluation:
+
+   ```js
+   const dm = ng.getComponent(document.querySelector('app-data-management'));
+   [dm.importedTransactions().length, dm.unmatchedCategoryCount(),
+     document.querySelector('app-data-management .unmatched-categories')?.textContent.trim() ?? null];
+   ```
+
+   **Pass:** the file's row count, `1`, and
+   *カテゴリを特定できなかった1件の取引はデフォルトのカテゴリになります*: the
+   orphan's row, whose 不明 names no category in any shipped language, is
+   bound for the expense catch-all, and every other row is matched.
+   **キャンセル** (*Cancel*): nothing is imported. Shot:
+   `98-csv-preview-ja.png`, the preview before the Cancel.
+
+   **What the first run found.** `/data` never loaded the category catalog.
+   Opened first, it read an empty one, so its CSV named every row's
+   category 不明 (*Unknown* before this branch), and handed back, its
+   preview counted all 60 rows unmatched, each bound for its type's
+   catch-all. *fix: the data page loads the category catalog its CSV export
+   and import read* subscribes when the page opens, as the reports page does
+   (`reports.component.ts:146-161`; ADR 0180's *What the browser runs
+   found*). The re-check after the fix read 133 categories on the page, a
+   CSV naming each row's own category, and a preview of 59 rows, `0`
+   unmatched. The orphan was gone by then — the file held one row fewer,
+   and none read 不明 — so the `1` above, the orphan's row on the fixed
+   tree, was left to the second run, which read the catalog at 133 again
+   and the preview as `[60, 1,
+   'カテゴリを特定できなかった1件の取引はデフォルトのカテゴリになります']`.
+
+   **What the second run found.** The preview held each row's date in a
+   90px box, and a Japanese medium date, 2026年10月17日, broke before its 日
+   onto a second line in every row; the English dates fitted. *fix(ui): an
+   import preview date stays on one line in every language* sizes the box
+   in em and keeps the date on one line, and lets the row wrap rather than
+   squeeze its description (ADR 0180's *What the browser runs found*).
+7. **Cleanup, past the rules.** Delete both seeds, then list the rows the
+   rule posted, with the `recurringId` filter journey 89 lists postings by,
+   count them, and delete each one:
+
+   ```bash
+   for p in transactions/e2e-98-gone recurring/r-98-gone; do
+     curl -s -o /dev/null -w "$p %{http_code}\n" -X DELETE -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/$p"
+   done
+   posted() {
+     curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/transactions?pageSize=300" |
+       node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>(JSON.parse(s).documents??[]).filter(d=>d.fields.recurringId?.stringValue==="r-98-gone").forEach(d=>console.log(d.name)))'
+   }
+   echo "posted: $(posted | grep -c .)"
+   for name in $(posted); do
+     curl -s -o /dev/null -w "${name##*/} %{http_code}\n" -X DELETE -H 'Authorization: Bearer owner' "http://127.0.0.1:8080/v1/$name"
+   done
+   echo "left: $(posted | grep -c .)"
+   # transactions/e2e-98-gone 200
+   # recurring/r-98-gone 200
+   # posted: 0
+   # left: 0
+   ```
+
+   **Pass:** both deleted, `posted: 0` and `left: 0`. A posted row means a
+   catch-up posted the rule, which step 1's pointer exists to prevent: a
+   finding. The loop deletes each one, under the full name the listing
+   gives it (hence the emulator's `/v1/` and not `$FS`), and the second
+   count reads `0`, so no later journey, and no re-run of this one, reads
+   a row in the orphan category it did not write. The second run read none
+   posted.
+
+**What stays in the specs, and why.**
+
+- **The import's category chip and the insight surfaces**, which the run
+  does not drive: the chip stands on a review card, and the insights read
+  closed months. Their specs expect the key for an id the catalog lacks:
+  `category-suggestion.component.spec.ts`, *names a category the catalog
+  lacks in the reader's language*; `insight-card.component.spec.ts`, *names
+  a category the catalog lacks in the reader's language, not by its id*;
+  and `snapshot-compare.component.spec.ts`, *names a moved category the
+  catalog lacks in the reader's language, not by its id*.
+- **The PDFs.** The category-summary PDF and the report PDF name a category
+  through the same `getCategoryName` as the CSVs, but their text is drawn,
+  and neither a step nor a spec reads it. `export.service.spec.ts` holds
+  the CSVs: *names a missing category in the reader's language*, in the
+  detailed and the summary format, and *names a category the account no
+  longer has in the reader's language* for the category summary.
+- **Every screen, by key.** Each site's spec maps `common.unknownCategory`
+  to 不明 and fails on the literal, and the two report specs render the real
+  template with a marking stub that shows a second translation (ADR 0180).
+  The walkthrough smoke, `app.smoke.spec.ts`, reads the dashboard legend's
+  key for an expense in a category no catalog holds. `i18n:check`'s fifth
+  scan fails an English *Unknown* or *Other* a reader would see.
+- **The round trip's rule.** `categorization.utils.spec.ts`, *refuses the
+  unknown-category word of every shipped language, over the built-in
+  catalog, both ways*. The data page's own catalog:
+  `data-management.component.spec.ts`, *the category catalog*, and
+  `csv-round-trip.smoke.spec.ts`, *names each row's category in the
+  transactions CSV from the catalog the page loads itself*, which fails on
+  the emulators with the page's subscription taken out.
+
+**Cleanup.** Step 7. The language stays on 日本語 for journey 99, which puts
+it back. The files lived in the page only and went with its next load.
+
+Four shots: the dashboard's legend, the Recurring tab, Category Breakdown,
+and the data page's preview, each in Japanese.
+
+### 99. A key saved while Sync Now drains
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+98, still in Japanese ([the run order](#emulator-journeys)). The queue is
+empty: journey 89's cleanup took journey 90's entry. A key saved on the AI
+page now goes through the strategy, which makes the save the bring-up the
+queue's wait joins before its first await. So a press of **Sync Now**
+during the save waits for it, where the drain used to send the photo to a
+provider the key had not reached, and a refused save says so in a sentence
+of its own
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md),
+[receipt-import.md](receipt-import.md), [ai-models.md](ai-models.md)). The
+venue holds no key, and none is typed: the save is an empty one, held in
+the page by a wrapper the run releases, and the drain fails for want of a
+provider, as journey 87's does. The wrappers are state only,
+diagnostic-grade, and recorded as such; each press of Sync Now is a real
+click.
+
+1. **A scan queued.** Journey 87's step 4 on `/import/file`, with the image
+   named `e2e-99-receipt.png`: offline, **レシート** (*Receipt*), **AIで処理**
+   (*Process with AI*), the offline card. Then load `/ai` directly. The load
+   starts online, and nothing drains at boot. Then:
+
+   ```js
+   const queue = ng.getComponent(document.querySelector('app-ai-settings-page')).offlineQueue;
+   const entries = await queue.getPendingImages();
+   sessionStorage.setItem('e2e.99.id', entries[0]?.id ?? '');
+   entries.map(i => ({ id: i.id, status: i.status, retryCount: i.retryCount, lastError: i.lastError }));
+   ```
+
+   **Pass:** one entry, `'pending'`, `retryCount` 0, no `lastError`. The one
+   entry holds only if the queue was empty before the step, which it is once
+   the run order's Clear Queue (its item 3) and journey 89's cleanup have
+   run. A run that skipped them clears the queue first on `/ai`: the second
+   run's order left journey 87's failed entry queued, and it cleared that
+   before this step. The entry's id is kept for the reads below, which go
+   through `peekQueuedImage(id)`: `getPendingImages()` lists only pending
+   and failed entries, and this one spends step 2 `processing`.
+   `offlineQueue` is private, TypeScript's word, which the running page
+   does not enforce.
+2. **The save held, then Sync Now.** Hold the key store's write:
+
+   ```js
+   const page = ng.getComponent(document.querySelector('app-ai-settings-page'));
+   const keys = page.providerKeys, setKey = keys.setKey.bind(keys);
+   let open;
+   const gate = new Promise(resolve => { open = resolve; });
+   window.__release99 = () => open();
+   keys.setKey = (...args) => gate.then(() => setKey(...args));
+   page.keysLoaded();
+   ```
+
+   It reads `true`: the page has read the keys, so a blur saves. Then
+   focus the Gemini card's empty **APIキー** (*API Key*) field and Tab out
+   of it, an empty save with no key typed; with the pane hidden, dispatch
+   its blur instead,
+   `document.querySelector('app-ai-settings-page input[placeholder="AIza..."]').dispatchEvent(new FocusEvent('blur'))`.
+   Press **今すぐ同期** (*Sync Now*): it stays enabled during a save, on
+   purpose (ADR 0180), so the press lands. Start a readiness probe beside
+   the drain's own wait:
+
+   ```js
+   window.__ready99 = 'pending';
+   ng.getComponent(document.querySelector('app-ai-settings-page')).strategyService
+     .cloudProvidersReady().then(ready => { window.__ready99 = ready; });
+   'probing';
+   ```
+
+   Then read, in separate evaluations until it stops changing:
+
+   ```js
+   const queue = ng.getComponent(document.querySelector('app-ai-settings-page')).offlineQueue;
+   const entry = await queue.peekQueuedImage(sessionStorage.getItem('e2e.99.id'));
+   [entry.status, entry.retryCount, entry.lastError ?? null, window.__ready99];
+   ```
+
+   **Pass:** `['processing', 0, null, 'pending']`. The drain marked the
+   entry and handed it on, and its wait holds the photo, as it holds the
+   probe, behind the save. The first run read this once, a few seconds
+   after the press, and then released the save. The second run read it
+   twice, eight seconds apart (08:40:03 and 08:40:11), unchanged, before
+   its release. Before the fix the drain's wait did not follow a save, and
+   the entry failed, its retry spent, while the save was still out
+   (ADR 0180's *Context*).
+3. **Released.** `window.__release99()`, then step 2's read again, in
+   separate evaluations until it stops changing. **Pass:** `['failed', 1,
+   'AI_CLOUD_UNAVAILABLE', true]`, and only after the release. The write
+   landed, the bring-up after it found no key, and the drain failed as
+   journey 87's step 5 does, with one retry spent; the probe answered
+   `true`, online and signed in, with nothing up. Then load
+   `/import/history`, and read the file's card:
+
+   ```js
+   const card = [...document.querySelectorAll('.history-item')]
+     .find(c => c.textContent.includes('e2e-99-receipt.png'));
+   [card.querySelector('.failure-class').textContent.trim(),
+     [...card.querySelectorAll('mat-chip, .mat-mdc-chip')].map(c => c.textContent.trim())];
+   ```
+
+   **Pass:** *AIプロバイダー未設定* (*No AI provider configured*,
+   `import.failureNoProvider`), and the chips *失敗* (*Failed*), *レシート*
+   (*Receipt*) and the size, with no *Cloud* chip: the drain failed online
+   with no provider, and was filed `no_provider`, as journey 88's step 2
+   reads journey 87's. Shot: `99-history-no-provider-ja.png`.
+4. **Sync Now pressed twice.** Load `/ai`. The entry is failed and still
+   counted, so **今すぐ同期** is enabled. Arm the notice log on
+   `app-ai-settings-page` ([In a hidden pane](#in-a-hidden-pane)), and
+   press it with one double click: two presses before the render that
+   disables the button. A second, separate click would find it disabled
+   already. Then read `window.e2eNotices` and step 2's read, in separate
+   evaluations until they stop changing. **Pass:** one notice, `success`,
+   *キューの同期が完了しました* (*Queue synced successfully*), and the entry
+   `failed` with `retryCount` 2: one sync, one retry.
+
+   **What the first run found.** The first run met this before it reached
+   this journey, in its sweep of `/ai`, on journey 87's failed entry before
+   its Clear Queue took it: the double press raised the notice twice for one
+   sync. The second press reached the page's `syncQueue` while the first
+   sync ran, the service answered it at once with nothing synced, and the
+   page reported that as a sync too; the entry, journey 87's in that run,
+   spent one retry. *fix(ui): Sync Now cannot be pressed twice into one
+   sync* disables the button while a sync runs and returns early from the
+   page's `syncQueue` while one does, since a second press can land before
+   the render that disables the button (ADR 0180's *What the browser runs
+   found*). The re-check's double press, on this journey's failed entry, ran
+   one sync and raised one notice. The second run's double press here read
+   one notice, *キューの同期が完了しました*, and the entry `failed` with
+   `retryCount` 2: the fix holds.
+5. **A refused save, in Japanese and in English.** Load `/ai`, arm the
+   notice log, and note the console's `error`-level count. Hold a write the
+   run then refuses:
+
+   ```js
+   const keys = ng.getComponent(document.querySelector('app-ai-settings-page')).providerKeys;
+   let refuse;
+   const held = new Promise((resolve, reject) => { refuse = reject; });
+   window.__refuse99 = () => refuse(Object.assign(new Error('Missing or insufficient permissions.'),
+     { code: 'permission-denied' }));
+   keys.setKey = () => held;
+   'held';
+   ```
+
+   Once `keysLoaded()` reads `true`, blur the empty Gemini field as in step
+   2, then `window.__refuse99()`, and read `window.e2eNotices` as a
+   separate evaluation. **Pass:** one notice,
+   `error`, *APIキーを保存できませんでした。もう一度お試しください。*
+   (`aiPage.keySaveFailed`), and one new `error`-level entry in the
+   console, the page's own *[AI Settings] API key not saved:*, with no
+   `[GlobalErrorHandler]` report: the page catches the refusal, which used
+   to reach the global handler and its generic notice. Shot:
+   `99-key-save-refused-ja.png`. Then **Language** → **English**, as journey
+   93's step 3 does, and the same again from the load of `/ai`. **Pass:**
+   one notice, `error`, *Could not save the API key. Try again.* Shot:
+   `99-key-save-refused-en.png`.
+6. **Undo.** **Clear Queue** on the Offline Queue card, and the count reads
+   0. On `/import/history`, delete the two records of `e2e-99-receipt.png`,
+   step 3's drain's and step 4's, each by its own **Delete**, and read the
+   list back without them. Then the account's keys document, past the
+   rules:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/secrets/providers"
+   ```
+
+   **Pass:** it holds `updatedAt` alone. Step 2's empty save wrote it,
+   deleting a Gemini key that was never there, and the refused saves wrote
+   nothing. It goes with the emulators at the [teardown](#teardown).
+
+**What stays in the specs, and why.**
+
+- **A saved key that arms a provider**, which needs a key this venue never
+  holds. `offline-queue-processor.service.spec.ts`, under *a key saved
+  while Sync Now drains*, runs the real strategy under the real processor
+  with the write held: *holds the photo until a key saved on a settled page
+  is up* and *holds the photo when the drain starts the account's first
+  bring-up itself*. `cloud-llm-provider.smoke.spec.ts`, *waits for a key
+  saved through the strategy*, holds it over the real graph on the
+  emulators, with a fake key that only builds a local client. The save's
+  own order is `ai-strategy.service.spec.ts`'s, under *a key saved in
+  settings*.
+- **A key read that fails**, read once more by the wait. Nothing here fails
+  a read on demand. `ai-strategy.service.spec.ts`, under *a bring-up whose
+  key read failed*, and the smoke's *reads the keys once more when the wait
+  ends online after a failed read*.
+- **The page.** `ai-settings-page.component.spec.ts`: *when the save is
+  refused*, and the pin *leaves Sync enabled while a key save is still in
+  flight*; for the double press, *disables Sync while a sync is already
+  running* and *does not report a sync it did not run while one is already
+  running*.
+
+**What it does not drive.** An offline save, which holds a wait until the
+device reconnects: ADR 0180's Known gaps. Every save here is made online.
+
+**Cleanup.** Step 6. The language is back on English (step 5).
+
+Three shots: the drain's card in Import History, and the refused save's
+notice in Japanese and in English.
+
+### 100. The filters read All
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+99, in English ([the run order](#emulator-journeys)). The transaction
+filters' *All* options now show their own label with no filter set, where
+each field showed empty, its label at rest, and `material:check` holds an
+option bound to `undefined` as it holds one bound to `null`
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md),
+[ui-overflow.md](ui-overflow.md)). The Goal filter shows only while the
+account has a goal, and Alex has none of his own, so the journey writes one
+past the rules.
+
+1. **A goal, then All in every select.**
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const now = new Date();
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const t = d => ({ timestampValue: d.toISOString() }), b = v => ({ booleanValue: v });
+   const fields = { userId: s(uid), kind: s("saving"), name: s("e2e-100-goal"), targetAmount: n(100),
+     contributedAmount: n(0), currency: s("USD"), isActive: b(true), createdAt: t(now), updatedAt: t(now) };
+   const res = await fetch(`${FS}/users/${uid}/goals/e2e-100-goal`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) });
+   console.log(res.status);' "$FS" <alex-uid>
+   # 200
+   ```
+
+   Load `/transactions`, which opens on this month, open the filter panel
+   by its toggle beside the period, and flush the page. Then:
+
+   ```js
+   [...document.querySelectorAll('app-transaction-filters .filter-grid mat-form-field')]
+     .filter(field => field.querySelector('mat-select'))
+     .map(field => {
+       const label = field.querySelector('.mdc-floating-label');
+       return [field.querySelector('mat-label').textContent.trim(),
+         field.querySelector('.mat-mdc-select-value').textContent.trim(),
+         label.classList.contains('mdc-floating-label--float-above'),
+         label.scrollWidth <= label.clientWidth];
+     });
+   ```
+
+   **Pass:** `['Type', 'All', true, true]`, `['Category', 'All', true,
+   true]`, `['Currency', 'All', true, true]`, `['Country', 'All', true,
+   true]` and `['Goal', 'All', true, true]`: each select shows its *All*
+   option, its label floated above it and whole. Shot:
+   `100-filters-all-en.png`, the open panel.
+
+   **What the first run found.** In the 108px selects the grid then laid
+   out at 1024px, floated *Category* and *Currency* read *Categor* and
+   *Currenc*, cut mid-word with no ellipsis. Material 22.1.4 caps an
+   outlined select's notch at the field's width less 60px, the room a
+   resting label leaves for the arrow, and lifts the cap only under a class
+   its form field no longer sets. The *All* options exposed it, since every
+   label now floats with nothing set.
+   *fix(ui): a floated select label is not cut short by the room kept for
+   its arrow* gives the notch Material's floated cap under the class the
+   outline does set (`styles.scss:119-121`; ADR 0180's *What the browser
+   runs found*). The re-measure on the served bundle read Category, Currency
+   and Country whole.
+
+   **What the second run found.** At 1024px the *From* and *To* fields
+   showed `10/31` of their date, a 40px input against an 86px date, and
+   the date was cut by 3px at 1280px and by 2px at 375px. The grid's tracks
+   were fixed by the viewport, two, three or six of them, and the compact
+   rule's end padding put back beside the calendar button the 12px Material
+   drops there. *fix(ui): a filter date is not cut short by its calendar
+   button* floors each track at a date's width beside its button, fits as
+   many tracks as the panel holds, and gives a date field's end padding to
+   its date (ADR 0180's *What the browser runs found*). The re-measure on
+   the served bundle cut no date and no label, at the default font scale
+   from 320 to 1920px and at Extra large (1.3) from 320 to 1440px.
+2. **Income, then All.** Read the list's size,
+   `ng.getComponent(document.querySelector('app-transactions')).transactions().length`.
+   Type → **Income**, and read it again; Type → **All**, and read it again,
+   with step 1's read beside it. **Pass:** fewer rows on Income, the first
+   count back on All, and Type reading `['Type', 'All', true, true]`. The
+   first run read 11 from the signal, then 1 and 11 by counting the
+   rendered rows (`app-transaction-row, tr.mat-mdc-row`): its read after
+   Income named a member the component does not have, and came back empty.
+   The second run read 11, 1 and 11 from the signal, and the same from the
+   rows.
+3. **Clear all.** Press it; the panel offers it on a plain visit, since the
+   month's own two dates count as filters. **Pass:** step 1's read again,
+   every select on *All*, and the date fields empty.
+4. **The resting labels.** With the filters cleared, the date, amount and
+   tag fields are empty and their labels at rest:
+
+   ```js
+   [...document.querySelectorAll('app-transaction-filters mat-form-field.compact-field')]
+     .filter(field => !field.querySelector('mat-select'))
+     .map(field => {
+       const label = field.querySelector('.mdc-floating-label').getBoundingClientRect();
+       const box = field.querySelector('.mat-mdc-text-field-wrapper').getBoundingClientRect();
+       return [field.querySelector('mat-label').textContent.trim(),
+         Math.round(label.top + label.height / 2 - (box.top + box.height / 2)), Math.round(box.height)];
+     });
+   ```
+
+   **Pass:** *From*, *To*, *Min $*, *Max $* and *Tags (Optional)*, each
+   within 2px of its box's centre, each box 40px. Then set the pane to
+   375px and, in the same step
+   ([Panes and viewports](#panes-and-viewports)), read it again beside
+   `document.documentElement.scrollWidth <= document.documentElement.clientWidth`.
+   **Pass:** the same, and `true`. Shot: `100-filters-375.png`. Clear the
+   width.
+
+   **What the first run found.** At 1024px each of these labels rested 9px
+   below its box's centre; a floated label sat right. The stylesheet forced
+   the infix's height and paddings, but an outlined field's label sits in
+   the notched outline, a sibling of the infix, which Material places by
+   the form field's own height token. *fix(ui): a compact filter field's
+   label rests inside its box* sets that token and its padding on the form
+   field and drops the infix override (ADR 0180's *What the browser runs
+   found*). The re-check was made without Clear all. It read *Min $*, *Max
+   $* and *Tags (Optional)* at rest within 1px of their boxes' centres, at
+   1024 and at 375px; *From* and *To* still held the month's dates and were
+   floated. The second run pressed Clear all first, and read all five at
+   rest 1px from centre, each box 40px, at 1280 and at 375px.
+5. **In Japanese.** Settings → Profile → **Language** → 日本語, as journey
+   93's step 3 does. Load `/transactions`, open the panel, flush the page,
+   and step 1's read. **Pass:** `['種類', 'すべて', true, true]`,
+   `['カテゴリ', 'すべて', true, true]`, `['通貨', 'すべて', true, true]`,
+   `['国', 'すべて', true, true]` and `['目標', 'すべて', true, true]`.
+   Shot: `100-filters-all-ja.png`. Then **Language** → **English** the same
+   way, which ends the run's Japanese.
+
+**What stays in the specs, and why.**
+
+- **Every path to All.** `transaction-filters.component.spec.ts`, under *a
+  filter's All option*, renders the real template: *All* in Type,
+  Category, Currency and Country with nothing set, in Goal once there is a
+  goal, after Income and then All, and after Clear all, with a pin that a
+  preset still reads its own values. `app.smoke.spec.ts` opens the panel on
+  `/transactions`, reads `transactions.all` on the four triggers, and runs
+  the accessibility pass over the grid in both schemes.
+- **The gate.** `material:check`'s second rule fails a select that offers
+  an option bound to `null` or `undefined` without
+  `canSelectNullableOptions`.
+- **The labels' places, with the fonts pinned.** The same spec's *a compact
+  field's label*, *rests an empty field's label at the centre of its box*
+  and its pin, and *a select's label in a narrow compact field*, *shows the
+  whole of a floated label, however narrow the field* and *keeps the
+  arrow's room for a resting label (pin)*; and *a filter date beside its
+  calendar button*, which shows a ten-character date whole beside its
+  button in the grids of a 1024px pane and of both phones, and reads the
+  stylesheet for any media rule that would set the tracks.
+- **A preset that names `null`** still shows its field empty, since the
+  *All* options are bound to `undefined`: ADR 0180's Known gaps. The gate
+  reads templates, not models, and cannot see it.
+
+**Cleanup.** The language is back on English (step 5). The goal goes with
+the emulators at the [teardown](#teardown).
+
+Three shots: the open panel in English, at 375px, and in Japanese.
 
 ## Evidence
 
@@ -7551,11 +8537,15 @@ which no spec boots, the one worker a real origin registers, and the ids the
 app writes, read back past the rules (journeys 87 to 89); a salt only
 the owner reads, stalled rules left alone across real loads, the reads a
 real IndexedDB serves, a record's lines in three languages, and one tie rule
-on every list a real page paints (journeys 90 to 92); and a refusal read in
+on every list a real page paints (journeys 90 to 92); a refusal read in
 two languages through the notices a real page raises, a stored rule's day
 in a real dialog, Back across a real history after a refused and a
 finished import, a Refresh over an emptied catalog, and a provider's list
-in a real select (journeys 93 to 96).
+in a real select (journeys 93 to 96); and the page's own sign-out under a
+bring-up held in a real page, a category no catalog holds named in the
+reader's language on each screen and in each file a real page saves, a real
+press of Sync Now during a held key save, and labels placed in a real
+layout (journeys 97 to 100).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -7579,7 +8569,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 96 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 100 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -7612,9 +8602,19 @@ import's history record calls; 95 the category catalog a search or a
 Refresh reads (`categoryCatalog`, `replayAggregate`), the history page's
 Refresh, or the name a category id the catalog lacks reads under
 (`core/utils/category-display.utils.ts`, and its readers: the answer card,
-the search dialog's chips and the insight chips); and 96 the model catalog
+the search dialog's chips and the insight chips); 96 the model catalog
 (`ai-models.ts`), the AI page's model selects or its auto-sync switch, or
-the AI preferences a device stores (`homeaccount_ai_preferences`).
+the AI preferences a device stores (`homeaccount_ai_preferences`); 97 a
+provider's bring-up or its reset — `initializeProviders` or
+`resetProviders`, a provider's `reinitialize` or `loadSdk`, the strategy's
+sign-out branch or `bringUpFor` — or `ProviderKeyService`'s writes; 98 the
+name a category the catalog lacks reads under on a screen or in an export
+(`categoryDisplayName`, `categoryNameOrUnknown`,
+`ExportService.getCategoryName`), or the category catalog a page loads, the
+data page's among them; 99 the AI page's key save (`saveKey`,
+`applyProviderKey`), the drain's readiness wait (`cloudProvidersReady`) or
+Sync Now; and 100 the transaction filters' selects or their stylesheet, or
+the notch rule in `styles.scss`.
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.
