@@ -17,6 +17,7 @@ import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { groupExpensesByCategory } from '../../../core/utils/transaction-aggregation.utils';
+import { categoryNameOrUnknown } from '../../../core/utils/category-display.utils';
 import { dayKey, monthKey } from '../../../core/utils/transaction-date.utils';
 
 interface MonthlyData {
@@ -425,7 +426,7 @@ export class SpendingAnalysisComponent {
         const category = categories.find(c => c.id === categoryId);
         return {
           categoryId,
-          name: category?.name || 'Unknown',
+          name: categoryNameOrUnknown(category?.name, key => this.translationService.t(key)),
           color: category?.color || CATEGORY_FALLBACK_COLOR,
           icon: category?.icon || 'category',
           total,

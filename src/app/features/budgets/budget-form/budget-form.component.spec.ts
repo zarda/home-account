@@ -25,6 +25,7 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  textLines,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -718,5 +719,58 @@ describe('BudgetFormComponent', () => {
         });
       }
     });
+  });
+
+  /**
+   * styles.scss grows a Material button to fit its content and its padding
+   * (min-height: fit-content). Material displays a mat-spinner as a block, so
+   * a spinner in the label stacks above the text: 20 px over a 21 px line,
+   * plus 8, made Save 49 px at the default scale, 52.15 at Large and 55.3 at
+   * Extra large, beside Cancel's 40, for as long as the save ran. Laid on the
+   * label's line, it leaves Save at Material's 40.
+   *
+   * Karma's page loads styles.scss after the components' stylesheets, so a
+   * utility class on the spinner wins there; in the app Material's rule lands
+   * after it and wins. Each case puts Material's rule last, as the app does.
+   * The face is pinned as docs/testing.md *Karma serves no fonts* says.
+   */
+  describe('the Save button while it saves (real template)', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+    let appOrder: HTMLStyleElement;
+
+    beforeEach(async () => {
+      await setupTestBed({ mode: 'add' });
+      appOrder = document.createElement('style');
+      appOrder.textContent = '.mat-mdc-progress-spinner { display: block; }';
+      document.body.appendChild(appOrder);
+    });
+
+    afterEach(() => {
+      appOrder.remove();
+      document.documentElement.style.removeProperty('--app-font-scale');
+    });
+
+    for (const scale of ['1', '1.15', '1.3'] as const) {
+      it(`stays Material's 40 px, as Cancel does, at scale ${scale}`, () => {
+        document.documentElement.style.setProperty('--app-font-scale', scale);
+        fixture = TestBed.createComponent(BudgetFormComponent);
+        component = fixture.componentInstance;
+        const host = fixture.nativeElement as HTMLElement;
+        host.style.fontFamily = FACE;
+        for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+          host.style.setProperty(token, FACE);
+        }
+        fixture.detectChanges();
+        component.isSubmitting.set(true);
+        fixture.detectChanges();
+
+        const [cancel, save] = Array.from(host.querySelectorAll('mat-dialog-actions button')) as HTMLElement[];
+        expect(save?.querySelector('mat-spinner')).withContext('the spinner').toBeTruthy();
+        if (!save) return;
+        expect(textLines(save.querySelector('.mdc-button__label') as HTMLElement)).withContext('label lines').toBe(1);
+        expect(cancel.getBoundingClientRect().height).withContext('Cancel, px').toBe(40);
+        expect(save.getBoundingClientRect().height).withContext('Save, px').toBe(40);
+      });
+    }
   });
 });

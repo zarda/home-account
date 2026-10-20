@@ -14,6 +14,7 @@ import {
   Transaction,
   TransactionFilters,
 } from '../../../../models';
+import { categoryDisplayName } from '../../../../core/utils/category-display.utils';
 import { cadenceKey } from '../../../../core/utils/insight-card.utils';
 import { parseDayKey } from '../../../../core/utils/transaction-date.utils';
 import { RecurringCadence } from '../../../../core/utils/recurring-pattern.utils';
@@ -184,7 +185,7 @@ export class InsightCardComponent {
   }
 
   private categoryName(categoryId: string): string {
-    const category = this.categoryService.categories().find(item => item.id === categoryId);
-    return category?.name ? this.translation.t(category.name) : categoryId;
+    return categoryDisplayName(
+      this.categoryService.categories(), categoryId, key => this.translation.t(key));
   }
 }

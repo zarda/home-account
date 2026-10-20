@@ -11,6 +11,7 @@ import {
   compareSnapshots,
   isComparison,
 } from '../../../../core/utils/insight-snapshot.utils';
+import { categoryDisplayName } from '../../../../core/utils/category-display.utils';
 import { parseMonthKey } from '../../../../core/utils/transaction-date.utils';
 import { LocaleNumberPipe } from '../../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -100,8 +101,8 @@ export class SnapshotCompareComponent {
   }
 
   categoryName(categoryId: string): string {
-    const category = this.categoryService.categories().find(item => item.id === categoryId);
-    return category?.name ? this.translation.t(category.name) : categoryId;
+    return categoryDisplayName(
+      this.categoryService.categories(), categoryId, key => this.translation.t(key));
   }
 
   onFromChange(monthKey: string): void {

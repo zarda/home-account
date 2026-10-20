@@ -140,7 +140,7 @@ describe('SnapshotCompareComponent', () => {
   it('resolves a category id to its localised name', () => {
     build([snapshot('2026-06', 118), snapshot('2026-05', 100)]);
     expect(component.categoryName('food')).toBe('categoryNames.groceries');
-    expect(component.categoryName('unknown')).toBe('unknown');
+    expect(component.categoryName('unknown')).toBe('common.unknownCategory');
   });
 
   it('formats a month key for display', () => {
@@ -281,6 +281,17 @@ describe('SnapshotCompareComponent, through its own template', () => {
     expect(rows[0].querySelector('.change-name')?.textContent?.trim()).toBe('categoryNames.groceries');
     expect(rows[0].querySelector('.change-amount')?.classList).toContain('up');
     expect(rows[0].querySelector('.change-amount')?.textContent).toContain('$200.00');
+  });
+
+  it('names a moved category the catalog lacks in the reader\'s language, not by its id', () => {
+    render([
+      snapshotFor('2026-06', 1200, [{ categoryId: 'gone', total: 500, count: 5 }]),
+      snapshotFor('2026-05', 1000, [{ categoryId: 'gone', total: 300, count: 3 }]),
+    ]);
+
+    const rows = Array.from(el().querySelectorAll('.change-row')) as HTMLElement[];
+    expect(rows.length).toBe(1);
+    expect(rows[0].querySelector('.change-name')?.textContent?.trim()).toBe('common.unknownCategory');
   });
 
   it('says which categories held steady rather than leaving it an absence', () => {

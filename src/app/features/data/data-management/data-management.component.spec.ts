@@ -8,13 +8,18 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  textLines,
   withTheme,
   provideNoMotion,
+  TranslationStub,
 } from '../../../core/services/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
-import { of } from 'rxjs';
+import { Component, signal, NO_ERRORS_SCHEMA } from '@angular/core';
+import { of, Subject } from 'rxjs';
+import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { DataManagementComponent } from './data-management.component';
@@ -41,7 +46,7 @@ import { CategoryMemoryService } from '../../../core/services/category-memory.se
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ImportHistoryService } from '../../../core/services/import-history.service';
 import { Firestore } from '@angular/fire/firestore';
-import { Transaction } from '../../../models';
+import { Category, FONT_SCALES, Transaction } from '../../../models';
 import { BACKUP_SECTIONS, NOT_IN_BACKUP } from '../../../core/services/export.service';
 import en from '../../../../assets/i18n/en.json';
 
@@ -91,10 +96,11 @@ describe('DataManagementComponent', () => {
     mockTransactionService.wipeTransactions.and.resolveTo({ deleted: 0, copiesPurged: 0 });
     mockTransactionService.exportAll.and.resolveTo([]);
 
-    mockCategoryService = jasmine.createSpyObj('CategoryService', ['exportAll'], {
+    mockCategoryService = jasmine.createSpyObj('CategoryService', ['exportAll', 'loadCategories'], {
       categories: signal([])
     });
     mockCategoryService.exportAll.and.returnValue(Promise.resolve([]));
+    mockCategoryService.loadCategories.and.returnValue(of([]));
 
     // Root-provided like InsightSnapshotService below: without stubs the real
     // services are constructed and their Firestore injection fails.
@@ -218,6 +224,38 @@ describe('DataManagementComponent', () => {
 
     it('should not show import preview initially', () => {
       expect(component.showImportPreview()).toBeFalse();
+    });
+  });
+
+  // The transactions CSV names each row's category from CategoryService's
+  // signal, and the CSV import resolves names against it; only a live
+  // loadCategories() subscription fills it, so the page must hold one.
+  describe('the category catalog', () => {
+    it('is subscribed to when the page opens', () => {
+      const catalog$ = new Subject<Category[]>();
+      mockCategoryService.loadCategories.and.returnValue(catalog$);
+
+      const page = TestBed.createComponent(DataManagementComponent);
+      page.detectChanges();
+
+      expect(mockCategoryService.loadCategories).toHaveBeenCalled();
+      expect(catalog$.observed).toBeTrue();
+      page.destroy();
+    });
+
+    it('is released when the page closes', () => {
+      const catalog$ = new Subject<Category[]>();
+      mockCategoryService.loadCategories.and.returnValue(catalog$);
+
+      const page = TestBed.createComponent(DataManagementComponent);
+      page.detectChanges();
+      // Positive proof first: without it the release below would pass for a
+      // page that never subscribed at all.
+      expect(catalog$.observed).toBeTrue();
+
+      page.destroy();
+
+      expect(catalog$.observed).toBeFalse();
     });
   });
 
@@ -992,7 +1030,12 @@ describe('DataManagementComponent, through its own template', () => {
         { provide: NotificationService, useValue: spy('NotificationService', ['success', 'error', 'info']) },
         { provide: ExportService, useValue: spy('ExportService', ['exportToJSON', 'exportTransactionsToCSV', 'downloadFile', 'parseImportFile']) },
         { provide: TransactionService, useValue: spy('TransactionService', ['exportAll', 'addTransaction', 'wipeTransactions']) },
-        { provide: CategoryService, useValue: spy('CategoryService', ['exportAll']) },
+        {
+          provide: CategoryService,
+          useValue: Object.assign(spy('CategoryService', ['exportAll']), {
+            loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
+          }),
+        },
         { provide: BudgetService, useValue: spy('BudgetService', ['exportAll']) },
         { provide: RecurringService, useValue: spy('RecurringService', ['exportAll']) },
         { provide: GoalService, useValue: spy('GoalService', ['exportAll']) },
@@ -1190,6 +1233,231 @@ describe('DataManagementComponent, through its own template', () => {
     button('receiptImages.manage')?.click();
 
     expect(open).toHaveBeenCalled();
+  });
+
+  /**
+   * A CSV preview's dates are a column: a box of one width on every row, so
+   * the descriptions beside them start at one edge. `localeDate`'s medium
+   * style is May 10, 2026 in en and 2026年10月17日 in ja (tc renders the same
+   * string), so the box holds the widest of those on one line.
+   *
+   * Karma serves none of the app's fonts, so the host is pinned to Verdana,
+   * whose metrics the Linux runner's DejaVu Sans matches to within a few
+   * pixels, and its digits to a hundredth of one. Neither draws a CJK glyph:
+   * those fall back to whatever face the machine has, 1 em each where there is
+   * one, and to DejaVu's missing-glyph box, 0.6 em, where there is none.
+   * Verdana's digits are wider than PT Sans's, so in this face a Japanese date
+   * runs a few pixels past a box that holds it in the app's own. What holds in
+   * both, Verdana on the Mac and DejaVu Sans on the runner, with or without a
+   * CJK face, is that it ends before the description begins, and that is what
+   * the Japanese case asserts; the English one, in Latin glyphs only, asserts
+   * the box holds it, at the default font scale and at Extra large.
+   */
+  describe('a CSV preview date, in each language', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+    /** What `localeDate`'s medium style renders, by language and ISO day. */
+    const MEDIUM: Record<string, Record<string, string>> = {
+      en: { '2026-05-10': 'May 10, 2026', '2026-03-04': 'Mar 4, 2026' },
+      ja: { '2026-10-17': '2026年10月17日', '2026-03-04': '2026年3月4日' },
+    };
+
+    afterEach(() => document.documentElement.style.removeProperty('--app-font-scale'));
+
+    /**
+     * The preview a CSV of one row per day in `MEDIUM[language]` reaches, the
+     * rows' amounts in that order.
+     */
+    function preview(
+      language: string,
+      amounts = [10, 11]
+    ): { row: HTMLElement; date: HTMLElement; description: HTMLElement; amount: HTMLElement }[] {
+      const translation = TestBed.inject(TranslationService) as unknown as TranslationStub;
+      translation.currentLocale.set(language);
+      spyOn(TestBed.inject(LocaleFormatService), 'formatDate').and.callFake(
+        value => MEDIUM[translation.currentLocale()][(value as Date).toISOString().slice(0, 10)] ?? ''
+      );
+      el().style.fontFamily = FACE;
+      fixture.detectChanges();
+      component.importedTransactions.set(
+        Object.keys(MEDIUM[language]).map((day, i) => ({
+          date: new Date(`${day}T00:00:00Z`),
+          description: `Row ${i}`,
+          amount: amounts[i],
+          type: 'expense' as const,
+          currency: 'USD',
+        })) as never
+      );
+      component.showImportPreview.set(true);
+      fixture.detectChanges();
+
+      return (Array.from(el().querySelectorAll('.preview-item')) as HTMLElement[]).map(row => ({
+        row,
+        date: row.querySelector('.preview-date') as HTMLElement,
+        description: row.querySelector('.preview-desc') as HTMLElement,
+        amount: row.querySelector('.preview-amount') as HTMLElement,
+      }));
+    }
+
+    /** Where the laid-out text ends, which a box that does not wrap can overrun. */
+    function textEnd(element: Element): number {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getBoundingClientRect().right;
+    }
+
+    it('keeps a Japanese date on one line, ending before its description, in boxes of one width', () => {
+      const rows = preview('ja');
+      expect(rows.map(row => row.date.textContent?.trim())).toEqual(['2026年10月17日', '2026年3月4日']);
+
+      for (const { date, description } of rows) {
+        const shown = date.textContent?.trim();
+        expect(textLines(date)).withContext(`${shown} lines`).toBe(1);
+        expect(textEnd(date))
+          .withContext(`${shown} text end against its description's start, px`)
+          .toBeLessThanOrEqual(description.getBoundingClientRect().left);
+      }
+      expect(rows[1].date.getBoundingClientRect().width)
+        .withContext('the short date box against the long one, px')
+        .toBe(rows[0].date.getBoundingClientRect().width);
+    });
+
+    /** The English dates, each on one line inside its box, the boxes of one width. */
+    function expectEnglishDatesHeld(where: string): void {
+      const rows = preview('en');
+      expect(rows.map(row => row.date.textContent?.trim())).toEqual(['May 10, 2026', 'Mar 4, 2026']);
+
+      for (const { date } of rows) {
+        const shown = `${where}: ${date.textContent?.trim()}`;
+        expect(textLines(date)).withContext(`${shown} lines`).toBe(1);
+        expect(date.scrollWidth).withContext(`${shown} text width against its box, px`).toBeLessThanOrEqual(date.clientWidth);
+      }
+      expect(rows[1].date.getBoundingClientRect().width)
+        .withContext(`${where}: the short date box against the long one, px`)
+        .toBe(rows[0].date.getBoundingClientRect().width);
+    }
+
+    it('keeps an English date on one line, inside its box, in boxes of one width', () => {
+      expectEnglishDatesHeld('at the default font scale');
+    });
+
+    // Pin: the box is in em, so it grows with the text at Extra large, where
+    // May 10, 2026 is about 126 px in this face and a 105 px box would not hold it.
+    it('keeps an English date inside its box at the Extra large font scale (pin)', () => {
+      document.documentElement.style.setProperty('--app-font-scale', '1.3');
+      expectEnglishDatesHeld('at Extra large');
+    });
+
+    /**
+     * A 320 px phone leaves the preview 256 px, and each row 224 px with 200
+     * of content: the stylesheet's arithmetic. At Extra large the date box is
+     * 136.5 px and -$12,345.67 about 114 px in this face, and at the default
+     * scale 105 and 88, so at no scale do the date, the description's floor
+     * and the amount share a line; the row wraps, the description keeps its
+     * floor on whichever line it lands, and the amount still ends the row.
+     */
+    describe('the row at a 320 px phone', () => {
+      const DESCRIPTION_FLOOR_PX = 56;
+
+      it('keeps every part inside the row at every font scale, the description at its floor or wider', () => {
+        const host = el();
+        host.style.display = 'block';
+        host.style.width = '256px';
+        const rows = preview('en', [12345.67, 4.5]);
+        expect(rows.map(({ amount }) => amount.textContent?.trim())).toEqual(['-$12,345.67', '-$4.50']);
+
+        for (const scale of FONT_SCALES) {
+          document.documentElement.style.setProperty('--app-font-scale', String(scale));
+          for (const { row, date, description, amount } of rows) {
+            const shown = `at ${scale}: ${amount.textContent?.trim()}`;
+            const edges = row.getBoundingClientRect();
+            expect(edges.width).withContext(`${shown}: the row, px`).toBeCloseTo(224, 0);
+            const contentEnd = edges.right - parseFloat(getComputedStyle(row).paddingRight);
+            for (const [name, part] of [['date', date], ['description', description], ['amount', amount]] as const) {
+              expect(part.getBoundingClientRect().right)
+                .withContext(`${shown}: the ${name}'s end against the row's content edge, px`)
+                .toBeLessThanOrEqual(contentEnd);
+            }
+            expect(amount.getBoundingClientRect().right)
+              .withContext(`${shown}: the amount's end, on whichever line, against the row's content edge, px`)
+              .toBeCloseTo(contentEnd, 0);
+            expect(description.getBoundingClientRect().width)
+              .withContext(`${shown}: the description's width, px`)
+              .toBeGreaterThanOrEqual(DESCRIPTION_FLOOR_PX);
+          }
+        }
+      });
+    });
+  });
+
+  /**
+   * The Smart Import card's two actions share a flex row, 261 px wide at a
+   * 375 px phone: the browser run measured it there, and it is what the
+   * 303 px section leaves inside its 20 px padding and 1 px border. Both
+   * English labels took two lines in it, each button shrinking to make room
+   * for the other. The row wraps instead, so a label that fits the row on
+   * one line gets one, on a line of its own if need be.
+   *
+   * The stub renders a key as one long word, so the labels are the English
+   * catalog's, and the face is pinned as docs/testing.md *Karma serves no
+   * fonts* says: on the host, and on the three tokens Material's fields and
+   * buttons take their faces from.
+   */
+  describe('the Smart Import actions at phone width', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+    const ROW_WIDTH_PX = 261;
+    /** The section's 20 px padding and 1 px border, a side. */
+    const SECTION_INSET_PX = 21;
+
+    /** A key's English copy, or the key itself where the catalog has none. */
+    function english(key: string): string {
+      const found = key
+        .split('.')
+        .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], en);
+      return typeof found === 'string' ? found : key;
+    }
+
+    /**
+     * The row in a section `sectionWidth` px wide, with each action's label
+     * checked to be one line inside it. Returns the line each action stands
+     * on, by its top edge.
+     */
+    function actionLines(sectionWidth: number, where: string): number[] {
+      (TestBed.inject(TranslationService) as unknown as TranslationStub).t = english;
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${sectionWidth}px`;
+      host.style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, FACE);
+      }
+      fixture.detectChanges();
+
+      const row = el().querySelector('.smart-import-actions') as HTMLElement;
+      const edges = row.getBoundingClientRect();
+      expect(edges.width).withContext(`${where}: the row, px`).toBeCloseTo(sectionWidth - 2 * SECTION_INSET_PX, 0);
+
+      const actions = Array.from(row.querySelectorAll<HTMLElement>('button'));
+      const label = (action: HTMLElement) => action.querySelector('.mdc-button__label') as HTMLElement;
+      expect(actions.map(action => label(action).textContent?.trim())).toEqual(['Start Smart Import', 'View History']);
+      for (const action of actions) {
+        const shown = `${where}: ${label(action).textContent?.trim()}`;
+        const box = action.getBoundingClientRect();
+        expect(textLines(label(action))).withContext(`${shown}: label lines`).toBe(1);
+        expect(box.left).withContext(`${shown}: start against the row's, px`).toBeGreaterThanOrEqual(edges.left);
+        expect(box.right).withContext(`${shown}: end against the row's, px`).toBeLessThanOrEqual(edges.right);
+      }
+      return actions.map(action => Math.round(action.getBoundingClientRect().top));
+    }
+
+    it('puts each action on one line inside the 261 px row, in English', () => {
+      actionLines(ROW_WIDTH_PX + 2 * SECTION_INSET_PX, 'at 375 px');
+    });
+
+    // Pin: a row wide enough for both keeps them side by side.
+    it('keeps both actions side by side where the row holds them, in English (pin)', () => {
+      const lines = actionLines(600, 'in a 600 px section');
+      expect(new Set(lines).size).withContext('lines the two actions stand on').toBe(1);
+    });
   });
 
   describe('colours, as painted', () => {
@@ -1410,5 +1678,214 @@ describe('DataManagementComponent, through its own template', () => {
         });
       }
     });
+  });
+});
+
+/**
+ * Every text-label appearance Material offers, each alone in a flex row of
+ * the probe's width, once bare and once with a leading icon, which moves a
+ * text button onto Material's own icon padding rule. Then the controls the
+ * rule must not reach: an icon button, a FAB and a mini FAB.
+ */
+@Component({
+  standalone: true,
+  imports: [MatButtonModule, MatIconModule],
+  template: `
+    @for (appearance of appearances; track appearance) {
+      @for (icon of [false, true]; track icon) {
+        <div class="probe-row" [style.width.px]="width()">
+          <button type="button" [matButton]="appearance" [attr.data-probe]="appearance + (icon ? ' with an icon' : '')">
+            @if (icon) {
+              <mat-icon>upload</mat-icon>
+            }
+            {{ label() }}
+          </button>
+        </div>
+      }
+    }
+    <div class="probe-row">
+      <button type="button" mat-icon-button data-untouched="icon button" aria-label="Upload"><mat-icon>upload</mat-icon></button>
+      <button type="button" mat-fab data-untouched="FAB" aria-label="Upload"><mat-icon>upload</mat-icon></button>
+      <button type="button" mat-mini-fab data-untouched="mini FAB" aria-label="Upload"><mat-icon>upload</mat-icon></button>
+    </div>
+  `,
+  styles: `.probe-row { display: flex; }`,
+})
+class ButtonLabelProbeComponent {
+  readonly appearances = ['text', 'filled', 'elevated', 'outlined', 'tonal'] as const;
+  readonly width = signal(90);
+  readonly label = signal('Start Smart Import');
+}
+
+/**
+ * Two outlined buttons with one-line labels in an open expansion panel, whose
+ * content Material sets in `--mat-sys-body-large-line-height`, 1.5rem: a
+ * length, so it grows with the account's font scale and not with a label's
+ * own size. One at Material's own 40 px, and one as the duplicate warning
+ * styles its actions (duplicate-warning.component.scss): 34 px tall, a 0.75rem
+ * label and a 1em icon at 1rem.
+ */
+@Component({
+  standalone: true,
+  imports: [MatButtonModule, MatExpansionModule, MatIconModule],
+  template: `
+    <mat-expansion-panel [expanded]="true">
+      <div class="probe-row">
+        <button type="button" matButton="outlined" data-in-panel="40">Test</button>
+        <button type="button" matButton="outlined" class="compact" data-in-panel="34"><mat-icon>block</mat-icon>Test</button>
+      </div>
+    </mat-expansion-panel>
+  `,
+  styles: `
+    .probe-row { display: flex; gap: 8px; }
+    .compact { font-size: var(--text-xs); height: 34px; }
+    .compact mat-icon { font-size: var(--text-base); width: 1em; height: 1em; }
+  `,
+})
+class PanelButtonProbeComponent {}
+
+/**
+ * A Material button keeps a fixed 40 px height whatever its label does, so a
+ * label that wraps in a narrow row paints above and below the pill: the
+ * browser run found 履歴を見る on three lines in a 99 px button on this page
+ * at 375 px. styles.scss lets every text-label button grow with its label
+ * instead. Karma bundles styles.scss (angular.json's test `styles`), so the
+ * rule is in force here as it is in the app.
+ *
+ * Karma serves none of the app's fonts, so the face is pinned as
+ * docs/testing.md *Karma serves no fonts* says: on the host, and on the three
+ * tokens Material's fields and buttons take their faces from (an expansion
+ * panel's content reads the body one).
+ */
+describe('a Material button whose label wraps', () => {
+  const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+  let fixture: ComponentFixture<ButtonLabelProbeComponent>;
+
+  function pinFace(host: HTMLElement): void {
+    host.style.display = 'block';
+    host.style.fontFamily = FACE;
+    for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+      host.style.setProperty(token, FACE);
+    }
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [ButtonLabelProbeComponent, PanelButtonProbeComponent],
+      providers: [provideNoMotion()],
+    }).compileComponents();
+    fixture = TestBed.createComponent(ButtonLabelProbeComponent);
+    pinFace(fixture.nativeElement as HTMLElement);
+  });
+
+  afterEach(() => document.documentElement.style.removeProperty('--app-font-scale'));
+
+  const probes = () =>
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[data-probe]'));
+  const label = (button: HTMLElement) => button.querySelector('.mdc-button__label') as HTMLElement;
+
+  /** Where the label's text is drawn: the union of its laid-out glyph boxes. */
+  function ink(button: HTMLElement): DOMRect {
+    const range = document.createRange();
+    range.selectNodeContents(label(button));
+    return range.getBoundingClientRect();
+  }
+
+  it('grows a button around a label wrapped in a 90 px row, in every appearance', () => {
+    fixture.detectChanges();
+
+    expect(probes().length).withContext('five appearances, bare and with an icon').toBe(10);
+    for (const button of probes()) {
+      const name = button.dataset['probe'];
+      const box = button.getBoundingClientRect();
+      const drawn = ink(button);
+      expect(textLines(label(button))).withContext(`${name}: the label wraps`).toBeGreaterThan(1);
+      expect(box.height).withContext(`${name}: height, px`).toBeGreaterThanOrEqual(40);
+      expect(drawn.top).withContext(`${name}: ink top against the button's top edge, px`).toBeGreaterThanOrEqual(box.top);
+      expect(drawn.bottom).withContext(`${name}: ink bottom against the button's bottom edge, px`).toBeLessThanOrEqual(box.bottom);
+      expect(drawn.left).withContext(`${name}: ink start against the button's start edge, px`).toBeGreaterThanOrEqual(box.left);
+      expect(drawn.right).withContext(`${name}: ink end against the button's end edge, px`).toBeLessThanOrEqual(box.right);
+      // The ink sits the line's half-leading inside the content box (2 px in
+      // Verdana, 2.5 in DejaVu Sans, about 1.5 in the app's PT Sans), and the
+      // rule's 4 px of block padding, with the outline where there is one,
+      // adds to it: 6 px in Verdana, 7 outlined. So 4 is a floor that fails
+      // once the padding falls below about 2 px, not a pin on the 4 px
+      // itself. Material's (0,2,0) rule for a text button with an icon keeps
+      // that one at no block padding, and it draws no edge.
+      if (name !== 'text with an icon') {
+        expect(drawn.top - box.top).withContext(`${name}: room above the ink, px`).toBeGreaterThanOrEqual(4);
+        expect(box.bottom - drawn.bottom).withContext(`${name}: room below the ink, px`).toBeGreaterThanOrEqual(4);
+      }
+    }
+  });
+
+  // Pin: the room the rule keeps around a wrapped label must not make a label
+  // that fits taller, at the largest font scale either.
+  for (const scale of ['1', '1.3'] as const) {
+    it(`keeps a one-line label's button at exactly 40 px in every appearance at scale ${scale} (pin)`, () => {
+      document.documentElement.style.setProperty('--app-font-scale', scale);
+      fixture.componentInstance.width.set(400);
+      fixture.componentInstance.label.set('Test');
+      fixture.detectChanges();
+
+      for (const button of probes()) {
+        const name = button.dataset['probe'];
+        expect(textLines(label(button))).withContext(`${name}: label lines`).toBe(1);
+        expect(button.getBoundingClientRect().height).withContext(`${name}: height, px`).toBe(40);
+      }
+    });
+  }
+
+  /**
+   * An expansion panel's content carries a line height of 1.5rem, which an
+   * inherited line-height takes into a button's label as 24 px times the font
+   * scale, whatever the label's own size: an outlined button's one line would
+   * come to 31.2 + 8 + 2 = 41.2 px at Extra large, and the duplicate warning's
+   * 34 px buttons to 37.6 px at 1.15. The rule gives the label a unitless 1.5
+   * of its own, so one line is 1.5 times the label's size wherever the button
+   * sits: 37.3 px for Material's 0.875rem at 1.3, and 33.4 px for 0.75rem.
+   */
+  describe('in an expansion panel', () => {
+    let panel: ComponentFixture<PanelButtonProbeComponent>;
+
+    beforeEach(() => {
+      panel = TestBed.createComponent(PanelButtonProbeComponent);
+      pinFace(panel.nativeElement as HTMLElement);
+    });
+
+    for (const scale of [1.15, 1.3]) {
+      it(`keeps a one-line label's outlined button at its own height at scale ${scale}`, () => {
+        document.documentElement.style.setProperty('--app-font-scale', String(scale));
+        panel.detectChanges();
+
+        const root = panel.nativeElement as HTMLElement;
+        const body = root.querySelector('.mat-expansion-panel-body') as HTMLElement;
+        expect(parseFloat(getComputedStyle(body).lineHeight))
+          .withContext("the panel body's line height, px")
+          .toBeCloseTo(24 * scale, 1);
+        const buttons = Array.from(root.querySelectorAll<HTMLElement>('[data-in-panel]'));
+        expect(buttons.map(button => button.dataset['inPanel'])).toEqual(['40', '34']);
+        for (const button of buttons) {
+          const height = Number(button.dataset['inPanel']);
+          expect(textLines(label(button))).withContext(`the ${height} px button: label lines`).toBe(1);
+          expect(button.getBoundingClientRect().height).withContext(`the ${height} px button: height, px`).toBe(height);
+        }
+      });
+    }
+  });
+
+  // Pin: icon buttons and FABs size themselves around a glyph, and the rule
+  // is for labels only.
+  it('leaves icon buttons and FABs as Material sizes them (pin)', () => {
+    fixture.detectChanges();
+
+    const untouched = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[data-untouched]')
+    );
+    expect(untouched.map(button => button.dataset['untouched'])).toEqual(['icon button', 'FAB', 'mini FAB']);
+    for (const button of untouched) {
+      expect(getComputedStyle(button).minHeight).withContext(`${button.dataset['untouched']}: min-height`).toBe('auto');
+    }
+    expect(untouched.map(button => button.getBoundingClientRect().height)).toEqual([40, 56, 40]);
   });
 });

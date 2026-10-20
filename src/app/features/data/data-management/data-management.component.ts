@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -59,7 +60,7 @@ import { NotificationService } from '../../../core/services/notification.service
   templateUrl: './data-management.component.html',
   styleUrl: './data-management.component.scss',
 })
-export class DataManagementComponent {
+export class DataManagementComponent implements OnInit, OnDestroy {
   private notifications = inject(NotificationService);
   private exportService = inject(ExportService);
   private insightSnapshots = inject(InsightSnapshotService);
@@ -80,10 +81,22 @@ export class DataManagementComponent {
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   receiptQuota = inject(ReceiptQuotaService);
+  // The transactions CSV names each row's category from the catalog signal,
+  // and the CSV import matches names against it; only a live subscription
+  // fills it. The stream never completes, so it is released on destroy.
+  private categoriesSub?: Subscription;
 
   constructor() {
     // Best-effort usage load for the receipt images section
     this.receiptQuota.refreshCount().catch(() => undefined);
+  }
+
+  ngOnInit(): void {
+    this.categoriesSub = this.categoryService.loadCategories().subscribe();
+  }
+
+  ngOnDestroy(): void {
+    this.categoriesSub?.unsubscribe();
   }
 
   private t(key: string, params?: Record<string, string | number>): string {

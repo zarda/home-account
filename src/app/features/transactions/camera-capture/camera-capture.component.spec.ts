@@ -26,6 +26,7 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  textLines,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -683,6 +684,45 @@ describe('CameraCaptureComponent processing overlay', () => {
     // native app, which its own spec now covers.
     expect(installHintOnIPhone(true)).toBeNull();
   });
+
+  /**
+   * styles.scss grows a Material button to fit its content and its padding
+   * (min-height: fit-content), so a block padding a component gives one
+   * becomes height. 16 px above and below Take photo's label would make it
+   * 56 px beside Select from library's 40. It pads only its inline sides, so
+   * the rule's 4 px applies: its 24 px icon plus 8 is 32 px at the default
+   * scale, and 31.2 plus 8 is 39.2 at Extra large, each inside Material's 40.
+   * Select from library is the reference beside it, not a pin: its line, the
+   * rule's 8 px and its outline come to 31 px at the default scale and 37.3
+   * at Extra large, so it reads 40 px with the rule and without it.
+   *
+   * The face is pinned as docs/testing.md *Karma serves no fonts* says.
+   */
+  for (const scale of ['1', '1.3'] as const) {
+    it(`keeps Take photo at Material's 40 px beside Select from library at scale ${scale}`, () => {
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      const host = fixture.nativeElement as HTMLElement;
+      document.documentElement.style.setProperty('--app-font-scale', scale);
+      try {
+        host.style.fontFamily = face;
+        for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+          host.style.setProperty(token, face);
+        }
+        component.capturedImages.set([]);
+        fixture.detectChanges();
+
+        for (const name of ['capture-button', 'library-button']) {
+          const button = host.querySelector(`.${name}`) as HTMLElement | null;
+          expect(button).withContext(name).toBeTruthy();
+          if (!button) continue;
+          expect(textLines(button.querySelector('.mdc-button__label') as HTMLElement)).withContext(`${name}: label lines`).toBe(1);
+          expect(button.getBoundingClientRect().height).withContext(`${name}: height, px`).toBe(40);
+        }
+      } finally {
+        document.documentElement.style.removeProperty('--app-font-scale');
+      }
+    });
+  }
 
   // The badge says where the receipt is read: on the device, or by the cloud
   // provider it names, whichever that is. Its label is 14px text, so it

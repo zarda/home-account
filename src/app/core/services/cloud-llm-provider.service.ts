@@ -20,6 +20,11 @@ interface ProviderStatus {
   claude: boolean;
 }
 
+/** What one bring-up learned about its own key read. */
+export interface BringUpOutcome {
+  keyReadFailed: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CloudLLMProviderService {
   private geminiService = inject(GeminiService);
@@ -27,6 +32,11 @@ export class CloudLLMProviderService {
   private claudeService = inject(ClaudeService);
   private authService = inject(AuthService);
   private providerKeys = inject(ProviderKeyService);
+
+  // Supersedes a bring-up in flight: each one takes the next generation on
+  // entry, a reset bumps it, and a bring-up that finds it moved after an await
+  // makes no further arm call. A model switch only reads it.
+  private generation = 0;
 
   // Provider availability is fully reactive: it flips when a provider's
   // lazily-loaded SDK finishes initializing, instead of relying on
@@ -79,19 +89,44 @@ export class CloudLLMProviderService {
    * Every branch runs, including the absent-key one. These used to be guarded
    * by `if (key)`, so signing in as an account with no key of its own left the
    * previous account's clients standing and its keys in use.
+   *
+   * A bring-up superseded by a reset or by a newer bring-up still resolves,
+   * but stops arming: once the generation has moved, the keys it read belong
+   * to an account that may have signed out, and a later provider would come up
+   * on them for the next one. Resolved therefore does not mean armed. The
+   * only caller, AIStrategyService, compares bring-ups by identity, so its
+   * readiness wait never answers for one that a newer bring-up superseded.
+   *
+   * Every return, a superseded one included, says whether this bring-up's
+   * key read failed. ProviderKeyService never rejects a failed read: it
+   * answers {} and sets loadFailed(), so the flag is taken as soon as the
+   * read lands, before a later read can change it. The strategy's readiness
+   * wait reads the keys once more on it.
    */
-  async initializeProviders(textModelId?: string, visionModelId?: string): Promise<void> {
+  async initializeProviders(textModelId?: string, visionModelId?: string): Promise<BringUpOutcome> {
+    // Taking the next generation supersedes every bring-up before this one.
+    const generation = ++this.generation;
     const { gemini, openai, claude } = await this.providerKeys.resolve();
+    // This read's own outcome: a failed read answers {} and sets the flag,
+    // so the flag is taken here, as the read lands, not later on.
+    const outcome: BringUpOutcome = { keyReadFailed: this.providerKeys.loadFailed() };
+    // The key read landed after a reset or a newer bring-up.
+    if (generation !== this.generation) return outcome;
 
     if (gemini) {
       await this.geminiService.reinitialize(gemini, textModelId, visionModelId);
+      // Superseded while Gemini armed: no fresh OpenAI or Claude arm.
+      if (generation !== this.generation) return outcome;
     } else {
       // Not reinitialize(undefined) — that re-arms from the environment key.
       this.geminiService.clear();
     }
 
     await this.openaiService.reinitialize(openai);
+    // Superseded while OpenAI armed: no fresh Claude arm.
+    if (generation !== this.generation) return outcome;
     await this.claudeService.reinitialize(claude);
+    return outcome;
   }
 
   /**
@@ -101,8 +136,12 @@ export class CloudLLMProviderService {
    * 'root' singleton survives it. Without this, account A's key stayed loaded
    * in the provider clients and account B's receipts went out on it — billed
    * to A, and landing in A's provider request logs.
+   *
+   * It also supersedes a bring-up still in flight, which would otherwise go on
+   * to arm A's keys after this has torn them down.
    */
   async resetProviders(): Promise<void> {
+    this.generation++;
     this.providerKeys.clearCache();
     this.geminiService.clear();
     await Promise.all([
@@ -113,13 +152,21 @@ export class CloudLLMProviderService {
 
   /**
    * Update a specific provider's API key.
+   *
+   * A cleared Gemini key tears Gemini down. It is not handed to
+   * reinitialize(undefined), which falls back to the build's environment key
+   * and would leave Gemini armed after the user removed theirs.
    */
   async updateProviderApiKey(provider: LLMProvider, apiKey: string | undefined): Promise<void> {
     // Awaiting matters: initialization lazy-loads the provider SDK, and
     // availability checks made before it resolves would read a stale false
     switch (provider) {
       case 'gemini':
-        await this.geminiService.reinitialize(apiKey);
+        if (apiKey) {
+          await this.geminiService.reinitialize(apiKey);
+        } else {
+          this.geminiService.clear();
+        }
         break;
       case 'openai':
         await this.openaiService.reinitialize(apiKey);
@@ -142,9 +189,24 @@ export class CloudLLMProviderService {
 
   /**
    * Reinitialize Gemini with new models.
+   *
+   * Reads the generation but never takes one: a model switch is not a
+   * bring-up, and bumping it would stop the bring-up in flight before OpenAI
+   * and Claude came up.
+   *
+   * With no stored key Gemini is cleared, as initializeProviders does, rather
+   * than handed to reinitialize(undefined), which would arm it from the
+   * build's environment key.
    */
   async reinitializeGemini(textModelId?: string, visionModelId?: string): Promise<void> {
+    const generation = this.generation;
     const apiKey = await this.providerKeys.getKey('gemini');
+    // The key read landed after a reset or a newer bring-up.
+    if (generation !== this.generation) return;
+    if (!apiKey) {
+      this.geminiService.clear();
+      return;
+    }
     await this.geminiService.reinitialize(apiKey, textModelId, visionModelId);
   }
 

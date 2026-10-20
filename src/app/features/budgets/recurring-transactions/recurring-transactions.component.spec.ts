@@ -120,7 +120,7 @@ describe('RecurringTransactionsComponent', () => {
         'settings.recurringUpdateFailed': 'Failed to update recurring transaction',
         'settings.recurringResumeFailed': 'Failed to resume recurring transaction',
         'settings.recurringResumeInvalidFrequency':
-          "Cannot resume: this rule's schedule cannot advance. Edit the rule and check its interval and day.",
+          "Cannot resume: this rule's schedule cannot advance. Edit the rule, check its interval and day, and save it first.",
         'settings.recurringResumeEnded':
           "Cannot resume: this rule's end date has passed. Edit the end date first.",
         'settings.recurringDeleted': 'Recurring transaction deleted',
@@ -129,6 +129,9 @@ describe('RecurringTransactionsComponent', () => {
         'common.close': 'Close',
         'common.delete': 'Delete',
         'common.moreActionsFor': `More actions for ${params?.['description']}`,
+        // As the Japanese catalog has it, so an English literal in its place
+        // reads as neither.
+        'common.unknownCategory': '不明',
         'Food & Drinks': 'Food & Drinks'
       };
       return translations[key] || key;
@@ -216,9 +219,9 @@ describe('RecurringTransactionsComponent', () => {
       expect(name).toBe('Food & Drinks');
     });
 
-    it('should return Unknown for missing category', () => {
+    it('names a category the catalog lacks in the reader\'s language', () => {
       const name = component.getCategoryName('nonexistent');
-      expect(name).toBe('Unknown');
+      expect(name).toBe('不明');
     });
 
     it('should get category icon', () => {
@@ -279,7 +282,7 @@ describe('RecurringTransactionsComponent', () => {
       tick();
 
       expect(notifications.error).toHaveBeenCalledWith(
-        "Cannot resume: this rule's schedule cannot advance. Edit the rule and check its interval and day."
+        "Cannot resume: this rule's schedule cannot advance. Edit the rule, check its interval and day, and save it first."
       );
       expect(notifications.success).not.toHaveBeenCalled();
     }));
@@ -816,16 +819,21 @@ describe('settings.recurringResumeInvalidFrequency, the copy of a refused resume
 
     expect(copy).toContain('schedule');
     expect(copy).toContain('interval and day');
+    expect(copy).toContain('save it first');
     expect(copy).not.toContain('interval of at least 1');
   });
 
-  it('ja names the schedule, and no longer asks only for an interval of 1 or more', () => {
+  it('ja names the schedule, asks for a save first, and no longer asks only for an interval of 1 or more', () => {
     expect(ja.settings[KEY]).toContain('スケジュール');
+    expect(ja.settings[KEY]).toContain('保存してください');
+    expect(ja.settings[KEY]).toContain('先に');
     expect(ja.settings[KEY]).not.toContain('1以上');
   });
 
-  it('tc names the schedule, and no longer asks only for an interval of at least 1', () => {
+  it('tc names the schedule, asks for a save first, and no longer asks only for an interval of at least 1', () => {
     expect(tc.settings[KEY]).toContain('排程');
+    expect(tc.settings[KEY]).toContain('儲存');
+    expect(tc.settings[KEY]).toContain('請先');
     expect(tc.settings[KEY]).not.toContain('至少 1');
   });
 });

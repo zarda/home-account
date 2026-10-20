@@ -133,8 +133,17 @@ The Data Management surface — full backup, CSV export, CSV/JSON restore,
 receipt images, delete-all and account deletion — sits below the index on the
 same page. It moved here from a Settings expansion panel; Settings keeps a link
 card pointing at `/data`. Nothing about what those actions do changed, and the
-consent flows in front of the destructive ones are unaltered. See
-[docs/account-deletion.md](account-deletion.md) for the erasure cascade the
+consent flows in front of the destructive ones are unaltered.
+
+The page loads the category catalog for as long as it is open, as the
+transactions and reports pages do: the transactions CSV names each row's
+category from it, and the CSV import matches the file's names against it.
+Before it did, a `/data` opened first, or from a page that loads no catalog,
+exported every row's category as unknown and matched none of a file's
+categories on the way back in
+([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
+
+See [docs/account-deletion.md](account-deletion.md) for the erasure cascade the
 catalogue is checked against, [docs/csv-format.md](csv-format.md) for what the
 CSV contract carries, and [docs/backup-restore.md](backup-restore.md) for what
 a JSON restore writes and what it deliberately leaves alone.

@@ -7,7 +7,6 @@ import { AiSettingsPageComponent } from './ai-settings-page.component';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
-import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryMemoryService } from '../../../core/services/category-memory.service';
@@ -16,7 +15,7 @@ import { ProviderKeyService } from '../../../core/services/provider-key.service'
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { provideNoMotion, settleAnimations, withTheme } from '../../../core/services/testing';
-import { DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
+import { DEFAULT_LLM_PROVIDER_PREFERENCES, ProviderSecrets } from '../../../models';
 
 describe('AiSettingsPageComponent', () => {
   let component: AiSettingsPageComponent;
@@ -25,13 +24,13 @@ describe('AiSettingsPageComponent', () => {
   let notifications: jasmine.SpyObj<NotificationService>;
   let pwaServiceMock: jasmine.SpyObj<PwaService>;
   let offlineQueueServiceMock: jasmine.SpyObj<OfflineQueueService>;
-  let geminiServiceMock: jasmine.SpyObj<GeminiService>;
   let cloudLLMProviderMock: jasmine.SpyObj<CloudLLMProviderService>;
   let authServiceMock: jasmine.SpyObj<AuthService>;
   let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
   let categoryMemoryMock: jasmine.SpyObj<CategoryMemoryService>;
   let tagMemoryMock: jasmine.SpyObj<TagMemoryService>;
   let providerKeysLoadFailed: ReturnType<typeof signal<boolean>>;
+  let providerKeysStored: ReturnType<typeof signal<ProviderSecrets | null>>;
   let announcerMock: jasmine.SpyObj<AnnouncerService>;
 
   beforeEach(async () => {
@@ -43,7 +42,9 @@ describe('AiSettingsPageComponent', () => {
       'canUseAppleIntelligence',
       'useNativeOCR',
       'platform',
+      'applyProviderKey',
     ]);
+    strategyServiceMock.applyProviderKey.and.resolveTo(undefined);
     strategyServiceMock.preferences.and.returnValue({
       autoSync: true,
     });
@@ -60,16 +61,15 @@ describe('AiSettingsPageComponent', () => {
     offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',
       'closedForUpgrade',
+      'isSyncing',
       'syncQueue',
       'clearAll',
     ]);
     offlineQueueServiceMock.pendingCount.and.returnValue(0);
     offlineQueueServiceMock.closedForUpgrade.and.returnValue(false);
+    offlineQueueServiceMock.isSyncing.and.returnValue(false);
     offlineQueueServiceMock.syncQueue.and.returnValue(Promise.resolve({ success: 0, failed: 0 }));
     offlineQueueServiceMock.clearAll.and.returnValue(Promise.resolve());
-
-    geminiServiceMock = jasmine.createSpyObj('GeminiService', ['isAvailable']);
-    geminiServiceMock.isAvailable.and.returnValue(true);
 
     cloudLLMProviderMock = jasmine.createSpyObj('CloudLLMProviderService', [
       'isProviderAvailable',
@@ -78,10 +78,13 @@ describe('AiSettingsPageComponent', () => {
     cloudLLMProviderMock.isProviderAvailable.and.returnValue(false);
 
     providerKeysLoadFailed = signal(false);
+    // The keys the service holds for the account, which a refused save leaves
+    // as they were.
+    providerKeysStored = signal<ProviderSecrets | null>(null);
     providerKeysMock = jasmine.createSpyObj<ProviderKeyService>(
       'ProviderKeyService',
       ['resolve', 'getKey', 'setKey'],
-      { loadFailed: providerKeysLoadFailed }
+      { loadFailed: providerKeysLoadFailed, keys: providerKeysStored }
     );
     providerKeysMock.resolve.and.resolveTo({});
     providerKeysMock.getKey.and.resolveTo(undefined);
@@ -129,7 +132,6 @@ describe('AiSettingsPageComponent', () => {
         { provide: AIStrategyService, useValue: strategyServiceMock },
         { provide: PwaService, useValue: pwaServiceMock },
         { provide: OfflineQueueService, useValue: offlineQueueServiceMock },
-        { provide: GeminiService, useValue: geminiServiceMock },
         { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
         { provide: AuthService, useValue: authServiceMock },
         { provide: AnnouncerService, useValue: announcerMock },
@@ -316,6 +318,56 @@ describe('AiSettingsPageComponent', () => {
       expect(findSyncButton(localFixture).disabled).toBeFalse();
     });
 
+    // Pin. A save in flight must not lock the drain's own button: the drain
+    // waits for the key's bring-up by itself, so Sync Now stays enabled while a
+    // key is being saved.
+    it('leaves Sync enabled while a key save is still in flight', async () => {
+      const f = renderWithQueue(3, false);
+      await f.whenStable();
+      let release: () => void = () => undefined;
+      strategyServiceMock.applyProviderKey.and.returnValue(new Promise<void>(resolve => { release = resolve; }));
+      try {
+        const input: HTMLInputElement = f.nativeElement.querySelector('.provider-card input');
+        input.dispatchEvent(new Event('blur'));
+
+        expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledWith('gemini', undefined);
+        // No auto-detect in a zone-mode fixture: without this the read below
+        // sees the template as it was before the save began.
+        f.detectChanges();
+        expect(findSyncButton(f).disabled).toBeFalse();
+      } finally {
+        release();
+      }
+    });
+
+    it('disables Sync while a sync is already running', () => {
+      offlineQueueServiceMock.isSyncing.and.returnValue(true);
+      const localFixture = renderWithQueue(3, false);
+      expect(findSyncButton(localFixture).disabled).toBeTrue();
+    });
+
+    it('does not report a sync it did not run while one is already running', async () => {
+      // The disabled button is not the guard: a second press landing before
+      // the first one's render, or a keyboard activation, still reaches the
+      // method, and the service then returns early with nothing synced.
+      const syncing = signal(true);
+      offlineQueueServiceMock.isSyncing.and.callFake(syncing);
+      const page = renderWithQueue(3, false).componentInstance;
+
+      await page.syncQueue();
+
+      expect(offlineQueueServiceMock.syncQueue).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+
+      // Positive proof: the same page, once the running sync ends, does sync
+      // and says so.
+      syncing.set(false);
+      await page.syncQueue();
+
+      expect(offlineQueueServiceMock.syncQueue).toHaveBeenCalledTimes(1);
+      expect(notifications.success).toHaveBeenCalledOnceWith('aiPage.queueSynced');
+    });
+
     it('disables Clear when the queue closed for an upgrade', () => {
       const localFixture = renderWithQueue(3, true);
       expect(findClearButton(localFixture).disabled).toBeTrue();
@@ -425,23 +477,28 @@ describe('AiSettingsPageComponent', () => {
       expect(component.openaiApiKey()).toBe('');
     });
 
-    // Keys go to the secrets document, never back onto the preferences map.
-    it('saves a key through the secrets store, not user preferences', async () => {
+    // Keys go to the secrets document, never back onto the preferences map. The
+    // page hands the key to the strategy, which does the write itself and chains
+    // the bring-up; the page neither writes the document nor re-arms the provider.
+    it('saves a key through the strategy, not the secrets store or user preferences', async () => {
       component.geminiApiKey.set('new-key');
 
       await component.onGeminiApiKeyChange();
 
-      expect(providerKeysMock.setKey).toHaveBeenCalledWith('gemini', 'new-key');
+      expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('gemini', 'new-key');
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
+      expect(cloudLLMProviderMock.updateProviderApiKey).not.toHaveBeenCalled();
       expect(authServiceMock.updateUserPreferences).not.toHaveBeenCalled();
     });
 
-    it('applies the saved key to the provider straight away', async () => {
+    it('saves an OpenAI key through the strategy', async () => {
       component.openaiApiKey.set('o-key');
 
       await component.onOpenaiApiKeyChange();
 
-      expect(providerKeysMock.setKey).toHaveBeenCalledWith('openai', 'o-key');
-      expect(cloudLLMProviderMock.updateProviderApiKey).toHaveBeenCalledWith('openai', 'o-key');
+      expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('openai', 'o-key');
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
+      expect(cloudLLMProviderMock.updateProviderApiKey).not.toHaveBeenCalled();
     });
 
     it('clears a key when the field is emptied', async () => {
@@ -449,7 +506,8 @@ describe('AiSettingsPageComponent', () => {
 
       await component.onClaudeApiKeyChange();
 
-      expect(providerKeysMock.setKey).toHaveBeenCalledWith('claude', undefined);
+      expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('claude', undefined);
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
     });
 
     // The fields render blank when the keys could not be read, so accepting a
@@ -461,6 +519,111 @@ describe('AiSettingsPageComponent', () => {
       await component.onGeminiApiKeyChange();
 
       expect(providerKeysMock.setKey).not.toHaveBeenCalled();
+      expect(strategyServiceMock.applyProviderKey).not.toHaveBeenCalled();
+    });
+
+    describe('when the save is refused', () => {
+      beforeEach(() => component.keysLoaded.set(true));
+
+      it('says so in a translated notice and keeps what was typed', async () => {
+        strategyServiceMock.applyProviderKey.and.rejectWith(new Error('permission-denied'));
+        const logged = spyOn(console, 'error');
+        component.geminiApiKey.set('typed-key');
+
+        await component.onGeminiApiKeyChange();
+
+        expect(notifications.error).toHaveBeenCalledOnceWith('aiPage.keySaveFailed');
+        expect(component.geminiApiKey()).toBe('typed-key');
+        expect(logged).toHaveBeenCalledWith('[AI Settings] API key not saved:', jasmine.any(Error));
+      });
+
+      it('reports the refusal for every provider', async () => {
+        strategyServiceMock.applyProviderKey.and.rejectWith(new Error('permission-denied'));
+        spyOn(console, 'error');
+        component.openaiApiKey.set('o-typed');
+        component.claudeApiKey.set('c-typed');
+
+        await component.onOpenaiApiKeyChange();
+        await component.onClaudeApiKeyChange();
+
+        expect(notifications.error).toHaveBeenCalledTimes(2);
+        expect(notifications.error.calls.allArgs()).toEqual([['aiPage.keySaveFailed'], ['aiPage.keySaveFailed']]);
+      });
+
+      it('lets no rejection out of a clear', async () => {
+        strategyServiceMock.applyProviderKey.and.rejectWith(new Error('permission-denied'));
+        // Zone.js hands a rejection nobody caught to console.error ("Unhandled
+        // Promise rejection"); it never reaches window's unhandledrejection. So
+        // the spy is the detector, and the page's own line must be the only one.
+        const logged = spyOn(console, 'error');
+        component.geminiApiKey.set('key');
+
+        component.clearGeminiApiKey();
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+        // Positive proof that the clear reached the save and the notice, so the
+        // single line below is the whole story and not a rejection still in flight.
+        expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('gemini', undefined);
+        expect(notifications.error).toHaveBeenCalledOnceWith('aiPage.keySaveFailed');
+        expect(logged.calls.allArgs()).toEqual([['[AI Settings] API key not saved:', jasmine.any(Error)]]);
+      });
+
+      it('shows the stored key again, with its clear button, after a refused clear', async () => {
+        // The key is still stored and armed; an empty field would say it was gone.
+        strategyServiceMock.applyProviderKey.and.rejectWith(new Error('permission-denied'));
+        spyOn(console, 'error');
+        providerKeysStored.set({ gemini: 'stored-key' });
+        component.geminiApiKey.set('stored-key');
+        fixture.detectChanges();
+        const clear = () =>
+          (fixture.nativeElement as HTMLElement).querySelector('.api-key-field')!.querySelector<HTMLButtonElement>('button');
+
+        clear()!.click();
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        fixture.detectChanges();
+
+        expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('gemini', undefined);
+        expect(notifications.error).toHaveBeenCalledOnceWith('aiPage.keySaveFailed');
+        expect(component.geminiApiKey()).toBe('stored-key');
+        expect(clear()).withContext('the clear button').not.toBeNull();
+      });
+
+      it('leaves a field typed into during a refused clear as it was typed', async () => {
+        let refuse!: (error: Error) => void;
+        strategyServiceMock.applyProviderKey.and.returnValue(new Promise<void>((_, reject) => (refuse = reject)));
+        spyOn(console, 'error');
+        providerKeysStored.set({ gemini: 'stored-key' });
+        component.geminiApiKey.set('stored-key');
+
+        component.clearGeminiApiKey();
+        component.geminiApiKey.set('new-typing');
+        refuse(new Error('permission-denied'));
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+        expect(notifications.error).toHaveBeenCalledOnceWith('aiPage.keySaveFailed');
+        expect(component.geminiApiKey()).toBe('new-typing');
+      });
+
+      it('leaves a field emptied by hand during a refused typed save empty', async () => {
+        // Only a refused clear shows the stored key again: the emptied field
+        // is the user's own edit, which its next blur saves.
+        let refuse!: (error: Error) => void;
+        strategyServiceMock.applyProviderKey.and.returnValue(new Promise<void>((_, reject) => (refuse = reject)));
+        spyOn(console, 'error');
+        providerKeysStored.set({ gemini: 'stored-key' });
+        component.geminiApiKey.set('typed-key');
+
+        const saved = component.onGeminiApiKeyChange();
+        component.geminiApiKey.set('');
+        refuse(new Error('permission-denied'));
+        await saved;
+
+        expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('gemini', 'typed-key');
+        expect(notifications.error).toHaveBeenCalledOnceWith('aiPage.keySaveFailed');
+        expect(component.geminiApiKey()).toBe('');
+      });
     });
 
     it('reports a failed load instead of showing empty fields as truth', async () => {
@@ -813,7 +976,8 @@ describe('AiSettingsPageComponent', () => {
 
       expect(component.geminiApiKey()).toBe('');
       expect(component.geminiTestResult()).toBeNull();
-      expect(providerKeysMock.setKey).toHaveBeenCalledWith('gemini', undefined);
+      expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('gemini', undefined);
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
     });
 
     it('clears an OpenAI key the same way', async () => {
@@ -825,7 +989,8 @@ describe('AiSettingsPageComponent', () => {
 
       expect(component.openaiApiKey()).toBe('');
       expect(component.openaiTestResult()).toBeNull();
-      expect(providerKeysMock.setKey).toHaveBeenCalledWith('openai', undefined);
+      expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('openai', undefined);
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
     });
 
     it('clears a Claude key the same way', async () => {
@@ -837,7 +1002,8 @@ describe('AiSettingsPageComponent', () => {
 
       expect(component.claudeApiKey()).toBe('');
       expect(component.claudeTestResult()).toBeNull();
-      expect(providerKeysMock.setKey).toHaveBeenCalledWith('claude', undefined);
+      expect(strategyServiceMock.applyProviderKey).toHaveBeenCalledOnceWith('claude', undefined);
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
     });
   });
 

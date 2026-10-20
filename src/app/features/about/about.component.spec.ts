@@ -22,6 +22,7 @@ import {
   runAxe,
   settleAnimations,
   summarizeViolations,
+  textLines,
   withTheme,
 } from '../../core/services/testing';
 import packageJson from '../../../../package.json';
@@ -117,6 +118,42 @@ describe('AboutComponent', () => {
     spyOn(Capacitor, 'isNativePlatform').and.returnValue(true);
     fixture = TestBed.createComponent(AboutComponent);
     expect(fixture.componentInstance.showDonateSection()).toBeFalse();
+  });
+
+  /**
+   * styles.scss grows a Material button to fit its content and its padding
+   * (min-height: fit-content), so a block padding a component gives one
+   * becomes height. 12 px above and below the donate button's label would
+   * make it 48 px where Material draws 40. It pads only its inline sides, so
+   * the rule's 4 px applies: a 24 px line plus 8 is 32 px at the default
+   * scale, and 31.2 plus 8 is 39.2 at Extra large, each inside Material's 40.
+   *
+   * The face is pinned as docs/testing.md *Karma serves no fonts* says.
+   */
+  describe('the donate button', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    afterEach(() => document.documentElement.style.removeProperty('--app-font-scale'));
+
+    for (const scale of ['1', '1.3'] as const) {
+      it(`stays Material's 40 px with its label on one line at scale ${scale}`, () => {
+        document.documentElement.style.setProperty('--app-font-scale', scale);
+        spyOn(Capacitor, 'isNativePlatform').and.returnValue(false);
+        fixture = TestBed.createComponent(AboutComponent);
+        const host = fixture.nativeElement as HTMLElement;
+        host.style.fontFamily = FACE;
+        for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+          host.style.setProperty(token, FACE);
+        }
+        fixture.detectChanges();
+
+        const button = host.querySelector('.donate-button') as HTMLElement | null;
+        expect(button).withContext('the donate button').toBeTruthy();
+        if (!button) return;
+        expect(textLines(button.querySelector('.mdc-button__label') as HTMLElement)).withContext('label lines').toBe(1);
+        expect(button.getBoundingClientRect().height).withContext('height, px').toBe(40);
+      });
+    }
   });
 
   it('openDonateLink opens a configured url in a new tab', () => {

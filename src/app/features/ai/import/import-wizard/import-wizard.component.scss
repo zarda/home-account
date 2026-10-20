@@ -676,8 +676,13 @@
   min-width: 200px;
 }
 
+// On the label's line: Material displays a spinner as a block, which stacked
+// it above the text and, under styles.scss's button rule, grew Import past
+// its 44 px at the larger font scales while it imported.
 .import-button mat-spinner {
-  margin-right: 8px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-end: 8px;
 }
 
 /* Responsive */

@@ -435,11 +435,13 @@
   margin: 0;
 }
 
+// Inline padding only: styles.scss grows a Material button to its content
+// and padding, so a block padding of its own would make it 48px, not 40.
 .donate-button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 24px;
+  padding-inline: 24px;
   font-size: var(--text-base);
   font-weight: 500;
   border-radius: var(--radius-sm);

@@ -136,8 +136,15 @@
   }
 }
 
+// Wraps rather than squeezing: at 375px the two buttons shrank to share
+// 261px and both labels took two lines. Each keeps flex: 0 1 auto, so lines
+// are collected at the buttons' content widths and a button that fits the row
+// gets a line of its own; the shrink is kept for one label wider than the row
+// on its own, which then wraps inside a button that grows with it
+// (styles.scss). G1.
 .smart-import-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 16px;
 
@@ -216,8 +223,22 @@
   gap: 8px;
 }
 
+// Wraps rather than squeezing the description. The budget, at the 320px
+// phone this is tightest on: less 16px a side for the main layout, the data
+// page and .import-preview, and the row's own 12px a side, 200px of content.
+// What will not yield: the date (7.5em: 105, 120.75 and 136.5px at font scales
+// 1, 1.15 and 1.3), the amount (nowrap; -$12,345.67 is 72.2, 83.1 and 93.8px),
+// the description's 56px floor, and a 12px gap between each. The three cannot
+// share a line (105 + 56 + 72.2 + 24 = 257.2 > 200 at scale 1), so the line
+// breaks, and every line fits:
+//   1     date + description, 105 + 12 + 56 = 173; the amount alone, 72.2
+//   1.15  date + description, 120.75 + 12 + 56 = 188.75; the amount alone, 83.1
+//   1.3   the date alone, 136.5 (with the floor, 204.5 > 200); description +
+//         amount, 56 + 12 + 93.8 = 161.8
+// The description then grows into the rest of its line. G1.
 .preview-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
@@ -226,23 +247,34 @@
   font-size: var(--text-sm);
 }
 
+// In em, so the box grows with the text it holds: the widest medium date
+// (2026年10月17日) fits it at every font scale. nowrap, so no CJK fallback face
+// splits it.
 .preview-date {
   color: var(--text-muted);
-  width: 90px;
+  inline-size: 7.5em;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
-// min-width: 0 alongside the wrap, because `flex: 1` is `flex: 1 1 0%` with
-// min-width: auto — the item floors at its own min-content size and pushes the
-// count out of the row rather than reflowing. G1.
+// `flex: 1` is `flex: 1 1 0%`, so lines are collected at the floor rather than
+// at the description's own length, and min-width: auto would floor it at its
+// min-content size instead. The floor is in px because the budget it shares is
+// (G1, Scale). 56px holds three CJK glyphs a line at Extra large (54.6) and,
+// at the default scale, keeps a four-digit amount beside it on a 375px phone
+// (59.4px is left beside +$1,234.56); a five-digit amount, and at Large and
+// Extra large a four-digit one, takes a line of its own there. Below 54.6
+// the description could share a line at Extra large two glyphs wide. G1.
 .preview-desc {
   flex: 1;
-  min-width: 0;
+  min-width: 56px;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
+// margin-inline-start: auto, so an amount that wraps still ends the row.
 .preview-amount {
+  margin-inline-start: auto;
   font-weight: 500;
   white-space: nowrap;
 

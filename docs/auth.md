@@ -265,12 +265,74 @@ already in flight. On the web neither runs the null branch any more: each is
 an account change the page did not start, and the page reloads instead. On a
 device a revoked token still runs it.
 
+## The AI providers across an account change
+
+The cloud provider clients are root singletons as well, and they hold a key,
+not an account. `AIStrategyService` brings them up once per account and
+connectivity state, and on the signed-out edge tears them down through
+`CloudLLMProviderService.resetProviders()`: `ProviderKeyService`'s cache
+forgotten, Gemini cleared, OpenAI and Claude reinitialised with no key. That
+is the owner's null-edge reset
+([ADR 0009](ADR/0009-shared-state-publishing-and-lifecycle.md)).
+
+A reset alone cancels nothing in flight. A bring-up reads the account's keys,
+then awaits each provider's arm, and each provider loads its SDK on demand and
+builds its client only after that import. Any of those awaits can outlast a
+sign-out and the next sign-in, and what landed afterwards used to arm the
+departing account's key under the next one. So every write a provider client
+takes after one of those awaits checks a count first
+([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)):
+
+| Count | Kept by | Moved by | Read, never moved, by | A continuation that finds it moved |
+|---|---|---|---|---|
+| arm generation | each provider (`CloudLLMProviderBase.supersedeArms`) | every `reinitialize`, keyed or not; Gemini's `clear()` and its constructor | — | builds no client and writes nothing, on success or failure |
+| bring-up generation | `CloudLLMProviderService` | `initializeProviders`, on entry; `resetProviders` | `reinitializeGemini`, a model switch | makes no further arm call after the key read, Gemini's arm or OpenAI's |
+
+A superseded bring-up still resolves: resolved does not mean armed. The
+readiness wait a queued receipt makes compares bring-ups by identity, so it
+never answers for one a newer bring-up superseded
+([ADR 0178](ADR/0178-a-schedule-is-held-to-its-ranges-and-a-refusal-says-what-was-written.md)).
+Nothing clears what a superseded continuation armed, because by then the
+provider may hold the next account's own arm.
+
+These are counts, not uids, for two reasons. A provider has no account to
+compare: it is handed a key. And a uid passes a sign-out and a sign-in back as
+the same account, where a bring-up that read the keys before the sign-out
+would go on beside the one the new sign-in starts. Refusing it loses nothing,
+because every sign-in starts a bring-up of its own, which reads the keys
+afresh. That is the difference from the profile read above, which is guarded
+by uid because the read a count would refuse there is the one that recovers
+the session
+([ADR 0052](ADR/0052-a-profile-read-may-only-write-to-the-session-that-started-it.md)).
+
+`ProviderKeyService`'s `load` and `setKey` compare `userId()` after every
+await their writes cross. `load` checks once, right before it writes the
+cache, which is after its read and after the preference migration it awaits,
+whose own writes are awaited too; it checks again first in its failure
+branch. `setKey` checks after its write is acknowledged. A read or a write
+that lands once another account is signed in resolves without touching the
+cache, the read in flight or the failure flag. `deleteAll`, which only the
+account-deletion cascade calls, clears the cache after its delete with no
+check; that only forgets, and the Firestore SDK settles a departed account's
+delete only once that account is current again
+([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md),
+Known gaps).
+
+With no stored Gemini key, every path clears Gemini: a bring-up, a model
+switch, a cleared key. None calls `reinitialize` with no key, which falls back
+to the build's environment key. That fallback is reached only by
+`GeminiService`'s constructor. The first bring-up to reach Gemini supersedes
+that arm, or clears or replaces its client when its SDK has already landed.
+
 ## What this does not cover
 
 The guard protects `AuthService`'s own writes. Every other account-scoped
 service is protected transitively, by being keyed on `userId()`, which no
 longer takes a value from a dead session — except where a service does its own
-post-await write, as `ProviderKeyService` does and checks for itself.
+post-await write. `ProviderKeyService` checks for itself after every await in
+`load` and `setKey`, and the provider clients, which hold a key rather than an
+account, are held by the counts
+[above](#the-ai-providers-across-an-account-change).
 
 A cross-session bail is the case that now re-arms: the abandoned read bumps
 the counter on its way out, so a session that degraded while its predecessor's
@@ -302,12 +364,21 @@ The reload on an account change the page did not start leaves these open
 
 ## When you write another write that crosses an await
 
-Two questions.
+Three questions.
 
 **Does it touch `currentUser`, `profileDegraded`, or a document keyed by uid?**
 Then capture the uid before the await and check `this.auth.currentUser?.uid`
 against it before writing. Bail silently — no throw, no log, no notification;
 the session that would have seen the message is gone.
+
+**Does it arm a provider client?** Take an arm generation before the await. A
+client holds a key, not an account, so there is no uid to compare: take
+`supersedeArms()` in a provider, or the façade's generation in a bring-up,
+before the await, and write nothing after it once the count has moved — on
+success or on failure, and with no clear of what was armed, which by then may
+be the next account's. Code that is not a bring-up, such as a model switch,
+reads the façade's count and never moves it, or it would stop the bring-up in
+flight ([above](#the-ai-providers-across-an-account-change)).
 
 **Does the bail leave a flag half-set?** Signals that only make sense together
 have to be written together. `profileDegraded` without a fallback profile, or

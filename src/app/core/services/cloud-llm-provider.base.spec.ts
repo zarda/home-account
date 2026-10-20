@@ -103,6 +103,14 @@ class StubProvider extends CloudLLMProviderBase {
   callRequestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
     return this.requestOptions(options);
   }
+
+  callSupersedeArms(): number {
+    return this.supersedeArms();
+  }
+
+  callIsLatestArm(arm: number): boolean {
+    return this.isLatestArm(arm);
+  }
 }
 
 describe('CloudLLMProviderBase', () => {
@@ -158,6 +166,21 @@ describe('CloudLLMProviderBase', () => {
       TestBed.inject(EnvironmentInjector),
       () => new StubProvider()
     );
+  });
+
+  describe('arm generations', () => {
+    // What every provider's reinitialize and clear lean on: an arm still
+    // waiting on its SDK import checks, once the import lands, whether a later
+    // call has superseded it.
+    it('makes an earlier arm stale once a later one is taken', () => {
+      const first = provider.callSupersedeArms();
+      expect(provider.callIsLatestArm(first)).withContext('the only arm').toBeTrue();
+
+      const second = provider.callSupersedeArms();
+
+      expect(provider.callIsLatestArm(first)).withContext('the superseded arm').toBeFalse();
+      expect(provider.callIsLatestArm(second)).withContext('the latest arm').toBeTrue();
+    });
   });
 
   describe('run', () => {

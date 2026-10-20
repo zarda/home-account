@@ -147,6 +147,11 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
   protected readonly available = signal<boolean>(false);
   readonly isAvailableSignal = computed(() => this.available());
 
+  private armGeneration = 0;
+  /** Every reinitialize and clear calls this first: an arm still loading its SDK is superseded. */
+  protected supersedeArms(): number { return ++this.armGeneration; }
+  protected isLatestArm(arm: number): boolean { return arm === this.armGeneration; }
+
   /** Console prefix and the noun in this provider's error sentences. */
   protected abstract readonly providerLabel: string;
 

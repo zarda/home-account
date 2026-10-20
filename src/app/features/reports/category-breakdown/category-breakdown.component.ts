@@ -10,6 +10,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { groupByCategoryAndType } from '../../../core/utils/transaction-aggregation.utils';
+import { categoryNameOrUnknown } from '../../../core/utils/category-display.utils';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -121,7 +122,7 @@ export class CategoryBreakdownComponent {
         const category = categories.find(c => c.id === row.categoryId);
         return {
           categoryId: row.categoryId,
-          name: category?.name || 'Unknown',
+          name: categoryNameOrUnknown(category?.name, key => this.translationService.t(key)),
           icon: category?.icon || 'category',
           color: category?.color || CATEGORY_FALLBACK_COLOR,
           total: row.total,

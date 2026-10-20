@@ -130,7 +130,9 @@ no screen will report.
    `reinitializeGemini` / `setOpenAIModel` / `setClaudeModel`.
 4. `GeminiService.initializeGemini` builds a handle per id and falls back to the
    *current* ids rather than the catalog defaults when called without them, so
-   saving an API key does not silently revert a model choice.
+   a key armed without ids, as a **Test** press arms one, does not silently
+   revert a model choice. A saved key is brought up with the stored ids
+   ([below](#how-a-saved-key-reaches-the-providers)).
 
 The consequence worth remembering: **moving a `DEFAULT_*` constant changes
 nothing for anyone who has ever changed auto sync or a model choice.** Opening
@@ -141,6 +143,37 @@ order, the RAG level and the API keys are saved elsewhere and never write it. A
 moved default therefore reaches only an install that has never changed one of
 those five, and every other install's stored blob outranks it.
 `ai-strategy.service.spec.ts` pins the write.
+
+## How a saved key reaches the providers
+
+A key typed on Settings → AI is saved when its field blurs, through
+`AIStrategyService.applyProviderKey`, the page's one way out for a key. It
+writes the key to the account's secrets document through
+`ProviderKeyService.setKey`, and once that write is acknowledged and the
+bring-up already in flight is up, it runs a full bring-up: the key read, the
+stored model ids handed to `initializeProviders`, and Gemini cleared rather
+than armed from the build's key when no Gemini key is stored. A cleared field
+is saved the same way, as a missing key. So a saved key reaches the providers
+by the path the account's own bring-up takes, with the model choice already
+stored, and saves come up one after another. A queued scan's drain waits for
+the save as part of its wait for the providers
+([receipt-import.md](receipt-import.md#offline-capture-and-the-queue),
+[ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)).
+A refused write raises `aiPage.keySaveFailed`, *Could not save the API key.
+Try again.*, and leaves what was typed in the field, so the next blur tries
+again. A refused clear leaves the key stored and its provider armed, so a
+field still empty when the refusal lands shows the stored key again, with
+its clear button to try again; a refused typed save never rewrites the
+field. A save made before a sign-out brings nothing up once its write lands,
+even when the same account has signed back in: the new session's own
+bring-up reads the keys. And a drain waiting on that save goes on at the
+sign-out, or when another account signs in, without waiting for the write.
+
+The **Test** buttons are the one other way a typed key reaches a provider.
+They arm it through `CloudLLMProviderService.updateProviderApiKey`, with no
+model ids and no write, and report whether the provider came up, never
+whether the vendor accepts the key
+([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)).
 
 ## The one-time migration
 
@@ -233,7 +266,11 @@ default.
 | `services/claude.service.spec.ts` | *reads past a reasoning block*, through `translateText` and `translateReceiptImage`: the text after an empty or a redacted thinking block is read, a thinking block cut off at `max_tokens` is incomplete, and a whole answer stopped for a refusal is read |
 | `services/openai.service.spec.ts` | *incomplete answers*, through the same two methods: an answer cut off at `max_output_tokens` is incomplete even when it parses, an empty one is incomplete rather than unparseable, and one stopped by the content filter is read. One case runs the real SDK, with an injected `fetch`, over a reasoning-only answer |
 | `services/cloud-llm-provider.smoke.spec.ts` | the real provider graph arming Gemini on the catalog's own defaults, and a sweep of every OpenAI and Claude id through the façade, one provider at a time: each envelope's model, `temperature` exactly where `acceptsSampling` says, and no `reasoning`, `thinking` or `output_config` key. Under the emulators (`npm run smoke`) |
-| `docs/model-probe/probe.mjs --self-test` | the probe itself, in 202 checks, offline and with no key: its arguments, `--model` among them, its redactor and printed headers, each small prompt's budget, marker and parse check, its envelopes with and without `--sampling force`, the run loops through the wiring `--dry-run` uses, and one request per provider onto a recorder, plus a forced one through each SDK. With a canary on every variable either SDK package reads but four system ones, a request still goes to the vendor's host, carries nothing from the environment, and neither SDK prints or looks up anything but the two variables no option overrides. A 500 or a 429 is one request, a sender with no transport is refused, the Gemini sender encodes its model, `--update` writes no baseline after a failed call, Chromium's launch gets no key variable, and nothing printed carries a key or a canary ([ADR 0177](ADR/0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md)). Run by hand, never in CI |
+| `services/openai.service.spec.ts`, `claude.service.spec.ts`, `gemini.service.spec.ts`, `cloud-llm-provider.base.spec.ts` | *an arm superseded while its SDK loads*, per provider, over fake SDK modules: a clear during the SDK import leaves the provider down, the later of two keys wins when the earlier import lands last, and a superseded import that fails touches nothing and logs nothing; for Gemini, a clear while the constructor's environment arm loads leaves it down. The base's *arm generations*: a later arm makes an earlier one stale ([ADR 0179](ADR/0179-a-provider-arm-applies-only-if-nothing-superseded-it.md)) |
+| `services/cloud-llm-provider.service.spec.ts` | *a bring-up superseded by a reset or a newer bring-up*, over spied providers: no further arm once a reset overtakes the key read, Gemini's arm or OpenAI's; only the next account's key when the previous read lands after it; only the newer of two bring-ups over one read arming; no Gemini model switch arming once a reset overtakes its read; and a model switch or a typed key leaving a bring-up running. *over the real providers*, with fake SDK modules behind one gate: a reset while Gemini or OpenAI imports leaves every provider down and builds no client, and the next account comes up on its own key alone; with a build that ships its own Gemini key, a cleared key, a model switch with no stored key and a keyless bring-up each leave Gemini down |
+| `services/cloud-llm-provider.smoke.spec.ts`, *across an account switch* | two anonymous accounts on the emulators: A's bring-up held in OpenAI's real import, or in Gemini's with an OpenAI key still to arm; A signs out and B, with no key, signs in. B's readiness wait answers, and once the import lands nothing comes up, and in the Gemini case OpenAI's SDK is never asked for. Under the emulators |
+| `services/ai-strategy.service.spec.ts`, `offline-queue-processor.service.spec.ts`, `cloud-llm-provider.service.spec.ts`, `cloud-llm-provider.smoke.spec.ts` | *a key saved in settings*: the save becomes the bring-up a wait joins before its first await, comes up after the bring-up in flight, never holds up another account's bring-up, rejects a refused write only once that bring-up is up and answers with that bring-up's outcome, and brings nothing up for an account that left or a session that ended, nor for a reconnect queued behind such a save, with a wait on the sign-back-in bring-up answered only once it is up, and a wait on a save whose write is still out answered at a sign-out or another account's sign-in; *a bring-up whose key read failed*: one fresh read per wait, shared by every wait on it, none offline, keyed on the bring-up's own outcome rather than the flag the settings page clears; the façade's outcome for a failed read; the processor's *a key saved while Sync Now drains*, the real strategy holding the photo until the saved key is up, and until the providers are up when the account signs back in during a save it left behind, and handing it back pending when the account signs out during a save whose write is still out; and, under the emulators, a key saved through the strategy waited for, and a refused first secrets read read once more ([ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)) |
+| `docs/model-probe/probe.mjs --self-test` | the probe itself, in 222 checks, offline and with no key: its arguments, `--model` among them and `--repeat` up to its bound of 10, its redactor and printed headers, each small prompt's budget, marker and parse check, its envelopes with and without `--sampling force`, the run loops through the wiring `--dry-run` uses, and one request per provider onto a recorder, plus a forced one through each SDK. With a canary on every variable either SDK package reads but four system ones, a request still goes to the vendor's host, carries nothing from the environment, and neither SDK prints or looks up anything but the two variables no option overrides. A 500 or a 429 is one request, a sender with no transport is refused, the Gemini sender encodes its model into the URL's path and sends its key in the `x-goog-api-key` header, so no request URL carries a query or a key, a drift is reported on whichever run of a repeated case it falls, `--update` writes no baseline after a failed call, Chromium's launch gets no key variable, and nothing printed carries a key or a canary ([ADR 0177](ADR/0177-the-catalog-dates-its-vendors-and-adds-only-what-is-no-worse-than-the-default.md), [ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)). Run by hand, never in CI |
 
 None of them reaches a model. Building a handle is local; ids are only resolved
 server-side at the first request, which is exactly why a retired id can sit in

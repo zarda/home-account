@@ -1,5 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, SimpleChange, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatSelect } from '@angular/material/select';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFiltersComponent } from './transaction-filters.component';
@@ -11,6 +13,7 @@ import { GoalService } from '../../../core/services/goal.service';
 import { Category, Goal, SavedSearch, TransactionFilters } from '../../../models';
 import {
   channels,
+  chooseOption,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -1176,6 +1179,97 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  // Material reads an option whose value is null or undefined as a reset
+  // option unless the select sets `canSelectNullableOptions`: a filter holding
+  // undefined then shows an empty trigger with its label resting where the
+  // value belongs. Each select's first option, All, is bound to undefined, and
+  // it is a real choice: the one every filter starts on.
+  describe("a filter's All option", () => {
+    /** Renders, then lets ngModel hand each select its value, which it does a microtask later. */
+    const render = () => {
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+    };
+
+    /** What the field labelled `label` shows: its select's trigger text and whether its label floats. */
+    function shown(label: string): { text: string | undefined; floated: boolean } {
+      const field = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+      expect(field).withContext(`the ${label} field`).toBeTruthy();
+      return {
+        text: field!.querySelector('.mat-mdc-select-value')?.textContent?.trim(),
+        floated: field!.querySelector('.mdc-floating-label--float-above') !== null
+      };
+    }
+
+    const selectIn = (label: string): MatSelect =>
+      fixture.debugElement
+        .queryAll(By.directive(MatSelect))
+        .find(node => (node.nativeElement as HTMLElement).closest('mat-form-field')
+          ?.querySelector('mat-label')?.textContent?.trim() === label)!
+        .injector.get(MatSelect);
+
+    it('shows All in Type, Category, Currency and Country with no filter set', fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+
+      for (const label of ['Type', 'Category', 'settings.currency', 'transactions.countryFilter']) {
+        expect(shown(label)).withContext(label).toEqual({ text: 'transactions.all', floated: true });
+      }
+    }));
+
+    it('shows All in Goal too once there is a goal to filter by', fakeAsync(() => {
+      mockGoalService.activeGoals.set([goal('g1')]);
+      component.expanded.set(true);
+      render();
+
+      expect(component.goalOptions.map(each => each.id)).toEqual(['g1']);
+      expect(shown('transactions.goalFilter')).toEqual({ text: 'transactions.all', floated: true });
+    }));
+
+    it('writes undefined, emits no type and shows All once All is picked after Income', fakeAsync(() => {
+      const emit = spyOn(component.filtersChanged, 'emit');
+      component.expanded.set(true);
+      render();
+
+      chooseOption(selectIn('Type'), 'income', render);
+      expect(component.filters.type).toBe('income');
+      expect(shown('Type').text).toBe('Income');
+      const emitted = emit.calls.count();
+
+      chooseOption(selectIn('Type'), undefined, render);
+
+      expect(component.filters.type).toBeUndefined();
+      expect(emit).toHaveBeenCalledTimes(emitted + 1);
+      expect('type' in emit.calls.mostRecent().args[0]!).toBeFalse();
+      expect(shown('Type')).toEqual({ text: 'transactions.all', floated: true });
+    }));
+
+    it('shows All again once Clear all empties the filters', fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+      chooseOption(selectIn('Type'), 'income', render);
+      expect(shown('Type').text).toBe('Income');
+
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.clear-btn')!.click();
+      render();
+
+      expect(component.filters).toEqual({});
+      expect(shown('Type')).toEqual({ text: 'transactions.all', floated: true });
+    }));
+
+    it('shows the type, currency and country a preset names (pin)', fakeAsync(() => {
+      component.expanded.set(true);
+      fixture.componentRef.setInput('presetFilters', { type: 'expense', currency: 'EUR', country: 'JP' });
+      render();
+
+      expect(shown('Type')).toEqual({ text: 'Expense', floated: true });
+      expect(shown('settings.currency')).toEqual({ text: 'EUR', floated: true });
+      expect(shown('transactions.countryFilter')).toEqual({ text: 'Japan', floated: true });
+    }));
+  });
+
   describe('presetFilters input', () => {
     const preset = (): TransactionFilters => ({
       type: 'expense',
@@ -1289,21 +1383,377 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
-  describe('grid tracks (#450)', () => {
-    it('lays the filter grid out in three columns once expanded', () => {
-      // The 640px rule is what renders here; the 1024px, 6-column rule above
-      // it is not observable in Karma's window.
-      expect(window.innerWidth)
-        .withContext('Karma window; the >=640px filter-grid rule is what renders')
-        .toBeGreaterThanOrEqual(640);
+  // A compact field's box is 40 px tall. Material rests a label at half the
+  // container-height token and floats it by the same token, so the token has
+  // to say 40 px too, or every empty field's label rests low in its box.
+  describe("a compact field's label", () => {
+    /** Renders, lets ngModel hand each select its value a microtask later, then settles the label's float. */
+    const render = () => {
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    };
 
+    function field(label: string): { label: DOMRect; box: DOMRect; floated: boolean } {
+      const found = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+      expect(found).withContext(`the ${label} field`).toBeTruthy();
+      const floating = found!.querySelector('.mdc-floating-label')!;
+      return {
+        label: floating.getBoundingClientRect(),
+        box: found!.querySelector('.mat-mdc-text-field-wrapper')!.getBoundingClientRect(),
+        floated: floating.classList.contains('mdc-floating-label--float-above')
+      };
+    }
+
+    const centre = (rect: DOMRect) => rect.top + rect.height / 2;
+
+    it("rests an empty field's label at the centre of its box", fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+
+      const minAmount = field('Min Amount');
+      expect(minAmount.floated).withContext('the empty Min Amount label rests').toBeFalse();
+      expect(minAmount.box.height).withContext('the compact box, px').toBeCloseTo(40, 0);
+      expect(Math.abs(centre(minAmount.label) - centre(minAmount.box)))
+        .withContext('resting label centre off the box centre, px')
+        .toBeLessThanOrEqual(2);
+    }));
+
+    // Pin: a floated label already sat centred on the box's top edge (0 px
+    // off it, measured before the token moved); the fix must not shift it.
+    it('floats a filled field\'s label onto the top edge of its box, where it already sat (pin)', fakeAsync(() => {
+      component.expanded.set(true);
+      render();
+
+      const type = field('Type');
+      expect(type.floated).withContext('Type reads All, so its label floats').toBeTrue();
+      expect(Math.abs(centre(type.label) - type.box.top))
+        .withContext('floated label centre off the box top edge, px')
+        .toBeLessThanOrEqual(1);
+    }));
+  });
+
+  // Material caps an outlined select's notch at the field's width less 60 px,
+  // the room a resting label leaves beside the arrow, and lifts the cap only
+  // under a class its form field no longer sets. A floated label sits on the
+  // top border, above the arrow, so the cap cut it short in any field narrower
+  // than the label plus 60 px: the filter grid's selects, 108 px wide at a
+  // 1024 px pane, drew "Categor" and "Currenc". styles.scss lifts the cap on
+  // the class that is set; Karma bundles styles.scss, so the rule is in force
+  // here as it is in the app.
+  describe("a select's label in a narrow compact field", () => {
+    const FIELD_WIDTH_PX = 108;
+
+    beforeEach(() => {
+      // The stub would render the currency label as its raw key, a word far
+      // longer than the field however it is cut.
+      const labels: Record<string, string> = {
+        'transactions.category': 'Category',
+        'settings.currency': 'Currency'
+      };
+      mockTranslationService.t.and.callFake((key: string) => labels[key] ?? key);
+    });
+
+    /** Renders at a pinned width and face, lets ngModel hand each select its value, then settles the label's float. */
+    function render(): void {
+      const host = fixture.nativeElement as HTMLElement;
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels. Material's fields take their face from the
+      // --mat-sys tokens rather than from the host.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      component.expanded.set(true);
+      fixture.detectChanges();
+      for (const each of Array.from(host.querySelectorAll<HTMLElement>('.filter-grid mat-form-field'))) {
+        each.style.width = `${FIELD_WIDTH_PX}px`;
+      }
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    function selectField(label: string): HTMLElement {
+      const found = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+      expect(found).withContext(`the ${label} field`).toBeTruthy();
+      expect(found!.querySelector('mat-select')).withContext(`the ${label} field holds a select`).toBeTruthy();
+      return found!;
+    }
+
+    it('shows the whole of a floated label, however narrow the field', fakeAsync(() => {
+      render();
+
+      for (const label of ['Category', 'Currency']) {
+        const field = selectField(label);
+        const floating = field.querySelector<HTMLElement>('.mdc-floating-label')!;
+        expect(field.getBoundingClientRect().width).withContext(`${label} field width, px`).toBeCloseTo(FIELD_WIDTH_PX, 0);
+        expect(floating.classList.contains('mdc-floating-label--float-above'))
+          .withContext(`${label} reads All, so its label floats`)
+          .toBeTrue();
+        expect(floating.scrollWidth).withContext(`${label} label: laid-out width, px`).toBeGreaterThan(0);
+        expect(floating.scrollWidth)
+          .withContext(`${label} label: width of the text, px, against the width left to draw it in`)
+          .toBeLessThanOrEqual(floating.clientWidth);
+      }
+    }));
+
+    // Pin: a resting label sits beside the arrow and keeps the room Material
+    // set aside for it; the lift is for a floated label only.
+    it("keeps the arrow's room for a resting label (pin)", fakeAsync(() => {
+      // Every filter starts on All, which floats its label, so a value that no
+      // option carries empties the trigger instead: the label rests.
+      component.filters.currency = 'ZZZ';
+      render();
+
+      const field = selectField('Currency');
+      expect(field.querySelector('.mdc-floating-label')!.classList.contains('mdc-floating-label--float-above'))
+        .withContext('an empty select rests its label')
+        .toBeFalse();
+      expect(field.querySelector('.mdc-notched-outline')!.classList.contains('mdc-notched-outline--notched'))
+        .withContext('a resting label leaves no notch cut in the border')
+        .toBeFalse();
+      expect(getComputedStyle(field.querySelector('.mdc-notched-outline__notch')!).maxWidth)
+        .withContext('the notch of a resting label: max-width')
+        .toBe('calc(100% - 60px)');
+    }));
+  });
+
+  // A date field's input gets what is left of the field after its 12 px start
+  // padding and the 44 px calendar button. The grid's fixed tracks, six to a
+  // row at a 1024 px pane, left 40 px of it for a date 86 px wide, and a
+  // 375 px phone's two cut one by 2 px. The widths below are the grid's own,
+  // the panel's inner width, near what three panes leave it rather than each
+  // one measured: 312 px was read on a 375 px phone, 257 px takes that
+  // phone's chrome from a 320 px one, and 702 px is a little wide of the
+  // 696 px at most that a 1024 px pane leaves beside its sidebar. Karma's
+  // window renders no media rule from 1024 px up, so a case below reads the
+  // stylesheet to hold that none sets the tracks: the grid's own width lays
+  // them out at every pane.
+  describe('a filter date beside its calendar button', () => {
+    const GRID_WIDTHS_PX = [702, 312, 257] as const;
+    // Karma serves none of the app's fonts, so the face is pinned as in the
+    // narrow-select cases above: the Linux runner's DejaVu Sans has Verdana's
+    // digit widths, and Material's fields read their face from the tokens.
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    const host = () => fixture.nativeElement as HTMLElement;
+
+    /** Opens the panel on 10/10/2026 to 10/10/2026, then lets ngModel hand each date input its value. */
+    function render(): void {
+      host().style.display = 'block';
+      host().style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host().style.setProperty(token, FACE);
+      }
+      const filters: TransactionFilters = { startDate: new Date(2026, 9, 10), endDate: new Date(2026, 9, 10) };
+      component.presetFilters = filters;
+      component.ngOnChanges({ presetFilters: new SimpleChange(undefined, filters, false) });
+      component.expanded.set(true);
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    /** Constrains the component's host so the grid inside the panel's padding is `width` px wide. */
+    function layOut(width: number): HTMLElement {
+      const panel = getComputedStyle(host().querySelector('.filter-panel')!);
+      host().style.width = `${width + parseFloat(panel.paddingInlineStart) + parseFloat(panel.paddingInlineEnd)}px`;
+      const grid = host().querySelector<HTMLElement>('.filter-grid')!;
+      expect(grid.getBoundingClientRect().width).withContext('the grid width, px').toBeCloseTo(width, 0);
+      return grid;
+    }
+
+    function dateInputs(): HTMLInputElement[] {
+      const inputs = Array.from(host().querySelectorAll<HTMLInputElement>('.filter-grid input.mat-datepicker-input'));
+      expect(inputs.length).withContext('the From and To inputs').toBe(2);
+      return inputs;
+    }
+
+    function wrapperOf(element: Element): HTMLElement {
+      return element.closest('mat-form-field')!.querySelector<HTMLElement>('.mat-mdc-text-field-wrapper')!;
+    }
+
+    function columnsOf(grid: HTMLElement): number {
+      return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+    }
+
+    /** What a date field needs, read off the page: its start padding, its calendar button and ten digits of the input's own font. */
+    function dateFieldNeedPx(input: HTMLInputElement): number {
+      const start = parseFloat(getComputedStyle(wrapperOf(input)).paddingInlineStart);
+      const button = input.closest('mat-form-field')!.querySelector('.mat-mdc-form-field-icon-suffix')!.getBoundingClientRect().width;
+      expect(start + button).withContext('start padding and calendar button, px').toBeCloseTo(56, 0);
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position: absolute; visibility: hidden; width: 10ch';
+      input.parentElement!.appendChild(probe);
+      const tenDigits = probe.getBoundingClientRect().width;
+      probe.remove();
+      expect(tenDigits).withContext("ten digits of the input's font, px").toBeGreaterThan(0);
+      return start + button + tenDigits;
+    }
+
+    // The tracks follow the grid's width and nothing else. A rule keyed to the
+    // viewport from 1024 px up is what set six of them at a 1024 px pane, and
+    // Karma's 756 px window renders no such rule, so the stylesheet is read
+    // instead: no media query sets the tracks, and exactly one rule does, the
+    // floored auto-fit list the cases around this one lay out.
+    it('sets the tracks in one rule that no media query overrides', () => {
+      const unconditional: string[] = [];
+      const underMedia: string[] = [];
+      const visit = (rules: CSSRuleList, media: string | null): void => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSStyleRule && /\.filter-grid(?![\w-])/.test(rule.selectorText) && rule.style.gridTemplateColumns) {
+            if (media === null) {
+              unconditional.push(rule.style.gridTemplateColumns);
+            } else {
+              underMedia.push(`@media ${media} { ${rule.style.gridTemplateColumns} }`);
+            }
+          }
+          if (rule instanceof CSSGroupingRule) {
+            visit(rule.cssRules, rule instanceof CSSMediaRule ? rule.conditionText : media);
+          }
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue; // a cross-origin sheet; nothing this app injects is one
+        }
+        visit(rules, null);
+      }
+
+      expect(underMedia)
+        .withContext('.filter-grid tracks set under a media query, which reads the viewport, not the grid')
+        .toEqual([]);
+      expect(unconditional)
+        .withContext('.filter-grid tracks set outside any media query')
+        .toEqual([jasmine.stringMatching(/^repeat\(auto-fit, minmax\(min\(100%, .+\), 1fr\)\)$/)]);
+    });
+
+    it('shows the whole of a ten-character date beside its calendar button, at a 1024 px pane and on both phones', fakeAsync(() => {
+      render();
+
+      for (const width of GRID_WIDTHS_PX) {
+        layOut(width);
+        dateInputs().forEach((input, index) => {
+          const which = `${index === 0 ? 'From' : 'To'} in a ${width} px grid`;
+          expect(input.value).withContext(`${which}: the date shown`).toBe('10/10/2026');
+          expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
+          expect(input.scrollWidth)
+            .withContext(`${which}: width of the date, px, against the input's`)
+            .toBeLessThanOrEqual(input.clientWidth);
+        });
+      }
+    }));
+
+    it("gives a date field's end padding to its date, as Material does beside an icon suffix", fakeAsync(() => {
+      render();
+      layOut(GRID_WIDTHS_PX[0]);
+
+      for (const input of dateInputs()) {
+        const wrapper = getComputedStyle(wrapperOf(input));
+        expect(wrapper.paddingInlineStart).withContext('a date field: start padding').toBe('12px');
+        expect(wrapper.paddingInlineEnd).withContext('a date field: end padding, beside the calendar button').toBe('0px');
+      }
+    }));
+
+    // Pin: the compact padding stays on every field without a button.
+    it('keeps the end padding of a compact field with no calendar button (pin)', fakeAsync(() => {
+      render();
+      layOut(GRID_WIDTHS_PX[0]);
+
+      const minAmount = Array.from(host().querySelectorAll('.filter-grid mat-form-field'))
+        .find(each => each.querySelector('mat-label')?.textContent?.trim() === 'Min Amount');
+      expect(minAmount).withContext('the Min Amount field').toBeTruthy();
+      expect(minAmount!.querySelector('.mat-mdc-form-field-icon-suffix')).withContext('Min Amount has no suffix').toBeNull();
+      const wrapper = getComputedStyle(wrapperOf(minAmount!));
+      expect(wrapper.paddingInlineStart).withContext('Min Amount: start padding').toBe('12px');
+      expect(wrapper.paddingInlineEnd).withContext('Min Amount: end padding').toBe('12px');
+    }));
+
+    // Pin: a 1024 px pane's grid still sets fields side by side, and none of
+    // them is narrower than the start padding, the button and ten digits of
+    // the input's own font. Its tracks stretch well past the floor, so this
+    // bounds the floor only from far below; the next case lays one out at it.
+    it('lays a 702 px grid out in more than one column, no field narrower than a date needs (pin)', fakeAsync(() => {
+      render();
+      const grid = layOut(GRID_WIDTHS_PX[0]);
+
+      expect(columnsOf(grid)).withContext('columns in a 702 px grid').toBeGreaterThan(1);
+
+      const need = dateFieldNeedPx(dateInputs()[0]);
+      for (const field of Array.from(grid.querySelectorAll('mat-form-field'))) {
+        const label = field.querySelector('mat-label')?.textContent?.trim();
+        expect(field.getBoundingClientRect().width)
+          .withContext(`${label} field width, px, against what a date needs`)
+          .toBeGreaterThanOrEqual(need - 0.5);
+      }
+    }));
+
+    // Pin: the narrowest grid that still sets two fields side by side lays
+    // each track out at its floor, so it is where 56 px and 10ch are put to
+    // the test. The step is searched for rather than worked out from the
+    // floor, since tracks stretch to fill whatever width they are given and
+    // a floor too small would pass at any width computed from the right one.
+    // Every digit of the pinned face is as wide as any other, so 10/10/2026
+    // is as wide as any ten-character date.
+    it('shows the whole of a date in the narrowest grid that holds two columns (pin)', fakeAsync(() => {
+      const SEARCH_FROM_PX = 400;
+      const SEARCH_DOWN_TO_PX = 200;
+      render();
+
+      expect(columnsOf(layOut(SEARCH_FROM_PX)))
+        .withContext(`columns in a ${SEARCH_FROM_PX} px grid, where the search starts`)
+        .toBe(2);
+      let width = SEARCH_FROM_PX;
+      while (width > SEARCH_DOWN_TO_PX && columnsOf(layOut(width - 1)) === 2) {
+        width--;
+      }
+      expect(columnsOf(layOut(width - 1)))
+        .withContext(`columns in a ${width - 1} px grid, the widest that no longer holds two`)
+        .toBe(1);
+      const grid = layOut(width);
+      expect(columnsOf(grid)).withContext(`columns in a ${width} px grid, 1 px wider`).toBe(2);
+
+      const inputs = dateInputs();
+      const need = dateFieldNeedPx(inputs[0]);
+      inputs.forEach((input, index) => {
+        const which = `${index === 0 ? 'From' : 'To'} in a ${width} px grid`;
+        expect(input.value).withContext(`${which}: the date shown`).toBe('10/10/2026');
+        expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
+        expect(input.scrollWidth)
+          .withContext(`${which}: width of the date, px, against the input's`)
+          .toBeLessThanOrEqual(input.clientWidth);
+        expect(input.closest('mat-form-field')!.getBoundingClientRect().width)
+          .withContext(`${which}: field width, px, against what a date needs`)
+          .toBeGreaterThanOrEqual(need - 0.5);
+      });
+    }));
+  });
+
+  describe('grid tracks (#450)', () => {
+    it('lays the filter grid out in more than one column once expanded', () => {
+      // How many follows the grid's width and the input's font, which the
+      // date cases above pin; what this case holds is that the declaration
+      // parses. A dropped one leaves the grid a single column.
       component.expanded.set(true);
       fixture.detectChanges();
 
       const grid = fixture.nativeElement.querySelector('.filter-grid') as HTMLElement;
+      expect(grid.getBoundingClientRect().width)
+        .withContext("the grid in Karma's window, px: room for two date fields")
+        .toBeGreaterThan(400);
       expect(getComputedStyle(grid).gridTemplateColumns.split(' ').length)
-        .withContext('.filter-grid computed column count at >=640px')
-        .toBe(3);
+        .withContext('.filter-grid computed column count')
+        .toBeGreaterThan(1);
     });
   });
 

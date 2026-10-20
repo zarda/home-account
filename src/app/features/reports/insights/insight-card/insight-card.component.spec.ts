@@ -89,6 +89,14 @@ describe('InsightCardComponent', () => {
       expect(component.body()).toContain('categoryNames.groceries');
     });
 
+    it('names a category the catalog lacks in the reader\'s language, not by its id', () => {
+      // A deleted category, or an id written on another device, must not print
+      // its raw id in the card's sentence.
+      build(card({ categoryIds: ['gone'] }));
+      expect(component.body()).toContain('"category":"common.unknownCategory"');
+      expect(component.body()).not.toContain('"category":"gone"');
+    });
+
     it('resolves a cadence into a localised word', () => {
       build(card({
         kind: 'recurringItem',
@@ -334,7 +342,7 @@ describe('InsightCardComponent, through its own template', () => {
     expect(el().querySelector('.card-categories')).toBeNull();
 
     render(insight({ categoryIds: ['food_groceries', 'transport'] }));
-    expect(text('.card-categories')).toBe('categoryNames.groceries, transport');
+    expect(text('.card-categories')).toBe('categoryNames.groceries, common.unknownCategory');
   });
 
   it('offers the filters button for a filters card and hands them over on click', () => {

@@ -96,7 +96,10 @@ describe('SpendingChartComponent', () => {
 
   beforeEach(async () => {
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
-    mockTranslationService.t.and.callFake((key: string) => key);
+    // Echoes every key but the one a category the catalog lacks is named by,
+    // which reads as the Japanese catalog has it: an English literal in its
+    // place reads as neither.
+    mockTranslationService.t.and.callFake((key: string) => (key === 'common.unknownCategory' ? '不明' : key));
 
     mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
     mockCurrencyService.formatCurrency.and.callFake((amount: number) => `$${amount.toFixed(2)}`);
@@ -212,10 +215,10 @@ describe('SpendingChartComponent', () => {
       expect(data.datasets[0].backgroundColor).toEqual(['#FF5722', '#2196F3', '#9C27B0']);
     });
 
-    it('should use Unknown for missing category', () => {
+    it('names a total whose category the catalog lacks in the reader\'s language', () => {
       setCategoryTotals([{ categoryId: 'unknown', total: 100, count: 1 }]);
       const data = component.chartData();
-      expect(data.labels).toContain('Unknown');
+      expect(data.labels).toContain('不明');
     });
 
     it('should use default color for missing category', () => {
@@ -231,14 +234,14 @@ describe('SpendingChartComponent', () => {
       expect(component.getCategoryName('cat1')).toBe('Food & Drinks');
     });
 
-    it('should return Unknown for invalid id', () => {
+    it('names an id the catalog lacks in the reader\'s language', () => {
       setCategories(mockCategories);
-      expect(component.getCategoryName('invalid')).toBe('Unknown');
+      expect(component.getCategoryName('invalid')).toBe('不明');
     });
 
-    it('should return Unknown for empty categories', () => {
+    it('names every id in the reader\'s language while the catalog is empty', () => {
       setCategories([]);
-      expect(component.getCategoryName('cat1')).toBe('Unknown');
+      expect(component.getCategoryName('cat1')).toBe('不明');
     });
   });
 
@@ -378,6 +381,16 @@ describe('SpendingChartComponent', () => {
       // The label replaces the row's visible text for screen readers, so the
       // amount and share have to travel with it or they go unread.
       expect(label).toBe('dashboard.viewCategoryTransactions, $500.00, 50%');
+    });
+
+    it('names a row whose category the catalog lacks in the reader\'s language in its label', () => {
+      component.legendAriaLabel({ categoryId: 'gone', total: 100, count: 1 });
+
+      // The mock ignores params, so the name is read off the call itself.
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'dashboard.viewCategoryTransactions',
+        { category: '不明' }
+      );
     });
 
     it('should announce the share the row actually shows', () => {

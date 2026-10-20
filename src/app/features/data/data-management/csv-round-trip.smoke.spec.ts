@@ -53,6 +53,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MockAuthService, createMockUser } from '../../../core/services/testing/mock-auth.service';
 import { createTranslationStub, createLocaleFormatStub } from '../../../core/services/testing/translation-stub';
 import { silenceFirebaseWarnings } from '../../../core/services/testing/silence-firebase-warnings';
+import { defaultCategories } from '../../../core/utils/category-merge.utils';
 
 silenceFirebaseWarnings();
 
@@ -204,23 +205,25 @@ describe('CSV round trip through the data-management door (emulator smoke test)'
     categoryService = TestBed.inject(CategoryService);
   });
 
-  /** Steps until `predicate` holds, rather than sleeping a guessed span. */
-  async function until(predicate: () => boolean, timeoutMs = 10000): Promise<void> {
+  /**
+   * Steps until `predicate` holds, rather than sleeping a guessed span, and
+   * names what it waited for when it gives up.
+   */
+  async function until(predicate: () => boolean, what: string, timeoutMs = 10000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (!predicate()) {
       if (Date.now() > deadline) {
-        throw new Error('the import never reached the expected state');
+        throw new Error(`timed out waiting for ${what}`);
       }
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
 
   it('keeps both categories and a tag containing the join separator through export and reimport', async () => {
-    // DataManagementComponent never calls loadCategories itself (unlike the
-    // routes that render categories), so nothing else in this run would put
-    // the two docs written above onto the shared signal parseCSV reads. A
-    // one-shot server read, not the live listener: nothing here needs to
-    // react to a later write.
+    // This case drives the page's methods without running its lifecycle, so
+    // nothing else in it would put the two docs written above onto the
+    // shared signal parseCSV reads. A one-shot server read, not the live
+    // listener: nothing here needs to react to a later write.
     categoryService.categories.set(await categoryService.exportAll());
 
     const exportService = TestBed.inject(ExportService);
@@ -261,11 +264,11 @@ describe('CSV round trip through the data-management door (emulator smoke test)'
     const addSpy = spyOn(transactionService, 'addTransaction').and.callThrough();
 
     component.onFileSelected({ target: { files: [file], value: '' } } as unknown as Event);
-    await until(() => component.showImportPreview());
+    await until(() => component.showImportPreview(), 'the import preview');
     expect(component.unmatchedCategoryCount()).toBe(0);
 
     component.confirmImport();
-    await until(() => addSpy.calls.count() >= 2);
+    await until(() => addSpy.calls.count() >= 2, 'both imported rows to be written');
 
     const newIds = await Promise.all(addSpy.calls.all().map(call => call.returnValue));
     createdTransactionIds.push(...newIds);
@@ -280,5 +283,61 @@ describe('CSV round trip through the data-management door (emulator smoke test)'
     const incomeDoc = byCategory(incomeCategoryId);
     expect(incomeDoc).toBeTruthy();
     expect(incomeDoc?.['tags']).toEqual(['a; b']);
+  }, 30000);
+
+  it('names each row\'s category in the transactions CSV from the catalog the page loads itself', async () => {
+    // The page's own lifecycle fills the catalog, never a hand-set signal:
+    // on /data nothing else subscribes to it, and a page that skipped it
+    // exported every row under the unknown fallback.
+    const exportService = TestBed.inject(ExportService);
+    const shipped = defaultCategories().find(c => c.type === 'expense' && c.parentId);
+    if (!shipped) {
+      throw new Error('no shipped expense subcategory to export under');
+    }
+
+    const seededDescription = `Shoyu ${run}`;
+    const shippedDescription = `Gym visit ${run}`;
+    const seededId = await transactionService.addTransaction({
+      type: 'expense',
+      amount: 12,
+      currency: 'USD',
+      categoryId: expenseCategoryId,
+      description: seededDescription,
+      date: new Date(2026, 5, 3),
+    });
+    const shippedId = await transactionService.addTransaction({
+      type: 'expense',
+      amount: 30,
+      currency: 'USD',
+      categoryId: shipped.id,
+      description: shippedDescription,
+      date: new Date(2026, 5, 4),
+    });
+    createdTransactionIds.push(seededId, shippedId);
+
+    const download = spyOn(exportService, 'downloadBlobWithPicker').and.resolveTo(true);
+
+    component.ngOnInit();
+    try {
+      await until(() => categoryService.categories().some(c => c.id === expenseCategoryId), "the page's own catalog load");
+
+      await component.exportTransactionsCSV();
+
+      expect(download).toHaveBeenCalledTimes(1);
+      const csvText = await (download.calls.mostRecent().args[0] as Blob).text();
+      const rowFor = (description: string) => csvText.split('\n').find(line => line.includes(description));
+
+      // Karma serves no catalogs, so the translation stub hands back the key
+      // it is given: the seeded row's own name, and the shipped row's
+      // translation key — never the unknown fallback.
+      const seededRow = rowFor(seededDescription);
+      const shippedRow = rowFor(shippedDescription);
+      expect(seededRow).toContain(`Ramen Shops ${run}`);
+      expect(seededRow).not.toContain('common.unknownCategory');
+      expect(shippedRow).toContain(shipped.name);
+      expect(shippedRow).not.toContain('common.unknownCategory');
+    } finally {
+      component.ngOnDestroy();
+    }
   }, 30000);
 });

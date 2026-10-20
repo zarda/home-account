@@ -621,10 +621,26 @@ describe('categorization.utils', () => {
     });
 
     it('refuses a name nothing in the catalog carries', () => {
-      // getCategoryName's own literal for a category the export could not
-      // find — refusing it here is what keeps that placeholder from ever
-      // resolving to a real category on the way back in.
+      // The word an export writes for a category it could not find —
+      // refusing it here is what keeps that placeholder from ever resolving
+      // to a real category on the way back in.
       expect(resolveExactCategoryName('Unknown', 'expense', categories, identity)).toBeUndefined();
+    });
+
+    it('refuses the unknown-category word of every shipped language, over the built-in catalog, both ways', () => {
+      // An export names a category it cannot find in the reader's language,
+      // so any of these three can come back in the Category column. No
+      // shipped category may carry one of them, or an unknown row would
+      // re-import onto a real category.
+      const catalog = defaultCatalog();
+
+      for (const type of ['expense', 'income'] as const) {
+        for (const word of ['Unknown', '不明', '未知']) {
+          expect(resolveExactCategoryName(word, type, catalog, untranslated))
+            .withContext(`${type}: ${word}`)
+            .toBeUndefined();
+        }
+      }
     });
 
     it('refuses a near-name rather than the partial match matchCategoryName allows', () => {

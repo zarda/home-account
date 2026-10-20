@@ -126,15 +126,22 @@ describe('overflow guard: the import review card', () => {
         // unbroken token that would wrap regardless of what r2 is actually
         // testing. Standing in its real, short translation ("Use
         // {{currency}}?") is what makes r2 the one-line case it needs to be.
+        //
+        // `common.unknownCategory` stands in its English too: the rows here
+        // have no categories, so every chip names the unknown one, and the
+        // caret cases below read it as a short word appFitText never engages
+        // on.
         {
           provide: TranslationService,
           useValue: {
             t: (key: string, params?: Record<string, string | number>) =>
               key === 'import.currencySuggested' && params
                 ? `Use ${params['currency']}?`
-                : params
-                  ? `${key} ${Object.values(params).join(' ')}`
-                  : key,
+                : key === 'common.unknownCategory'
+                  ? 'Unknown'
+                  : params
+                    ? `${key} ${Object.values(params).join(' ')}`
+                    : key,
           },
         },
         {
@@ -1133,9 +1140,11 @@ describe('overflow guard: the currency offer label\'s ink, not just its box', ()
             t: (key: string, params?: Record<string, string | number>) =>
               key === 'import.currencySuggested' && params
                 ? UNBREAKABLE_LABEL
-                : params
-                  ? `${key} ${Object.values(params).join(' ')}`
-                  : key,
+                : key === 'common.unknownCategory'
+                  ? 'Unknown'
+                  : params
+                    ? `${key} ${Object.values(params).join(' ')}`
+                    : key,
           },
         },
         {

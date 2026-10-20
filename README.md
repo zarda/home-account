@@ -206,7 +206,7 @@ here.
 | `npm --prefix functions test` | The functions workspace's own tests, after `npm --prefix functions ci` builds it — not a root script |
 | `npm run lint` | ESLint, templates included |
 | `npm run lint-guards:check` | Verify the ESLint import and syntax bans still resolve for the files they were written for — the analytics ban died once by being silently replaced |
-| `npm run i18n:check` | Verify every literal translation key resolves in all locales, and no template hard-codes an aria-label, alt text or visible English sentence ([docs/i18n.md](docs/i18n.md)) |
+| `npm run i18n:check` | Verify every literal translation key resolves in all locales, no template hard-codes an aria-label, alt text or visible English sentence, and no code falls back to an English `Unknown` or `Other` a reader would see ([docs/i18n.md](docs/i18n.md)) |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
@@ -218,7 +218,7 @@ here.
 | `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates ([docs/ui-overflow.md](docs/ui-overflow.md)) |
 | `npm run grid:check` | Verify no `grid-template-columns` nests a `minmax()` inside another or declares a bare `1fr` — G2 ([docs/ui-overflow.md](docs/ui-overflow.md)) |
 | `npm run direction:check` | Verify the physical-direction CSS is still exactly where the per-file baseline says ([docs/rtl.md](docs/rtl.md)) |
-| `npm run material:check` | Verify every `Mat*Module` a component imports is used by its template — ESLint counts the symbol as used the moment it appears in the array |
+| `npm run material:check` | Verify every `Mat*Module` a component imports is used by its template — ESLint counts the symbol as used the moment it appears in the array — and every `mat-select` offering a `null` or `undefined` option can select it |
 | `npm run dates:check` | Run the date audit greps over production code — a hand-built end-of-day or month end, a UTC day key, a day step in milliseconds, a re-parsed date field ([docs/dates.md](docs/dates.md)) |
 | `npm run motion:check` | Verify both reduced-motion kill-switches are intact and no component stylesheet declares an `!important` duration that outruns them ([docs/accessibility.md](docs/accessibility.md)) |
 | `npm run contrast:check` | Score every colour pair the app paints against WCAG AA, in all four rendered modes ([docs/accessibility.md](docs/accessibility.md)) |
@@ -300,7 +300,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/feedback.md](docs/feedback.md) | In-app feedback: the stored record, its About-page door, and the mail that leaves from a Cloud Function |
 | [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, the browser layer, the invite callable and the household cleanup triggers, which the smoke run never starts, and the checks that stand in |
 | [docs/e2e.md](docs/e2e.md) | The browser journey protocol: its two venues — production, and the emulators for journeys that need several accounts — the checks before every run, the writes a run may make and how they are put back, the journeys and their passes |
-| [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's three scans, and what still escapes them |
+| [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's five scans, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
 | [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the reload on an account change the page did not start, where the web keeps the session, the degraded fallback profile and its retry, and the identity check every write across an await makes |
 | [docs/accessibility.md](docs/accessibility.md) | What the app guarantees to assistive technology, where each guarantee is enforced, and the gaps that remain |

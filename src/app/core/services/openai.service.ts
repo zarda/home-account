@@ -22,7 +22,7 @@ export class OpenAIService extends CloudLLMProviderBase {
     // OpenAI is not initialized by default - requires user API key
   }
 
-  private async initialize(apiKey: string): Promise<void> {
+  private async initialize(apiKey: string, arm: number): Promise<void> {
     if (!apiKey || apiKey.trim() === '') {
       console.warn('OpenAI API key not provided');
       this.client = null;
@@ -39,6 +39,8 @@ export class OpenAIService extends CloudLLMProviderBase {
     try {
       // The SDK is loaded on demand to keep it out of the initial bundle
       const { default: OpenAI } = await this.loadSdk();
+      // A later reinitialize, or a sign-out's clear, owns the client now.
+      if (!this.isLatestArm(arm)) return;
       this.client = new OpenAI({
         apiKey: apiKey,
         dangerouslyAllowBrowser: true, // Required for browser usage
@@ -46,6 +48,8 @@ export class OpenAIService extends CloudLLMProviderBase {
       this.currentApiKey = apiKey;
       this.available.set(true);
     } catch (error) {
+      // Nor may a superseded failure null a newer client or report itself.
+      if (!this.isLatestArm(arm)) return;
       console.error('Failed to initialize OpenAI:', error);
       this.client = null;
       this.currentApiKey = null;
@@ -62,8 +66,9 @@ export class OpenAIService extends CloudLLMProviderBase {
    * Reinitialize OpenAI with a new API key.
    */
   reinitialize(apiKey?: string): Promise<void> {
+    const arm = this.supersedeArms();
     if (apiKey) {
-      return this.initialize(apiKey);
+      return this.initialize(apiKey, arm);
     }
     this.client = null;
     this.currentApiKey = null;

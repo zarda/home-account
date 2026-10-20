@@ -108,7 +108,7 @@
               [disabled]="form.invalid || isSubmitting()">
         @if (isSubmitting()) {
           <!-- The button's label text below is set unconditionally. -->
-          <mat-spinner diameter="20" class="inline-block me-2" aria-hidden="true"></mat-spinner>
+          <mat-spinner diameter="20" aria-hidden="true"></mat-spinner>
         }
         {{ data.mode === 'add' ? ('budget.createBudget' | translate) : ('transactions.saveChanges' | translate) }}
       </button>

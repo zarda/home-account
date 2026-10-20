@@ -1,6 +1,7 @@
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages). @angular/fire bundles its own pinned Firebase major, so instances
 // built from the root packages are incompatible with the service layer.
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
@@ -14,6 +15,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { GeminiService } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
+import { FirestoreService } from './firestore.service';
 import { NoteTranslationService } from './note-translation.service';
 import { ProviderKeyService } from './provider-key.service';
 import { AIStrategyService } from './ai-strategy.service';
@@ -349,10 +351,10 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     // only resolved server-side at the first generateContent call.
     //
     // The key goes through ProviderKeyService rather than
-    // updateProviderApiKey, which hands its argument straight to reinitialize
-    // and stores nothing. reinitializeGemini — the method AIStrategyService
-    // calls on a model switch — reads the key back from Firestore, so this is
-    // the path the app actually takes.
+    // updateProviderApiKey, which hands a key straight to reinitialize (and
+    // clears Gemini for none) and stores nothing. reinitializeGemini — the
+    // method AIStrategyService calls on a model switch — reads the key back
+    // from Firestore, so this is the path the app actually takes.
     const keys = TestBed.inject(ProviderKeyService);
     await keys.setKey('gemini', 'fake-key-for-the-smoke');
     try {
@@ -404,5 +406,282 @@ describe('cloud LLM providers (emulator smoke test)', () => {
 
     expect(TestBed.inject(ProviderKeyService).keys()).toEqual({});
     expect(facade.hasAnyCloudProvider()).toBeFalse();
+  });
+
+  it('waits for a key saved through the strategy', async () => {
+    // A key saved in settings while the drain is about to wait: the wait has
+    // to cover the save's write and the bring-up after it, or the photo goes
+    // out to a Gemini the key has not reached. The fake key only builds a
+    // local handle, as above.
+    const strategy = TestBed.inject(AIStrategyService);
+    const keys = TestBed.inject(ProviderKeyService);
+    await expectAsync(strategy.cloudProvidersReady()).toBeResolvedTo(true);
+    expect(gemini.isAvailable()).toBeFalse();
+
+    try {
+      const save = strategy.applyProviderKey('gemini', 'fake-key-for-the-smoke');
+      const ready = await strategy.cloudProvidersReady();
+      const armed = gemini.isAvailable();
+
+      expect(ready).toBeTrue();
+      expect(armed).toBeTrue();
+
+      await save;
+      expect(keys.keys()).toEqual({ gemini: 'fake-key-for-the-smoke' });
+    } finally {
+      // Stored under the suite's one account, which every case reads.
+      await strategy.applyProviderKey('gemini', undefined);
+    }
+
+    expect(keys.keys()).toEqual({});
+    expect(gemini.isAvailable()).toBeFalse();
+  });
+
+  it('reads the keys once more when the wait ends online after a failed read', async () => {
+    // A key read that fails while online leaves the bring-up keyless, and
+    // nothing starts another until connectivity changes: the drain's wait
+    // answered on it and the photo went to no provider. Only the first read
+    // of the secrets is refused; the wait's second read and the SDK import
+    // after it are real. The fake key only builds a local handle, as above.
+    const keys = TestBed.inject(ProviderKeyService);
+    await keys.setKey('gemini', 'fake-key-for-the-smoke');
+    try {
+      await facade.resetProviders();
+      expect(gemini.isAvailable()).toBeFalse();
+
+      const secrets = `users/${uid}/secrets/providers`;
+      const firestoreService = TestBed.inject(FirestoreService);
+      const callThrough = firestoreService.getDocument.bind(firestoreService);
+      let refused = false;
+      const read = spyOn(firestoreService, 'getDocument').and.callFake(
+        <T>(path: string): Promise<T | null> => {
+          if (path === secrets && !refused) {
+            refused = true;
+            return Promise.reject(new Error('Failed to get document because the client is offline.'));
+          }
+          return callThrough<T>(path);
+        }
+      );
+      const warn = spyOn(console, 'warn');
+
+      // Asked in the task the strategy is built in, so the start-up bring-up
+      // and the wait's own share the refused read: the only second read is
+      // the one the wait starts.
+      const strategy = TestBed.inject(AIStrategyService);
+      const ready = await strategy.cloudProvidersReady();
+      const armed = gemini.isAvailable();
+
+      expect(ready).toBeTrue();
+      expect(armed).toBeTrue();
+      expect(read.calls.allArgs()).toEqual([[secrets], [secrets]]);
+      expect(warn).toHaveBeenCalledOnceWith('[ProviderKey] Keys unavailable:', jasmine.any(Error));
+    } finally {
+      await keys.setKey('gemini', undefined);
+    }
+  });
+});
+
+/**
+ * A provider bring-up that sign-out did not cancel, over the real graph.
+ *
+ * Signing out resets the providers, but a bring-up that already read the
+ * departing account's key can still be waiting on its SDK import when the next
+ * account signs in. Whatever it arms then is armed for the next account: its
+ * requests go out on the previous account's key.
+ *
+ * This describe signs accounts in and out, so it owns its Firebase app and its
+ * rates-cache seed; jasmine runs describes in a random order. The account is a
+ * signal behind the AuthService double, so the strategy's effect sees each
+ * switch the way it sees one in the app. Both accounts are real anonymous
+ * users, because the key document is readable by its owner only. The fake key
+ * builds a local client at most; nothing here sends a request.
+ */
+describe('cloud LLM providers across an account switch', () => {
+  const FIRESTORE_HOST = '127.0.0.1';
+  const FIRESTORE_PORT = 8080;
+  const AUTH_URL = 'http://127.0.0.1:9099';
+  const RATES_CACHE_KEY = 'home-account.exchangeRates';
+
+  let app: FirebaseApp;
+  let auth: Auth;
+  let firestore: Firestore;
+  const signedInAs = signal<string | null>(null);
+
+  beforeAll(() => {
+    // The same reason as the suite above: a cold cache sends the currency
+    // service to a public API as soon as a provider is constructed.
+    localStorage.setItem(
+      RATES_CACHE_KEY,
+      JSON.stringify({ rates: { USD: 1, EUR: 0.9, JPY: 150 }, lastUpdatedMs: Date.now() })
+    );
+
+    app = initializeApp(
+      { apiKey: 'fake-api-key', projectId: 'demo-home-account' },
+      `cloud-llm-switch-smoke-${Date.now()}`
+    );
+
+    auth = getAuth(app);
+    connectAuthEmulator(auth, AUTH_URL, { disableWarnings: true });
+
+    firestore = getFirestore(app);
+    connectFirestoreEmulator(firestore, FIRESTORE_HOST, FIRESTORE_PORT);
+  });
+
+  afterAll(async () => {
+    localStorage.removeItem(RATES_CACHE_KEY);
+    await auth.signOut().catch(() => undefined);
+    await deleteApp(app).catch(() => undefined);
+  });
+
+  beforeEach(() => {
+    signedInAs.set(null);
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideRouter([]),
+        { provide: Firestore, useValue: firestore },
+        { provide: Auth, useValue: auth },
+        { provide: AuthService, useValue: { userId: signedInAs.asReadonly(), currentUser: () => null } },
+      ],
+    });
+  });
+
+  // A new anonymous account; signInAnonymously reuses a signed-in anonymous
+  // user, hence the sign-out first.
+  async function freshUser(): Promise<string> {
+    await auth.signOut().catch(() => undefined);
+    const credential = await signInAnonymously(auth);
+    return credential.user.uid;
+  }
+
+  async function waitFor(predicate: () => boolean, what: string, timeoutMs = 10000): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+      if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${what}`);
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+  }
+
+  it("arms nothing on the departing account's key once the next account is signed in", async () => {
+    const a = await freshUser();
+    signedInAs.set(a);
+    const keys = TestBed.inject(ProviderKeyService);
+    await keys.setKey('openai', 'fake-key-for-the-smoke');
+    let keysDeleted = false;
+
+    const facade = TestBed.inject(CloudLLMProviderService);
+    const openai = TestBed.inject(OpenAIService);
+
+    // The real import, held: A's bring-up reaches it with A's key and waits.
+    const svc = openai as unknown as { loadSdk(): Promise<unknown> };
+    const real = svc.loadSdk.bind(svc);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const loadSdk = spyOn(svc, 'loadSdk').and.callFake(() => gate.then(real));
+    // Before the strategy exists: its constructor starts the first bring-up.
+    const bringUps = spyOn(facade, 'initializeProviders').and.callThrough();
+
+    try {
+      const strategy = TestBed.inject(AIStrategyService);
+      TestBed.tick();
+      await waitFor(() => loadSdk.calls.count() > 0, "OpenAI's import for A's key");
+
+      // Still as A. The bring-up already holds the key, so the race is the
+      // same, and once the switch is made nothing can reach A's document.
+      await keys.deleteAll();
+      keysDeleted = true;
+
+      await auth.signOut();
+      signedInAs.set(null);
+      TestBed.tick();
+
+      const b = await freshUser();
+      signedInAs.set(b);
+      TestBed.tick();
+
+      expect(await strategy.cloudProvidersReady()).toBeTrue();
+      expect(facade.hasAnyCloudProvider()).toBeFalse();
+    } finally {
+      release();
+      if (!keysDeleted && auth.currentUser?.uid === a && signedInAs() === a) {
+        await keys.deleteAll().catch(() => undefined);
+      }
+    }
+
+    // The positive proof the negatives below hang on: every held import
+    // resolved to the real SDK, so a client could have been built from it.
+    await Promise.all(loadSdk.calls.all().map(call => call.returnValue));
+    await Promise.all(bringUps.calls.all().map(call => call.returnValue));
+
+    expect(openai.isAvailable()).toBeFalse();
+    expect(facade.availableProviders()).toEqual([]);
+    expect(keys.keys()).toEqual({});
+  });
+
+  // This time the bring-up waits on Gemini's import, with OpenAI's key still to
+  // arm after it. OpenAI's own check cannot stop that arm, which would start
+  // after the switch; only the bring-up knows it was superseded.
+  it("starts no further arm on the departing account's keys once its Gemini import lands", async () => {
+    const a = await freshUser();
+    signedInAs.set(a);
+    const keys = TestBed.inject(ProviderKeyService);
+    await keys.setKey('gemini', 'fake-key-for-the-smoke');
+    await keys.setKey('openai', 'fake-key-for-the-smoke');
+    let keysDeleted = false;
+
+    const facade = TestBed.inject(CloudLLMProviderService);
+    const gemini = TestBed.inject(GeminiService);
+    const openai = TestBed.inject(OpenAIService);
+    const claude = TestBed.inject(ClaudeService);
+
+    // Gemini's real import, held; OpenAI's runs free and is only counted.
+    const svc = gemini as unknown as { loadSdk(): Promise<unknown> };
+    const real = svc.loadSdk.bind(svc);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const geminiLoadSdk = spyOn(svc, 'loadSdk').and.callFake(() => gate.then(real));
+    const openaiLoadSdk = spyOn(
+      openai as unknown as { loadSdk(): Promise<unknown> },
+      'loadSdk'
+    ).and.callThrough();
+    // Before the strategy exists: its constructor starts the first bring-up.
+    const bringUps = spyOn(facade, 'initializeProviders').and.callThrough();
+
+    try {
+      const strategy = TestBed.inject(AIStrategyService);
+      TestBed.tick();
+      await waitFor(() => geminiLoadSdk.calls.count() > 0, "Gemini's import for A's key");
+
+      // Still as A, as above.
+      await keys.deleteAll();
+      keysDeleted = true;
+
+      await auth.signOut();
+      signedInAs.set(null);
+      TestBed.tick();
+
+      const b = await freshUser();
+      signedInAs.set(b);
+      TestBed.tick();
+
+      expect(await strategy.cloudProvidersReady()).toBeTrue();
+      expect(facade.hasAnyCloudProvider()).toBeFalse();
+    } finally {
+      release();
+      if (!keysDeleted && auth.currentUser?.uid === a && signedInAs() === a) {
+        await keys.deleteAll().catch(() => undefined);
+      }
+    }
+
+    // The positive proof: every held import resolved to the real SDK.
+    await Promise.all(geminiLoadSdk.calls.all().map(call => call.returnValue));
+    await Promise.all(bringUps.calls.all().map(call => call.returnValue));
+
+    expect(gemini.isAvailable()).withContext('Gemini').toBeFalse();
+    expect(openai.isAvailable()).withContext('OpenAI').toBeFalse();
+    expect(claude.isAvailable()).withContext('Claude').toBeFalse();
+    expect(facade.availableProviders()).toEqual([]);
+    expect(openaiLoadSdk.calls.count()).withContext("OpenAI's imports").toBe(0);
+    expect(keys.keys()).toEqual({});
   });
 });

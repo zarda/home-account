@@ -74,12 +74,14 @@ them: no file, and not `.vscode/environment.ts`. The probe never writes a key
 and never prints one. Every line it prints, URLs, headers, envelopes, bodies
 and errors alike, goes through one redactor. It masks the keys the run holds,
 any auth header whatever its value, a `?key=` parameter and anything shaped
-like a key. A printed request shows `accept`, `content-type`,
-`content-length`, `anthropic-version`, `user-agent` and the `x-stainless-*`
-headers as they are, hands an auth header to the redactor, and prints any
-other header as `<hidden>`. The bundler and Chromium run without the key
-variables in their environment, in every mode, and so does `render.mjs` run on
-its own. Both files take the variable names from `key-variables.mjs`.
+like a key. The Gemini key travels in the `x-goog-api-key` header, as the
+app's SDK sends it, so no URL the probe sends or prints carries one; the
+`?key=` mask stays as a second line. A printed request shows `accept`,
+`content-type`, `content-length`, `anthropic-version`, `user-agent` and the
+`x-stainless-*` headers as they are, hands an auth header to the redactor, and
+prints any other header as `<hidden>`. The bundler and Chromium run without the
+key variables in their environment, in every mode, and so does `render.mjs` run
+on its own. Both files take the variable names from `key-variables.mjs`.
 
 **What the SDKs read from the environment.** Each client is given every option
 it would otherwise take from the environment: its base URL, OpenAI's
@@ -106,7 +108,8 @@ variable, never its value: unset it and run again. `--dry-run` and
 - `--prompts receipt`, the default, sends **all five** receipt fixtures, on any
   provider, as the Gemini run does. There is no flag for a single case, so a
   receipt run costs five vision calls per model.
-- `--repeat N` (1 to 10) sends each prompt N times, because answers vary.
+- `--repeat N` (1 to 10, with 10 pinned as the bound) sends each prompt N times,
+  because answers vary.
 - `--model <id>` takes any id, offered by the app or not, written the way the
   vendors write one: letters, digits, dots, dashes and underscores, starting
   with a letter or digit. Anything else, the empty string included, exits 2.
@@ -157,7 +160,7 @@ keyed checks, [ADR 0177](../ADR/0177-the-catalog-dates-its-vendors-and-adds-only
 
 **Without a key.** `--dry-run` prints every envelope a run would send, with the
 key replaced and images elided, and sends nothing. `--self-test` checks the
-probe itself, offline, in 202 checks:
+probe itself, offline, in 222 checks:
 
 - its argument refusals, `--model` among them, and that every id the app's
   catalogs name is taken;
@@ -187,7 +190,11 @@ probe itself, offline, in 202 checks:
 - that a 500 or a 429 is one request on each SDK, so no client retries;
 - that a sender handed no transport is refused on each provider before its
   client is built;
-- that the Gemini sender encodes the model into its URL path;
+- that the Gemini sender encodes the model into its URL path and sends its key
+  in the `x-goog-api-key` header, never in the URL, so a request, a dry-run
+  envelope and a printed request carry no query and no key in the URL;
+- that the drift block compares every run of a repeated receipt case, first and
+  last, each under its own `id#n` label;
 - that `--update` builds no baseline from a run with a failed call;
 - that the real `render()`, stopped at Chromium's launch, hands the launch an
   environment with no key variable, from the probe and from `render.mjs` run

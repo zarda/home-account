@@ -107,7 +107,7 @@ const BASELINE = {
   'src/app/features/ai/import/duplicate-warning/duplicate-warning.component.scss': 3,
   'src/app/features/ai/import/file-dropzone/file-dropzone.component.scss': 4,
   'src/app/features/ai/import/import-history/import-history.component.scss': 2,
-  'src/app/features/ai/import/import-wizard/import-wizard.component.scss': 9,
+  'src/app/features/ai/import/import-wizard/import-wizard.component.scss': 8,
   'src/app/features/ai/search-history/search-answer-history.component.scss': 1,
   'src/app/features/auth/login/login.component.scss': 3,
   'src/app/features/budgets/goals/goal-progress-card/goal-progress-card.component.scss': 2,

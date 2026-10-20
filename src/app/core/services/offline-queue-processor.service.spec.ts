@@ -10,6 +10,12 @@ import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
 import { CategoryService } from './category.service';
+import { CloudLLMProviderService } from './cloud-llm-provider.service';
+import { ProviderKeyService } from './provider-key.service';
+import { PwaService } from './pwa.service';
+import { VisionOcrService } from './vision-ocr.service';
+import { AppleIntelligenceService } from './apple-intelligence.service';
+import { NativeReceiptService } from './native-receipt.service';
 import { createCategory } from './testing/test-data';
 import { opaqueRowId } from '../utils/opaque-id.utils';
 
@@ -79,6 +85,10 @@ function queuedImage(overrides: Partial<QueuedImage> = {}): QueuedImage {
     retryCount: 0,
     ...overrides,
   };
+}
+
+function dispatchImage(id: string): void {
+  window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
 }
 
 describe('OfflineQueueProcessorService', () => {
@@ -151,10 +161,6 @@ describe('OfflineQueueProcessorService', () => {
     // Detach the window listeners so they don't leak into other specs.
     processor.ngOnDestroy();
   });
-
-  function dispatchImage(id: string): void {
-    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
-  }
 
   describe('process-queued-image', () => {
     it('writes what the AI read to the ledger and marks the image completed', async () => {
@@ -1032,5 +1038,261 @@ describe('OfflineQueueProcessorService', () => {
       expect(transactions.addTransaction).toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
     });
+  });
+});
+
+/**
+ * Settings → AI saves a key when its field blurs, and pressing Sync Now is what
+ * blurs it. The drain waits for the providers before it sends the photo; a save
+ * outside that wait let it send the photo to a provider the key had not reached
+ * yet, which files the receipt as failed and spends one of its retries.
+ *
+ * A describe of its own because it needs the real strategy, where the one above
+ * hands in a double: its wait is the strategy's own chain here, over a façade
+ * and a key write held by hand.
+ */
+describe('OfflineQueueProcessorService: a key saved while Sync Now drains', () => {
+  let processor: OfflineQueueProcessorService;
+  let queue: jasmine.SpyObj<OfflineQueueService>;
+  let facade: jasmine.SpyObj<CloudLLMProviderService>;
+  let providerKeys: jasmine.SpyObj<ProviderKeyService>;
+  let keyStored: boolean;
+  let armed: boolean;
+  let landWrite: () => void;
+  let userId: WritableSignal<string | null>;
+
+  beforeEach(() => {
+    queue = jasmine.createSpyObj<OfflineQueueService>('OfflineQueueService', [
+      'peekQueuedImage',
+      'updateImageStatus',
+    ]);
+    queue.updateImageStatus.and.resolveTo(true);
+    queue.peekQueuedImage.and.callFake(async (id: string) => queuedImage({ id }));
+    userId = signal<string | null>('user-a');
+
+    const transactions = jasmine.createSpyObj<TransactionService>('TransactionService', [
+      'addTransaction',
+      'hasTransaction',
+    ]);
+    transactions.addTransaction.and.resolveTo('new-id');
+    transactions.hasTransaction.and.resolveTo(false);
+    const notifications = jasmine.createSpyObj<NotificationService>('NotificationService', [
+      'success',
+      'error',
+      'info',
+    ]);
+    const translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
+    translation.t.and.callFake((key: string) => key);
+    const attempts = attemptStub();
+    const categories = signal([
+      createCategory({ id: 'food', type: 'expense' }),
+      createCategory({ id: 'employment_salary', type: 'income' }),
+    ]);
+
+    // A bring-up arms the provider with whatever key is stored when it runs.
+    keyStored = false;
+    armed = false;
+    facade = jasmine.createSpyObj<CloudLLMProviderService>('CloudLLMProviderService', [
+      'initializeProviders',
+      'resetProviders',
+      'setOpenAIModel',
+      'setClaudeModel',
+    ]);
+    facade.initializeProviders.and.callFake(async () => {
+      armed = keyStored;
+      return { keyReadFailed: false };
+    });
+    facade.resetProviders.and.resolveTo();
+
+    // The Firestore write of the saved key, held until the case lets it land.
+    providerKeys = jasmine.createSpyObj<ProviderKeyService>(
+      'ProviderKeyService',
+      ['setKey'],
+      { loadFailed: signal(false) }
+    );
+    providerKeys.setKey.and.returnValue(
+      new Promise<void>(resolve => {
+        landWrite = () => {
+          keyStored = true;
+          resolve();
+        };
+      })
+    );
+
+    const vision = jasmine.createSpyObj<VisionOcrService>('VisionOcrService', [
+      'detectEnvironment',
+      'isAvailable',
+      'recognizeText',
+      'isMacEnvironment',
+    ]);
+    vision.isMacEnvironment.and.returnValue(false);
+    const apple = jasmine.createSpyObj<AppleIntelligenceService>('AppleIntelligenceService', [
+      'detectAvailability',
+      'isModelAvailable',
+      'parseReceiptText',
+    ]);
+    apple.isModelAvailable.and.returnValue(false);
+    const native = jasmine.createSpyObj<NativeReceiptService>('NativeReceiptService', [
+      'processImage',
+      'processImages',
+    ]);
+
+    TestBed.configureTestingModule({
+      providers: [
+        OfflineQueueProcessorService,
+        AIStrategyService,
+        { provide: OfflineQueueService, useValue: queue },
+        { provide: TransactionService, useValue: transactions },
+        { provide: NotificationService, useValue: notifications },
+        { provide: TranslationService, useValue: translation },
+        { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
+        { provide: ReceiptAttemptService, useValue: attempts.service },
+        { provide: CategoryService, useValue: { categories } },
+        { provide: CloudLLMProviderService, useValue: facade },
+        { provide: ProviderKeyService, useValue: providerKeys },
+        { provide: PwaService, useValue: { isOnline: () => true } },
+        { provide: VisionOcrService, useValue: vision },
+        { provide: AppleIntelligenceService, useValue: apple },
+        { provide: NativeReceiptService, useValue: native },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    processor.ngOnDestroy();
+  });
+
+  /**
+   * The real strategy and the drain over it. Built by each case, so a case
+   * can leave no task between the strategy's start-up and its own first step.
+   */
+  function start(): AIStrategyService {
+    const strategy = TestBed.inject(AIStrategyService);
+    processor = TestBed.inject(OfflineQueueProcessorService);
+    spyOn(strategy, 'processReceipt').and.callFake(async () => {
+      if (!armed) throw new Error('AI_CLOUD_UNAVAILABLE');
+      return processingResult([extracted()]);
+    });
+    return strategy;
+  }
+
+  it('holds the photo until a key saved on a settled page is up', async () => {
+    const strategy = start();
+    // The page has been open a while: the account's providers are up, keyless.
+    await strategy.cloudProvidersReady();
+    expect(armed).toBeFalse();
+
+    const save = strategy.applyProviderKey('gemini', 'k');
+    try {
+      dispatchImage('img_1');
+      await new Promise((r) => setTimeout(r, 25));
+
+      expect(strategy.processReceipt).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).not.toHaveBeenCalled();
+    } finally {
+      landWrite();
+    }
+    await save;
+    await waitFor(() => queue.updateImageStatus.calls.any());
+
+    expect(strategy.processReceipt).toHaveBeenCalledTimes(1);
+    expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+  });
+
+  it("holds the photo when the drain starts the account's first bring-up itself", async () => {
+    // Nothing between start-up and the press: the effect has not run, so the
+    // drain's wait is the one that starts the attempt, and it has to queue
+    // behind the save rather than come up ahead of the write.
+    const strategy = start();
+    const save = strategy.applyProviderKey('gemini', 'k');
+    try {
+      dispatchImage('img_1');
+      await new Promise((r) => setTimeout(r, 25));
+
+      expect(strategy.processReceipt).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).not.toHaveBeenCalled();
+    } finally {
+      landWrite();
+    }
+    await save;
+    await waitFor(() => queue.updateImageStatus.calls.any());
+
+    expect(strategy.processReceipt).toHaveBeenCalledTimes(1);
+    expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+  });
+
+  it('holds the photo until the providers are up when the account signs back in during a save it left behind', async () => {
+    const strategy = start();
+    await strategy.cloudProvidersReady();
+    // The real façade's counters (ADR 0179): a bring-up arms only when no
+    // newer bring-up or reset started while its read was out. Each read is
+    // held, and finds the key once the write has landed.
+    let generation = 0;
+    const reads: (() => void)[] = [];
+    facade.resetProviders.and.callFake(async () => {
+      generation++;
+      armed = false;
+    });
+    facade.initializeProviders.and.callFake(async () => {
+      const mine = ++generation;
+      await new Promise<void>(resolve => reads.push(resolve));
+      if (mine === generation) armed = keyStored;
+      return { keyReadFailed: false };
+    });
+
+    const save = strategy.applyProviderKey('gemini', 'k');
+    try {
+      userId.set(null);
+      TestBed.tick();
+      userId.set('user-a');
+      TestBed.tick();
+      dispatchImage('img_1');
+      await new Promise((r) => setTimeout(r, 25));
+      landWrite();
+      await new Promise((r) => setTimeout(r, 25));
+      expect(strategy.processReceipt).not.toHaveBeenCalled();
+      reads[0]();
+      await waitFor(() => queue.updateImageStatus.calls.any());
+    } finally {
+      landWrite();
+      reads.forEach(read => read());
+    }
+    await save;
+
+    expect(strategy.processReceipt).toHaveBeenCalledTimes(1);
+    expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'completed']]);
+  });
+
+  it('hands the photo back pending, its retry unspent, when the account signs out during a save whose write is still out', async () => {
+    const strategy = start();
+    await strategy.cloudProvidersReady();
+
+    const save = strategy.applyProviderKey('gemini', 'k');
+    try {
+      dispatchImage('img_1');
+      await new Promise((r) => setTimeout(r, 25));
+      // The drain's wait joined the save.
+      expect(queue.updateImageStatus).not.toHaveBeenCalled();
+
+      // The Firestore SDK keeps the departed account's write until that
+      // account is current again, so the write stays out until this case
+      // lands it, after the wait has answered.
+      userId.set(null);
+      TestBed.tick();
+      await new Promise((r) => setTimeout(r, 25));
+
+      // No error with it, so the queue spends no retry.
+      expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
+      expect(strategy.processReceipt).not.toHaveBeenCalled();
+    } finally {
+      landWrite();
+    }
+    await save;
+    await new Promise((r) => setTimeout(r, 25));
+
+    // The write that landed later sent nothing and wrote nothing more.
+    expect(queue.updateImageStatus.calls.allArgs()).toEqual([['img_1', 'pending']]);
+    expect(strategy.processReceipt).not.toHaveBeenCalled();
+    expect(armed).toBeFalse();
   });
 });

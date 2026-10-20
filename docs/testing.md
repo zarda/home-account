@@ -332,12 +332,13 @@ un-blanks a template or adds a binding.**
 Un-blanking also has a second gate: dropping `NO_ERRORS_SCHEMA` can surface a
 `Mat*Module` in an `imports:` array whose selector the template never uses,
 which `npm run material:check` fails (ADR 0128). Run it too. The same script
-holds a second rule (ADR 0178): a `<mat-select>` whose body offers an option
-bound `[value]="null"` must carry `canSelectNullableOptions`, or Material reads
-that option as a reset and the field shows empty, its label unfloated, while
-the model holds `null`. A spec that renders such a field reads the trigger's
-text (`.mat-mdc-select-value`) and whether the label floats, since a model
-assertion passes either way. The script's `--self-test` runs 60 cases across
+holds a second rule (ADR 0178, widened by ADR 0180): a `<mat-select>` whose
+body offers an option bound `[value]="null"` or `[value]="undefined"` must
+carry `canSelectNullableOptions`, or Material reads that option as a reset and
+the field shows empty, its label unfloated, while the model holds `null` or
+`undefined`. A spec that renders such a field reads the trigger's text
+(`.mat-mdc-select-value`) and whether the label floats, since a model
+assertion passes either way. The script's `--self-test` runs 65 cases across
 both rules.
 
 ### A real reload aborts the whole run
@@ -517,11 +518,11 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` |
-|---|---|---|
-| ERROR | 40 | 53 |
-| WARN | 38 | 60 |
-| LOG | 26 | **0** |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` |
+|---|---|---|---|
+| ERROR | 40 | 53 | 53 |
+| WARN | 38 | 60 | 60 |
+| LOG | 26 | **0** | **0** |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
@@ -532,8 +533,9 @@ LOG fell to zero because `no-console` now bans `console.log` outright; the five
 lines over the base when it was first recorded (43 ERROR and 40 WARN) are
 expected-failure paths in new specs, and so are the ten ERROR and twenty WARN
 lines above that earlier figure, which came from specs added since; the wave
-that recorded `26.10.173` added none, and neither did the one that
-recorded `26.10.175`. **Rendering
+that recorded `26.10.173` added none, and neither did the ones that
+recorded `26.10.175` and `26.10.177` (the latter's lines, deduplicated, match
+`26.10.176`'s one for one). **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.
