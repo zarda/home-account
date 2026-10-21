@@ -72,8 +72,14 @@ export class WidgetSnapshotService {
     if (!plugin) return;
 
     // Untracked so a calling effect stays keyed on what it chose to read, not
-    // on the lock, the catalog or the locale read while composing.
+    // on the lock, the catalog, the locale or the session read while composing.
     untracked(() => {
+      // The device can end a session while the dashboard stays open, and the
+      // page then republishes figures that belong to nobody. The signed-out
+      // sentence the constructor's effect wrote must stand, and a cold start
+      // that has not restored its session yet writes no figures either.
+      if (this.auth.currentUser() === null) return;
+
       const now = input.now ?? new Date();
       const snapshot = this.appLock.canEngage()
         ? this.compose('locked', now)

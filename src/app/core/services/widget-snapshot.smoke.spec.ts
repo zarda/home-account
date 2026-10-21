@@ -379,4 +379,39 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
     },
     CASE_TIMEOUT
   );
+
+  it(
+    'leaves the signed-out sentence when the session ends under the open dashboard',
+    async () => {
+      mockAuth.setMockUser(accountUser());
+      TestBed.inject(WidgetSnapshotService);
+
+      await harness.navigateByUrl('/dashboard');
+      await waitFor('a figures write', () => lastWrite()?.state === 'figures');
+
+      // The page stays alive, as it does when the device's SDK ends a session
+      // on its own: no navigation, no teardown, the dashboard still painted.
+      mockAuth.setMockUser(null);
+      // Any signed-out write, not the last one: the failure this case guards
+      // is a figures write landing after it.
+      await waitFor('a signed-out write', () => writes.some(write => write.state === 'signedOut'));
+      const signedOutAt = writes.findIndex(write => write.state === 'signedOut');
+
+      // A window for the dashboard's effect to republish what it still holds.
+      for (let pass = 0; pass < 15; pass++) {
+        harness.detectChanges();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      expect(writes.slice(signedOutAt + 1).map(write => write.state))
+        .withContext('writes after the signed-out one')
+        .toEqual([]);
+      expect(lastWrite()!.state).toBe('signedOut');
+      expect('figures' in lastWrite()!).toBeFalse();
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
 });

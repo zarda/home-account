@@ -457,5 +457,48 @@ describe('WidgetSnapshotService', () => {
         expect(written().state).toBe('signedOut');
       });
     });
+
+    // The device ends a session on its own (an expired token, a revoked
+    // account) while the dashboard stays open, and the dashboard's effect then
+    // republishes the figures it still holds. Those must not replace the
+    // signed-out sentence the account's sign-out wrote.
+    describe('with nobody signed in', () => {
+      it('writes nothing more from publish after the signed-out snapshot, and writes again once someone is', async () => {
+        currentUser.set(null);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().state).toBe('signedOut');
+
+        service.publish(input());
+        await settle();
+        expect(write).withContext('a publish with nobody signed in').toHaveBeenCalledTimes(1);
+
+        // The positive proof: the same call reaches the plugin for an account.
+        currentUser.set(createMockUser('user-1'));
+        service.publish(input());
+        await settle();
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(written().state).toBe('figures');
+        expect(written().figures!.spent).toBe('JPY 4200');
+      });
+
+      it('writes nothing from publish while auth is still loading with no user, and writes again once someone is', async () => {
+        isLoading.set(true);
+        currentUser.set(null);
+        TestBed.tick();
+
+        service.publish(input());
+        await settle();
+        expect(write).withContext('a publish while loading').not.toHaveBeenCalled();
+
+        isLoading.set(false);
+        currentUser.set(createMockUser('user-1'));
+        service.publish(input());
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().state).toBe('figures');
+      });
+    });
   });
 });
