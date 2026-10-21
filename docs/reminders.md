@@ -289,11 +289,14 @@ How the route travels, and who opens it:
 | The worker's registration (web) | `data: { route }` | The worker's `notificationclick`: it focuses the first open tab and posts it `{ type: 'notification-route', route }`, or opens a tab at the route when there is none or `focus()` is refused. A missing or refused route becomes `/` |
 | The page's constructor (web) | The page's own `onclick` | That page: `window.focus()`, `notification.close()`, then `router.navigateByUrl(route)` |
 | The plugin (iOS) | `extra: { route }` | `NotificationTapService`, listening for `localNotificationActionPerformed`; the plugin holds a tap that launched the app until the listener attaches |
+| A tap on the widget (iOS) | Nothing: the URL `com.homeaccount.app://widget` names no route | `NotificationTapService`, listening for the widget plugin's `tapped`, which the plugin holds until the listener attaches; it opens `/dashboard` (`widgetRoute()`) ([widget.md](widget.md#a-tap-opens-the-dashboard)) |
 
 `NotificationTapService` (`core/services/notification-tap.service.ts`) is the
 page's half on both platforms. On the web it listens for the worker's message
 on `navigator.serviceWorker`; in the iOS app it listens to the plugin, acting
-only on the `tap` action. It is loaded by dynamic import,
+only on the `tap` action, and to the widget's plugin beside it. Either
+listener can be refused without the other: each is logged once, and the
+other stays armed. It is loaded by dynamic import,
 `armNotificationTaps` in `app.config.ts`, so it stays out of the initial
 bundle: from an idle task on the web, and at once in the iOS app, where a
 listener attached seconds after launch would open the held tap over wherever
@@ -302,7 +305,10 @@ the app stays where it is. Before the router has completed its first
 navigation, the service waits for it to settle, because the start-up
 navigation, or the lock screen's redirect, would otherwise replace the tap's.
 A tap that reaches a locked app goes through the lock screen and comes back
-with its query intact.
+with its query intact. So does a tap that arrives as the app relocks on its
+return from the background: the relock remembers the navigation in flight,
+not the page it is leaving
+([app-lock.md](app-lock.md#relocking-and-a-tap-that-races-it)).
 
 ## The two delivery paths
 

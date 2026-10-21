@@ -55,13 +55,49 @@ the biometric opt-in together.
 
 `isLocked()` is `canEngage() && unlockedAt() === null`. The unlocked timestamp
 lives in memory and starts null, so a cold start is locked by construction —
-there is no "locked" flag on disk to keep in sync or to edit.
+there is no "locked" flag on disk to keep in sync or to edit. That holds once
+the profile loads: a profile read that fails leaves the lock off until the
+real profile arrives (see [Known gaps](#known-gaps)).
 
 `canEngage()` alone — a lock configured on this device, not whether the app
 happens to be locked right now — is also what the iOS home-screen widget
 reads before it will write a figure to disk; a process that can only read a
 file has no way to see `isLocked()`'s in-memory timestamp at all. See
 [widget.md](widget.md).
+
+## Relocking, and a tap that races it
+
+The app locks again on its return from the background once it has been
+away longer than the account's `appLockTimeoutMinutes`. `visibilitychange`
+is the clock: going hidden stamps the time, coming back compares it with
+the timeout (`shouldRelock`) and calls `lockNow()`, which clears the
+unlocked timestamp. One handler covers the web build and the iOS app, where
+WKWebView fires the event on Home and on an app switch, though not on a
+screen lock (see [Known gaps](#known-gaps)).
+
+Nothing is navigating at that moment for `authGuard` to intercept, so an
+effect in `AppLockService` does it: when `isLocked()` turns true, it sends
+the app to `/lock` and remembers the page to come back to. That page is
+`relockTarget()`:
+
+- the navigation in flight, when there is one: its `extractedUrl`,
+  serialized with `router.serializeUrl` and passed through `safeAppRoute`;
+- otherwise, or when `safeAppRoute` refuses it, `router.url`.
+
+A tap on the widget or on a reminder that arrives as the app comes back
+starts a navigation that has not committed yet. `router.url` still names
+the page it is leaving, and `/lock` cancels the tap's navigation, so
+remembering `router.url` sent the unlock back to that page; remembering the
+navigation in flight sends it where the tap was going
+([ADR 0183](ADR/0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md)).
+The early return for `/lock` and `/login` applies to the chosen URL. The
+router is read untracked, so the effect runs on a lock transition only,
+never on a navigation starting or ending.
+
+A tap on a locked app, cold or warm, takes the guard's path: `authGuard`
+sends it to `/lock` and remembers its route (`/dashboard` for the widget),
+and the unlock lands there. While the lock can engage, the widget itself
+shows only the locked sentence ([above](#the-method-ladder-and-the-fail-open-rule)).
 
 ## What is stored, and where
 
@@ -249,12 +285,38 @@ simulator:
 7. **The button** raises a second prompt in the same boot.
 8. **Enrolment off, cold start.** `Code=-7` again, no `evaluatePolicy`, and
    the screen is PIN-only with no prompt and no error.
+9. **A tap that races the relock.** With the lock on, press Home on any page
+   other than the dashboard, wait past the relock timeout, and tap a widget
+   ([widget.md](widget.md#verifying-on-the-simulator) places one): `/lock`,
+   then the PIN lands on `/dashboard`, not the page the app was left on.
+   Leave the app with Home, never by locking the screen, which does not
+   start the clock (below).
 
 Restore afterwards: *Remove PIN* clears the record and the opt-in on the
 device and switches `enableAppLock` back off on the account.
 
 ## Known gaps
 
+- **A screen lock is not counted.** With the app in front, locking the
+  device fires no `visibilitychange` in the installed iOS app (WebKit logs
+  `isSuspendedUnderLock`), and neither does the return from the Lock
+  Screen. The relock clock never runs while the phone is locked, so a phone
+  locked with the app open and unlocked an hour later shows the app
+  unlocked, and a tap on a Lock Screen widget opens it the same way. Home
+  and an app switch do fire the event, which is why every earlier run
+  looked right. Found on the simulator on 2026-10-22, during the widget's
+  session ([ADR 0183](ADR/0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md));
+  it is older than that work and not fixed there. A follow-up is for the
+  owner, #503.
+- **A degraded profile turns the lock off.** When the profile read fails,
+  `AuthService` continues on an in-memory fallback built from the defaults
+  (`buildNewUserProfile`), which has no `enableAppLock`. `isEnabled()` reads
+  only those preferences, so the app opens unlocked, and
+  `WidgetSnapshotService.publish()` writes figures for the widget, until the
+  profile retry swaps the real profile in. Closing it would take the lock
+  failing closed while the profile is degraded and this device holds a PIN
+  record for the uid, and the widget writing the locked sentence in that
+  state.
 - **No real-device run is on record.** Everything above was proved on a
   simulator, which does not exercise the Secure Enclave, an enrolment change
   invalidating anything, or a real sensor.

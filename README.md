@@ -40,7 +40,7 @@ This project demonstrates modern Angular development practices with a focus on:
 | **Camera** | Browser API | Native Camera | File picker |
 | **Offline** | Offline queue in IndexedDB; no caching worker | Offline queue in IndexedDB | Offline queue in IndexedDB |
 | **Donate Link** | Visible | Hidden (App Store guidelines) | Hidden (App Store guidelines) |
-| **Home-screen widget** | Not available | This month's spend, net, top budget and next bill, from the dashboard's last paint — see [docs/widget.md](docs/widget.md) | Not available |
+| **Widget** | Not available | Home Screen: this month's spend, net, top budget and next bill; Lock Screen: this month's net. From the dashboard's last paint, leaving out a card the account hid, named in the device's language; a tap opens the dashboard — see [docs/widget.md](docs/widget.md) | Not available |
 | **Installation** | Add to Home Screen | App Store | App Store / runs the iOS app ("Designed for iPad") |
 
 On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence is available (macOS 26+ / iOS 26+ with the Foundation Models framework), receipts are processed fully on device: Vision OCR recognizes the text and Apple's foundation model structures it into transactions — no API key or network needed. Browsers cannot access Apple's model, so the Mac app is the way to use it; without Apple Intelligence, Macs fall back to the configured cloud models (Gemini 3.5 / Gemma 4) and then to the basic Vision OCR parser. Building the Apple Intelligence plugin requires Xcode 26 (it compiles to an unavailable stub on older SDKs).
@@ -206,7 +206,7 @@ here.
 | `npm --prefix functions test` | The functions workspace's own tests, after `npm --prefix functions ci` builds it — not a root script |
 | `npm run lint` | ESLint, templates included |
 | `npm run lint-guards:check` | Verify the ESLint import and syntax bans still resolve for the files they were written for, an import ban's named imports included — the analytics ban died once by being silently replaced |
-| `npm run i18n:check` | Verify every literal translation key resolves in all locales, no template hard-codes an aria-label, alt text or visible English sentence or joins a translated fragment to a value by a comma, and no code falls back to an English `Unknown`, `Other` or `User` a reader would see ([docs/i18n.md](docs/i18n.md)) |
+| `npm run i18n:check` | Verify every literal translation key resolves in all locales, no template hard-codes an aria-label, alt text or visible English sentence or joins a translated fragment to a value by a comma, no code falls back to an English `Unknown`, `Other` or `User` a reader would see, and the iOS widget's string tables equal the catalogs and are wired into the build, with no display literal of its own in its Swift ([docs/i18n.md](docs/i18n.md)) |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
@@ -249,7 +249,7 @@ Local only:
 | `npm run build:ios` | Build and sync to iOS |
 | `npm run cap:ios` | Open iOS project in Xcode |
 | `npm test` | Run unit tests |
-| `npm run test:ios` | Run the Swift share-seam tests in the iOS Simulator — CI never builds iOS; edit the destination if iPhone 17 is not installed |
+| `npm run test:ios` | Run AppTests, the Swift logic tests (share seams, biometric outcome, the widget snapshot's decoder, faces and tap URL), in the iOS Simulator — CI never builds iOS; edit the destination if iPhone 17 is not installed |
 | `npx firebase deploy --only hosting,firestore,storage` | Manual web deploy — merges to `main` deploy automatically ([docs/deploy.md](docs/deploy.md)) |
 
 ## Continuous Integration
@@ -283,7 +283,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/account-deletion.md](docs/account-deletion.md) | Account deletion: the client-side cascade, its ordering, partial-failure semantics, and the rules it needed |
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |
 | [docs/pwa.md](docs/pwa.md) | The PWA layer: reachability, running installed, iOS and iPadOS detection, the install prompt and the About page's card, and why there is no background sync |
-| [docs/widget.md](docs/widget.md) | The iOS home-screen widget: the snapshot contract, when it is written and deduplicated, the four states, the plugin and target, and verifying it on the simulator |
+| [docs/widget.md](docs/widget.md) | The iOS widget on the Home Screen and the Lock Screen: the snapshot contract, when it is written and deduplicated, what it leaves out, the four states, what each size shows, the tap that opens the dashboard, its name in the device's language, the plugin and target, and verifying it on the simulator, with the run on record |
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
 | [docs/household.md](docs/household.md) | Households: what a shared row reveals and what stays private, sharing, the household's own budgets and goals, the flows, the invite callable's answers, the data model and rules, the cleanup triggers, and the operator runbook for the callable, its invoker grant and its mail |
 | [docs/forecast.md](docs/forecast.md) | The cash-flow forecast: zero-at-today baseline, the catch-up seam, horizons, and what never projects |
@@ -300,7 +300,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/feedback.md](docs/feedback.md) | In-app feedback: the stored record, its About-page door, and the mail that leaves from a Cloud Function |
 | [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, the browser layer, the invite callable and the household cleanup triggers, which the smoke run never starts, and the checks that stand in |
 | [docs/e2e.md](docs/e2e.md) | The browser journey protocol: its two venues — production, and the emulators for journeys that need several accounts — the checks before every run, the writes a run may make and how they are put back, the journeys and their passes |
-| [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's five scans, and what still escapes them |
+| [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's six scans and its comma-join check, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
 | [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the reload on an account change the page did not start, where the web keeps the session, the degraded fallback profile and its retry, and the identity check every write across an await makes |
 | [docs/accessibility.md](docs/accessibility.md) | What the app guarantees to assistive technology, where each guarantee is enforced, and the gaps that remain |

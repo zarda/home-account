@@ -2,6 +2,7 @@
 
 **Status:** Accepted, implemented; amended by
 [0166](0166-a-hidden-card-closes-what-nothing-else-reads-the-layout-stores-only-what-changed-and-each-card-has-a-menu.md)
+and [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md)
 · **Date:** 2026-09-16 · **Issues:** #87
 
 Reference documentation lives in [../dashboard.md](../dashboard.md).
