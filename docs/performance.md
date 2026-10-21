@@ -213,11 +213,107 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.412 MB | 2.7 MB |
+| Initial bundle | 2.407 MB | 2.7 MB |
 
-Against 2,411,435 bytes (JavaScript 2,380,239, stylesheet 31,196, in 60
+Against 2,406,497 bytes (JavaScript 2,375,301, stylesheet 31,196, in 62
 initial files), measured by `npm run build:analyze` from a clean production
-build on 2026-10-20.
+build on 2026-10-22.
+
+The warning came down to 2.407 MB after the work of #500 and #441 (a date picker,
+an amount and a name that read in the account's language and date format, and
+a tap on the home-screen widget;
+[ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)
+and
+[ADR 0183](ADR/0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md))
+took the initial bundle 4,959 bytes under the 2,411,435 it stood at, to
+2,406,476. All of it is JavaScript, from 2,380,239 to 2,375,280; the stylesheet
+did not move. The figure had been over the 2.412 MB warning along the way, at 2,412,862
+bytes with the adapter in and at 2,414,244 with the calendar's labels, and the
+work still put code in the initial files. Measured per input from the build's
+own stats, against a rebuild of the work's base, `563c3eeb` (2,411,435 bytes in
+60 files there, the recorded figure to the byte), `src/app` grew by 6,070 bytes
+and the libraries gave back 13,242.
+
+`app-datepicker-intl.ts` (1,483 bytes), `app-date-adapter.ts` (990) and
+`datepicker.config.ts` (126) are new to the initial files, 2,599 bytes between
+them: the calendar's words, the adapter that shows and reads a date in the
+account's format and language, and the one provider function `app.config.ts`
+now calls where it called `provideNativeDateAdapter()`, which is why they are
+initial at all (`app.config.ts` itself took 19). The stepper's words are not
+among them: the import wizard provides them, so Material's stepper stays in the
+wizard's lazy chunk. A typed date took 1,434: `parseTypedDate` and its
+patterns in `transaction-date.utils.ts` (586), the table of the three fixed
+formats with the order each reads, the preference and `parseDate` in
+`date-format.service.ts` (422), and `fieldOrder`, read once per locale from the
+date formatter's own parts, in `locale-format.service.ts` (426). The
+transaction form, initial because `quick-add.service.ts` imports it, took 322:
+the message its date field shows for a typed text that does not parse, and the
+three standalone picker directives it imports where it imported two modules.
+The header's name took 623: `person-name.utils.ts` is a new module in the
+initial files, 406 bytes, and `header.component.ts` took 217 for the name it
+shows in the account's language. The widget took 382:
+`widget-snapshot.service.ts` 254 (the cards a reader hid, left out of the
+snapshot and named in it, the read of the translation catalog's version, and
+the return when no one is signed in), `widget-snapshot.plugin.ts` 92 for the
+token's `addListener`, which the adapter the factory hands out on a device now
+forwards beside `write`, and `widget-snapshot.model.ts` 36, which became
+initial. The tap's own code, `NotificationTapService`, stays in its lazy chunk.
+The lock took 226: `app-lock.service.ts` 179 for `relockTarget`, which keeps the
+target of a navigation still under way across a relock, and
+`notification-route.utils.ts` 47 for `widgetRoute`. `app-lock.service.ts` now
+imports `safeAppRoute` from that module beside `reminder.service.ts`, and the
+module was cut out of the chunk that held it into an initial chunk of its own,
+387 bytes and a file more, the cut described below for
+`category-display.utils.ts`. The bottom bar took 97: `nav-items.ts` 47 and
+`bottom-nav.component.ts` 50, for the shorter label a destination may read
+there. Fifty-seven other `src/app` inputs moved by 1 to 93 bytes, 368 between
+them, and only one of them, `auth.service.ts` (4 fewer), was edited:
+`ai-search-dialog.component.ts` (+93), `login.component.ts` (+59) and
+`command-palette.component.ts` (+57) head the list, which is the minifier
+renaming around the changed modules.
+
+The libraries gave back more than that. `@angular/common`'s
+`_common_module-chunk.mjs`, 11,605 bytes of the initial files in the base build,
+holds 1,764: nine reports components imported Angular's `CurrencyPipe` for their
+amounts, each reads `LocaleCurrencyPipe` now, which formats through
+`CurrencyService`, and the pipe's code, which the base build held in an initial
+chunk, is in no chunk of this one. That is 9,841 bytes, 9,802 with the
+package's smaller moves. `@angular/core`'s `_debug_node-chunk.mjs` came to 2,554
+bytes less (141,014 to 138,460); the stats name the input and not the symbols,
+and which removal took them out is not isolated. Material and the CDK came to
+755 bytes less between them (875 with these seven; the two packages' smaller
+moves give back 120): `datepicker.mjs` 708 and Material's `core.mjs` 363
+less, the two files that declare the dropped `MatDatepickerModule`,
+`MatNativeDateModule` and `provideNativeDateAdapter()` (the adapter's own base
+class, `NativeDateAdapter`, stays), and `_pseudo-checkbox-chunk.mjs` 421 and
+`select.mjs` 248 less, against `_option-chunk.mjs` 410, the CDK's
+`_selection-model-chunk.mjs` 249 and `list.mjs` 206 more, which no edit has been
+traced to. The chunks around them changed shape. The datepicker chunk no longer
+carries Material's `core.mjs`; `select.mjs`, the option chunk and the option
+module share an output file of 38,410 bytes, where `select.mjs` had one of its
+own and the option chunk another, and the pseudo-checkbox (an output file of
+4,594 bytes) and the CDK's selection model (3,355), which the option chunk held,
+came out into files of their own. With the 387-byte output file above, that is
+the two initial files more (62 where there were 60). The per-input figures in
+this account are the build stats' `bytesInOutput`. They compare one input across
+the two builds, and they do not add up to the output total: summed over the 62
+initial outputs they come to 2,875,511 bytes (2,882,683 in the base build),
+against 2,406,476 (2,411,435) on disk, and the 387-byte file holds an input of
+458. The inputs came to 7,172 bytes less between the builds and the output
+total to 4,959 less, a difference of 2,213 bytes between the two measures that
+is not attributed. After that measure, the bump to 26.10.178 took a byte off
+(2,406,475), and the fixes of the whole-branch review brought the figure to
+2,406,494, all of it JavaScript. `widget-snapshot.service.ts` took 16 bytes for
+the month of the window the figures were summed over, which `monthKey` now
+reads instead of the clock, and `transaction-date.utils.ts` took 4 for `・` and
+`ー`, the Japanese keyboard's slash and hyphen, as separators. Four other
+initial inputs moved by one or two bytes each, a byte less between them, which
+is the minifier renaming around the changed modules. A last fix added `。`,
+the same keyboard's full stop, as a separator: 3 bytes in
+`transaction-date.utils.ts` against a build without it, to 2,406,497
+(2,375,301 of JavaScript). The currency pipe's unsigned zero, the dashboard,
+the household members page and the reports' best month are in lazy chunks.
+The figure sits under the 2.407 MB warning.
 
 The warning went up again, to 2.411 MB, when the work of #495 and #497 put the
 initial bundle 1,738 bytes over the 2.409 MB it stood at; it moved to the whole
@@ -410,9 +506,10 @@ effect on the account, a `catch` for the recount's read and the release of
 its handle on destroy: +192 bytes (2,406,419 to 2,406,611), 100 of them the
 effect and 92 the `catch` and the release.
 
-The warning stands at 2.412 MB. The final build leaves 565 bytes of headroom
-under it (2,412,000 less 2,411,435), which is now more than the 501 bytes the
-main branch had under the 2.472 MB warning at `8a6e2c9a` (2,471,499 bytes). `about.component.ts` and
+The warning stands at 2.407 MB, the whole kilobyte above the final build's
+2,406,497 bytes: 503 bytes of headroom (2,407,000 less 2,406,497), about the
+501 bytes the main branch had under the 2.472 MB warning at `8a6e2c9a`
+(2,471,499 bytes). `about.component.ts` and
 `feedback.service.ts` import `package.json` whole, but a version string of the
 same length adds nothing of its own. The bump from 26.10.171 to 26.10.172 moved
 the total from 2,406,421 to 2,406,419 bytes all the same, and all of it in the
