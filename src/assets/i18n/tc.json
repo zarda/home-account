@@ -22,6 +22,11 @@
     "yearRange": "{{start}} 至 {{end}}",
     "yearRangeLabel": "{{start}} 至 {{end}}"
   },
+  "stepper": {
+    "completed": "已完成",
+    "editable": "可編輯",
+    "optional": "選填"
+  },
   "common": {
     "income": "收入",
     "expense": "支出",

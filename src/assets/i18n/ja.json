@@ -22,6 +22,11 @@
     "yearRange": "{{start}}〜{{end}}",
     "yearRangeLabel": "{{start}}から{{end}}まで"
   },
+  "stepper": {
+    "completed": "完了",
+    "editable": "編集可能",
+    "optional": "任意"
+  },
   "common": {
     "income": "収入",
     "expense": "支出",

@@ -984,6 +984,74 @@ describe('TransactionListComponent desktop category cell', () => {
 });
 
 /**
+ * Each sortable column header describes its action to a screen reader as the
+ * CDK's AriaDescriber does: a hidden message the header's button names in
+ * `aria-describedby`. Material's own text is the English word "Sort", read to
+ * a reader of any language unless the template binds the account's words.
+ */
+describe('TransactionListComponent desktop sort headers', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat.formatDate.and.returnValue('date');
+    dateFormat.formatRelativeDate.and.returnValue('rel');
+    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+      'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+    ]);
+    categoryHelper.getCategoryName.and.returnValue('Cat');
+    categoryHelper.getCategoryIcon.and.returnValue('icon');
+    categoryHelper.getCategoryColor.and.returnValue('#000');
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((k: string) => k);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent],
+      providers: [
+        { provide: TransactionWindowService, useValue: createMockWindowSource() },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: dateFormat },
+        { provide: CategoryHelperService, useValue: categoryHelper },
+        { provide: TranslationService, useValue: translation },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+        { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+        provideNoMotion(),
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    fixture.componentRef.setInput('transactions', [createTransaction({ id: 'a', description: 'Apple' })]);
+    fixture.detectChanges();
+  });
+
+  /** The text of every message a sort header's button is described by. */
+  const described = (button: Element): (string | undefined)[] =>
+    (button.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .filter(id => id.length > 0)
+      .map(id => document.getElementById(id)?.textContent?.trim());
+
+  it('describes the sort action of the date, description and amount columns with the catalog key', () => {
+    const buttons: Element[] = Array.from(
+      fixture.nativeElement.querySelectorAll('th[mat-sort-header] .mat-sort-header-container')
+    );
+
+    expect(buttons.length).withContext('the sortable columns').toBe(3);
+    for (const [index, button] of buttons.entries()) {
+      expect(described(button)).withContext(`the description of sortable column ${index + 1}`).toEqual(['transactions.sortBy']);
+    }
+  });
+});
+
+/**
  * The three inline controls a table cell can carry are all glyph-sized (32,
  * 32, 18), too small on their own for the 40px floor. Each carries a
  * clamped `::after` overhang instead of fattening the glyph box itself — the

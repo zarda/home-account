@@ -27,6 +27,7 @@ import { Analytics, AnalyticsSettings, initializeAnalytics, setConsent } from '@
 import { RemoteConfig } from '@angular/fire/remote-config';
 import { DateAdapter } from '@angular/material/core';
 import { MatDatepickerIntl } from '@angular/material/datepicker';
+import { MatStepperIntl } from '@angular/material/stepper';
 
 import {
   LEDGER_SWEEP_IDLE_FALLBACK_MS,
@@ -510,6 +511,14 @@ describe('appConfig', () => {
 
     expect(tokens).withContext('the adapter').toContain(DateAdapter);
     expect(tokens).withContext('the labels').toContain(MatDatepickerIntl);
+  });
+
+  // The stepper's words come from the import wizard's own providers: listing
+  // MatStepperIntl here pulls Material's stepper out of the lazy wizard chunk
+  // into the initial bundle (import-wizard.component.spec.ts proves the
+  // wizard brings them).
+  it('does not provide MatStepperIntl: the lazy import wizard does', () => {
+    expect(providedTokens(appConfig.providers)).not.toContain(MatStepperIntl);
   });
 
   // Pin: LOCALE_ID still feeds the registered locale data and the default the

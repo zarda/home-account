@@ -14,6 +14,7 @@ import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { APP_STEPPER_INTL_PROVIDER } from '../../../../core/services/app-material-intl';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import {
   CategorizedImportTransaction,
@@ -92,6 +93,11 @@ function countSentences(text: string): number {
     DuplicateWarningComponent,
     TranslatePipe
   ],
+  // The stepper's hidden words in the account's language. Provided here, not
+  // at the root: this is the only stepper in the app and it is lazily routed,
+  // so listing them in app.config.ts would carry Material's stepper into the
+  // initial bundle.
+  providers: [APP_STEPPER_INTL_PROVIDER],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './import-wizard.component.html',
   styleUrl: './import-wizard.component.scss'

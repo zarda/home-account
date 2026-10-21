@@ -22,6 +22,11 @@
     "yearRange": "{{start}} – {{end}}",
     "yearRangeLabel": "{{start}} to {{end}}"
   },
+  "stepper": {
+    "completed": "Completed",
+    "editable": "Editable",
+    "optional": "Optional"
+  },
   "common": {
     "income": "Income",
     "expense": "Expense",

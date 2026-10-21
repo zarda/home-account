@@ -30,11 +30,12 @@
  * flag the cure; asserting the outcome catches every mechanism that kills a
  * ban, including ones not invented yet.
  *
- * Four further rules ride the same mechanism through no-restricted-syntax.
+ * Five further rules ride the same mechanism through no-restricted-syntax.
  * The first two share one options array precisely because a second block
- * setting the same key would replace it; the pipe ban governs templates, and
- * the fourth governs specs, which the app block ignores, so each has a block
- * of its own:
+ * setting the same key would replace it; the two template rules (the pipe ban
+ * and the sort-header rule) govern templates and share the template block's
+ * array, and the last governs specs, which the app block ignores, so each
+ * has a block of its own:
  *
  *   - firstValueFrom over a TransactionService or FirestoreService listener
  *     (docs/one-shot-reads.md, #427) — a warm cache's first emission is a
@@ -53,6 +54,16 @@
  *   - The built-in `date` and `number` pipes in a template (ADR 0058). Both
  *     are at zero sites, so nothing in the app would notice the ban dying —
  *     which is the exact condition under which the analytics ban died.
+ *   - A sortable column header with no bound description (#500). Material's
+ *     sort header describes its action to a screen reader as the English
+ *     word "Sort" unless the template binds `sortActionDescription`, so a
+ *     `mat-sort-header` without the binding speaks English to a reader of any
+ *     language. The selector sits in the template block's array beside the
+ *     pipe bans, matches the header element whether the attribute is plain or
+ *     bound, and is satisfied only by a binding: a static English
+ *     `sortActionDescription="…"` still fails. Every header binds it today, so
+ *     nothing in the app would notice the rule dying; the self-test's
+ *     fixtures prove it fires.
  *   - A spec listening for a rejection nobody caught on window (#500,
  *     docs/testing.md): the `unhandledrejection` and `rejectionhandled` event
  *     names as any string literal, and the `onunhandledrejection` /
@@ -101,6 +112,9 @@
  *     as a template literal (a TemplateLiteral is not a Literal), or reached
  *     as a computed handler (`window['onunhandledrejection']`): the selectors
  *     read a literal name and a plain property name only.
+ *   - What a bound sort-header description says. The selector asks for a
+ *     binding, not for the catalog key: `[sortActionDescription]="'Sort'"` is a
+ *     binding and passes.
  *   - App code listening for a rejection. The ban resolves for specs; the
  *     population row proves nothing about src/app outside *.spec.ts.
  *   - A detector that is merely too weak: a spec that never listens, but reads
@@ -205,6 +219,15 @@ const PIPED_LISTENER_SELECTOR =
 const TEMPLATE_DATE_SELECTOR = 'BindingPipe[name="date"]';
 const TEMPLATE_NUMBER_SELECTOR = 'BindingPipe[name="number"]';
 
+// A sortable column header that binds no description for its action. Material
+// describes the sort button to a screen reader as the English word "Sort"
+// unless the template binds `sortActionDescription`, so a header without the
+// binding speaks English to every reader. Only a BINDING passes: a static
+// `sortActionDescription="…"` is written in one language for all of them.
+const TEMPLATE_SORT_HEADER_SELECTOR =
+  'Element:has(> TextAttribute[name="mat-sort-header"], > BoundAttribute[name="mat-sort-header"])' +
+  ':not(:has(> BoundAttribute[name="sortActionDescription"]))';
+
 // The dynamic half of the analytics ban. no-restricted-imports reads static
 // declarations only, so import('@capacitor-firebase/analytics') passes it —
 // which is why this one is a syntax selector and why it lives in the same
@@ -246,12 +269,12 @@ const SYNTAX_POPULATIONS = [
     expectedSelectors: [DIRECT_LISTENER_SELECTOR, PIPED_LISTENER_SELECTOR],
   },
   {
-    label: 'templates under the built-in date/number pipe ban',
+    label: 'templates under the built-in date/number pipe and the sort-header description bans',
     files: [
       'src/app/features/reports/monthly-comparison/monthly-comparison.component.html',
       'src/app/shared/components/transaction-row/transaction-row.component.html',
     ],
-    expectedSelectors: [TEMPLATE_DATE_SELECTOR, TEMPLATE_NUMBER_SELECTOR],
+    expectedSelectors: [TEMPLATE_DATE_SELECTOR, TEMPLATE_NUMBER_SELECTOR, TEMPLATE_SORT_HEADER_SELECTOR],
   },
   {
     // A spec double is not a warm cache, so the firstValueFrom pair and the
@@ -801,6 +824,37 @@ async function selfTest() {
     { filePath: templatePath }
   );
   check('the replacement pipes pass the rule', countSyntaxMessages(localeInTemplate), 0);
+
+  // The sort-header half. A header's own description is the English "Sort"
+  // unless the template binds one, so every shape of a sortable header must
+  // fail without the binding and pass with it. `*matHeaderCellDef` hoists a
+  // header's inputs onto the Template node the Element sits inside, which the
+  // selector does not match, so a bound `[mat-sort-header]` fails once.
+  const sortHeader = attributes =>
+    '<table mat-table matSort><ng-container matColumnDef="d">' +
+    `<th mat-header-cell *matHeaderCellDef ${attributes}>x</th>` +
+    '</ng-container></table>\n';
+  const sortHeaderCases = [
+    ['a sortable header with no description', 'mat-sort-header', 1],
+    ['a sortable header with a bound description', `mat-sort-header [sortActionDescription]="'k' | translate"`, 0],
+    ['a bound sort header with no description', `[mat-sort-header]="'id'"`, 1],
+    ['a bound sort header with a bound description', `[mat-sort-header]="'id'" [sortActionDescription]="'k' | translate"`, 0],
+    ['a sortable header with a static description', 'mat-sort-header sortActionDescription="Sort"', 1],
+    ['a header that is not sortable', '', 0],
+  ];
+  for (const [shape, attributes, expected] of sortHeaderCases) {
+    const linted = await fixtureEslint.lintText(sortHeader(attributes), { filePath: templatePath });
+    check(`${shape} ${expected === 0 ? 'passes' : 'fails'} the rule${expected === 0 ? '' : ' once'}`, countSyntaxMessages(linted), expected);
+  }
+
+  const twoSortHeaders = await fixtureEslint.lintText(
+    '<table mat-table matSort>' +
+      '<ng-container matColumnDef="a"><th mat-header-cell *matHeaderCellDef mat-sort-header [sortActionDescription]="\'k\' | translate">a</th></ng-container>' +
+      '<ng-container matColumnDef="b"><th mat-header-cell *matHeaderCellDef mat-sort-header>b</th></ng-container>' +
+      '</table>\n',
+    { filePath: templatePath }
+  );
+  check('only the sort header that lacks a description fails the rule', countSyntaxMessages(twoSortHeaders), 1);
 
   // The spec-only half: a listener for a rejection nobody caught. Each shape a
   // spec could use to hear one on window must fail the rule once, and the

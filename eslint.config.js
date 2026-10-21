@@ -402,6 +402,17 @@ module.exports = defineConfig([
       // replacement hazard here; the inline-template virtual filename never
       // matches src/app/**/*.ts, so this and the firstValueFrom block cannot
       // collide either. scripts/check-lint-guards.mjs asserts both.
+      //
+      // The third selector is the same shape of guard for Material's sort
+      // header. It describes its action to a screen reader as the English
+      // word "Sort" unless the template binds `sortActionDescription`, so a
+      // header without the binding speaks English to a reader of any
+      // language. `mat-sort-header` is an attribute on the <th>, plain or
+      // bound; a header the structural `*matHeaderCellDef` sits on is still
+      // the Element the attributes belong to, since the Template node that
+      // wraps it holds only hoisted copies and is not matched. Only a BINDING
+      // satisfies it: a static `sortActionDescription="…"` is one language
+      // for every reader.
       "no-restricted-syntax": [
         "error",
         {
@@ -415,6 +426,15 @@ module.exports = defineConfig([
           message:
             "Use | localeNumber. Angular's number pipe groups digits against the build's " +
             "LOCALE_ID, so it ignores the language the account chose (ADR 0058).",
+        },
+        {
+          selector:
+            'Element:has(> TextAttribute[name="mat-sort-header"], > BoundAttribute[name="mat-sort-header"])' +
+            ':not(:has(> BoundAttribute[name="sortActionDescription"]))',
+          message:
+            "Bind [sortActionDescription]=\"'transactions.sortBy' | translate\". Material describes " +
+            "a sortable header as the English word \"Sort\" otherwise, and a static " +
+            "sortActionDescription=\"…\" is one language for every reader.",
         },
       ],
     },
