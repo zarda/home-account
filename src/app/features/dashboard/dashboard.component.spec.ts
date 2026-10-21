@@ -55,6 +55,8 @@ import {
   ratio,
   withTheme,
   provideNoMotion,
+  createTranslationStub,
+  TranslationStub,
 } from '../../core/services/testing';
 import {
   PeriodSelection,
@@ -142,7 +144,8 @@ describe('DashboardComponent', () => {
   let currencyService: jasmine.SpyObj<CurrencyService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let announcer: jasmine.SpyObj<AnnouncerService>;
-  let translation: jasmine.SpyObj<TranslationService>;
+  // The shared stub's real signals (locale, catalog version) with `t` a spy.
+  let translation: Omit<TranslationStub, 't'> & { t: jasmine.Spy<TranslationStub['t']> };
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
   let widgetSnapshots: jasmine.SpyObj<WidgetSnapshotService>;
@@ -256,8 +259,7 @@ describe('DashboardComponent', () => {
       (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
     );
 
-    translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string) => k);
+    translation = { ...createTranslationStub(), t: jasmine.createSpy('t').and.callFake((k: string) => k) };
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);

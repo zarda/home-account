@@ -9,6 +9,7 @@ import { CurrencyService } from './currency.service';
 import { LocaleFormatService, LocaleDateStyle } from './locale-format.service';
 import { TranslationService } from './translation.service';
 import { createMockUser } from './testing/mock-auth.service';
+import { createTranslationStub, TranslationStub } from './testing/translation-stub';
 import { WIDGET_SNAPSHOT_PLUGIN, WidgetSnapshotPlugin } from '../plugins/widget-snapshot.plugin';
 import {
   Budget,
@@ -89,11 +90,26 @@ describe('WidgetSnapshotService', () => {
   let isLoading: ReturnType<typeof signal<boolean>>;
   let canEngage: ReturnType<typeof signal<boolean>>;
   let formatCurrency: jasmine.Spy<(amount: number, code: string) => string>;
+  let translation: TranslationStub;
+  // What every key reads through: '' is the echo catalog the cases assert on;
+  // `switchCatalog` moves to another one the way a language change does.
+  let catalog: string;
+
+  /** Reads every key through `prefix` from now on and bumps the catalog version. */
+  function switchCatalog(prefix: string): void {
+    catalog = prefix;
+    translation.translationsVersion.update(version => version + 1);
+  }
 
   function configure(plugin: WidgetSnapshotPlugin | null, withFormatters = true): void {
     currentUser = signal<User | null>(createMockUser('user-1'));
     isLoading = signal(false);
     canEngage = signal(false);
+    catalog = '';
+    translation = createTranslationStub({
+      t: (key: string, params?: Record<string, string | number>) =>
+        params ? `${catalog}${key}|${JSON.stringify(params)}` : `${catalog}${key}`,
+    });
     formatCurrency = jasmine
       .createSpy('formatCurrency')
       .and.callFake((amount: number, code: string) => `${code} ${amount}`);
@@ -106,13 +122,7 @@ describe('WidgetSnapshotService', () => {
     };
     const formatters = withFormatters
       ? [
-          {
-            provide: TranslationService,
-            useValue: {
-              t: (key: string, params?: Record<string, string | number>) =>
-                params ? `${key}|${JSON.stringify(params)}` : key,
-            },
-          },
+          { provide: TranslationService, useValue: translation },
           { provide: CurrencyService, useValue: { formatCurrency } },
           {
             provide: LocaleFormatService,
@@ -336,6 +346,25 @@ describe('WidgetSnapshotService', () => {
 
         expect(write).toHaveBeenCalledTimes(2);
         expect(written(1).figures!.spent).toBe('JPY 4300');
+      });
+
+      // A pin on the stub, and on the content the dedupe compares: the labels
+      // are part of it, so a publish after a catalog switch is not skipped.
+      it('writes again when the catalog switches, though no figure changed', async () => {
+        const version = translation.translationsVersion();
+
+        service.publish(input());
+        await settle();
+        switchCatalog('ja:');
+        service.publish(input());
+        await settle();
+
+        expect(translation.translationsVersion()).toBe(version + 1);
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(written(0).labels.title).toBe('dashboard.thisMonth');
+        expect(written(1).labels.title).toBe('ja:dashboard.thisMonth');
+        expect(written(1).labels.updated).toBe('ja:widget.updated|{"date":"medium:2026-9-14"}');
+        expect(written(1).figures!.spent).toBe(written(0).figures!.spent);
       });
 
       it('writes the same figures again on the next local day', async () => {
