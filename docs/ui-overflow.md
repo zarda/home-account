@@ -230,12 +230,19 @@ npm run truncation:check
 ```
 
 `scripts/check-truncation.mjs`, which is the grep this section used to ask you
-to run by hand, masked for comments so the notes explaining a deleted rule do
-not trip it. It reads the source rather than the rendered page, so it catches
-the site added next month as well as the ones found so far — which no fixed set
-of component tests can. What it cannot see is whether the replacement works;
-`shared/truncation-guard.spec.ts` measures that. CI runs it on every push and
-pull request, between the composite-index check and the unit tests.
+to run by hand, masked for comments (`<!-- -->` in a template, `//` and `/* */`
+elsewhere) so the notes explaining a deleted rule do not trip it. It also reads
+Tailwind's `truncate` and `text-ellipsis` (and the older `overflow-ellipsis`),
+as an `@apply` token and as a class in a template or a component's host
+`class`, `[class.truncate]` included: each is `text-overflow: ellipsis` under
+another name, and the declaration grep alone read past two of them on the
+dashboard's budget card. It reads the source rather than the rendered page, so
+it catches the site added next month as well as the ones found so far — which
+no fixed set of component tests can. It does not parse expressions, so the
+utility spelled inside one — an `[ngClass]` key, a quoted token in an
+interpolation — is out of its reach. Nor can it see whether the replacement
+works; `shared/truncation-guard.spec.ts` measures that. CI runs it on every
+push and pull request, between the composite-index check and the unit tests.
 
 ---
 
@@ -568,7 +575,8 @@ swipe keeps a non-gesture route — the pinned menu.
 | `features/transactions/add-affordance.spec.ts` | the transactions header's add FAB keeps its 48px while the period totals sharing its row yield — and, at every width, exactly one add affordance is on screen |
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |
 | `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
-| `scripts/check-truncation.mjs` | G3 across the whole source, `npm run truncation:check` |
+| cases in `budget-progress.component.spec.ts`, *a budget row at the rail width (real template)* | the dashboard's Budget Progress card in its 160px row (the rail at 1024), with the fonts pinned: a name too long for the row wraps inside it, never ellipsized, with the glyph and the percentage on its first line; a word that fits the row only once the period word moves down (*Subscriptions*) stays whole on one line while the period word drops below it; the amounts wrap at their spaces, inside the row |
+| `scripts/check-truncation.mjs` | G3 across the whole source — a `text-overflow` declaration, and Tailwind's `truncate`/`text-ellipsis` as an `@apply` token, a template class or a host `class` — `npm run truncation:check`, after its `--self-test` |
 | `shared/directives/tab-strip-scroll.directive.spec.ts` | the strip mechanics on a 300px host: no chevrons on an overflowing strip, a label container that really scrolls, a newly selected tab brought into view, the tab the arrow keys walk to kept in view, and a clicked tab staying put after the reader scrolled to it — the case Material's focus reset breaks |
 | `features/budgets/budgets.overflow.spec.ts`, `features/reports/reports.overflow.spec.ts` | the two opted-in pages: the chevrons never appear, and a `?tab=` deep link opens on its tab already in view |
 | `features/reports/<name>/<name>.overflow.spec.ts` for category-breakdown, monthly-comparison and spending-analysis, `features/settings/profile-settings/profile-settings.overflow.spec.ts`, and cases in `ai-settings-page.component.spec.ts` and `transaction-filters.component.spec.ts` | G2 as rendered: the column count of each repaired grid. Karma's window is 756px, so the three whose rules start at 768px or 1024px cannot be read as layout — those pin the repaired *declaration* through the CSSOM instead, where an invalid value serialises as an empty string. The filter grid's tracks now follow its width, so its case reads more than one column, which shows the declaration parses; the floor each track keeps, a date whole beside its calendar button, is pinned by the same file's *a filter date beside its calendar button*, which also reads the stylesheet for any media rule that would set the tracks |
