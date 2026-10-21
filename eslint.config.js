@@ -6,13 +6,15 @@ const angular = require("angular-eslint");
 
 // Two SDK families are confined to the files that own them: the analytics
 // SDKs to AnalyticsService and its wiring (ADR 0003), the model SDKs to the
-// three provider services (ADR 0005). Flat config resolves a rule key to the
-// LAST matching config object's options, replaced wholesale — two blocks that
-// overlap on `files` and both set no-restricted-imports silently disable each
-// other, which is how the analytics ban died once (#262, ADR 0038). So each
-// ban is declared once here, and every block below restates the full set that
-// applies to its files. scripts/check-lint-guards.mjs resolves the real
-// config per file population and fails the build when a ban stops applying.
+// three provider services (ADR 0005). A third ban has no owner at all: the
+// Material date modules, which no file may import (below). Flat config
+// resolves a rule key to the LAST matching config object's options, replaced
+// wholesale — two blocks that overlap on `files` and both set
+// no-restricted-imports silently disable each other, which is how the
+// analytics ban died once (#262, ADR 0038). So each ban is declared once here,
+// and every block below restates the full set that applies to its files.
+// scripts/check-lint-guards.mjs resolves the real config per file population
+// and fails the build when a ban stops applying.
 const ANALYTICS_IMPORT_PATHS = [
   {
     name: "@angular/fire/analytics",
@@ -112,6 +114,36 @@ const MODEL_IMPORT_PATHS = [
   },
 ];
 
+// The Material date modules, for every file under src/app, specs included.
+// Each one provides again, in the injector of whatever imports it, something
+// the app already provides once at the root: MatDatepickerModule its own
+// MatDatepickerIntl (the calendar's English labels), MatNativeDateModule the
+// native date adapter and Material's default formats, NativeDateModule the
+// native adapter alone. A page that imports any of them shadows the app's one
+// adapter (which reads the reader's language and date format) and the app's
+// one set of labels, and its calendar answers in the browser's locale again
+// (#500). The pickers import the standalone pieces instead (MatDatepicker,
+// MatDatepickerInput, MatDatepickerToggle), which provide nothing; a spec that
+// renders one provides an adapter itself, provideNativeDateAdapter() or
+// provideAppDatepickerForTests when it asserts date text. Only the module
+// names are banned: the rest of both entry points stays importable.
+// scripts/check-lint-guards.mjs keys each of these paths with its importNames,
+// so a name dropped from a list is a diff, not a quietly narrower ban.
+const DATE_MODULE_IMPORT_PATHS = [
+  {
+    name: "@angular/material/datepicker",
+    importNames: ["MatDatepickerModule"],
+    message:
+      "Import MatDatepicker, MatDatepickerInput and MatDatepickerToggle instead. The module provides its own calendar labels, so this page would not use the app's.",
+  },
+  {
+    name: "@angular/material/core",
+    importNames: ["MatNativeDateModule", "NativeDateModule"],
+    message:
+      "The app provides its one date adapter at the root (provideAppDatepicker). A spec that renders a picker uses provideNativeDateAdapter(), or provideAppDatepickerForTests when it asserts date text.",
+  },
+];
+
 module.exports = defineConfig([
   {
     files: ["**/*.ts"],
@@ -168,18 +200,20 @@ module.exports = defineConfig([
     },
   },
   {
-    // Both bans, for everything in the app. A direct logEvent() in a
+    // Every ban, for everything in the app. A direct logEvent() in a
     // component would bypass the consent gate, the no-op paths and the
     // parameter allowlist at once, and nothing else would notice; a fourth
     // file issuing its own model call would be invisible to the prompt
-    // registry check and free to carry its own unregistered prompt. The two
-    // narrower blocks below win over this one for the files that own an SDK.
+    // registry check and free to carry its own unregistered prompt; a page
+    // importing a Material date module would bring its own adapter and labels
+    // and show the calendar in the wrong language. The two narrower blocks
+    // below win over this one for the files that own an SDK.
     files: ["src/app/**/*.ts"],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {
-          paths: [...ANALYTICS_IMPORT_PATHS, ...MODEL_IMPORT_PATHS],
+          paths: [...ANALYTICS_IMPORT_PATHS, ...MODEL_IMPORT_PATHS, ...DATE_MODULE_IMPORT_PATHS],
           patterns: [...ANALYTICS_IMPORT_PATTERNS],
         },
       ],
@@ -187,11 +221,12 @@ module.exports = defineConfig([
   },
   {
     // The analytics owners may import the analytics SDKs and must still not
-    // import a model SDK. This block matches them instead of ignoring them,
-    // so it resolves last — and because a later block's options replace the
-    // earlier ones wholesale, it restates the model ban in full. The globs
-    // cover the matching *.spec.ts too: the service's own specs and
-    // app.config.spec.ts legitimately import the SDK to assert the wiring.
+    // import a model SDK or a date module. This block matches them instead of
+    // ignoring them, so it resolves last — and because a later block's options
+    // replace the earlier ones wholesale, it restates the model and date-module
+    // bans in full. The globs cover the matching *.spec.ts too: the service's
+    // own specs and app.config.spec.ts legitimately import the SDK to assert
+    // the wiring.
     files: [
       "src/app/core/services/analytics*.ts",
       "src/app/core/config/analytics*.ts",
@@ -200,13 +235,14 @@ module.exports = defineConfig([
     rules: {
       "@typescript-eslint/no-restricted-imports": [
         "error",
-        { paths: [...MODEL_IMPORT_PATHS] },
+        { paths: [...MODEL_IMPORT_PATHS, ...DATE_MODULE_IMPORT_PATHS] },
       ],
     },
   },
   {
     // The three provider services may import their model SDKs and must still
-    // not import an analytics SDK — restated in full for the same reason.
+    // not import an analytics SDK or a date module — restated in full for the
+    // same reason.
     // The globs cover the matching *.spec.ts too: each provider's own spec
     // legitimately imports its SDK to type the fake client.
     files: [
@@ -218,7 +254,7 @@ module.exports = defineConfig([
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {
-          paths: [...ANALYTICS_IMPORT_PATHS],
+          paths: [...ANALYTICS_IMPORT_PATHS, ...DATE_MODULE_IMPORT_PATHS],
           patterns: [...ANALYTICS_IMPORT_PATTERNS],
         },
       ],

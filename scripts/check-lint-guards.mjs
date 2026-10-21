@@ -14,6 +14,16 @@
  * stops matching what is stated — in both directions, so a ban present
  * where it must not be fails as loudly as a ban that is missing.
  *
+ * A third ban, on the Material date modules, is a different shape: it has no
+ * owner, so it is restated in all three blocks and every population carries it.
+ * It names exports, not whole modules — MatDatepickerModule from
+ * @angular/material/datepicker; MatNativeDateModule and NativeDateModule from
+ * @angular/material/core — so a path is keyed with its importNames
+ * (`name#A,B`, sorted) and a name dropped from the list is a missing entry
+ * rather than a ban that quietly got narrower. A bare path keeps its bare name.
+ * The ordinary population includes two specs, because a spec is where the
+ * modules used to come back in (#500).
+ *
  * Why resolved outcomes rather than overlap detection: the fixed structure
  * is itself three overlapping blocks setting the same key on purpose — the
  * narrow owner blocks override the union block. An overlap detector would
@@ -68,7 +78,15 @@
  *     reads the literal specifier, so only a literal is covered.
  *   - Whether the rule would actually fire on a banned import in the app.
  *     This proves the ban is in force for the file; --self-test proves the
- *     rules fire, against fixtures.
+ *     rules fire, against fixtures: a static import of each banned module in
+ *     a feature file, a spec, app.config.ts and each owner's own files.
+ *   - A path restricted some other way than by importNames. The key reads
+ *     importNames only, so an allowImportNames or allowTypeImports entry would
+ *     key as the bare path.
+ *   - A date module loaded by `import()`. no-restricted-imports reads static
+ *     declarations, so `(await import('@angular/material/core')).NativeDateModule`
+ *     walks past the date-module ban exactly as it does past the analytics one;
+ *     no component has a reason to write it.
  *   - A listener held in a variable and passed as an identifier — `const rows$ =
  *     this.transactionService.getTransactions(); await firstValueFrom(rows$)`
  *     — the argument is an Identifier, not a CallExpression, so neither selector
@@ -104,21 +122,37 @@ const SYNTAX_RULE_KEY = 'no-restricted-syntax';
 const ANALYTICS_PATHS = ['@angular/fire/analytics', '@capacitor-firebase/analytics'];
 const ANALYTICS_PATTERNS = ['firebase/analytics', 'firebase/analytics/*', '@firebase/analytics'];
 const MODEL_PATHS = ['@google/generative-ai', 'openai', '@anthropic-ai/sdk'];
+// The Material date modules, keyed the way extractRestrictions keys a path that
+// bans only some of a module's exports: `name#A,B`, names sorted. Plain strings
+// here, not imported, so a name dropped from the config's list is a missing
+// entry below rather than a shared constant shrinking on both sides.
+const DATE_MODULE_PATHS = [
+  '@angular/material/datepicker#MatDatepickerModule',
+  '@angular/material/core#MatNativeDateModule,NativeDateModule',
+];
 
 // One row per population eslint.config.js distinguishes; the files are
 // representative, not exhaustive. A rename fails loudly below rather than
 // silently narrowing coverage.
 const POPULATIONS = [
   {
-    label: 'ordinary app code — both bans',
+    // Specs resolve the same way: a spec that renders a picker provides an
+    // adapter itself, and none may import a date module to get one. The
+    // transaction-form spec is the one that used to re-import both.
+    label: 'ordinary app code and specs — every ban',
     files: [
       'src/app/core/services/pwa.service.ts',
       'src/app/features/dashboard/dashboard.component.ts',
+      'src/app/features/dashboard/dashboard.component.spec.ts',
+      'src/app/features/transactions/transaction-form/transaction-form.component.spec.ts',
     ],
-    expected: { paths: [...ANALYTICS_PATHS, ...MODEL_PATHS], patterns: ANALYTICS_PATTERNS },
+    expected: {
+      paths: [...ANALYTICS_PATHS, ...MODEL_PATHS, ...DATE_MODULE_PATHS],
+      patterns: ANALYTICS_PATTERNS,
+    },
   },
   {
-    label: 'analytics owners — model ban only',
+    label: 'analytics owners — model and date-module bans',
     files: [
       'src/app/core/services/analytics.service.ts',
       'src/app/core/services/analytics-transport.ts',
@@ -126,17 +160,17 @@ const POPULATIONS = [
       'src/app/app.config.ts',
       'src/app/app.config.spec.ts',
     ],
-    expected: { paths: MODEL_PATHS, patterns: [] },
+    expected: { paths: [...MODEL_PATHS, ...DATE_MODULE_PATHS], patterns: [] },
   },
   {
-    label: 'model providers — analytics ban only',
+    label: 'model providers — analytics and date-module bans',
     files: [
       'src/app/core/services/gemini.service.ts',
       'src/app/core/services/openai.service.ts',
       'src/app/core/services/claude.service.ts',
       'src/app/core/services/openai.service.spec.ts',
     ],
-    expected: { paths: ANALYTICS_PATHS, patterns: ANALYTICS_PATTERNS },
+    expected: { paths: [...ANALYTICS_PATHS, ...DATE_MODULE_PATHS], patterns: ANALYTICS_PATTERNS },
   },
 ];
 
@@ -242,6 +276,14 @@ const SYNTAX_POPULATIONS = [
  * strings, patterns as {group: [...]} objects or bare strings, severity as
  * a number or its string alias — so a hand-edited config cannot confuse the
  * comparison. Returns null when the rule is absent.
+ *
+ * A path that bans only some of a module's exports is keyed with them,
+ * `name#A,B` (sorted, so the order they were written in is no diff): the ban
+ * on MatDatepickerModule must not read as a ban on the whole of
+ * @angular/material/datepicker, and a name dropped from the list must show as
+ * a missing entry rather than leave the key it had. A bare path keeps its bare
+ * name; an empty list is `name#`, which is not the bare ban (it restricts no
+ * named import), so it cannot stand in for one.
  */
 export function extractRestrictions(entry) {
   if (!entry) return null;
@@ -250,7 +292,11 @@ export function extractRestrictions(entry) {
   const severity =
     typeof rawSeverity === 'number' ? rawSeverity : (severityMap[rawSeverity] ?? 0);
 
-  const paths = (options.paths ?? []).map(p => (typeof p === 'string' ? p : p.name));
+  const paths = (options.paths ?? []).map(p => {
+    if (typeof p === 'string') return p;
+    if (!Array.isArray(p.importNames)) return p.name;
+    return `${p.name}#${[...p.importNames].sort().join(',')}`;
+  });
   const patterns = (options.patterns ?? []).flatMap(p =>
     typeof p === 'string' ? [p] : (p.group ?? [])
   );
@@ -487,6 +533,61 @@ async function selfTest() {
   );
   check('a missing rule resolves to null', extractRestrictions(undefined), null);
   check(
+    'reads a path’s importNames into its key',
+    extractRestrictions([
+      2,
+      {
+        paths: [
+          {
+            name: '@angular/material/core',
+            importNames: ['MatNativeDateModule', 'NativeDateModule'],
+            message: 'm',
+          },
+        ],
+      },
+    ]).paths,
+    ['@angular/material/core#MatNativeDateModule,NativeDateModule']
+  );
+  check(
+    'the importNames in a key do not depend on the order they were written in',
+    extractRestrictions([
+      2,
+      {
+        paths: [
+          { name: '@angular/material/core', importNames: ['NativeDateModule', 'MatNativeDateModule'] },
+        ],
+      },
+    ]).paths,
+    ['@angular/material/core#MatNativeDateModule,NativeDateModule']
+  );
+  check(
+    'a bare path keeps its bare name',
+    extractRestrictions([2, { paths: [{ name: 'openai', message: 'm' }] }]).paths,
+    ['openai']
+  );
+  check(
+    'a dropped importName is a missing entry',
+    diffSets(
+      extractRestrictions([
+        2,
+        { paths: [{ name: '@angular/material/core', importNames: ['MatNativeDateModule'] }] },
+      ]).paths,
+      ['@angular/material/core#MatNativeDateModule,NativeDateModule']
+    ),
+    {
+      missing: ['@angular/material/core#MatNativeDateModule,NativeDateModule'],
+      unexpected: ['@angular/material/core#MatNativeDateModule'],
+    }
+  );
+  check(
+    'an empty importNames is not the bare ban',
+    extractRestrictions([
+      2,
+      { paths: [{ name: '@angular/material/core', importNames: [] }] },
+    ]).paths,
+    ['@angular/material/core#']
+  );
+  check(
     'order does not matter to the set diff',
     diffSets(['a', 'b'], ['b', 'a']),
     { missing: [], unexpected: [] }
@@ -563,6 +664,8 @@ async function selfTest() {
   const countSyntaxMessages = lintResults =>
     lintResults.flatMap(result => result.messages).filter(m => m.ruleId === SYNTAX_RULE_KEY)
       .length;
+  const countImportMessages = lintResults =>
+    lintResults.flatMap(result => result.messages).filter(m => m.ruleId === RULE_KEY).length;
 
   const directBad = await fixtureEslint.lintText(
     'declare const firstValueFrom: any;\n' +
@@ -737,6 +840,53 @@ async function selfTest() {
     { filePath: 'src/app/core/services/rejection-fixture.service.ts' }
   );
   check('the same listener in app code is not this rule’s business', countSyntaxMessages(rejectionInApp), 0);
+
+  // The static import bans. The population probe above proves each ban
+  // resolves for a file; these prove it fires, on a real import declaration,
+  // in a feature file, in a spec, at app.config.ts and in each owner's own
+  // files, where a block that restated a ban short would let one through. A
+  // namespace import must fail too, and the standalone pieces and the
+  // adapter provider that the date-module message points to must pass.
+  const importCases = [
+    ['a feature component importing MatDatepickerModule', 'src/app/features/about/date-fixture.component.ts',
+      "import { MatDatepickerModule } from '@angular/material/datepicker';", 1],
+    ['a spec importing MatDatepickerModule', 'src/app/features/about/date-fixture.component.spec.ts',
+      "import { MatDatepickerModule } from '@angular/material/datepicker';", 1],
+    ['app.config.ts importing MatNativeDateModule', 'src/app/app.config.ts',
+      "import { MatNativeDateModule } from '@angular/material/core';", 1],
+    ['a provider service importing NativeDateModule', 'src/app/core/services/openai.service.ts',
+      "import { NativeDateModule } from '@angular/material/core';", 1],
+    ['an analytics owner importing NativeDateModule', 'src/app/core/services/analytics.service.ts',
+      "import { NativeDateModule } from '@angular/material/core';", 1],
+    ['a namespace import of the datepicker entry point', 'src/app/features/about/date-fixture.component.ts',
+      "import * as dp from '@angular/material/datepicker';", 1],
+    ['an import of the standalone datepicker pieces', 'src/app/features/about/date-fixture.component.ts',
+      "import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';", 0],
+    ['an import of the native adapter provider', 'src/app/features/about/date-fixture.component.spec.ts',
+      "import { provideNativeDateAdapter } from '@angular/material/core';", 0],
+    ['a feature component importing an analytics SDK path', 'src/app/features/about/analytics-fixture.component.ts',
+      "import { Analytics } from '@angular/fire/analytics';", 1],
+    ['a feature component importing the firebase/analytics pattern', 'src/app/features/about/analytics-fixture.component.ts',
+      "import { getAnalytics } from 'firebase/analytics';", 1],
+    ['a provider service importing an analytics SDK', 'src/app/core/services/gemini.service.ts',
+      "import { getAnalytics } from 'firebase/analytics';", 1],
+    ['an analytics owner importing its SDK', 'src/app/core/services/analytics.service.ts',
+      "import { getAnalytics } from 'firebase/analytics';", 0],
+    ['a feature component importing a model SDK', 'src/app/features/about/model-fixture.component.ts',
+      "import OpenAI from 'openai';", 1],
+    ['an analytics owner importing a model SDK', 'src/app/core/services/analytics.service.ts',
+      "import OpenAI from 'openai';", 1],
+    ['a provider service importing its model SDK', 'src/app/core/services/openai.service.ts',
+      "import OpenAI from 'openai';", 0],
+  ];
+  for (const [shape, filePath, source, expected] of importCases) {
+    const linted = await fixtureEslint.lintText(`${source}\n`, { filePath });
+    check(
+      `${shape} ${expected === 0 ? 'passes' : 'fails'} the rule${expected === 0 ? '' : ' once'}`,
+      countImportMessages(linted),
+      expected
+    );
+  }
 
   let failed = 0;
   for (const result of results) {
