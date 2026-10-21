@@ -12,12 +12,23 @@ struct HomeAccountWidgets: WidgetBundle {
 /// a string from the snapshot; see `WidgetSnapshot` for why nothing is
 /// formatted here.
 struct HomeAccountMonthWidget: Widget {
+    /// The Lock Screen families arrived with iOS 16 and the target still
+    /// builds for 15.6, so they join the two home-screen sizes only where the
+    /// system knows them.
+    static let families: [WidgetFamily] = {
+        var families: [WidgetFamily] = [.systemSmall, .systemMedium]
+        if #available(iOSApplicationExtension 16.0, *) {
+            families += [.accessoryRectangular, .accessoryCircular]
+        }
+        return families
+    }()
+
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "HomeAccountMonth", provider: MonthProvider()) { entry in
             MonthEntryView(entry: entry)
         }
         .configurationDisplayName("Home Account")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies(Self.families)
     }
 }
 
@@ -69,28 +80,156 @@ struct MonthProvider: TimelineProvider {
 /// Lays out the face `WidgetSnapshot.face(of:isPlaceholder:now:calendar:)`
 /// decided. Which face that is — the name, the figures, or a sentence — is
 /// not decided here, so no widget size can disagree with another about it.
+/// The two Lock Screen families draw it as `AccessoryFaceView`, without the
+/// Home Screen tile (`widgetBackground()`); the circle draws the system's
+/// `AccessoryWidgetBackground` behind it. Every other family draws the system
+/// face.
 struct MonthEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: MonthEntry
 
     var body: some View {
-        systemFace(WidgetSnapshot.face(
-            of: entry.snapshot, isPlaceholder: entry.isPlaceholder, now: entry.date, calendar: .current))
+        let face = WidgetSnapshot.face(
+            of: entry.snapshot, isPlaceholder: entry.isPlaceholder, now: entry.date, calendar: .current)
+        if #available(iOSApplicationExtension 16.0, *) {
+            if family == .accessoryRectangular || family == .accessoryCircular {
+                AccessoryFaceView(family: family, face: face)
+                    .accessoryBackground()
+            } else {
+                systemFace(face)
+            }
+        } else {
+            systemFace(face)
+        }
+    }
+
+    private func systemFace(_ face: WidgetSnapshot.Face) -> some View {
+        systemContent(face)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .widgetBackground()
     }
 
     @ViewBuilder
-    private func systemFace(_ face: WidgetSnapshot.Face) -> some View {
+    private func systemContent(_ face: WidgetSnapshot.Face) -> some View {
         switch face {
         case .name:
-            Text(verbatim: "Home Account")
+            AppNameView()
                 .font(.headline)
         case .figures(let labels, let figures, let redacted):
             FiguresView(family: family, labels: labels, figures: figures)
                 .redacted(reason: redacted ? .placeholder : [])
         case .sentence(_, let title, let text):
             SentenceView(title: title, sentence: text)
+        }
+    }
+}
+
+/// The app's name, drawn wherever there is no snapshot to read. One view, so
+/// every family names the app the same way.
+private struct AppNameView: View {
+    var body: some View {
+        Text(verbatim: "Home Account")
+    }
+}
+
+/// The Lock Screen faces: the month's net balance alone, or the sentence that
+/// says why there is none. The rectangle has the room for words under its
+/// title; the circle has room for a figure with its label, or for a glyph
+/// that carries the sentence as its accessibility label.
+@available(iOSApplicationExtension 16.0, *)
+private struct AccessoryFaceView: View {
+    let family: WidgetFamily
+    let face: WidgetSnapshot.Face
+
+    var body: some View {
+        if family == .accessoryCircular {
+            circular
+        } else {
+            rectangular
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var rectangular: some View {
+        switch face {
+        case .name:
+            AppNameView()
+                .font(.headline)
+                .widgetAccentable()
+        case .figures(let labels, let figures, let redacted):
+            VStack(alignment: .leading, spacing: 0) {
+                Text(labels.title)
+                    .font(.headline)
+                    .widgetAccentable()
+                    .lineLimit(1)
+                Text(labels.net)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(figures.net)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .privacySensitive()
+            }
+            .redacted(reason: redacted ? .placeholder : [])
+        case .sentence(_, let title, let text):
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(.headline)
+                    .widgetAccentable()
+                    .lineLimit(1)
+                Text(text)
+                    .font(.caption)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var circular: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            switch face {
+            case .name:
+                AppNameView()
+                    .font(.caption2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.5)
+                    .padding(6)
+            case .figures(let labels, let figures, let redacted):
+                VStack(spacing: 0) {
+                    Text(labels.net)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                    Text(figures.net)
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.3)
+                        .privacySensitive()
+                }
+                .padding(6)
+                .redacted(reason: redacted ? .placeholder : [])
+            case .sentence(let sentence, _, let text):
+                Image(systemName: sentence.symbolName)
+                    .font(.title2)
+                    .accessibilityLabel(text)
+            }
+        }
+    }
+}
+
+private extension WidgetSnapshot.Sentence {
+    /// What a circle too small for the sentence draws in its place.
+    var symbolName: String {
+        switch self {
+        case .locked: return "lock.fill"
+        case .signedOut: return "person.crop.circle.badge.xmark"
+        case .stale: return "arrow.clockwise"
         }
     }
 }
@@ -146,10 +285,12 @@ private struct FiguresView: View {
                     .font(.subheadline)
                     .lineLimit(1)
                 ProgressView(value: Double(min(max(budget.percent, 0), 100)) / 100)
+                    .privacySensitive()
                 Text(budget.detail)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .privacySensitive()
             } else {
                 Text(labels.noBudgets)
                     .font(.caption)
@@ -170,6 +311,7 @@ private struct FiguresView: View {
                     Text(next.date)
                     Spacer(minLength: 0)
                     Text(next.amount)
+                        .privacySensitive()
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -198,6 +340,7 @@ private struct FigureView: View {
                 .font(.headline)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
+                .privacySensitive()
         }
     }
 }
@@ -241,6 +384,20 @@ private extension View {
         } else {
             padding()
                 .background(Color(uiColor: .systemBackground))
+        }
+    }
+
+    /// A Lock Screen widget sits on the system's own backdrop. iOS 17 still
+    /// wants a container background declared, and gets a clear one so nothing
+    /// is drawn under the face; iOS 16 asks for none.
+    @ViewBuilder
+    func accessoryBackground() -> some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            containerBackground(for: .widget) {
+                Color.clear
+            }
+        } else {
+            self
         }
     }
 }
