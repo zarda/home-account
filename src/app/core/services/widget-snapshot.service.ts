@@ -51,9 +51,14 @@ export class WidgetSnapshotService {
     // Written at once rather than at the next paint: a cold start that lands
     // on /lock never paints the dashboard, and last session's figures would
     // stay on the home screen.
+    //
+    // Both effects follow the catalog too: a cold start composes its sentence
+    // before the language's words arrive, and nothing publishes after a lock or
+    // a sign-out to carry the words over.
     effect(() => {
       const plugin = this.plugin;
       if (!plugin || !this.appLock.canEngage()) return;
+      this.trackCatalog();
       untracked(() => this.writeIfChanged(plugin, this.compose('locked', new Date())));
     });
 
@@ -63,6 +68,7 @@ export class WidgetSnapshotService {
     effect(() => {
       const plugin = this.plugin;
       if (!plugin || this.auth.isLoading() || this.auth.currentUser() !== null) return;
+      this.trackCatalog();
       untracked(() => this.writeIfChanged(plugin, this.compose('signedOut', new Date())));
     });
   }
@@ -86,6 +92,17 @@ export class WidgetSnapshotService {
         : { ...this.compose('figures', now), figures: this.figures(input) };
       this.writeIfChanged(plugin, snapshot);
     });
+  }
+
+  /**
+   * Makes the calling effect run again when a catalog loads. Only after the
+   * effect's guards: on the web the plugin is null and `TranslationService`
+   * must stay unresolved, and a signed-in, unlocked session has no sentence to
+   * rewrite. A reload that brings no new word recomposes an equal payload, which
+   * `writeIfChanged` skips.
+   */
+  private trackCatalog(): void {
+    this.injector.get(TranslationService).translationsVersion();
   }
 
   private compose(state: WidgetSnapshotState, now: Date): WidgetSnapshot {

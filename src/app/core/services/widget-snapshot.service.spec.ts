@@ -456,6 +456,60 @@ describe('WidgetSnapshotService', () => {
         expect(write).toHaveBeenCalledTimes(1);
         expect(written().state).toBe('signedOut');
       });
+
+      // The catalog arrives after the effects' first write (a cold start composes
+      // against the empty table, or the English fallback), and no publish follows
+      // a lock or a sign-out to carry the words over.
+      it('writes the locked sentence again when the catalog switches', async () => {
+        canEngage.set(true);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().labels.locked).toBe('widget.locked');
+
+        switchCatalog('ja:');
+        TestBed.tick();
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(2);
+        const snapshot = written();
+        expect(snapshot.state).toBe('locked');
+        expect(snapshot.labels.locked).toBe('ja:widget.locked');
+      });
+
+      it('writes the signed-out sentence again when the catalog switches', async () => {
+        currentUser.set(null);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().labels.signedOut).toBe('widget.signedOut');
+
+        switchCatalog('ja:');
+        TestBed.tick();
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(2);
+        const snapshot = written();
+        expect(snapshot.state).toBe('signedOut');
+        expect(snapshot.labels.signedOut).toBe('ja:widget.signedOut');
+      });
+
+      // Documentation pin: a reload that brings no new word (the same language
+      // fetched again, or the error fallback re-loading the default) bumps the
+      // version, recomposes an equal payload, and the dedupe skips it. The
+      // positive proof that the write path stays live is the two cases above.
+      it('writes nothing more when the catalog reloads with the same words', async () => {
+        canEngage.set(true);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+
+        translation.translationsVersion.update(version => version + 1);
+        TestBed.tick();
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(1);
+      });
     });
 
     // The device ends a session on its own (an expired token, a revoked
