@@ -9,16 +9,30 @@
  * surface still decides which items it shows (the bottom nav's five slots,
  * the palette's extra entries), but never what an item is called or which
  * icon it wears.
+ *
+ * One exception to "one name per destination", and it is the bar's room: a
+ * `shortLabelKey` is the word the bottom nav alone reads for an item whose
+ * full name does not fit under its icon at a phone's width (the dashboard's,
+ * in Japanese). The sidebar and the palette never read it; they translate
+ * `labelKey`, so the destination is still called one thing everywhere it has
+ * room to say so.
  */
 export interface NavItem {
   labelKey: string;
+  /** The bottom nav's name for the item when `labelKey` does not fit its slot. */
+  shortLabelKey?: string;
   icon: string;
   route: string;
 }
 
 /** The sidebar's full set, in display order. */
 export const NAV_ITEMS: readonly NavItem[] = [
-  { labelKey: 'nav.dashboard', icon: 'dashboard', route: '/dashboard' },
+  {
+    labelKey: 'nav.dashboard',
+    shortLabelKey: 'nav.dashboardShort',
+    icon: 'dashboard',
+    route: '/dashboard',
+  },
   { labelKey: 'nav.transactions', icon: 'receipt_long', route: '/transactions' },
   { labelKey: 'nav.budgets', icon: 'savings', route: '/budgets' },
   { labelKey: 'nav.reports', icon: 'bar_chart', route: '/reports' },

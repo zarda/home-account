@@ -85,6 +85,7 @@
   },
   "nav": {
     "dashboard": "ダッシュボード",
+    "dashboardShort": "ホーム",
     "transactions": "取引履歴",
     "budgets": "予算",
     "reports": "レポート",

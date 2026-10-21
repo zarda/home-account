@@ -1,5 +1,8 @@
 import { Routes } from '@angular/router';
 import { routes } from '../../app.routes';
+import en from '../../../assets/i18n/en.json';
+import ja from '../../../assets/i18n/ja.json';
+import tc from '../../../assets/i18n/tc.json';
 import { NAV_ITEMS, PALETTE_ONLY_ITEMS, navItemFor } from './nav-items';
 
 describe('navItemFor', () => {
@@ -38,6 +41,58 @@ describe('navItemFor', () => {
     const routes = [...NAV_ITEMS, ...PALETTE_ONLY_ITEMS].map((item) => item.route);
     expect(new Set(routes).size).toBe(routes.length);
   });
+
+  it('gives only the dashboard a name for the bottom bar', () => {
+    const short = [...NAV_ITEMS, ...PALETTE_ONLY_ITEMS]
+      .filter((item) => item.shortLabelKey !== undefined)
+      .map((item) => [item.route, item.shortLabelKey]);
+    expect(short).toEqual([['/dashboard', 'nav.dashboardShort']]);
+    // The item keeps its full name too: the sidebar and the palette read it.
+    expect(navItemFor('/dashboard').labelKey).toBe('nav.dashboard');
+  });
+});
+
+/**
+ * `check-i18n.mjs` counts `t(item.labelKey)` as a dynamic lookup and skips it,
+ * so a key misspelled in either list, or a `shortLabelKey` missing from one
+ * catalog, reaches the screen as the raw key (`nav.dashboardShort`) and no
+ * other gate says so. This walks the lists the surfaces actually read.
+ */
+describe('every nav label key resolves in every catalog', () => {
+  const CATALOGS: Record<string, unknown> = { en, ja, tc };
+
+  /** The leaf at a dotted path, or undefined when any step of the walk misses. */
+  function leafAt(tree: unknown, key: string): unknown {
+    return key.split('.').reduce<unknown>(
+      (node, step) =>
+        node !== null && typeof node === 'object' ? (node as Record<string, unknown>)[step] : undefined,
+      tree,
+    );
+  }
+
+  const keys = [...NAV_ITEMS, ...PALETTE_ONLY_ITEMS].flatMap((item) =>
+    item.shortLabelKey === undefined ? [item.labelKey] : [item.labelKey, item.shortLabelKey],
+  );
+
+  it('walks a real list of keys, the short one included', () => {
+    // A guard against the walk going quiet: an empty list would pass every
+    // case below vacuously.
+    expect(keys.length).toBeGreaterThan(NAV_ITEMS.length);
+    expect(keys).toContain('nav.dashboardShort');
+  });
+
+  for (const [locale, catalog] of Object.entries(CATALOGS)) {
+    it(`reads a non-empty string for each key in ${locale}`, () => {
+      const unresolved = keys.filter((key) => {
+        const leaf = leafAt(catalog, key);
+        return typeof leaf !== 'string' || leaf.trim() === '';
+      });
+
+      expect(unresolved)
+        .withContext(`nav keys with no text in the ${locale} catalog`)
+        .toEqual([]);
+    });
+  }
 });
 
 /**

@@ -85,6 +85,7 @@
   },
   "nav": {
     "dashboard": "儀表板",
+    "dashboardShort": "儀表板",
     "transactions": "交易紀錄",
     "budgets": "預算",
     "reports": "報表",
