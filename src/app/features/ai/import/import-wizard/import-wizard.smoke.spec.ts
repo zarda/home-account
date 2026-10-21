@@ -48,7 +48,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideAppDatepicker } from '../../../../core/config/datepicker.config';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
@@ -273,7 +273,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         provideRouter([]),
         provideNoMotion(),
         provideHttpClient(),
-        provideNativeDateAdapter(),
+        provideAppDatepicker(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },
         { provide: Storage, useValue: storage },

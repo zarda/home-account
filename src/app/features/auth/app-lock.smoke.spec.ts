@@ -25,7 +25,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideAppDatepicker } from '../../core/config/datepicker.config';
 import { Capacitor } from '@capacitor/core';
 import { provideAppCharts } from '../../core/config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
@@ -198,7 +198,7 @@ describe('App lock biometric door (emulator smoke test)', () => {
         provideRouter(routes),
         provideNoMotion(),
         provideHttpClient(),
-        provideNativeDateAdapter(),
+        provideAppDatepicker(),
         provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },

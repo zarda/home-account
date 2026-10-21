@@ -3,7 +3,7 @@
 // the two produces instances that do not interoperate.
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideAppDatepicker } from '../../core/config/datepicker.config';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { of } from 'rxjs';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
@@ -139,7 +139,7 @@ describe('TransactionFormComponent tags and location (emulator smoke test)', () 
       providers: [
         provideHttpClient(),
         provideNoMotion(),
-        provideNativeDateAdapter(),
+        provideAppDatepicker(),
         TransactionService,
         FirestoreService,
         StorageService,

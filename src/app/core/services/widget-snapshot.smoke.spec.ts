@@ -20,7 +20,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideAppDatepicker } from '../config/datepicker.config';
 import { provideAppCharts } from '../config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
@@ -249,7 +249,7 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
         provideRouter(routes),
         provideNoMotion(),
         provideHttpClient(),
-        provideNativeDateAdapter(),
+        provideAppDatepicker(),
         provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },
