@@ -15,11 +15,13 @@
 // (CI wraps `npm run test:smoke` with `firebase emulators:exec --only auth,storage,firestore`.)
 //
 // i18n JSON is not served by the Karma asset config, so every label in a
-// snapshot is its raw key.
+// snapshot is its raw key — until the language case, which answers the
+// catalog request itself with a fixture.
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideAppDatepicker } from '../config/datepicker.config';
 import { provideAppCharts } from '../config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
@@ -38,6 +40,7 @@ import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/stora
 import { routes } from '../../app.routes';
 import { AuthService } from './auth.service';
 import { AppLockService } from './app-lock.service';
+import { TranslationService } from './translation.service';
 import { WidgetSnapshotService } from './widget-snapshot.service';
 import { WIDGET_SNAPSHOT_PLUGIN } from '../plugins/widget-snapshot.plugin';
 import { APP_LOCK_STORAGE_PREFIX } from '../utils/app-lock.utils';
@@ -63,6 +66,22 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
   // on-page display carries the pinned word joiner.
   const EXPENSES = [70, 50];
   const INCOME = 30;
+  // The language case's catalog: the one title, the sentences and the budget
+  // line the widget words, as the Japanese catalog words them.
+  const JA_CATALOG = {
+    dashboard: { thisMonth: '今月' },
+    widget: {
+      spent: '支出',
+      topBudget: '最も使った予算',
+      nextScheduled: '次の予定',
+      noBudgets: '有効な予算はありません',
+      locked: '今月の数字を見るにはアプリのロックを解除してください',
+      signedOut: '今月の数字を見るにはサインインしてください',
+      stale: '今月の数字を更新するにはアプリを開いてください',
+      updated: '{{date}}更新',
+      budgetDetail: '{{spent}} / {{limit}}'
+    }
+  };
 
   let app: FirebaseApp;
   let auth: Auth;
@@ -108,6 +127,12 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
       .map(el => (el.textContent ?? '').replace(/\u2060/g, '').trim());
   }
 
+  // A formatted amount reduced to its digits, so a case names the figure
+  // without naming the symbol, the grouping or the sign the formatter writes.
+  function digits(text: string | undefined): string {
+    return (text ?? '').replace(/\D/g, '');
+  }
+
   function localMonthKey(now: Date): string {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
@@ -118,12 +143,12 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
 
   // onboardingCompleted is restated because an override replaces the whole
   // preferences object rather than merging into it.
-  function accountUser(enableAppLock = false): User {
+  function accountUser(enableAppLock = false, baseCurrency = 'USD'): User {
     return createMockUser(uid, {
       preferences: {
         ...DEFAULT_USER_PREFERENCES,
         onboardingCompleted: true,
-        baseCurrency: 'USD',
+        baseCurrency,
         enableAppLock
       }
     });
@@ -249,6 +274,8 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
         provideRouter(routes),
         provideNoMotion(),
         provideHttpClient(),
+        // After the real one, so a catalog request is the case's to answer.
+        provideHttpClientTesting(),
         provideAppDatepicker(),
         provideAppCharts(),
         { provide: Firestore, useValue: firestore },
@@ -327,6 +354,90 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
 
       // Close the routed components' listeners before the next case's
       // harness opens its own on the same Firebase app.
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  it(
+    'rewrites the figures in a new base currency as the open dashboard repaints them',
+    async () => {
+      mockAuth.setMockUser(accountUser());
+      TestBed.inject(WidgetSnapshotService);
+
+      await harness.navigateByUrl('/dashboard');
+      // Expenses 70 + 50 in dollars, written and painted.
+      await waitFor(
+        'the figures in dollars',
+        () => digits(lastWrite()?.figures?.spent) === '12000' && digits(statValues()[1]) === '12000'
+      );
+      const dollars = lastWrite()!;
+      expect(digits(dollars.figures?.net)).toBe('9000');
+
+      // The rows are at rate 1 and the cached rates read 150 yen to the dollar,
+      // so the page and the widget both move to 18,000 and 13,500 with no new
+      // row and no other change.
+      mockAuth.setMockUser(accountUser(false, 'JPY'));
+      await waitFor(
+        'the figures in yen, painted and written',
+        () => digits(statValues()[1]) === '18000' && digits(lastWrite()?.figures?.spent) === '18000'
+      );
+
+      const yen = lastWrite()!;
+      const [, expenses, balance] = statValues();
+      expect(yen.state).toBe('figures');
+      expect(yen.figures?.spent).withContext('the expenses stat card').toBe(expenses);
+      expect(yen.figures?.net).withContext('the balance stat card').toBe(balance);
+      expect(digits(yen.figures?.net)).toBe('13500');
+      expect(yen.figures?.spent).withContext('not the dollar sentence again').not.toBe(dollars.figures?.spent);
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  it(
+    'rewrites the labels when the language changes with the dashboard open',
+    async () => {
+      mockAuth.setMockUser(accountUser());
+      TestBed.inject(WidgetSnapshotService);
+      const http = TestBed.inject(HttpTestingController);
+      const translation = TestBed.inject(TranslationService);
+      // setLocale writes the document's language; the next case reads English.
+      const lang = document.documentElement.lang;
+
+      try {
+        await harness.navigateByUrl('/dashboard');
+        await waitFor(
+          'a figures write with the budget',
+          () => lastWrite()?.figures?.topBudget?.name === BUDGET_NAME
+        );
+        expect(lastWrite()!.labels.title).withContext('no catalog loaded yet').toBe('dashboard.thisMonth');
+        expect(lastWrite()!.figures?.topBudget?.detail).toBe('widget.budgetDetail');
+
+        // The way the settings page and the account's own language reach it:
+        // the real service, its request answered with the fixture.
+        const switching = translation.setLocale('ja');
+        http.expectOne('/assets/i18n/ja.json').flush(JA_CATALOG);
+        await switching;
+
+        await waitFor('the labels in the new language', () => lastWrite()?.labels.title === '今月');
+        const written = lastWrite()!;
+        expect(written.state).toBe('figures');
+        expect(written.labels.spent).toBe('支出');
+        expect(written.labels.topBudget).toBe('最も使った予算');
+        expect(written.figures?.topBudget?.name).toBe(BUDGET_NAME);
+        expect(written.figures?.topBudget?.detail).withContext('the budget line, recomposed too').toMatch(/ \/ /);
+        expect(written.figures?.topBudget?.detail).not.toContain('widget.budgetDetail');
+        expect(http.match(() => true).map(request => request.request.url))
+          .withContext('no other request left unanswered')
+          .toEqual([]);
+      } finally {
+        document.documentElement.lang = lang;
+      }
+
       harness.fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 200));
     },

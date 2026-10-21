@@ -411,16 +411,23 @@ export class DashboardComponent implements OnInit {
     // Hands the widget the figures this page already holds, each time it
     // repaints for this month — the dashboard is the landing route, so this
     // is every app open and every live change. Keyed on the paint counter,
-    // not publishedPeriodOption — see its declaration above for why.
+    // not publishedPeriodOption — see its declaration above for why. Also
+    // keyed on the base currency, which formats the figures, and on the
+    // catalog version, which words the labels: neither moves a paint, so a new
+    // currency or language would otherwise reach the widget only with the next
+    // unrelated change. The totals stay untracked, so a write to the shared
+    // transactions signal still cannot pass for a paint.
     effect(() => {
       const paints = this.thisMonthPaints();
+      const baseCurrency = this.baseCurrency();
+      this.translationService.translationsVersion();
       this.activeBudgets();
       this.upcomingOccurrences();
       if (paints === 0 || untracked(() => this.publishedPeriodOption()) !== 'thisMonth') return;
       untracked(() => this.widgetSnapshots.publish({
         spent: this.totalExpenses(),
         net: this.balance(),
-        baseCurrency: this.baseCurrency(),
+        baseCurrency,
         budgets: this.activeBudgets(),
         upcoming: this.upcomingOccurrences(),
       }));

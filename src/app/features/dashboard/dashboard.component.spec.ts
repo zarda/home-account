@@ -1652,6 +1652,35 @@ describe('DashboardComponent', () => {
     // Every case flushes the constructor effect with TestBed.tick(): the
     // signal writes below happen outside a template binding, so nothing else
     // schedules it.
+
+    /** The account's preferences with a new base currency, the rest as they stand. */
+    function setBaseCurrency(baseCurrency: string): void {
+      const current = authService.currentUser()!;
+      authService.currentUser.set({ ...current, preferences: { ...current.preferences, baseCurrency } });
+    }
+
+    /** A converter that reads 150 yen to the dollar, so a new base currency moves every figure. */
+    function convertYenAt150(): void {
+      currencyService.amountInBase.and.callFake(
+        (transaction: { amount: number }, baseCurrency: string) =>
+          transaction.amount * (baseCurrency === 'JPY' ? 150 : 1)
+      );
+    }
+
+    /** Income 1000 and expense 400 in the window, the this-month paint landed and flushed. */
+    function paintThisMonth(window$: Subject<Transaction[]>) {
+      transactionService.getByDateRange.and.returnValue(window$);
+      transactionService.transactions.set([
+        createTransaction({ type: 'income', amount: 1000 }),
+        createTransaction({ type: 'expense', amount: 400 }),
+      ]);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      return fixture;
+    }
+
     it('publishes the figures once the this-month window loads', () => {
       const window$ = new Subject<Transaction[]>();
       transactionService.getByDateRange.and.returnValue(window$);
@@ -1712,8 +1741,9 @@ describe('DashboardComponent', () => {
     // stops a budget or occurrence change from republishing while parked on
     // another period. Switching periods alone touches none of the effect's
     // tracked signals, so the case above never runs the effect again to
-    // exercise it — this one changes activeBudgets and upcomingOccurrences
-    // directly, after the switch, to force that.
+    // exercise it — this one changes activeBudgets, upcomingOccurrences, the
+    // base currency and the catalog version directly, after the switch, to
+    // force that.
     it('does not republish when tracked signals change while parked on another period', () => {
       const window$ = new Subject<Transaction[]>();
       transactionService.getByDateRange.and.returnValue(window$);
@@ -1746,6 +1776,12 @@ describe('DashboardComponent', () => {
         date: new Date(2026, 8, 1),
       };
       occurrences$.next({ occurrences: [rent], olderCount: 0 });
+      TestBed.tick();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+
+      translation.translationsVersion.update(version => version + 1);
       TestBed.tick();
 
       expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
@@ -1806,6 +1842,101 @@ describe('DashboardComponent', () => {
       TestBed.tick();
 
       expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    // #441 P4: the figures are formatted in the base currency, and a currency
+    // change moves them without a new paint of the window.
+    it('republishes the figures in a new base currency', () => {
+      convertYenAt150();
+      paintThisMonth(new Subject<Transaction[]>());
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets: [],
+        upcoming: [],
+      });
+      widgetSnapshots.publish.calls.reset();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 60000,
+        net: 90000,
+        baseCurrency: 'JPY',
+        budgets: [],
+        upcoming: [],
+      });
+    });
+
+    // The labels are composed from the catalog, which arrives after the first
+    // paint on a cold start and again on a language switch.
+    it('republishes when a catalog loads', () => {
+      paintThisMonth(new Subject<Transaction[]>());
+      widgetSnapshots.publish.calls.reset();
+
+      translation.translationsVersion.update(version => version + 1);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets: [],
+        upcoming: [],
+      });
+    });
+
+    // A pin: the effect reads the base currency, not the user it comes from, so
+    // an edit to the profile that leaves the currency alone stays quiet. Proved
+    // by mutation: reading `authService.currentUser()` in the effect fails it.
+    // The currency change after it is the positive proof the effect still runs.
+    it('does not republish when the account changes but the base currency does not', () => {
+      convertYenAt150();
+      paintThisMonth(new Subject<Transaction[]>());
+      widgetSnapshots.publish.calls.reset();
+
+      authService.currentUser.set({ ...authService.currentUser()!, displayName: 'Grace Hopper' });
+      TestBed.tick();
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    // A pin: a currency or a catalog that changes before the window has painted
+    // has nothing to publish. Proved by mutation: dropping `paints === 0` from
+    // the guard fails it. The paint after it is the positive proof.
+    it('publishes nothing for a new currency or catalog before the first paint', () => {
+      convertYenAt150();
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      transactionService.transactions.set([
+        createTransaction({ type: 'income', amount: 1000 }),
+        createTransaction({ type: 'expense', amount: 400 }),
+      ]);
+      const fixture = build();
+      fixture.detectChanges();
+      TestBed.tick();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+      translation.translationsVersion.update(version => version + 1);
+      TestBed.tick();
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+
+      window$.next([]);
+      TestBed.tick();
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 60000,
+        net: 90000,
+        baseCurrency: 'JPY',
+        budgets: [],
+        upcoming: [],
+      });
+      expect(fixture.componentInstance.baseCurrency()).toBe('JPY');
     });
 
     // A pin: the widget reads the upcoming window too, so hiding the card must
