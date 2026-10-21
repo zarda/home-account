@@ -20,9 +20,11 @@
  * flag the cure; asserting the outcome catches every mechanism that kills a
  * ban, including ones not invented yet.
  *
- * Three further rules ride the same mechanism through no-restricted-syntax,
- * and they share one options array precisely because a second block setting
- * the same key would replace it:
+ * Four further rules ride the same mechanism through no-restricted-syntax.
+ * The first two share one options array precisely because a second block
+ * setting the same key would replace it; the pipe ban governs templates, and
+ * the fourth governs specs, which the app block ignores, so each has a block
+ * of its own:
  *
  *   - firstValueFrom over a TransactionService or FirestoreService listener
  *     (docs/one-shot-reads.md, #427) — a warm cache's first emission is a
@@ -41,6 +43,17 @@
  *   - The built-in `date` and `number` pipes in a template (ADR 0058). Both
  *     are at zero sites, so nothing in the app would notice the ban dying —
  *     which is the exact condition under which the analytics ban died.
+ *   - A spec listening for a rejection nobody caught on window (#500,
+ *     docs/testing.md): the `unhandledrejection` and `rejectionhandled` event
+ *     names as any string literal, and the `onunhandledrejection` /
+ *     `onrejectionhandled` handler properties. Angular-compiled code runs on
+ *     ZoneAwarePromise, which reports through the zone and never as a DOM
+ *     event, so such a spec asserts nothing. The spec block replaced a
+ *     per-file exemption that only said specs resolve to no syntax rule at
+ *     all; the population row below now says exactly which two selectors a
+ *     spec resolves to, and the same row's unexpected direction keeps the
+ *     exemption's old job — the app's firstValueFrom and dynamic-analytics
+ *     selectors never reach a spec.
  *
  * `--self-test` exercises the extraction and diff helpers against known
  * shapes and exits non-zero if the checker itself is broken; npm's
@@ -66,6 +79,20 @@
  *   - Another service's listeners. The census walks TransactionService and
  *     FirestoreService only; a warm-cache read through a different service's
  *     own Observable method is outside it.
+ *   - An event name built at run time (`'unhandled' + 'rejection'`), written
+ *     as a template literal (a TemplateLiteral is not a Literal), or reached
+ *     as a computed handler (`window['onunhandledrejection']`): the selectors
+ *     read a literal name and a plain property name only.
+ *   - App code listening for a rejection. The ban resolves for specs; the
+ *     population row proves nothing about src/app outside *.spec.ts.
+ *   - A detector that is merely too weak: a spec that never listens, but reads
+ *     a caught rejection nowhere, passes this rule and still asserts nothing.
+ *     The rule bans the listener, not the vacuous spec.
+ *   - Native promises from source evaluated at run time. share-target-sw.spec.ts
+ *     evaluates the service worker natively, where window DOES hear a
+ *     rejection, so it is the one place the event is real; the ban does not
+ *     flag it today only because that spec names no such event, and a spec of
+ *     that shape would need a scoped exemption here, not a loosened selector.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -152,6 +179,14 @@ const DYNAMIC_ANALYTICS_IMPORT_SELECTOR =
   'ImportExpression[source.value=/^(@angular\\/fire\\/analytics|' +
   '@capacitor-firebase\\/analytics|@?firebase\\/analytics)/]';
 
+// The spec-only half: listening for a rejection nobody caught on window. Kept
+// as plain strings, not imported, so a drift from eslint.config.js shows up
+// as a resolved-selector mismatch below.
+const REJECTION_EVENT_LITERAL_SELECTOR =
+  'Literal[value=/^(unhandledrejection|rejectionhandled)$/]';
+const REJECTION_EVENT_HANDLER_SELECTOR =
+  'MemberExpression[property.name=/^on(unhandledrejection|rejectionhandled)$/]';
+
 const SYNTAX_POPULATIONS = [
   {
     label: 'app code under the firstValueFrom-listener and dynamic-analytics bans',
@@ -184,11 +219,22 @@ const SYNTAX_POPULATIONS = [
     ],
     expectedSelectors: [TEMPLATE_DATE_SELECTOR, TEMPLATE_NUMBER_SELECTOR],
   },
+  {
+    // A spec double is not a warm cache, so the firstValueFrom pair and the
+    // dynamic-analytics selector must NOT resolve here: the unexpected
+    // direction is the old spec exemption's job, and it is as load-bearing as
+    // the presence of the two rejection selectors. The three files are the
+    // specs closest to the rule's origin (the snapshot services and the app
+    // smoke); any *.spec.ts under src/app resolves the same way.
+    label: 'specs under the uncaught-rejection-listener ban only',
+    files: [
+      'src/app/core/services/insight-snapshot.service.spec.ts',
+      'src/app/core/services/widget-snapshot.service.spec.ts',
+      'src/app/app.smoke.spec.ts',
+    ],
+    expectedSelectors: [REJECTION_EVENT_LITERAL_SELECTOR, REJECTION_EVENT_HANDLER_SELECTOR],
+  },
 ];
-
-// Specs are exempt (a spec double is not a warm cache), so the rule must
-// resolve to nothing at all here, not to an empty rule.
-const SYNTAX_EXEMPT_FILES = ['src/app/core/services/insight-snapshot.service.spec.ts'];
 
 /**
  * Normalize a resolved rule entry to bare specifier lists. Accepts every
@@ -226,8 +272,8 @@ export function diffSets(actual, expected) {
  * Normalize a resolved no-restricted-syntax entry to its selector strings.
  * Same defensiveness as extractRestrictions: severity as a number or its
  * string alias, and any number of {selector, message} option objects.
- * Returns null when the rule is absent — the shape a spec-exempt file must
- * resolve to.
+ * Returns null when the rule is absent — the shape a file under no syntax
+ * ban at all would resolve to.
  */
 export function extractSyntaxSelectors(entry) {
   if (!entry) return null;
@@ -361,20 +407,6 @@ async function run() {
       for (const entry of diff.unexpected) {
         fail(`${file} (${population.label}) — unexpected selector resolves here: ${entry}`);
       }
-    }
-  }
-
-  for (const file of SYNTAX_EXEMPT_FILES) {
-    fileCount += 1;
-
-    if (!existsSync(file)) {
-      fail(`${file} (spec exemption) — representative file is gone; update SYNTAX_EXEMPT_FILES in this script`);
-      continue;
-    }
-
-    const config = await eslint.calculateConfigForFile(file);
-    if (config.rules?.[SYNTAX_RULE_KEY]) {
-      fail(`${file} (spec exemption) — ${SYNTAX_RULE_KEY} resolves here but specs are exempt`);
     }
   }
 
@@ -666,6 +698,45 @@ async function selfTest() {
     { filePath: templatePath }
   );
   check('the replacement pipes pass the rule', countSyntaxMessages(localeInTemplate), 0);
+
+  // The spec-only half: a listener for a rejection nobody caught. Each shape a
+  // spec could use to hear one on window must fail the rule once, and the
+  // shapes that only resemble one must not.
+  const rejectionSpecPath = 'src/app/core/services/rejection-fixture.service.spec.ts';
+  const listenerShapes = [
+    ["window.addEventListener('unhandledrejection', () => {});", 'window.addEventListener'],
+    ["globalThis.addEventListener('unhandledrejection', () => {});", 'globalThis.addEventListener'],
+    ["addEventListener('unhandledrejection', () => {});", 'a bare addEventListener'],
+    ["window.removeEventListener('unhandledrejection', () => {});", 'removeEventListener'],
+    ["declare const fromEvent: any;\nfromEvent(window, 'unhandledrejection');", 'fromEvent(window, …)'],
+    ["const name = 'unhandledrejection';", 'the event name held in a constant'],
+    ["window.addEventListener('rejectionhandled', () => {});", 'rejectionhandled'],
+    ['window.onunhandledrejection = () => {};', 'the onunhandledrejection property'],
+    ['window.onrejectionhandled = () => {};', 'the onrejectionhandled property'],
+  ];
+  for (const [source, shape] of listenerShapes) {
+    const rejectionBad = await fixtureEslint.lintText(`${source}\n`, { filePath: rejectionSpecPath });
+    check(`a spec listening for a rejection via ${shape} fails the rule once`, countSyntaxMessages(rejectionBad), 1);
+  }
+
+  const rejectionGood = [
+    ["window.addEventListener('error', () => {});", "a window 'error' listener"],
+    ["declare const spyOn: any;\nspyOn(console, 'error');", "a spy on console 'error'"],
+    ['declare const zone: any;\nzone.onError.subscribe(() => {});', 'a NgZone.onError subscription'],
+    ["declare const it: any;\nit('leaves no unhandledrejection behind', () => {});", 'a title that merely names the event'],
+  ];
+  for (const [source, shape] of rejectionGood) {
+    const rejectionOk = await fixtureEslint.lintText(`${source}\n`, { filePath: rejectionSpecPath });
+    check(`${shape} passes the rule`, countSyntaxMessages(rejectionOk), 0);
+  }
+
+  // The ban is for specs. App code is under the other bans and has no
+  // business listening either, but that is not this rule's to say.
+  const rejectionInApp = await fixtureEslint.lintText(
+    "window.addEventListener('unhandledrejection', () => {});\n",
+    { filePath: 'src/app/core/services/rejection-fixture.service.ts' }
+  );
+  check('the same listener in app code is not this rule’s business', countSyntaxMessages(rejectionInApp), 0);
 
   let failed = 0;
   for (const result of results) {

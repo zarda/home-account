@@ -76,6 +76,24 @@ const DYNAMIC_ANALYTICS_IMPORT_MESSAGE =
   "consent gate exactly as a static one does; NativeAnalyticsTransport is the " +
   "one file that may load it, and it takes the loader as an injected seam.";
 
+// A spec that listens for a rejection nobody caught on window hears nothing
+// under zone.js (docs/testing.md). Angular-compiled code runs on
+// ZoneAwarePromise, which reports an unhandled rejection through the zone's
+// own hook and never dispatches the DOM event; so such a spec passes
+// vacuously, or never reaches its assertion. Both selectors name the event
+// itself: the first reads any string literal equal to an event name (an
+// addEventListener / removeEventListener / fromEvent argument, or a constant
+// holding it), the second the `on…` handler properties.
+const REJECTION_EVENT_LITERAL_SELECTOR =
+  "Literal[value=/^(unhandledrejection|rejectionhandled)$/]";
+const REJECTION_EVENT_HANDLER_SELECTOR =
+  "MemberExpression[property.name=/^on(unhandledrejection|rejectionhandled)$/]";
+const REJECTION_LISTENER_MESSAGE =
+  "zone.js never lets window hear a rejection nobody caught in Angular-compiled " +
+  "code (a ZoneAwarePromise): it goes to console.error, or to NgZone.onError for " +
+  "code created inside the Angular zone. Spy on the console or subscribe to " +
+  "NgZone.onError (docs/testing.md).";
+
 const MODEL_IMPORT_PATHS = [
   {
     name: "@google/generative-ai",
@@ -212,7 +230,9 @@ module.exports = defineConfig([
     // analytics SDK. Specs are ignored here, not just left unmatched by
     // `files`, because a fixture double calling a listener method by the same
     // name is not a warm cache — the rule has nothing to say about a spec's
-    // own stand-in.
+    // own stand-in. Specs have their own no-restricted-syntax block, the one
+    // after the analytics transport's, which bans listening for an uncaught
+    // rejection on window; neither block's selectors reach the other's files.
     //
     // The analytics selector is APPENDED to this array rather than given a
     // block of its own. A second block matching src/app/**/*.ts and setting
@@ -281,6 +301,34 @@ module.exports = defineConfig([
             "[callee.property.name='pipe']" +
             `[callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`,
           message: FIRST_VALUE_FROM_LISTENER_MESSAGE,
+        },
+      ],
+    },
+  },
+  {
+    // The spec-only ban: nothing in a spec may listen for a rejection nobody
+    // caught on window (the events, the `on…` handler properties). Under
+    // zone.js, Angular-compiled code runs on ZoneAwarePromise, which reports an
+    // unhandled rejection through the zone and never as a DOM event, so a
+    // window listener here never fires and the spec asserts nothing (#500).
+    //
+    // This is its own block because no other block matches a spec's syntax:
+    // the app block above ignores **/*.spec.ts, and the analytics-transport
+    // block names one non-spec file, so nothing replaces these options and
+    // these options replace nothing. scripts/check-lint-guards.mjs asserts the
+    // resolved selector list for specs in both directions — the two selectors
+    // here and none of the app's.
+    files: ["src/app/**/*.spec.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: REJECTION_EVENT_LITERAL_SELECTOR,
+          message: REJECTION_LISTENER_MESSAGE,
+        },
+        {
+          selector: REJECTION_EVENT_HANDLER_SELECTOR,
+          message: REJECTION_LISTENER_MESSAGE,
         },
       ],
     },
