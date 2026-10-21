@@ -51,9 +51,10 @@
  *     the initial bundle — and that exemption block is where the pair above
  *     is most likely to be dropped by accident, so its resolved selector list
  *     is asserted here in both directions.
- *   - The built-in `date` and `number` pipes in a template (ADR 0058). Both
- *     are at zero sites, so nothing in the app would notice the ban dying —
- *     which is the exact condition under which the analytics ban died.
+ *   - The built-in `date`, `number` and `currency` pipes in a template (ADR
+ *     0058). All three are at zero sites, so nothing in the app would notice
+ *     the ban dying — which is the exact condition under which the analytics
+ *     ban died.
  *   - A sortable column header with no bound description (#500). Material's
  *     sort header describes its action to a screen reader as the English
  *     word "Sort" unless the template binds `sortActionDescription`, so a
@@ -212,12 +213,13 @@ const PIPED_LISTENER_SELECTOR =
   `CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child` +
   `[callee.property.name='pipe'][callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`;
 
-// The built-in formatting pipes ADR 0058 swept out of every template. Both
-// are at zero sites, so nothing would notice this ban dying — which is
+// The built-in formatting pipes ADR 0058 swept out of every template. All
+// three are at zero sites, so nothing would notice this ban dying — which is
 // exactly the condition the analytics ban died under. Kept as plain strings
 // here, not imported, so a drift from eslint.config.js shows up below.
 const TEMPLATE_DATE_SELECTOR = 'BindingPipe[name="date"]';
 const TEMPLATE_NUMBER_SELECTOR = 'BindingPipe[name="number"]';
+const TEMPLATE_CURRENCY_SELECTOR = 'BindingPipe[name="currency"]';
 
 // A sortable column header that binds no description for its action. Material
 // describes the sort button to a screen reader as the English word "Sort"
@@ -269,12 +271,17 @@ const SYNTAX_POPULATIONS = [
     expectedSelectors: [DIRECT_LISTENER_SELECTOR, PIPED_LISTENER_SELECTOR],
   },
   {
-    label: 'templates under the built-in date/number pipe and the sort-header description bans',
+    label: 'templates under the built-in date/number/currency pipe and the sort-header description bans',
     files: [
       'src/app/features/reports/monthly-comparison/monthly-comparison.component.html',
       'src/app/shared/components/transaction-row/transaction-row.component.html',
     ],
-    expectedSelectors: [TEMPLATE_DATE_SELECTOR, TEMPLATE_NUMBER_SELECTOR, TEMPLATE_SORT_HEADER_SELECTOR],
+    expectedSelectors: [
+      TEMPLATE_DATE_SELECTOR,
+      TEMPLATE_NUMBER_SELECTOR,
+      TEMPLATE_CURRENCY_SELECTOR,
+      TEMPLATE_SORT_HEADER_SELECTOR,
+    ],
   },
   {
     // A spec double is not a warm cache, so the firstValueFrom pair and the
@@ -813,14 +820,15 @@ async function selfTest() {
   });
   check('a chained built-in pipe still fails the rule once', countSyntaxMessages(chainedInTemplate), 1);
 
-  // The one built-in formatting pipe with no replacement to point at.
+  // The third built-in formatting pipe: its replacement is LocaleCurrencyPipe,
+  // which asks CurrencyService for the amount in the account's language.
   const currencyInTemplate = await fixtureEslint.lintText('<p>{{ amount | currency }}</p>\n', {
     filePath: templatePath,
   });
-  check('a currency pipe passes the rule', countSyntaxMessages(currencyInTemplate), 0);
+  check('a currency pipe fails the rule once', countSyntaxMessages(currencyInTemplate), 1);
 
   const localeInTemplate = await fixtureEslint.lintText(
-    '<p>{{ at | localeDate }} {{ n | localeNumber }}</p>\n',
+    "<p>{{ at | localeDate }} {{ n | localeNumber }} {{ a | localeCurrency:'USD' }}</p>\n",
     { filePath: templatePath }
   );
   check('the replacement pipes pass the rule', countSyntaxMessages(localeInTemplate), 0);

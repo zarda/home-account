@@ -376,21 +376,18 @@ module.exports = defineConfig([
       angular.configs.templateAccessibility,
     ],
     rules: {
-      // Angular's own `date` and `number` pipes format against the LOCALE_ID
-      // the bundle was built with, not the language the account chose, so a
-      // reader who switched to 日本語 kept seeing American dates and Western
-      // digit grouping. ADR 0058 swept every site onto LocaleDatePipe and
-      // LocaleNumberPipe, which read TranslationService.currentLocale and are
-      // impure so a language switch re-renders them. Both built-ins are at
-      // zero sites today; this is the guard that keeps them there, because
-      // the sweep found stragglers twice and nothing but reading would have
-      // found the third.
-      //
-      // `| currency` is deliberately NOT banned: there is no replacement to
-      // point at. locale-number.pipe.ts refuses currency on purpose — an
-      // amount needs its currency code and that currency's minor-unit rules,
-      // which CurrencyService owns — so the 27 live `| currency` sites are
-      // correct as written (monthly-comparison.component.html is the densest).
+      // Angular's own `date`, `number` and `currency` pipes format against
+      // the LOCALE_ID the bundle was built with, not the language the account
+      // chose, so a reader who switched to 日本語 kept seeing American dates,
+      // Western digit grouping and en-US amounts. ADR 0058 swept every site
+      // onto LocaleDatePipe and LocaleNumberPipe, which read
+      // TranslationService.currentLocale and are impure so a language switch
+      // re-renders them. An amount goes through LocaleCurrencyPipe, which
+      // returns CurrencyService.formatCurrency — the currency's own minor-unit
+      // rules, in the account's language. All three built-ins are at zero
+      // sites today; this is the guard that keeps them there, because the
+      // sweep found stragglers twice and nothing but reading would have found
+      // the third.
       //
       // @angular-eslint/template-parser tags its nodes with `type` and
       // publishes visitorKeys, so ESLint's core selector engine walks a
@@ -403,7 +400,7 @@ module.exports = defineConfig([
       // matches src/app/**/*.ts, so this and the firstValueFrom block cannot
       // collide either. scripts/check-lint-guards.mjs asserts both.
       //
-      // The third selector is the same shape of guard for Material's sort
+      // The last selector is the same shape of guard for Material's sort
       // header. It describes its action to a screen reader as the English
       // word "Sort" unless the template binds `sortActionDescription`, so a
       // header without the binding speaks English to a reader of any
@@ -425,6 +422,12 @@ module.exports = defineConfig([
           selector: 'BindingPipe[name="number"]',
           message:
             "Use | localeNumber. Angular's number pipe groups digits against the build's " +
+            "LOCALE_ID, so it ignores the language the account chose (ADR 0058).",
+        },
+        {
+          selector: 'BindingPipe[name="currency"]',
+          message:
+            "Use | localeCurrency:<code>. Angular's currency pipe formats against the build's " +
             "LOCALE_ID, so it ignores the language the account chose (ADR 0058).",
         },
         {
