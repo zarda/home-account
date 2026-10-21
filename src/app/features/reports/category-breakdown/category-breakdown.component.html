@@ -56,7 +56,7 @@
             </mat-panel-title>
             <mat-panel-description>
               <div class="category-stats">
-                <span class="category-amount desktop-only">{{ category.total | currency:currencyCode:'symbol':'1.2-2' }}</span>
+                <span class="category-amount desktop-only">{{ category.total | localeCurrency:currencyCode }}</span>
                 <span class="category-percentage">{{ category.percentage | localeNumber:'1.0-0' }}%</span>
               </div>
             </mat-panel-description>
@@ -89,11 +89,11 @@
             <div class="stats-grid">
               <div class="stat-item">
                 <span class="stat-label">{{ 'reports.totalAmount' | translate }}</span>
-                <span class="stat-value">{{ category.total | currency:currencyCode:'symbol':'1.2-2' }}</span>
+                <span class="stat-value">{{ category.total | localeCurrency:currencyCode }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">{{ 'reports.avgPerTransaction' | translate }}</span>
-                <span class="stat-value">{{ category.averageAmount | currency:currencyCode:'symbol':'1.2-2' }}</span>
+                <span class="stat-value">{{ category.averageAmount | localeCurrency:currencyCode }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">{{ 'reports.percentOfTotal' | translate }}</span>
@@ -116,7 +116,7 @@
                       <span class="transaction-date">{{ transaction.date.toDate() | localeDate }}</span>
                     </div>
                     <span class="transaction-amount" appFitText>
-                      {{ transaction.amount | currency:transaction.currency:'symbol':'1.2-2' }}
+                      {{ transaction.amount | localeCurrency:transaction.currency }}
                     </span>
                   </div>
                 }

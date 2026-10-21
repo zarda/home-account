@@ -227,6 +227,7 @@ describe('RecurringBreakdownComponent, through its own template', () => {
           useValue: {
             convert: (amount: number) => amount,
             amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+            formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`,
           },
         },
         { provide: TranslationService, useValue: createTranslationStub() },
@@ -254,10 +255,10 @@ describe('RecurringBreakdownComponent, through its own template', () => {
     expect(text('mat-card-title')).toBe('reports.recurringVsOneOff');
     const [recurring, oneOff] = rows();
     expect(cell(recurring, '.row-count')).toBe('(1)');
-    expect(cell(recurring, '.row-amount')).toBe('$300.00');
+    expect(cell(recurring, '.row-amount')).toBe('USD 300.00');
     expect(cell(recurring, '.row-percentage')).toBe('75%');
     expect(cell(oneOff, '.row-count')).toBe('(1)');
-    expect(cell(oneOff, '.row-amount')).toBe('$100.00');
+    expect(cell(oneOff, '.row-amount')).toBe('USD 100.00');
     expect(cell(oneOff, '.row-percentage')).toBe('25%');
   });
 
@@ -284,13 +285,13 @@ describe('RecurringBreakdownComponent, through its own template', () => {
     expect(empty).not.toBeNull();
     expect(empty.textContent).toContain('reports.noRecurringExpenses');
     expect(empty.textContent).toContain('reports.noRecurringExpensesHint');
-    expect(cell(rows()[0], '.row-amount')).toBe('$100.00');
+    expect(cell(rows()[0], '.row-amount')).toBe('USD 100.00');
   });
 
   it('formats the amounts in the currency it was given', () => {
     render([expenseTxn({ id: 'b', amount: 100 })], 'JPY');
 
-    expect(cell(rows()[0], '.row-amount')).toBe('¥100.00');
+    expect(cell(rows()[0], '.row-amount')).toBe('JPY 100.00');
   });
 
   describe('colours, as painted', () => {

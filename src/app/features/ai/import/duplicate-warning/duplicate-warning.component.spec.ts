@@ -6,6 +6,7 @@ import { CategorizedImportTransaction, DuplicateCheck } from '../../../../models
 import en from '../../../../../assets/i18n/en.json';
 import ja from '../../../../../assets/i18n/ja.json';
 import tc from '../../../../../assets/i18n/tc.json';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import {
@@ -211,6 +212,10 @@ describe('DuplicateWarningComponent, through its own template', () => {
     await TestBed.configureTestingModule({
       imports: [DuplicateWarningComponent],
       providers: [
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
+        },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         provideNoMotion(),
@@ -270,9 +275,9 @@ describe('DuplicateWarningComponent, through its own template', () => {
     ]);
 
     const [expense, income] = items();
-    expect(expense.querySelector('.amount')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('- $12.50');
+    expect(expense.querySelector('.amount')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('- USD 12.50');
     expect(expense.querySelector('.amount')?.classList).not.toContain('income');
-    expect(income.querySelector('.amount')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('+ $40.00');
+    expect(income.querySelector('.amount')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('+ USD 40.00');
     expect(income.querySelector('.amount')?.classList).toContain('income');
   });
 

@@ -434,12 +434,12 @@ registerLocaleData(localeZhHant);
 
 /**
  * The locale Angular's own machinery reads: the registered locale data above,
- * the date adapter's starting locale before it follows the reader, and the
- * built-in currency pipe. Resolved once at bootstrap, which is exactly why it
- * cannot be the whole answer: user-facing dates and numbers go through
- * LocaleDatePipe/LocaleNumberPipe, and the date pickers through the adapter
- * provideAppDatepicker() hands them, all of which follow the locale signal and
- * so survive a language switch without a reload. See
+ * and the date adapter's starting locale before it follows the reader.
+ * Resolved once at bootstrap, which is exactly why it cannot be the whole
+ * answer: user-facing dates, numbers and amounts go through
+ * LocaleDatePipe/LocaleNumberPipe/LocaleCurrencyPipe, and the date pickers
+ * through the adapter provideAppDatepicker() hands them, all of which follow
+ * the locale signal and so survive a language switch without a reload. See
  * docs/locale-formatting.md.
  */
 export function appLocaleIdFactory(

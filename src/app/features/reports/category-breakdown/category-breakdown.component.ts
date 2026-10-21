@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, output, signal } from '@angular/core';
-import { CommonModule, CurrencyPipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -11,6 +11,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { groupByCategoryAndType } from '../../../core/utils/transaction-aggregation.utils';
 import { categoryNameOrUnknown } from '../../../core/utils/category-display.utils';
+import { LocaleCurrencyPipe } from '../../../shared/pipes/locale-currency.pipe';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -42,7 +43,7 @@ interface CategoryBreakdown {
     MatButtonToggleModule,
     MatExpansionModule,
     EmptyStateComponent,
-    CurrencyPipe,
+    LocaleCurrencyPipe,
     LocaleDatePipe,
     LocaleNumberPipe,
     TranslatePipe,

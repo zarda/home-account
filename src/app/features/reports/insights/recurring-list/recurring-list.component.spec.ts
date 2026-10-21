@@ -5,6 +5,7 @@ import { MatDialog } from '@angular/material/dialog';
 
 import { RecurringListComponent } from './recurring-list.component';
 import { CategoryService } from '../../../../core/services/category.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { RecurringService } from '../../../../core/services/recurring.service';
 import { NotificationService } from '../../../../core/services/notification.service';
@@ -234,6 +235,10 @@ describe('RecurringListComponent, through its own template', () => {
             ]),
           },
         },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
+        },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: RecurringService, useValue: recurring },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
@@ -275,7 +280,7 @@ describe('RecurringListComponent, through its own template', () => {
     expect(cell(row, '.row-label')).toBe('NETFLIX.COM');
     expect(cell(row, '.row-meta')).toContain('insights.cadenceMonthly');
     expect(cell(row, '.row-meta')).toContain('insights.occurrences:{"count":4}');
-    expect(cell(row, '.row-monthly')).toBe('$15.99');
+    expect(cell(row, '.row-monthly')).toBe('USD 15.99');
     expect(cell(row, '.row-monthly-label')).toBe('insights.perMonth');
   });
 

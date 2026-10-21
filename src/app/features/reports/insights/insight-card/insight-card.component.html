@@ -15,7 +15,7 @@
         @for (entry of metricEntries(); track entry[0]) {
           <div class="metric-row">
             <dt>{{ entry[0] }}</dt>
-            <dd>{{ entry[1] | currency:currency():'symbol':'1.2-2' }}</dd>
+            <dd>{{ entry[1] | localeCurrency:currency() }}</dd>
           </div>
         }
       </dl>
@@ -27,7 +27,7 @@
           class="card-headline"
           [label]="figure.label"
           [labelSuffix]="currency()"
-          [value]="(figure.value | currency:currency():'symbol':'1.2-2') ?? ''"
+          [value]="figure.value | localeCurrency:currency()"
           tone="expense"
         />
       }

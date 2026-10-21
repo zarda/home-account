@@ -25,6 +25,7 @@ describe('overflow guard: monthly-comparison grid tracks (#450)', () => {
     getCurrencyInfo: (code: string) => ({ code, name: 'US Dollar', symbol: '$' }),
     convert: (amount: number) => amount,
     amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount,
+    formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`,
   };
 
   const mockTranslationService = { t: (key: string) => key, getIntlLocale: () => 'en-US' };

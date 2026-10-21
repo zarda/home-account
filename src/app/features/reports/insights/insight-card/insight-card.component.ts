@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -19,6 +18,7 @@ import { cadenceKey } from '../../../../core/utils/insight-card.utils';
 import { parseDayKey } from '../../../../core/utils/transaction-date.utils';
 import { RecurringCadence } from '../../../../core/utils/recurring-pattern.utils';
 import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
+import { LocaleCurrencyPipe } from '../../../../shared/pipes/locale-currency.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { InsightTransactionListComponent } from './insight-transaction-list.component';
 
@@ -58,7 +58,7 @@ const ICONS: Partial<Record<InsightKind, string>> = {
   selector: 'app-insight-card',
   standalone: true,
   imports: [
-    CurrencyPipe,
+    LocaleCurrencyPipe,
     MatButtonModule,
     MatCardModule,
     MatIconModule,

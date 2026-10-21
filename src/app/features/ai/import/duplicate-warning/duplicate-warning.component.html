@@ -29,7 +29,7 @@
                 <span class="description">{{ dup.transaction.description }}</span>
                 <span class="amount" [class.income]="dup.transaction.type === 'income'">
                   {{ dup.transaction.type === 'income' ? '+' : '-' }}
-                  {{ dup.transaction.amount | currency:dup.transaction.currency }}
+                  {{ dup.transaction.amount | localeCurrency:dup.transaction.currency }}
                 </span>
                 <span class="date">{{ dup.transaction.date | localeDate:'short' }}</span>
               </div>

@@ -27,6 +27,7 @@ import { ExportService } from '../../../core/services/export.service';
 import { CopiesNotPurgedError, TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { BudgetService } from '../../../core/services/budget.service';
 import { RecurringService } from '../../../core/services/recurring.service';
 import {
@@ -1051,6 +1052,10 @@ describe('DataManagementComponent, through its own template', () => {
         { provide: Firestore, useValue: {} },
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
+        },
         { provide: TranslationService, useValue: createTranslationStub() },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
@@ -1152,7 +1157,7 @@ describe('DataManagementComponent, through its own template', () => {
     expect(text('.preview-header span')).toBe('settings.previewTransactions:{"count":7}');
     expect(el().querySelectorAll('.preview-item').length).toBe(5);
     expect(text('.preview-more')).toBe('settings.moreTransactions:{"count":2}');
-    expect(text('.preview-item .preview-amount')).toBe('-$10.00');
+    expect(text('.preview-item .preview-amount')).toBe('-USD 10.00');
     expect(text('.preview-item .preview-date')).toBe('2026-03-04');
     expect(button('settings.importTransactions')).toBeDefined();
   });
@@ -1350,10 +1355,11 @@ describe('DataManagementComponent, through its own template', () => {
     /**
      * A 320 px phone leaves the preview 256 px, and each row 224 px with 200
      * of content: the stylesheet's arithmetic. At Extra large the date box is
-     * 136.5 px and -$12,345.67 about 114 px in this face, and at the default
-     * scale 105 and 88, so at no scale do the date, the description's floor
-     * and the amount share a line; the row wraps, the description keeps its
-     * floor on whichever line it lands, and the amount still ends the row.
+     * 136.5 px and the double's -USD 12345.67 about 142 px in this face, and
+     * at the default scale 105 and 109, so at no scale do the date, the
+     * description's floor and the amount share a line; the row wraps, the
+     * description keeps its floor on whichever line it lands, and the amount
+     * still ends the row.
      */
     describe('the row at a 320 px phone', () => {
       const DESCRIPTION_FLOOR_PX = 56;
@@ -1363,7 +1369,7 @@ describe('DataManagementComponent, through its own template', () => {
         host.style.display = 'block';
         host.style.width = '256px';
         const rows = preview('en', [12345.67, 4.5]);
-        expect(rows.map(({ amount }) => amount.textContent?.trim())).toEqual(['-$12,345.67', '-$4.50']);
+        expect(rows.map(({ amount }) => amount.textContent?.trim())).toEqual(['-USD 12345.67', '-USD 4.50']);
 
         for (const scale of FONT_SCALES) {
           document.documentElement.style.setProperty('--app-font-scale', String(scale));

@@ -164,6 +164,7 @@ describe('CountryBreakdownComponent, through its own template', () => {
           useValue: {
             convert: (amount: number) => amount,
             amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+            formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`,
           },
         },
         { provide: TranslationService, useValue: translation },

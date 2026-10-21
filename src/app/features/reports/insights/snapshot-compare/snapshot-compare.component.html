@@ -43,7 +43,7 @@
             [class.up]="result.expenseChange > 0"
             [class.down]="result.expenseChange < 0"
           >
-            {{ result.expenseChange | currency:result.baseCurrency:'symbol':'1.2-2' }}
+            {{ result.expenseChange | localeCurrency:result.baseCurrency }}
             @if (result.expenseChangeRatio !== null) {
               <span class="headline-ratio">
                 ({{ result.expenseChangeRatio * 100 | localeNumber:'1.0-0' }}%)
@@ -59,7 +59,7 @@
             [class.up]="result.recurringMonthlyChange > 0"
             [class.down]="result.recurringMonthlyChange < 0"
           >
-            {{ result.recurringMonthlyChange | currency:result.baseCurrency:'symbol':'1.2-2' }}
+            {{ result.recurringMonthlyChange | localeCurrency:result.baseCurrency }}
           </span>
         </div>
       </div>
@@ -74,7 +74,7 @@
                 [class.up]="entry.change > 0"
                 [class.down]="entry.change < 0"
               >
-                {{ entry.change | currency:result.baseCurrency:'symbol':'1.2-2' }}
+                {{ entry.change | localeCurrency:result.baseCurrency }}
                 @if (entry.changeRatio !== null) {
                   <span class="change-ratio">
                     ({{ entry.changeRatio * 100 | localeNumber:'1.0-0' }}%)

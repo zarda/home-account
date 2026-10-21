@@ -7,6 +7,7 @@ import { RecurringListComponent } from '../features/reports/insights/recurring-l
 import { RecurringService } from '../core/services/recurring.service';
 import { NotificationService } from '../core/services/notification.service';
 import { CategoryService } from '../core/services/category.service';
+import { CurrencyService } from '../core/services/currency.service';
 import { TranslationService } from '../core/services/translation.service';
 import { StorableRecurringSummary } from '../models';
 import { createCategory, provideNoMotion } from '../core/services/testing';
@@ -188,6 +189,10 @@ describe('truncation guard: text that wraps', () => {
         {
           provide: TranslationService,
           useValue: { t: (key: string) => key, currentLocale: signal('en') },
+        },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
         },
         // The list's convert action pulls these in; the probe never converts.
         { provide: RecurringService, useValue: { createRecurring: () => Promise.resolve('id') } },

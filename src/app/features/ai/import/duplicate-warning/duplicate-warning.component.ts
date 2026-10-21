@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { CategorizedImportTransaction, DuplicateCheck } from '../../../../models';
+import { LocaleCurrencyPipe } from '../../../../shared/pipes/locale-currency.pipe';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
@@ -16,7 +16,7 @@ export interface DuplicateInfo {
   selector: 'app-duplicate-warning',
   standalone: true,
   imports: [
-    CommonModule,
+    LocaleCurrencyPipe,
     MatExpansionModule,
     MatIconModule,
     MatButtonModule,

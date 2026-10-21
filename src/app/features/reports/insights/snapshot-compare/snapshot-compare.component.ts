@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { CurrencyPipe } from '@angular/common';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
@@ -13,6 +12,7 @@ import {
 } from '../../../../core/utils/insight-snapshot.utils';
 import { categoryDisplayName } from '../../../../core/utils/category-display.utils';
 import { parseMonthKey } from '../../../../core/utils/transaction-date.utils';
+import { LocaleCurrencyPipe } from '../../../../shared/pipes/locale-currency.pipe';
 import { LocaleNumberPipe } from '../../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
@@ -28,7 +28,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
   selector: 'app-snapshot-compare',
   standalone: true,
   imports: [
-    CurrencyPipe,
+    LocaleCurrencyPipe,
     MatFormFieldModule,
     MatIconModule,
     MatSelectModule,

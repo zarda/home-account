@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
-import { CommonModule, CurrencyPipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { map } from 'rxjs/operators';
@@ -19,6 +19,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
+import { LocaleCurrencyPipe } from '../../../shared/pipes/locale-currency.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { addMonths, monthKey, parseMonthKey } from '../../../core/utils/transaction-date.utils';
@@ -49,7 +50,7 @@ interface MonthlyComparison {
     MatTableModule,
     BaseChartDirective,
     EmptyStateComponent,
-    CurrencyPipe,
+    LocaleCurrencyPipe,
     LocaleNumberPipe,
     TranslatePipe
   ],
