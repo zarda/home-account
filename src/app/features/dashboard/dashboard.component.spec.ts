@@ -36,7 +36,10 @@ import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
 import { CloudLLMProviderService } from '../../core/services/cloud-llm-provider.service';
-import { WeeklyRecapService } from '../../core/services/weekly-recap.service';
+import { RecapStatus, WeeklyRecapService } from '../../core/services/weekly-recap.service';
+import { AnalyticsService } from '../../core/services/analytics.service';
+import { ReminderService } from '../../core/services/reminder.service';
+import { RecapFigures } from '../../core/utils/weekly-recap.utils';
 import {
   BudgetAlert,
   Category,
@@ -63,7 +66,7 @@ import {
   PeriodSelectorComponent,
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
-import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
+import { DateWindow, wholeDaysBetween } from '../../core/utils/transaction-date.utils';
 import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
 import { dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
@@ -2757,6 +2760,181 @@ describe('DashboardComponent', () => {
 
       const bar = fixture.nativeElement.querySelector('.refetch-bar');
       expect(bar.getAttribute('aria-label')).toBe('dashboard.refreshing');
+    });
+  });
+
+  // ADR 0144: whether a host that renders nothing still takes a gap is a fact
+  // about the rendered page, so it is asserted where the real template renders
+  // the real banner and the real recap between the page's own header and
+  // summary. Geometry only, no text: Karma serves no fonts.
+  describe('a banner or recap with nothing to show (real template)', () => {
+    const LAST_WEEK: DateWindow = {
+      start: new Date(2026, 8, 14),
+      end: new Date(2026, 8, 20, 23, 59, 59, 999),
+    };
+    const exceeded: BudgetAlert = {
+      budgetId: 'b1',
+      budgetName: 'Groceries',
+      percentUsed: 120,
+      remaining: 0,
+      severity: 'exceeded',
+    };
+
+    let money: jasmine.SpyObj<CurrencyService>;
+    let week: {
+      load: jasmine.Spy;
+      dismiss: jasmine.Spy;
+      weekKey: ReturnType<typeof signal<string>>;
+      visible: ReturnType<typeof signal<boolean>>;
+      window: ReturnType<typeof signal<DateWindow>>;
+      figures: ReturnType<typeof signal<RecapFigures | null>>;
+      narrative: ReturnType<typeof signal<string>>;
+      narrativeStatus: ReturnType<typeof signal<RecapStatus>>;
+    };
+
+    beforeEach(async () => {
+      // The page's own summary and the recap's amount both print through the
+      // currency service; the shared double has no formatter.
+      money = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase', 'formatCurrency']);
+      money.convert.and.callFake((amount: number) => amount);
+      money.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
+      week = {
+        load: jasmine.createSpy('load').and.resolveTo(),
+        dismiss: jasmine.createSpy('dismiss'),
+        weekKey: signal('2026-09-14'),
+        visible: signal(false),
+        window: signal(LAST_WEEK),
+        figures: signal<RecapFigures | null>({
+          spend: 320,
+          income: 1000,
+          count: 12,
+          previousSpend: 400,
+          spendDelta: -0.2,
+          topCategories: [],
+        }),
+        narrative: signal(''),
+        narrativeStatus: signal<RecapStatus>('idle'),
+      };
+
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DashboardComponent],
+        providers: [
+          provideNoMotion(),
+          provideNativeDateAdapter(),
+          provideRouter([]),
+          { provide: TransactionService, useValue: transactionService },
+          { provide: BudgetService, useValue: budgetService },
+          { provide: GoalService, useValue: goalService },
+          { provide: CategoryService, useValue: categoryService },
+          { provide: RecurringService, useValue: recurringService },
+          { provide: InsightSnapshotService, useValue: insightSnapshotService },
+          { provide: CurrencyService, useValue: money },
+          { provide: AuthService, useValue: authService },
+          { provide: TranslationService, useValue: translation },
+          { provide: MatSnackBar, useValue: snackBar },
+          { provide: AnnouncerService, useValue: announcer },
+          { provide: WidgetSnapshotService, useValue: widgetSnapshots },
+          { provide: CloudLLMProviderService, useValue: cloudLLM },
+          { provide: WeeklyRecapService, useValue: week },
+          { provide: ReminderService, useValue: { sweep: jasmine.createSpy('sweep').and.resolveTo() } },
+          {
+            provide: AnalyticsService,
+            useValue: jasmine.createSpyObj('AnalyticsService', ['trackBudgetExceededViewed']),
+          },
+        ],
+      })
+        .overrideComponent(DashboardComponent, {
+          // The banner, the recap and the summary stay real: they are the
+          // hosts whose geometry is under test. The grid's cards are not.
+          remove: {
+            imports: [
+              SpendingChartComponent,
+              RecentTransactionsComponent,
+              UpcomingBillsComponent,
+              BudgetProgressComponent,
+              AiSummaryComponent,
+              LoadingSpinnerComponent,
+            ],
+          },
+          add: { schemas: [NO_ERRORS_SCHEMA] },
+        })
+        .compileComponents();
+    });
+
+    function render(): HTMLElement {
+      const fixture = build();
+      fixture.detectChanges();
+      return fixture.nativeElement;
+    }
+
+    function part(page: HTMLElement, selector: string): HTMLElement {
+      const found = page.querySelector<HTMLElement>(selector);
+      expect(found).withContext(`${selector} rendered`).not.toBeNull();
+      return found!;
+    }
+
+    /** How far the lower element's top sits below the upper one's bottom. */
+    function distance(upper: HTMLElement, lower: HTMLElement): number {
+      return lower.getBoundingClientRect().top - upper.getBoundingClientRect().bottom;
+    }
+
+    it('takes no space for either host: an empty host is still a flex item, and holds only a comment anchor', () => {
+      const page = render();
+      const banner = part(page, 'app-budget-alert-banner');
+      const recapHost = part(page, 'app-weekly-recap');
+
+      // The premise, so this is not hiding for some other reason: each host
+      // holds Angular's comment anchor and nothing else, which :empty ignores.
+      expect(banner.matches(':empty')).withContext('the banner host holds nothing').toBeTrue();
+      expect(recapHost.matches(':empty')).withContext('the recap host holds nothing').toBeTrue();
+
+      expect(getComputedStyle(banner).display).withContext('the banner host').toBe('none');
+      expect(getComputedStyle(recapHost).display).withContext('the recap host').toBe('none');
+    });
+
+    it('leaves the summary one container gap below the header, not one more per empty host', () => {
+      const page = render();
+      const gap = parseFloat(getComputedStyle(part(page, '.dashboard-container')).rowGap);
+      expect(gap).withContext('the container gap').toBe(24);
+
+      expect(distance(part(page, 'app-page-header'), part(page, 'app-financial-summary')))
+        .withContext('header bottom to summary top')
+        .toBeCloseTo(gap, 1);
+    });
+
+    // A host with something to show is a flex item with content: it keeps its
+    // place, and the gap around it is the container's, once on each side. The
+    // other host stays empty here, so a rule that left it a gap would show as
+    // a second gap beside this one.
+    it('keeps a banner that has an alert to show, one gap from its neighbours', () => {
+      budgetService.budgetAlerts.set([exceeded]);
+
+      const page = render();
+      const banner = part(page, 'app-budget-alert-banner');
+      const header = part(page, 'app-page-header');
+      const summary = part(page, 'app-financial-summary');
+
+      expect(banner.matches(':empty')).withContext('the banner host holds the alert').toBeFalse();
+      expect(getComputedStyle(banner).display).withContext('the banner host').not.toBe('none');
+      expect(banner.getBoundingClientRect().height).withContext('the banner height').toBeGreaterThan(0);
+      expect(distance(header, banner)).withContext('header to banner').toBeCloseTo(24, 1);
+      expect(distance(banner, summary)).withContext('banner to summary').toBeCloseTo(24, 1);
+    });
+
+    it('keeps a recap that has a week to show, one gap from its neighbours', () => {
+      week.visible.set(true);
+
+      const page = render();
+      const recapHost = part(page, 'app-weekly-recap');
+      const header = part(page, 'app-page-header');
+      const summary = part(page, 'app-financial-summary');
+
+      expect(recapHost.matches(':empty')).withContext('the recap host holds the card').toBeFalse();
+      expect(getComputedStyle(recapHost).display).withContext('the recap host').not.toBe('none');
+      expect(recapHost.getBoundingClientRect().height).withContext('the recap height').toBeGreaterThan(0);
+      expect(distance(header, recapHost)).withContext('header to recap').toBeCloseTo(24, 1);
+      expect(distance(recapHost, summary)).withContext('recap to summary').toBeCloseTo(24, 1);
     });
   });
 });

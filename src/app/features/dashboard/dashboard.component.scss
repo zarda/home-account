@@ -19,6 +19,14 @@
     min-width: 0;
     max-width: 100%;
   }
+
+  // A card with nothing to show (no alert, no recap) renders only Angular's
+  // comment anchor, but its host is still a flex item and still takes a gap:
+  // two of them left a 48px blank band above the summary. `:empty` ignores
+  // comment nodes, so this matches exactly those hosts, whichever they are.
+  > :empty {
+    display: none;
+  }
 }
 
 .header-section {
