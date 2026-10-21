@@ -27,8 +27,8 @@
           [label]="'reports.bestMonth' | translate"
           [value]="best.month"
           icon="emoji_events"
-          [detail]="'+' + (best.balance | localeCurrency:currencyCode)"
-          detailTone="positive"
+          [detail]="(best.balance >= 0 ? '+' : '') + (best.balance | localeCurrency:currencyCode)"
+          [detailTone]="best.balance >= 0 ? 'positive' : 'negative'"
         />
       }
 

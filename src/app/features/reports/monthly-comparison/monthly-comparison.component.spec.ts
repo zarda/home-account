@@ -624,6 +624,32 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     expect(detail.classList).not.toContain('detail-negative');
   });
 
+  it("shows the best month's deficit as a deficit when every month is in deficit", () => {
+    // One month, expenses only: it is the best month and the worst at once.
+    // The card must not prefix a '+' to the formatter's own minus.
+    render(
+      [{ ...mockTransactionSet[0], id: 't8', amount: 345, amountInBaseCurrency: 345 }],
+      [],
+      { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) },
+    );
+
+    const detail = (cardByLabel('reports.bestMonth') as HTMLElement)
+      .querySelector('.stat-detail') as HTMLElement;
+    expect(detail.textContent?.trim()).toBe('USD -345.00');
+    expect(detail.classList).toContain('detail-negative');
+    expect(detail.classList).not.toContain('detail-positive');
+  });
+
+  it('keeps the best month a signed surplus when it is one', () => {
+    render(mockTransactionSet);
+
+    const detail = (cardByLabel('reports.bestMonth') as HTMLElement)
+      .querySelector('.stat-detail') as HTMLElement;
+    expect(detail.textContent?.trim()).toBe('+USD 4800.00');
+    expect(detail.classList).toContain('detail-positive');
+    expect(detail.classList).not.toContain('detail-negative');
+  });
+
   it('marks a loss-making worst month negative', () => {
     render(
       [
