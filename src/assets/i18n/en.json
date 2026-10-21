@@ -20,7 +20,8 @@
     "chooseMonthAndYear": "Choose month and year",
     "comparisonRange": "Comparison range",
     "yearRange": "{{start}} – {{end}}",
-    "yearRangeLabel": "{{start}} to {{end}}"
+    "yearRangeLabel": "{{start}} to {{end}}",
+    "dateInvalid": "Enter a valid date."
   },
   "stepper": {
     "completed": "Completed",
@@ -2031,7 +2032,6 @@
       "endDate": "Ends on (optional)",
       "clearEndDate": "Clear the end date",
       "endBeforeStart": "The end can't be before the start.",
-      "dateInvalid": "Enter a valid date.",
       "threshold": "Warn at (optional)",
       "thresholdHint": "A percentage of the limit. Leave it empty to warn at {{default}}%.",
       "thresholdRange": "Enter a percentage from {{min}} to {{max}}.",

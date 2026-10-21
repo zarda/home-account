@@ -18,7 +18,8 @@ import {
   measurePinnedActions,
   readAtEveryScale,
   readReservedRows,
-  readSubscripts
+  readSubscripts,
+  typeInto
 } from '../household-plan-dialog.testing';
 
 describe('HouseholdContributionDialogComponent', () => {
@@ -88,6 +89,32 @@ describe('HouseholdContributionDialogComponent', () => {
 
     await component.submit();
     expect(save).not.toHaveBeenCalled();
+  });
+
+  describe('its date field', () => {
+    const errors = (): (string | undefined)[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-error'), error => error.textContent?.trim());
+
+    // The control then holds null, so the required error is there too: the
+    // parse error has to take precedence over it.
+    it('says a date it cannot read is not one, in the date field alone', () => {
+      create();
+      expect(errors()).toEqual([]);
+
+      typeInto(fixture.nativeElement, '[formControlName="date"]', 'not a date');
+      fixture.detectChanges();
+
+      expect(errors()).toEqual(['datepicker.dateInvalid']);
+    });
+
+    it('still names the date as required once its text is cleared (pin)', () => {
+      create();
+
+      typeInto(fixture.nativeElement, '[formControlName="date"]', '');
+      fixture.detectChanges();
+
+      expect(errors()).toEqual(['household.planForm.dateRequired']);
+    });
   });
 
   it('cannot be closed while its save is on its way, and closes once it is stored', async () => {

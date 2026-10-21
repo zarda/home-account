@@ -135,10 +135,13 @@
     <!-- Start Date -->
     <mat-form-field appearance="outline">
       <mat-label>{{ 'settings.startDate' | translate }}</mat-label>
-      <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate" />
+      <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate" #startModel="ngModel" />
       <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
       <mat-datepicker #startPicker></mat-datepicker>
       <mat-icon matPrefix>calendar_today</mat-icon>
+      @if (startModel.hasError('matDatepickerParse')) {
+        <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
+      }
     </mat-form-field>
 
     <!-- End Date Toggle -->
@@ -153,10 +156,13 @@
     @if (hasEndDate) {
       <mat-form-field appearance="outline">
         <mat-label>{{ 'settings.endDate' | translate }}</mat-label>
-        <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate" [min]="startDate" />
+        <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate" [min]="startDate" #endModel="ngModel" />
         <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
         <mat-datepicker #endPicker></mat-datepicker>
         <mat-icon matPrefix>event_busy</mat-icon>
+        @if (endModel.hasError('matDatepickerParse')) {
+          <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
+        }
       </mat-form-field>
     }
 

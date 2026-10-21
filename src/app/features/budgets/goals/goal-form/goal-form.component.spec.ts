@@ -374,6 +374,32 @@ describe('GoalFormComponent, through its own template', () => {
     expect(el().querySelector('[aria-label="goal.clearDate"]')).toBeNull();
   });
 
+  /** What the user does: replaces the target date's text and leaves it. */
+  function typeTargetDate(text: string): void {
+    const input = el().querySelector<HTMLInputElement>('input[formControlName="targetDate"]')!;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+  }
+
+  it('says a target date it cannot read is not one', async () => {
+    await render({ mode: 'add' });
+    expect(errors()).toEqual([]);
+
+    typeTargetDate('not a date');
+
+    expect(errors()).toEqual(['datepicker.dateInvalid']);
+  });
+
+  it('shows nothing once the target date is cleared, the field being optional (pin)', async () => {
+    await render({ mode: 'edit', goal: savedGoalFixture });
+
+    typeTargetDate('');
+
+    expect(errors()).toEqual([]);
+  });
+
   it('explains a locked currency under the row rather than in the field', async () => {
     await render({ mode: 'add' });
     expect(el().textContent).not.toContain('goal.currencyLocked');

@@ -1379,3 +1379,283 @@ describe('RecurringFormDialogComponent, a start date the user clears', () => {
     expect(preview()).toBe(monthlyOn(15, 'th'));
   });
 });
+
+/**
+ * Both dates are template-driven inputs, so the error each shows is read off
+ * its own NgModel. Typed text that names no day is a parse error on that
+ * control, said in the field it was typed into. Emptying a field is not an
+ * error: the start date's cleared state is handled by the dialog (it will not
+ * save), and the end date is optional.
+ */
+describe('RecurringFormDialogComponent, a date it cannot read', () => {
+  let fixture: ComponentFixture<RecurringFormDialogComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [RecurringFormDialogComponent],
+      providers: [
+        { provide: MatDialogRef, useValue: jasmine.createSpyObj('MatDialogRef', ['close']) },
+        { provide: MAT_DIALOG_DATA, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal({
+              preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+            })
+          }
+        },
+        { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+        { provide: CurrencyService, useValue: { currencies: signal([]) } },
+        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        provideNoMotion(),
+        provideNativeDateAdapter()
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RecurringFormDialogComponent);
+    fixture.detectChanges();
+    // ngModel hands the start date to the input a microtask after the first pass.
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+  const errors = () => Array.from(root().querySelectorAll('mat-error'), n => n.textContent?.trim());
+
+  function inputOf(label: string): HTMLInputElement {
+    const field = Array.from(root().querySelectorAll('mat-form-field'))
+      .find(each => each.querySelector('mat-label')?.textContent?.trim() === label);
+    expect(field).withContext(`the ${label} field`).toBeTruthy();
+    return field!.querySelector<HTMLInputElement>('input')!;
+  }
+
+  /** What the user does: replaces the field's text and leaves it. */
+  function enter(label: string, text: string): void {
+    const input = inputOf(label);
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+  }
+
+  function addEndDate(): void {
+    Array.from(root().querySelectorAll<HTMLButtonElement>('.end-date-toggle button'))
+      .find(button => button.textContent?.includes('settings.addEndDate'))!
+      .click();
+    fixture.detectChanges();
+  }
+
+  it('says a start date it cannot read is not one', () => {
+    expect(errors()).toEqual([]);
+
+    enter('settings.startDate', 'not a date');
+
+    expect(errors()).toEqual(['datepicker.dateInvalid']);
+  });
+
+  it('says an end date it cannot read is not one, and not the start date beside it', () => {
+    addEndDate();
+    expect(errors()).toEqual([]);
+
+    enter('settings.endDate', 'not a date');
+
+    expect(errors()).toEqual(['datepicker.dateInvalid']);
+    expect(inputOf('settings.endDate').closest('mat-form-field')!.querySelector('mat-error')).not.toBeNull();
+    expect(inputOf('settings.startDate').closest('mat-form-field')!.querySelector('mat-error')).toBeNull();
+  });
+
+  it('will not save a new rule while the end date field holds a date it cannot read', () => {
+    const component = fixture.componentInstance;
+    // A rule that is valid in every field but the one under test.
+    component.name = 'Rent';
+    component.amount = 100;
+    component.categoryId = 'cat1';
+    addEndDate();
+    expect(component.isValid).withContext('with the end date field open and empty').toBeTrue();
+
+    enter('settings.endDate', 'not a date');
+
+    expect(component.isValid).toBeFalse();
+  });
+
+  it('shows nothing once the start date is cleared (pin)', () => {
+    enter('settings.startDate', '3/5/2026');
+    expect(fixture.componentInstance.startDate).toEqual(new Date(2026, 2, 5));
+
+    enter('settings.startDate', '');
+
+    expect(fixture.componentInstance.startDate).toBeNull();
+    expect(errors()).toEqual([]);
+  });
+
+  it('shows nothing once the end date is cleared, the field being optional (pin)', () => {
+    addEndDate();
+    enter('settings.endDate', '4/6/2026');
+    expect(fixture.componentInstance.endDate).toEqual(new Date(2026, 3, 6));
+
+    enter('settings.endDate', '');
+
+    expect(fixture.componentInstance.endDate).toBeNull();
+    expect(errors()).toEqual([]);
+  });
+
+  it('reads a start date typed back in once it was unreadable', () => {
+    enter('settings.startDate', 'not a date');
+    expect(errors()).toEqual(['datepicker.dateInvalid']);
+
+    enter('settings.startDate', '3/5/2026');
+
+    expect(fixture.componentInstance.startDate).toEqual(new Date(2026, 2, 5));
+    expect(errors()).toEqual([]);
+  });
+});
+
+/**
+ * The end date is optional, but a field that holds text naming no day is not
+ * an empty one: it shows "Enter a valid date.", and the model beneath it is a
+ * null that reads as "no end date". An edit that saved from there would send
+ * that null and delete the end date the rule was stored with, in the same
+ * moment the field says the text is wrong. So the form will not save while
+ * the end field is in that state. Driven through the input over the app's own
+ * adapter, the way the user meets it.
+ */
+describe('RecurringFormDialogComponent, an edited rule whose end date is typed over', () => {
+  let fixture: ComponentFixture<RecurringFormDialogComponent>;
+  let component: RecurringFormDialogComponent;
+  let mockDialogRef: jasmine.SpyObj<MatDialogRef<RecurringFormDialogComponent>>;
+
+  const stored = {
+    id: 'rec1',
+    name: 'Rent',
+    type: 'expense',
+    amount: 100,
+    currency: 'USD',
+    categoryId: 'cat1',
+    description: '',
+    frequency: { type: 'monthly', interval: 1 },
+    startDate: Timestamp.fromDate(new Date(2026, 0, 1)),
+    endDate: Timestamp.fromDate(new Date(2026, 11, 31)),
+    isActive: true
+  } as RecurringTransaction;
+
+  beforeEach(async () => {
+    mockDialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+
+    await TestBed.configureTestingModule({
+      imports: [RecurringFormDialogComponent],
+      providers: [
+        { provide: MatDialogRef, useValue: mockDialogRef },
+        { provide: MAT_DIALOG_DATA, useValue: { recurring: stored } },
+        { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+        { provide: CurrencyService, useValue: { currencies: signal([]) } },
+        provideAppDatepickerForTests({ dateFormat: signal('MM/DD/YYYY') }),
+        provideNoMotion()
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RecurringFormDialogComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    // ngModel hands the dates to the inputs a microtask after the first pass.
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+  function endInput(): HTMLInputElement {
+    const field = Array.from(root().querySelectorAll('mat-form-field'))
+      .find(each => each.querySelector('mat-label')?.textContent?.trim() === 'settings.endDate');
+    expect(field).withContext('the end date field').toBeTruthy();
+    return field!.querySelector<HTMLInputElement>('input')!;
+  }
+
+  /** What the user does: replaces the field's text and leaves it. */
+  function typeEnd(text: string): void {
+    const input = endInput();
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+  }
+
+  const errors = () => Array.from(root().querySelectorAll('mat-error'), n => n.textContent?.trim());
+
+  const saveButton = (): HTMLButtonElement =>
+    Array.from(root().querySelectorAll<HTMLButtonElement>('mat-dialog-actions button'))
+      .find(button => button.textContent?.includes('settings.saveChanges'))!;
+
+  it('opens on the stored end date with the form savable (positive control)', () => {
+    expect(endInput().value).toBe('12/31/2026');
+    expect(component.endDate).toEqual(new Date(2026, 11, 31));
+    expect(errors()).toEqual([]);
+    expect(component.isValid).toBeTrue();
+    expect(saveButton().disabled).toBeFalse();
+  });
+
+  it('is not valid, and does not save, while the end field holds text that is no date', () => {
+    typeEnd('not a date');
+
+    // The field says so; the form must agree with it.
+    expect(errors()).toEqual(['datepicker.dateInvalid']);
+    expect(component.endDate).toBeNull();
+    expect(component.isValid).toBeFalse();
+    expect(saveButton().disabled).toBeTrue();
+
+    component.save();
+
+    expect(mockDialogRef.close).not.toHaveBeenCalled();
+  });
+
+  it('saves again with a date typed back into the end field', () => {
+    typeEnd('not a date');
+    expect(component.isValid).withContext('while the text is unreadable').toBeFalse();
+
+    typeEnd('6/30/2027');
+
+    expect(errors()).toEqual([]);
+    expect(component.isValid).toBeTrue();
+    expect(saveButton().disabled).toBeFalse();
+
+    component.save();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({ endDate: new Date(2027, 5, 30) })
+    );
+  });
+
+  it('still lets the user remove the end date on purpose, which sends the null that deletes it (pin)', () => {
+    typeEnd('not a date');
+    expect(component.isValid).withContext('while the text is unreadable').toBeFalse();
+
+    Array.from(root().querySelectorAll<HTMLButtonElement>('.end-date-toggle button'))
+      .find(button => button.textContent?.includes('settings.removeEndDate'))!
+      .click();
+    fixture.detectChanges();
+
+    expect(component.isValid).toBeTrue();
+    expect(saveButton().disabled).toBeFalse();
+
+    component.save();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ endDate: null }));
+  });
+
+  it('is valid with the end field emptied, the field being optional (pin)', () => {
+    typeEnd('');
+
+    expect(component.endDate).toBeNull();
+    expect(errors()).toEqual([]);
+    expect(component.isValid).toBeTrue();
+  });
+});

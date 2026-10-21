@@ -80,7 +80,9 @@
       <input matInput [matDatepicker]="startPicker" formControlName="startDate" />
       <mat-datepicker-toggle matIconSuffix [for]="startPicker" />
       <mat-datepicker #startPicker />
-      @if (form.controls.startDate.invalid) {
+      @if (form.controls.startDate.hasError('matDatepickerParse')) {
+        <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
+      } @else if (form.controls.startDate.hasError('required')) {
         <mat-error>{{ 'household.planForm.startRequired' | translate }}</mat-error>
       }
     </mat-form-field>
@@ -104,8 +106,8 @@
       <mat-datepicker #endPicker />
       @if (form.controls.endDate.hasError('endBeforeStart')) {
         <mat-error>{{ 'household.planForm.endBeforeStart' | translate }}</mat-error>
-      } @else if (form.controls.endDate.invalid) {
-        <mat-error>{{ 'household.planForm.dateInvalid' | translate }}</mat-error>
+      } @else if (form.controls.endDate.hasError('matDatepickerParse')) {
+        <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
       }
     </mat-form-field>
 

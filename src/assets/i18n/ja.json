@@ -20,7 +20,8 @@
     "chooseMonthAndYear": "年と月を選択",
     "comparisonRange": "比較期間",
     "yearRange": "{{start}}〜{{end}}",
-    "yearRangeLabel": "{{start}}から{{end}}まで"
+    "yearRangeLabel": "{{start}}から{{end}}まで",
+    "dateInvalid": "正しい日付を入力してください。"
   },
   "stepper": {
     "completed": "完了",
@@ -1869,7 +1870,6 @@
       "endDate": "終了日（任意）",
       "clearEndDate": "終了日をクリア",
       "endBeforeStart": "終了日は開始日より前にできません。",
-      "dateInvalid": "正しい日付を入力してください。",
       "threshold": "通知のしきい値（任意）",
       "thresholdHint": "上限額に対する割合です。空欄の場合は{{default}}%で通知します。",
       "thresholdRange": "{{min}}〜{{max}}の割合を入力してください。",

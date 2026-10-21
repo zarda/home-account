@@ -20,7 +20,8 @@
     "chooseMonthAndYear": "選擇年份和月份",
     "comparisonRange": "比較期間",
     "yearRange": "{{start}} 至 {{end}}",
-    "yearRangeLabel": "{{start}} 至 {{end}}"
+    "yearRangeLabel": "{{start}} 至 {{end}}",
+    "dateInvalid": "請輸入有效的日期。"
   },
   "stepper": {
     "completed": "已完成",
@@ -1869,7 +1870,6 @@
       "endDate": "結束日期（選填）",
       "clearEndDate": "清除結束日期",
       "endBeforeStart": "結束日期不能早於開始日期。",
-      "dateInvalid": "請輸入有效的日期。",
       "threshold": "提醒門檻（選填）",
       "thresholdHint": "上限的百分比。留空則於{{default}}%時提醒。",
       "thresholdRange": "請輸入 {{min}} 到 {{max}} 的百分比。",

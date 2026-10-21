@@ -18,7 +18,9 @@
       <input matInput [matDatepicker]="datePicker" formControlName="date" />
       <mat-datepicker-toggle matIconSuffix [for]="datePicker" />
       <mat-datepicker #datePicker />
-      @if (form.controls.date.invalid) {
+      @if (form.controls.date.hasError('matDatepickerParse')) {
+        <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
+      } @else if (form.controls.date.hasError('required')) {
         <mat-error>{{ 'household.planForm.dateRequired' | translate }}</mat-error>
       }
     </mat-form-field>

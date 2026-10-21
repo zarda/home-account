@@ -74,6 +74,9 @@
           </button>
         }
         <mat-datepicker #targetPicker />
+        @if (form.controls['targetDate'].hasError('matDatepickerParse')) {
+          <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
+        }
       </mat-form-field>
 
       <!-- Items (project checklist) -->

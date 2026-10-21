@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, NgModel } from '@angular/forms';
 
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -72,6 +72,11 @@ export class RecurringFormDialogComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+
+  // The end date's control, present while the end date field is on screen. An
+  // end date is optional, so its model is a null whether the field is empty or
+  // holds text that names no day; only the control can tell the two apart.
+  private endModel = viewChild<NgModel>('endModel');
 
   // Form data
   name = '';
@@ -163,8 +168,16 @@ export class RecurringFormDialogComponent implements OnInit {
       this.amount > 0 &&
       this.categoryId.length > 0 &&
       this.interval > 0 &&
-      this.startDate !== null
+      this.startDate !== null &&
+      !this.endDateUnreadable
     );
+  }
+
+  // Text in the end field that names no day. Its model is the null that means
+  // "no end date", so a save from here would drop the end date the rule was
+  // stored with while the field beside it says the text is wrong.
+  private get endDateUnreadable(): boolean {
+    return this.endModel()?.hasError('matDatepickerParse') === true;
   }
 
   get showDayOfWeek(): boolean {

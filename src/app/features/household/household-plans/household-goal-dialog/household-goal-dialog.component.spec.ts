@@ -117,6 +117,31 @@ describe('HouseholdGoalDialogComponent', () => {
       expect(save).not.toHaveBeenCalled();
     });
 
+    describe('its target date field', () => {
+      const errors = (): (string | undefined)[] =>
+        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-error'), error => error.textContent?.trim());
+
+      it('says a date it cannot read is not one', () => {
+        expect(errors()).toEqual([]);
+
+        typeInto(fixture.nativeElement, '[formControlName="targetDate"]', 'not a date');
+        fixture.detectChanges();
+
+        expect(errors()).toEqual(['datepicker.dateInvalid']);
+      });
+
+      it('shows nothing once its text is cleared, the field being optional (pin)', () => {
+        component.form.controls.targetDate.setValue(new Date(2027, 0, 1));
+        fixture.detectChanges();
+
+        typeInto(fixture.nativeElement, '[formControlName="targetDate"]', '');
+        fixture.detectChanges();
+
+        expect(component.form.controls.targetDate.value).toBeNull();
+        expect(errors()).toEqual([]);
+      });
+    });
+
     it('clears a target date from its own button', () => {
       component.form.controls.targetDate.setValue(new Date(2027, 0, 1));
       fixture.detectChanges();
@@ -355,6 +380,6 @@ describe("HouseholdGoalDialogComponent's target date, typed day first", () => {
     const { value, errors } = enter('31/02/2026');
 
     expect(value).withContext('the target date').toBeNull();
-    expect(errors).withContext('the errors shown').toEqual(['household.planForm.dateInvalid']);
+    expect(errors).withContext('the errors shown').toEqual(['datepicker.dateInvalid']);
   });
 });
