@@ -391,14 +391,16 @@ export function notificationTapLoader(injector: Injector = inject(Injector)): ()
 
 /**
  * Arms NotificationTapService, which opens what a tapped reminder names in a
- * page that is already running. On the web it loads the service from an idle
- * task, and a tab that receives the worker's message before then is only
- * focused. In the iOS app it loads it at once: the plugin holds a tap that
- * started the app until the listener attaches, and attaching it seconds
- * later would open that tap over wherever the user had gone meanwhile. The
- * chunk comes from the app's own files there, so nothing is downloaded early.
- * Nothing here throws, and a service that fails to load or arm is logged,
- * never handed to the ErrorHandler: the tap still focused the app.
+ * page that is already running, and the dashboard for a tap on the iOS
+ * widget. On the web it loads the service from an idle task, and a tab that
+ * receives the worker's message before then is only focused. In the iOS app
+ * it loads it at once: the notification plugin and the widget's each hold a
+ * tap that started the app until a listener attaches, and attaching one
+ * seconds later would open that tap over wherever the user had gone
+ * meanwhile. The chunk comes from the app's own files there, so nothing is
+ * downloaded early. Nothing here throws, and a service that fails to load or
+ * arm is logged, never handed to the ErrorHandler: the tap still focused the
+ * app.
  */
 export function armNotificationTaps(
   load: () => Promise<NotificationTapArmer> = notificationTapLoader(),
@@ -546,9 +548,10 @@ export const appConfig: ApplicationConfig = {
       armLedgerSweep();
     }),
     provideAppInitializer(() => {
-      // Opens what a tapped reminder names in a page already running, from a
-      // service loaded only then: after an idle task on the web, at once in
-      // the iOS app (armNotificationTaps).
+      // Opens what a tapped reminder names, or the dashboard for a tap on the
+      // iOS widget, in a page already running, from a service loaded only
+      // then: after an idle task on the web, at once in the iOS app
+      // (armNotificationTaps).
       armNotificationTaps();
     })
   ]

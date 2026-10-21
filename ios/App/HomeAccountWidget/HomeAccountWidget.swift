@@ -34,7 +34,10 @@ struct HomeAccountMonthWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "HomeAccountMonth", provider: MonthProvider()) { entry in
+            // Once, around every family and state: a tap anywhere on the
+            // widget opens the dashboard.
             MonthEntryView(entry: entry)
+                .widgetURL(WidgetSnapshot.tapURL)
         }
         .configurationDisplayName(Self.appName)
         .supportedFamilies(Self.families)

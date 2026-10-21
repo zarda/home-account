@@ -186,7 +186,7 @@ describe('WidgetSnapshotService', () => {
 
     beforeEach(() => {
       write = jasmine.createSpy('write').and.resolveTo();
-      configure({ write });
+      configure({ write, addListener: jasmine.createSpy<WidgetSnapshotPlugin['addListener']>('addListener') });
       service = TestBed.inject(WidgetSnapshotService);
     });
 

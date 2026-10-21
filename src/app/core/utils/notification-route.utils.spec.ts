@@ -1,4 +1,4 @@
-import { billRoute, budgetRoute, recapRoute, safeAppRoute } from './notification-route.utils';
+import { billRoute, budgetRoute, recapRoute, safeAppRoute, widgetRoute } from './notification-route.utils';
 
 describe('notification routes', () => {
   describe('builders', () => {
@@ -22,12 +22,17 @@ describe('notification routes', () => {
       expect(recapRoute('2026 08&31')).toBe('/dashboard?recap=2026%2008%2631');
     });
 
+    it('opens the dashboard for a tap on the widget', () => {
+      expect(widgetRoute()).toBe('/dashboard');
+    });
+
     it('builds only routes the validator lets through', () => {
       const built = [
         billRoute('rule-1'),
         billRoute('//evil.example\\x\n'),
         budgetRoute(),
         recapRoute('2026-08-31'),
+        widgetRoute(),
       ];
 
       for (const route of built) expect(safeAppRoute(route)).withContext(route).toBe(route);

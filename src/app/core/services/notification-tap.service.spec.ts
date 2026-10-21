@@ -13,6 +13,7 @@ import type { PluginListenerHandle } from '@capacitor/core';
 import type { ActionPerformed, LocalNotificationsPlugin } from '@capacitor/local-notifications';
 import { Subject } from 'rxjs';
 
+import { WIDGET_SNAPSHOT_PLUGIN, WidgetSnapshotPlugin } from '../plugins/widget-snapshot.plugin';
 import { NotificationTapService } from './notification-tap.service';
 
 /** The message `public/share-target-sw.js` posts to an open tab (share-target-sw.spec.ts pins the worker's side). */
@@ -51,6 +52,27 @@ class FakeLocalNotifications {
   }
 }
 
+/**
+ * Stands in for the widget plugin's adapter, which is a plain object of its
+ * two methods, never the proxy (WIDGET_SNAPSHOT_PLUGIN).
+ */
+class FakeWidget implements WidgetSnapshotPlugin {
+  readonly handle: PluginListenerHandle = { remove: jasmine.createSpy('remove').and.resolveTo() };
+  readonly listeners: (() => void)[] = [];
+  readonly write = jasmine.createSpy<WidgetSnapshotPlugin['write']>('write').and.resolveTo();
+  readonly addListener = jasmine
+    .createSpy<WidgetSnapshotPlugin['addListener']>('addListener')
+    .and.callFake((_event, listener) => {
+      this.listeners.push(listener);
+      return Promise.resolve(this.handle);
+    });
+
+  /** What the plugin sends when a tap on the widget opened the app. */
+  tap(): void {
+    for (const listener of this.listeners) listener();
+  }
+}
+
 /** Substitutes only the plugin seam; the worker side is the real `navigator.serviceWorker`. */
 class TestNotificationTapService extends NotificationTapService {
   readonly plugin = new FakeLocalNotifications();
@@ -69,8 +91,10 @@ interface FakeRouter {
 describe('NotificationTapService', () => {
   let router: FakeRouter;
   let isNative: jasmine.Spy;
+  let widget: FakeWidget;
 
   beforeEach(() => {
+    widget = new FakeWidget();
     router = {
       navigated: true,
       events: new Subject<RouterEvent>(),
@@ -78,7 +102,10 @@ describe('NotificationTapService', () => {
     };
     isNative = spyOn(Capacitor, 'isNativePlatform').and.returnValue(false);
     TestBed.configureTestingModule({
-      providers: [{ provide: Router, useValue: router }],
+      providers: [
+        { provide: Router, useValue: router },
+        { provide: WIDGET_SNAPSHOT_PLUGIN, useValue: widget },
+      ],
     });
   });
 
@@ -167,6 +194,15 @@ describe('NotificationTapService', () => {
       expect(taps.plugin.addListener).not.toHaveBeenCalled();
     });
 
+    it('never listens to the widget, even with a widget plugin provided (pin)', async () => {
+      await service().arm();
+
+      postFromWorker({ type: ROUTE_MESSAGE, route: '/dashboard?bill=rule-1' });
+
+      expect(router.navigateByUrl).toHaveBeenCalledOnceWith('/dashboard?bill=rule-1');
+      expect(widget.addListener).not.toHaveBeenCalled();
+    });
+
     it('arms once however often it is asked', async () => {
       const taps = service();
       await Promise.all([taps.arm(), taps.arm()]);
@@ -239,6 +275,7 @@ describe('NotificationTapService', () => {
       await taps.arm();
 
       expect(taps.plugin.addListener).toHaveBeenCalledTimes(1);
+      expect(widget.addListener).toHaveBeenCalledTimes(1);
     });
 
     it('logs a listener the plugin refuses, and arming still settles', async () => {
@@ -249,6 +286,59 @@ describe('NotificationTapService', () => {
       await taps.arm();
 
       expect(warn).toHaveBeenCalledOnceWith('[NotificationTapService] Notification taps were not armed', jasmine.any(Error));
+      widget.tap();
+      expect(router.navigateByUrl).toHaveBeenCalledOnceWith('/dashboard');
+    });
+
+    describe('the widget', () => {
+      it('listens for a tap on the widget', async () => {
+        await service().arm();
+
+        expect(widget.addListener).toHaveBeenCalledOnceWith('tapped', jasmine.any(Function));
+      });
+
+      it('opens the dashboard when the widget is tapped', async () => {
+        await service().arm();
+
+        widget.tap();
+
+        expect(router.navigateByUrl).toHaveBeenCalledOnceWith('/dashboard');
+      });
+
+      it('holds a cold-start widget tap until the first navigation ends', async () => {
+        router.navigated = false;
+        await service().arm();
+
+        widget.tap();
+        expect(router.navigateByUrl).not.toHaveBeenCalled();
+
+        settleFirstNavigation();
+        expect(router.navigateByUrl).toHaveBeenCalledOnceWith('/dashboard');
+      });
+
+      it('logs a widget listener the plugin refuses once, and the reminders still arm', async () => {
+        const warn = spyOn(console, 'warn');
+        widget.addListener.and.rejectWith(Object.assign(new Error('not implemented'), { code: 'UNIMPLEMENTED' }));
+        const taps = service();
+
+        await taps.arm();
+        await taps.arm();
+
+        expect(warn).toHaveBeenCalledOnceWith('[NotificationTapService] Widget taps were not armed', jasmine.any(Error));
+        taps.plugin.act('tap', { route: '/budgets?tab=budgets' });
+        expect(router.navigateByUrl).toHaveBeenCalledOnceWith('/budgets?tab=budgets');
+      });
+
+      it('arms the reminders alone when there is no widget plugin (pin)', async () => {
+        TestBed.overrideProvider(WIDGET_SNAPSHOT_PLUGIN, { useValue: null });
+        const warn = spyOn(console, 'warn');
+        const taps = service();
+
+        await taps.arm();
+
+        expect(taps.plugin.addListener).toHaveBeenCalledOnceWith('localNotificationActionPerformed', jasmine.any(Function));
+        expect(warn).not.toHaveBeenCalled();
+      });
     });
   });
 });

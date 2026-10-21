@@ -21,6 +21,18 @@ struct WidgetSnapshot: Codable, Equatable {
     static let fileName = "widget-snapshot.json"
     static let supportedVersion = 1
 
+    /// What a tap on the widget opens the app with, whatever its size or
+    /// state. It names no route: any app may open it, and all it can do is
+    /// bring the dashboard up (`WidgetSnapshotPlugin`).
+    static let tapURL = URL(string: "com.homeaccount.app://widget")!
+
+    /// Whether the app was opened by a tap on the widget. Only the scheme and
+    /// the host are read, without case, as a URL's are; the app is opened by
+    /// other URLs too (Google sign-in's redirect among them).
+    static func isTap(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == tapURL.scheme && url.host?.lowercased() == tapURL.host
+    }
+
     enum State: String, Codable, Equatable {
         case figures
         case locked

@@ -45,11 +45,13 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AppLockService } from '../../core/services/app-lock.service';
 import { BiometricAuthService } from '../../core/services/biometric-auth.service';
+import { NotificationTapService } from '../../core/services/notification-tap.service';
 import {
   BIOMETRIC_AUTH_PLUGIN,
   Biometry,
   BiometricAuthPlugin
 } from '../../core/plugins/biometric-auth.plugin';
+import { WIDGET_SNAPSHOT_PLUGIN, WidgetSnapshotPlugin } from '../../core/plugins/widget-snapshot.plugin';
 import { APP_LOCK_STORAGE_PREFIX } from '../../core/utils/app-lock.utils';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { MockAuthService, createMockUser, provideNoMotion } from '../../core/services/testing';
@@ -314,6 +316,73 @@ describe('App lock biometric door (emulator smoke test)', () => {
       expect(document.querySelector('app-onboarding-dialog'))
         .withContext('the mock user is already onboarded')
         .toBeNull();
+
+      await settleDashboard(harness);
+    },
+    SPEC_TIMEOUT
+  );
+
+  it(
+    'opens the dashboard once unlocked when the widget is tapped on the lock screen, not the page the relock left',
+    async () => {
+      const taps: (() => void)[] = [];
+      const widget: WidgetSnapshotPlugin = {
+        write: jasmine.createSpy<WidgetSnapshotPlugin['write']>('write').and.resolveTo(),
+        addListener: jasmine
+          .createSpy<WidgetSnapshotPlugin['addListener']>('addListener')
+          .and.callFake((_event, listener) => {
+            taps.push(listener);
+            return Promise.resolve({ remove: () => Promise.resolve() });
+          })
+      };
+      TestBed.overrideProvider(WIDGET_SNAPSHOT_PLUGIN, { useValue: widget });
+
+      // No initializer runs under TestBed, so the service is armed by hand,
+      // while the platform still reads as native (armNotificationTaps).
+      await TestBed.inject(NotificationTapService).arm();
+      expect(widget.addListener).toHaveBeenCalledOnceWith('tapped', jasmine.any(Function));
+      // Native only for arming, as openLockedScreen does for its probe.
+      isNativeSpy.and.returnValue(false);
+
+      // onboardingCompleted restated for the same reason as openLockedScreen.
+      mockAuth.setMockUser(
+        createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true, enableAppLock: true }
+        })
+      );
+      const appLock = TestBed.inject(AppLockService);
+      // The account effect clears the unlocked state; run it before setPin
+      // marks the device unlocked, so the first navigation is let through.
+      TestBed.tick();
+      await appLock.setPin(PIN);
+
+      const router = TestBed.inject(Router);
+      const harness = await RouterTestingHarness.create();
+      await harness.navigateByUrl('/transactions');
+      expect(router.url).withContext('unlocked, the page opens').toBe('/transactions');
+
+      // The relock remembers the page it left.
+      appLock.lockNow();
+      await waitFor('the relock to open /lock', () => router.url === '/lock', () => harness.detectChanges());
+
+      taps.forEach(tap => tap());
+
+      const pinInput = document.querySelector<HTMLInputElement>('input[name="pin"]')!;
+      pinInput.value = PIN;
+      pinInput.dispatchEvent(new Event('input'));
+      await waitFor(
+        'the unlock button to enable once the PIN is valid',
+        () => !isDisabled('button.unlock-button'),
+        () => harness.detectChanges()
+      );
+
+      document.querySelector<HTMLButtonElement>('button.unlock-button')!.click();
+      await waitFor(
+        'the PIN path to leave /lock',
+        () => router.url !== '/lock',
+        () => harness.detectChanges()
+      );
+      expect(router.url).withContext('the tap, not the page the relock left').toBe('/dashboard');
 
       await settleDashboard(harness);
     },

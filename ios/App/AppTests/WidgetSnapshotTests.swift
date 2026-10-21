@@ -373,6 +373,34 @@ final class WidgetSnapshotTests: XCTestCase {
             .sentence(.stale, title: "This month", text: "Open the app to refresh this month"))
     }
 
+    // MARK: Tap
+
+    /// The app is opened by other URLs too (Google sign-in's redirect among
+    /// them), so only this one may read as a tap on the widget.
+    func testTheTapURLIsATap() {
+        XCTAssertEqual(WidgetSnapshot.tapURL.absoluteString, "com.homeaccount.app://widget")
+        XCTAssertTrue(WidgetSnapshot.isTap(WidgetSnapshot.tapURL))
+    }
+
+    /// A URL's scheme and host carry no case, so another spelling of the
+    /// same URL is still the tap.
+    func testAnUpperCaseSpellingOfTheTapURLIsATap() throws {
+        XCTAssertTrue(WidgetSnapshot.isTap(try XCTUnwrap(URL(string: "COM.HomeAccount.APP://WIDGET"))))
+    }
+
+    func testGoogleSignInsRedirectIsNotATap() throws {
+        let redirect = try XCTUnwrap(URL(string: "com.googleusercontent.apps.123-abc:/oauth2callback?code=x&state=y"))
+        XCTAssertFalse(WidgetSnapshot.isTap(redirect))
+    }
+
+    func testAnotherHostUnderTheAppsSchemeIsNotATap() throws {
+        XCTAssertFalse(WidgetSnapshot.isTap(try XCTUnwrap(URL(string: "com.homeaccount.app://dashboard"))))
+    }
+
+    func testTheWidgetHostUnderAnotherSchemeIsNotATap() throws {
+        XCTAssertFalse(WidgetSnapshot.isTap(try XCTUnwrap(URL(string: "https://widget"))))
+    }
+
     // MARK: Timeline dates
 
     /// The provider schedules two entries, not one: the second must land
