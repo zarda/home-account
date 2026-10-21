@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 
 import { ProfileSettingsComponent } from './profile-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
+import { DateFormatService } from '../../../core/services/date-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ThemeService } from '../../../core/services/theme.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
@@ -177,6 +178,20 @@ describe('ProfileSettingsComponent', () => {
     it('should load language from user preferences', () => {
       expect(component.language).toBe('en');
     });
+
+    // The same read every date reader follows, so what the select shows and
+    // what the app writes are one answer, and "auto when nothing is stored"
+    // is written once (#500).
+    it('seeds the date format select from the shared preference', () => {
+      const service = TestBed.inject(DateFormatService);
+      // The signed-in user stores MM/DD/YYYY; only a read through the
+      // service can answer anything else.
+      spyOn(service, 'preference').and.returnValue('YYYY-MM-DD');
+
+      const seeded = TestBed.createComponent(ProfileSettingsComponent).componentInstance;
+
+      expect(seeded.dateFormat).toBe('YYYY-MM-DD');
+    });
   });
 
   describe('available options', () => {
@@ -188,6 +203,28 @@ describe('ProfileSettingsComponent', () => {
       // Automatic plus the three fixed patterns.
       expect(component.dateFormats.length).toBe(4);
       expect(component.dateFormats[0].value).toBe('auto');
+    });
+
+    // Pin: the worked examples are what the table's own writers print for
+    // 31 December 2024, not a second list of strings kept beside it. Proved by
+    // making one writer in FIXED_FORMATS print another order, which fails this.
+    it('prints each fixed pattern\'s example from the table the service writes with', () => {
+      expect(component.dateFormats.map(f => [f.value, f.label, f.example])).toEqual([
+        ['auto', 'settings.dateFormatAuto', ''],
+        ['MM/DD/YYYY', 'MM/DD/YYYY', '12/31/2024'],
+        ['DD/MM/YYYY', 'DD/MM/YYYY', '31/12/2024'],
+        ['YYYY-MM-DD', 'YYYY-MM-DD', '2024-12-31'],
+      ]);
+    });
+
+    it('shows the selected pattern\'s example as the helper text', () => {
+      const seen: string[] = [];
+      for (const value of ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD']) {
+        component.dateFormat = value;
+        seen.push(component.dateFormatExample);
+      }
+
+      expect(seen).toEqual(['12/31/2024', '31/12/2024', '2024-12-31']);
     });
 
     // Automatic has no pattern to print, so the helper text shows the

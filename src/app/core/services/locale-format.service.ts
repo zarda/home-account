@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { TranslationService } from './translation.service';
+import { DateFieldOrder } from '../utils/transaction-date.utils';
 
 /**
  * The named date shapes the app renders. Deliberately a small closed set
@@ -16,6 +17,9 @@ const DATE_STYLES: Record<LocaleDateStyle, Intl.DateTimeFormatOptions> = {
   medium: { year: 'numeric', month: 'short', day: 'numeric' },
   long: { year: 'numeric', month: 'long', day: 'numeric' },
 };
+
+/** The orders `fieldOrder` can answer with, as the letters of year, month and day. */
+const FIELD_ORDERS: readonly DateFieldOrder[] = ['ymd', 'mdy', 'dmy'];
 
 /**
  * Angular's digitsInfo, `{minInt}.{minFrac}-{maxFrac}` — kept as the number
@@ -54,6 +58,7 @@ export class LocaleFormatService {
   private dateFormatters = new Map<string, Intl.DateTimeFormat>();
   private numberFormatters = new Map<string, Intl.NumberFormat>();
   private timeFormatters = new Map<string, Intl.DateTimeFormat>();
+  private fieldOrders = new Map<string, DateFieldOrder>();
 
   /**
    * The BCP 47 tag the active language maps to.
@@ -83,6 +88,31 @@ export class LocaleFormatService {
     const date = this.toDate(value);
     if (!date) return '';
     return this.dateFormatter(style).format(date);
+  }
+
+  /**
+   * The order the active locale writes a numeric date's year, month and day
+   * in, read off the same `short` style `formatDate` prints: en-US is `mdy`,
+   * ja-JP and zh-Hant-TW are `ymd`. What a picker is typed into is then read
+   * in the order it prints, rather than a second table of locales kept beside
+   * Intl's. A locale whose order is none of the three the typed-date reader
+   * knows is read as `ymd`, the order ISO dates and any leading four-digit
+   * year already use.
+   */
+  fieldOrder(): DateFieldOrder {
+    const locale = this.locale;
+    let order = this.fieldOrders.get(locale);
+    if (!order) {
+      const letters = this.dateFormatter('short')
+        .formatToParts(new Date(2026, 7, 19))
+        .flatMap(part => (part.type === 'year' || part.type === 'month' || part.type === 'day'
+          ? [part.type[0]]
+          : []))
+        .join('');
+      order = FIELD_ORDERS.find(candidate => candidate === letters) ?? 'ymd';
+      this.fieldOrders.set(locale, order);
+    }
+    return order;
   }
 
   /**

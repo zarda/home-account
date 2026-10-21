@@ -73,6 +73,71 @@ describe('LocaleFormatService', () => {
     });
   });
 
+  // The order a reader writes the day's fields in, read off the same `short`
+  // style `formatDate` prints on auto. The typed-date reader takes it, so what
+  // a picker shows and what it accepts are one convention (#500).
+  describe('fieldOrder', () => {
+    it('is month, day, year in en-US', () => {
+      useLocale('en-US');
+
+      expect(service.fieldOrder()).toBe('mdy');
+    });
+
+    it('is year, month, day in ja-JP and zh-Hant-TW', () => {
+      useLocale('ja-JP');
+      expect(service.fieldOrder()).toBe('ymd');
+
+      useLocale('zh-Hant-TW');
+      expect(service.fieldOrder()).toBe('ymd');
+    });
+
+    it('is day, month, year in en-GB', () => {
+      useLocale('en-GB');
+
+      expect(service.fieldOrder()).toBe('dmy');
+    });
+
+    it('follows a locale switch', () => {
+      useLocale('en-US');
+      const english = service.fieldOrder();
+      useLocale('ja-JP');
+      const japanese = service.fieldOrder();
+      useLocale('en-US');
+
+      expect([english, japanese, service.fieldOrder()]).toEqual(['mdy', 'ymd', 'mdy']);
+    });
+
+    it('agrees with the text formatDate prints on the short style', () => {
+      // 2026-08-19 has no field that reads the same as another, so the first
+      // number of the printed date names the first field of the order.
+      const day = new Date(2026, 7, 19);
+      const first: Record<string, string> = { ymd: '2026', mdy: '8', dmy: '19' };
+
+      for (const tag of ['en-US', 'ja-JP', 'zh-Hant-TW', 'en-GB', 'de-DE']) {
+        useLocale(tag);
+        const printed = service.formatDate(day, 'short');
+
+        expect(printed.startsWith(first[service.fieldOrder()]))
+          .withContext(`${tag}: ${printed}`).toBeTrue();
+      }
+    });
+
+    // Reached on every keystroke of a typed date, so the Intl read happens once
+    // per locale.
+    it('reads the locale once and answers from memory after', () => {
+      const spy = spyOn(Intl.DateTimeFormat.prototype, 'formatToParts').and.callThrough();
+
+      service.fieldOrder();
+      service.fieldOrder();
+      service.fieldOrder();
+      useLocale('ja-JP');
+      service.fieldOrder();
+      service.fieldOrder();
+
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('time', () => {
     const moment = new Date(2026, 7, 19, 14, 5);
 
