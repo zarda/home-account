@@ -169,7 +169,9 @@ to it. It comes back empty today either way.
 No `text-overflow: ellipsis`. Text wraps, with `overflow-wrap: anywhere` where
 the content may contain an unbreakable run such as a pasted URL. A value that
 must not break carries `appFitText` and scales to 12px — `--text-xs`, the floor
-the type scale already declares — and wraps only past that.
+the type scale already declares — and wraps only past that. A label that does
+not fit even there, such as the bottom bar's ダッシュボード, takes a shorter
+word rather than a wrap ([below](#using-appfittext)).
 
 **`anywhere`, not `break-word`.** Only `anywhere` reduces an element's
 min-content size. `break-word` leaves the element still refusing to shrink,
@@ -622,3 +624,17 @@ It measures in a batched pass rather than during change detection, shares one
 `ResizeObserver` across the app, and skips the DOM write entirely in the common
 case. Use it for values that must not break: amounts, the header wordmark,
 navigation labels. Do not use it for prose — prose should wrap.
+
+**A label that cannot fit at the floor gets a shorter word, not a smaller
+one.** The bottom bar's labels are already set at 12 px, so the directive has
+nothing to scale and wraps. ダッシュボード needs 84 px in Hiragino Sans at
+12 px, in either weight, and its tab has at most 80 px: `.nav-item` is
+`flex: 1` with an 88 px cap, and a flex item's automatic minimum width is its
+content's, so a tab holding a label that does not break grows past its share
+up to the cap, less its two 4 px gutters. The bar therefore names the
+dashboard with `nav.dashboardShort` (*Dashboard*, ホーム, 儀表板) through an
+optional `shortLabelKey` on its nav item, which only the bottom bar reads;
+the sidebar, the command palette and the page title keep ダッシュボード.
+Dropping the active bold would not have helped, since Hiragino's kana advance
+the same at every weight, and the floor is the type scale's last size
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)).

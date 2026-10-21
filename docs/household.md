@@ -113,7 +113,12 @@ copy to exactly these fields ([below](#the-rules-and-what-they-cost)), and
   `lh6`). Any other host would learn every viewer's address each time the
   page loads. Both are copied from the member's profile when they join, and
   follow it after that: when the member's own page next opens, it rewrites
-  them if the profile has changed, as the rules allow.
+  them if the profile has changed, as the rules allow. A member whose
+  account gave no name is stored with an empty name, never a word, and every
+  page shows them as *A member* (*a member* mid-sentence; メンバー, 成員) in
+  the reader's own language. Their own header calls them *No name set*
+  ([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md),
+  [i18n.md](i18n.md#a-person-with-no-name)).
 - **Anyone who joins later** sees every row already shared into the
   household, past dates included, and its budgets, goals and every member's
   contributions; nothing that was never shared. The join dialog tells

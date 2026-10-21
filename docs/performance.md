@@ -84,24 +84,25 @@ a listed Material module contributes no selector that template uses. The
 second is about one select's empty option (below). What the first proves is
 bounded on purpose:
 
-- A table maps **29 Material modules** to their full transitively-exported
+- A table maps **28 Material modules** to their full transitively-exported
   selector sets, spelled as the installed `@angular/material` spells them.
   `--self-test` asserts every string in it against the selectors the
   installed package actually declares, plus the three re-export edges it
-  leans on (List → Divider, Input → FormField, Select → Option); its 65
+  leans on (List → Divider, Input → FormField, Select → Option); its 64
   cases cover the second rule's fixtures too, so it prints
-  `check-material-imports self-test: 65 passed`. A Material upgrade that
+  `check-material-imports self-test: 64 passed`. A Material upgrade that
   renames a selector fails the self-test, where the fix is the table — not
   the app, where the fix would look like deleting a live import.
 - Matching is lenient in every direction but one: an attribute selector
   matches on its attribute alone, bare and bound spellings both count, and
   commented-out markup counts as a use. Every leniency can only miss a dead
   entry, never invent one, so a clean run is a floor rather than a proof.
-- What it skips is **counted and named in the output**: provider-only
-  modules (`MatNativeDateModule` exports no selector, so a template says
-  nothing about whether the component needs it) and any module not in the
-  table. A live run prints `Checked 360 Mat*Module entries across 103
-  components`, the skips, `No unparsed files.` and the findings. A file whose
+- What it skips is **counted and named in the output**: any module not in
+  the table. A live run prints `Checked 343 Mat*Module entries across 103
+  components (0 with no template).`, `Skipped 0 entries outside the
+  table.`, `No unparsed files.` and the findings. It had a second skip, for
+  provider-only modules, which held one, `MatNativeDateModule`; no component
+  imports it now, and the skip went with it. A file whose
   `@Component(` count exceeds the decorators the parser could read is listed
   as unparsed and fails the run: a component the gate cannot see is reported,
   never silently skipped.
@@ -153,6 +154,28 @@ held to it too.
 
 The reasoning, and what each gate deliberately cannot see, is in
 [ADR 0128](ADR/0128-a-material-module-a-template-never-uses-fails-the-build.md).
+
+**The date modules are banned outright.** A module's providers land in the
+injector of the component that imports it, and for Material's date modules
+that was the harm, not dead weight: `MatDatepickerModule` provides its own
+calendar labels, `MatNativeDateModule` the native date adapter and its
+formats, and `NativeDateModule` the adapter alone, and a routed page or a
+dialog that imports one shadows the app's single adapter and labels, so its
+pickers fall back to the browser's language and English. The pickers import
+the standalone `MatDatepicker`, `MatDatepickerInput` and
+`MatDatepickerToggle`, which provide nothing, and
+`@typescript-eslint/no-restricted-imports` bans the three module names, by
+`importNames`, in every file under `src/app`, specs included.
+`lint-guards:check` keys each path with its names, so a name dropped from
+the list is a diff. What it cannot see is a component that lists
+`provideNativeDateAdapter()`, or a `DateAdapter` provider, in its own
+`providers`
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)).
+
+Three more template bans, in the `.html` block of `eslint.config.js`, keep
+the boot locale out of what a template formats: Angular's `date`, `number`
+and `currency` pipes, each replaced by an impure pipe that follows the
+reader ([locale-formatting.md](locale-formatting.md#in-templates)).
 
 ## Change detection
 

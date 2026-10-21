@@ -907,7 +907,10 @@ account's, a gap in this record's own subject (see *Known gaps*).
   (`settings.component.ts:43`) show *User* in every language for an
   account with no display name, and a new account's profile stores it when
   the sign-in names nobody (`auth.service.ts:60`). Scan 5 knows two words.
-  A follow-up is for the owner; no issue is filed yet.
+  A follow-up is for the owner; no issue is filed yet. *Closed by*
+  [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md):
+  a nameless sign-in stores an empty name, every display reads a catalog
+  word, and scan 5 knows `User`.
 - **A datepicker reads in the browser's language, not the account's.**
   The Material datepicker's date adapter takes its locale once, at boot,
   from the browser's language (the `LOCALE_ID` factory beside
@@ -918,6 +921,11 @@ account's, a gap in this record's own subject (see *Known gaps*).
   tooltips are English in every language. The second browser run found it.
   It is older than this wave and reaches every datepicker in the app, so it
   is out of scope here and left for a follow-up; no issue is filed yet.
+  *Closed by*
+  [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md):
+  every picker reads the app's one adapter, which shows and reads the
+  account's date format in its language and follows a change of either,
+  and its labels come from the catalog.
 - **A filter preset that names `null` still shows its field empty.** The
   *All* options are bound to `undefined`, and the select compares with
   `===`, so a preset that carries a filter as `null`, rather than leaving

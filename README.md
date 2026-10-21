@@ -205,8 +205,8 @@ here.
 |---------|-------------|
 | `npm --prefix functions test` | The functions workspace's own tests, after `npm --prefix functions ci` builds it — not a root script |
 | `npm run lint` | ESLint, templates included |
-| `npm run lint-guards:check` | Verify the ESLint import and syntax bans still resolve for the files they were written for — the analytics ban died once by being silently replaced |
-| `npm run i18n:check` | Verify every literal translation key resolves in all locales, no template hard-codes an aria-label, alt text or visible English sentence, and no code falls back to an English `Unknown` or `Other` a reader would see ([docs/i18n.md](docs/i18n.md)) |
+| `npm run lint-guards:check` | Verify the ESLint import and syntax bans still resolve for the files they were written for, an import ban's named imports included — the analytics ban died once by being silently replaced |
+| `npm run i18n:check` | Verify every literal translation key resolves in all locales, no template hard-codes an aria-label, alt text or visible English sentence or joins a translated fragment to a value by a comma, and no code falls back to an English `Unknown`, `Other` or `User` a reader would see ([docs/i18n.md](docs/i18n.md)) |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |

@@ -267,7 +267,7 @@ render.**
 ## Shared stubs
 
 `src/app/core/services/testing/` is the barrel. Two helpers exist because every
-rendered template needs them:
+rendered template needs them, and a third because every date picker does:
 
 - **`createTranslationStub(overrides?)`** — `TranslatePipe` is imported by
   every component template in the app, and it injects `TranslationService`,
@@ -285,10 +285,47 @@ rendered template needs them:
   text a spec can assert whole, and it does not move when a Node or ICU upgrade
   changes a separator.
 
+- **`provideAppDatepickerForTests({ dateFormat, locale, t })`** — the app's
+  date adapter, its formats and the calendar's labels, over signals the spec
+  owns and writes. It hands `AuthService` a stub whose user is a premium
+  account, so a real `AnalyticsService` that a rendered component brings in
+  stays quiet, and `TranslationService` a stub whose `getIntlLocale` is the
+  real method run against the spec's `locale`. A spec never writes that
+  wiring by hand
+  ([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)).
+
+No component provides a date adapter
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)), so
+every spec that renders a picker provides one, and which one depends on what
+it asserts:
+
+| The spec | Provides |
+|---|---|
+| renders a picker and asserts no date text | `provideNativeDateAdapter()` |
+| asserts date text, or that a picker follows the reader | `provideAppDatepickerForTests(...)` |
+| asserts real catalog words through the adapter or the labels | the production `provideAppDatepicker()`, an `AuthService` stub, and the real `TranslationService` over `provideHttpClient()` and `provideHttpClientTesting()` |
+
+What a missing piece looks like, since none of it names the cause:
+
+- *MatDatepicker: No provider found for DateAdapter* — no adapter at all.
+- `NG0201` *No provider found for `Auth`*, through `DateFormatService` and
+  `AuthService` — the app's adapter without the helper's `AuthService` stub.
+  The picker's own optional `inject(DateAdapter)` is a directive inject, and
+  Angular rethrows a nested not-found from there.
+- `NG0200`, a circular dependency on `AuthService` — the same, when something
+  with an optional `inject(AuthService)` was built first: `AnalyticsService`,
+  which the transaction form, the filters and the budget form bring in.
+
+A spec that writes `locale` or `dateFormat` **after** a picker rendered
+flushes with `fixture.detectChanges()`. The picker built the adapter inside
+the Angular zone, so its effect is flushed there; `TestBed.tick()` from the
+spec body enters the zone mid-tick and reports `NG0101`. `TestBed.tick()` is
+right for an adapter the spec injected itself.
+
 A service whose template reads it as a **signal** must be stubbed as a signal,
 not as a method returning a fixed value — see the next section.
 
-## Four traps that cost a day each
+## Five traps that cost a day each
 
 ### Angular 22: an undeclared change-detection strategy is OnPush
 
@@ -338,7 +375,7 @@ carry `canSelectNullableOptions`, or Material reads that option as a reset and
 the field shows empty, its label unfloated, while the model holds `null` or
 `undefined`. A spec that renders such a field reads the trigger's text
 (`.mat-mdc-select-value`) and whether the label floats, since a model
-assertion passes either way. The script's `--self-test` runs 65 cases across
+assertion passes either way. The script's `--self-test` runs 64 cases across
 both rules.
 
 ### A real reload aborts the whole run
@@ -364,6 +401,75 @@ Every other suite provides an `AuthService` double and never builds the
 listener. A fourth that builds the real one must provide the token too.
 `page-reload.spec.ts` hands the factory a fake location, and never calls the
 function the root injector resolves.
+
+### Under zone.js, `window` never hears a ZoneAwarePromise rejection
+
+Karma runs in **zone mode** here: `@angular/build`'s karma builder adds
+`provideZoneChangeDetection()`, so Angular-compiled code runs on zone.js's
+`ZoneAwarePromise`. A rejection nobody catches is reported by zone.js, not by
+the browser. zone.js does re-dispatch it to `window`, as a
+`PromiseRejectionEvent` built without its `promise`; the constructor throws,
+and an empty `catch` swallows the throw. So a spec listening for
+`unhandledrejection` on `window` hears nothing, and passes whether the code
+caught the rejection or not.
+
+The rejection goes one of two ways, by the zone the rejecting code ran in:
+
+- **Inside the Angular zone**, to `NgZone.onError`. TestBed's error handler
+  rethrows it as a global error when nothing awaits `whenStable`, so it lands
+  on whichever spec is running, or as Karma's *An error was thrown in
+  afterAll*, and it can end the run on a disconnect. No spec fails where the
+  defect is.
+- **Outside it**, in the zone a spec body runs in, to `console.error`, as the
+  bare value with no prefix.
+
+An effect runs in the zone that was current when `effect()` was called,
+whichever flush runs it: Angular stores `Zone.current` on the effect node and
+flushes it under `zone.run`. So:
+
+| Code | Reports on |
+|---|---|
+| a component's effect, created by `TestBed.createComponent` inside NgZone | `NgZone.onError`, even when `TestBed.tick()` flushes it |
+| a root service's effect, created by `TestBed.inject` in the spec body | `console.error`, even under `fixture.detectChanges()` |
+| a template binding or a lifecycle hook | the flush's zone: `fixture.detectChanges()` and the scheduler's tick run inside NgZone, `TestBed.tick()` in its caller's |
+| a template event | the zone its listener was registered in |
+| the spec body and its awaited continuations | `console.error` |
+
+A case that proves nothing went unhandled listens where its code reports: a
+console spy, or a subscription to `TestBed.inject(NgZone).onError`. An
+`onError` detector records `NgZone.isInAngularZone()` at the call as its
+positive control, since a call that ran anywhere else would pass on an
+`onError` that had no chance to fire, and a case that cannot say which zone
+its code ran in subscribes both. `household.component.spec.ts`'s *lets a
+failed tidy pass without a word* is the model:
+
+```ts
+const zoneErrors: unknown[] = [];
+const subscription = TestBed.inject(NgZone).onError.subscribe(error => zoneErrors.push(error));
+const consoleError = spyOn(console, 'error');
+const inAngularZone: boolean[] = [];
+service.tidyEndedMemberships.and.callFake(() => {
+  inAngularZone.push(NgZone.isInAngularZone());
+  return Promise.reject(new Error('permission-denied'));
+});
+// render, let the task run, unsubscribe in finally
+expect(inAngularZone).withContext('the tidy ran in the zone onError reports for').toEqual([true]);
+expect(zoneErrors).toEqual([]);
+expect(consoleError).not.toHaveBeenCalled();
+```
+
+**A native promise is the exception.** `share-target-sw.spec.ts` evaluates
+the service worker's source natively, outside anything zone.js patched, and
+there `window` does hear a rejection. It listens for none today; a spec of
+that shape that must would take a scoped exemption, not a looser rule.
+
+A spec-only `no-restricted-syntax` block in `eslint.config.js` bans the
+listener: the event names as a string literal (`'unhandledrejection'`,
+`'rejectionhandled'`, in `addEventListener`, `fromEvent` or a constant) and
+as an `on…` handler property. `lint-guards:check` holds it for the specs
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md),
+after [ADR 0138](ADR/0138-a-plugin-call-nothing-implements-is-the-developers-failure-not-the-users.md),
+which met the same silence at boot).
 
 ## Karma's window is 756 px
 
@@ -518,16 +624,23 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` | `26.10.177` |
-|---|---|---|---|
-| ERROR | 40 | 53 | 53 |
-| WARN | 38 | 60 | 60 |
-| LOG | 26 | **0** | **0** |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` |
+|---|---|---|---|---|
+| ERROR | 40 | 53 | 53 | 44 |
+| WARN | 38 | 60 | 60 | 60 |
+| LOG | 26 | **0** | **0** | **0** |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
 double. **Halve the raw count**, or strip ANSI and dedupe. Any comparison must
 use the same method or it reads as a doubling that did not happen.
+
+**Three WARN lines come and go.** On some runs `firestore.service.spec.ts`'s
+`afterAll` deletes its app while the SDK still has work queued on it, and the
+SDK then warns three times that *Firebase App named 'firestore-unit-…' already
+deleted*. WARN reads 63 on those runs and 60 on the rest: the base of the
+`26.10.178` wave read 63, and that wave's measures read 60 and 63. Judge a new
+line by its text, not by that difference of three.
 
 LOG fell to zero because `no-console` now bans `console.log` outright; the five
 lines over the base when it was first recorded (43 ERROR and 40 WARN) are
@@ -535,7 +648,13 @@ expected-failure paths in new specs, and so are the ten ERROR and twenty WARN
 lines above that earlier figure, which came from specs added since; the wave
 that recorded `26.10.173` added none, and neither did the ones that
 recorded `26.10.175` and `26.10.177` (the latter's lines, deduplicated, match
-`26.10.176`'s one for one). **Rendering
+`26.10.176`'s one for one). The wave that recorded `26.10.178` added none
+and took nine away. They were not expected failures: the dashboard spec's
+three failed-save cases flushed with `TestBed.tick()` from the spec body,
+which entered the zone mid-tick and reported `NG0101`, nine ERROR lines
+before that wave and twelve once the widget's publishing effect tracked more
+reads. Those cases flush with `fixture.detectChanges()` now, and the spec
+prints none. **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.
