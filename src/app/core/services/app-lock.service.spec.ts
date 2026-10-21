@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { DefaultUrlSerializer, Navigation, Router, UrlTree } from '@angular/router';
 
 import { AppLockService } from './app-lock.service';
 import { AuthService } from './auth.service';
@@ -31,6 +31,8 @@ describe('AppLockService', () => {
   let service: AppLockService;
   let auth: jasmine.SpyObj<AuthService>;
   let router: jasmine.SpyObj<Router>;
+  /** The navigation the Router double reports in flight; null is the idle router. */
+  let currentNavigation: ReturnType<typeof signal<Navigation | null>>;
   let biometric: BiometricAuthDouble;
   let userId: ReturnType<typeof signal<string | null>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
@@ -68,8 +70,13 @@ describe('AppLockService', () => {
       currentUser,
     });
 
-    router = jasmine.createSpyObj<Router>('Router', ['navigate'], { url: '/dashboard' });
+    currentNavigation = signal<Navigation | null>(null);
+    router = jasmine.createSpyObj<Router>('Router', ['navigate', 'serializeUrl'], {
+      url: '/dashboard',
+      currentNavigation
+    });
     router.navigate.and.resolveTo(true);
+    router.serializeUrl.and.callFake((tree: UrlTree) => tree.toString());
 
     biometric = {
       available: signal(false),
@@ -369,6 +376,107 @@ describe('AppLockService', () => {
       service.clearCredential();
 
       expect(service.method()).toBe('none');
+    });
+  });
+
+  describe('relocking while a navigation is in flight', () => {
+    /** A navigation whose target the router has parsed but not yet committed. */
+    function inFlight(target: string): Navigation {
+      return { extractedUrl: new DefaultUrlSerializer().parse(target) } as Navigation;
+    }
+
+    beforeEach(async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      await service.unlockWithPin(PIN);
+      // The router is on /transactions: its url is the page the tap left.
+      // createSpyObj already spies the property's getter.
+      (Object.getOwnPropertyDescriptor(router, 'url')!.get as jasmine.Spy).and.returnValue(
+        '/transactions'
+      );
+      // Flushes the effect; whichever state it first ran in, the reset below
+      // leaves a clean slate.
+      TestBed.tick();
+      // The cold start above was locked until the PIN: the effect already
+      // sent that first lock to /lock, which is not what these cases count.
+      router.navigate.calls.reset();
+      service.consumeRedirect();
+    });
+
+    it('remembers the target of a navigation that has not committed yet', () => {
+      currentNavigation.set(inFlight('/dashboard?bill=r1'));
+
+      service.lockNow();
+      TestBed.tick();
+
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/lock']);
+      expect(service.consumeRedirect())
+        .withContext('the tap target, neither the page the relock left nor the default redirect')
+        .toBe('/dashboard?bill=r1');
+    });
+
+    // A target that is not an app route (a scheme-relative `//evil.example`) is
+    // refused by safeAppRoute, so the relock falls back to the page the router
+    // is on: both the guard and the router.url fallback are held here.
+    it('refuses a navigation target that is not an app route and remembers the page the router is on', () => {
+      router.serializeUrl.and.returnValue('//evil.example');
+      currentNavigation.set(inFlight('/dashboard'));
+
+      service.lockNow();
+      TestBed.tick();
+
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/lock']);
+      expect(service.consumeRedirect())
+        .withContext('the page the relock left, never the refused target')
+        .toBe('/transactions');
+    });
+
+    // The idle router has no navigation to read, so the page it is on stays
+    // the answer: this passed before the target was read from a navigation.
+    it('remembers the page the router is on when nothing is in flight', () => {
+      service.lockNow();
+      TestBed.tick();
+
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/lock']);
+      expect(service.consumeRedirect()).toBe('/transactions');
+    });
+
+    // Read untracked. With this double's frozen url, a tracked read would run
+    // again when the /lock navigation ends and navigate a second time; on the
+    // real Router url is /lock by then, so this case guards the untracked read
+    // itself.
+    it('runs once per lock, not again when a navigation starts or ends after it', () => {
+      currentNavigation.set(inFlight('/dashboard?bill=r1'));
+      service.lockNow();
+      TestBed.tick();
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/lock']);
+
+      currentNavigation.set(inFlight('/lock')); // the navigation to /lock itself
+      TestBed.tick();
+      currentNavigation.set(null); // and its end
+      TestBed.tick();
+
+      expect(router.navigate).toHaveBeenCalledTimes(1);
+      expect(service.consumeRedirect()).toBe('/dashboard?bill=r1');
+    });
+
+    it('leaves the lock screen alone when that is where the navigation is going', async () => {
+      currentNavigation.set(inFlight('/lock'));
+
+      service.lockNow();
+      TestBed.tick();
+
+      expect(router.navigate).not.toHaveBeenCalled();
+
+      // The effect did run: the next relock, with nothing in flight, acts.
+      await service.unlockWithPin(PIN);
+      TestBed.tick(); // the effect sees the unlock, so the next lock is a transition
+      currentNavigation.set(null);
+      service.lockNow();
+      TestBed.tick();
+
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/lock']);
+      expect(service.consumeRedirect()).toBe('/transactions');
     });
   });
 

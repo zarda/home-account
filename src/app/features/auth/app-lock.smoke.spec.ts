@@ -134,6 +134,53 @@ describe('App lock biometric door (emulator smoke test)', () => {
     return harness;
   }
 
+  /**
+   * Opens `path` on a device that is already unlocked: the mock account
+   * opts in to the lock, the PIN marks the device unlocked, and the harness
+   * navigates there. The caller decides how the platform reads (native only
+   * while a probe or the tap listener is being armed).
+   */
+  async function openUnlockedOn(
+    path: string
+  ): Promise<{ appLock: AppLockService; router: Router; harness: RouterTestingHarness }> {
+    // onboardingCompleted restated for the same reason as openLockedScreen.
+    mockAuth.setMockUser(
+      createMockUser(uid, {
+        preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true, enableAppLock: true }
+      })
+    );
+    const appLock = TestBed.inject(AppLockService);
+    // The account effect clears the unlocked state; run it before setPin
+    // marks the device unlocked, so the first navigation is let through.
+    TestBed.tick();
+    await appLock.setPin(PIN);
+
+    const router = TestBed.inject(Router);
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(path);
+    expect(router.url).withContext('unlocked, the page opens').toBe(path);
+    return { appLock, router, harness };
+  }
+
+  /** Types the PIN on the lock screen, presses unlock and waits for the router to leave /lock. */
+  async function unlockWithPinFromLockScreen(harness: RouterTestingHarness): Promise<void> {
+    const pinInput = document.querySelector<HTMLInputElement>('input[name="pin"]')!;
+    pinInput.value = PIN;
+    pinInput.dispatchEvent(new Event('input'));
+    await waitFor(
+      'the unlock button to enable once the PIN is valid',
+      () => !isDisabled('button.unlock-button'),
+      () => harness.detectChanges()
+    );
+
+    document.querySelector<HTMLButtonElement>('button.unlock-button')!.click();
+    await waitFor(
+      'the PIN path to leave /lock',
+      () => TestBed.inject(Router).url !== '/lock',
+      () => harness.detectChanges()
+    );
+  }
+
   /** Drains the exchange-rate chain a routed dashboard kicks off (same rationale as app.smoke.spec.ts). */
   async function settleDashboard(harness: RouterTestingHarness): Promise<void> {
     await TestBed.inject(CurrencyService).ensureRatesLoaded();
@@ -297,21 +344,7 @@ describe('App lock biometric door (emulator smoke test)', () => {
         .withContext('no error line for a cancelled prompt')
         .toBeNull();
 
-      const pinInput = document.querySelector<HTMLInputElement>('input[name="pin"]')!;
-      pinInput.value = PIN;
-      pinInput.dispatchEvent(new Event('input'));
-      await waitFor(
-        'the unlock button to enable once the PIN is valid',
-        () => !isDisabled('button.unlock-button'),
-        () => harness.detectChanges()
-      );
-
-      document.querySelector<HTMLButtonElement>('button.unlock-button')!.click();
-      await waitFor(
-        'the PIN path to leave /lock',
-        () => TestBed.inject(Router).url !== '/lock',
-        () => harness.detectChanges()
-      );
+      await unlockWithPinFromLockScreen(harness);
       expect(TestBed.inject(Router).url).toBe('/dashboard');
       expect(document.querySelector('app-onboarding-dialog'))
         .withContext('the mock user is already onboarded')
@@ -344,22 +377,7 @@ describe('App lock biometric door (emulator smoke test)', () => {
       // Native only for arming, as openLockedScreen does for its probe.
       isNativeSpy.and.returnValue(false);
 
-      // onboardingCompleted restated for the same reason as openLockedScreen.
-      mockAuth.setMockUser(
-        createMockUser(uid, {
-          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true, enableAppLock: true }
-        })
-      );
-      const appLock = TestBed.inject(AppLockService);
-      // The account effect clears the unlocked state; run it before setPin
-      // marks the device unlocked, so the first navigation is let through.
-      TestBed.tick();
-      await appLock.setPin(PIN);
-
-      const router = TestBed.inject(Router);
-      const harness = await RouterTestingHarness.create();
-      await harness.navigateByUrl('/transactions');
-      expect(router.url).withContext('unlocked, the page opens').toBe('/transactions');
+      const { appLock, router, harness } = await openUnlockedOn('/transactions');
 
       // The relock remembers the page it left.
       appLock.lockNow();
@@ -367,22 +385,40 @@ describe('App lock biometric door (emulator smoke test)', () => {
 
       taps.forEach(tap => tap());
 
-      const pinInput = document.querySelector<HTMLInputElement>('input[name="pin"]')!;
-      pinInput.value = PIN;
-      pinInput.dispatchEvent(new Event('input'));
-      await waitFor(
-        'the unlock button to enable once the PIN is valid',
-        () => !isDisabled('button.unlock-button'),
-        () => harness.detectChanges()
-      );
-
-      document.querySelector<HTMLButtonElement>('button.unlock-button')!.click();
-      await waitFor(
-        'the PIN path to leave /lock',
-        () => router.url !== '/lock',
-        () => harness.detectChanges()
-      );
+      await unlockWithPinFromLockScreen(harness);
       expect(router.url).withContext('the tap, not the page the relock left').toBe('/dashboard');
+
+      await settleDashboard(harness);
+    },
+    SPEC_TIMEOUT
+  );
+
+  it(
+    'resumes to the page a tap was opening when the app relocked, not the page it left',
+    async () => {
+      // Nothing is probed or armed here, so the platform reads as web from the start.
+      isNativeSpy.and.returnValue(false);
+
+      const { appLock, router, harness } = await openUnlockedOn('/transactions');
+
+      // The tap starts a navigation and is not awaited: the router is still
+      // on the page it started from, with the target parsed but not committed.
+      const tap = router.navigateByUrl('/budgets?from=tap');
+      expect(router.url).withContext('the tap has not committed').toBe('/transactions');
+      expect(router.currentNavigation()?.extractedUrl.toString())
+        .withContext('the tap is the navigation in flight')
+        .toBe('/budgets?from=tap');
+
+      // The relock lands in the same task, before the tap's guards run.
+      appLock.lockNow();
+      TestBed.tick();
+      await waitFor('the relock to open /lock', () => router.url === '/lock', () => harness.detectChanges());
+      expect(await tap).withContext('the relock cancelled the tap').toBe(false);
+
+      await unlockWithPinFromLockScreen(harness);
+      expect(router.url)
+        .withContext('the page the tap was opening, neither the page the relock left nor the default')
+        .toBe('/budgets?from=tap');
 
       await settleDashboard(harness);
     },
