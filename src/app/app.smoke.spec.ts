@@ -645,6 +645,14 @@ describe('App routes (emulator smoke test)', () => {
         expect((fromInput.nativeElement as HTMLInputElement).value)
           .withContext("the From date, in the account's YYYY-MM-DD")
           .toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        // ...and the root's labels: each toggle is named from the catalog,
+        // the key here, where Material's English default stood.
+        const toggleNames = Array.from(
+          harness.routeNativeElement?.querySelectorAll('.filter-grid mat-datepicker-toggle button') ?? []
+        ).map(toggle => toggle.getAttribute('aria-label'));
+        expect(toggleNames)
+          .withContext('the From and To toggles')
+          .toEqual(['datepicker.openCalendar', 'datepicker.openCalendar']);
         await expectNoAxeViolationsInView('/transactions', '.filter-grid');
 
         await expectPage('/budgets', 'budget.title', 'Groceries Budget');

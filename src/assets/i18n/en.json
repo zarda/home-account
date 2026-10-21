@@ -7,6 +7,21 @@
     "today": "Today",
     "yesterday": "Yesterday"
   },
+  "datepicker": {
+    "openCalendar": "Open calendar",
+    "closeCalendar": "Close calendar",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "previousYear": "Previous year",
+    "nextYear": "Next year",
+    "previousYears": "Previous {{years}} years",
+    "nextYears": "Next {{years}} years",
+    "chooseDate": "Choose date",
+    "chooseMonthAndYear": "Choose month and year",
+    "comparisonRange": "Comparison range",
+    "yearRange": "{{start}} – {{end}}",
+    "yearRangeLabel": "{{start}} to {{end}}"
+  },
   "common": {
     "income": "Income",
     "expense": "Expense",

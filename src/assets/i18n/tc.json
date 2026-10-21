@@ -7,6 +7,21 @@
     "today": "今天",
     "yesterday": "昨天"
   },
+  "datepicker": {
+    "openCalendar": "開啟日曆",
+    "closeCalendar": "關閉日曆",
+    "previousMonth": "上個月",
+    "nextMonth": "下個月",
+    "previousYear": "上一年",
+    "nextYear": "下一年",
+    "previousYears": "前 {{years}} 年",
+    "nextYears": "後 {{years}} 年",
+    "chooseDate": "選擇日期",
+    "chooseMonthAndYear": "選擇年份和月份",
+    "comparisonRange": "比較期間",
+    "yearRange": "{{start}} 至 {{end}}",
+    "yearRangeLabel": "{{start}} 至 {{end}}"
+  },
   "common": {
     "income": "收入",
     "expense": "支出",

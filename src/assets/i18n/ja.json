@@ -7,6 +7,21 @@
     "today": "今日",
     "yesterday": "昨日"
   },
+  "datepicker": {
+    "openCalendar": "カレンダーを開く",
+    "closeCalendar": "カレンダーを閉じる",
+    "previousMonth": "前の月",
+    "nextMonth": "次の月",
+    "previousYear": "前の年",
+    "nextYear": "次の年",
+    "previousYears": "前の{{years}}年",
+    "nextYears": "次の{{years}}年",
+    "chooseDate": "日付を選択",
+    "chooseMonthAndYear": "年と月を選択",
+    "comparisonRange": "比較期間",
+    "yearRange": "{{start}}〜{{end}}",
+    "yearRangeLabel": "{{start}}から{{end}}まで"
+  },
   "common": {
     "income": "収入",
     "expense": "支出",
