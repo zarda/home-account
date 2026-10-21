@@ -299,10 +299,10 @@ subscription and does nothing.
 
 **`?bill`**
 
-1. **Upcoming Bills hidden.** The page announces
-   `dashboard.billLinkCardHidden` (*Upcoming Bills is hidden on the
-   dashboard, so here are your recurring transactions instead.*) and goes to
-   `/budgets?tab=recurring`.
+1. **Upcoming Bills hidden.** The page goes to `/budgets?tab=recurring` and,
+   once that page is open, announces `dashboard.billLinkCardHidden`
+   (*Upcoming Bills is hidden on the dashboard, so here are your recurring
+   transactions instead.*).
 2. **Otherwise it waits for the upcoming listener's first emission**, since
    the signal's initial empty schedule would answer "absent" for every rule,
    and then binds the rule to `app-upcoming-bills`' `focusRuleId`.
@@ -329,15 +329,28 @@ subscription and does nothing.
    has been followed is dropped, so it neither sends the user away from that
    link nor moves focus off it.
 5. **No row, then.** A rule due past the fortnight, already posted or
-   deleted, an unanswered read (offline, say), or a second "absent" announces
-   `dashboard.billLinkNotUpcoming` (*That bill isn't in Upcoming Bills right
-   now, so here are your recurring transactions instead.*) and goes to
-   `/budgets?tab=recurring`, which lists every rule that still exists.
+   deleted, an unanswered read (offline, say), or a second "absent" goes to
+   `/budgets?tab=recurring`, which lists every rule that still exists, and
+   once that page is open announces `dashboard.billLinkNotUpcoming` (*That
+   bill isn't in Upcoming Bills right now, so here are your recurring
+   transactions instead.*).
 
 Both redirects replace the history entry, so Back from the rules goes to
 wherever the user was before the link, not to the link and straight back. A
 focused row is not announced: moving focus to it is what has a screen reader
 read it.
+
+Both sentences are said once the rules page is open, never before the
+navigation lands. `AnnouncerService` places messages in the order it gets them,
+and on a cold start the budgets chunk is fetched while the navigation is
+pending: the recap's composition lands in that window and queues its own
+sentence. Said first, the reason would be placed ahead of it and the live
+region would end on the recap's stale sentence. After the landing the
+dashboard and its cards are gone, so nothing on them can follow the reason.
+A navigation that did not land (a newer one superseded it, or a guard
+refused it) resolves `false` and says nothing, since the reason would
+describe a page the user is not on; one a guard redirected resolves with the
+redirect's outcome.
 
 **`?recap`**
 

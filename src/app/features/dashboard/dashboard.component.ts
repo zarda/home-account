@@ -658,9 +658,24 @@ export class DashboardComponent implements OnInit {
 
   // Replacing the entry, so Back from the rules does not land on the link
   // again and come straight back.
+  //
+  // The reason is said once the rules page is open, never before. The
+  // announcer places messages in the order it gets them. On a cold start the
+  // budgets chunk is fetched while the navigation is pending, and the recap's
+  // composition lands in that window and queues its own sentence: with the
+  // reason said first, the recap's sentence is placed after it and the live
+  // region ends on that stale one. After the landing the dashboard and its
+  // cards are gone, so nothing on them can follow the reason. A navigation
+  // that did not land (a newer one superseded it, or a guard refused it)
+  // resolves false, and the reason would then describe a page the user is not
+  // on, so it is not said. One a guard redirected resolves with the
+  // redirect's outcome.
   private showRecurringRules(reason: string): void {
-    this.announcer.announce(reason);
-    void this.router.navigate(['/budgets'], { queryParams: { tab: 'recurring' }, replaceUrl: true });
+    void this.router
+      .navigate(['/budgets'], { queryParams: { tab: 'recurring' }, replaceUrl: true })
+      .then(landed => {
+        if (landed) this.announcer.announce(reason);
+      });
   }
 
   /**

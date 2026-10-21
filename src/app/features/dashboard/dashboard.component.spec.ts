@@ -181,6 +181,17 @@ describe('DashboardComponent', () => {
     return () => land();
   }
 
+  /**
+   * Holds the next `router.navigate` until the returned function settles it;
+   * `true` is a navigation that landed, `false` one that was superseded or
+   * refused.
+   */
+  function holdNavigation(): (landed: boolean) => void {
+    let land!: (landed: boolean) => void;
+    router.navigate.and.returnValue(new Promise<boolean>(resolve => (land = resolve)));
+    return land;
+  }
+
   // Each call hands out a fresh never-completing Subject, the shape of the
   // real Firestore wrappers: the only way a listener is released is an
   // explicit unsubscribe, so `observed` tells the truth about leaks.
@@ -1111,17 +1122,41 @@ describe('DashboardComponent', () => {
     describe('?bill', () => {
       // The recap keeps the window's listener open while Upcoming is hidden;
       // the redirect does not wait for it to emit.
-      it('opens the recurring rules at once while Upcoming is hidden, and says why', () => {
+      it('opens the recurring rules at once while Upcoming is hidden, and says why', async () => {
         setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
         recurringService.getUpcomingSchedule.and.returnValue(new Subject<UpcomingSchedule>());
         open({ bill: 'r1' });
 
         const fixture = build();
         fixture.detectChanges();
+        await settle();
 
         expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
         expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkCardHidden');
         expect(fixture.componentInstance.billInFocus()).toBeNull();
+      });
+
+      // The sentence is said once the rules page is open, so no card on the
+      // page being left can follow it. The recap's own sentence lands while
+      // the budgets chunk is still being fetched and queues behind a reason
+      // said first, leaving the live region on the recap's sentence.
+      it('says why only once the recurring rules are open while Upcoming is hidden', async () => {
+        setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
+        recurringService.getUpcomingSchedule.and.returnValue(new Subject<UpcomingSchedule>());
+        const land = holdNavigation();
+        open({ bill: 'r1' });
+
+        const fixture = build();
+        fixture.detectChanges();
+        await settle();
+
+        expect(router.navigate).withContext('the navigation is under way').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).withContext('while the navigation is pending').not.toHaveBeenCalled();
+
+        land(true);
+        await settle();
+
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkCardHidden');
       });
 
       it('asks the card for the rule only once the window has emitted, and strips the link', () => {
@@ -1165,6 +1200,69 @@ describe('DashboardComponent', () => {
 
         expect(recurringService.getUpcomingScheduleFromServer).toHaveBeenCalledOnceWith(14);
         expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
+      });
+
+      // The recap's composition lands while the budgets chunk is being fetched
+      // on a cold start, and its sentence queues behind this one if this is
+      // said first, leaving the live region on the recap's sentence. Said once
+      // the page is open, nothing on the dashboard being left can follow it.
+      it('says why only once the recurring rules are open', async () => {
+        open({ bill: 'gone' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+        const land = holdNavigation();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(router.navigate).withContext('the navigation is under way').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).withContext('while the navigation is pending').not.toHaveBeenCalled();
+
+        land(true);
+        await settle();
+
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
+      });
+
+      // A navigation that was superseded (the user went elsewhere first) or
+      // refused by a guard resolves false: the sentence would describe a page
+      // the user is not on. One a guard redirected resolves with the
+      // redirect's outcome.
+      it('does not say why when the navigation to the recurring rules was superseded', async () => {
+        open({ bill: 'gone' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+        const land = holdNavigation();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+        land(false);
+        await settle();
+
+        expect(router.navigate).withContext('the navigation was made').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).not.toHaveBeenCalled();
+      });
+
+      it('says why only once the recurring rules are open when the server cannot be asked', async () => {
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(Promise.reject(new Error('offline')));
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+        const land = holdNavigation();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(router.navigate).withContext('the navigation is under way').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).withContext('while the navigation is pending').not.toHaveBeenCalled();
+
+        land(true);
+        await settle();
+
         expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
       });
 
