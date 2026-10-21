@@ -8,8 +8,11 @@ import Foundation
 /// in the account's language and base currency, with the same catalogs and
 /// formatters the dashboard paints with. Formatting here would need a second
 /// copy of the translations and the currency rules, and would drift from the
-/// app the first time either changed. The one thing decided on this side is
-/// whether the figures can still be vouched for (`display(now:calendar:)`).
+/// app the first time either changed. What is decided on this side is
+/// whether the figures can still be vouched for (`display(now:calendar:)`) and
+/// which face every widget size draws from that answer
+/// (`face(of:isPlaceholder:now:calendar:)`): one decision, so no size can read
+/// the snapshot differently from another.
 ///
 /// Pure Foundation: compiled into every target that touches the file, since
 /// an extension target cannot be imported.
@@ -85,6 +88,27 @@ struct WidgetSnapshot: Codable, Equatable {
         case stale
     }
 
+    /// The words a face shows instead of figures, one per state that has
+    /// none. A family too small for the words can draw a glyph for the case
+    /// and keep the words as its accessibility label.
+    enum Sentence: Equatable {
+        case locked
+        case signedOut
+        case stale
+    }
+
+    /// What a widget draws, whatever its size. Every family reads this one
+    /// answer and decides only how to lay it out.
+    enum Face: Equatable {
+        /// No snapshot to read: the app's name alone.
+        case name
+        /// The month's figures. `redacted` is the gallery's sample, drawn as
+        /// shapes, never read.
+        case figures(Labels, Figures, redacted: Bool)
+        /// A sentence under the title: why there are no figures.
+        case sentence(Sentence, title: String, text: String)
+    }
+
     let version: Int
     let state: State
     /// Epoch milliseconds.
@@ -108,6 +132,34 @@ struct WidgetSnapshot: Codable, Equatable {
     static func load(from folder: URL) -> WidgetSnapshot? {
         guard let data = try? Data(contentsOf: folder.appendingPathComponent(fileName)) else { return nil }
         return decode(data)
+    }
+
+    /// The one decision behind every widget size.
+    ///
+    /// No snapshot is the app's name, placeholder or not. A placeholder that
+    /// carries figures is decided *before* the clock is read: the gallery's
+    /// sample is dated long ago and must still draw as the sample, redacted,
+    /// not as an out-of-date month. Anything else is a placed widget and
+    /// follows `display(now:calendar:)`, with the sentence its state calls
+    /// for taken from the labels the web composed.
+    static func face(
+        of snapshot: WidgetSnapshot?, isPlaceholder: Bool, now: Date, calendar: Calendar
+    ) -> Face {
+        guard let snapshot else { return .name }
+        if isPlaceholder, let figures = snapshot.figures {
+            return .figures(snapshot.labels, figures, redacted: true)
+        }
+        let labels = snapshot.labels
+        switch snapshot.display(now: now, calendar: calendar) {
+        case .figures(let figures):
+            return .figures(labels, figures, redacted: false)
+        case .locked:
+            return .sentence(.locked, title: labels.title, text: labels.locked)
+        case .signedOut:
+            return .sentence(.signedOut, title: labels.title, text: labels.signedOut)
+        case .stale:
+            return .sentence(.stale, title: labels.title, text: labels.stale)
+        }
     }
 
     /// The provider's own timeline: an entry dated now and one dated at the

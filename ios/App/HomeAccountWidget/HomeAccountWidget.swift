@@ -66,37 +66,31 @@ struct MonthProvider: TimelineProvider {
     }
 }
 
+/// Lays out the face `WidgetSnapshot.face(of:isPlaceholder:now:calendar:)`
+/// decided. Which face that is — the name, the figures, or a sentence — is
+/// not decided here, so no widget size can disagree with another about it.
 struct MonthEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: MonthEntry
 
     var body: some View {
-        content
+        systemFace(WidgetSnapshot.face(
+            of: entry.snapshot, isPlaceholder: entry.isPlaceholder, now: entry.date, calendar: .current))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .widgetBackground()
     }
 
     @ViewBuilder
-    private var content: some View {
-        if let snapshot = entry.snapshot {
-            if entry.isPlaceholder, let figures = snapshot.figures {
-                FiguresView(family: family, labels: snapshot.labels, figures: figures)
-                    .redacted(reason: .placeholder)
-            } else {
-                switch snapshot.display(now: entry.date, calendar: .current) {
-                case .figures(let figures):
-                    FiguresView(family: family, labels: snapshot.labels, figures: figures)
-                case .locked:
-                    SentenceView(title: snapshot.labels.title, sentence: snapshot.labels.locked)
-                case .signedOut:
-                    SentenceView(title: snapshot.labels.title, sentence: snapshot.labels.signedOut)
-                case .stale:
-                    SentenceView(title: snapshot.labels.title, sentence: snapshot.labels.stale)
-                }
-            }
-        } else {
+    private func systemFace(_ face: WidgetSnapshot.Face) -> some View {
+        switch face {
+        case .name:
             Text(verbatim: "Home Account")
                 .font(.headline)
+        case .figures(let labels, let figures, let redacted):
+            FiguresView(family: family, labels: labels, figures: figures)
+                .redacted(reason: redacted ? .placeholder : [])
+        case .sentence(_, let title, let text):
+            SentenceView(title: title, sentence: text)
         }
     }
 }
