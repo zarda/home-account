@@ -39,6 +39,7 @@
 		DD40000000000000000000C5 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000A1 /* WidgetSnapshot.swift */; };
 		DD40000000000000000000C6 /* WidgetSnapshotPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000B5 /* WidgetSnapshotPlugin.swift */; };
 		DD40000000000000000000C7 /* HomeAccountWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000B1 /* HomeAccountWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DD40000000000000000000C8 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DD40000000000000000000D2 /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -130,6 +131,9 @@
 		DD40000000000000000000B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DD40000000000000000000B4 /* HomeAccountWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HomeAccountWidget.entitlements; sourceTree = "<group>"; };
 		DD40000000000000000000B5 /* WidgetSnapshotPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotPlugin.swift; sourceTree = "<group>"; };
+		DD40000000000000000000B6 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		DD40000000000000000000B7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		DD40000000000000000000B8 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -215,6 +219,7 @@
 				DD40000000000000000000B2 /* HomeAccountWidget.swift */,
 				DD40000000000000000000B3 /* Info.plist */,
 				DD40000000000000000000B4 /* HomeAccountWidget.entitlements */,
+				DD40000000000000000000D2 /* Localizable.strings */,
 			);
 			path = HomeAccountWidget;
 			sourceTree = "<group>";
@@ -365,6 +370,8 @@
 			knownRegions = (
 				en,
 				Base,
+				ja,
+				"zh-Hant",
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
 			packageReferences = (
@@ -408,6 +415,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DD40000000000000000000C8 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -494,6 +502,16 @@
 				504EC3111FED79650016851F /* Base */,
 			);
 			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		DD40000000000000000000D2 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				DD40000000000000000000B6 /* en */,
+				DD40000000000000000000B7 /* ja */,
+				DD40000000000000000000B8 /* zh-Hant */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */

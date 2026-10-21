@@ -1,0 +1,2 @@
+/* The widget's name in English. Mirrors app.title in src/assets/i18n/en.json; npm run i18n:check holds the two equal. */
+"app.title" = "Home Account";

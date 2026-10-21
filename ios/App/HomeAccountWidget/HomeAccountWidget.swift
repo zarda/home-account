@@ -8,10 +8,19 @@ struct HomeAccountWidgets: WidgetBundle {
     }
 }
 
-/// Shows the month the dashboard last painted. Every word and figure on it is
-/// a string from the snapshot; see `WidgetSnapshot` for why nothing is
-/// formatted here.
+/// Shows the month the dashboard last painted. Every figure, and every word
+/// but the app's name, is a string from the snapshot; the name comes from the
+/// extension's own `Localizable.strings` (the `app.title` key, read as
+/// `appName`). See `WidgetSnapshot`
+/// for why nothing is formatted here.
 struct HomeAccountMonthWidget: Widget {
+    /// The app's name: what the gallery lists the widget under, and what the
+    /// widget shows before there is a snapshot to read. A key of the
+    /// widget's own `Localizable.strings` (en, ja, zh-Hant), so iOS names the
+    /// app in the device's language; `npm run i18n:check` holds each table
+    /// equal to the web catalog it mirrors.
+    static var appName: LocalizedStringKey { "app.title" }
+
     /// The Lock Screen families arrived with iOS 16 and the target still
     /// builds for 15.6, so they join the two home-screen sizes only where the
     /// system knows them.
@@ -27,7 +36,7 @@ struct HomeAccountMonthWidget: Widget {
         StaticConfiguration(kind: "HomeAccountMonth", provider: MonthProvider()) { entry in
             MonthEntryView(entry: entry)
         }
-        .configurationDisplayName("Home Account")
+        .configurationDisplayName(Self.appName)
         .supportedFamilies(Self.families)
     }
 }
@@ -124,11 +133,12 @@ struct MonthEntryView: View {
     }
 }
 
-/// The app's name, drawn wherever there is no snapshot to read. One view, so
-/// every family names the app the same way.
+/// The app's name in the device's language, drawn wherever there is no
+/// snapshot to read. One view, so every family names the app the same way,
+/// and the same way the gallery does.
 private struct AppNameView: View {
     var body: some View {
-        Text(verbatim: "Home Account")
+        Text(HomeAccountMonthWidget.appName)
     }
 }
 

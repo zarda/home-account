@@ -5,7 +5,7 @@
  * TranslationService.t() returns the key itself when a lookup misses, and
  * loading a locale replaces the whole dictionary, so there is no fallback to
  * English: a missing key renders as raw text like `import.noTransactions` —
- * silent in tests, visible in the UI. Five scans:
+ * silent in tests, visible in the UI. Six scans:
  *
  *   1. Every statically-written translation key must resolve in every locale.
  *      `t(` calls are read with a balanced-argument walk over the whole file,
@@ -42,8 +42,27 @@
  *      a model reads, or one stored on the row, sits in one of two tables
  *      passed into fallbackFindings (ADR 0151), matched on file and text and
  *      tallied per row: a count that moves either way fails.
+ *   6. The Home Screen widget names the app in the device's language from
+ *      its own string tables, which the web catalogs never reach:
+ *      ios/App/HomeAccountWidget/<language>.lproj/Localizable.strings, one
+ *      per NATIVE_TABLES row (en for en, ja for ja, zh-Hant for tc). The
+ *      gallery name was English on every device until #441. Each table is
+ *      read by a strict parser and must hold the en table's keys, each a
+ *      catalog key whose value is the catalog's string, word for word. The
+ *      tables must also be wired in project.pbxproj (a Localizable.strings
+ *      variant group copied by the widget target's Resources phase, a table
+ *      per language, each language in knownRegions), or the build never
+ *      copies them. And the widget's Swift must not show a literal of its
+ *      own: a string literal first after `Text(`, `Label(`,
+ *      `LocalizedStringKey(`, `NSLocalizedString(`, `String(localized:`,
+ *      `.configurationDisplayName(`, `.description(`, `.accessibilityLabel(`
+ *      or a `LocalizedStringKey` declared with `{` or `=` fails unless it is
+ *      a key of the en table; an interpolated literal or `Text(verbatim:)`
+ *      fails either way. A type head needs an identifier boundary, so
+ *      `UILabel(` and `RichText(` are not heads. Comments are masked with a
+ *      Swift lexer (nested block comments, raw strings, interpolation).
  *
- * Beside the five, one more template check, which has no number: a
+ * Beside the six, one more template check, which has no number: a
  * translated fragment must not be joined to a value by a comma.
  * `{{ 'common.welcome' | translate }}, {{ userName() }}` is a sentence only
  * English can punctuate: the comma sits in the template where no locale can
@@ -134,12 +153,33 @@
  *   - A sentence assembled in code: `t('a.b') + ', ' + name`, or a template
  *     literal. Only template interpolations are read.
  *
+ * What the widget scan (6) deliberately cannot see:
+ *   - A word that is not a literal: `Text(labels.net)` shows a string the
+ *     app wrote into the snapshot already translated (docs/widget.md), and
+ *     a `LocalizedStringKey` held in a variable is read where it is declared.
+ *   - A head the list does not name: `Button("…")`, `Toggle`,
+ *     `.navigationTitle`, a function declared `-> LocalizedStringKey`.
+ *   - A literal that is not the first thing after its head: a conditional
+ *     of literals, `Text(isLocked ? "Locked" : "Signed out")`, an optional
+ *     key, `let name: LocalizedStringKey? = "Home"`, and
+ *     `LocalizedStringKey(stringLiteral: "Home")`.
+ *   - Swift outside the top level of the widget's folder: a subfolder of it,
+ *     the Share Extension and the app's own shell, and an Info.plist display
+ *     name (InfoPlist.strings).
+ *   - Which group holds the variant group: the wiring check reads the
+ *     Resources phase, the tables and knownRegions. A variant group under
+ *     another group points its tables at the wrong folder, which the build
+ *     reports, not this scan.
+ *   - A device language no table names: zh-Hans reads the en table.
+ *   - A catalog placeholder: a `{{name}}` copied into a table is equal to
+ *     the catalog and iOS shows it as written; the widget's one key has none.
+ *
  * `--self-test` exercises the parser against known shapes and exits non-zero
  * if the checker itself is broken; npm's i18n:check chains it first, as
  * prompts:check does. Reference documentation lives in docs/i18n.md.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 const LOCALES = ['en', 'ja', 'tc'];
@@ -752,6 +792,442 @@ export function fallbackFindings(files, allowed) {
   return { offences, drift };
 }
 
+/**
+ * The widget's string tables (scan 6), by `.lproj` language, and the web
+ * catalog each one mirrors. iOS picks the table from the device's language;
+ * a language with no row here (zh-Hans among them) reads the en table, the
+ * development region's, where the web maps every `zh*` to tc.
+ */
+export const NATIVE_TABLES = { en: 'en', ja: 'ja', 'zh-Hant': 'tc' };
+/** The table the widget's Swift keys must stand in: the development region's. */
+const NATIVE_SOURCE_LANGUAGE = 'en';
+const NATIVE_DIR = 'ios/App/HomeAccountWidget';
+const NATIVE_TABLE = 'Localizable.strings';
+const PBXPROJ = 'ios/App/App.xcodeproj/project.pbxproj';
+const WIDGET_TARGET = 'HomeAccountWidget';
+
+/** The escapes a table may use; anything else is a parse failure, not a guess. */
+const STRINGS_ESCAPES = { '"': '"', '\\': '\\', n: '\n', t: '\t', r: '\r' };
+
+/**
+ * Steps over whitespace, `//` line comments and `/* … *\/` block comments
+ * from `from`, the trivia a `.strings` table and project.pbxproj share.
+ * Returns `{ at, unclosed }`: `at` is the first index past the trivia, or the
+ * start of a block comment that never closes, with `unclosed` true. Each
+ * reader decides what an unclosed comment means to it.
+ */
+function skipPlistTrivia(source, from) {
+  let at = from;
+  for (;;) {
+    while (at < source.length && /\s/.test(source[at])) at += 1;
+    if (source.startsWith('//', at)) {
+      const end = source.indexOf('\n', at);
+      at = end === -1 ? source.length : end;
+    } else if (source.startsWith('/*', at)) {
+      const end = source.indexOf('*/', at + 2);
+      if (end === -1) return { at, unclosed: true };
+      at = end + 2;
+    } else {
+      return { at, unclosed: false };
+    }
+  }
+}
+
+/**
+ * Reads a `.strings` table strictly: comments, whitespace and
+ * `"key" = "value";` entries, both sides quoted, a string on one line, the
+ * escapes above, each key once. Xcode's own reader is laxer (unquoted words,
+ * any escape), and a laxer reader here could hold a table equal to the
+ * catalog that the device reads differently. Returns `{ entries, error }`:
+ * `entries` a Map in file order, `error` null or `{ line, message }` for the
+ * first problem, where reading stops.
+ */
+export function parseStrings(source) {
+  const entries = new Map();
+  let i = 0;
+  const fail = message => ({ entries, error: { line: lineOf(source, i), message } });
+  /** Steps over the trivia; names a comment that never closes. */
+  const skip = () => {
+    const { at, unclosed } = skipPlistTrivia(source, i);
+    i = at;
+    return unclosed ? 'a comment that never closes' : null;
+  };
+  const quoted = () => {
+    if (source[i] !== '"') return { error: 'expected a quoted string' };
+    let text = '';
+    for (i += 1; i < source.length && source[i] !== '\n'; i += 1) {
+      if (source[i] === '"') {
+        i += 1;
+        return { text };
+      }
+      if (source[i] === '\\') {
+        const escaped = STRINGS_ESCAPES[source[i + 1]];
+        if (escaped === undefined) return { error: `an escape this reader does not take: \\${source[i + 1] ?? ''}` };
+        text += escaped;
+        i += 1;
+      } else {
+        text += source[i];
+      }
+    }
+    return { error: 'a string that never closes on its line' };
+  };
+  for (;;) {
+    let problem = skip();
+    if (problem) return fail(problem);
+    if (i >= source.length) return { entries, error: null };
+    const entryAt = i;
+    const key = quoted();
+    if (key.error) return fail(key.error);
+    if ((problem = skip())) return fail(problem);
+    if (source[i] !== '=') return fail('expected = after the key');
+    i += 1;
+    if ((problem = skip())) return fail(problem);
+    const value = quoted();
+    if (value.error) return fail(value.error);
+    if ((problem = skip())) return fail(problem);
+    if (source[i] !== ';') return fail('expected ; after the value');
+    i += 1;
+    if (entries.has(key.text)) {
+      i = entryAt;
+      return fail(`the key ${key.text} is written twice`);
+    }
+    entries.set(key.text, value.text);
+  }
+}
+
+/** The catalog value at a dotted key: a string, an object (a plural or a namespace), or undefined. */
+function catalogLeaf(catalog, key) {
+  let node = catalog;
+  for (const part of key.split('.')) {
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, part)) return undefined;
+    node = node[part];
+  }
+  return node;
+}
+
+/**
+ * Sets the widget's tables against the catalogs. `tables` maps each `.lproj`
+ * language found to its table's source (null when the folder holds none);
+ * `catalogs` maps each locale to its parsed JSON. Every table holds the en
+ * table's keys exactly, each key names a string in the catalog its language
+ * mirrors, and each value is that string. Returns `{ kind, where, message }`
+ * findings; `kind` is one of coverage, missing, unmapped, parse, key set,
+ * unknown, not a string, mismatch.
+ */
+export function nativeTableFindings(tables, catalogs, map = NATIVE_TABLES, locales = LOCALES) {
+  const findings = [];
+  const add = (kind, where, message) => findings.push({ kind, where, message });
+  const mirrored = Object.values(map);
+  for (const locale of locales) {
+    if (!mirrored.includes(locale)) add('coverage', locale, `no widget table mirrors the ${locale} catalog`);
+  }
+  for (const [language, locale] of Object.entries(map)) {
+    if (!locales.includes(locale)) add('coverage', language, `${language} mirrors ${locale}, which is not a catalog`);
+  }
+  for (const language of Object.keys(map)) {
+    if (tables[language] == null) add('missing', language, `${language}.lproj/${NATIVE_TABLE} is not there`);
+  }
+  const parsed = new Map();
+  for (const [language, source] of Object.entries(tables)) {
+    if (!Object.hasOwn(map, language)) {
+      add('unmapped', language, `${language}.lproj is a language NATIVE_TABLES does not map to a catalog`);
+    } else if (source != null) {
+      const { entries, error } = parseStrings(source);
+      if (error) add('parse', `${language}:${error.line}`, error.message);
+      else parsed.set(language, entries);
+    }
+  }
+  const reference = parsed.get(NATIVE_SOURCE_LANGUAGE);
+  for (const [language, entries] of parsed) {
+    if (reference && language !== NATIVE_SOURCE_LANGUAGE) {
+      for (const key of reference.keys()) {
+        if (!entries.has(key)) add('key set', `${language} ${key}`, `lacks ${key}, which the en table holds`);
+      }
+      for (const key of entries.keys()) {
+        if (!reference.has(key)) add('key set', `${language} ${key}`, `holds ${key}, which the en table does not`);
+      }
+    }
+    const locale = map[language];
+    const catalog = catalogs[locale];
+    if (catalog === undefined) continue;
+    for (const [key, value] of entries) {
+      const expected = catalogLeaf(catalog, key);
+      if (expected === undefined) {
+        add('unknown', `${language} ${key}`, `${key} is not a key of ${locale}.json`);
+      } else if (typeof expected !== 'string') {
+        add('not a string', `${language} ${key}`, `${key} is a plural or a namespace in ${locale}.json, not a string`);
+      } else if (expected !== value) {
+        add('mismatch', `${language} ${key}`, `reads "${value}" where ${locale}.json reads "${expected}"`);
+      }
+    }
+  }
+  return findings;
+}
+
+/**
+ * Reads project.pbxproj, an old-style property list: dictionaries
+ * `{ key = value; }`, arrays `( a, b, )`, quoted or bare strings, comments.
+ * Enough of the format to walk the object graph; throws on anything else.
+ */
+export function parsePbxproj(source) {
+  let i = 0;
+  const fail = message => {
+    throw new Error(`${message} on line ${lineOf(source, i)}`);
+  };
+  /** Steps over the trivia; throws on a comment that never closes. */
+  const skip = () => {
+    const { at, unclosed } = skipPlistTrivia(source, i);
+    i = at;
+    if (unclosed) fail('a comment that never closes');
+  };
+  const BARE = /[A-Za-z0-9_$/:.\-+]+/y;
+  const string = () => {
+    skip();
+    if (source[i] === '"') {
+      let text = '';
+      for (i += 1; i < source.length; i += 1) {
+        if (source[i] === '"') {
+          i += 1;
+          return text;
+        }
+        if (source[i] === '\\') {
+          i += 1;
+          text += { n: '\n', t: '\t' }[source[i]] ?? source[i];
+        } else {
+          text += source[i];
+        }
+      }
+      fail('a string that never closes');
+    }
+    BARE.lastIndex = i;
+    const bare = BARE.exec(source);
+    if (!bare) fail(`unexpected ${JSON.stringify(source[i] ?? 'end of file')}`);
+    i = BARE.lastIndex;
+    return bare[0];
+  };
+  const value = () => {
+    skip();
+    if (source[i] === '{') {
+      i += 1;
+      const dict = {};
+      for (;;) {
+        skip();
+        if (source[i] === '}') {
+          i += 1;
+          return dict;
+        }
+        const key = string();
+        skip();
+        if (source[i] !== '=') fail('expected =');
+        i += 1;
+        dict[key] = value();
+        skip();
+        if (source[i] !== ';') fail('expected ;');
+        i += 1;
+      }
+    }
+    if (source[i] === '(') {
+      i += 1;
+      const list = [];
+      for (;;) {
+        skip();
+        if (source[i] === ')') {
+          i += 1;
+          return list;
+        }
+        list.push(value());
+        skip();
+        if (source[i] === ',') i += 1;
+        else if (source[i] !== ')') fail('expected , or )');
+      }
+    }
+    return string();
+  };
+  const root = value();
+  skip();
+  if (i < source.length) fail('text after the closing brace');
+  return root;
+}
+
+/**
+ * The tables reach the built widget only through project.pbxproj: a
+ * `Localizable.strings` variant group copied by the widget target's own
+ * Resources phase, a file reference per language inside it, and each
+ * language in the project's knownRegions. A table on disk that is not wired
+ * is never copied, and the device reads the key itself. Returns
+ * `{ kind, where, message }` findings; `kind` is phase, table or region.
+ */
+export function pbxprojWiringFindings(source, languages, target = WIDGET_TARGET) {
+  const root = parsePbxproj(source);
+  const objects = root.objects ?? {};
+  const findings = [];
+  const add = (kind, where, message) => findings.push({ kind, where, message });
+  const widget = Object.values(objects).find(o => o.isa === 'PBXNativeTarget' && o.name === target);
+  const copied = (widget?.buildPhases ?? [])
+    .map(id => objects[id])
+    .filter(phase => phase?.isa === 'PBXResourcesBuildPhase')
+    .flatMap(phase => phase.files ?? [])
+    .map(id => objects[objects[id]?.fileRef]);
+  const group = copied.find(o => o?.isa === 'PBXVariantGroup' && o.name === NATIVE_TABLE);
+  if (group === undefined) {
+    add('phase', target, `no ${NATIVE_TABLE} variant group in the ${target} target's Resources phase`);
+  } else {
+    const paths = (group.children ?? []).map(id => objects[id]?.path);
+    for (const language of languages) {
+      if (!paths.includes(`${language}.lproj/${NATIVE_TABLE}`)) {
+        add('table', language, `the ${NATIVE_TABLE} variant group has no ${language}.lproj/${NATIVE_TABLE}`);
+      }
+    }
+  }
+  const regions = objects[root.rootObject]?.knownRegions ?? [];
+  for (const language of languages) {
+    if (!regions.includes(language)) add('region', language, `knownRegions does not list ${language}`);
+  }
+  return findings;
+}
+
+/**
+ * Blanks Swift comments, keeping every offset, and records each string
+ * literal by the offset of its opening delimiter. Block comments nest, as
+ * Swift's do; a `//` inside a literal is text; `#"…"#` raw strings, `"""`
+ * blocks and `\( … )` interpolation (code again, nested literals included)
+ * are followed, so a literal's span is its real one.
+ */
+function lexSwift(source) {
+  const masked = source.split('');
+  const blank = (from, to) => {
+    for (let k = from; k < to; k += 1) if (masked[k] !== '\n') masked[k] = ' ';
+  };
+  const literals = new Map(); // opening offset -> { from, to, hashes }, the content between the delimiters
+  const OPEN = /(#*)("""|")/y;
+  const stack = [];
+  let i = 0;
+  while (i < source.length) {
+    const top = stack[stack.length - 1];
+    if (top?.kind === 'string') {
+      const escape = `\\${'#'.repeat(top.hashes)}`;
+      const close = `${top.delimiter}${'#'.repeat(top.hashes)}`;
+      if (source.startsWith(escape, i)) {
+        const next = i + escape.length;
+        if (source[next] === '(') stack.push({ kind: 'code', depth: 1 });
+        i = next + 1;
+      } else if (source.startsWith(close, i)) {
+        literals.set(top.start, { from: top.from, to: i, hashes: top.hashes });
+        stack.pop();
+        i += close.length;
+      } else {
+        i += 1;
+      }
+      continue;
+    }
+    if (source.startsWith('//', i)) {
+      const end = source.indexOf('\n', i);
+      const stop = end === -1 ? source.length : end;
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    if (source.startsWith('/*', i)) {
+      let depth = 1;
+      let j = i + 2;
+      while (j < source.length && depth > 0) {
+        if (source.startsWith('/*', j)) {
+          depth += 1;
+          j += 2;
+        } else if (source.startsWith('*/', j)) {
+          depth -= 1;
+          j += 2;
+        } else {
+          j += 1;
+        }
+      }
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    OPEN.lastIndex = i;
+    const open = OPEN.exec(source);
+    if (open) {
+      const from = i + open[0].length;
+      stack.push({ kind: 'string', delimiter: open[2], hashes: open[1].length, start: i, from });
+      i = from;
+      continue;
+    }
+    if (top?.kind === 'code') {
+      if (source[i] === '(') top.depth += 1;
+      else if (source[i] === ')' && --top.depth === 0) stack.pop();
+    }
+    i += 1;
+  }
+  return { masked: masked.join(''), literals };
+}
+
+/**
+ * Where the widget hands SwiftUI or Foundation text to show: `Text(`,
+ * `Label(`, `LocalizedStringKey(`, `NSLocalizedString(`,
+ * `String(localized:`, the `.configurationDisplayName(`, `.description(` and
+ * `.accessibilityLabel(` modifiers, and a `LocalizedStringKey` declared with
+ * `{` or `=`. A type head needs an identifier boundary before it, so
+ * `UILabel(` and `RichText(` are not heads; a `.` may precede it
+ * (`SwiftUI.Text(`).
+ */
+const SWIFT_HEAD =
+  /(?<![A-Za-z0-9_])(?:Text|Label|LocalizedStringKey|NSLocalizedString)\(|\.(?:configurationDisplayName|description|accessibilityLabel)\(|(?<![A-Za-z0-9_])String\(\s*localized:|:\s*LocalizedStringKey\s*[{=]/g;
+
+/**
+ * A string literal standing first after a display head (SWIFT_HEAD) is a
+ * hit when it is not a key of the widget's en table (`keys`), when it is
+ * interpolated, or when it is `Text(verbatim:)`, which iOS never looks up.
+ * An argument that is not a literal (a snapshot string, `Self.appName`) is
+ * not read. Returns `{ line, reason, text }`, `text` the trimmed line.
+ */
+export function findSwiftDisplayLiterals(source, keys) {
+  const { masked, literals } = lexSwift(source);
+  const lines = source.split('\n');
+  const hits = [];
+  SWIFT_HEAD.lastIndex = 0;
+  let head;
+  while ((head = SWIFT_HEAD.exec(masked)) !== null) {
+    let at = head.index + head[0].length;
+    const space = () => {
+      while (at < masked.length && /\s/.test(masked[at])) at += 1;
+    };
+    space();
+    let verbatim = false;
+    if (head[0] === 'Text(' && masked.startsWith('verbatim:', at)) {
+      verbatim = true;
+      at += 'verbatim:'.length;
+      space();
+    }
+    if (head[0].endsWith('{') && /^return(?![A-Za-z0-9_])/.test(masked.slice(at, at + 7))) {
+      at += 'return'.length;
+      space();
+    }
+    const literal = literals.get(at);
+    if (literal === undefined) continue;
+    const content = source.slice(literal.from, literal.to);
+    const interpolated = content.includes(`\\${'#'.repeat(literal.hashes)}(`);
+    const reason = verbatim ? 'verbatim' : interpolated ? 'interpolated' : keys.has(content) ? null : 'not a key';
+    if (reason !== null) {
+      const line = lineOf(source, at);
+      hits.push({ line, reason, text: lines[line - 1].trim() });
+    }
+  }
+  return hits;
+}
+
+/** Each `.lproj` folder in the widget's folder, mapped to its table's source or null. */
+function readNativeTables(dir) {
+  const tables = {};
+  for (const entry of readdirSync(dir).sort()) {
+    const language = /^(.+)\.lproj$/.exec(entry)?.[1];
+    if (language === undefined || !statSync(join(dir, entry)).isDirectory()) continue;
+    const path = join(dir, entry, NATIVE_TABLE);
+    tables[language] = existsSync(path) ? readFileSync(path, 'utf8') : null;
+  }
+  return tables;
+}
+
 /** Test doubles and fixtures, read by specs only (test-data.ts seeds an 'Other' category). */
 const FALLBACK_SKIP = 'src/app/core/services/testing/';
 
@@ -769,9 +1245,11 @@ function walk(dir) {
 }
 
 function run() {
+  const catalogs = {};
   const defined = {};
   for (const locale of LOCALES) {
-    defined[locale] = flatten(JSON.parse(readFileSync(join(I18N_DIR, `${locale}.json`), 'utf8')));
+    catalogs[locale] = JSON.parse(readFileSync(join(I18N_DIR, `${locale}.json`), 'utf8'));
+    defined[locale] = flatten(catalogs[locale]);
   }
 
   /** key -> Set of `file:line` that reference it */
@@ -856,6 +1334,24 @@ function run() {
   const fallbacks = fallbackFindings(fallbackFiles, fallbackRows);
   const allowedHits = rows => rows.reduce((sum, row) => sum + row.count, 0);
 
+  const nativeTables = readNativeTables(NATIVE_DIR);
+  const tableFindings = nativeTableFindings(nativeTables, catalogs);
+  let wiringFindings;
+  try {
+    wiringFindings = pbxprojWiringFindings(readFileSync(PBXPROJ, 'utf8'), Object.keys(NATIVE_TABLES));
+  } catch (error) {
+    wiringFindings = [{ kind: 'parse', where: PBXPROJ, message: `does not read: ${error.message}` }];
+  }
+  const sourceTable = nativeTables[NATIVE_SOURCE_LANGUAGE];
+  const sourceKeys = new Set(sourceTable == null ? [] : parseStrings(sourceTable).entries.keys());
+  const swiftFiles = readdirSync(NATIVE_DIR)
+    .filter(name => name.endsWith('.swift'))
+    .sort()
+    .map(name => `${NATIVE_DIR}/${name}`);
+  const swiftOffences = swiftFiles.flatMap(file =>
+    findSwiftDisplayLiterals(readFileSync(file, 'utf8'), sourceKeys).map(hit => ({ site: `${file}:${hit.line}`, ...hit }))
+  );
+
   const failures = [];
   for (const [key, sites] of [...referenced].sort(([a], [b]) => a.localeCompare(b))) {
     const missing = LOCALES.filter(locale => !defined[locale].has(key));
@@ -879,6 +1375,12 @@ function run() {
       `(${fallbackRows.length} rows allow ${allowedHits(fallbackRows)} hits: ` +
       `${MODEL_FACING_FALLBACKS.length} model-facing for ${allowedHits(MODEL_FACING_FALLBACKS)}, ` +
       `${STORED_FALLBACKS.length} stored for ${allowedHits(STORED_FALLBACKS)}).`
+  );
+  console.log(
+    `Checked the widget's string tables (${Object.entries(NATIVE_TABLES)
+      .map(([language, locale]) => `${language} for ${locale}`)
+      .join(', ')}) against the catalogs and their wiring in ${PBXPROJ}, ` +
+      `and ${swiftFiles.length} widget Swift files for display literals.`
   );
 
   let failed = false;
@@ -971,12 +1473,58 @@ function run() {
         'same commit that removed the literal.'
     );
   }
+  if (tableFindings.length > 0) {
+    failed = true;
+    console.error(
+      `\n${tableFindings.length} widget string table finding(s) — the gallery and an empty widget ` +
+        'read these words on a device:\n'
+    );
+    for (const { kind, where, message } of tableFindings) {
+      console.error(`  ${NATIVE_DIR}  ${kind} ${where}: ${message}`);
+    }
+    console.error(
+      `\nEach <language>.lproj/${NATIVE_TABLE} holds the en table's keys, every one a catalog key\n` +
+        'whose value is copied from the catalog NATIVE_TABLES maps that language to; a new\n' +
+        'catalog or a new table adds its NATIVE_TABLES row in the same commit (see docs/i18n.md).'
+    );
+  }
+  if (wiringFindings.length > 0) {
+    failed = true;
+    console.error(
+      `\n${wiringFindings.length} widget string table wiring finding(s) — the build would not ` +
+        'copy the table, and the device would read the key itself:\n'
+    );
+    for (const { kind, where, message } of wiringFindings) {
+      console.error(`  ${PBXPROJ}  ${kind} ${where}: ${message}`);
+    }
+    console.error(
+      `\nList the table in the ${NATIVE_TABLE} variant group of the ${WIDGET_TARGET} group, copy the\n` +
+        `group in the ${WIDGET_TARGET} target's Resources phase, and add the language to knownRegions\n` +
+        '(see docs/i18n.md).'
+    );
+  }
+  if (swiftOffences.length > 0) {
+    failed = true;
+    console.error(
+      `\n${swiftOffences.length} widget display literal(s) a device shows as written, whatever its language:\n`
+    );
+    const bySite = (a, b) => a.site.localeCompare(b.site, 'en', { numeric: true });
+    for (const { site, reason, text } of swiftOffences.sort(bySite)) {
+      console.error(`  ${site}  ${text.slice(0, 120)}  (${reason})`);
+    }
+    console.error(
+      `\nName a key of the widget's en table instead (a catalog key such as "app.title", typed as a\n` +
+        'LocalizedStringKey), so iOS looks it up in the table for the device\'s language; never\n' +
+        'Text(verbatim:) and never an interpolated key (see docs/i18n.md).'
+    );
+  }
   if (failed) process.exit(1);
 
   console.log(
     'Every literal translation key resolves in every locale, no template hard-codes an aria-label, ' +
       'alt text or English sentence or joins a translated fragment to a value by a comma, ' +
-      'and no code falls back to an English word a reader would see.'
+      'no code falls back to an English word a reader would see, and the widget names its words ' +
+      'from wired string tables equal to the catalogs.'
   );
 }
 
@@ -1247,6 +1795,158 @@ function selfTest() {
   );
   const pairs = liveRows.map(row => `${row.file}\n${row.text.trim()}`);
   check('no two fallback rows share a file and a text', new Set(pairs).size, pairs.length);
+
+  // scan 6: the .strings parser
+  const strings = source => {
+    const { entries, error } = parseStrings(source);
+    return error ? { error: error.line } : Object.fromEntries(entries);
+  };
+  check(
+    'reads one entry under a comment naming its catalog',
+    strings('/* Mirrors src/assets/i18n/en.json. */\n"app.title" = "Home Account";\n'),
+    { 'app.title': 'Home Account' }
+  );
+  check('reads a value in another script', strings('"app.title" = "家計簿";'), { 'app.title': '家計簿' });
+  check(
+    'reads several entries around a line comment',
+    strings('// first\n"a.b" = "x";\n\n"c.d"="y" ;'),
+    { 'a.b': 'x', 'c.d': 'y' }
+  );
+  check(
+    'unescapes a quote, a backslash and a newline',
+    strings(String.raw`"a.b" = "say \"hi\" \\ \n";`),
+    { 'a.b': 'say "hi" \\ \n' }
+  );
+  check('a missing semicolon fails where the next entry starts', strings('"a.b" = "x"\n"c.d" = "y";'), { error: 2 });
+  check('an unquoted value fails', strings('"a.b" = x;'), { error: 1 });
+  check('a key written twice fails on its second line', strings('"a.b" = "x";\n"a.b" = "y";'), { error: 2 });
+  check(
+    'a string or a comment that never closes fails',
+    [strings('"a.b" = "x;\n'), strings('/* note\n"a.b" = "x";')],
+    [{ error: 1 }, { error: 1 }]
+  );
+  check('an escape the parser does not read fails', strings(String.raw`"a.b" = "\q";`), { error: 1 });
+
+  // scan 6: the tables set against the catalogs
+  const CATALOGS = {
+    en: { app: { title: 'Home Account', loading: 'Loading...' }, n: { one: '{{n}} row', other: '{{n}} rows' } },
+    ja: { app: { title: '家計簿', loading: '読み込み中...' }, n: '{{n}} 件' },
+    tc: { app: { title: '家庭記帳', loading: '載入中...' }, n: '{{n}} 筆' },
+  };
+  const TABLES = {
+    en: '"app.title" = "Home Account";',
+    ja: '"app.title" = "家計簿";',
+    'zh-Hant': '"app.title" = "家庭記帳";',
+  };
+  const native = (tables, map = NATIVE_TABLES) =>
+    nativeTableFindings(tables, CATALOGS, map, LOCALES).map(f => `${f.kind} ${f.where}`);
+  check('three tables equal to their catalogs', native(TABLES), []);
+  check(
+    'a mapped table that is not there',
+    [native({ en: TABLES.en, 'zh-Hant': TABLES['zh-Hant'] }), native({ ...TABLES, ja: null })],
+    [['missing ja'], ['missing ja']]
+  );
+  check(
+    'a table for a language the map does not name',
+    native({ ...TABLES, 'zh-Hans': '"app.title" = "家庭记账";' }),
+    ['unmapped zh-Hans']
+  );
+  check(
+    'a table lacking a key the en table holds',
+    native({
+      en: `${TABLES.en}\n"app.loading" = "Loading...";`,
+      ja: TABLES.ja,
+      'zh-Hant': `${TABLES['zh-Hant']}\n"app.loading" = "載入中...";`,
+    }),
+    ['key set ja app.loading']
+  );
+  check(
+    'a table holding a key the en table lacks',
+    native({ ...TABLES, ja: `${TABLES.ja}\n"app.loading" = "読み込み中...";` }),
+    ['key set ja app.loading']
+  );
+  check(
+    'a key no catalog holds',
+    native({ en: '"app.titel" = "Home Account";', ja: '"app.titel" = "家計簿";', 'zh-Hant': '"app.titel" = "家庭記帳";' }),
+    ['unknown en app.titel', 'unknown ja app.titel', 'unknown zh-Hant app.titel']
+  );
+  check(
+    'a key that is a plural in its catalog',
+    native({
+      en: `${TABLES.en}\n"n" = "{{n}} rows";`,
+      ja: `${TABLES.ja}\n"n" = "{{n}} 件";`,
+      'zh-Hant': `${TABLES['zh-Hant']}\n"n" = "{{n}} 筆";`,
+    }),
+    ['not a string en n']
+  );
+  check('a value that differs from its catalog', native({ ...TABLES, ja: '"app.title" = "家計";' }), ['mismatch ja app.title']);
+  check('a table that does not parse', native({ ...TABLES, ja: '"app.title" = "家計簿"' }), ['parse ja:1']);
+  check(
+    'a catalog no table mirrors, and a table that mirrors no catalog',
+    [
+      native({ en: TABLES.en, ja: TABLES.ja }, { en: 'en', ja: 'ja' }),
+      native({ ...TABLES, 'zh-Hans': '"app.title" = "家庭记账";' }, { ...NATIVE_TABLES, 'zh-Hans': 'sc' }),
+    ],
+    [['coverage tc'], ['coverage zh-Hans']]
+  );
+  check('the live map mirrors every catalog once', Object.values(NATIVE_TABLES).sort(), [...LOCALES].sort());
+
+  // scan 6: the tables wired into the widget target
+  const pbxproj = ({ regions = 'en, Base, ja, "zh-Hant",', phase = 'F1,', children = 'E1, E2, E3,' } = {}) => `// !$*UTF8*$!
+{
+	objects = {
+		P1 /* Project object */ = {isa = PBXProject; knownRegions = (${regions}); targets = (T1, T2, ); };
+		T1 /* HomeAccountWidget */ = {isa = PBXNativeTarget; name = HomeAccountWidget; buildPhases = (S1, R1, ); };
+		T2 /* App */ = {isa = PBXNativeTarget; name = App; buildPhases = (R2, ); };
+		S1 /* Sources */ = {isa = PBXSourcesBuildPhase; files = (); };
+		R1 /* Resources */ = {isa = PBXResourcesBuildPhase; files = (${phase}); };
+		R2 /* Resources */ = {isa = PBXResourcesBuildPhase; files = (F1, ); };
+		F1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = V1 /* Localizable.strings */; };
+		V1 /* Localizable.strings */ = {isa = PBXVariantGroup; children = (${children}); name = Localizable.strings; sourceTree = "<group>"; };
+		E1 /* en */ = {isa = PBXFileReference; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E2 /* ja */ = {isa = PBXFileReference; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E3 /* zh-Hant */ = {isa = PBXFileReference; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
+	};
+	rootObject = P1 /* Project object */;
+}
+`;
+  const wiring = text =>
+    pbxprojWiringFindings(text, Object.keys(NATIVE_TABLES)).map(f => `${f.kind} ${f.where}`);
+  check('a variant group in the widget\'s Resources phase with every table and region', wiring(pbxproj()), []);
+  check('tables only another target copies', wiring(pbxproj({ phase: '' })), ['phase HomeAccountWidget']);
+  check('a language the variant group lacks', wiring(pbxproj({ children: 'E1, E3,' })), ['table ja']);
+  check('a region the project does not know', wiring(pbxproj({ regions: 'en, Base, ja,' })), ['region zh-Hant']);
+
+  // scan 6: display literals in the widget's Swift
+  const swift = (source, keys = ['app.title']) =>
+    findSwiftDisplayLiterals(source, new Set(keys)).map(hit => `${hit.line} ${hit.reason}`);
+  check('a gallery name written in English', swift('.configurationDisplayName("Home Account")'), ['1 not a key']);
+  check('a verbatim name', swift('Text(verbatim: "Home Account")'), ['1 verbatim']);
+  check('a verbatim key is still verbatim', swift('Text(verbatim: "app.title")'), ['1 verbatim']);
+  check('an interpolated key', swift(String.raw`Text("app.\(name)")`), ['1 interpolated']);
+  check('a Label title', swift('Label("Saved", systemImage: "checkmark")'), ['1 not a key']);
+  check('a gallery description', swift('.description("Shows this month")'), ['1 not a key']);
+  check('an accessibility label', swift('.accessibilityLabel("Locked")'), ['1 not a key']);
+  check('a computed key', swift('static var appName: LocalizedStringKey { "Home Account" }'), ['1 not a key']);
+  check('a stored key', swift('let name: LocalizedStringKey = "Home Account"'), ['1 not a key']);
+  check(
+    'the three lookup calls',
+    swift('LocalizedStringKey("Home")\nNSLocalizedString("Home", comment: "")\nString(localized: "Home")'),
+    ['1 not a key', '2 not a key', '3 not a key']
+  );
+  check('a literal on the line after its head', swift('Text(\n    "Home Account"\n)'), ['2 not a key']);
+  check('a module-qualified Text', swift('SwiftUI.Text("Saved")'), ['1 not a key']);
+  check('a raw string', swift('Text(#"Saved"#)'), ['1 not a key']);
+  check('a URL before a hit is not a comment', swift('let url = "home://widget"; Text("Saved")'), ['1 not a key']);
+  check('a key of the en table', swift('Text("app.title")'), []);
+  check('the computed key the widget names itself with', swift('static var appName: LocalizedStringKey { "app.title" }'), []);
+  check('a string the snapshot carries', swift('Text(labels.title)'), []);
+  check('a UIKit label is not a head', swift('let label = UILabel(frame: .zero)'), []);
+  check('a view whose name ends in Text is not a head', swift('MyText("x")'), []);
+  check('another view whose name ends in Text', swift('RichText("Saved")'), []);
+  check('a head in a line comment', swift('// Text("Home Account")'), []);
+  check('a head in a nested block comment', swift('/* outer /* Text("x") */ Text("y") */'), []);
+  check('an image or symbol name', swift('Image("logo")\nImage(systemName: "lock.fill")'), []);
 
   const failed = cases.filter(c => !c.ok);
   for (const c of cases) {
