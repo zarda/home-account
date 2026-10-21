@@ -8,6 +8,7 @@ import { TranslationService } from './translation.service';
 import { WIDGET_SNAPSHOT_PLUGIN, WidgetSnapshotPlugin } from '../plugins/widget-snapshot.plugin';
 import {
   Budget,
+  WIDGET_CARDS,
   WidgetSnapshot,
   WidgetSnapshotFigures,
   WidgetSnapshotInput,
@@ -32,12 +33,6 @@ export class WidgetSnapshotService {
   private readonly auth = inject(AuthService);
   private readonly appLock = inject(AppLockService);
   private readonly injector = inject(Injector);
-
-  /**
-   * True on a build that carries the widget plugin, whether or not a widget
-   * has been placed on the home screen: nothing here can tell.
-   */
-  readonly available = this.plugin !== null;
 
   /**
    * The last payload the plugin accepted, without `writtenAt`. Equal payloads
@@ -130,15 +125,22 @@ export class WidgetSnapshotService {
     };
   }
 
+  /**
+   * A card the account hid on the dashboard is left out of the widget too: its
+   * field is null and nothing it would show is composed, so no name or amount
+   * of it reaches the home screen. Its id is listed in `hidden`, which is what
+   * tells the widget a hidden card from one with nothing to show.
+   */
   private figures(input: WidgetSnapshotInput): WidgetSnapshotFigures {
     const currency = this.injector.get(CurrencyService);
     const localeFormat = this.injector.get(LocaleFormatService);
-    const next = input.upcoming[0];
+    const hidden = WIDGET_CARDS.filter(card => input.hidden.includes(card));
+    const next = hidden.includes('upcoming') ? undefined : input.upcoming[0];
 
     return {
       spent: currency.formatCurrency(input.spent, input.baseCurrency),
       net: currency.formatCurrency(input.net, input.baseCurrency),
-      topBudget: this.topBudget(input.budgets),
+      topBudget: hidden.includes('budgets') ? null : this.topBudget(input.budgets),
       nextScheduled: next
         ? {
             name: next.name,
@@ -149,6 +151,7 @@ export class WidgetSnapshotService {
             ),
           }
         : null,
+      hidden,
     };
   }
 

@@ -191,12 +191,6 @@ describe('DashboardComponent', () => {
     return created;
   }
 
-  /** The device build: the widget plugin is present. */
-  function withWidget(): void {
-    const available = Object.getOwnPropertyDescriptor(widgetSnapshots, 'available')!.get as jasmine.Spy;
-    available.and.returnValue(true);
-  }
-
   function setPreferences(preferences: Partial<User['preferences']>): void {
     authService.currentUser.set(createUser({ preferences: preferences as User['preferences'] }));
   }
@@ -267,7 +261,7 @@ describe('DashboardComponent', () => {
     router.navigate.and.returnValue(Promise.resolve(true));
     // Root-provided and reaches AppLockService, which throws on this suite's
     // userId-less AuthService double — doubled here rather than left real.
-    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish'], { available: false });
+    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish']);
     // Root-provided, and the real one constructs every provider's client.
     cloudLLM = { hasAnyCloudProvider: signal(false) };
     // Router is a spy here, so nothing else provides ActivatedRoute; the
@@ -855,7 +849,9 @@ describe('DashboardComponent', () => {
     });
 
     describe('upcoming', () => {
-      it('never opens the upcoming listener while Upcoming is hidden, the recap is off and there is no widget', () => {
+      // The widget does not hold it open either (#441 P5): it leaves a hidden
+      // card's section out, so on a device build too nothing else reads it.
+      it('never opens the upcoming listener while Upcoming is hidden and the recap is off', () => {
         setPreferences(hiding('upcoming'));
         const fixture = build();
         fixture.detectChanges();
@@ -867,16 +863,6 @@ describe('DashboardComponent', () => {
       // A pin: the recap lists the week ahead's bills from the same window.
       it('keeps the upcoming listener for the recap while Upcoming is hidden', () => {
         setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
-        const fixture = build();
-        fixture.detectChanges();
-
-        expect(recurringService.getUpcomingSchedule).toHaveBeenCalledOnceWith(14);
-      });
-
-      // A pin: the widget publishes the next scheduled bill from the same window.
-      it('keeps the upcoming listener for the widget while Upcoming is hidden', () => {
-        withWidget();
-        setPreferences(hiding('upcoming'));
         const fixture = build();
         fixture.detectChanges();
 
@@ -920,8 +906,8 @@ describe('DashboardComponent', () => {
     });
 
     // A pin: budgets has a card, but the banner (which cannot be hidden), the
-    // recap's alerts, insights, the widget and the reminder sweep all read the
-    // list, so it stays ungated.
+    // recap's alerts, insights and the reminder sweep all read the list, so it
+    // stays ungated.
     it('subscribes to budgets exactly once, whatever is hidden', () => {
       setPreferences(hiding('recent', 'upcoming', 'chart', 'insights', 'budgets'));
       const fixture = build();
@@ -1715,6 +1701,7 @@ describe('DashboardComponent', () => {
         baseCurrency: 'USD',
         budgets,
         upcoming,
+        hidden: [],
       });
     });
 
@@ -1855,6 +1842,7 @@ describe('DashboardComponent', () => {
         baseCurrency: 'USD',
         budgets: [],
         upcoming: [],
+        hidden: [],
       });
       widgetSnapshots.publish.calls.reset();
 
@@ -1867,6 +1855,7 @@ describe('DashboardComponent', () => {
         baseCurrency: 'JPY',
         budgets: [],
         upcoming: [],
+        hidden: [],
       });
     });
 
@@ -1885,6 +1874,7 @@ describe('DashboardComponent', () => {
         baseCurrency: 'USD',
         budgets: [],
         upcoming: [],
+        hidden: [],
       });
     });
 
@@ -1935,15 +1925,17 @@ describe('DashboardComponent', () => {
         baseCurrency: 'JPY',
         budgets: [],
         upcoming: [],
+        hidden: [],
       });
       expect(fixture.componentInstance.baseCurrency()).toBe('JPY');
     });
 
-    // A pin: the widget reads the upcoming window too, so hiding the card must
-    // not take the widget's next scheduled bill away.
-    it('publishes the upcoming window with Recent and Upcoming hidden, when there is a widget', () => {
-      withWidget();
-      setPreferences(hiding('recent', 'upcoming'));
+    // #441 P5: the recap keeps the upcoming window open with its card hidden,
+    // and the widget is handed the window with the hidden set beside it; the
+    // service leaves the section out ('a card the account hid' in
+    // widget-snapshot.service.spec.ts).
+    it('hands the widget the hidden set with the window the recap keeps open', () => {
+      setPreferences({ ...hiding('recent', 'upcoming'), enableWeeklyRecap: true });
       const window$ = new Subject<Transaction[]>();
       transactionService.getByDateRange.and.returnValue(window$);
       const upcoming: RecurringOccurrence[] = [{
@@ -1962,13 +1954,44 @@ describe('DashboardComponent', () => {
       window$.next([]);
       TestBed.tick();
 
+      expect(recurringService.getUpcomingSchedule).toHaveBeenCalledOnceWith(14);
       expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
         spent: 0,
         net: 0,
         baseCurrency: 'USD',
         budgets: [],
         upcoming,
+        hidden: ['recent', 'upcoming'],
       });
+    });
+
+    // #441 P5: the effect reads the layout the page renders, which is held
+    // while a change saves, so a card leaves the widget when it leaves the page.
+    it('republishes with the card hidden before the layout write lands', async () => {
+      const land = holdLayoutWrite();
+      const fixture = paintThisMonth(new Subject<Transaction[]>());
+      widgetSnapshots.publish.calls.reset();
+
+      const saved = TestBed.inject(DashboardLayoutService).hide('budgets');
+      fixture.detectChanges();
+
+      expect(authService.updatePreferenceFields).toHaveBeenCalledTimes(1);
+      expect(widgetSnapshots.publish).withContext('before the write lands').toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets: [],
+        upcoming: [],
+        hidden: ['budgets'],
+      });
+
+      land();
+      await saved;
+      fixture.detectChanges();
+
+      expect(widgetSnapshots.publish.calls.mostRecent().args[0].hidden)
+        .withContext('once the write lands')
+        .toEqual(['budgets']);
     });
   });
 

@@ -74,6 +74,7 @@ function input(overrides: Partial<WidgetSnapshotInput> = {}): WidgetSnapshotInpu
     baseCurrency: 'JPY',
     budgets: [],
     upcoming: [],
+    hidden: [],
     now: new Date(2026, 8, 14, 9, 30),
     ...overrides,
   };
@@ -159,10 +160,6 @@ describe('WidgetSnapshotService', () => {
   describe('on the web', () => {
     beforeEach(() => configure(null, false));
 
-    it('is not available', () => {
-      expect(TestBed.inject(WidgetSnapshotService).available).toBeFalse();
-    });
-
     it('resolves no formatter and writes nothing, from publish or from its effects', () => {
       const service = TestBed.inject(WidgetSnapshotService);
       TestBed.tick();
@@ -191,10 +188,6 @@ describe('WidgetSnapshotService', () => {
       write = jasmine.createSpy('write').and.resolveTo();
       configure({ write });
       service = TestBed.inject(WidgetSnapshotService);
-    });
-
-    it('is available', () => {
-      expect(service.available).toBeTrue();
     });
 
     describe('the payload', () => {
@@ -328,6 +321,82 @@ describe('WidgetSnapshotService', () => {
       });
     });
 
+    // #441 P5: the widget follows the dashboard's hidden set. A hidden card's
+    // field is null, as the card's empty state is too, so its id is listed
+    // beside it; and nothing the section would show is composed, so no name or
+    // amount of a hidden card reaches the home screen.
+    describe('a card the account hid', () => {
+      const food = () => budget({ name: 'Food', amount: 100, spent: 82, currency: 'EUR' });
+      const rent = () =>
+        occurrence({ name: 'Rent', type: 'expense', amount: 1200, currency: 'EUR', date: new Date(2026, 8, 20) });
+
+      it('writes no top budget while Budget Progress is hidden, lists it, and formats none of its amounts', () => {
+        service.publish(input({ budgets: [food()], hidden: ['budgets'] }));
+
+        const figures = written().figures!;
+        expect(figures.topBudget).toBeNull();
+        expect(figures.hidden).toEqual(['budgets']);
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('Food');
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('widget.budgetDetail');
+        expect(formatCurrency).not.toHaveBeenCalledWith(82, 'EUR');
+        expect(formatCurrency).not.toHaveBeenCalledWith(100, 'EUR');
+        // The positive proof: the same publish formatted the month's own figures.
+        expect(formatCurrency).toHaveBeenCalledWith(4200, 'JPY');
+        expect(figures.spent).toBe('JPY 4200');
+      });
+
+      it('writes no next scheduled while Upcoming Bills is hidden, lists it, and formats none of it', () => {
+        service.publish(input({ upcoming: [rent()], hidden: ['upcoming'] }));
+
+        const figures = written().figures!;
+        expect(figures.nextScheduled).toBeNull();
+        expect(figures.hidden).toEqual(['upcoming']);
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('Rent');
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('medium:2026-9-20');
+        expect(formatCurrency).not.toHaveBeenCalledWith(-1200, 'EUR');
+        // The positive proof: the same publish formatted the month's own figures.
+        expect(formatCurrency).toHaveBeenCalledWith(800, 'JPY');
+        expect(figures.net).toBe('JPY 800');
+      });
+
+      it('lists the hidden cards in the widget\'s order, leaving out the cards it draws no section for', () => {
+        service.publish(input({ hidden: ['upcoming', 'recent', 'chart', 'budgets', 'insights'] }));
+
+        expect(written().figures!.hidden).toEqual(['budgets', 'upcoming']);
+      });
+
+      it('tells a card with nothing to show from a hidden one', () => {
+        service.publish(input({ budgets: [], upcoming: [], hidden: [] }));
+        service.publish(input({ budgets: [], upcoming: [], hidden: ['budgets', 'upcoming'] }));
+
+        expect(written(0).figures).toEqual({
+          spent: 'JPY 4200',
+          net: 'JPY 800',
+          topBudget: null,
+          nextScheduled: null,
+          hidden: [],
+        });
+        expect(written(1).figures).toEqual({
+          spent: 'JPY 4200',
+          net: 'JPY 800',
+          topBudget: null,
+          nextScheduled: null,
+          hidden: ['budgets', 'upcoming'],
+        });
+      });
+
+      // A pin: only the widget's own cards leave a section out. Proved by
+      // mutation: hiding Budget Progress on any hidden id fails it.
+      it('composes both sections when only cards the widget does not draw are hidden', () => {
+        service.publish(input({ budgets: [food()], upcoming: [rent()], hidden: ['recent', 'chart', 'insights'] }));
+
+        const figures = written().figures!;
+        expect(figures.topBudget?.name).toBe('Food');
+        expect(figures.nextScheduled?.name).toBe('Rent');
+        expect(figures.hidden).toEqual([]);
+      });
+    });
+
     describe('deduplication', () => {
       it('writes the same figures once on the same day, whatever the time', async () => {
         service.publish(input({ now: new Date(2026, 8, 14, 9, 0) }));
@@ -365,6 +434,22 @@ describe('WidgetSnapshotService', () => {
         expect(written(1).labels.title).toBe('ja:dashboard.thisMonth');
         expect(written(1).labels.updated).toBe('ja:widget.updated|{"date":"medium:2026-9-14"}');
         expect(written(1).figures!.spent).toBe(written(0).figures!.spent);
+      });
+
+      // The two payloads differ only in the list: the card's field is null both
+      // times, and the widget must still move from *No active budgets* to no
+      // section at all.
+      it('writes again when an already-empty card becomes hidden', async () => {
+        service.publish(input({ budgets: [] }));
+        await settle();
+        service.publish(input({ budgets: [], hidden: ['budgets'] }));
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(written(0).figures!.topBudget).toBeNull();
+        expect(written(1).figures!.topBudget).toBeNull();
+        expect(written(0).figures!.hidden).toEqual([]);
+        expect(written(1).figures!.hidden).toEqual(['budgets']);
       });
 
       it('writes the same figures again on the next local day', async () => {

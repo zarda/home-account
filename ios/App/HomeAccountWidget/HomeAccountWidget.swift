@@ -106,13 +106,19 @@ private struct FiguresView: View {
     let labels: WidgetSnapshot.Labels
     let figures: WidgetSnapshot.Figures
 
+    /// The medium widget draws a section only for a card the account shows on
+    /// the dashboard, and the month alone when both are hidden.
     var body: some View {
-        if family == .systemMedium {
+        if family == .systemMedium, figures.shows(.budgets) || figures.shows(.upcoming) {
             HStack(alignment: .top, spacing: 12) {
                 month
                 VStack(alignment: .leading, spacing: 8) {
-                    topBudget
-                    nextScheduled
+                    if figures.shows(.budgets) {
+                        topBudget
+                    }
+                    if figures.shows(.upcoming) {
+                        nextScheduled
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -269,7 +275,8 @@ private extension WidgetSnapshot {
             spent: "0,000.00",
             net: "0,000.00",
             topBudget: TopBudget(name: "Budget", percent: 60, detail: "000.00 / 000.00"),
-            nextScheduled: NextScheduled(name: "Scheduled", date: "1 Jan", amount: "00.00")
+            nextScheduled: NextScheduled(name: "Scheduled", date: "1 Jan", amount: "00.00"),
+            hidden: nil
         )
     )
 }

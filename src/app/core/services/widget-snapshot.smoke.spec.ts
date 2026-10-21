@@ -40,13 +40,16 @@ import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/stora
 import { routes } from '../../app.routes';
 import { AuthService } from './auth.service';
 import { AppLockService } from './app-lock.service';
+import { BudgetService } from './budget.service';
+import { RecurringService } from './recurring.service';
 import { TranslationService } from './translation.service';
 import { WidgetSnapshotService } from './widget-snapshot.service';
 import { WIDGET_SNAPSHOT_PLUGIN } from '../plugins/widget-snapshot.plugin';
+import { DashboardLayoutService } from '../../features/dashboard/dashboard-layout.service';
 import { APP_LOCK_STORAGE_PREFIX } from '../utils/app-lock.utils';
 import { addDays, budgetPeriodWindow, dayKey } from '../utils/transaction-date.utils';
 import { MockAuthService, createMockUser, provideNoMotion } from './testing';
-import { DEFAULT_USER_PREFERENCES, User, WidgetSnapshot } from '../../models';
+import { DashboardCardId, DEFAULT_USER_PREFERENCES, User, WidgetSnapshot } from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { stripProviderKeys } from './testing/provider-keys';
 silenceFirebaseWarnings();
@@ -143,13 +146,14 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
 
   // onboardingCompleted is restated because an override replaces the whole
   // preferences object rather than merging into it.
-  function accountUser(enableAppLock = false, baseCurrency = 'USD'): User {
+  function accountUser(enableAppLock = false, baseCurrency = 'USD', hidden?: DashboardCardId[]): User {
     return createMockUser(uid, {
       preferences: {
         ...DEFAULT_USER_PREFERENCES,
         onboardingCompleted: true,
         baseCurrency,
-        enableAppLock
+        enableAppLock,
+        ...(hidden ? { dashboardLayout: { hidden } } : {})
       }
     });
   }
@@ -437,6 +441,56 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
       } finally {
         document.documentElement.lang = lang;
       }
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #441 P5: the widget follows the account's hidden set. The budgets stream
+  // stays open for the banner and the other readers, so the seeded budget does
+  // reach the page; what is proved is that it does not reach the widget.
+  it(
+    'leaves out the cards the account hid, and brings one back once it is shown',
+    async () => {
+      mockAuth.setMockUser(accountUser(false, 'USD', ['budgets', 'upcoming']));
+      TestBed.inject(WidgetSnapshotService);
+      const budgets = TestBed.inject(BudgetService);
+      // The dashboard is the window's only caller, and with Upcoming hidden
+      // and the recap off nothing on it reads the window.
+      const upcomingListener = spyOn(TestBed.inject(RecurringService), 'getUpcomingSchedule').and.callThrough();
+
+      await harness.navigateByUrl('/dashboard');
+      await waitFor(
+        'the seeded budget loaded and a figures write',
+        () => budgets.activeBudgets().some(budget => budget.name === BUDGET_NAME) && lastWrite()?.state === 'figures'
+      );
+      // A window for the publishing effect to run on the loaded budget.
+      for (let pass = 0; pass < 5; pass++) {
+        harness.detectChanges();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const bothHidden = lastWrite()!;
+      expect(bothHidden.state).toBe('figures');
+      expect(bothHidden.figures?.hidden).toEqual(['budgets', 'upcoming']);
+      expect(bothHidden.figures?.topBudget).toBeNull();
+      expect(bothHidden.figures?.nextScheduled).toBeNull();
+      expect(JSON.stringify(bothHidden)).not.toContain(BUDGET_NAME);
+      expect(JSON.stringify(bothHidden)).not.toContain(RULE_NAME);
+      expect(upcomingListener).withContext('the recurring listener').not.toHaveBeenCalled();
+      // The positive proof: the same write carries the month's figures.
+      expect(digits(bothHidden.figures?.spent)).toBe('12000');
+
+      await TestBed.inject(DashboardLayoutService).show('budgets');
+      await waitFor('the budget back in the widget', () => lastWrite()?.figures?.topBudget?.name === BUDGET_NAME);
+
+      const shown = lastWrite()!;
+      expect(shown.figures?.hidden).toEqual(['upcoming']);
+      expect(shown.figures?.topBudget?.percent).toBe(82);
+      expect(shown.figures?.nextScheduled).toBeNull();
+      expect(upcomingListener).withContext('the recurring listener, still').not.toHaveBeenCalled();
 
       harness.fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 200));

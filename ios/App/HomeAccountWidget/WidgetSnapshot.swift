@@ -51,11 +51,31 @@ struct WidgetSnapshot: Codable, Equatable {
         let amount: String
     }
 
+    /// A dashboard card the widget draws a section for (the web's
+    /// `WIDGET_CARDS`). Any other id fails the whole decode: the web and the
+    /// widget ship together, so an unknown one is a payload this build was not
+    /// written for.
+    enum Card: String, Codable, Equatable {
+        case budgets
+        case upcoming
+    }
+
     struct Figures: Codable, Equatable {
         let spent: String
         let net: String
+        /// Nil when there is no budget to rank, and when Budget Progress is hidden.
         let topBudget: TopBudget?
+        /// Nil when nothing is scheduled, and when Upcoming Bills is hidden.
         let nextScheduled: NextScheduled?
+        /// The cards the account hid on the dashboard, which tells a hidden
+        /// card from one with nothing to show. Absent in a file an older build
+        /// wrote, and that build hid nothing.
+        let hidden: [Card]?
+
+        /// Whether the medium widget draws `card`'s section.
+        func shows(_ card: Card) -> Bool {
+            !(hidden ?? []).contains(card)
+        }
     }
 
     enum Display: Equatable {

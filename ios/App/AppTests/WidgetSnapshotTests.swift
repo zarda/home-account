@@ -139,6 +139,68 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertNil(WidgetSnapshot.decode(payload(monthKey: "26-09")))
     }
 
+    // MARK: Hidden cards
+
+    /// The figures the web writes for an account that hid `hidden` (a JSON
+    /// value, spliced as given): a hidden card's field is null.
+    private static func hiddenFigures(_ hidden: String) -> String {
+        """
+        {
+          "spent": "NT$12,340", "net": "-NT$2,100",
+          "topBudget": null, "nextScheduled": null,
+          "hidden": \(hidden)
+        }
+        """
+    }
+
+    func testDecodesTheHiddenCards() throws {
+        let budgets = try XCTUnwrap(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets"]"#))))
+        XCTAssertEqual(budgets.figures?.hidden, [.budgets])
+
+        let none = try XCTUnwrap(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures("[]"))))
+        XCTAssertEqual(none.figures?.hidden, [])
+    }
+
+    /// Pin: a file an older build wrote carries no `hidden`, and that build
+    /// hid nothing.
+    func testAFileWithoutHiddenShowsEveryCard() throws {
+        let figures = try XCTUnwrap(WidgetSnapshot.decode(payload())?.figures)
+
+        XCTAssertNil(figures.hidden)
+        XCTAssertTrue(figures.shows(.budgets))
+        XCTAssertTrue(figures.shows(.upcoming))
+    }
+
+    /// The web and the widget ship together, so an id this build does not
+    /// know belongs to a payload it was not written for.
+    func testAnUnknownHiddenCardIsRejected() {
+        XCTAssertNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["recent"]"#))))
+        XCTAssertNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets", "chart"]"#))))
+        XCTAssertNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#""budgets""#))))
+
+        // The positive proof: the same payload with known ids decodes.
+        XCTAssertNotNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets", "upcoming"]"#))))
+    }
+
+    func testHiddenCardsRoundTripThroughAWriteAndALoad() throws {
+        let written = try WidgetSnapshot.write(payload(figures: Self.hiddenFigures(#"["upcoming"]"#)), to: folder)
+        let loaded = try XCTUnwrap(WidgetSnapshot.load(from: folder))
+
+        XCTAssertEqual(loaded, written)
+        XCTAssertEqual(loaded.figures?.hidden, [.upcoming])
+    }
+
+    func testAHiddenCardIsNotShown() throws {
+        let both = try XCTUnwrap(
+            WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets", "upcoming"]"#)))?.figures)
+        XCTAssertFalse(both.shows(.budgets))
+        XCTAssertFalse(both.shows(.upcoming))
+
+        let upcoming = try XCTUnwrap(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["upcoming"]"#)))?.figures)
+        XCTAssertTrue(upcoming.shows(.budgets))
+        XCTAssertFalse(upcoming.shows(.upcoming))
+    }
+
     // MARK: Writing
 
     func testWriteRefusesUndecodableDataAndLeavesThePreviousFileIntact() throws {

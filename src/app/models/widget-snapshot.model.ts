@@ -1,5 +1,6 @@
 import type { Budget } from './budget.model';
 import type { RecurringOccurrence } from './recurring-transaction.model';
+import type { DashboardCardId } from './user.model';
 
 /**
  * The iOS home-screen widget's payload, serialised into the App Group's
@@ -9,6 +10,15 @@ import type { RecurringOccurrence } from './recurring-transaction.model';
  * logic of its own.
  */
 export type WidgetSnapshotState = 'figures' | 'locked' | 'signedOut';
+
+/**
+ * The dashboard cards the widget draws a section for, in the order
+ * `figures.hidden` lists them. `WidgetSnapshot.swift`'s `Card` decodes exactly
+ * these ids and rejects any other.
+ */
+export const WIDGET_CARDS = ['budgets', 'upcoming'] as const satisfies readonly DashboardCardId[];
+
+export type WidgetCard = (typeof WIDGET_CARDS)[number];
 
 /** Present in every state: the widget words its locked, signed-out and stale faces from these too. */
 export interface WidgetSnapshotLabels {
@@ -41,8 +51,16 @@ export interface WidgetSnapshotNextScheduled {
 export interface WidgetSnapshotFigures {
   spent: string;
   net: string;
+  /** Null when the account has no budget to rank, and when it hid Budget Progress. */
   topBudget: WidgetSnapshotTopBudget | null;
+  /** Null when nothing is scheduled, and when the account hid Upcoming Bills. */
   nextScheduled: WidgetSnapshotNextScheduled | null;
+  /**
+   * The widget's cards the account hid on the dashboard, in `WIDGET_CARDS`
+   * order; always written, empty when none is. A null field above is the
+   * card's empty state unless its id is listed here.
+   */
+  hidden: WidgetCard[];
 }
 
 export interface WidgetSnapshot {
@@ -67,5 +85,7 @@ export interface WidgetSnapshotInput {
   baseCurrency: string;
   budgets: Budget[];
   upcoming: RecurringOccurrence[];
+  /** The account's hidden cards, as the dashboard holds them: any card, in any order. */
+  hidden: readonly DashboardCardId[];
   now?: Date;
 }

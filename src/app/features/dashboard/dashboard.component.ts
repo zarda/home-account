@@ -306,13 +306,12 @@ export class DashboardComponent implements OnInit {
 
   // Booleans, so a change to another card or another preference never
   // reopens a listener. The recent rows are read by their card alone. The
-  // upcoming window also feeds the recap and, on a build with the widget
-  // plugin, the widget.
+  // upcoming window also feeds the recap; the widget reads it only while the
+  // card is shown, since it leaves out a card the account hid.
   private recentWanted = computed(() => !this.layout().hidden.includes('recent'));
   private upcomingWanted = computed(() =>
     !this.layout().hidden.includes('upcoming') ||
-    weeklyRecapEnabled(this.authService.currentUser()?.preferences) ||
-    this.widgetSnapshots.available
+    weeklyRecapEnabled(this.authService.currentUser()?.preferences)
   );
 
   gridAreas = computed(() => dashboardGridAreas(this.arrangedCards()));
@@ -416,10 +415,14 @@ export class DashboardComponent implements OnInit {
     // catalog version, which words the labels: neither moves a paint, so a new
     // currency or language would otherwise reach the widget only with the next
     // unrelated change. The totals stay untracked, so a write to the shared
-    // transactions signal still cannot pass for a paint.
+    // transactions signal still cannot pass for a paint. And keyed on the
+    // layout the page renders, held while a change saves, so a card the
+    // account hides leaves the widget when it leaves the page; a reorder
+    // republishes an equal payload, which the service's dedupe skips.
     effect(() => {
       const paints = this.thisMonthPaints();
       const baseCurrency = this.baseCurrency();
+      const hidden = this.layout().hidden;
       this.translationService.translationsVersion();
       this.activeBudgets();
       this.upcomingOccurrences();
@@ -430,6 +433,7 @@ export class DashboardComponent implements OnInit {
         baseCurrency,
         budgets: this.activeBudgets(),
         upcoming: this.upcomingOccurrences(),
+        hidden,
       }));
     });
   }
@@ -441,8 +445,8 @@ export class DashboardComponent implements OnInit {
     // stack extra subscriptions, and takeUntilDestroyed stops destroyed
     // dashboard instances from reacting to later budget writes made
     // elsewhere in the app. Not gated on the budgets card: the banner, which
-    // cannot be hidden, the recap's alerts, insights, the widget and the
-    // reminder sweep all read the list.
+    // cannot be hidden, the recap's alerts, insights and the reminder sweep
+    // all read the list, and the widget does while the card is shown.
     this.budgetService.getBudgets()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();

@@ -50,16 +50,15 @@ period is `'thisMonth'` — not on the shared `transactions` signal, which
 other code can write for reasons that have nothing to do with a new month's
 figures being ready.
 
-**What the dashboard keeps open for it.** *Top budget* and *Next scheduled*
-come from the dashboard's budgets stream and its upcoming window, and the
-dashboard keeps both open whatever the account hides
-([dashboard.md](dashboard.md#what-a-hidden-card-skips)). The budgets stream
-is never gated on its card. The upcoming window stays open with Upcoming
-Bills hidden while `WidgetSnapshotService.available` is true: on a build
-that carries the plugin, whether or not a widget has been placed, since
-nothing in the service can tell. On the web it is false, and a hidden
-Upcoming Bills card closes its listener unless the weekly recap reads the
-window.
+**What it leaves out.** *Top budget* and *Next scheduled* come from the
+dashboard's budgets stream and its upcoming window, and follow the
+account's hidden set (`layout().hidden`, held while a change saves): a card
+hidden on the dashboard is left out of the widget too. Its field is `null`,
+its id is listed in `figures.hidden`, and nothing it would show is composed.
+The widget holds no listener open: a hidden Upcoming Bills card closes its
+listener unless the weekly recap reads the window
+([dashboard.md](dashboard.md#what-a-hidden-card-skips)), and the budgets
+stream is never gated on its card.
 
 Two more writes happen with no dashboard paint at all, from effects armed at
 service construction (see [Startup arming](#the-four-states-and-startup-arming)):
