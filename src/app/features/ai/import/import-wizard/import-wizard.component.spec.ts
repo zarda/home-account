@@ -174,10 +174,12 @@ describe('ImportWizardComponent', () => {
     mockDuplicateService.findWithinBatchDuplicates.and.returnValue([]);
     // Resolved, never bare: a bare spy method answers undefined, which the
     // re-check's try/catch lets through, and the merge behind it would then
-    // throw inside a void-ed promise — an unhandled rejection Jasmine pins
-    // on whichever spec happens to be running. Empty, it applies to no row
-    // and returns before the batch pass, so a case that needs the pass
-    // answers one check per row, as the service does.
+    // throw inside a void-ed promise. Window never hears that rejection under
+    // zone.js: from the component's zone it comes out of NgZone.onError, which
+    // TestBed rethrows as a global error Jasmine pins on whichever spec
+    // happens to be running. Empty, it applies to no row and returns before
+    // the batch pass, so a case that needs the pass answers one check per
+    // row, as the service does.
     mockDuplicateService.checkDuplicates.and.resolveTo([]);
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);

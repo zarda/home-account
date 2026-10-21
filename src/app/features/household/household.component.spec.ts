@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Signal, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, NgZone, Signal, computed, inject, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
@@ -1647,23 +1647,32 @@ describe('HouseholdComponent', () => {
       expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
     });
 
+    // The tidy runs from a component effect, created inside NgZone, so a
+    // rejection nobody caught is reported on NgZone.onError: window never
+    // hears a zone.js promise's rejection, and console.error is where one from
+    // the spec body's zone lands. The call records its zone, so a tidy run
+    // anywhere else could not pass this on an onError that had no chance to fire.
     it('lets a failed tidy pass without a word', async () => {
-      const unhandled: PromiseRejectionEvent[] = [];
-      const onUnhandled = (event: PromiseRejectionEvent) => unhandled.push(event);
-      window.addEventListener('unhandledrejection', onUnhandled);
+      const zoneErrors: unknown[] = [];
+      const subscription = TestBed.inject(NgZone).onError.subscribe(error => zoneErrors.push(error));
       const consoleError = spyOn(console, 'error');
-      service.tidyEndedMemberships.and.rejectWith(new Error('permission-denied'));
+      const inAngularZone: boolean[] = [];
+      service.tidyEndedMemberships.and.callFake(() => {
+        inAngularZone.push(NgZone.isInAngularZone());
+        return Promise.reject(new Error('permission-denied'));
+      });
 
       try {
         status.set('none');
         render();
         await new Promise(resolve => setTimeout(resolve));
       } finally {
-        window.removeEventListener('unhandledrejection', onUnhandled);
+        subscription.unsubscribe();
       }
 
       expect(service.tidyEndedMemberships).toHaveBeenCalledTimes(1);
-      expect(unhandled).toEqual([]);
+      expect(inAngularZone).withContext('the tidy ran in the zone onError reports for').toEqual([true]);
+      expect(zoneErrors).toEqual([]);
       expect(consoleError).not.toHaveBeenCalled();
       expect(text()).not.toContain('errors.generic');
     });

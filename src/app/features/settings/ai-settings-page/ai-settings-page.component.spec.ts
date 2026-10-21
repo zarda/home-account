@@ -552,9 +552,10 @@ describe('AiSettingsPageComponent', () => {
 
       it('lets no rejection out of a clear', async () => {
         strategyServiceMock.applyProviderKey.and.rejectWith(new Error('permission-denied'));
-        // Zone.js hands a rejection nobody caught to console.error ("Unhandled
-        // Promise rejection"); it never reaches window's unhandledrejection. So
-        // the spy is the detector, and the page's own line must be the only one.
+        // Zone.js hands a rejection nobody caught to console.error as the bare
+        // value (no "Unhandled Promise rejection" prefix); it never reaches
+        // window's unhandledrejection. So the spy is the detector, and the
+        // page's own line must be the only one.
         const logged = spyOn(console, 'error');
         component.geminiApiKey.set('key');
 

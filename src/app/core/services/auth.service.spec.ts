@@ -696,8 +696,10 @@ describe('AuthService', () => {
       await new Promise(resolve => setTimeout(resolve, 0));
 
       // The account exists and the session is real; failing to adopt a
-      // language must not turn a completed sign-in into a rejected one — and
-      // an unhandled rejection here would fail the suite.
+      // language must not turn a completed sign-in into a rejected one. A
+      // rejection nobody caught would not fail the suite: zone.js logs it on
+      // console.error as the bare value and window never hears it. So the
+      // handler's own line, asserted below, is the proof it was caught.
       expect(healed.preferences.language).toBe('ja');
       expect(console.error).toHaveBeenCalledWith(
         '[Auth] Could not adopt the Google account language:',

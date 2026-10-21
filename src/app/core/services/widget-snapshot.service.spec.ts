@@ -348,10 +348,12 @@ describe('WidgetSnapshotService', () => {
         expect(written(1).labels.updated).toBe('widget.updated|{"date":"medium:2026-9-15"}');
       });
 
+      // publish() runs from the spec body, outside NgZone, so zone.js reports
+      // a write's rejection that nobody caught on console.error as the bare
+      // value, and window never hears it. The console spies are the detector;
+      // the write count is the positive proof that both publishes reached the
+      // plugin.
       it('settles a rejected write with no unhandled rejection and no console line, and tries again next time', async () => {
-        const unhandled: PromiseRejectionEvent[] = [];
-        const onUnhandled = (event: PromiseRejectionEvent) => unhandled.push(event);
-        window.addEventListener('unhandledrejection', onUnhandled);
         const consoleLines = [
           spyOn(console, 'error'),
           spyOn(console, 'warn'),
@@ -360,18 +362,13 @@ describe('WidgetSnapshotService', () => {
         ];
         write.and.rejectWith(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
 
-        try {
-          service.publish(input());
-          await settle();
-          await settle();
-          service.publish(input());
-          await settle();
-          await settle();
-        } finally {
-          window.removeEventListener('unhandledrejection', onUnhandled);
-        }
+        service.publish(input());
+        await settle();
+        await settle();
+        service.publish(input());
+        await settle();
+        await settle();
 
-        expect(unhandled).toEqual([]);
         for (const line of consoleLines) expect(line).not.toHaveBeenCalled();
         expect(write).toHaveBeenCalledTimes(2);
       });
