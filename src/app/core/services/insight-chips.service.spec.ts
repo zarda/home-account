@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { WritableSignal, signal } from '@angular/core';
 import { of, throwError } from 'rxjs';
 import { InsightChipsService } from './insight-chips.service';
 import { AuthService } from './auth.service';
@@ -6,15 +7,25 @@ import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
-import { CategoryTotal, Transaction, User } from '../../models';
+import { Category, CategoryTotal, Transaction, User } from '../../models';
 import { createCategory, createTimestamp, createTransaction, createUser } from './testing/test-data';
+import { TranslationStub, createTranslationStub } from './testing/translation-stub';
 
 describe('InsightChipsService', () => {
   let service: InsightChipsService;
   let transactionService: jasmine.SpyObj<TransactionService>;
-  let categoryService: jasmine.SpyObj<CategoryService>;
+  let categories: WritableSignal<Category[]>;
   let currencyService: jasmine.SpyObj<CurrencyService>;
-  let translationService: jasmine.SpyObj<TranslationService>;
+  let translation: TranslationStub;
+  // What every key reads through: '' is the echo catalog the cases assert on;
+  // `switchCatalog` moves to another one the way a language change does.
+  let catalog: string;
+
+  /** Reads every key through `prefix` from now on and bumps the catalog version. */
+  function switchCatalog(prefix: string): void {
+    catalog = prefix;
+    translation.translationsVersion.update(version => version + 1);
+  }
 
   const now = new Date();
   const currentDate = new Date(now.getFullYear(), now.getMonth(), 15);
@@ -63,8 +74,7 @@ describe('InsightChipsService', () => {
       'getExpensesInRange',
       'getPeriodCategoryTotals',
     ]);
-    categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
-    categoryService.categories.and.returnValue([
+    categories = signal([
       createCategory({ id: 'food', name: 'Food', type: 'expense' }),
       createCategory({ id: 'pets', name: 'Pets', type: 'expense' }),
       createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
@@ -72,8 +82,10 @@ describe('InsightChipsService', () => {
     currencyService = jasmine.createSpyObj('CurrencyService', ['amountInBase']);
     currencyService.amountInBase.and.callFake(
       (t: Transaction) => t.amountInBaseCurrency ?? t.amount);
-    translationService = jasmine.createSpyObj('TranslationService', ['t']);
-    translationService.t.and.callFake((key: string) => key);
+    catalog = '';
+    translation = createTranslationStub({
+      t: jasmine.createSpy('t').and.callFake((key: string) => `${catalog}${key}`),
+    });
     const authService = {
       currentUser: () => createUser({
         preferences: { baseCurrency: 'USD' } as User['preferences'],
@@ -84,9 +96,9 @@ describe('InsightChipsService', () => {
       providers: [
         InsightChipsService,
         { provide: TransactionService, useValue: transactionService },
-        { provide: CategoryService, useValue: categoryService },
+        { provide: CategoryService, useValue: { categories } },
         { provide: CurrencyService, useValue: currencyService },
-        { provide: TranslationService, useValue: translationService },
+        { provide: TranslationService, useValue: translation },
         { provide: AuthService, useValue: authService },
       ],
     });
@@ -248,6 +260,57 @@ describe('InsightChipsService', () => {
   it('returns no chips when the current month has no expenses', () => {
     setup(baselineFor('food'));
     expect(service.chips()).toEqual([]);
+  });
+
+  // ADR 0182: a language switched while the page is open renamed the sentence
+  // around the category but not the category inside it, which was translated
+  // once, when the chips were found.
+  it("names a chip's category in the language now showing", () => {
+    setup(
+      [expense(30, 'pets', currentDate)],
+      [{ categoryId: 'food', total: 40 }]
+    );
+    const named = () => service.chips().find(c => c.kind === 'newCategory')?.labelParams['category'];
+    expect(named()).toBe('Pets');
+
+    switchCatalog('ja:');
+
+    expect(named()).toBe('ja:Pets');
+  });
+
+  // The same freeze: chips found before the categories arrived kept the name
+  // for an id the catalog lacks until the next Firestore emission.
+  it("names a chip's category once the catalog of categories arrives", () => {
+    const loaded = categories();
+    categories.set([]);
+    setup(
+      [expense(30, 'pets', currentDate)],
+      [{ categoryId: 'food', total: 40 }]
+    );
+    const named = () => service.chips().find(c => c.kind === 'newCategory')?.labelParams['category'];
+    expect(named()).toBe('common.unknownCategory');
+
+    categories.set(loaded);
+
+    expect(named()).toBe('Pets');
+  });
+
+  // A switch renames; it does not analyse again or read Firestore again.
+  it('keeps the chips, their filters and their order across a catalog switch', () => {
+    setup(
+      [...baselineFor('food'), expense(100, 'food', currentDate), expense(30, 'pets', currentDate)],
+      [{ categoryId: 'food', total: 40 }]
+    );
+    const shape = () => service.chips().map(({ id, kind, labelKey, icon, filters }) =>
+      ({ id, kind, labelKey, icon, filters }));
+    const before = shape();
+    expect(before.map(c => c.id)).toEqual(['anomaly:food', 'new:pets']);
+
+    switchCatalog('ja:');
+
+    expect(shape()).toEqual(before);
+    expect(transactionService.getExpensesInRange).toHaveBeenCalledTimes(1);
+    expect(transactionService.getPeriodCategoryTotals).toHaveBeenCalledTimes(1);
   });
 
   it('returns no chips when loading fails', () => {
