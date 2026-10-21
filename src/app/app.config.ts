@@ -3,7 +3,6 @@ import { registerLocaleData } from '@angular/common';
 import localeJa from '@angular/common/locales/ja';
 import localeZhHant from '@angular/common/locales/zh-Hant';
 import { provideRouter } from '@angular/router';
-import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideFirebaseApp, initializeApp, getApp } from '@angular/fire/app';
 import {
   Auth,
@@ -29,6 +28,7 @@ import { provideAnalytics, initializeAnalytics, setConsent } from '@angular/fire
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
 import { Directionality } from '@angular/cdk/bidi';
 import { provideAppCharts } from './core/config/chart.config';
+import { provideAppDatepicker } from './core/config/datepicker.config';
 import { provideHttpClient } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 
@@ -433,13 +433,14 @@ registerLocaleData(localeJa);
 registerLocaleData(localeZhHant);
 
 /**
- * The locale Angular's own machinery uses — the Material datepicker through
- * provideNativeDateAdapter, and any built-in pipe added later. Resolved once
- * at bootstrap, which is exactly why it cannot be the whole answer: user-
- * facing dates and numbers go through LocaleDatePipe/LocaleNumberPipe, which
- * follow the locale signal and so survive a language switch without a
- * reload. This provider is what keeps everything else correct on first
- * paint instead of silently en-US. See docs/locale-formatting.md.
+ * The locale Angular's own machinery reads: the registered locale data above,
+ * the date adapter's starting locale before it follows the reader, and the
+ * built-in currency pipe. Resolved once at bootstrap, which is exactly why it
+ * cannot be the whole answer: user-facing dates and numbers go through
+ * LocaleDatePipe/LocaleNumberPipe, and the date pickers through the adapter
+ * provideAppDatepicker() hands them, all of which follow the locale signal and
+ * so survive a language switch without a reload. See
+ * docs/locale-formatting.md.
  */
 export function appLocaleIdFactory(
   translation: TranslationService = inject(TranslationService),
@@ -455,7 +456,7 @@ export const appConfig: ApplicationConfig = {
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    provideNativeDateAdapter(),
+    provideAppDatepicker(),
     provideHttpClient(),
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     // Each factory is wrapped rather than passed: a provider factory is

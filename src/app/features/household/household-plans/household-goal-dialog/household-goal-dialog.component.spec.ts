@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -9,7 +10,7 @@ import { HouseholdError } from '../../../../core/services/household.service';
 import { HouseholdGoalInput } from '../../../../core/services/household-plans.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
+import { createTranslationStub, provideAppDatepickerForTests, provideNoMotion } from '../../../../core/services/testing';
 import { HouseholdGoal } from '../../../../models';
 import {
   PLAN_AUDIT_THEMES,
@@ -41,6 +42,13 @@ const STORED: HouseholdGoal = {
   updatedAt: GEN
 };
 
+const CURRENCIES = {
+  getSupportedCurrencies: () => [
+    { code: 'USD', nameKey: 'currencies.usd', symbol: '$' },
+    { code: 'EUR', nameKey: 'currencies.eur', symbol: '€' }
+  ]
+};
+
 describe('HouseholdGoalDialogComponent', () => {
   let fixture: ComponentFixture<HouseholdGoalDialogComponent>;
   let component: HouseholdGoalDialogComponent;
@@ -69,15 +77,7 @@ describe('HouseholdGoalDialogComponent', () => {
         { provide: MAT_DIALOG_DATA, useValue: {} },
         { provide: NotificationService, useValue: notification },
         { provide: TranslationService, useValue: createTranslationStub() },
-        {
-          provide: CurrencyService,
-          useValue: {
-            getSupportedCurrencies: () => [
-              { code: 'USD', nameKey: 'currencies.usd', symbol: '$' },
-              { code: 'EUR', nameKey: 'currencies.eur', symbol: '€' }
-            ]
-          }
-        }
+        { provide: CurrencyService, useValue: CURRENCIES }
       ]
     }).compileComponents();
   });
@@ -308,4 +308,53 @@ describe('HouseholdGoalDialogComponent', () => {
       expect(audit.violations).toEqual([]);
     });
   }
+});
+
+// The app's own adapter, reading a typed date in the order the account's
+// format names its fields. A second graph, so a describe of its own.
+describe("HouseholdGoalDialogComponent's target date, typed day first", () => {
+  let fixture: ComponentFixture<HouseholdGoalDialogComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [HouseholdGoalDialogComponent],
+      providers: [
+        provideNoMotion(),
+        provideAppDatepickerForTests({ dateFormat: signal('DD/MM/YYYY') }),
+        { provide: MatDialogRef, useValue: jasmine.createSpyObj('MatDialogRef', ['close']) },
+        { provide: MAT_DIALOG_DATA, useValue: { currency: 'USD', save: jasmine.createSpy('save') } },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
+        { provide: CurrencyService, useValue: CURRENCIES }
+      ]
+    }).compileComponents();
+    fixture = TestBed.createComponent(HouseholdGoalDialogComponent);
+    fixture.detectChanges();
+  });
+
+  /** Types `text` into the target date and blurs it, then reads the control and the field's errors. */
+  function enter(text: string): { value: Date | null; errors: string[] } {
+    const element = fixture.nativeElement as HTMLElement;
+    typeInto(element, '[formControlName="targetDate"]', text);
+    fixture.detectChanges();
+    return {
+      value: fixture.componentInstance.form.controls.targetDate.value,
+      errors: Array.from(element.querySelectorAll('mat-error'), error => error.textContent?.trim() ?? '')
+    };
+  }
+
+  it('reads 19/08/2026 as 19 August, with no error', () => {
+    const { value, errors } = enter('19/08/2026');
+
+    expect(value).withContext('the target date').toEqual(new Date(2026, 7, 19));
+    expect(errors).withContext('the errors shown').toEqual([]);
+  });
+
+  // Pin: Material's own reading refuses this text too. Bites when the typed
+  // date skips the round trip in localDateFromParts, which reads it as 3 March.
+  it('refuses 31/02/2026, saying the date is not one (pin)', () => {
+    const { value, errors } = enter('31/02/2026');
+
+    expect(value).withContext('the target date').toBeNull();
+    expect(errors).withContext('the errors shown').toEqual(['household.planForm.dateInvalid']);
+  });
 });

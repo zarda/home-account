@@ -29,9 +29,10 @@ import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
-import { DateAdapter, provideNativeDateAdapter } from '@angular/material/core';
+import { DateAdapter } from '@angular/material/core';
 import { MatSelect } from '@angular/material/select';
 import { provideAppCharts } from './core/config/chart.config';
+import { provideAppDatepicker } from './core/config/datepicker.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import {
@@ -486,7 +487,7 @@ describe('App routes (emulator smoke test)', () => {
         provideRouter(routes),
         provideNoMotion(),
         provideHttpClient(),
-        provideNativeDateAdapter(),
+        provideAppDatepicker(),
         provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },
@@ -514,8 +515,10 @@ describe('App routes (emulator smoke test)', () => {
     'renders every main page with its landmark and seeded data',
     async () => {
       // The mock user's id must match the emulator uid so the services'
-      // users/{uid}/… reads pass the isOwner Firestore rules.
-      mockAuth.setMockUser(createMockUser(uid));
+      // users/{uid}/… reads pass the isOwner Firestore rules. It stored the
+      // ISO date format, which a picker shows only through the app's adapter.
+      const user = createMockUser(uid);
+      mockAuth.setMockUser({ ...user, preferences: { ...user.preferences, dateFormat: 'YYYY-MM-DD' } });
 
       // Forced before the first page rather than left on 'system', which
       // follows the host (dark on a dark Mac, light on CI): between its
@@ -637,6 +640,11 @@ describe('App routes (emulator smoke test)', () => {
         expect(fromInput.injector.get(DateAdapter) === TestBed.inject(DateAdapter))
           .withContext("the From input's adapter is the root's")
           .toBeTrue();
+        // The root's adapter shows the account's own format, here the ISO
+        // date the mock user stored.
+        expect((fromInput.nativeElement as HTMLInputElement).value)
+          .withContext("the From date, in the account's YYYY-MM-DD")
+          .toMatch(/^\d{4}-\d{2}-\d{2}$/);
         await expectNoAxeViolationsInView('/transactions', '.filter-grid');
 
         await expectPage('/budgets', 'budget.title', 'Groceries Budget');

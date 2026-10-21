@@ -110,10 +110,11 @@ export function localDateFromParts(year: number, month: number, day: number): Da
 }
 
 /**
- * The anchors are load-bearing. An unanchored pattern also matches inside
+ * A date-only `yyyy-MM-dd`, whether or not it names a day. The anchors are
+ * load-bearing. An unanchored pattern also matches inside
  * `2026-08-01T10:30:00Z`, which would truncate a full instant to a date.
  */
-const DAY_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const DAY_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
  * Strict `yyyy-MM-dd` to local midnight — the exact inverse of `dayKey`. Null on
