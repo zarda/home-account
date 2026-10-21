@@ -43,6 +43,7 @@ import { NOTIFICATION_DURATION_MS, NotificationService } from '../../../core/ser
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnalyticsEventParams } from '../../../core/config/analytics-events';
+import { memberDisplayName } from '../../../core/utils/person-name.utils';
 import {
   ConfirmDialogComponent,
   ConfirmDialogData
@@ -493,11 +494,13 @@ export class HouseholdMembersComponent {
   async remove(view: MemberView): Promise<void> {
     if (this.pending() || this.refusedOffline()) return;
     const opened = this.household.household();
-    const given = view.member.displayName.trim();
+    const translate = (key: string) => this.t(key);
     // The title asks about the member mid-sentence; the rest begin with them.
-    const name = given || this.t('household.unnamedMember');
+    const name = memberDisplayName(view.member.displayName, translate);
     const confirmed = await this.confirm({
-      title: this.t('household.members.removeTitle', { name: given || this.t('household.unnamedMemberInline') }),
+      title: this.t('household.members.removeTitle', {
+        name: memberDisplayName(view.member.displayName, translate, 'inline')
+      }),
       message: this.t('household.members.removeMessage', { name }),
       confirmLabel: this.t('household.members.removeConfirm'),
       confirmColor: 'warn',

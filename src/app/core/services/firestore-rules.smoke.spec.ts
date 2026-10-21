@@ -2981,6 +2981,32 @@ describe('firestore.rules households (emulator smoke test)', () => {
       );
     });
 
+    // An account with no display name is shared as an empty one, and the
+    // pages show a word for it (person-name.utils): the rules must not ask
+    // for a name the app has none to give.
+    it('accepts a member who gave no name when forming (pin)', async () => {
+      const householdId = newAutoId();
+
+      await expectAllowed(
+        createCommit(owner, householdId, { member: { displayName: '' } }),
+        'a create with an empty owner name'
+      );
+
+      const stored = await getDocumentAsOwner(`households/${householdId}/members/${owner.uid}`);
+      expect(stored?.['displayName']).toEqual(stringField(''));
+    });
+
+    it('accepts a member who gave no name when joining (pin)', async () => {
+      const householdId = await formHousehold(owner);
+      const inviteId = await seedInvite(householdId, peer);
+
+      await expectAllowed(joinCommit(peer, householdId, { member: { displayName: '' } }), 'a join with an empty name');
+
+      expect(await getDocumentAsOwner(`householdInvites/${inviteId}`)).withContext('the invite is consumed').toBeNull();
+      const stored = await getDocumentAsOwner(`households/${householdId}/members/${peer.uid}`);
+      expect(stored?.['displayName']).toEqual(stringField(''));
+    });
+
     it('lets an invited account join with since copied from the invite, consuming it and writing its index', async () => {
       const householdId = await formHousehold(owner);
       const inviteId = await seedInvite(householdId, peer);
