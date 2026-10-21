@@ -1911,8 +1911,23 @@ describe('firestore.rules (emulator smoke test)', () => {
       await setDoc(doc(firestore, `users/${uid}`), profile());
     });
 
+    // The beforeEach seeded the profile, so a bare setDoc here would be an
+    // update and exercise userUpdateValid; the delete makes the write a create.
     it('accepts the profile shape sign-in creates', async () => {
+      await deleteDoc(doc(firestore, `users/${uid}`));
+
       await expectAllowed(setDoc(doc(firestore, `users/${uid}`), profile()), 'profile create');
+    });
+
+    it('accepts the profile a nameless sign-in creates', async () => {
+      await deleteDoc(doc(firestore, `users/${uid}`));
+
+      // The key is required (hasAll) but its value may be empty: a sign-in
+      // that names nobody stores '' and every display reads a catalog word.
+      await expectAllowed(
+        setDoc(doc(firestore, `users/${uid}`), { ...profile(), displayName: '' }),
+        'nameless profile create'
+      );
     });
 
     it('accepts the { lastLoginAt } touch every sign-in issues', async () => {

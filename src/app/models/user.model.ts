@@ -3,7 +3,7 @@ import { Timestamp } from '@angular/fire/firestore';
 export interface User {
   id: string;                    // Firebase Auth UID
   email: string;
-  displayName: string;
+  displayName: string;           // '' when the sign-in names nobody; displays read a catalog word
   photoURL?: string;
   createdAt: Timestamp;
   lastLoginAt: Timestamp;

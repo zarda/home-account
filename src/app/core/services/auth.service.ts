@@ -45,6 +45,12 @@ import { PAGE_RELOAD } from './page-reload';
  * photo (photoURL null) would otherwise make the very first setDoc — and so
  * the whole sign-in — fail. Exported as a pure seam for the spec.
  *
+ * `displayName` is the exception: the rules require the key on create
+ * (`hasAll`), so a sign-in that names nobody stores `''` rather than leaving it
+ * out. It is not given an English word: a stored word reads back as someone's
+ * real name in every language, whereas `''` lets each display pick the catalog
+ * word for the reader's own language (`person-name.utils`).
+ *
  * `language` is passed in rather than taken from DEFAULT_USER_PREFERENCES: the
  * app has already resolved the browser's language by the time anyone signs in,
  * and creating every account in English made a first login speak English no
@@ -57,7 +63,7 @@ export function buildNewUserProfile(
 ): Omit<User, 'id'> {
   const profile: Omit<User, 'id'> = {
     email: firebaseUser.email ?? '',
-    displayName: firebaseUser.displayName ?? 'User',
+    displayName: firebaseUser.displayName ?? '',
     createdAt: Timestamp.now(),
     lastLoginAt: Timestamp.now(),
     preferences: { ...DEFAULT_USER_PREFERENCES, language }

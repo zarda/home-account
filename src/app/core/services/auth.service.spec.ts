@@ -43,11 +43,23 @@ describe('buildNewUserProfile', () => {
     expect('photoURL' in profile).toBeFalse();
   });
 
-  it('defaults null email and display name', () => {
+  it('defaults null email and display name to empty strings', () => {
+    // A sign-in that names nobody stores no name. The key stays (the rules
+    // require it on create) but holds '', and every display reads a catalog
+    // word for it in the reader's language; an English word stored here
+    // would be read back as a real name in every language.
     const profile = buildNewUserProfile(firebaseUser({ email: null, displayName: null }), 'en');
 
     expect(profile.email).toBe('');
-    expect(profile.displayName).toBe('User');
+    expect(profile.displayName).toBe('');
+    expect('displayName' in profile).toBeTrue();
+  });
+
+  it('keeps an empty provider name empty', () => {
+    // Pin: a provider that hands back '' (not null) already stored ''.
+    const profile = buildNewUserProfile(firebaseUser({ displayName: '' }), 'en');
+
+    expect(profile.displayName).toBe('');
   });
 
   it('seeds the language it is handed, leaving the other defaults alone', () => {
