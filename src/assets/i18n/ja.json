@@ -68,6 +68,8 @@
     "closeSidebar": "サイドバーを閉じる",
     "navigation": "ナビゲーション",
     "welcome": "おかえりなさい",
+    "welcomeNamed": "おかえりなさい、{{name}}さん",
+    "unnamedAccount": "名前未設定",
     "tryAgain": "再試行",
     "selected": "件選択中",
     "transactions": "件の取引",

@@ -309,16 +309,9 @@ describe('DashboardComponent', () => {
     expect(build().componentInstance).toBeTruthy();
   });
 
+  // The welcome line is asserted where it is printed: 'the greeting', in the
+  // real-template describe below.
   describe('user-derived signals', () => {
-    it('uses the first name when a display name exists', () => {
-      expect(build().componentInstance.userName()).toBe('Ada');
-    });
-
-    it('falls back to "User" when no display name', () => {
-      authService.currentUser.set(createUser({ displayName: '' }));
-      expect(build().componentInstance.userName()).toBe('User');
-    });
-
     it('reads the base currency from preferences with a USD fallback', () => {
       const component = build().componentInstance;
       expect(component.baseCurrency()).toBe('USD');
@@ -2536,6 +2529,66 @@ describe('DashboardComponent', () => {
           () => Promise.reject(new Error('unavailable'));
 
         expect(await selectorFloor()).toBeNull();
+      });
+    });
+
+    // #500: the welcome is one sentence the catalog writes, with the first
+    // name inside it, so a language that puts the name elsewhere or adds a
+    // suffix says it its own way. An account with no name is greeted plainly.
+    describe('the greeting', () => {
+      const greetingFor = (displayName: string): string => {
+        authService.currentUser.set(createUser({ displayName }));
+        const fixture = build();
+        fixture.detectChanges();
+        return fixture.nativeElement.querySelector('.dashboard-subtitle').textContent.trim();
+      };
+
+      beforeEach(() => {
+        translation.t.and.callFake((key: string, params?: Record<string, unknown>) =>
+          params ? `${key}:${JSON.stringify(params)}` : key
+        );
+      });
+
+      it('welcomes an account by its first name, in the one sentence the catalog writes', () => {
+        expect(greetingFor('Ada Lovelace')).toBe('common.welcomeNamed:{"name":"Ada"}');
+      });
+
+      it('welcomes an account with no name by the plain welcome', () => {
+        for (const missing of ['', '   ', '　']) {
+          expect(greetingFor(missing)).withContext(JSON.stringify(missing)).toBe('common.welcome');
+        }
+      });
+
+      it('welcomes an account stored as "User" by that name, as any other', () => {
+        expect(greetingFor('User')).toBe('common.welcomeNamed:{"name":"User"}');
+      });
+
+      it('takes the first name from a name written with a tab or the ideographic space', () => {
+        expect(greetingFor('Ada\tLovelace')).toBe('common.welcomeNamed:{"name":"Ada"}');
+        expect(greetingFor('山田　太郎')).toBe('common.welcomeNamed:{"name":"山田"}');
+      });
+
+      it('joins nothing to the sentence: no comma of the template follows the welcome', () => {
+        expect(greetingFor('Ada Lovelace')).not.toContain(',');
+        expect(greetingFor('')).not.toContain(',');
+      });
+
+      it('says it again in the new language when the language switches (pin)', () => {
+        const lang = signal('en');
+        translation.t.and.callFake((key: string, params?: Record<string, unknown>) =>
+          `${lang()}|${params ? `${key}:${JSON.stringify(params)}` : key}`
+        );
+        authService.currentUser.set(createUser({ displayName: 'Ada Lovelace' }));
+        const fixture = build();
+        fixture.detectChanges();
+        const subtitle = () => fixture.nativeElement.querySelector('.dashboard-subtitle').textContent.trim();
+
+        expect(subtitle()).toBe('en|common.welcomeNamed:{"name":"Ada"}');
+
+        lang.set('ja');
+        fixture.detectChanges();
+
+        expect(subtitle()).toBe('ja|common.welcomeNamed:{"name":"Ada"}');
       });
     });
 

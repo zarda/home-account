@@ -137,8 +137,8 @@ describe('SettingsComponent', () => {
       fixture.detectChanges();
     });
 
-    it('should fallback to User when no displayName', () => {
-      expect(component.userName()).toBe('User');
+    it('should name an account with no displayName by the catalog\'s word, not a string of its own', () => {
+      expect(component.userName()).toBe('common.unnamedAccount');
     });
 
     it('should fallback to empty string when no email', () => {
@@ -317,6 +317,92 @@ describe('SettingsComponent', () => {
             .toBeGreaterThanOrEqual(4.5);
         });
       }
+    });
+  });
+
+  // #500: an account with no name reads a word the catalog writes, not a
+  // string the code carries, so it follows the language. Rendered, because
+  // the word lands in the card and only the card can show what is printed.
+  describe('the account name on the card', () => {
+    const lang = signal('en');
+    // The words differ by language, as the catalogs' do, so a switch shows.
+    const say = (key: string) => `${lang()}|${key}`;
+
+    beforeEach(async () => {
+      lang.set('en');
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SettingsComponent],
+        providers: [
+          provideRouter([]),
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: MatDialog, useValue: mockDialog },
+          { provide: TranslationService, useValue: { t: say } },
+          provideNoMotion()
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(SettingsComponent, {
+          set: {
+            imports: [
+              CommonModule,
+              MatButtonModule,
+              MatExpansionModule,
+              MatIconModule,
+              PageHeaderComponent,
+              RouterLink,
+              TranslatePipe
+            ],
+            schemas: [NO_ERRORS_SCHEMA]
+          }
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(SettingsComponent);
+    });
+
+    // Not trimmed here: edge space in the card is what a trimmed name must not have.
+    const cardName = (): string => fixture.nativeElement.querySelector('.user-card .user-name').textContent;
+
+    it('says the word for an account with no name', () => {
+      for (const missing of ['', '   ', '　']) {
+        mockAuthService.currentUser.set({ ...mockUser, displayName: missing });
+        fixture.detectChanges();
+
+        expect(cardName()).withContext(JSON.stringify(missing)).toBe('en|common.unnamedAccount');
+      }
+    });
+
+    it('says the word when the account carries no display name at all', () => {
+      mockAuthService.currentUser.set({ email: mockUser.email, photoURL: mockUser.photoURL });
+      fixture.detectChanges();
+
+      expect(cardName()).toBe('en|common.unnamedAccount');
+    });
+
+    it('says the name the account gave, trimmed and whole', () => {
+      mockAuthService.currentUser.set({ ...mockUser, displayName: '  Ada Lovelace ' });
+      fixture.detectChanges();
+
+      expect(cardName()).toBe('Ada Lovelace');
+    });
+
+    it('says a stored "User" as the name it is (pin)', () => {
+      mockAuthService.currentUser.set({ ...mockUser, displayName: 'User' });
+      fixture.detectChanges();
+
+      expect(cardName()).toBe('User');
+    });
+
+    it('says the word again in the new language when the language switches (pin)', () => {
+      mockAuthService.currentUser.set({ ...mockUser, displayName: '' });
+      fixture.detectChanges();
+      expect(cardName()).toBe('en|common.unnamedAccount');
+
+      lang.set('ja');
+      fixture.detectChanges();
+
+      expect(cardName()).toBe('ja|common.unnamedAccount');
     });
   });
 

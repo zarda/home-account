@@ -58,6 +58,7 @@ import {
   previousPeriodWindow,
   yearWindow,
 } from '../../core/utils/transaction-date.utils';
+import { welcomeGreeting } from '../../core/utils/person-name.utils';
 import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
 import { DASHBOARD_MAIN_COLUMN, dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
@@ -180,11 +181,13 @@ export class DashboardComponent implements OnInit {
   // change to it can't be told apart from the initial, still-unloaded state.
   private thisMonthPaints = signal(0);
 
-  // User info
-  userName = computed(() => {
-    const user = this.authService.currentUser();
-    return user?.displayName?.split(' ')[0] || 'User';
-  });
+  // The welcome line, whole: the catalog writes the sentence around the first
+  // name, and the template prints it as it is.
+  greeting = computed(() =>
+    welcomeGreeting(this.authService.currentUser()?.displayName, (key, params) =>
+      this.translationService.t(key, params)
+    )
+  );
 
   baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));
 

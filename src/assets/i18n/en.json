@@ -68,6 +68,8 @@
     "closeSidebar": "Close sidebar",
     "navigation": "Navigation",
     "welcome": "Welcome back",
+    "welcomeNamed": "Welcome back, {{name}}",
+    "unnamedAccount": "No name set",
     "tryAgain": "Try Again",
     "selected": "selected",
     "transactions": "Transactions",

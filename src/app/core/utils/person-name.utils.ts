@@ -15,6 +15,16 @@ export function givenName(name: string | null | undefined): string {
 }
 
 /**
+ * The account holder as the page names them: the name the account gave, or a
+ * word for an account that gave none, which sign-in providers allow. The word
+ * is the catalog's, so it follows the reader's language; it is never stored,
+ * so changing language changes it everywhere at once.
+ */
+export function accountDisplayName(name: string | null | undefined, t: Translate): string {
+  return givenName(name) || t('common.unnamedAccount');
+}
+
+/**
  * A household member as the page names them: the name they gave, or a word
  * for a member who gave none, which the rules allow. The word comes in two
  * forms because a sentence can open with it or carry it mid-way ("A member
@@ -27,4 +37,17 @@ export function memberDisplayName(
   form: 'start' | 'inline' = 'start'
 ): string {
   return givenName(name) || (form === 'inline' ? t('household.unnamedMemberInline') : t('household.unnamedMember'));
+}
+
+/**
+ * The welcome the dashboard opens with. The first word of the name goes into
+ * one sentence the catalog writes, so a language that puts the name elsewhere
+ * or adds a suffix to it says so itself; an account with no name is welcomed
+ * plainly. The name is split on any white space, the ideographic space
+ * (U+3000) of a Japanese or Chinese name included, so a family name written
+ * first is the word that greets.
+ */
+export function welcomeGreeting(name: string | null | undefined, t: Translate): string {
+  const first = givenName(name).split(/\s+/)[0];
+  return first ? t('common.welcomeNamed', { name: first }) : t('common.welcome');
 }

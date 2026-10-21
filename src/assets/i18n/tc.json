@@ -68,6 +68,8 @@
     "closeSidebar": "關閉側邊欄",
     "navigation": "導覽",
     "welcome": "歡迎回來",
+    "welcomeNamed": "歡迎回來，{{name}}",
+    "unnamedAccount": "未設定名稱",
     "tryAgain": "再試一次",
     "selected": "已選擇",
     "transactions": "筆交易",

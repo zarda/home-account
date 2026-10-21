@@ -48,7 +48,7 @@
         @if (removal.state === 'failed') {
           {{ 'household.members.purgeFailed' | translate: { name: removal.name } }}
         } @else {
-          {{ 'household.members.purging' | translate: { name: removal.name } }}
+          {{ 'household.members.purging' | translate: { name: removal.nameInline } }}
         }
       </p>
       @if (removal.state !== 'failed') {
