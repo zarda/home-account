@@ -62,7 +62,9 @@ The old default invented a day nobody had asked for: a rule created for the 28th
 saved as paying on the 1st unless the day was set by hand, out of step with the
 start date sitting directly above it in the same form. The monthly preview under
 the field reads the start date's day whenever no day is named, so what the rule
-will do is on screen before it is saved.
+will do is on screen before it is saved. While the start date field is empty or
+only half typed there is no day to read, so a monthly preview that names no day
+says nothing, and the form will not save until a date is back in it.
 
 ## The clamp and the anchor
 

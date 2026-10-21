@@ -25,6 +25,7 @@ import {
   eachOptionState,
   paintedBackground,
   paintedColor,
+  provideAppDatepickerForTests,
   ratio,
   withScheme,
   provideNoMotion,
@@ -412,7 +413,7 @@ describe('RecurringFormDialogComponent', () => {
           ruleWith({ startDate: notATimestamp })
         );
 
-        expect(editComponent.startDate.toDateString()).toBe(today.toDateString());
+        expect(editComponent.startDate?.toDateString()).toBe(today.toDateString());
         // The rest of the rule still arrives, so the user is editing their own
         // rule rather than a blank form.
         expect(editComponent.name).toBe('Test');
@@ -1231,5 +1232,150 @@ describe('RecurringFormDialogComponent, a select whose empty option is a choice'
     expect(component.remindDaysBefore).toBeNull();
     expect(shown('settings.onDay').text).toBe('settings.onDaySameAsStart');
     expect(shown('settings.reminder').text).toBe('settings.reminderOff');
+  });
+});
+
+/**
+ * The start date's control hands back null when its text is emptied or cannot
+ * be read as a day, so a cleared field is a null on the model, not a Date. The
+ * monthly preview read that date's day, which broke the whole dialog's render
+ * the moment the field was emptied, and a save would have sent no start at
+ * all. The user meets this by typing into the input, so this drives the real
+ * template through it, over the app's own adapter: its strict parse is what
+ * turns a half-typed date into a null.
+ */
+describe('RecurringFormDialogComponent, a start date the user clears', () => {
+  let fixture: ComponentFixture<RecurringFormDialogComponent>;
+  let component: RecurringFormDialogComponent;
+  let mockDialogRef: jasmine.SpyObj<MatDialogRef<RecurringFormDialogComponent>>;
+
+  /** Text that leaves the control without a date: emptied, only spaces, and half a date. */
+  const UNREADABLE = ['', '   ', '3/'];
+
+  beforeEach(async () => {
+    mockDialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+
+    await TestBed.configureTestingModule({
+      imports: [RecurringFormDialogComponent],
+      providers: [
+        { provide: MatDialogRef, useValue: mockDialogRef },
+        { provide: MAT_DIALOG_DATA, useValue: {} },
+        { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+        { provide: CurrencyService, useValue: { currencies: signal([]) } },
+        // The helper's catalog echoes the key and its params, so the preview
+        // reads as the sentence it chose and the day it named, and an empty
+        // preview is the absence of any sentence.
+        provideAppDatepickerForTests({ dateFormat: signal('MM/DD/YYYY') }),
+        provideNoMotion()
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RecurringFormDialogComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    // ngModel hands the start date to the input a microtask after the first pass.
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // A rule that is valid in every field but the one under test.
+    component.name = 'Rent';
+    component.amount = 100;
+    component.categoryId = 'cat1';
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+  function startInput(): HTMLInputElement {
+    const field = Array.from(root().querySelectorAll('mat-form-field'))
+      .find(each => each.querySelector('mat-label')?.textContent?.trim() === 'settings.startDate');
+    expect(field).withContext('the start date field').toBeTruthy();
+    return field!.querySelector<HTMLInputElement>('input')!;
+  }
+
+  /** What the user does: replaces the field's text, which the picker input reads on its `input` event. */
+  function typeStart(text: string): void {
+    const input = startInput();
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+  }
+
+  const preview = (): string | undefined =>
+    root().querySelector('.frequency-preview span')?.textContent?.trim();
+
+  /** The whole row: icon and sentence. A preview with nothing to say is no row at all. */
+  const previewRow = (): Element | null => root().querySelector('.frequency-preview');
+
+  /** The monthly sentence naming `day`, as the echoing catalog renders it. */
+  const monthlyOn = (day: number, suffix: string): string =>
+    `settings.everyMonthOn:${JSON.stringify({ day, suffix })}`;
+
+  const saveButton = (): HTMLButtonElement =>
+    Array.from(root().querySelectorAll<HTMLButtonElement>('mat-dialog-actions button'))
+      .find(button => button.textContent?.includes('settings.create'))!;
+
+  it('starts on a date, with the monthly preview naming its day and the form savable (positive control)', () => {
+    expect(component.startDate).toEqual(jasmine.any(Date));
+    expect(component.frequencyType).toBe('monthly');
+    expect(component.dayOfMonth).toBeNull();
+    expect(preview()).toContain('settings.everyMonthOn');
+    expect(preview()).toContain(`"day":${component.startDate!.getDate()},`);
+    expect(component.isValid).toBeTrue();
+  });
+
+  for (const text of UNREADABLE) {
+    it(`still renders once the start input holds "${text}", with no preview row to show`, () => {
+      expect(previewRow()).withContext('the row before the field is changed').not.toBeNull();
+
+      typeStart(text);
+
+      expect(component.startDate).toBeNull();
+      expect(() => fixture.detectChanges()).not.toThrow();
+      expect(previewRow()).toBeNull();
+      expect(saveButton().disabled).toBeTrue();
+    });
+
+    it(`is not valid and does not close on a save while the start input holds "${text}"`, () => {
+      expect(component.isValid).withContext('before the field is changed').toBeTrue();
+
+      typeStart(text);
+
+      expect(component.isValid).toBeFalse();
+      component.save();
+      expect(mockDialogRef.close).not.toHaveBeenCalled();
+    });
+  }
+
+  it('saves again with the date typed back in', () => {
+    typeStart('3/');
+    fixture.detectChanges();
+    expect(previewRow()).withContext('the row while the date is half typed').toBeNull();
+
+    typeStart('3/5/2026');
+
+    expect(component.startDate).toEqual(new Date(2026, 2, 5));
+    expect(component.isValid).toBeTrue();
+    expect(() => fixture.detectChanges()).not.toThrow();
+    expect(preview()).toBe(monthlyOn(5, 'th'));
+    expect(saveButton().disabled).toBeFalse();
+
+    component.save();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({ startDate: new Date(2026, 2, 5) })
+    );
+  });
+
+  it('keeps the day a rule names while the start date is empty', () => {
+    component.dayOfMonth = 15;
+
+    typeStart('');
+
+    expect(() => fixture.detectChanges()).not.toThrow();
+    expect(preview()).toBe(monthlyOn(15, 'th'));
   });
 });

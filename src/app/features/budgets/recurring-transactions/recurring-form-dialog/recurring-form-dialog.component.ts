@@ -88,7 +88,10 @@ export class RecurringFormDialogComponent implements OnInit {
   // decides whether the field is on screen at all; this only decides what
   // it starts at.
   dayOfMonth: number | null = null;
-  startDate: Date = new Date();
+  // Null once the field is emptied or holds text that is no day: the picker
+  // input hands its control a null for both. No rule can start on nothing, so
+  // `isValid` refuses it and the preview has no start day to name.
+  startDate: Date | null = new Date();
   endDate: Date | null = null;
   hasEndDate = false;
   remindDaysBefore: number | null = null;
@@ -159,7 +162,8 @@ export class RecurringFormDialogComponent implements OnInit {
       this.amount !== null &&
       this.amount > 0 &&
       this.categoryId.length > 0 &&
-      this.interval > 0
+      this.interval > 0 &&
+      this.startDate !== null
     );
   }
 
@@ -185,7 +189,9 @@ export class RecurringFormDialogComponent implements OnInit {
           : t('settings.everyNWeeksOn', { n: this.interval, day });
       }
       case 'monthly': {
-        const day = this.dayOfMonth ?? this.startDate.getDate();
+        const day = this.dayOfMonth ?? this.startDate?.getDate();
+        // A rule that names no day and has no start date has nothing to say.
+        if (day === undefined) return '';
         const suffix = this.getDaySuffix(day);
         return this.interval === 1
           ? t('settings.everyMonthOn', { day, suffix })
@@ -303,7 +309,7 @@ export class RecurringFormDialogComponent implements OnInit {
   }
 
   save(): void {
-    if (!this.isValid || this.amount === null) return;
+    if (!this.isValid || this.amount === null || this.startDate === null) return;
 
     const result: CreateRecurringDTO = {
       name: this.name.trim(),

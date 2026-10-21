@@ -120,10 +120,12 @@
     }
 
     <!-- Frequency Preview -->
-    <div class="frequency-preview">
-      <mat-icon>repeat</mat-icon>
-      <span>{{ frequencyPreview }}</span>
-    </div>
+    @if (frequencyPreview) {
+      <div class="frequency-preview">
+        <mat-icon>repeat</mat-icon>
+        <span>{{ frequencyPreview }}</span>
+      </div>
+    }
 
     <!-- Date Section -->
     <div class="section-divider">
