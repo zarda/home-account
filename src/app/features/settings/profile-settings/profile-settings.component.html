@@ -31,7 +31,7 @@
         <mat-label>{{ 'settings.dateFormat' | translate }}</mat-label>
         <mat-select [(ngModel)]="dateFormat" (selectionChange)="onDateFormatChange()">
           @for (format of dateFormats; track format.value) {
-            <mat-option [value]="format.value">{{ format.label }}</mat-option>
+            <mat-option [value]="format.value">{{ format.labelKey ? (format.labelKey | translate) : format.label }}</mat-option>
           }
         </mat-select>
         <mat-hint>{{ 'settings.example' | translate }}: {{ dateFormatExample }}</mat-hint>

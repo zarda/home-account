@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, Signal, WritableSignal, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatSelect } from '@angular/material/select';
+import { By } from '@angular/platform-browser';
 import { of } from 'rxjs';
 
 import { ProfileSettingsComponent } from './profile-settings.component';
@@ -18,6 +20,9 @@ import { WeeklyRecapService } from '../../../core/services/weekly-recap.service'
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RateSource } from '../../../models';
 import { provideNoMotion } from '../../../core/services/testing';
+import en from '../../../../assets/i18n/en.json';
+import ja from '../../../../assets/i18n/ja.json';
+import tc from '../../../../assets/i18n/tc.json';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -61,6 +66,9 @@ describe('ProfileSettingsComponent', () => {
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['setLocale', 't'], {
       currentLocale: signal('en'),
+      // What the translate pipe keys its memo on beside the locale: a catalog
+      // switch with no locale change still reaches a translated binding.
+      translationsVersion: signal(0),
       languages: [
         { code: 'en', name: 'English', nativeName: 'English' },
         { code: 'tc', name: 'Traditional Chinese', nativeName: '繁體中文' },
@@ -208,13 +216,86 @@ describe('ProfileSettingsComponent', () => {
     // Pin: the worked examples are what the table's own writers print for
     // 31 December 2024, not a second list of strings kept beside it. Proved by
     // making one writer in FIXED_FORMATS print another order, which fails this.
+    // Automatic carries its catalog key, translated where it is shown; a fixed
+    // pattern's label is the pattern.
     it('prints each fixed pattern\'s example from the table the service writes with', () => {
-      expect(component.dateFormats.map(f => [f.value, f.label, f.example])).toEqual([
-        ['auto', 'settings.dateFormatAuto', ''],
-        ['MM/DD/YYYY', 'MM/DD/YYYY', '12/31/2024'],
-        ['DD/MM/YYYY', 'DD/MM/YYYY', '31/12/2024'],
-        ['YYYY-MM-DD', 'YYYY-MM-DD', '2024-12-31'],
+      expect(component.dateFormats.map(f => [f.value, f.labelKey, f.label, f.example])).toEqual([
+        ['auto', 'settings.dateFormatAuto', undefined, ''],
+        ['MM/DD/YYYY', undefined, 'MM/DD/YYYY', '12/31/2024'],
+        ['DD/MM/YYYY', undefined, 'DD/MM/YYYY', '31/12/2024'],
+        ['YYYY-MM-DD', undefined, 'YYYY-MM-DD', '2024-12-31'],
       ]);
+    });
+
+    // ADR 0182: a language picked on this page relabelled Currency's options
+    // but left Automatic in the language the page opened in, translated once
+    // when the page was built.
+    it('names the Automatic option in the language the page now shows', async () => {
+      spyOn(TestBed.inject(DateFormatService), 'preference').and.returnValue('auto');
+      let catalog = '';
+      mockTranslationService.t.and.callFake((key: string) => `${catalog}${key}`);
+      const page = TestBed.createComponent(ProfileSettingsComponent);
+      page.detectChanges();
+      // ngModel writes the stored value to the select a microtask later.
+      await page.whenStable();
+      page.detectChanges();
+
+      const field = page.debugElement
+        .queryAll(By.directive(MatSelect))
+        .find(select => (select.componentInstance as MatSelect).options.some(o => o.value === 'auto'))!;
+      const select = field.componentInstance as MatSelect;
+      const option = () => select.options.find(o => o.value === 'auto')!.viewValue;
+      const trigger = () =>
+        (field.nativeElement as HTMLElement).querySelector('.mat-mdc-select-value')?.textContent?.trim();
+      expect(select.value).toBe('auto');
+      expect(option()).toBe('settings.dateFormatAuto');
+      expect(trigger()).toBe('settings.dateFormatAuto');
+
+      catalog = 'ja:';
+      (mockTranslationService.translationsVersion as WritableSignal<number>).update(version => version + 1);
+      page.detectChanges();
+
+      expect(option()).toBe('ja:settings.dateFormatAuto');
+      expect(select.triggerValue).toBe('ja:settings.dateFormatAuto');
+      expect(trigger()).toBe('ja:settings.dateFormatAuto');
+    });
+
+    // Pin: `check-i18n.mjs` counts `option.labelKey | translate` as a dynamic
+    // lookup and skips it, and this spec's `t()` echoes keys, so a misspelt key
+    // would show itself in every language with nothing failing. Proved by
+    // misspelling Automatic's key in the component, which fails each locale.
+    describe('every option key resolves in every catalog', () => {
+      const CATALOGS: Record<string, unknown> = { en, ja, tc };
+
+      /** The leaf at a dotted path, or undefined when any step of the walk misses. */
+      function leafAt(tree: unknown, key: string): unknown {
+        return key.split('.').reduce<unknown>(
+          (node, step) =>
+            node !== null && typeof node === 'object' ? (node as Record<string, unknown>)[step] : undefined,
+          tree,
+        );
+      }
+
+      const keys = () => component.dateFormats.flatMap(f => (f.labelKey === undefined ? [] : [f.labelKey]));
+
+      it('walks a real list of keys', () => {
+        // A guard against the walk going quiet: an empty list would pass every
+        // case below vacuously.
+        expect(keys().length).toBeGreaterThan(0);
+      });
+
+      for (const [locale, catalog] of Object.entries(CATALOGS)) {
+        it(`reads a non-empty string for each key in ${locale}`, () => {
+          const unresolved = keys().filter(key => {
+            const leaf = leafAt(catalog, key);
+            return typeof leaf !== 'string' || leaf.trim() === '';
+          });
+
+          expect(unresolved)
+            .withContext(`date format keys with no text in the ${locale} catalog`)
+            .toEqual([]);
+        });
+      }
     });
 
     it('shows the selected pattern\'s example as the helper text', () => {

@@ -33,6 +33,16 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 /** The date every date format's worked example prints. */
 const EXAMPLE_DATE = new Date(2024, 11, 31);
 
+/** One option of the Date Format select. */
+interface DateFormatOption {
+  value: string;
+  /** Automatic's name: a catalog key, translated where the option is shown. */
+  labelKey?: string;
+  /** A fixed pattern's name: the pattern itself, in no language. */
+  label?: string;
+  example: string;
+}
+
 @Component({
   selector: 'app-profile-settings',
   standalone: true,
@@ -81,8 +91,11 @@ export class ProfileSettingsComponent {
   // Pattern-only labels keep the select value from colliding with the arrow;
   // the worked example moves to helper text below the field. The fixed
   // patterns and their examples are the table the service writes with.
-  dateFormats = [
-    { value: DATE_FORMAT_AUTO, label: this.translationService.t('settings.dateFormatAuto'), example: '' },
+  // Automatic is named by its key and translated in the template: a name
+  // translated here is never translated again, so it would stay in the
+  // language the page opened in after a language picked on it (ADR 0182).
+  dateFormats: DateFormatOption[] = [
+    { value: DATE_FORMAT_AUTO, labelKey: 'settings.dateFormatAuto', example: '' },
     ...Object.entries(FIXED_FORMATS).map(([value, format]) => ({
       value,
       label: value,
