@@ -2706,11 +2706,19 @@ describe('DashboardComponent', () => {
           });
         });
 
-        /** Fails the write `index`, then lets the corrections render. */
-        async function fail(index: number): Promise<void> {
+        /**
+         * Fails the write `index`, then lets the corrections render. Flushed
+         * through the fixture, whose pass runs inside the zone, not with
+         * `TestBed.tick()`: the fallback dirties the page's own effects, which
+         * run in the zone they were made in, and leaving that zone during a
+         * tick the spec body started calls the tick again (NG0101). The zone's
+         * own tick, once the fixture's pass has left it, runs the move
+         * correction's render hook.
+         */
+        async function fail(fixture: ComponentFixture<DashboardComponent>, index: number): Promise<void> {
           writes[index].fail();
           await settle();
-          TestBed.tick();
+          fixture.detectChanges();
         }
 
         it('counts the move correction over the cards back on the page when a hide joined the save', async () => {
@@ -2718,7 +2726,7 @@ describe('DashboardComponent', () => {
           press(fixture, 'app-spending-chart', 'down');
           press(fixture, 'app-recent-transactions', 'hide');
 
-          await fail(0);
+          await fail(fixture, 0);
 
           expect(said('settings.dashboardCardMoveReverted')).toEqual([
             'settings.dashboardCardMoveReverted:{"card":"dashboard.spendingByCategory","position":3,"total":5}',
@@ -2735,7 +2743,7 @@ describe('DashboardComponent', () => {
           writes[0].land();
           await settle();
 
-          await fail(1);
+          await fail(fixture, 1);
 
           expect(said('dashboard.cardHideReverted')).toEqual([]);
           expect(hostTags(fixture)).not.toContain('app-recent-transactions');
@@ -2751,7 +2759,7 @@ describe('DashboardComponent', () => {
           writes[0].land();
           await settle();
 
-          await fail(1);
+          await fail(fixture, 1);
 
           expect(said('settings.dashboardCardMoveReverted')).toEqual([]);
           expect(said('dashboard.cardHideReverted')).toEqual([
