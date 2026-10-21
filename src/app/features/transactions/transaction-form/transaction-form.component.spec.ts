@@ -6,8 +6,8 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
+import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
@@ -2865,6 +2865,7 @@ describe('TransactionFormComponent, through its own template', () => {
         { provide: LedgerShareService, useValue: jasmine.createSpyObj('LedgerShareService', ['share', 'unshare']) },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
         provideNoMotion(),
+        provideNativeDateAdapter(),
       ],
     })
       .overrideComponent(TransactionFormComponent, {
@@ -2878,8 +2879,9 @@ describe('TransactionFormComponent, through its own template', () => {
             MatFormFieldModule,
             MatInputModule,
             MatSelectModule,
-            MatDatepickerModule,
-            MatNativeDateModule,
+            MatDatepicker,
+            MatDatepickerInput,
+            MatDatepickerToggle,
             MatButtonModule,
             MatButtonToggleModule,
             MatIconModule,

@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
+import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { Category, CategorizedImportTransaction } from '../../../../models';
@@ -162,6 +163,7 @@ describe('overflow guard: the import review card', () => {
         },
         { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
         provideNoMotion(),
+        provideNativeDateAdapter(),
       ],
     }).compileComponents();
 
@@ -1158,6 +1160,7 @@ describe('overflow guard: the currency offer label\'s ink, not just its box', ()
         },
         { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
         provideNoMotion(),
+        provideNativeDateAdapter(),
       ],
     }).compileComponents();
 

@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { WritableSignal, computed, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { Timestamp } from '@angular/fire/firestore';
+import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { HOUSEHOLD_OVERVIEW_ROW_PAGE, HouseholdOverviewComponent } from './household-overview.component';
 import {
@@ -168,6 +169,7 @@ describe('HouseholdOverviewComponent', () => {
       imports: [HouseholdOverviewComponent],
       providers: [
         provideNoMotion(),
+        provideNativeDateAdapter(),
         { provide: HouseholdLedgerService, useValue: ledger },
         { provide: CurrencyService, useValue: currency },
         {

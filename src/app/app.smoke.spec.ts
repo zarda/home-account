@@ -29,7 +29,7 @@ import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { DateAdapter, provideNativeDateAdapter } from '@angular/material/core';
 import { MatSelect } from '@angular/material/select';
 import { provideAppCharts } from './core/config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
@@ -630,6 +630,13 @@ describe('App routes (emulator smoke test)', () => {
         expect(filterTriggers())
           .withContext('the filter selects, Type, Category, Currency and Country')
           .toEqual(Array<string>(4).fill('transactions.all'));
+        // #500: a routed page's picker reads the root's adapter, not one its
+        // own imports brought.
+        const fromInput = harness.fixture.debugElement.query(By.css('.filter-grid input.mat-datepicker-input'));
+        expect(fromInput).withContext('the From input').not.toBeNull();
+        expect(fromInput.injector.get(DateAdapter) === TestBed.inject(DateAdapter))
+          .withContext("the From input's adapter is the root's")
+          .toBeTrue();
         await expectNoAxeViolationsInView('/transactions', '.filter-grid');
 
         await expectPage('/budgets', 'budget.title', 'Groceries Budget');

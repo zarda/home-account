@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { PeriodSelectorComponent } from './period-selector.component';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -46,6 +47,7 @@ describe('overflow guard: the period selector', () => {
       imports: [PeriodSelectorOverflowProbeComponent],
       providers: [
         provideNoMotion(),
+        provideNativeDateAdapter(),
         { provide: TranslationService, useValue: mockTranslationService },
       ],
     }).compileComponents();

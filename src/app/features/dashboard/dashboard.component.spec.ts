@@ -12,6 +12,7 @@ import {
 } from '@angular/router';
 import { of, BehaviorSubject, Subject, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { DashboardComponent } from './dashboard.component';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
@@ -1893,6 +1894,7 @@ describe('DashboardComponent', () => {
         imports: [DashboardComponent],
         providers: [
           provideNoMotion(),
+          provideNativeDateAdapter(),
           provideRouter([]),
           { provide: TransactionService, useValue: transactionService },
           { provide: BudgetService, useValue: budgetService },

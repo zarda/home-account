@@ -4,6 +4,7 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
+import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
@@ -3204,7 +3205,8 @@ describe('ImportWizardComponent', () => {
           // whose currency memory reaches AuthService and from there the
           // Firebase Auth token the unit run has no provider for.
           { provide: AuthService, useValue: new MockAuthService() },
-          provideNoMotion()
+          provideNoMotion(),
+          provideNativeDateAdapter()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       }).compileComponents();

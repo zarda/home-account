@@ -4,6 +4,7 @@ import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSelect } from '@angular/material/select';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form.component';
 import { BudgetService } from '../../../core/services/budget.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -175,7 +176,8 @@ describe('BudgetFormComponent', () => {
           provide: NotificationService,
           useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
         },
-        provideNoMotion()
+        provideNoMotion(),
+        provideNativeDateAdapter()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

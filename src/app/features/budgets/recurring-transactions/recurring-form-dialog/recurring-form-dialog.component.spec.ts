@@ -5,6 +5,7 @@ import { MatSelect } from '@angular/material/select';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
+import { provideNativeDateAdapter } from '@angular/material/core';
 
 import {
   RecurringFormDialogComponent,
@@ -1048,7 +1049,8 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
           provide: TranslationService,
           useValue: { t: (key: string) => key }
         },
-        provideNoMotion()
+        provideNoMotion(),
+        provideNativeDateAdapter()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -1162,7 +1164,8 @@ describe('RecurringFormDialogComponent, a select whose empty option is a choice'
         { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
         { provide: CurrencyService, useValue: { currencies: signal([]) } },
         { provide: TranslationService, useValue: { t: (key: string) => key } },
-        provideNoMotion()
+        provideNoMotion(),
+        provideNativeDateAdapter()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

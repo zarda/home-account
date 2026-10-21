@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, SimpleChange, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
+import { DateAdapter, provideNativeDateAdapter } from '@angular/material/core';
+import { MatDatepickerIntl } from '@angular/material/datepicker';
 import { MatSelect } from '@angular/material/select';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
@@ -163,7 +165,11 @@ describe('TransactionFiltersComponent', () => {
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: SearchHistoryService, useValue: mockSearchHistory },
         { provide: GoalService, useValue: mockGoalService },
-        provideNoMotion()
+        provideNoMotion(),
+        // What the app's root hands every picker: an adapter, and labels this
+        // spec can tell apart from Material's own. A fresh instance per case.
+        provideNativeDateAdapter(),
+        { provide: MatDatepickerIntl, useValue: Object.assign(new MatDatepickerIntl(), { openCalendarLabel: 'root' }) }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -1522,6 +1528,31 @@ describe('TransactionFiltersComponent', () => {
         .withContext('the notch of a resting label: max-width')
         .toBe('calc(100% - 60px)');
     }));
+  });
+
+  // The pickers read the root's adapter and the root's labels; no page brings
+  // its own (#500).
+  describe("the pickers' adapter and labels", () => {
+    it('the From picker reads the root adapter and the root labels', () => {
+      component.expanded.set(true);
+      fixture.detectChanges();
+
+      const from = fixture.debugElement.query(By.css('.filter-grid input.mat-datepicker-input'));
+      expect(from).withContext('the From input').not.toBeNull();
+      expect(from.injector.get(DateAdapter) === TestBed.inject(DateAdapter))
+        .withContext("the From input's adapter is the root's")
+        .toBeTrue();
+
+      const toggles = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.filter-grid mat-datepicker-toggle button')
+      );
+      expect(toggles.length).withContext('the From and To calendar buttons').toBe(2);
+      toggles.forEach((toggle, index) =>
+        expect(toggle.getAttribute('aria-label'))
+          .withContext(`the ${index === 0 ? 'From' : 'To'} calendar button's name`)
+          .toBe('root')
+      );
+    });
   });
 
   // A date field's input gets what is left of the field after its 12 px start

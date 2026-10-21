@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, input, output, signal } from '@angular/core';
 
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
+import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -40,8 +39,8 @@ export function defaultPeriodSelection(): PeriodSelection {
   standalone: true,
   imports: [
     MatButtonToggleModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
+    MatDatepicker,
+    MatDatepickerInput,
     MatMenuModule,
     MatIconModule,
     MatButtonModule,

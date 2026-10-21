@@ -5,6 +5,7 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { of, EMPTY } from 'rxjs';
 import { TransactionFormComponent } from './transaction-form.component';
 import { TransactionService } from '../../../core/services/transaction.service';
@@ -126,6 +127,7 @@ describe('TransactionFormComponent suggestion chips', () => {
       imports: [TransactionFormComponent, ReactiveFormsModule],
       providers: [
         provideNoMotion(),
+        provideNativeDateAdapter(),
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },

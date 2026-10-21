@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
+import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { GoalFormComponent, GoalFormDialogData } from './goal-form.component';
 import { AuthService } from '../../../../core/services/auth.service';
@@ -271,6 +272,7 @@ describe('GoalFormComponent, through its own template', () => {
         { provide: CurrencyService, useValue: currency },
         { provide: TranslationService, useValue: createTranslationStub() },
         provideNoMotion(),
+        provideNativeDateAdapter(),
       ],
     }).compileComponents();
 

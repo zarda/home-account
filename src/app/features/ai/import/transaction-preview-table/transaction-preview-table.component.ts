@@ -16,8 +16,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
+import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { FormsModule } from '@angular/forms';
 import {
@@ -134,8 +133,8 @@ let vocabularyListSeq = 0;
     MatIconModule,
     MatButtonModule,
     MatMenuModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
+    MatDatepicker,
+    MatDatepickerInput,
     FormsModule,
     CategorySuggestionComponent,
     MatTooltipModule,
