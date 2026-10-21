@@ -28,15 +28,31 @@
  *      NODE either — the same defect as 3 one position over, and the one a
  *      reader sees rather than hears. Two or more words in a row fails.
  *   5. Code must not fall back to an English word: a string literal whose
- *      whole content is `Unknown` or `Other`, in non-spec src/app
+ *      whole content is `Unknown`, `Other` or `User`, in non-spec src/app
  *      (core/services/testing/ skipped). A missing category read `Unknown`
  *      on every locale until #497; the fallback is common.unknownCategory.
+ *      A missing display name read `User` the same way until #500; an
+ *      account that names nobody stores '' and every display reads a
+ *      catalog word through person-name.utils (common.unnamedAccount,
+ *      household.unnamedMember, or the plain common.welcome). The match is
+ *      case-sensitive, so a chat message's `role: 'user'` is not a hit.
  *      `.ts` files are lexed with a regex-aware lexer copied from
  *      check-colors.mjs, so a comment never counts, and their inline
  *      `template:` strings are read the way scan 4 reads them. A word only
  *      a model reads, or one stored on the row, sits in one of two tables
  *      passed into fallbackFindings (ADR 0151), matched on file and text and
  *      tallied per row: a count that moves either way fails.
+ *
+ * Beside the five, one more template check, which has no number: a
+ * translated fragment must not be joined to a value by a comma.
+ * `{{ 'common.welcome' | translate }}, {{ userName() }}` is a sentence only
+ * English can punctuate: the comma sits in the template where no locale can
+ * change it, while ja writes `、` and puts a suffix after the name and tc
+ * writes `，`. The sentence is one key with a placeholder
+ * (common.welcomeNamed). A translated interpolation followed by `,` or `、`
+ * and then another interpolation fails (#500); `.ts` files are read through
+ * their inline `template:` strings, comments are masked, and the line
+ * reported is the comma's own.
  *
  * Key-set parity between locales is asserted in translation-keys.spec.ts,
  * which runs with the unit suite. Only literal keys can be checked; dynamic
@@ -94,8 +110,10 @@
  *     that is the word alone matches, which also keeps prompt text such as
  *     the receipt prompt's `merchant="Unknown"` default out, and keys like
  *     `settings.platformUnknown`.
- *   - The `'User'` name fallbacks (the dashboard greeting, settings). The
- *     scan knows two words, the ones a missing category produced.
+ *   - Another English word for nobody: lowercase `user`, `Guest`,
+ *     `Anonymous`, `Member`. The scan knows three words, the two a missing
+ *     category produced and the one a missing name produced; the match is
+ *     case-sensitive, which is also what keeps `role: 'user'` out.
  *   - A word built from a constant: `const UNKNOWN = 'Unknown'` fails where
  *     it is declared, but `'Unk' + 'nown'`, or a word read from data, does
  *     not stand whole in any literal.
@@ -104,6 +122,17 @@
  *     is not a literal and which scan 4 leaves to review.
  *   - A quoted word inside markup held in a TypeScript string that is not
  *     an inline `template:`: only inline templates take the quoted-word path.
+ *
+ * What the comma-join check deliberately cannot see:
+ *   - A colon. `label: value` is accepted by decision (the about page, the
+ *     profile example, the import errors and the budget alert write it in ja
+ *     and tc), so a translated label, `:` and a value passes.
+ *   - A joiner other than `,` and `、`: the full-width `，` and a dash pass.
+ *   - A join with a word between, `{{ 'x' | translate }} and {{ y }}`, which
+ *     is not this shape (scan 4 reads the word if it is English), and a comma
+ *     that ends the element before the value begins.
+ *   - A sentence assembled in code: `t('a.b') + ', ' + name`, or a template
+ *     literal. Only template interpolations are read.
  *
  * `--self-test` exercises the parser against known shapes and exits non-zero
  * if the checker itself is broken; npm's i18n:check chains it first, as
@@ -410,6 +439,43 @@ export function findVisibleEnglish(source) {
   );
 }
 
+/** An interpolation body that runs a value through the translate pipe. */
+const TRANSLATED_BODY = /\|\s*translate\b/;
+/**
+ * What follows a closing `}}` when the next interpolation is joined to it: a
+ * comma (`,` or the ideographic `、`), then only whitespace, then `{{`. Sticky,
+ * so it is tried at one offset and never searches ahead into other markup.
+ */
+const COMMA_JOIN_TAIL = /\s*([,、])\s*\{\{/y;
+
+/**
+ * Every `{{ 'key' | translate }}` that a comma joins to the interpolation
+ * after it, as `{ line, text }`: `{{ 'common.welcome' | translate }}, {{ name }}`.
+ * A fragment of a sentence written in the template cannot be reordered or
+ * repunctuated by a locale, and the comma it ends on is the English one; the
+ * sentence belongs in one key with a placeholder. Read on the comment-masked
+ * markup (offsets kept, so the line is the comma's own line).
+ */
+export function findCommaJoins(source) {
+  const text = maskHtmlComments(source);
+  const joins = [];
+  let from = 0;
+  for (;;) {
+    const open = text.indexOf('{{', from);
+    if (open === -1) break;
+    const close = text.indexOf('}}', open + 2);
+    if (close === -1) break;
+    from = close + 2;
+    if (!TRANSLATED_BODY.test(text.slice(open + 2, close))) continue;
+    COMMA_JOIN_TAIL.lastIndex = from;
+    const tail = COMMA_JOIN_TAIL.exec(text);
+    if (tail === null) continue;
+    const comma = tail.index + tail[0].indexOf(tail[1]);
+    joins.push({ line: lineOf(text, comma), text: text.slice(open, comma + 1).replace(/\s+/g, ' ') });
+  }
+  return joins;
+}
+
 /**
  * `source` with everything outside an inline `template:` literal blanked, so
  * the markup scanners can read a `.ts` file exactly as they read a `.html`
@@ -551,10 +617,14 @@ export function lexTs(source) {
   return { masked: out.join(''), strings };
 }
 
-/** A string literal's whole content, when that content is a fallback word. */
-const FALLBACK_WORD = /^(?:Unknown|Other)$/;
+/**
+ * A string literal's whole content, when that content is a fallback word.
+ * `User` is the word a missing display name fell back to (#500); like the
+ * others it is case-sensitive, which keeps the providers' `role: 'user'` out.
+ */
+const FALLBACK_WORD = /^(?:Unknown|Other|User)$/;
 /** The same, quoted, in markup: an interpolation or bound attribute's literal. */
-const QUOTED_FALLBACK = /(['"`])(Unknown|Other)\1/g;
+const QUOTED_FALLBACK = /(['"`])(Unknown|Other|User)\1/g;
 
 /**
  * Code that stores or sends an English fallback word, by the file and the
@@ -627,11 +697,11 @@ export const STORED_FALLBACKS = [
 ];
 
 /**
- * Every string literal in `source` whose whole content is `Unknown` or
- * `Other`, as `{ line, word, text }` with `text` the trimmed line. `kind` is
- * `'ts'` or `'html'`. A `.ts` file is lexed for its literals and also read
- * through the markup path for its inline `template:` strings (offsets kept,
- * so the line is real); a literal both paths see is one hit.
+ * Every string literal in `source` whose whole content is `Unknown`,
+ * `Other` or `User`, as `{ line, word, text }` with `text` the trimmed line.
+ * `kind` is `'ts'` or `'html'`. A `.ts` file is lexed for its literals and
+ * also read through the markup path for its inline `template:` strings
+ * (offsets kept, so the line is real); a literal both paths see is one hit.
  */
 export function findEnglishFallbacks(source, kind) {
   const words = new Map(); // the word's offset -> the word
@@ -710,6 +780,7 @@ function run() {
   const ariaOffences = [];
   const altOffences = [];
   const englishOffences = [];
+  const commaOffences = [];
   const allowedSeen = new Set();
   let templatesScanned = 0;
   const fallbackFiles = [];
@@ -771,6 +842,9 @@ function run() {
           allowedSeen.add(allowed);
         }
       }
+      for (const join of findCommaJoins(markup)) {
+        commaOffences.push({ site: `${path}:${join.line}`, value: join.text });
+      }
     }
   }
 
@@ -799,8 +873,9 @@ function run() {
     `Checked ${templatesScanned} templates for visible English text nodes ` +
       `(${PROPER_NOUNS.length} proper nouns allowed by name).`
   );
+  console.log(`Checked ${templatesScanned} templates for a translated fragment joined to a value by a comma.`);
   console.log(
-    `Checked ${fallbackFiles.length} files for an English "Unknown" or "Other" fallback ` +
+    `Checked ${fallbackFiles.length} files for an English "Unknown", "Other" or "User" fallback ` +
       `(${fallbackRows.length} rows allow ${allowedHits(fallbackRows)} hits: ` +
       `${MODEL_FACING_FALLBACKS.length} model-facing for ${allowedHits(MODEL_FACING_FALLBACKS)}, ` +
       `${STORED_FALLBACKS.length} stored for ${allowedHits(STORED_FALLBACKS)}).`
@@ -844,6 +919,21 @@ function run() {
         "same in every locale goes in this script's PROPER_NOUNS table instead, with a reason."
     );
   }
+  if (commaOffences.length > 0) {
+    failed = true;
+    console.error(
+      `\n${commaOffences.length} translated fragment(s) joined to a value by a comma — ` +
+        'ja and tc place the name and the comma themselves:\n'
+    );
+    for (const { site, value } of commaOffences.sort((a, b) => a.site.localeCompare(b.site))) {
+      console.error(`  ${site}  ${value}`);
+    }
+    console.error(
+      "\nWrite the whole sentence as one key with a placeholder, e.g. 'Welcome back, {{name}}' read\n" +
+        "through welcomeGreeting (core/utils/person-name.utils.ts), so each locale orders and\n" +
+        'punctuates it itself (see docs/i18n.md). A label and its value may be joined by a colon.'
+    );
+  }
   if (staleAllowances.length > 0) {
     failed = true;
     console.error(`\n${staleAllowances.length} PROPER_NOUNS row(s) match nothing any more:\n`);
@@ -864,7 +954,8 @@ function run() {
     }
     console.error(
       "\nFall back to a catalog key instead: common.unknownCategory for a missing category\n" +
-        '(core/utils/category-display.utils.ts), or a key of its own (see docs/i18n.md). A word only\n' +
+        '(core/utils/category-display.utils.ts), common.unnamedAccount for an account that names\n' +
+        'nobody (core/utils/person-name.utils.ts), or a key of its own (see docs/i18n.md). A word only\n' +
         'a model reads, or one stored on the row, goes in MODEL_FACING_FALLBACKS or STORED_FALLBACKS\n' +
         "in this script instead, with a reason."
     );
@@ -884,7 +975,8 @@ function run() {
 
   console.log(
     'Every literal translation key resolves in every locale, no template hard-codes an aria-label, ' +
-      'alt text or English sentence, and no code falls back to an English word a reader would see.'
+      'alt text or English sentence or joins a translated fragment to a value by a comma, ' +
+      'and no code falls back to an English word a reader would see.'
   );
 }
 
@@ -1000,6 +1092,47 @@ function selfTest() {
     true
   );
 
+  // --- the comma-join check -----------------------------------------------
+  const joins = source => findCommaJoins(source).map(join => join.line);
+
+  // must hit
+  check('a translated fragment, a comma and a value', joins(`{{ 'x' | translate }}, {{ y }}`), [1]);
+  check('the same with the ideographic comma', joins(`{{ 'x' | translate }}、{{ y }}`), [1]);
+  check('no space after the comma', joins(`{{ 'x' | translate }},{{ y }}`), [1]);
+  check('a translated fragment carrying parameters', joins(`{{ 'x' | translate: { n: 1 } }}, {{ y }}`), [1]);
+  check(
+    'a translated fragment, a comma and another translated fragment',
+    joins(`{{ 'a.b' | translate }}, {{ 'c.d' | translate }}`),
+    [1]
+  );
+  check('a join reports the line of its comma', joins(`<p>\n  {{ 'x' | translate }},\n  {{ y }}\n</p>`), [2]);
+  check(
+    'the dashboard subtitle as it stood',
+    joins(
+      `<div>\n  <app-page-header>\n    <p header-subtitle>\n      {{ 'common.welcome' | translate }}, {{ userName() }}\n    </p>\n  </app-page-header>\n</div>`
+    ),
+    [4]
+  );
+  check(
+    'a join in an inline template',
+    joins(inlineTemplatesOnly("@Component({ template: `<p>{{ 'x' | translate }}, {{ y }}</p>` })")),
+    [1]
+  );
+
+  // must not hit — a colon is accepted by decision (ja and tc write `label: value`),
+  // and each of the others is a shape this tree writes legitimately.
+  check('a colon before a value', joins(`{{ 'x' | translate }}: {{ y }}`), []);
+  check(
+    'a comma inside the parameters of a translated fragment',
+    joins(`{{ 'x' | translate: { a: 1, b: 2 } }} {{ y }}`),
+    []
+  );
+  check('a comma after an interpolation that does not translate', joins(`{{ a }}, {{ b }}`), []);
+  check('a value, a comma and a translated fragment', joins(`{{ y }}, {{ 'x' | translate }}`), []);
+  check('a pipe whose name only starts with translate', joins(`{{ label | translateOrDash }}, {{ y }}`), []);
+  check('a comma that ends the element', joins(`<b>{{ 'x' | translate }},</b> {{ y }}`), []);
+  check('a commented-out join', joins(`<!-- {{ 'x' | translate }}, {{ y }} -->`), []);
+
   // --- the fallback scan --------------------------------------------------
   const fallbacks = (source, kind = 'ts') => findEnglishFallbacks(source, kind).map(hit => hit.word);
 
@@ -1020,6 +1153,15 @@ function selfTest() {
   );
   check('a division beside a hit is not a regex', fallbacks("const r = total / count; const s = 'Unknown';"), ['Unknown']);
   check('a template that falls back to the word', fallbacks("{{ n || 'Unknown' }}", 'html'), ['Unknown']);
+  // `User` is the third word: the name a missing display name fell back to (#500).
+  check('a ?? fallback on a sign-in name', fallbacks("displayName: firebaseUser.displayName ?? 'User',"), ['User']);
+  check('an || fallback on a first name', fallbacks("return user?.displayName?.split(' ')[0] || 'User';"), ['User']);
+  check(
+    'an || fallback on a computed name',
+    fallbacks("userName = computed(() => this.authService.currentUser()?.displayName || 'User');"),
+    ['User']
+  );
+  check('a template that falls back to the name', fallbacks("{{ displayName() || 'User' }}", 'html'), ['User']);
 
   // must not hit
   check('a sentence that starts with the word', fallbacks("message: 'Unknown error',"), []);
@@ -1043,6 +1185,13 @@ function selfTest() {
     []
   );
   check('the word in a template comment', fallbacks("<!-- {{ n || 'Unknown' }} -->", 'html'), []);
+  // The name word is case-sensitive: a chat message's role is not a name.
+  check('a chat role, lowercase', fallbacks("messages: [{ role: 'user', content }],"), []);
+  check('a sentence that starts with the name word', fallbacks("message: 'User cancelled the sign-in',"), []);
+  check('a key that ends in the name word', fallbacks("t('settings.signedInUser')"), []);
+  check('the Firebase type of that name', fallbacks("import { User } from '@angular/fire/auth';\nlet current: User | null = null;"), []);
+  check('the name word in a doc comment', fallbacks('/** A stored "User" is a name, as any other. */'), []);
+  check('a quoted lowercase word in a template', fallbacks(`<span [attr.data-role]="'user'"></span>`, 'html'), []);
 
   // reporting
   check(
