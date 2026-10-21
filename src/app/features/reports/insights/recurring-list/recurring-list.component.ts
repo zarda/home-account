@@ -90,11 +90,6 @@ export class RecurringListComponent {
   readonly hiddenCount = computed(
     () => this.summary().groupCount - this.summary().groups.length);
 
-  categoryName(categoryId: string): string {
-    const category = this.categoryService.categories().find(item => item.id === categoryId);
-    return category?.name ? this.translation.t(category.name) : categoryId;
-  }
-
   categoryIcon(categoryId: string): string {
     return this.categoryService.categories()
       .find(item => item.id === categoryId)?.icon ?? 'category';
