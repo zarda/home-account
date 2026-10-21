@@ -181,6 +181,13 @@ export class DashboardComponent implements OnInit {
   // change to it can't be told apart from the initial, still-unloaded state.
   private thisMonthPaints = signal(0);
 
+  // The first day of the window the last this-month paint summed: the month
+  // the widget is told its figures belong to. Not the clock's, which a page
+  // left open past the month's end has moved on from; and not
+  // currentPeriod's, which a click moves before the new period's rows land,
+  // and a failed load leaves moved while this month's rows stay on the page.
+  private thisMonthPaintStart = this.currentPeriod().start;
+
   // The welcome line, whole: the catalog writes the sentence around the first
   // name, and the template prints it as it is.
   greeting = computed(() =>
@@ -418,7 +425,9 @@ export class DashboardComponent implements OnInit {
     // transactions signal still cannot pass for a paint. And keyed on the
     // layout the page renders, held while a change saves, so a card the
     // account hides leaves the widget when it leaves the page; a reorder
-    // republishes an equal payload, which the service's dedupe skips.
+    // republishes an equal payload, which the service's dedupe skips. The
+    // figures go with the month they were summed over, so what a page left
+    // open past the month's end republishes reaches the widget as stale.
     effect(() => {
       const paints = this.thisMonthPaints();
       const baseCurrency = this.baseCurrency();
@@ -434,6 +443,7 @@ export class DashboardComponent implements OnInit {
         budgets: this.activeBudgets(),
         upcoming: this.upcomingOccurrences(),
         hidden,
+        month: this.thisMonthPaintStart,
       }));
     });
   }
@@ -523,6 +533,7 @@ export class DashboardComponent implements OnInit {
           // Only a this-month paint feeds the widget; a switch to another
           // period must not republish it with rows that belong elsewhere.
           if (this.currentPeriod().option === 'thisMonth') {
+            this.thisMonthPaintStart = this.currentPeriod().start;
             this.thisMonthPaints.update(count => count + 1);
           }
         },

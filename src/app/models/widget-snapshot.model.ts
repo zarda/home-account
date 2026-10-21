@@ -69,8 +69,9 @@ export interface WidgetSnapshot {
   /** Epoch milliseconds. */
   writtenAt: number;
   /**
-   * `YYYY-MM` of the local month, zero-padded. The widget compares it with the
-   * device's month to tell this month's figures from last month's.
+   * `YYYY-MM` of the local month, zero-padded: the month the figures were
+   * summed over, or the clock's for a sentence. The widget compares it with
+   * the device's month to tell this month's figures from last month's.
    */
   monthKey: string;
   labels: WidgetSnapshotLabels;
@@ -87,5 +88,12 @@ export interface WidgetSnapshotInput {
   upcoming: RecurringOccurrence[];
   /** The account's hidden cards, as the dashboard holds them: any card, in any order. */
   hidden: readonly DashboardCardId[];
+  /**
+   * The first day of the window the figures were summed over, which stamps
+   * `monthKey`. Not the clock: a page left open past the month's end still
+   * holds last month's window, and its figures must reach the widget as last
+   * month's, which it shows as stale.
+   */
+  month: Date;
   now?: Date;
 }

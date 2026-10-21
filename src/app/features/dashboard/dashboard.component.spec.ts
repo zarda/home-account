@@ -1754,6 +1754,12 @@ describe('DashboardComponent', () => {
       );
     }
 
+    /** The first day of this month: the window the page opens on. */
+    function thisMonthStart(): Date {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
     /** Income 1000 and expense 400 in the window, the this-month paint landed and flushed. */
     function paintThisMonth(window$: Subject<Transaction[]>) {
       transactionService.getByDateRange.and.returnValue(window$);
@@ -1803,6 +1809,7 @@ describe('DashboardComponent', () => {
         budgets,
         upcoming,
         hidden: [],
+        month: thisMonthStart(),
       });
     });
 
@@ -1944,6 +1951,7 @@ describe('DashboardComponent', () => {
         budgets: [],
         upcoming: [],
         hidden: [],
+        month: thisMonthStart(),
       });
       widgetSnapshots.publish.calls.reset();
 
@@ -1957,6 +1965,7 @@ describe('DashboardComponent', () => {
         budgets: [],
         upcoming: [],
         hidden: [],
+        month: thisMonthStart(),
       });
     });
 
@@ -1976,6 +1985,7 @@ describe('DashboardComponent', () => {
         budgets: [],
         upcoming: [],
         hidden: [],
+        month: thisMonthStart(),
       });
     });
 
@@ -2027,6 +2037,7 @@ describe('DashboardComponent', () => {
         budgets: [],
         upcoming: [],
         hidden: [],
+        month: thisMonthStart(),
       });
       expect(fixture.componentInstance.baseCurrency()).toBe('JPY');
     });
@@ -2063,6 +2074,7 @@ describe('DashboardComponent', () => {
         budgets: [],
         upcoming,
         hidden: ['recent', 'upcoming'],
+        month: thisMonthStart(),
       });
     });
 
@@ -2084,6 +2096,7 @@ describe('DashboardComponent', () => {
         budgets: [],
         upcoming: [],
         hidden: ['budgets'],
+        month: thisMonthStart(),
       });
 
       land();
@@ -2093,6 +2106,89 @@ describe('DashboardComponent', () => {
       expect(widgetSnapshots.publish.calls.mostRecent().args[0].hidden)
         .withContext('once the write lands')
         .toEqual(['budgets']);
+    });
+
+    // Nothing rolls the window over while the page lives, and iOS keeps a web
+    // view suspended across days: a page opened on 30 September still holds
+    // September on 2 October. What it republishes then is September's, and is
+    // handed over as September's, which the widget shows as stale.
+    describe("on a page left open past the month's end", () => {
+      const september = new Date(2026, 8, 1);
+
+      beforeEach(() => {
+        jasmine.clock().install();
+        jasmine.clock().mockDate(new Date(2026, 8, 30, 22, 0));
+      });
+
+      afterEach(() => {
+        jasmine.clock().uninstall();
+      });
+
+      it('hands the widget the month the page painted, not the month of the clock', () => {
+        const window$ = new Subject<Transaction[]>();
+        paintThisMonth(window$);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+        jasmine.clock().mockDate(new Date(2026, 9, 2, 8, 0));
+        widgetSnapshots.publish.calls.reset();
+
+        window$.next([]);
+        TestBed.tick();
+        expect(widgetSnapshots.publish).withContext('a listener emission').toHaveBeenCalledTimes(1);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+
+        budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+        TestBed.tick();
+        expect(widgetSnapshots.publish).withContext('a budgets emission').toHaveBeenCalledTimes(2);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+      });
+
+      // The selection moves on a click, before the new period's rows land, and
+      // stays moved when they fail to, while this month's rows stay on the
+      // page and the widget is still handed them: their month is the painted
+      // window's, not the selection's.
+      it("hands the widget the painted month while another period's rows have not landed", () => {
+        const fixture = paintThisMonth(new Subject<Transaction[]>());
+        transactionService.getByDateRange.and.returnValue(throwError(() => new Error('offline')));
+        fixture.componentInstance.onPeriodSelection(selection(
+          'lastMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59, 999)));
+        expect(fixture.componentInstance.publishedPeriodOption()).toBe('thisMonth');
+        widgetSnapshots.publish.calls.reset();
+
+        budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+        TestBed.tick();
+
+        expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+      });
+
+      // A pin: a this-month paint of a new window moves the month the widget
+      // is handed, so This month chosen again on 2 October hands over October's
+      // figures as October's. Proved by mutation: deleting the paint's
+      // `this.thisMonthPaintStart = this.currentPeriod().start` fails it.
+      it('hands the widget the new month once This month is chosen again after the month ends', () => {
+        const fixture = paintThisMonth(new Subject<Transaction[]>());
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+        jasmine.clock().mockDate(new Date(2026, 9, 2, 8, 0));
+
+        const lastMonth$ = new Subject<Transaction[]>();
+        transactionService.getByDateRange.and.returnValue(lastMonth$);
+        fixture.componentInstance.onPeriodSelection(selection(
+          'lastMonth', september, new Date(2026, 8, 30, 23, 59, 59, 999)));
+        lastMonth$.next([]);
+        TestBed.tick();
+        expect(fixture.componentInstance.publishedPeriodOption()).toBe('lastMonth');
+        widgetSnapshots.publish.calls.reset();
+
+        const thisMonth$ = new Subject<Transaction[]>();
+        transactionService.getByDateRange.and.returnValue(thisMonth$);
+        fixture.componentInstance.onPeriodSelection(selection(
+          'thisMonth', new Date(2026, 9, 1), new Date(2026, 9, 31, 23, 59, 59, 999)));
+        thisMonth$.next([]);
+        TestBed.tick();
+
+        expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(new Date(2026, 9, 1));
+      });
     });
   });
 

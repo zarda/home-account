@@ -84,7 +84,7 @@ export class WidgetSnapshotService {
       const now = input.now ?? new Date();
       const snapshot = this.appLock.canEngage()
         ? this.compose('locked', now)
-        : { ...this.compose('figures', now), figures: this.figures(input) };
+        : { ...this.compose('figures', now, input.month), figures: this.figures(input) };
       this.writeIfChanged(plugin, snapshot);
     });
   }
@@ -100,7 +100,13 @@ export class WidgetSnapshotService {
     this.injector.get(TranslationService).translationsVersion();
   }
 
-  private compose(state: WidgetSnapshotState, now: Date): WidgetSnapshot {
+  /**
+   * `month` stamps `monthKey`: for figures, the window they were summed over,
+   * which a page left open past the month's end still holds. A sentence has
+   * no window and takes the clock's. The write time and the `updated` label
+   * are always the clock's.
+   */
+  private compose(state: WidgetSnapshotState, now: Date, month = now): WidgetSnapshot {
     const translation = this.injector.get(TranslationService);
     const localeFormat = this.injector.get(LocaleFormatService);
 
@@ -108,7 +114,7 @@ export class WidgetSnapshotService {
       version: 1,
       state,
       writtenAt: now.getTime(),
-      monthKey: monthKey(now),
+      monthKey: monthKey(month),
       labels: {
         title: translation.t('dashboard.thisMonth'),
         spent: translation.t('widget.spent'),

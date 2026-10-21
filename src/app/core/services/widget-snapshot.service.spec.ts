@@ -75,6 +75,7 @@ function input(overrides: Partial<WidgetSnapshotInput> = {}): WidgetSnapshotInpu
     budgets: [],
     upcoming: [],
     hidden: [],
+    month: new Date(2026, 8, 1),
     now: new Date(2026, 8, 14, 9, 30),
     ...overrides,
   };
@@ -209,13 +210,40 @@ describe('WidgetSnapshotService', () => {
       });
 
       it('zero-pads the month and reads it from local time on either side of a month boundary', () => {
-        service.publish(input({ now: new Date(2026, 0, 31, 12) }));
-        service.publish(input({ now: new Date(2026, 8, 30, 23, 59) }));
-        service.publish(input({ now: new Date(2026, 9, 1, 0, 1) }));
+        service.publish(input({ month: new Date(2026, 0, 31, 12) }));
+        service.publish(input({ month: new Date(2026, 8, 30, 23, 59) }));
+        service.publish(input({ month: new Date(2026, 9, 1, 0, 1) }));
 
         expect(written(0).monthKey).toBe('2026-01');
         expect(written(1).monthKey).toBe('2026-09');
         expect(written(2).monthKey).toBe('2026-10');
+      });
+
+      // A dashboard left open past the month's end still holds last month's
+      // window and republishes its figures: they keep that month, so the
+      // widget shows the stale sentence rather than last month under This
+      // Month. The write time and the updated label stay on the clock.
+      it('stamps the month the figures were summed over, not the month of the clock', () => {
+        const now = new Date(2026, 9, 2, 8, 15);
+
+        service.publish(input({ month: new Date(2026, 8, 1), now }));
+
+        const snapshot = written();
+        expect(snapshot.state).toBe('figures');
+        expect(snapshot.monthKey).toBe('2026-09');
+        expect(snapshot.writtenAt).toBe(now.getTime());
+        expect(snapshot.labels.updated).toBe('widget.updated|{"date":"medium:2026-10-2"}');
+      });
+
+      // A pin: a sentence has no window, and its month is the clock's. Proved
+      // by mutation: composing the locked sentence with `input.month` fails it.
+      it("stamps the clock's month on the locked sentence a publish writes", () => {
+        canEngage.set(true);
+
+        service.publish(input({ month: new Date(2026, 8, 1), now: new Date(2026, 9, 2, 8, 15) }));
+
+        expect(written().state).toBe('locked');
+        expect(written().monthKey).toBe('2026-10');
       });
 
       it('formats spent and net in the base currency, signing a negative net', () => {
