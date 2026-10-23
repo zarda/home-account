@@ -77,7 +77,17 @@ export class AppLockService {
     return 'pin';
   });
 
-  readonly canEngage = computed(() => this.isEnabled() && this.method() !== 'none');
+  /**
+   * A profile that could not be read (`AuthService.profileDegraded`) is the
+   * in-memory fallback, which never names a lock, so nobody knows whether the
+   * account asked for one: it is treated as asked, until the real profile
+   * arrives to say. The device rule is unchanged — with no PIN here there is
+   * nothing to unlock with, and the app stays open as it does for a loaded
+   * profile. `isEnabled` keeps reporting only what the account asked for.
+   */
+  readonly canEngage = computed(
+    () => (this.isEnabled() || this.auth.profileDegraded()) && this.method() !== 'none'
+  );
   readonly isLocked = computed(() => this.canEngage() && this.unlockedAt() === null);
 
   constructor() {
