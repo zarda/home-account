@@ -258,14 +258,14 @@
 // grid's tightest: their input gets what is left of the field after its 12 px
 // start padding and the 44 px calendar button (a 40 px icon button and the
 // 4 px Material sets before a suffix), so a field shows a whole date only from
-// 56 px plus the date's own width. The longest date any of the app's locales
-// prints is ten characters, eight digits and two slashes, and 10ch, ten digit
-// widths, covers it: the two slashes together are narrower than two digits by
-// more than the letter spacing adds across all ten characters. The grid takes
-// the form field's own face and size so that ch is a digit of the input's
-// font, at every font scale. auto-fit fits as many tracks as the panel has
-// room for and stretches them across it; min() keeps one track inside a panel
-// narrower than the floor.
+// 56 px plus the date's own width. The longest date any of the app's
+// languages and date formats prints is ten characters, eight digits and two
+// separators, and 10ch, ten digit widths, covers it: the two separators
+// together are narrower than two digits by more than the letter spacing adds
+// across all ten characters. The grid takes the form field's own face and
+// size so that ch is a digit of the input's font, at every font scale.
+// auto-fit fits as many tracks as the panel has room for and stretches them
+// across it; min() keeps one track inside a panel narrower than the floor.
 .filter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(56px + 10ch)), 1fr));

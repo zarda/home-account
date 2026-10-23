@@ -63,6 +63,7 @@ describe('HeaderComponent', () => {
         { provide: AuthService, useValue: mockAuth },
         { provide: MatDialog, useValue: mockDialog },
         { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
+        { provide: TranslationService, useValue: createTranslationStub() },
       ],
     })
       .overrideComponent(HeaderComponent, { set: { imports: [], template: '' } })
@@ -283,13 +284,28 @@ describe('HeaderComponent, through its own template', () => {
 
     const avatar = el().querySelector('img.user-avatar') as HTMLImageElement;
     expect(avatar).not.toBeNull();
-    expect(avatar.alt).toBe('Tester');
 
     avatar.dispatchEvent(new Event('error'));
     fixture.detectChanges();
 
     expect(el().querySelector('img.user-avatar')).toBeNull();
     expect(text('.user-menu-button mat-icon')).toBe('account_circle');
+  });
+
+  // The name beside the avatar says whose it is; the picture says what it is,
+  // in words the catalog writes, and an account with no name has none to lend.
+  it('describes the avatar photo as a profile photo, whatever the account is called', () => {
+    for (const displayName of ['Tester', '', 'User']) {
+      auth.currentUser.set({
+        id: 'u1', displayName, email: 'tester@example.com',
+        photoURL: 'https://example.invalid/me.png',
+      } as User);
+      fixture.detectChanges();
+
+      expect((el().querySelector('img.user-avatar') as HTMLImageElement).alt)
+        .withContext(JSON.stringify(displayName))
+        .toBe('settings.profilePhotoAlt');
+    }
   });
 
   it('shows the generic icon when the account carries no photo at all', () => {
@@ -323,6 +339,25 @@ describe('HeaderComponent, through its own template', () => {
     expect(items[0].getAttribute('routerlink')).toBe('/settings');
   });
 
+  for (const displayName of ['', '   ', '　']) {
+    it(`names an account whose name is ${JSON.stringify(displayName)} by the word the catalog writes`, () => {
+      auth.currentUser.set({ id: 'u1', displayName, email: 'tester@example.com' } as User);
+      fixture.detectChanges();
+
+      const panel = openUserMenu();
+
+      expect(panel.querySelector('.user-name')?.textContent?.trim()).toBe('common.unnamedAccount');
+      expect(panel.querySelector('.user-email')?.textContent?.trim()).toBe('tester@example.com');
+    });
+  }
+
+  it('names an account stored as "User" by that name, as any other (pin)', () => {
+    auth.currentUser.set({ id: 'u1', displayName: 'User', email: 'tester@example.com' } as User);
+    fixture.detectChanges();
+
+    expect(openUserMenu().querySelector('.user-name')?.textContent?.trim()).toBe('User');
+  });
+
   it('signs out from the menu item a user actually clicks', () => {
     fixture.detectChanges();
 
@@ -330,6 +365,51 @@ describe('HeaderComponent, through its own template', () => {
     (Array.from(panel.querySelectorAll('button[mat-menu-item]')) as HTMLButtonElement[])[1].click();
 
     expect(auth.signOut).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The word for an account with no name is the catalog's, so it follows the
+ * language (#500). A second describe: it needs a translation double whose
+ * words change, which the shared one above does not have.
+ */
+describe('HeaderComponent, the account name when the language switches', () => {
+  afterEach(() => {
+    document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
+  });
+
+  it('says the word again in the new language (pin)', async () => {
+    const lang = signal('en');
+    const auth = {
+      currentUser: signal<User | null>({ id: 'u1', displayName: '', email: 'tester@example.com' } as User),
+      signOut: jasmine.createSpy('signOut').and.resolveTo(undefined),
+    };
+    await TestBed.configureTestingModule({
+      imports: [HeaderComponent],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: auth },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        {
+          provide: BreakpointObserver,
+          useValue: { observe: () => new BehaviorSubject<BreakpointState>({ matches: false, breakpoints: {} }).asObservable() },
+        },
+        { provide: TranslationService, useValue: createTranslationStub({ t: (key: string) => `${lang()}|${key}` }) },
+        provideNoMotion(),
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(HeaderComponent);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.user-menu-button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const name = () => document.querySelector('.mat-mdc-menu-panel .user-name')?.textContent?.trim();
+
+    expect(name()).toBe('en|common.unnamedAccount');
+
+    lang.set('ja');
+    fixture.detectChanges();
+
+    expect(name()).toBe('ja|common.unnamedAccount');
   });
 });
 

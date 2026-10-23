@@ -8,6 +8,7 @@ import { TranslationService } from './translation.service';
 import { WIDGET_SNAPSHOT_PLUGIN, WidgetSnapshotPlugin } from '../plugins/widget-snapshot.plugin';
 import {
   Budget,
+  WIDGET_CARDS,
   WidgetSnapshot,
   WidgetSnapshotFigures,
   WidgetSnapshotInput,
@@ -34,12 +35,6 @@ export class WidgetSnapshotService {
   private readonly injector = inject(Injector);
 
   /**
-   * True on a build that carries the widget plugin, whether or not a widget
-   * has been placed on the home screen: nothing here can tell.
-   */
-  readonly available = this.plugin !== null;
-
-  /**
    * The last payload the plugin accepted, without `writtenAt`. Equal payloads
    * are not rewritten, so a listener's re-emission does not reload the widget's
    * timelines; the `updated` label carries the local date, so a new day still
@@ -51,9 +46,14 @@ export class WidgetSnapshotService {
     // Written at once rather than at the next paint: a cold start that lands
     // on /lock never paints the dashboard, and last session's figures would
     // stay on the home screen.
+    //
+    // Both effects follow the catalog too: a cold start composes its sentence
+    // before the language's words arrive, and nothing publishes after a lock or
+    // a sign-out to carry the words over.
     effect(() => {
       const plugin = this.plugin;
       if (!plugin || !this.appLock.canEngage()) return;
+      this.trackCatalog();
       untracked(() => this.writeIfChanged(plugin, this.compose('locked', new Date())));
     });
 
@@ -63,6 +63,7 @@ export class WidgetSnapshotService {
     effect(() => {
       const plugin = this.plugin;
       if (!plugin || this.auth.isLoading() || this.auth.currentUser() !== null) return;
+      this.trackCatalog();
       untracked(() => this.writeIfChanged(plugin, this.compose('signedOut', new Date())));
     });
   }
@@ -72,17 +73,40 @@ export class WidgetSnapshotService {
     if (!plugin) return;
 
     // Untracked so a calling effect stays keyed on what it chose to read, not
-    // on the lock, the catalog or the locale read while composing.
+    // on the lock, the catalog, the locale or the session read while composing.
     untracked(() => {
+      // The device can end a session while the dashboard stays open, and the
+      // page then republishes figures that belong to nobody. The signed-out
+      // sentence the constructor's effect wrote must stand, and a cold start
+      // that has not restored its session yet writes no figures either.
+      if (this.auth.currentUser() === null) return;
+
       const now = input.now ?? new Date();
       const snapshot = this.appLock.canEngage()
         ? this.compose('locked', now)
-        : { ...this.compose('figures', now), figures: this.figures(input) };
+        : { ...this.compose('figures', now, input.month), figures: this.figures(input) };
       this.writeIfChanged(plugin, snapshot);
     });
   }
 
-  private compose(state: WidgetSnapshotState, now: Date): WidgetSnapshot {
+  /**
+   * Makes the calling effect run again when a catalog loads. Only after the
+   * effect's guards: on the web the plugin is null and `TranslationService`
+   * must stay unresolved, and a signed-in, unlocked session has no sentence to
+   * rewrite. A reload that brings no new word recomposes an equal payload, which
+   * `writeIfChanged` skips.
+   */
+  private trackCatalog(): void {
+    this.injector.get(TranslationService).translationsVersion();
+  }
+
+  /**
+   * `month` stamps `monthKey`: for figures, the window they were summed over,
+   * which a page left open past the month's end still holds. A sentence has
+   * no window and takes the clock's. The write time and the `updated` label
+   * are always the clock's.
+   */
+  private compose(state: WidgetSnapshotState, now: Date, month = now): WidgetSnapshot {
     const translation = this.injector.get(TranslationService);
     const localeFormat = this.injector.get(LocaleFormatService);
 
@@ -90,7 +114,7 @@ export class WidgetSnapshotService {
       version: 1,
       state,
       writtenAt: now.getTime(),
-      monthKey: monthKey(now),
+      monthKey: monthKey(month),
       labels: {
         title: translation.t('dashboard.thisMonth'),
         spent: translation.t('widget.spent'),
@@ -107,15 +131,22 @@ export class WidgetSnapshotService {
     };
   }
 
+  /**
+   * A card the account hid on the dashboard is left out of the widget too: its
+   * field is null and nothing it would show is composed, so no name or amount
+   * of it reaches the home screen. Its id is listed in `hidden`, which is what
+   * tells the widget a hidden card from one with nothing to show.
+   */
   private figures(input: WidgetSnapshotInput): WidgetSnapshotFigures {
     const currency = this.injector.get(CurrencyService);
     const localeFormat = this.injector.get(LocaleFormatService);
-    const next = input.upcoming[0];
+    const hidden = WIDGET_CARDS.filter(card => input.hidden.includes(card));
+    const next = hidden.includes('upcoming') ? undefined : input.upcoming[0];
 
     return {
       spent: currency.formatCurrency(input.spent, input.baseCurrency),
       net: currency.formatCurrency(input.net, input.baseCurrency),
-      topBudget: this.topBudget(input.budgets),
+      topBudget: hidden.includes('budgets') ? null : this.topBudget(input.budgets),
       nextScheduled: next
         ? {
             name: next.name,
@@ -126,6 +157,7 @@ export class WidgetSnapshotService {
             ),
           }
         : null,
+      hidden,
     };
   }
 

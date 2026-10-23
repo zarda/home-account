@@ -139,6 +139,68 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertNil(WidgetSnapshot.decode(payload(monthKey: "26-09")))
     }
 
+    // MARK: Hidden cards
+
+    /// The figures the web writes for an account that hid `hidden` (a JSON
+    /// value, spliced as given): a hidden card's field is null.
+    private static func hiddenFigures(_ hidden: String) -> String {
+        """
+        {
+          "spent": "NT$12,340", "net": "-NT$2,100",
+          "topBudget": null, "nextScheduled": null,
+          "hidden": \(hidden)
+        }
+        """
+    }
+
+    func testDecodesTheHiddenCards() throws {
+        let budgets = try XCTUnwrap(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets"]"#))))
+        XCTAssertEqual(budgets.figures?.hidden, [.budgets])
+
+        let none = try XCTUnwrap(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures("[]"))))
+        XCTAssertEqual(none.figures?.hidden, [])
+    }
+
+    /// Pin: a file an older build wrote carries no `hidden`, and that build
+    /// hid nothing.
+    func testAFileWithoutHiddenShowsEveryCard() throws {
+        let figures = try XCTUnwrap(WidgetSnapshot.decode(payload())?.figures)
+
+        XCTAssertNil(figures.hidden)
+        XCTAssertTrue(figures.shows(.budgets))
+        XCTAssertTrue(figures.shows(.upcoming))
+    }
+
+    /// The web and the widget ship together, so an id this build does not
+    /// know belongs to a payload it was not written for.
+    func testAnUnknownHiddenCardIsRejected() {
+        XCTAssertNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["recent"]"#))))
+        XCTAssertNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets", "chart"]"#))))
+        XCTAssertNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#""budgets""#))))
+
+        // The positive proof: the same payload with known ids decodes.
+        XCTAssertNotNil(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets", "upcoming"]"#))))
+    }
+
+    func testHiddenCardsRoundTripThroughAWriteAndALoad() throws {
+        let written = try WidgetSnapshot.write(payload(figures: Self.hiddenFigures(#"["upcoming"]"#)), to: folder)
+        let loaded = try XCTUnwrap(WidgetSnapshot.load(from: folder))
+
+        XCTAssertEqual(loaded, written)
+        XCTAssertEqual(loaded.figures?.hidden, [.upcoming])
+    }
+
+    func testAHiddenCardIsNotShown() throws {
+        let both = try XCTUnwrap(
+            WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["budgets", "upcoming"]"#)))?.figures)
+        XCTAssertFalse(both.shows(.budgets))
+        XCTAssertFalse(both.shows(.upcoming))
+
+        let upcoming = try XCTUnwrap(WidgetSnapshot.decode(payload(figures: Self.hiddenFigures(#"["upcoming"]"#)))?.figures)
+        XCTAssertTrue(upcoming.shows(.budgets))
+        XCTAssertFalse(upcoming.shows(.upcoming))
+    }
+
     // MARK: Writing
 
     func testWriteRefusesUndecodableDataAndLeavesThePreviousFileIntact() throws {
@@ -218,6 +280,125 @@ final class WidgetSnapshotTests: XCTestCase {
 
         let signedOut = try XCTUnwrap(WidgetSnapshot.decode(payload(state: "signedOut", monthKey: "2026-08", figures: nil)))
         XCTAssertEqual(signedOut.display(now: instant("2026-10-15T04:00:00Z"), calendar: taipei), .signedOut)
+    }
+
+    // MARK: Face
+
+    /// 04:00 UTC on 14 September is noon in Taipei: inside the fixtures'
+    /// `2026-09`.
+    private var september: Date { instant("2026-09-14T04:00:00Z") }
+
+    private func face(
+        of snapshot: WidgetSnapshot?, isPlaceholder: Bool = false, now: Date? = nil
+    ) -> WidgetSnapshot.Face {
+        WidgetSnapshot.face(of: snapshot, isPlaceholder: isPlaceholder, now: now ?? september, calendar: taipei)
+    }
+
+    func testNoSnapshotIsTheNameWhateverThePlaceholderFlag() {
+        XCTAssertEqual(face(of: nil), .name)
+        XCTAssertEqual(face(of: nil, isPlaceholder: true), .name)
+    }
+
+    /// The gallery's sample is a snapshot, so the flag alone never means the
+    /// name: a placeholder that has a sample draws it.
+    func testAPlaceholderWithASampleIsNotTheName() throws {
+        let sample = try XCTUnwrap(WidgetSnapshot.decode(payload()))
+
+        let drawn = face(of: sample, isPlaceholder: true)
+
+        XCTAssertNotEqual(drawn, .name)
+        // The positive proof: the sample's own labels and figures.
+        XCTAssertEqual(drawn, .figures(sample.labels, try XCTUnwrap(sample.figures), redacted: true))
+    }
+
+    /// `placeholderSample` is dated 2000-01, long past every clock the
+    /// gallery runs on, and still draws redacted figures: the placeholder
+    /// is decided before the month is read. The same snapshot placed is
+    /// out of date, which proves the flag and not the month made the call.
+    func testThePlaceholderOfAnOldMonthIsRedactedFigures() throws {
+        let sample = try XCTUnwrap(WidgetSnapshot.decode(payload(monthKey: "2000-01")))
+        let figures = try XCTUnwrap(sample.figures)
+
+        XCTAssertEqual(face(of: sample, isPlaceholder: true), .figures(sample.labels, figures, redacted: true))
+        XCTAssertEqual(
+            face(of: sample, isPlaceholder: false),
+            .sentence(.stale, title: "This month", text: "Open the app to refresh this month"))
+    }
+
+    /// Pin: a placeholder entry whose snapshot carries no figures has nothing
+    /// to redact, so it reads like a placed one.
+    func testAPlaceholderWithoutFiguresFollowsTheClockLikeAPlacedOne() throws {
+        let locked = try XCTUnwrap(WidgetSnapshot.decode(payload(state: "locked", figures: nil)))
+
+        XCTAssertEqual(
+            face(of: locked, isPlaceholder: true),
+            .sentence(.locked, title: "This month", text: "Unlock the app to see your figures"))
+    }
+
+    func testAPlacedFaceFollowsDisplayAndCarriesItsSentence() throws {
+        let figures = try XCTUnwrap(WidgetSnapshot.decode(payload()))
+        XCTAssertEqual(
+            face(of: figures),
+            .figures(figures.labels, try XCTUnwrap(figures.figures), redacted: false))
+
+        // The month after `monthKey`.
+        let stale = try XCTUnwrap(WidgetSnapshot.decode(payload(monthKey: "2026-08")))
+        XCTAssertEqual(
+            face(of: stale),
+            .sentence(.stale, title: "This month", text: "Open the app to refresh this month"))
+
+        let locked = try XCTUnwrap(WidgetSnapshot.decode(payload(state: "locked", figures: nil)))
+        XCTAssertEqual(
+            face(of: locked),
+            .sentence(.locked, title: "This month", text: "Unlock the app to see your figures"))
+
+        let signedOut = try XCTUnwrap(WidgetSnapshot.decode(payload(state: "signedOut", figures: nil)))
+        XCTAssertEqual(
+            face(of: signedOut),
+            .sentence(.signedOut, title: "This month", text: "Sign in to see your figures"))
+    }
+
+    /// A placed face reads its month from the entry's own date, as the
+    /// month-boundary entry of the timeline relies on.
+    func testAPlacedFaceTurnsStaleAtTheMonthBoundaryEntry() throws {
+        let snapshot = try XCTUnwrap(WidgetSnapshot.decode(payload()))
+        let figures = try XCTUnwrap(snapshot.figures)
+
+        // 15:59 UTC on 30 September is 23:59 in Taipei; 16:00 is 1 October.
+        XCTAssertEqual(
+            face(of: snapshot, now: instant("2026-09-30T15:59:00Z")),
+            .figures(snapshot.labels, figures, redacted: false))
+        XCTAssertEqual(
+            face(of: snapshot, now: instant("2026-09-30T16:00:00Z")),
+            .sentence(.stale, title: "This month", text: "Open the app to refresh this month"))
+    }
+
+    // MARK: Tap
+
+    /// The app is opened by other URLs too (Google sign-in's redirect among
+    /// them), so only this one may read as a tap on the widget.
+    func testTheTapURLIsATap() {
+        XCTAssertEqual(WidgetSnapshot.tapURL.absoluteString, "com.homeaccount.app://widget")
+        XCTAssertTrue(WidgetSnapshot.isTap(WidgetSnapshot.tapURL))
+    }
+
+    /// A URL's scheme and host carry no case, so another spelling of the
+    /// same URL is still the tap.
+    func testAnUpperCaseSpellingOfTheTapURLIsATap() throws {
+        XCTAssertTrue(WidgetSnapshot.isTap(try XCTUnwrap(URL(string: "COM.HomeAccount.APP://WIDGET"))))
+    }
+
+    func testGoogleSignInsRedirectIsNotATap() throws {
+        let redirect = try XCTUnwrap(URL(string: "com.googleusercontent.apps.123-abc:/oauth2callback?code=x&state=y"))
+        XCTAssertFalse(WidgetSnapshot.isTap(redirect))
+    }
+
+    func testAnotherHostUnderTheAppsSchemeIsNotATap() throws {
+        XCTAssertFalse(WidgetSnapshot.isTap(try XCTUnwrap(URL(string: "com.homeaccount.app://dashboard"))))
+    }
+
+    func testTheWidgetHostUnderAnotherSchemeIsNotATap() throws {
+        XCTAssertFalse(WidgetSnapshot.isTap(try XCTUnwrap(URL(string: "https://widget"))))
     }
 
     // MARK: Timeline dates

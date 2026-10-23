@@ -15,7 +15,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideAppDatepicker } from '../../core/config/datepicker.config';
 import { provideAppCharts } from '../../core/config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
@@ -111,7 +111,7 @@ describe('reports Categories tab (emulator smoke test)', () => {
         provideRouter(routes),
         provideNoMotion(),
         provideHttpClient(),
-        provideNativeDateAdapter(),
+        provideAppDatepicker(),
         provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },
@@ -220,6 +220,78 @@ describe('reports Categories tab (emulator smoke test)', () => {
         for (const id of categoryIds) {
           await deleteDoc(doc(firestore, `users/${uid}/categories/${id}`)).catch(() => undefined);
         }
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    },
+    CASE_TIMEOUT
+  );
+
+  // A panel lists its rows in each row's own currency, formatted in the
+  // account's language: a yen amount carries no decimals. The category's
+  // figures beside it stay in the base currency, with cents. The name keeps
+  // it out of the tie case's filter should a row outlive its case.
+  it(
+    "reads a yen row without decimals while the category's figures keep the base currency's cents",
+    async () => {
+      const categoryId = 'smoke-yen';
+      const transactionIds: string[] = [];
+
+      try {
+        await setDoc(doc(firestore, `users/${uid}/categories/${categoryId}`), {
+          userId: uid,
+          name: 'Yen Smoke',
+          icon: 'category',
+          color: '#607D8B',
+          type: 'expense',
+          order: 1,
+          isActive: true,
+          isDefault: false
+        });
+        const ref = await addDoc(collection(firestore, `users/${uid}/transactions`), {
+          userId: uid,
+          type: 'expense',
+          categoryId,
+          date: Timestamp.now(),
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          isRecurring: false,
+          amount: 1000,
+          currency: 'JPY',
+          amountInBaseCurrency: 6.67,
+          exchangeRate: 1 / 150,
+          description: 'Smoke yen'
+        });
+        transactionIds.push(ref.id);
+
+        mockAuth.setMockUser(createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true }
+        }));
+
+        await harness.navigateByUrl('/reports?tab=categories');
+        const page = harness.routeNativeElement!.ownerDocument;
+        const panel = (): Element | undefined =>
+          Array.from(page.querySelectorAll('app-category-breakdown mat-expansion-panel')).find(candidate =>
+            (candidate.querySelector('.category-name')?.textContent ?? '').trim().startsWith('Yen Smoke')
+          );
+
+        await waitForDom(
+          "the yen category's panel with its row",
+          () => panel()?.querySelector('.transaction-amount') != null
+        );
+        const yen = panel()!;
+        expect(yen.querySelector('.transaction-amount')?.textContent?.trim())
+          .withContext("the row, in its own currency")
+          .toBe('¥1,000');
+        const stats = Array.from(yen.querySelectorAll('.stats-grid .stat-value'))
+          .map(el => el.textContent?.trim());
+        expect(stats[0]).withContext('the total, in the base currency').toBe('$6.67');
+        expect(stats[1]).withContext('the average, in the base currency').toBe('$6.67');
+      } finally {
+        harness.fixture.destroy();
+        for (const id of transactionIds) {
+          await deleteDoc(doc(firestore, `users/${uid}/transactions/${id}`)).catch(() => undefined);
+        }
+        await deleteDoc(doc(firestore, `users/${uid}/categories/${categoryId}`)).catch(() => undefined);
         await new Promise(resolve => setTimeout(resolve, 200));
       }
     },

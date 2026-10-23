@@ -5,6 +5,7 @@ import {
   EnvironmentProviders,
   ErrorHandler,
   Injector,
+  LOCALE_ID,
   WritableSignal,
   createEnvironmentInjector,
   signal,
@@ -24,6 +25,9 @@ import { FirestoreSettings, connectFirestoreEmulator, initializeFirestore } from
 import { FirebaseStorage, connectStorageEmulator, getStorage } from '@angular/fire/storage';
 import { Analytics, AnalyticsSettings, initializeAnalytics, setConsent } from '@angular/fire/analytics';
 import { RemoteConfig } from '@angular/fire/remote-config';
+import { DateAdapter } from '@angular/material/core';
+import { MatDatepickerIntl } from '@angular/material/datepicker';
+import { MatStepperIntl } from '@angular/material/stepper';
 
 import {
   LEDGER_SWEEP_IDLE_FALLBACK_MS,
@@ -500,6 +504,27 @@ describe('appConfig', () => {
     // provideAnimations() answered this token with 'BrowserAnimations' and
     // pulled the deprecated animations runtime into the initial bundle.
     expect(providedTokens(appConfig.providers)).not.toContain(ANIMATION_MODULE_TYPE);
+  });
+
+  it("provides every picker's adapter and labels at the root, where routed pages and dialogs reach them", () => {
+    const tokens = providedTokens(appConfig.providers);
+
+    expect(tokens).withContext('the adapter').toContain(DateAdapter);
+    expect(tokens).withContext('the labels').toContain(MatDatepickerIntl);
+  });
+
+  // The stepper's words come from the import wizard's own providers: listing
+  // MatStepperIntl here pulls Material's stepper out of the lazy wizard chunk
+  // into the initial bundle (import-wizard.component.spec.ts proves the
+  // wizard brings them).
+  it('does not provide MatStepperIntl: the lazy import wizard does', () => {
+    expect(providedTokens(appConfig.providers)).not.toContain(MatStepperIntl);
+  });
+
+  // Pin: LOCALE_ID still feeds the registered locale data and the default the
+  // adapter is constructed with. Bites when the LOCALE_ID provider is dropped.
+  it('keeps the locale id Angular reads at bootstrap (pin)', () => {
+    expect(providedTokens(appConfig.providers)).toContain(LOCALE_ID);
   });
 });
 

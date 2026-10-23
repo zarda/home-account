@@ -11,6 +11,7 @@ import { provideNoMotion } from '../../../core/services/testing';
 /** Real en.json nav.* strings — the four destinations the bar actually renders. */
 const LABELS: Record<string, string> = {
   'nav.dashboard': 'Dashboard',
+  'nav.dashboardShort': 'Dashboard',
   'nav.transactions': 'Transactions',
   'nav.add': 'Add',
   'nav.budgets': 'Budgets',

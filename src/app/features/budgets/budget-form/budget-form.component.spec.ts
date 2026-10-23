@@ -4,6 +4,7 @@ import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSelect } from '@angular/material/select';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form.component';
 import { BudgetService } from '../../../core/services/budget.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -175,7 +176,8 @@ describe('BudgetFormComponent', () => {
           provide: NotificationService,
           useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
         },
-        provideNoMotion()
+        provideNoMotion(),
+        provideNativeDateAdapter()
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -566,6 +568,40 @@ describe('BudgetFormComponent', () => {
 
       const spinner = fixture.nativeElement.querySelector('mat-spinner');
       expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    describe('the start date', () => {
+      const errors = () =>
+        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-error'), n => n.textContent?.trim());
+
+      /** What the user does: replaces the field's text and leaves it. */
+      function typeStart(text: string): void {
+        const input = (fixture.nativeElement as HTMLElement)
+          .querySelector<HTMLInputElement>('input[formControlName="startDate"]')!;
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        input.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+      }
+
+      it('says a date it cannot read is not one', () => {
+        expect(errors()).toEqual([]);
+
+        typeStart('not a date');
+
+        expect(errors()).toEqual(['datepicker.dateInvalid']);
+      });
+
+      it('shows nothing once its text is cleared, the field being optional (pin)', () => {
+        component.form.patchValue({ startDate: new Date(2026, 7, 19) });
+        fixture.detectChanges();
+        expect(component.form.value.startDate).toEqual(new Date(2026, 7, 19));
+
+        typeStart('');
+
+        expect(component.form.value.startDate).toBeNull();
+        expect(errors()).toEqual([]);
+      });
     });
 
     describe('the category options', () => {

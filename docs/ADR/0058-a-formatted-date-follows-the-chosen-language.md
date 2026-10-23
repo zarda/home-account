@@ -1,6 +1,6 @@
 # 58. A formatted date follows the chosen language
 
-**Status:** Accepted, implemented · **Date:** 2026-08-19 · **Issues:** #84
+**Status:** Accepted, implemented; amended by [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md) · **Date:** 2026-08-19 · **Issues:** #84
 
 Extends the catalog rule in
 [0036](0036-a-user-facing-string-lives-in-the-catalog.md) from words to the

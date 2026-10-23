@@ -3,6 +3,7 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { InsightCardComponent } from './insight-card.component';
 import { CategoryService } from '../../../../core/services/category.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { PendingFiltersService } from '../../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightCard, Transaction } from '../../../../models';
@@ -295,6 +296,10 @@ describe('InsightCardComponent, through its own template', () => {
             categories: signal([createCategory({ id: 'food_groceries', name: 'categoryNames.groceries' })]),
           },
         },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
+        },
         { provide: TranslationService, useValue: createTranslationStub() },
         provideNoMotion(),
       ],
@@ -322,7 +327,7 @@ describe('InsightCardComponent, through its own template', () => {
 
     const headline = el().querySelector('app-stat-card.card-headline') as HTMLElement;
     expect(headline).not.toBeNull();
-    expect(headline.textContent).toContain('$118.00');
+    expect(headline.textContent).toContain('USD 118.00');
   });
 
   it('falls back to the raw metrics rather than blank for a kind it does not know', () => {
@@ -333,7 +338,7 @@ describe('InsightCardComponent, through its own template', () => {
     const rows = Array.from(el().querySelectorAll('.metric-row')).map(r => r.textContent?.trim());
     expect(rows.length).toBe(2);
     expect(rows[0]).toContain('secondHalfMean');
-    expect(rows[0]).toContain('$118.00');
+    expect(rows[0]).toContain('USD 118.00');
     expect(el().querySelector('app-stat-card')).toBeNull();
   });
 

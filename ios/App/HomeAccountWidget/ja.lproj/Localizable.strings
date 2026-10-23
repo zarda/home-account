@@ -1,0 +1,2 @@
+/* The widget's name in Japanese. Mirrors app.title in src/assets/i18n/ja.json; npm run i18n:check holds the two equal. */
+"app.title" = "家計簿";

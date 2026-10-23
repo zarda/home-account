@@ -1,12 +1,15 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA, SimpleChange, signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, SimpleChange, WritableSignal, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
+import { DateAdapter } from '@angular/material/core';
+import { MatDatepickerIntl } from '@angular/material/datepicker';
 import { MatSelect } from '@angular/material/select';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFiltersComponent } from './transaction-filters.component';
 import { TransactionService } from '../../../core/services/transaction.service';
-import { TranslationService } from '../../../core/services/translation.service';
+import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
+import { DATE_FORMAT_AUTO } from '../../../core/services/date-format.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
 import { GoalService } from '../../../core/services/goal.service';
@@ -17,6 +20,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  provideAppDatepickerForTests,
   provideNoMotion,
   ratio,
   settleAnimations,
@@ -30,6 +34,9 @@ describe('TransactionFiltersComponent', () => {
     getTransactionDatesForMonth: jasmine.Spy;
   };
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
+  // The reader the pickers follow: their language and the account's format.
+  let locale: WritableSignal<SupportedLocale>;
+  let dateFormat: WritableSignal<string>;
   let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
   let mockSearchHistory: {
     savedSearches: ReturnType<typeof signal<SavedSearch[]>>;
@@ -155,15 +162,23 @@ describe('TransactionFiltersComponent', () => {
       getGoals: jasmine.createSpy('getGoals').and.returnValue(of([]))
     };
 
+    locale = signal<SupportedLocale>('en');
+    dateFormat = signal(DATE_FORMAT_AUTO);
+
     await TestBed.configureTestingModule({
       imports: [TransactionFiltersComponent],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
-        { provide: TranslationService, useValue: mockTranslationService },
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: SearchHistoryService, useValue: mockSearchHistory },
         { provide: GoalService, useValue: mockGoalService },
-        provideNoMotion()
+        provideNoMotion(),
+        // What the app's root hands every picker: its adapter, over a reader
+        // this spec can turn, and labels this spec can tell apart from
+        // Material's own. A fresh instance per case. The TranslationService
+        // is the helper's, its labels this spec's.
+        provideAppDatepickerForTests({ dateFormat, locale, t: mockTranslationService.t }),
+        { provide: MatDatepickerIntl, useValue: Object.assign(new MatDatepickerIntl(), { openCalendarLabel: 'root' }) }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -1524,6 +1539,31 @@ describe('TransactionFiltersComponent', () => {
     }));
   });
 
+  // The pickers read the root's adapter and the root's labels; no page brings
+  // its own (#500).
+  describe("the pickers' adapter and labels", () => {
+    it('the From picker reads the root adapter and the root labels', () => {
+      component.expanded.set(true);
+      fixture.detectChanges();
+
+      const from = fixture.debugElement.query(By.css('.filter-grid input.mat-datepicker-input'));
+      expect(from).withContext('the From input').not.toBeNull();
+      expect(from.injector.get(DateAdapter) === TestBed.inject(DateAdapter))
+        .withContext("the From input's adapter is the root's")
+        .toBeTrue();
+
+      const toggles = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.filter-grid mat-datepicker-toggle button')
+      );
+      expect(toggles.length).withContext('the From and To calendar buttons').toBe(2);
+      toggles.forEach((toggle, index) =>
+        expect(toggle.getAttribute('aria-label'))
+          .withContext(`the ${index === 0 ? 'From' : 'To'} calendar button's name`)
+          .toBe('root')
+      );
+    });
+  });
+
   // A date field's input gets what is left of the field after its 12 px start
   // padding and the 44 px calendar button. The grid's fixed tracks, six to a
   // row at a 1024 px pane, left 40 px of it for a date 86 px wide, and a
@@ -1542,16 +1582,27 @@ describe('TransactionFiltersComponent', () => {
     // digit widths, and Material's fields read their face from the tokens.
     const FACE = "Verdana, 'DejaVu Sans', sans-serif";
 
+    // 12 October 2026 as each of the reader's settings shows it. A two-digit
+    // month and day, so every one is ten characters: eight digits and two
+    // separators.
+    const RENDERINGS: readonly { name: string; language: SupportedLocale; format: string; shown: string }[] = [
+      { name: 'auto in English', language: 'en', format: DATE_FORMAT_AUTO, shown: '10/12/2026' },
+      { name: 'auto in Japanese', language: 'ja', format: DATE_FORMAT_AUTO, shown: '2026/10/12' },
+      { name: 'MM/DD/YYYY', language: 'en', format: 'MM/DD/YYYY', shown: '10/12/2026' },
+      { name: 'DD/MM/YYYY', language: 'en', format: 'DD/MM/YYYY', shown: '12/10/2026' },
+      { name: 'YYYY-MM-DD', language: 'en', format: 'YYYY-MM-DD', shown: '2026-10-12' }
+    ];
+
     const host = () => fixture.nativeElement as HTMLElement;
 
-    /** Opens the panel on 10/10/2026 to 10/10/2026, then lets ngModel hand each date input its value. */
+    /** Opens the panel on 12 October 2026 to 12 October 2026, then lets ngModel hand each date input its value. */
     function render(): void {
       host().style.display = 'block';
       host().style.fontFamily = FACE;
       for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
         host().style.setProperty(token, FACE);
       }
-      const filters: TransactionFilters = { startDate: new Date(2026, 9, 10), endDate: new Date(2026, 9, 10) };
+      const filters: TransactionFilters = { startDate: new Date(2026, 9, 12), endDate: new Date(2026, 9, 12) };
       component.presetFilters = filters;
       component.ngOnChanges({ presetFilters: new SimpleChange(undefined, filters, false) });
       component.expanded.set(true);
@@ -1559,6 +1610,17 @@ describe('TransactionFiltersComponent', () => {
       flush();
       fixture.detectChanges();
       settleAnimations(document);
+    }
+
+    /**
+     * Turns the reader to a rendering's language and format, and lets the date
+     * inputs follow. The pickers built the adapter inside the Angular zone, so
+     * its effect is flushed there, by fixture.detectChanges().
+     */
+    function readAs(rendering: (typeof RENDERINGS)[number]): void {
+      locale.set(rendering.language);
+      dateFormat.set(rendering.format);
+      fixture.detectChanges();
     }
 
     /** Constrains the component's host so the grid inside the panel's padding is `width` px wide. */
@@ -1638,19 +1700,60 @@ describe('TransactionFiltersComponent', () => {
         .toEqual([jasmine.stringMatching(/^repeat\(auto-fit, minmax\(min\(100%, .+\), 1fr\)\)$/)]);
     });
 
-    it('shows the whole of a ten-character date beside its calendar button, at a 1024 px pane and on both phones', fakeAsync(() => {
+    it('shows From in Japanese once the reader turns to it, without a reload', fakeAsync(() => {
+      render();
+      const [from] = dateInputs();
+      expect(from.value).withContext('in English').toBe('10/12/2026');
+
+      locale.set('ja');
+      fixture.detectChanges();
+
+      expect(from.value).withContext('in Japanese').toBe('2026/10/12');
+    }));
+
+    it('shows From in the date format the reader chose', fakeAsync(() => {
       render();
 
-      for (const width of GRID_WIDTHS_PX) {
-        layOut(width);
-        dateInputs().forEach((input, index) => {
-          const which = `${index === 0 ? 'From' : 'To'} in a ${width} px grid`;
-          expect(input.value).withContext(`${which}: the date shown`).toBe('10/10/2026');
-          expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
-          expect(input.scrollWidth)
-            .withContext(`${which}: width of the date, px, against the input's`)
-            .toBeLessThanOrEqual(input.clientWidth);
-        });
+      dateFormat.set('DD/MM/YYYY');
+      fixture.detectChanges();
+
+      expect(dateInputs()[0].value).toBe('12/10/2026');
+    }));
+
+    it("reads a date typed into From in the order the reader's format names its fields", fakeAsync(() => {
+      render();
+      dateFormat.set('DD/MM/YYYY');
+      fixture.detectChanges();
+      const emitted = spyOn(component.filtersChanged, 'emit');
+      const [from] = dateInputs();
+
+      from.value = '19/08/2026';
+      from.dispatchEvent(new Event('input'));
+      from.dispatchEvent(new Event('change'));
+
+      expect(emitted).withContext('filters emitted').toHaveBeenCalledTimes(1);
+      expect(emitted.calls.mostRecent().args[0]?.startDate).withContext('the start date').toEqual(new Date(2026, 7, 19));
+    }));
+
+    // The dates are what each rendering shows; the widths are pins. Bites
+    // when the track's floor drops to calc(56px + 9ch): every rendering
+    // then overflows its input.
+    it('shows the whole of a ten-character date beside its calendar button in every rendering, at a 1024 px pane and on both phones', fakeAsync(() => {
+      render();
+
+      for (const rendering of RENDERINGS) {
+        readAs(rendering);
+        for (const width of GRID_WIDTHS_PX) {
+          layOut(width);
+          dateInputs().forEach((input, index) => {
+            const which = `${index === 0 ? 'From' : 'To'}, ${rendering.name}, in a ${width} px grid`;
+            expect(input.value).withContext(`${which}: the date shown`).toBe(rendering.shown);
+            expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
+            expect(input.scrollWidth)
+              .withContext(`${which}: width of the date, px, against the input's`)
+              .toBeLessThanOrEqual(input.clientWidth);
+          });
+        }
       }
     }));
 
@@ -1703,9 +1806,9 @@ describe('TransactionFiltersComponent', () => {
     // the test. The step is searched for rather than worked out from the
     // floor, since tracks stretch to fill whatever width they are given and
     // a floor too small would pass at any width computed from the right one.
-    // Every digit of the pinned face is as wide as any other, so 10/10/2026
-    // is as wide as any ten-character date.
-    it('shows the whole of a date in the narrowest grid that holds two columns (pin)', fakeAsync(() => {
+    // Every digit of the pinned face is as wide as any other, so each
+    // rendering is as wide as any date with its two separators.
+    it('shows the whole of a date in every rendering in the narrowest grid that holds two columns (pin)', fakeAsync(() => {
       const SEARCH_FROM_PX = 400;
       const SEARCH_DOWN_TO_PX = 200;
       render();
@@ -1723,19 +1826,21 @@ describe('TransactionFiltersComponent', () => {
       const grid = layOut(width);
       expect(columnsOf(grid)).withContext(`columns in a ${width} px grid, 1 px wider`).toBe(2);
 
-      const inputs = dateInputs();
-      const need = dateFieldNeedPx(inputs[0]);
-      inputs.forEach((input, index) => {
-        const which = `${index === 0 ? 'From' : 'To'} in a ${width} px grid`;
-        expect(input.value).withContext(`${which}: the date shown`).toBe('10/10/2026');
-        expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
-        expect(input.scrollWidth)
-          .withContext(`${which}: width of the date, px, against the input's`)
-          .toBeLessThanOrEqual(input.clientWidth);
-        expect(input.closest('mat-form-field')!.getBoundingClientRect().width)
-          .withContext(`${which}: field width, px, against what a date needs`)
-          .toBeGreaterThanOrEqual(need - 0.5);
-      });
+      const need = dateFieldNeedPx(dateInputs()[0]);
+      for (const rendering of RENDERINGS) {
+        readAs(rendering);
+        dateInputs().forEach((input, index) => {
+          const which = `${index === 0 ? 'From' : 'To'}, ${rendering.name}, in a ${width} px grid`;
+          expect(input.value).withContext(`${which}: the date shown`).toBe(rendering.shown);
+          expect(input.clientWidth).withContext(`${which}: the input's laid-out width, px`).toBeGreaterThan(0);
+          expect(input.scrollWidth)
+            .withContext(`${which}: width of the date, px, against the input's`)
+            .toBeLessThanOrEqual(input.clientWidth);
+          expect(input.closest('mat-form-field')!.getBoundingClientRect().width)
+            .withContext(`${which}: field width, px, against what a date needs`)
+            .toBeGreaterThanOrEqual(need - 0.5);
+        });
+      }
     }));
   });
 

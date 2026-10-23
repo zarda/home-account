@@ -82,6 +82,9 @@
           <input matInput [matDatepicker]="picker" formControlName="startDate" [placeholder]="'budget.useDefault' | translate">
           <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
           <mat-datepicker #picker></mat-datepicker>
+          @if (form.controls['startDate'].hasError('matDatepickerParse')) {
+            <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
+          }
         </mat-form-field>
       </div>
 

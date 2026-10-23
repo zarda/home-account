@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { AuthService } from './auth.service';
@@ -18,6 +18,7 @@ import {
   writeBiometricOptIn,
   writePinRecord
 } from '../utils/app-lock.utils';
+import { safeAppRoute } from '../utils/notification-route.utils';
 import { derivePinRecord, verifyPin } from '../utils/pin-hash.utils';
 import { appLockEnabled, effectiveAppLockTimeoutMinutes } from '../../models';
 
@@ -84,7 +85,7 @@ export class AppLockService {
     // guard to intercept.
     effect(() => {
       if (!this.isLocked()) return;
-      const url = this.router.url;
+      const url = this.relockTarget();
       if (url.startsWith('/lock') || url.startsWith('/login')) return;
       this.rememberRedirect(url);
       void this.router.navigate(['/lock']);
@@ -247,6 +248,19 @@ export class AppLockService {
     const userId = this.auth.userId();
     if (userId) writeBiometricOptIn(userId, on);
     this.credentialVersion.update(v => v + 1);
+  }
+
+  /**
+   * Where the person was headed when the lock engaged. A navigation that has
+   * not committed yet (a tap arriving as the app relocks) leaves `router.url`
+   * on the page it started from, and /lock would cancel it: its target is
+   * what to come back to. Read untracked, so only a lock transition runs the
+   * effect, never a navigation starting or ending.
+   */
+  private relockTarget(): string {
+    const pending = untracked(() => this.router.currentNavigation())?.extractedUrl;
+    const target = pending ? safeAppRoute(this.router.serializeUrl(pending)) : null;
+    return target ?? this.router.url;
   }
 
   rememberRedirect(url: string): void {

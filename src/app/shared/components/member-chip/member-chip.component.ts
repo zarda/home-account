@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, input, linkedSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, linkedSignal } from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
 import { HouseholdMemberIdentity, isMemberPhotoUrl } from '../../../models';
-import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TranslationService } from '../../../core/services/translation.service';
+import { givenName, memberDisplayName } from '../../../core/utils/person-name.utils';
 
 /**
  * A household member as a small avatar beside their name.
@@ -23,12 +24,14 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 @Component({
   selector: 'app-member-chip',
   standalone: true,
-  imports: [MatIconModule, TranslatePipe],
+  imports: [MatIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './member-chip.component.html',
   styleUrl: './member-chip.component.scss'
 })
 export class MemberChipComponent {
+  private readonly translation = inject(TranslationService);
+
   member = input.required<HouseholdMemberIdentity>();
 
   // Resets whenever the picture's address changes, so a failure never
@@ -44,9 +47,12 @@ export class MemberChipComponent {
   });
 
   /** Empty when the member gave no name: the rules allow that. */
-  protected readonly name = computed(() => this.member().displayName.trim());
+  private readonly given = computed(() => givenName(this.member().displayName));
+
+  /** What the chip says: the name, or the word for a member who gave none. */
+  protected readonly name = computed(() => memberDisplayName(this.member().displayName, key => this.translation.t(key)));
 
   // By code point, so a name that opens with a character outside the Basic
-  // Multilingual Plane is not split in half.
-  protected readonly initial = computed(() => Array.from(this.name())[0]?.toLocaleUpperCase() ?? '');
+  // Multilingual Plane is not split in half. Only a name gives an initial.
+  protected readonly initial = computed(() => Array.from(this.given())[0]?.toLocaleUpperCase() ?? '');
 }

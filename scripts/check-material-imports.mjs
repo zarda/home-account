@@ -59,9 +59,6 @@
  * What it deliberately cannot see:
  *   - A module outside the table. Skipped, counted and named in the output,
  *     so the table's coverage is a fact on screen rather than an assumption.
- *   - A provider-only module. MatNativeDateModule contributes no selector at
- *     all, so "unused in the template" says nothing about whether the
- *     component needs it; it is listed below and skipped by name.
  *   - Spec files. A test host's imports belong to the spec that declares it,
  *     and its template is usually a stub that proves nothing either way.
  *   - The standalone half of the same defect — a directive, component or pipe
@@ -139,15 +136,6 @@ const MODULE_SELECTORS = {
     'mat-chip-avatar', '[matChipAvatar]', 'mat-chip-trailing-icon', '[matChipTrailingIcon]',
     '[matChipRemove]', '[matChipEdit]', 'span[matChipEditInput]', 'input[matChipInputFor]'
   ],
-  MatDatepickerModule: [
-    'mat-datepicker', 'mat-datepicker-content', 'mat-datepicker-toggle', 'mat-datepicker-actions',
-    'mat-date-range-picker', 'mat-date-range-picker-actions', 'mat-date-range-input',
-    'mat-calendar', 'mat-calendar-header', '[mat-calendar-body]',
-    'mat-month-view', 'mat-year-view', 'mat-multi-year-view',
-    'input[matDatepicker]', 'input[matStartDate]', 'input[matEndDate]',
-    '[matDatepickerToggleIcon]', '[matDatepickerApply]', '[matDateRangePickerApply]',
-    '[matDatepickerCancel]', '[matDateRangePickerCancel]'
-  ],
   MatDialogModule: [
     'mat-dialog-container', 'mat-dialog-content', '[mat-dialog-content]', '[matDialogContent]',
     'mat-dialog-actions', '[mat-dialog-actions]', '[matDialogActions]',
@@ -224,14 +212,6 @@ const MODULE_SELECTORS = {
   MatToolbarModule: ['mat-toolbar', 'mat-toolbar-row'],
   MatTooltipModule: ['[matTooltip]', 'mat-tooltip-component']
 };
-
-/**
- * Modules that contribute providers and no selector. Absence from the
- * template is not evidence about them either way, so they are skipped by
- * name rather than left to the "outside the table" bucket, where a reader
- * would take them for a coverage gap.
- */
-const PROVIDER_ONLY = new Set(['MatNativeDateModule']);
 
 /**
  * `text` with every `//` and `/* *\/` comment blanked to spaces, newlines
@@ -520,7 +500,6 @@ function readSelects(template) {
 function run() {
   const findings = [];
   const untabled = new Map();
-  const providerOnly = new Map();
   const unparsed = [];
   const nullSelects = [];
   let components = 0;
@@ -548,10 +527,6 @@ function run() {
       }
       for (const { name, index } of block.modules) {
         entries++;
-        if (PROVIDER_ONLY.has(name)) {
-          providerOnly.set(name, (providerOnly.get(name) ?? 0) + 1);
-          continue;
-        }
         if (!(name in MODULE_SELECTORS)) {
           untabled.set(name, (untabled.get(name) ?? 0) + 1);
           continue;
@@ -587,11 +562,6 @@ function run() {
   console.log(
     `Checked ${entries} Mat*Module entries across ${components} components ` +
       `(${templateless} with no template).`
-  );
-  console.log(
-    providerOnly.size === 0
-      ? 'Skipped 0 provider-only entries.'
-      : `Skipped ${total(providerOnly)} provider-only entries: ${named(providerOnly)}`
   );
   console.log(
     untabled.size === 0
@@ -826,8 +796,7 @@ class A {}
     false
   );
 
-  // The two skip buckets, which are what makes the table's coverage legible.
-  check('a provider-only module is named, not checked', PROVIDER_ONLY.has('MatNativeDateModule') && !('MatNativeDateModule' in MODULE_SELECTORS), true);
+  // The skip bucket, which is what makes the table's coverage legible.
   check('a module outside the table has no selectors to match', moduleUsed('MatSidenavModule', '<mat-sidenav></mat-sidenav>'), false);
 
   // The second rule. A select that offers a null or undefined option has to

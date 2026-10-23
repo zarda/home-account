@@ -445,24 +445,18 @@ describe('DashboardLayoutService', () => {
     // The snackbar is the save's one report; a caller that ignores the
     // rejection must not also reach the global error handler.
     it('leaves no rejection unhandled for a caller that ignores it', async () => {
-      const unhandled: PromiseRejectionEvent[] = [];
-      const onUnhandled = (event: PromiseRejectionEvent) => unhandled.push(event);
-      window.addEventListener('unhandledrejection', onUnhandled);
-      // zone.js reports an unhandled rejection on the console.
+      // hide() runs from the spec body, outside NgZone, so zone.js reports a
+      // rejection nobody caught on console.error as the bare value: window
+      // never hears it. The spy is the detector.
       const consoleError = spyOn(console, 'error');
-      try {
-        auth.updatePreferenceFields.and.rejectWith(new Error('offline'));
-        start();
+      auth.updatePreferenceFields.and.rejectWith(new Error('offline'));
+      start();
 
-        void service.hide('chart');
-        await flush();
-        await flush();
-      } finally {
-        window.removeEventListener('unhandledrejection', onUnhandled);
-      }
+      void service.hide('chart');
+      await flush();
+      await flush();
 
       expect(notifications.error).toHaveBeenCalledTimes(1);
-      expect(unhandled).toEqual([]);
       expect(consoleError).not.toHaveBeenCalled();
     });
   });

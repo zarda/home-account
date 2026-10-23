@@ -159,7 +159,10 @@ describe('AuthService (emulator smoke test)', () => {
 
       const written = (await getDoc(userRef())).data()!;
       expect(written['email']).toBe('');
-      expect(written['displayName']).toBe('User');
+      // An anonymous sign-in names nobody: the key is stored (the rules require
+      // it on create) and holds '', not an English word.
+      expect('displayName' in written).toBeTrue();
+      expect(written['displayName']).toBe('');
       expect(written['preferences']).toEqual(DEFAULT_USER_PREFERENCES as unknown as Record<string, unknown>);
       // An anonymous account has no photo; the key must be absent, not null.
       expect('photoURL' in written).toBeFalse();

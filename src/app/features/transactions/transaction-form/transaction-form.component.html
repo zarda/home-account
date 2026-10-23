@@ -333,7 +333,9 @@
           (monthSelected)="onCalendarMonthChange($event)"
           (yearSelected)="onCalendarYearChange($event)"
         ></mat-datepicker>
-        @if (form.controls['date'].hasError('required')) {
+        @if (form.controls['date'].hasError('matDatepickerParse')) {
+          <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
+        } @else if (form.controls['date'].hasError('required')) {
           <mat-error>{{ 'transactions.dateRequired' | translate }}</mat-error>
         }
       </mat-form-field>

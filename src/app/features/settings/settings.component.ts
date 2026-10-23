@@ -9,6 +9,7 @@ import { MatDialog } from '@angular/material/dialog';
 
 import { AuthService } from '../../core/services/auth.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { accountDisplayName } from '../../core/utils/person-name.utils';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -40,7 +41,9 @@ export class SettingsComponent {
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
 
-  userName = computed(() => this.authService.currentUser()?.displayName || 'User');
+  userName = computed(() =>
+    accountDisplayName(this.authService.currentUser()?.displayName, key => this.translationService.t(key))
+  );
   userEmail = computed(() => this.authService.currentUser()?.email || '');
   userPhoto = computed(() => this.authService.currentUser()?.photoURL || '');
 

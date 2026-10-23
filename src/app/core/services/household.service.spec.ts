@@ -1186,6 +1186,21 @@ describe('HouseholdService', () => {
       expect(commits).toEqual([]);
     });
 
+    it('writes an empty name, never the spaces, for a profile that holds only spaces (pin)', async () => {
+      user.set(userFixture({ displayName: '   ' }));
+      const commits = recordCommits();
+
+      attach(confirmed(member({ displayName: 'Old name' })));
+      TestBed.tick();
+      await fixtureSettled();
+
+      expect(commits).toEqual([[{
+        op: 'update',
+        path: OWN_PATH,
+        data: { displayName: '', photoURL: 'https://lh3.googleusercontent.com/a/me' }
+      }]]);
+    });
+
     it('waits for the server: a document the cache answered writes nothing', async () => {
       const commits = recordCommits();
 

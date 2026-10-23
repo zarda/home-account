@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { combineLatest } from 'rxjs';
 import { AuthService } from './auth.service';
@@ -32,6 +32,12 @@ export interface InsightChip {
 }
 
 /**
+ * What the analysis found for one chip, before it is worded: the category is
+ * kept as its id and named only when the chip is read.
+ */
+type InsightFinding = Omit<InsightChip, 'labelParams'> & { categoryId: string };
+
+/**
  * Turns the spending analysis behind the AI-insights grounding (amount
  * anomalies, category deltas, top category) into tappable quick-filter
  * chips for the current month. Pure local computation — no LLM involved —
@@ -54,7 +60,26 @@ export class InsightChipsService {
   /** A top-category chip needs at least this many transactions to matter. */
   private static readonly TOP_CATEGORY_MIN_COUNT = 3;
 
-  readonly chips = signal<InsightChip[]>([]);
+  private readonly findings = signal<InsightFinding[]>([]);
+
+  /**
+   * The chips as a reader sees them. The category inside each one is named
+   * here, where it is read, and not when the chips were found: a name stored
+   * then stays in the language and the catalog of categories of that moment,
+   * while the sentence around it follows a language switch (ADR 0182). The
+   * catalog version is read explicitly, so a switch renames the category even
+   * when a `t` reads no signal of its own.
+   */
+  readonly chips = computed<InsightChip[]>(() => {
+    this.translationService.translationsVersion();
+    const categories = this.categoryService.categories();
+    return this.findings().map(({ categoryId, ...chip }) => ({
+      ...chip,
+      labelParams: {
+        category: categoryDisplayName(categories, categoryId, key => this.translationService.t(key)),
+      },
+    }));
+  });
   readonly isLoading = signal<boolean>(false);
 
   load(): void {
@@ -76,23 +101,23 @@ export class InsightChipsService {
       .subscribe({
         next: ([baselineExpenses, previousTotals]) => {
           this.isLoading.set(false);
-          this.chips.set(
-            this.buildChips(baselineExpenses, previousTotals.byCategory, monthStart, monthEnd)
+          this.findings.set(
+            this.findChips(baselineExpenses, previousTotals.byCategory, monthStart, monthEnd)
           );
         },
         error: () => {
           this.isLoading.set(false);
-          this.chips.set([]);
+          this.findings.set([]);
         },
       });
   }
 
-  private buildChips(
+  private findChips(
     baselineExpenses: Transaction[],
     previousByCategory: CategoryTotal[],
     monthStart: Date,
     monthEnd: Date,
-  ): InsightChip[] {
+  ): InsightFinding[] {
     const currentExpenses = baselineExpenses.filter(t => dateOf(t) >= monthStart);
     if (currentExpenses.length === 0) {
       return [];
@@ -106,7 +131,7 @@ export class InsightChipsService {
       endDate: monthEnd,
     };
 
-    const chips: InsightChip[] = [];
+    const chips: InsightFinding[] = [];
     const usedCategories = new Set<string>();
 
     // Unusual amounts: one chip per anomalous category, largest amount first.
@@ -128,7 +153,7 @@ export class InsightChipsService {
         id: `anomaly:${categoryId}`,
         kind: 'anomaly',
         labelKey: 'transactions.chipUnusual',
-        labelParams: { category: this.categoryName(categoryId) },
+        categoryId,
         icon: 'trending_up',
         filters,
       });
@@ -145,7 +170,7 @@ export class InsightChipsService {
         id: `new:${emerged.categoryId}`,
         kind: 'newCategory',
         labelKey: 'transactions.chipNewCategory',
-        labelParams: { category: this.categoryName(emerged.categoryId) },
+        categoryId: emerged.categoryId,
         icon: 'fiber_new',
         filters: { ...monthFilters, categoryId: emerged.categoryId },
       });
@@ -165,7 +190,7 @@ export class InsightChipsService {
         id: `top:${top.categoryId}`,
         kind: 'topCategory',
         labelKey: 'transactions.chipTopCategory',
-        labelParams: { category: this.categoryName(top.categoryId) },
+        categoryId: top.categoryId,
         icon: 'leaderboard',
         filters: { ...monthFilters, categoryId: top.categoryId },
       });
@@ -182,10 +207,5 @@ export class InsightChipsService {
     return expenses
       .filter(t => t.categoryId === categoryId)
       .every(t => t.currency === currency);
-  }
-
-  private categoryName(categoryId: string): string {
-    return categoryDisplayName(
-      this.categoryService.categories(), categoryId, key => this.translationService.t(key));
   }
 }

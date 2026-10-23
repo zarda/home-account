@@ -47,7 +47,7 @@ Each stream is open only while something on the page reads it:
 | Stream | Opened | Closed |
 |---|---|---|
 | The recent rows (`getRecentTransactions(5)`) | Once, by a constructor effect, while Recent Transactions is not hidden | When the card is hidden; its rows are cleared |
-| The upcoming window (`getUpcomingSchedule`) | Once, by a constructor effect, while Upcoming Bills is not hidden, the weekly recap is on, or the build carries the widget plugin | When none of the three holds; the schedule is cleared |
+| The upcoming window (`getUpcomingSchedule`) | Once, by a constructor effect, while Upcoming Bills is not hidden or the weekly recap is on | When neither holds; the schedule is cleared |
 | Budgets (`getBudgets()`) | Once, in `ngOnInit()` | Never, while the page is open |
 | AI Insights' trailing window (`getExpensesInRange`) | For each period, while the card is shown on a RAG tier with a window | See [What a hidden card skips](#what-a-hidden-card-skips) |
 
@@ -55,11 +55,12 @@ Neither the recent rows nor the upcoming window follows the selected
 period, so a period change reopens neither. Their gates are `computed`
 booleans, `recentWanted` and `upcomingWanted`, so a change to another card
 or another preference never reopens a listener. The upcoming window's other
-two readers are the recap's bills line and the widget's *Next scheduled*;
-`WidgetSnapshotService.available` is true on a build that carries the
-widget plugin ([widget.md](widget.md)). Budgets stays open whatever is
-hidden: the budget alert banner, which cannot be hidden, the recap's
-alerts, AI Insights, the widget and the reminder sweep all read the list.
+reader is the recap's bills line. The widget holds no listener open: its
+*Next scheduled* reads the window only while Upcoming Bills is shown, since
+the widget leaves out a card the account hid ([widget.md](widget.md)).
+Budgets stays open whatever is hidden: the budget alert banner, which cannot be
+hidden, the recap's alerts, AI Insights and the reminder sweep all read the
+list, and the widget does while Budget Progress is shown.
 Spending by Category has no listener of its own; it reads the transactions
 the period query already loaded.
 
@@ -298,10 +299,10 @@ subscription and does nothing.
 
 **`?bill`**
 
-1. **Upcoming Bills hidden.** The page announces
-   `dashboard.billLinkCardHidden` (*Upcoming Bills is hidden on the
-   dashboard, so here are your recurring transactions instead.*) and goes to
-   `/budgets?tab=recurring`.
+1. **Upcoming Bills hidden.** The page goes to `/budgets?tab=recurring` and,
+   once that page is open, announces `dashboard.billLinkCardHidden`
+   (*Upcoming Bills is hidden on the dashboard, so here are your recurring
+   transactions instead.*).
 2. **Otherwise it waits for the upcoming listener's first emission**, since
    the signal's initial empty schedule would answer "absent" for every rule,
    and then binds the rule to `app-upcoming-bills`' `focusRuleId`.
@@ -328,15 +329,28 @@ subscription and does nothing.
    has been followed is dropped, so it neither sends the user away from that
    link nor moves focus off it.
 5. **No row, then.** A rule due past the fortnight, already posted or
-   deleted, an unanswered read (offline, say), or a second "absent" announces
-   `dashboard.billLinkNotUpcoming` (*That bill isn't in Upcoming Bills right
-   now, so here are your recurring transactions instead.*) and goes to
-   `/budgets?tab=recurring`, which lists every rule that still exists.
+   deleted, an unanswered read (offline, say), or a second "absent" goes to
+   `/budgets?tab=recurring`, which lists every rule that still exists, and
+   once that page is open announces `dashboard.billLinkNotUpcoming` (*That
+   bill isn't in Upcoming Bills right now, so here are your recurring
+   transactions instead.*).
 
 Both redirects replace the history entry, so Back from the rules goes to
 wherever the user was before the link, not to the link and straight back. A
 focused row is not announced: moving focus to it is what has a screen reader
 read it.
+
+Both sentences are said once the rules page is open, never before the
+navigation lands. `AnnouncerService` places messages in the order it gets them,
+and on a cold start the budgets chunk is fetched while the navigation is
+pending: the recap's composition lands in that window and queues its own
+sentence. Said first, the reason would be placed ahead of it and the live
+region would end on the recap's stale sentence. After the landing the
+dashboard and its cards are gone, so nothing on them can follow the reason.
+A navigation that did not land (a newer one superseded it, or a guard
+refused it) resolves `false` and says nothing, since the reason would
+describe a page the user is not on; one a guard redirected resolves with the
+redirect's outcome.
 
 **`?recap`**
 
@@ -448,10 +462,11 @@ card skips:
   which are cleared. Shown again, it opens a new listener and shows its
   empty state until the first snapshot arrives.
 - **Upcoming Bills**: the same, unless the weekly recap is on, since its
-  bills line reads the same window, or the build carries the widget plugin,
-  since *Next scheduled* does ([widget.md](widget.md)).
+  bills line reads the same window. The widget leaves *Next scheduled* out
+  ([widget.md](widget.md)).
 - **Budget Progress**: nothing. The budgets stream stays open for the
-  banner, the recap, AI Insights, the widget and the reminder sweep.
+  banner, the recap, AI Insights and the reminder sweep. The widget leaves
+  *Top budget* out.
 - **Spending by Category**: nothing to skip; it has no listener of its own.
 - **AI Insights**: the trailing-window `getExpensesInRange` query that
   grounds its anomaly baseline, but only on a RAG tier that runs one at all
@@ -521,10 +536,6 @@ is not a map.
 - **A field this session changes is written whole from its copy.** Another
   device's change to that same field since this session began is
   overwritten. The other field is left alone.
-- **On a build with the widget plugin, a hidden Upcoming Bills card keeps
-  its listener whether or not a widget is placed.**
-  `WidgetSnapshotService.available` means the plugin is there; nothing in
-  the service can tell whether a widget is on the home screen.
 - **A build from before this one still writes the whole layout.** A device
   still running one writes the whole key on its next change, from its
   resolved layout: it pins the order again and drops any id it does not

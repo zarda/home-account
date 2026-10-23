@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 
@@ -38,6 +37,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { baseCurrencyOf } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { LocaleCurrencyPipe } from '../../../shared/pipes/locale-currency.pipe';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
@@ -48,7 +48,7 @@ import { NotificationService } from '../../../core/services/notification.service
   standalone: true,
   imports: [
     LoadingSpinnerComponent,
-    CommonModule,
+    LocaleCurrencyPipe,
     RouterLink,
     MatIconModule,
     MatButtonModule,

@@ -35,7 +35,8 @@ export class BottomNavComponent {
   // Five slots, centre action included — membership here is a surface
   // decision (a sixth item crowds the labels on a phone), but every real
   // destination's label and icon come from the shared list via navItemFor,
-  // so this can never drift from what the sidebar shows for the same route.
+  // so the icon and labelKey can never drift from the sidebar's; the one
+  // allowed difference is a shortLabelKey (nav-items.ts).
   private navItemsConfig: NavItem[] = [
     navItemFor('/dashboard'),
     navItemFor('/transactions'),
@@ -44,10 +45,13 @@ export class BottomNavComponent {
     navItemFor('/reports'),
   ];
 
+  // The bar's room is the one place an item may read a shorter name than its
+  // `labelKey` (nav-items.ts): the same label feeds the visible text and the
+  // link's aria-label, so the two cannot disagree.
   navItems = computed(() =>
     this.navItemsConfig.map((item) => ({
       ...item,
-      label: this.translationService.t(item.labelKey),
+      label: this.translationService.t(item.shortLabelKey ?? item.labelKey),
     }))
   );
 

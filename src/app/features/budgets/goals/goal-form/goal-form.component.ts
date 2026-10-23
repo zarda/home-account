@@ -15,8 +15,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
+import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
 
 import { AuthService } from '../../../../core/services/auth.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -51,8 +50,9 @@ export interface GoalFormDialogData {
     MatButtonModule,
     MatButtonToggleModule,
     MatIconModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
+    MatDatepicker,
+    MatDatepickerInput,
+    MatDatepickerToggle,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

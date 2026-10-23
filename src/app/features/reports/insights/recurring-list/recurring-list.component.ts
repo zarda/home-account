@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { CurrencyPipe, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
@@ -22,6 +22,7 @@ import {
   RecurringFormDialogData,
 } from '../../../budgets/recurring-transactions/recurring-form-dialog/recurring-form-dialog.component';
 import { CategoryChipComponent } from '../../../../shared/components/category-chip/category-chip.component';
+import { LocaleCurrencyPipe } from '../../../../shared/pipes/locale-currency.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { InsightTransactionListComponent } from '../insight-card/insight-transaction-list.component';
 
@@ -45,7 +46,7 @@ import { InsightTransactionListComponent } from '../insight-card/insight-transac
   selector: 'app-recurring-list',
   standalone: true,
   imports: [
-    CurrencyPipe,
+    LocaleCurrencyPipe,
     NgTemplateOutlet,
     MatButtonModule,
     MatCardModule,
@@ -89,11 +90,6 @@ export class RecurringListComponent {
    */
   readonly hiddenCount = computed(
     () => this.summary().groupCount - this.summary().groups.length);
-
-  categoryName(categoryId: string): string {
-    const category = this.categoryService.categories().find(item => item.id === categoryId);
-    return category?.name ? this.translation.t(category.name) : categoryId;
-  }
 
   categoryIcon(categoryId: string): string {
     return this.categoryService.categories()

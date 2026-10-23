@@ -44,6 +44,24 @@ describe('DateFormatService', () => {
     service = TestBed.inject(DateFormatService);
   });
 
+  // A fresh service over a signed-in user holding this stored format. The
+  // locale is read per call, so a spec switches language on the mock.
+  function withDateFormat(dateFormat: string): DateFormatService {
+    return withUser({ preferences: { dateFormat } });
+  }
+
+  function withUser(user: unknown): DateFormatService {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        DateFormatService,
+        { provide: AuthService, useValue: { currentUser: signal(user) } },
+        { provide: TranslationService, useValue: mockTranslationService },
+      ],
+    });
+    return TestBed.inject(DateFormatService);
+  }
+
   it('should be created', () => {
     expect(service).toBeTruthy();
   });
@@ -73,21 +91,6 @@ describe('DateFormatService', () => {
     // 'auto' — the default for new accounts — follows the language (#84).
     describe('against the stored preference', () => {
       const day = new Date(2024, 0, 15);
-
-      function withDateFormat(dateFormat: string): DateFormatService {
-        TestBed.resetTestingModule();
-        TestBed.configureTestingModule({
-          providers: [
-            DateFormatService,
-            {
-              provide: AuthService,
-              useValue: { currentUser: signal({ preferences: { dateFormat } }) },
-            },
-            { provide: TranslationService, useValue: mockTranslationService },
-          ],
-        });
-        return TestBed.inject(DateFormatService);
-      }
 
       it('keeps an explicitly stored pattern', () => {
         expect(withDateFormat('MM/DD/YYYY').formatDate(day)).toBe('01/15/2024');
@@ -131,6 +134,154 @@ describe('DateFormatService', () => {
             year: 'numeric', month: 'numeric', day: 'numeric',
           }).format(day));
       });
+    });
+  });
+
+  // The one read of what the user stored. The profile select seeds from it and
+  // whatever must follow the setting reads it, so "auto when absent" is
+  // written once (#500).
+  describe('preference', () => {
+    it('is the stored format', () => {
+      expect(withDateFormat('DD/MM/YYYY').preference()).toBe('DD/MM/YYYY');
+      expect(withDateFormat('YYYY-MM-DD').preference()).toBe('YYYY-MM-DD');
+    });
+
+    it('is auto when nothing is stored', () => {
+      expect(withUser({ preferences: {} }).preference()).toBe('auto');
+      expect(withUser({}).preference()).toBe('auto');
+      expect(withDateFormat('').preference()).toBe('auto');
+    });
+
+    it('is auto when nobody is signed in', () => {
+      expect(withUser(null).preference()).toBe('auto');
+    });
+
+    it('follows the signed-in user\'s stored format', () => {
+      const user = signal<unknown>({ preferences: { dateFormat: 'DD/MM/YYYY' } });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          DateFormatService,
+          { provide: AuthService, useValue: { currentUser: user } },
+          { provide: TranslationService, useValue: mockTranslationService },
+        ],
+      });
+      const live = TestBed.inject(DateFormatService);
+      const seen = [live.preference()];
+
+      user.set({ preferences: { dateFormat: 'YYYY-MM-DD' } });
+      seen.push(live.preference());
+      user.set({ preferences: {} });
+      seen.push(live.preference());
+
+      expect(seen).toEqual(['DD/MM/YYYY', 'YYYY-MM-DD', 'auto']);
+    });
+  });
+
+  describe('fieldOrder', () => {
+    it('names the order each fixed format writes its fields in', () => {
+      expect(withDateFormat('MM/DD/YYYY').fieldOrder()).toBe('mdy');
+      expect(withDateFormat('DD/MM/YYYY').fieldOrder()).toBe('dmy');
+      expect(withDateFormat('YYYY-MM-DD').fieldOrder()).toBe('ymd');
+    });
+
+    it('follows the chosen language on auto', () => {
+      const auto = withDateFormat('auto');
+
+      mockTranslationService.getIntlLocale.and.returnValue('en-US');
+      expect(auto.fieldOrder()).toBe('mdy');
+      mockTranslationService.getIntlLocale.and.returnValue('ja-JP');
+      expect(auto.fieldOrder()).toBe('ymd');
+      mockTranslationService.getIntlLocale.and.returnValue('zh-Hant-TW');
+      expect(auto.fieldOrder()).toBe('ymd');
+    });
+
+    it('does not let a fixed format follow the language', () => {
+      mockTranslationService.getIntlLocale.and.returnValue('ja-JP');
+
+      expect(withDateFormat('MM/DD/YYYY').fieldOrder()).toBe('mdy');
+    });
+  });
+
+  describe('parseDate', () => {
+    const aug9 = new Date(2026, 7, 9).getTime();
+    const sep8 = new Date(2026, 8, 8).getTime();
+
+    function read(service: DateFormatService, text: string): number | null {
+      return service.parseDate(text)?.getTime() ?? null;
+    }
+
+    it('reads the digits in the order the stored format names', () => {
+      expect(read(withDateFormat('MM/DD/YYYY'), '08/09/2026')).toBe(aug9);
+      expect(read(withDateFormat('DD/MM/YYYY'), '08/09/2026')).toBe(sep8);
+      expect(read(withDateFormat('YYYY-MM-DD'), '2026-08-09')).toBe(aug9);
+    });
+
+    it('reads the digits in the order of the chosen language on auto', () => {
+      const auto = withDateFormat('auto');
+
+      mockTranslationService.getIntlLocale.and.returnValue('en-US');
+      expect(read(auto, '8/9/2026')).toBe(aug9);
+      mockTranslationService.getIntlLocale.and.returnValue('ja-JP');
+      expect(read(auto, '2026/8/9')).toBe(aug9);
+      expect(read(auto, '2026年8月9日')).toBe(aug9);
+    });
+
+    it('is null for text that is no date in that order', () => {
+      expect(withDateFormat('MM/DD/YYYY').parseDate('Aug 9 2026')).toBeNull();
+      expect(withDateFormat('MM/DD/YYYY').parseDate('')).toBeNull();
+      expect(withDateFormat('DD/MM/YYYY').parseDate('8/19/2026')).toBeNull();
+      expect(withDateFormat('MM/DD/YYYY').parseDate('2/31/2026')).toBeNull();
+    });
+
+    // Every stored value is a string the account document held, so one that
+    // names an Object.prototype member must not be looked up as a format.
+    it('reads a stored name that is an Object.prototype member as auto', () => {
+      const day = new Date(2026, 7, 9);
+      const autoText = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric', month: 'numeric', day: 'numeric',
+      }).format(day);
+
+      for (const stored of ['toString', '__proto__', 'constructor', 'hasOwnProperty']) {
+        const service = withDateFormat(stored);
+
+        expect(service.formatDate(day)).withContext(`${stored} formats`).toBe(autoText);
+        expect(read(service, autoText)).withContext(`${stored} parses`).toBe(aug9);
+        expect(service.fieldOrder()).withContext(`${stored} order`).toBe('mdy');
+      }
+    });
+
+    // A reader who is shown a date and types it back must get the same day:
+    // the writer and the reader are two directions over one table.
+    describe('round trip', () => {
+      const days = [
+        new Date(2026, 7, 9),
+        new Date(2026, 7, 19),
+        new Date(2026, 0, 5),
+        new Date(2026, 11, 31),
+        new Date(2028, 1, 29),
+      ];
+      const cases: { name: string; stored: string; locale: string }[] = [
+        { name: 'MM/DD/YYYY', stored: 'MM/DD/YYYY', locale: 'en-US' },
+        { name: 'DD/MM/YYYY', stored: 'DD/MM/YYYY', locale: 'en-US' },
+        { name: 'YYYY-MM-DD', stored: 'YYYY-MM-DD', locale: 'en-US' },
+        { name: 'auto in en', stored: 'auto', locale: 'en-US' },
+        { name: 'auto in ja', stored: 'auto', locale: 'ja-JP' },
+        { name: 'auto in tc', stored: 'auto', locale: 'zh-Hant-TW' },
+      ];
+
+      for (const { name, stored, locale } of cases) {
+        it(`reads back what ${name} wrote`, () => {
+          mockTranslationService.getIntlLocale.and.returnValue(locale);
+          const service = withDateFormat(stored);
+
+          for (const day of days) {
+            const written = service.formatDate(day);
+
+            expect(read(service, written)).withContext(written).toBe(day.getTime());
+          }
+        });
+      }
     });
   });
 

@@ -1,5 +1,6 @@
 import { Timestamp } from '@angular/fire/firestore';
 import {
+  DateFieldOrder,
   addDays,
   addMonths,
   budgetPeriodKey,
@@ -24,6 +25,7 @@ import {
   parseDateInput,
   parseDayKey,
   parseMonthKey,
+  parseTypedDate,
   periodWindow,
   pickerBounds,
   previousPeriodWindow,
@@ -302,6 +304,133 @@ describe('transaction-date.utils', () => {
       // Beyond the range a Date can hold: null rather than an Invalid Date,
       // which no caller of this function is prepared to carry.
       expect(parseDateInput({ seconds: 1e15 })).toBeNull();
+    });
+  });
+
+  // What a reader typed into a date field, read in the order their format
+  // names its fields (#500). Every expectation is a local-midnight instant
+  // built from parts, so the three zones this file runs under all agree.
+  describe('parseTypedDate', () => {
+    const ORDERS: readonly DateFieldOrder[] = ['ymd', 'mdy', 'dmy'];
+    const aug19 = new Date(2026, 7, 19).getTime();
+
+    function read(text: string, order: DateFieldOrder): number | null {
+      return parseTypedDate(text, order)?.getTime() ?? null;
+    }
+
+    // `new Date('2026-08-19')` is UTC midnight: the 18th at 20:00 in New York
+    // and 09:00 on the 19th in Tokyo, neither of them the day that was typed.
+    it('reads an ISO date as local midnight in every order', () => {
+      for (const order of ORDERS) {
+        expect(read('2026-08-19', order)).withContext(order).toBe(aug19);
+      }
+    });
+
+    it('reads each order\'s fields', () => {
+      expect(read('2026/8/19', 'ymd')).toBe(aug19);
+      expect(read('8/19/2026', 'mdy')).toBe(aug19);
+      expect(read('19/8/2026', 'dmy')).toBe(aug19);
+    });
+
+    it('splits on a slash, a dot, a hyphen or whitespace, and around any of them', () => {
+      expect(read('8.19.2026', 'mdy')).toBe(aug19);
+      expect(read('8-19-2026', 'mdy')).toBe(aug19);
+      expect(read('8 19 2026', 'mdy')).toBe(aug19);
+      expect(read(' 8 / 19 / 2026 ', 'mdy')).toBe(aug19);
+      expect(read('19.8.2026', 'dmy')).toBe(aug19);
+    });
+
+    it('reads the same digits as a different day under a different order', () => {
+      expect(read('08/09/2026', 'dmy')).toBe(new Date(2026, 8, 8).getTime());
+      expect(read('08/09/2026', 'mdy')).toBe(new Date(2026, 7, 9).getTime());
+    });
+
+    it('reads a leading four-digit year as the year in every order', () => {
+      for (const order of ORDERS) {
+        expect(read('2026/8/19', order)).withContext(`${order} slash`).toBe(aug19);
+        expect(read('2026.08.19', order)).withContext(`${order} dot`).toBe(aug19);
+        expect(read('2026 8 19', order)).withContext(`${order} space`).toBe(aug19);
+        expect(read('2026-8-19', order)).withContext(`${order} hyphen`).toBe(aug19);
+      }
+    });
+
+    it('reads full-width digits and separators', () => {
+      for (const order of ORDERS) {
+        expect(read('２０２６／８／１９', order))
+          .withContext(order).toBe(aug19);
+        // The Japanese IME's own separators: the middle dot it types for a
+        // slash, the long-vowel mark it types for a hyphen and the full stop
+        // it types for a dot in kana mode. NFKC leaves all three as they are,
+        // so the separator pattern names them.
+        expect(read('２０２６・８・１９', order))
+          .withContext(`${order} middle dot`).toBe(aug19);
+        expect(read('２０２６ー８ー１９', order))
+          .withContext(`${order} long-vowel mark`).toBe(aug19);
+        expect(read('２０２６。８。１９', order))
+          .withContext(`${order} full stop`).toBe(aug19);
+      }
+      // NFKC folds the half-width full stop into 。, so it reads the same way.
+      expect(read('2026｡8｡19', 'ymd')).toBe(aug19);
+      expect(read('２０２６-０８-１９', 'mdy')).toBe(aug19);
+      expect(read('８／１９／２０２６', 'mdy')).toBe(aug19);
+    });
+
+    it('reads the year, month and day characters, and a trailing day character', () => {
+      for (const order of ORDERS) {
+        expect(read('2026年8月19日', order)).withContext(order).toBe(aug19);
+        expect(read('2026年 8月 19日', order)).withContext(`${order} spaced`).toBe(aug19);
+        expect(read('2026年8月19', order)).withContext(`${order} bare`).toBe(aug19);
+      }
+    });
+
+    it('reads a two-digit year as 20YY', () => {
+      expect(read('8/19/26', 'mdy')).toBe(aug19);
+      expect(read('26/8/19', 'ymd')).toBe(aug19);
+      expect(read('19/8/26', 'dmy')).toBe(aug19);
+      expect(read('8/19/99', 'mdy')).toBe(new Date(2099, 7, 19).getTime());
+    });
+
+    it('does not limit a month or a day to two digits', () => {
+      expect(read('8/019/2026', 'mdy')).toBe(aug19);
+      expect(read('019/08/2026', 'dmy')).toBe(aug19);
+      expect(read('2026/008/19', 'ymd')).toBe(aug19);
+    });
+
+    // Date maps the years 0 to 99 onto 1900 to 1999, so the round trip that
+    // refuses 31 February refuses these too rather than filing a 1926 row.
+    it('refuses a one- or three-digit year, and a four-digit one below 100', () => {
+      expect(parseTypedDate('8/19/6', 'mdy')).toBeNull();
+      expect(parseTypedDate('8/19/202', 'mdy')).toBeNull();
+      expect(parseTypedDate('8/19/0026', 'mdy')).toBeNull();
+      expect(parseTypedDate('0026-08-19', 'ymd')).toBeNull();
+    });
+
+    it('is null for text that is not three numeric fields', () => {
+      for (const order of ORDERS) {
+        for (const text of [
+          'Aug 19 2026', '8/19', '2', '2026/8/', '8/19/202', '20260819',
+          '2026-08-19T10:00', '', '   ', '8/19/2026/1', '2026//8/19',
+        ]) {
+          expect(parseTypedDate(text, order)).withContext(`${order} "${text}"`).toBeNull();
+        }
+      }
+    });
+
+    it('is null for a day the calendar does not have', () => {
+      expect(parseTypedDate('2/31/2026', 'mdy')).toBeNull();
+      expect(parseTypedDate('2026-02-31', 'mdy')).toBeNull();
+      expect(parseTypedDate('2026-02-31', 'ymd')).toBeNull();
+      expect(parseTypedDate('2026/2/31', 'dmy')).toBeNull();
+      expect(parseTypedDate('2/29/2026', 'mdy')).toBeNull();
+      expect(read('2/29/2028', 'mdy')).toBe(new Date(2028, 1, 29).getTime());
+    });
+
+    it('is null for a month or day that does not fit the order', () => {
+      // 19 is no month: the day-first reader does not roll it into 2027.
+      expect(parseTypedDate('8/19/2026', 'dmy')).toBeNull();
+      expect(parseTypedDate('19/8/2026', 'mdy')).toBeNull();
+      expect(parseTypedDate('2026/0/19', 'ymd')).toBeNull();
+      expect(parseTypedDate('2026/8/0', 'ymd')).toBeNull();
     });
   });
 

@@ -1,6 +1,6 @@
 # 128. A Material module a template never uses fails the build
 
-**Status:** Accepted, implemented · **Date:** 2026-09-12 · **Issues:** #420
+**Status:** Accepted, implemented; amended by [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md) · **Date:** 2026-09-12 · **Issues:** #420
 
 Reference documentation lives in [../performance.md](../performance.md).
 

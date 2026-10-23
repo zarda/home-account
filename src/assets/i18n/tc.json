@@ -7,6 +7,27 @@
     "today": "今天",
     "yesterday": "昨天"
   },
+  "datepicker": {
+    "openCalendar": "開啟日曆",
+    "closeCalendar": "關閉日曆",
+    "previousMonth": "上個月",
+    "nextMonth": "下個月",
+    "previousYear": "上一年",
+    "nextYear": "下一年",
+    "previousYears": "前 {{years}} 年",
+    "nextYears": "後 {{years}} 年",
+    "chooseDate": "選擇日期",
+    "chooseMonthAndYear": "選擇年份和月份",
+    "comparisonRange": "比較期間",
+    "yearRange": "{{start}} 至 {{end}}",
+    "yearRangeLabel": "{{start}} 至 {{end}}",
+    "dateInvalid": "請輸入有效的日期。"
+  },
+  "stepper": {
+    "completed": "已完成",
+    "editable": "可編輯",
+    "optional": "選填"
+  },
   "common": {
     "income": "收入",
     "expense": "支出",
@@ -47,6 +68,8 @@
     "closeSidebar": "關閉側邊欄",
     "navigation": "導覽",
     "welcome": "歡迎回來",
+    "welcomeNamed": "歡迎回來，{{name}}",
+    "unnamedAccount": "未設定名稱",
     "tryAgain": "再試一次",
     "selected": "已選擇",
     "transactions": "筆交易",
@@ -62,6 +85,7 @@
   },
   "nav": {
     "dashboard": "儀表板",
+    "dashboardShort": "儀表板",
     "transactions": "交易紀錄",
     "budgets": "預算",
     "reports": "報表",
@@ -1849,7 +1873,6 @@
       "endDate": "結束日期（選填）",
       "clearEndDate": "清除結束日期",
       "endBeforeStart": "結束日期不能早於開始日期。",
-      "dateInvalid": "請輸入有效的日期。",
       "threshold": "提醒門檻（選填）",
       "thresholdHint": "上限的百分比。留空則於{{default}}%時提醒。",
       "thresholdRange": "請輸入 {{min}} 到 {{max}} 的百分比。",

@@ -294,8 +294,11 @@ describe('HouseholdMembersComponent', () => {
         expect(dialogData().title).toBe(
           `household.members.removeTitle:${JSON.stringify({ name: 'household.unnamedMemberInline' })}`
         );
+        // Both sentences carry the member mid-way ('The transactions a member
+        // shared leave…'), so both read the lowercase word; only the ones that
+        // open with the member read the capitalised one.
         expect(dialogData().message).toBe(
-          `household.members.removeMessage:${JSON.stringify({ name: 'household.unnamedMember' })}`
+          `household.members.removeMessage:${JSON.stringify({ name: 'household.unnamedMemberInline' })}`
         );
         expect(notification.success).toHaveBeenCalledOnceWith(
           `household.members.removed:${JSON.stringify({ name: 'household.unnamedMember' })}`
@@ -449,6 +452,36 @@ describe('HouseholdMembersComponent', () => {
           );
           expect(document.activeElement).toBe(element().querySelector<HTMLElement>('#household-members-title'));
           expect(analytics.trackHouseholdAction).toHaveBeenCalledTimes(1);
+        });
+
+        describe('of a member without a name', () => {
+          const START = JSON.stringify({ name: 'household.unnamedMember' });
+          const INLINE = JSON.stringify({ name: 'household.unnamedMemberInline' });
+          const removeNameless = async (): Promise<void> => {
+            members.set([alex, member('sam', '  ')]);
+            render();
+            await click(element().querySelector<HTMLButtonElement>('button.member-remove'));
+          };
+
+          it('reads the word the sentence needs: mid-way while the rows go, first once the removal is said', async () => {
+            let rejectRemoval!: () => void;
+            service.remove.and.callFake((() =>
+              new Promise<void>((_resolve, reject) => (rejectRemoval = () => reject(new HouseholdPurgeError('household.errors.purge'))))) as never);
+            await removeNameless();
+
+            expect(purge()?.textContent).toContain(`household.members.purging:${INLINE}`);
+
+            rejectRemoval();
+            await drain();
+
+            expect(notification.error).toHaveBeenCalledOnceWith(`household.members.purgeFailed:${START}`);
+            expect(purge()?.textContent).toContain(`household.members.purgeFailed:${START}`);
+
+            await click(retry());
+            await drain();
+
+            expect(notification.success).toHaveBeenCalledOnceWith(`household.members.purged:${INLINE}`);
+          });
         });
 
         it('keeps the offer, and focus on it, when the purge fails again', async () => {

@@ -23,6 +23,11 @@ month's budget, comparison and snapshot; east of UTC the export leg produced
 the opposite shift. That is #174, and the fix is that `parseDayKey` /
 `parseDateInput` are the only doors a date-only string comes through.
 
+A date a person **types** is the third door, `parseTypedDate`
+([below](#a-typed-date)). The date pickers read typed text through it, and
+read a date-only string handed to an input through `parseDayKey`, so
+neither reaches the platform's parse.
+
 The consequence to keep in mind: day-of-week and day-of-month are a function of
 the runtime's IANA zone. Anything that *persists* one of those results records
 the zone alongside it (the insight snapshots do).
@@ -98,6 +103,7 @@ and [receipt-import.md](receipt-import.md).
 | `parseDayKey(value)` | `Date \| null` | Exact inverse of `dayKey`; rejects `2026-02-31` |
 | `parseMonthKey(key)` | `{ year, month } \| null` | `month` is 0-11, to match `Date` |
 | `parseDateInput(value)` | `Date \| null` | For untrusted input: model JSON, CSV cells, queued rows, and the `{ seconds, nanoseconds }` map a backup file carries |
+| `parseTypedDate(text, order)` | `Date \| null` | For what a person typed into a date field, in the order their format names the fields (`ymd`, `mdy`, `dmy`); [below](#a-typed-date) |
 
 `dayKey` and `monthKey` are the only places a day or month key is built, and
 `dayKey` is built on `monthKey`. A caller that wants the parts splits the
@@ -121,6 +127,45 @@ reading, so nothing else object-shaped starts answering; the sub-second part
 is dropped to whole milliseconds and ignored entirely when it is not a number,
 because a hand-edited field must not turn an instant `seconds` states plainly
 into NaN. An out-of-range `seconds` is null rather than an Invalid Date.
+
+### A typed date
+
+Which of `08/09/2026`'s two numbers is the month is the reader's format, not
+something the digits say, so `parseTypedDate` takes the field order as an
+argument and has no default. `DateFormatService.parseDate` supplies it: the
+stored pattern's order, or under `auto` the order the language's own short
+date prints in, read off `Intl` by `LocaleFormatService.fieldOrder()` (`mdy`
+in en, `ymd` in ja and tc). The app's date adapter calls it for every
+picker ([locale-formatting.md](locale-formatting.md#what-a-datepicker-shows-and-reads)).
+It builds the date from parts, never with `new Date(text)`:
+
+- The text is NFKC-normalised first, so full-width digits and separators
+  read as the ASCII they stand for, and one trailing `日` is dropped.
+- A strict `YYYY-MM-DD` is read by `parseDayKey`, as that local day, in
+  every order: ISO is not an order a format chooses.
+- Anything else must be exactly three numeric fields, split by whitespace or
+  by one of `/ . - 年 月 ・ ー 。`, one separator per gap. The last three are
+  what a Japanese keyboard types for `/`, for `-` and for `.` (its full stop)
+  in kana mode, which NFKC does not map; it folds a half-width `｡` into `。`.
+- A leading four-digit field is the year, and the other two are month then
+  day, in every order. Otherwise the order places the fields, and a
+  two-digit year is `20YY`.
+- Month and day are not limited in length: `8/019/2026` is 19 August under
+  `mdy`.
+
+Refused, as `null`: no year (`8/19`), a word (`Aug 19 2026`), a one- or
+three-digit year, a doubled separator (`2026//8/19`), a fourth field, and a
+day that does not exist (`2026-02-31`, `31/02/2026` under `dmy`), which
+`localDateFromParts` refuses on the round trip. The adapter turns that
+`null` into an Invalid Date, because Material counts a `null` as a valid
+empty value and would never report the text; an empty field is `null` and
+no error.
+
+The adapter's `deserialize`, which reads a value handed to an input, takes a
+date-only string through `parseDayKey` as well, so a `2026-02-31` handed to a
+picker is invalid rather than `new Date`'s 3 March, and its `toIso8601`
+writes an input's `min` and `max` with `dayKey`, from the local day
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)).
 
 ## Windows
 
@@ -234,6 +279,11 @@ consecutive periods cannot overlap or leave a gap.
   first and last milliseconds and one millisecond outside each, while the
   page's period is the month three before the current one, so the window is
   read by a listener of its own.
+- `app-date-adapter.spec.ts` — what a picker shows and reads: a typed date,
+  ISO or in the reader's order, is its local day; a date-only string handed
+  to an input is its local day; and an input's `min` and `max` come from
+  the local day, not the UTC one. At offset 0 a UTC midnight and a local
+  one are the same instant, so the spec is in `test:dates`.
 - The `test:dates` include list is the enumeration of unit specs whose
   assertions depend on the zone, and `test:smoke:dates` is the same statement
   for the emulator suite — `period-window`, `transaction.service`,

@@ -14,15 +14,28 @@
  * stops matching what is stated — in both directions, so a ban present
  * where it must not be fails as loudly as a ban that is missing.
  *
+ * A third ban, on the Material date modules, is a different shape: it has no
+ * owner, so it is restated in all three blocks and every population carries it.
+ * It names exports, not whole modules — MatDatepickerModule from
+ * @angular/material/datepicker; MatNativeDateModule and NativeDateModule from
+ * @angular/material/core — so a path is keyed with its importNames
+ * (`name#A,B`, sorted) and a name dropped from the list is a missing entry
+ * rather than a ban that quietly got narrower. A bare path keeps its bare name.
+ * The ordinary population includes two specs, because a spec is where the
+ * modules used to come back in (#500).
+ *
  * Why resolved outcomes rather than overlap detection: the fixed structure
  * is itself three overlapping blocks setting the same key on purpose — the
  * narrow owner blocks override the union block. An overlap detector would
  * flag the cure; asserting the outcome catches every mechanism that kills a
  * ban, including ones not invented yet.
  *
- * Three further rules ride the same mechanism through no-restricted-syntax,
- * and they share one options array precisely because a second block setting
- * the same key would replace it:
+ * Five further rules ride the same mechanism through no-restricted-syntax.
+ * The first two share one options array precisely because a second block
+ * setting the same key would replace it; the two template rules (the pipe ban
+ * and the sort-header rule) govern templates and share the template block's
+ * array, and the last governs specs, which the app block ignores, so each
+ * has a block of its own:
  *
  *   - firstValueFrom over a TransactionService or FirestoreService listener
  *     (docs/one-shot-reads.md, #427) — a warm cache's first emission is a
@@ -38,9 +51,31 @@
  *     the initial bundle — and that exemption block is where the pair above
  *     is most likely to be dropped by accident, so its resolved selector list
  *     is asserted here in both directions.
- *   - The built-in `date` and `number` pipes in a template (ADR 0058). Both
- *     are at zero sites, so nothing in the app would notice the ban dying —
- *     which is the exact condition under which the analytics ban died.
+ *   - The built-in `date`, `number` and `currency` pipes in a template (ADR
+ *     0058). All three are at zero sites, so nothing in the app would notice
+ *     the ban dying — which is the exact condition under which the analytics
+ *     ban died.
+ *   - A sortable column header with no bound description (#500). Material's
+ *     sort header describes its action to a screen reader as the English
+ *     word "Sort" unless the template binds `sortActionDescription`, so a
+ *     `mat-sort-header` without the binding speaks English to a reader of any
+ *     language. The selector sits in the template block's array beside the
+ *     pipe bans, matches the header element whether the attribute is plain or
+ *     bound, and is satisfied only by a binding: a static English
+ *     `sortActionDescription="…"` still fails. Every header binds it today, so
+ *     nothing in the app would notice the rule dying; the self-test's
+ *     fixtures prove it fires.
+ *   - A spec listening for a rejection nobody caught on window (#500,
+ *     docs/testing.md): the `unhandledrejection` and `rejectionhandled` event
+ *     names as any string literal, and the `onunhandledrejection` /
+ *     `onrejectionhandled` handler properties. Angular-compiled code runs on
+ *     ZoneAwarePromise, which reports through the zone and never as a DOM
+ *     event, so such a spec asserts nothing. The spec block replaced a
+ *     per-file exemption that only said specs resolve to no syntax rule at
+ *     all; the population row below now says exactly which two selectors a
+ *     spec resolves to, and the same row's unexpected direction keeps the
+ *     exemption's old job — the app's firstValueFrom and dynamic-analytics
+ *     selectors never reach a spec.
  *
  * `--self-test` exercises the extraction and diff helpers against known
  * shapes and exits non-zero if the checker itself is broken; npm's
@@ -55,7 +90,15 @@
  *     reads the literal specifier, so only a literal is covered.
  *   - Whether the rule would actually fire on a banned import in the app.
  *     This proves the ban is in force for the file; --self-test proves the
- *     rules fire, against fixtures.
+ *     rules fire, against fixtures: a static import of each banned module in
+ *     a feature file, a spec, app.config.ts and each owner's own files.
+ *   - A path restricted some other way than by importNames. The key reads
+ *     importNames only, so an allowImportNames or allowTypeImports entry would
+ *     key as the bare path.
+ *   - A date module loaded by `import()`. no-restricted-imports reads static
+ *     declarations, so `(await import('@angular/material/core')).NativeDateModule`
+ *     walks past the date-module ban exactly as it does past the analytics one;
+ *     no component has a reason to write it.
  *   - A listener held in a variable and passed as an identifier — `const rows$ =
  *     this.transactionService.getTransactions(); await firstValueFrom(rows$)`
  *     — the argument is an Identifier, not a CallExpression, so neither selector
@@ -66,6 +109,23 @@
  *   - Another service's listeners. The census walks TransactionService and
  *     FirestoreService only; a warm-cache read through a different service's
  *     own Observable method is outside it.
+ *   - An event name built at run time (`'unhandled' + 'rejection'`), written
+ *     as a template literal (a TemplateLiteral is not a Literal), or reached
+ *     as a computed handler (`window['onunhandledrejection']`): the selectors
+ *     read a literal name and a plain property name only.
+ *   - What a bound sort-header description says. The selector asks for a
+ *     binding, not for the catalog key: `[sortActionDescription]="'Sort'"` is a
+ *     binding and passes.
+ *   - App code listening for a rejection. The ban resolves for specs; the
+ *     population row proves nothing about src/app outside *.spec.ts.
+ *   - A detector that is merely too weak: a spec that never listens, but reads
+ *     a caught rejection nowhere, passes this rule and still asserts nothing.
+ *     The rule bans the listener, not the vacuous spec.
+ *   - Native promises from source evaluated at run time. share-target-sw.spec.ts
+ *     evaluates the service worker natively, where window DOES hear a
+ *     rejection, so it is the one place the event is real; the ban does not
+ *     flag it today only because that spec names no such event, and a spec of
+ *     that shape would need a scoped exemption here, not a loosened selector.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -77,21 +137,37 @@ const SYNTAX_RULE_KEY = 'no-restricted-syntax';
 const ANALYTICS_PATHS = ['@angular/fire/analytics', '@capacitor-firebase/analytics'];
 const ANALYTICS_PATTERNS = ['firebase/analytics', 'firebase/analytics/*', '@firebase/analytics'];
 const MODEL_PATHS = ['@google/generative-ai', 'openai', '@anthropic-ai/sdk'];
+// The Material date modules, keyed the way extractRestrictions keys a path that
+// bans only some of a module's exports: `name#A,B`, names sorted. Plain strings
+// here, not imported, so a name dropped from the config's list is a missing
+// entry below rather than a shared constant shrinking on both sides.
+const DATE_MODULE_PATHS = [
+  '@angular/material/datepicker#MatDatepickerModule',
+  '@angular/material/core#MatNativeDateModule,NativeDateModule',
+];
 
 // One row per population eslint.config.js distinguishes; the files are
 // representative, not exhaustive. A rename fails loudly below rather than
 // silently narrowing coverage.
 const POPULATIONS = [
   {
-    label: 'ordinary app code — both bans',
+    // Specs resolve the same way: a spec that renders a picker provides an
+    // adapter itself, and none may import a date module to get one. The
+    // transaction-form spec is the one that used to re-import both.
+    label: 'ordinary app code and specs — every ban',
     files: [
       'src/app/core/services/pwa.service.ts',
       'src/app/features/dashboard/dashboard.component.ts',
+      'src/app/features/dashboard/dashboard.component.spec.ts',
+      'src/app/features/transactions/transaction-form/transaction-form.component.spec.ts',
     ],
-    expected: { paths: [...ANALYTICS_PATHS, ...MODEL_PATHS], patterns: ANALYTICS_PATTERNS },
+    expected: {
+      paths: [...ANALYTICS_PATHS, ...MODEL_PATHS, ...DATE_MODULE_PATHS],
+      patterns: ANALYTICS_PATTERNS,
+    },
   },
   {
-    label: 'analytics owners — model ban only',
+    label: 'analytics owners — model and date-module bans',
     files: [
       'src/app/core/services/analytics.service.ts',
       'src/app/core/services/analytics-transport.ts',
@@ -99,17 +175,17 @@ const POPULATIONS = [
       'src/app/app.config.ts',
       'src/app/app.config.spec.ts',
     ],
-    expected: { paths: MODEL_PATHS, patterns: [] },
+    expected: { paths: [...MODEL_PATHS, ...DATE_MODULE_PATHS], patterns: [] },
   },
   {
-    label: 'model providers — analytics ban only',
+    label: 'model providers — analytics and date-module bans',
     files: [
       'src/app/core/services/gemini.service.ts',
       'src/app/core/services/openai.service.ts',
       'src/app/core/services/claude.service.ts',
       'src/app/core/services/openai.service.spec.ts',
     ],
-    expected: { paths: ANALYTICS_PATHS, patterns: ANALYTICS_PATTERNS },
+    expected: { paths: [...ANALYTICS_PATHS, ...DATE_MODULE_PATHS], patterns: ANALYTICS_PATTERNS },
   },
 ];
 
@@ -137,12 +213,22 @@ const PIPED_LISTENER_SELECTOR =
   `CallExpression[callee.name='firstValueFrom'] > CallExpression.arguments:first-child` +
   `[callee.property.name='pipe'][callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`;
 
-// The built-in formatting pipes ADR 0058 swept out of every template. Both
-// are at zero sites, so nothing would notice this ban dying — which is
+// The built-in formatting pipes ADR 0058 swept out of every template. All
+// three are at zero sites, so nothing would notice this ban dying — which is
 // exactly the condition the analytics ban died under. Kept as plain strings
 // here, not imported, so a drift from eslint.config.js shows up below.
 const TEMPLATE_DATE_SELECTOR = 'BindingPipe[name="date"]';
 const TEMPLATE_NUMBER_SELECTOR = 'BindingPipe[name="number"]';
+const TEMPLATE_CURRENCY_SELECTOR = 'BindingPipe[name="currency"]';
+
+// A sortable column header that binds no description for its action. Material
+// describes the sort button to a screen reader as the English word "Sort"
+// unless the template binds `sortActionDescription`, so a header without the
+// binding speaks English to every reader. Only a BINDING passes: a static
+// `sortActionDescription="…"` is written in one language for all of them.
+const TEMPLATE_SORT_HEADER_SELECTOR =
+  'Element:has(> TextAttribute[name="mat-sort-header"], > BoundAttribute[name="mat-sort-header"])' +
+  ':not(:has(> BoundAttribute[name="sortActionDescription"]))';
 
 // The dynamic half of the analytics ban. no-restricted-imports reads static
 // declarations only, so import('@capacitor-firebase/analytics') passes it —
@@ -151,6 +237,14 @@ const TEMPLATE_NUMBER_SELECTOR = 'BindingPipe[name="number"]';
 const DYNAMIC_ANALYTICS_IMPORT_SELECTOR =
   'ImportExpression[source.value=/^(@angular\\/fire\\/analytics|' +
   '@capacitor-firebase\\/analytics|@?firebase\\/analytics)/]';
+
+// The spec-only half: listening for a rejection nobody caught on window. Kept
+// as plain strings, not imported, so a drift from eslint.config.js shows up
+// as a resolved-selector mismatch below.
+const REJECTION_EVENT_LITERAL_SELECTOR =
+  'Literal[value=/^(unhandledrejection|rejectionhandled)$/]';
+const REJECTION_EVENT_HANDLER_SELECTOR =
+  'MemberExpression[property.name=/^on(unhandledrejection|rejectionhandled)$/]';
 
 const SYNTAX_POPULATIONS = [
   {
@@ -177,18 +271,34 @@ const SYNTAX_POPULATIONS = [
     expectedSelectors: [DIRECT_LISTENER_SELECTOR, PIPED_LISTENER_SELECTOR],
   },
   {
-    label: 'templates under the built-in date/number pipe ban',
+    label: 'templates under the built-in date/number/currency pipe and the sort-header description bans',
     files: [
       'src/app/features/reports/monthly-comparison/monthly-comparison.component.html',
       'src/app/shared/components/transaction-row/transaction-row.component.html',
     ],
-    expectedSelectors: [TEMPLATE_DATE_SELECTOR, TEMPLATE_NUMBER_SELECTOR],
+    expectedSelectors: [
+      TEMPLATE_DATE_SELECTOR,
+      TEMPLATE_NUMBER_SELECTOR,
+      TEMPLATE_CURRENCY_SELECTOR,
+      TEMPLATE_SORT_HEADER_SELECTOR,
+    ],
+  },
+  {
+    // A spec double is not a warm cache, so the firstValueFrom pair and the
+    // dynamic-analytics selector must NOT resolve here: the unexpected
+    // direction is the old spec exemption's job, and it is as load-bearing as
+    // the presence of the two rejection selectors. The three files are the
+    // specs closest to the rule's origin (the snapshot services and the app
+    // smoke); any *.spec.ts under src/app resolves the same way.
+    label: 'specs under the uncaught-rejection-listener ban only',
+    files: [
+      'src/app/core/services/insight-snapshot.service.spec.ts',
+      'src/app/core/services/widget-snapshot.service.spec.ts',
+      'src/app/app.smoke.spec.ts',
+    ],
+    expectedSelectors: [REJECTION_EVENT_LITERAL_SELECTOR, REJECTION_EVENT_HANDLER_SELECTOR],
   },
 ];
-
-// Specs are exempt (a spec double is not a warm cache), so the rule must
-// resolve to nothing at all here, not to an empty rule.
-const SYNTAX_EXEMPT_FILES = ['src/app/core/services/insight-snapshot.service.spec.ts'];
 
 /**
  * Normalize a resolved rule entry to bare specifier lists. Accepts every
@@ -196,6 +306,14 @@ const SYNTAX_EXEMPT_FILES = ['src/app/core/services/insight-snapshot.service.spe
  * strings, patterns as {group: [...]} objects or bare strings, severity as
  * a number or its string alias — so a hand-edited config cannot confuse the
  * comparison. Returns null when the rule is absent.
+ *
+ * A path that bans only some of a module's exports is keyed with them,
+ * `name#A,B` (sorted, so the order they were written in is no diff): the ban
+ * on MatDatepickerModule must not read as a ban on the whole of
+ * @angular/material/datepicker, and a name dropped from the list must show as
+ * a missing entry rather than leave the key it had. A bare path keeps its bare
+ * name; an empty list is `name#`, which is not the bare ban (it restricts no
+ * named import), so it cannot stand in for one.
  */
 export function extractRestrictions(entry) {
   if (!entry) return null;
@@ -204,7 +322,11 @@ export function extractRestrictions(entry) {
   const severity =
     typeof rawSeverity === 'number' ? rawSeverity : (severityMap[rawSeverity] ?? 0);
 
-  const paths = (options.paths ?? []).map(p => (typeof p === 'string' ? p : p.name));
+  const paths = (options.paths ?? []).map(p => {
+    if (typeof p === 'string') return p;
+    if (!Array.isArray(p.importNames)) return p.name;
+    return `${p.name}#${[...p.importNames].sort().join(',')}`;
+  });
   const patterns = (options.patterns ?? []).flatMap(p =>
     typeof p === 'string' ? [p] : (p.group ?? [])
   );
@@ -226,8 +348,8 @@ export function diffSets(actual, expected) {
  * Normalize a resolved no-restricted-syntax entry to its selector strings.
  * Same defensiveness as extractRestrictions: severity as a number or its
  * string alias, and any number of {selector, message} option objects.
- * Returns null when the rule is absent — the shape a spec-exempt file must
- * resolve to.
+ * Returns null when the rule is absent — the shape a file under no syntax
+ * ban at all would resolve to.
  */
 export function extractSyntaxSelectors(entry) {
   if (!entry) return null;
@@ -364,20 +486,6 @@ async function run() {
     }
   }
 
-  for (const file of SYNTAX_EXEMPT_FILES) {
-    fileCount += 1;
-
-    if (!existsSync(file)) {
-      fail(`${file} (spec exemption) — representative file is gone; update SYNTAX_EXEMPT_FILES in this script`);
-      continue;
-    }
-
-    const config = await eslint.calculateConfigForFile(file);
-    if (config.rules?.[SYNTAX_RULE_KEY]) {
-      fail(`${file} (spec exemption) — ${SYNTAX_RULE_KEY} resolves here but specs are exempt`);
-    }
-  }
-
   const named = new Set(selectorNames(DIRECT_LISTENER_SELECTOR));
   const census = [];
   for (const source of LISTENER_SOURCES) {
@@ -455,6 +563,61 @@ async function selfTest() {
   );
   check('a missing rule resolves to null', extractRestrictions(undefined), null);
   check(
+    'reads a path’s importNames into its key',
+    extractRestrictions([
+      2,
+      {
+        paths: [
+          {
+            name: '@angular/material/core',
+            importNames: ['MatNativeDateModule', 'NativeDateModule'],
+            message: 'm',
+          },
+        ],
+      },
+    ]).paths,
+    ['@angular/material/core#MatNativeDateModule,NativeDateModule']
+  );
+  check(
+    'the importNames in a key do not depend on the order they were written in',
+    extractRestrictions([
+      2,
+      {
+        paths: [
+          { name: '@angular/material/core', importNames: ['NativeDateModule', 'MatNativeDateModule'] },
+        ],
+      },
+    ]).paths,
+    ['@angular/material/core#MatNativeDateModule,NativeDateModule']
+  );
+  check(
+    'a bare path keeps its bare name',
+    extractRestrictions([2, { paths: [{ name: 'openai', message: 'm' }] }]).paths,
+    ['openai']
+  );
+  check(
+    'a dropped importName is a missing entry',
+    diffSets(
+      extractRestrictions([
+        2,
+        { paths: [{ name: '@angular/material/core', importNames: ['MatNativeDateModule'] }] },
+      ]).paths,
+      ['@angular/material/core#MatNativeDateModule,NativeDateModule']
+    ),
+    {
+      missing: ['@angular/material/core#MatNativeDateModule,NativeDateModule'],
+      unexpected: ['@angular/material/core#MatNativeDateModule'],
+    }
+  );
+  check(
+    'an empty importNames is not the bare ban',
+    extractRestrictions([
+      2,
+      { paths: [{ name: '@angular/material/core', importNames: [] }] },
+    ]).paths,
+    ['@angular/material/core#']
+  );
+  check(
     'order does not matter to the set diff',
     diffSets(['a', 'b'], ['b', 'a']),
     { missing: [], unexpected: [] }
@@ -531,6 +694,8 @@ async function selfTest() {
   const countSyntaxMessages = lintResults =>
     lintResults.flatMap(result => result.messages).filter(m => m.ruleId === SYNTAX_RULE_KEY)
       .length;
+  const countImportMessages = lintResults =>
+    lintResults.flatMap(result => result.messages).filter(m => m.ruleId === RULE_KEY).length;
 
   const directBad = await fixtureEslint.lintText(
     'declare const firstValueFrom: any;\n' +
@@ -655,17 +820,135 @@ async function selfTest() {
   });
   check('a chained built-in pipe still fails the rule once', countSyntaxMessages(chainedInTemplate), 1);
 
-  // The one built-in formatting pipe with no replacement to point at.
+  // The third built-in formatting pipe: its replacement is LocaleCurrencyPipe,
+  // which asks CurrencyService for the amount in the account's language.
   const currencyInTemplate = await fixtureEslint.lintText('<p>{{ amount | currency }}</p>\n', {
     filePath: templatePath,
   });
-  check('a currency pipe passes the rule', countSyntaxMessages(currencyInTemplate), 0);
+  check('a currency pipe fails the rule once', countSyntaxMessages(currencyInTemplate), 1);
 
   const localeInTemplate = await fixtureEslint.lintText(
-    '<p>{{ at | localeDate }} {{ n | localeNumber }}</p>\n',
+    "<p>{{ at | localeDate }} {{ n | localeNumber }} {{ a | localeCurrency:'USD' }}</p>\n",
     { filePath: templatePath }
   );
   check('the replacement pipes pass the rule', countSyntaxMessages(localeInTemplate), 0);
+
+  // The sort-header half. A header's own description is the English "Sort"
+  // unless the template binds one, so every shape of a sortable header must
+  // fail without the binding and pass with it. `*matHeaderCellDef` hoists a
+  // header's inputs onto the Template node the Element sits inside, which the
+  // selector does not match, so a bound `[mat-sort-header]` fails once.
+  const sortHeader = attributes =>
+    '<table mat-table matSort><ng-container matColumnDef="d">' +
+    `<th mat-header-cell *matHeaderCellDef ${attributes}>x</th>` +
+    '</ng-container></table>\n';
+  const sortHeaderCases = [
+    ['a sortable header with no description', 'mat-sort-header', 1],
+    ['a sortable header with a bound description', `mat-sort-header [sortActionDescription]="'k' | translate"`, 0],
+    ['a bound sort header with no description', `[mat-sort-header]="'id'"`, 1],
+    ['a bound sort header with a bound description', `[mat-sort-header]="'id'" [sortActionDescription]="'k' | translate"`, 0],
+    ['a sortable header with a static description', 'mat-sort-header sortActionDescription="Sort"', 1],
+    ['a header that is not sortable', '', 0],
+  ];
+  for (const [shape, attributes, expected] of sortHeaderCases) {
+    const linted = await fixtureEslint.lintText(sortHeader(attributes), { filePath: templatePath });
+    check(`${shape} ${expected === 0 ? 'passes' : 'fails'} the rule${expected === 0 ? '' : ' once'}`, countSyntaxMessages(linted), expected);
+  }
+
+  const twoSortHeaders = await fixtureEslint.lintText(
+    '<table mat-table matSort>' +
+      '<ng-container matColumnDef="a"><th mat-header-cell *matHeaderCellDef mat-sort-header [sortActionDescription]="\'k\' | translate">a</th></ng-container>' +
+      '<ng-container matColumnDef="b"><th mat-header-cell *matHeaderCellDef mat-sort-header>b</th></ng-container>' +
+      '</table>\n',
+    { filePath: templatePath }
+  );
+  check('only the sort header that lacks a description fails the rule', countSyntaxMessages(twoSortHeaders), 1);
+
+  // The spec-only half: a listener for a rejection nobody caught. Each shape a
+  // spec could use to hear one on window must fail the rule once, and the
+  // shapes that only resemble one must not.
+  const rejectionSpecPath = 'src/app/core/services/rejection-fixture.service.spec.ts';
+  const listenerShapes = [
+    ["window.addEventListener('unhandledrejection', () => {});", 'window.addEventListener'],
+    ["globalThis.addEventListener('unhandledrejection', () => {});", 'globalThis.addEventListener'],
+    ["addEventListener('unhandledrejection', () => {});", 'a bare addEventListener'],
+    ["window.removeEventListener('unhandledrejection', () => {});", 'removeEventListener'],
+    ["declare const fromEvent: any;\nfromEvent(window, 'unhandledrejection');", 'fromEvent(window, …)'],
+    ["const name = 'unhandledrejection';", 'the event name held in a constant'],
+    ["window.addEventListener('rejectionhandled', () => {});", 'rejectionhandled'],
+    ['window.onunhandledrejection = () => {};', 'the onunhandledrejection property'],
+    ['window.onrejectionhandled = () => {};', 'the onrejectionhandled property'],
+  ];
+  for (const [source, shape] of listenerShapes) {
+    const rejectionBad = await fixtureEslint.lintText(`${source}\n`, { filePath: rejectionSpecPath });
+    check(`a spec listening for a rejection via ${shape} fails the rule once`, countSyntaxMessages(rejectionBad), 1);
+  }
+
+  const rejectionGood = [
+    ["window.addEventListener('error', () => {});", "a window 'error' listener"],
+    ["declare const spyOn: any;\nspyOn(console, 'error');", "a spy on console 'error'"],
+    ['declare const zone: any;\nzone.onError.subscribe(() => {});', 'a NgZone.onError subscription'],
+    ["declare const it: any;\nit('leaves no unhandledrejection behind', () => {});", 'a title that merely names the event'],
+  ];
+  for (const [source, shape] of rejectionGood) {
+    const rejectionOk = await fixtureEslint.lintText(`${source}\n`, { filePath: rejectionSpecPath });
+    check(`${shape} passes the rule`, countSyntaxMessages(rejectionOk), 0);
+  }
+
+  // The ban is for specs. App code is under the other bans and has no
+  // business listening either, but that is not this rule's to say.
+  const rejectionInApp = await fixtureEslint.lintText(
+    "window.addEventListener('unhandledrejection', () => {});\n",
+    { filePath: 'src/app/core/services/rejection-fixture.service.ts' }
+  );
+  check('the same listener in app code is not this rule’s business', countSyntaxMessages(rejectionInApp), 0);
+
+  // The static import bans. The population probe above proves each ban
+  // resolves for a file; these prove it fires, on a real import declaration,
+  // in a feature file, in a spec, at app.config.ts and in each owner's own
+  // files, where a block that restated a ban short would let one through. A
+  // namespace import must fail too, and the standalone pieces and the
+  // adapter provider that the date-module message points to must pass.
+  const importCases = [
+    ['a feature component importing MatDatepickerModule', 'src/app/features/about/date-fixture.component.ts',
+      "import { MatDatepickerModule } from '@angular/material/datepicker';", 1],
+    ['a spec importing MatDatepickerModule', 'src/app/features/about/date-fixture.component.spec.ts',
+      "import { MatDatepickerModule } from '@angular/material/datepicker';", 1],
+    ['app.config.ts importing MatNativeDateModule', 'src/app/app.config.ts',
+      "import { MatNativeDateModule } from '@angular/material/core';", 1],
+    ['a provider service importing NativeDateModule', 'src/app/core/services/openai.service.ts',
+      "import { NativeDateModule } from '@angular/material/core';", 1],
+    ['an analytics owner importing NativeDateModule', 'src/app/core/services/analytics.service.ts',
+      "import { NativeDateModule } from '@angular/material/core';", 1],
+    ['a namespace import of the datepicker entry point', 'src/app/features/about/date-fixture.component.ts',
+      "import * as dp from '@angular/material/datepicker';", 1],
+    ['an import of the standalone datepicker pieces', 'src/app/features/about/date-fixture.component.ts',
+      "import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';", 0],
+    ['an import of the native adapter provider', 'src/app/features/about/date-fixture.component.spec.ts',
+      "import { provideNativeDateAdapter } from '@angular/material/core';", 0],
+    ['a feature component importing an analytics SDK path', 'src/app/features/about/analytics-fixture.component.ts',
+      "import { Analytics } from '@angular/fire/analytics';", 1],
+    ['a feature component importing the firebase/analytics pattern', 'src/app/features/about/analytics-fixture.component.ts',
+      "import { getAnalytics } from 'firebase/analytics';", 1],
+    ['a provider service importing an analytics SDK', 'src/app/core/services/gemini.service.ts',
+      "import { getAnalytics } from 'firebase/analytics';", 1],
+    ['an analytics owner importing its SDK', 'src/app/core/services/analytics.service.ts',
+      "import { getAnalytics } from 'firebase/analytics';", 0],
+    ['a feature component importing a model SDK', 'src/app/features/about/model-fixture.component.ts',
+      "import OpenAI from 'openai';", 1],
+    ['an analytics owner importing a model SDK', 'src/app/core/services/analytics.service.ts',
+      "import OpenAI from 'openai';", 1],
+    ['a provider service importing its model SDK', 'src/app/core/services/openai.service.ts',
+      "import OpenAI from 'openai';", 0],
+  ];
+  for (const [shape, filePath, source, expected] of importCases) {
+    const linted = await fixtureEslint.lintText(`${source}\n`, { filePath });
+    check(
+      `${shape} ${expected === 0 ? 'passes' : 'fails'} the rule${expected === 0 ? '' : ' once'}`,
+      countImportMessages(linted),
+      expected
+    );
+  }
 
   let failed = 0;
   for (const result of results) {

@@ -6,8 +6,8 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
+import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
@@ -2865,6 +2865,7 @@ describe('TransactionFormComponent, through its own template', () => {
         { provide: LedgerShareService, useValue: jasmine.createSpyObj('LedgerShareService', ['share', 'unshare']) },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
         provideNoMotion(),
+        provideNativeDateAdapter(),
       ],
     })
       .overrideComponent(TransactionFormComponent, {
@@ -2878,8 +2879,9 @@ describe('TransactionFormComponent, through its own template', () => {
             MatFormFieldModule,
             MatInputModule,
             MatSelectModule,
-            MatDatepickerModule,
-            MatNativeDateModule,
+            MatDatepicker,
+            MatDatepickerInput,
+            MatDatepickerToggle,
             MatButtonModule,
             MatButtonToggleModule,
             MatIconModule,
@@ -2958,6 +2960,26 @@ describe('TransactionFormComponent, through its own template', () => {
     type('amount', '-5');
 
     expect(errors()).toContain('transactions.mustBePositive');
+  });
+
+  // Typed text no reader's format names a day by is a parse error on the
+  // control; the control then holds null, so the required error is there too
+  // and the parse error has to take precedence over it.
+  it('says a date it cannot read is not one, in the date field alone', () => {
+    render();
+    expect(errors()).toEqual([]);
+
+    type('date', 'not a date');
+
+    expect(errors()).toEqual(['datepicker.dateInvalid']);
+  });
+
+  it('still names the date as required once its text is cleared (pin)', () => {
+    render();
+
+    type('date', '');
+
+    expect(errors()).toEqual(['transactions.dateRequired']);
   });
 
   it('swaps the category list when the type toggle is flipped', () => {

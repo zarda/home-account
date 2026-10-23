@@ -9,6 +9,7 @@ import { CurrencyService } from './currency.service';
 import { LocaleFormatService, LocaleDateStyle } from './locale-format.service';
 import { TranslationService } from './translation.service';
 import { createMockUser } from './testing/mock-auth.service';
+import { createTranslationStub, TranslationStub } from './testing/translation-stub';
 import { WIDGET_SNAPSHOT_PLUGIN, WidgetSnapshotPlugin } from '../plugins/widget-snapshot.plugin';
 import {
   Budget,
@@ -73,6 +74,8 @@ function input(overrides: Partial<WidgetSnapshotInput> = {}): WidgetSnapshotInpu
     baseCurrency: 'JPY',
     budgets: [],
     upcoming: [],
+    hidden: [],
+    month: new Date(2026, 8, 1),
     now: new Date(2026, 8, 14, 9, 30),
     ...overrides,
   };
@@ -89,11 +92,26 @@ describe('WidgetSnapshotService', () => {
   let isLoading: ReturnType<typeof signal<boolean>>;
   let canEngage: ReturnType<typeof signal<boolean>>;
   let formatCurrency: jasmine.Spy<(amount: number, code: string) => string>;
+  let translation: TranslationStub;
+  // What every key reads through: '' is the echo catalog the cases assert on;
+  // `switchCatalog` moves to another one the way a language change does.
+  let catalog: string;
+
+  /** Reads every key through `prefix` from now on and bumps the catalog version. */
+  function switchCatalog(prefix: string): void {
+    catalog = prefix;
+    translation.translationsVersion.update(version => version + 1);
+  }
 
   function configure(plugin: WidgetSnapshotPlugin | null, withFormatters = true): void {
     currentUser = signal<User | null>(createMockUser('user-1'));
     isLoading = signal(false);
     canEngage = signal(false);
+    catalog = '';
+    translation = createTranslationStub({
+      t: (key: string, params?: Record<string, string | number>) =>
+        params ? `${catalog}${key}|${JSON.stringify(params)}` : `${catalog}${key}`,
+    });
     formatCurrency = jasmine
       .createSpy('formatCurrency')
       .and.callFake((amount: number, code: string) => `${code} ${amount}`);
@@ -106,13 +124,7 @@ describe('WidgetSnapshotService', () => {
     };
     const formatters = withFormatters
       ? [
-          {
-            provide: TranslationService,
-            useValue: {
-              t: (key: string, params?: Record<string, string | number>) =>
-                params ? `${key}|${JSON.stringify(params)}` : key,
-            },
-          },
+          { provide: TranslationService, useValue: translation },
           { provide: CurrencyService, useValue: { formatCurrency } },
           {
             provide: LocaleFormatService,
@@ -149,10 +161,6 @@ describe('WidgetSnapshotService', () => {
   describe('on the web', () => {
     beforeEach(() => configure(null, false));
 
-    it('is not available', () => {
-      expect(TestBed.inject(WidgetSnapshotService).available).toBeFalse();
-    });
-
     it('resolves no formatter and writes nothing, from publish or from its effects', () => {
       const service = TestBed.inject(WidgetSnapshotService);
       TestBed.tick();
@@ -179,12 +187,8 @@ describe('WidgetSnapshotService', () => {
 
     beforeEach(() => {
       write = jasmine.createSpy('write').and.resolveTo();
-      configure({ write });
+      configure({ write, addListener: jasmine.createSpy<WidgetSnapshotPlugin['addListener']>('addListener') });
       service = TestBed.inject(WidgetSnapshotService);
-    });
-
-    it('is available', () => {
-      expect(service.available).toBeTrue();
     });
 
     describe('the payload', () => {
@@ -206,13 +210,40 @@ describe('WidgetSnapshotService', () => {
       });
 
       it('zero-pads the month and reads it from local time on either side of a month boundary', () => {
-        service.publish(input({ now: new Date(2026, 0, 31, 12) }));
-        service.publish(input({ now: new Date(2026, 8, 30, 23, 59) }));
-        service.publish(input({ now: new Date(2026, 9, 1, 0, 1) }));
+        service.publish(input({ month: new Date(2026, 0, 31, 12) }));
+        service.publish(input({ month: new Date(2026, 8, 30, 23, 59) }));
+        service.publish(input({ month: new Date(2026, 9, 1, 0, 1) }));
 
         expect(written(0).monthKey).toBe('2026-01');
         expect(written(1).monthKey).toBe('2026-09');
         expect(written(2).monthKey).toBe('2026-10');
+      });
+
+      // A dashboard left open past the month's end still holds last month's
+      // window and republishes its figures: they keep that month, so the
+      // widget shows the stale sentence rather than last month under This
+      // Month. The write time and the updated label stay on the clock.
+      it('stamps the month the figures were summed over, not the month of the clock', () => {
+        const now = new Date(2026, 9, 2, 8, 15);
+
+        service.publish(input({ month: new Date(2026, 8, 1), now }));
+
+        const snapshot = written();
+        expect(snapshot.state).toBe('figures');
+        expect(snapshot.monthKey).toBe('2026-09');
+        expect(snapshot.writtenAt).toBe(now.getTime());
+        expect(snapshot.labels.updated).toBe('widget.updated|{"date":"medium:2026-10-2"}');
+      });
+
+      // A pin: a sentence has no window, and its month is the clock's. Proved
+      // by mutation: composing the locked sentence with `input.month` fails it.
+      it("stamps the clock's month on the locked sentence a publish writes", () => {
+        canEngage.set(true);
+
+        service.publish(input({ month: new Date(2026, 8, 1), now: new Date(2026, 9, 2, 8, 15) }));
+
+        expect(written().state).toBe('locked');
+        expect(written().monthKey).toBe('2026-10');
       });
 
       it('formats spent and net in the base currency, signing a negative net', () => {
@@ -318,6 +349,82 @@ describe('WidgetSnapshotService', () => {
       });
     });
 
+    // #441 P5: the widget follows the dashboard's hidden set. A hidden card's
+    // field is null, as the card's empty state is too, so its id is listed
+    // beside it; and nothing the section would show is composed, so no name or
+    // amount of a hidden card reaches the home screen.
+    describe('a card the account hid', () => {
+      const food = () => budget({ name: 'Food', amount: 100, spent: 82, currency: 'EUR' });
+      const rent = () =>
+        occurrence({ name: 'Rent', type: 'expense', amount: 1200, currency: 'EUR', date: new Date(2026, 8, 20) });
+
+      it('writes no top budget while Budget Progress is hidden, lists it, and formats none of its amounts', () => {
+        service.publish(input({ budgets: [food()], hidden: ['budgets'] }));
+
+        const figures = written().figures!;
+        expect(figures.topBudget).toBeNull();
+        expect(figures.hidden).toEqual(['budgets']);
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('Food');
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('widget.budgetDetail');
+        expect(formatCurrency).not.toHaveBeenCalledWith(82, 'EUR');
+        expect(formatCurrency).not.toHaveBeenCalledWith(100, 'EUR');
+        // The positive proof: the same publish formatted the month's own figures.
+        expect(formatCurrency).toHaveBeenCalledWith(4200, 'JPY');
+        expect(figures.spent).toBe('JPY 4200');
+      });
+
+      it('writes no next scheduled while Upcoming Bills is hidden, lists it, and formats none of it', () => {
+        service.publish(input({ upcoming: [rent()], hidden: ['upcoming'] }));
+
+        const figures = written().figures!;
+        expect(figures.nextScheduled).toBeNull();
+        expect(figures.hidden).toEqual(['upcoming']);
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('Rent');
+        expect(write.calls.argsFor(0)[0].snapshot).not.toContain('medium:2026-9-20');
+        expect(formatCurrency).not.toHaveBeenCalledWith(-1200, 'EUR');
+        // The positive proof: the same publish formatted the month's own figures.
+        expect(formatCurrency).toHaveBeenCalledWith(800, 'JPY');
+        expect(figures.net).toBe('JPY 800');
+      });
+
+      it('lists the hidden cards in the widget\'s order, leaving out the cards it draws no section for', () => {
+        service.publish(input({ hidden: ['upcoming', 'recent', 'chart', 'budgets', 'insights'] }));
+
+        expect(written().figures!.hidden).toEqual(['budgets', 'upcoming']);
+      });
+
+      it('tells a card with nothing to show from a hidden one', () => {
+        service.publish(input({ budgets: [], upcoming: [], hidden: [] }));
+        service.publish(input({ budgets: [], upcoming: [], hidden: ['budgets', 'upcoming'] }));
+
+        expect(written(0).figures).toEqual({
+          spent: 'JPY 4200',
+          net: 'JPY 800',
+          topBudget: null,
+          nextScheduled: null,
+          hidden: [],
+        });
+        expect(written(1).figures).toEqual({
+          spent: 'JPY 4200',
+          net: 'JPY 800',
+          topBudget: null,
+          nextScheduled: null,
+          hidden: ['budgets', 'upcoming'],
+        });
+      });
+
+      // A pin: only the widget's own cards leave a section out. Proved by
+      // mutation: hiding Budget Progress on any hidden id fails it.
+      it('composes both sections when only cards the widget does not draw are hidden', () => {
+        service.publish(input({ budgets: [food()], upcoming: [rent()], hidden: ['recent', 'chart', 'insights'] }));
+
+        const figures = written().figures!;
+        expect(figures.topBudget?.name).toBe('Food');
+        expect(figures.nextScheduled?.name).toBe('Rent');
+        expect(figures.hidden).toEqual([]);
+      });
+    });
+
     describe('deduplication', () => {
       it('writes the same figures once on the same day, whatever the time', async () => {
         service.publish(input({ now: new Date(2026, 8, 14, 9, 0) }));
@@ -338,6 +445,41 @@ describe('WidgetSnapshotService', () => {
         expect(written(1).figures!.spent).toBe('JPY 4300');
       });
 
+      // A pin on the stub, and on the content the dedupe compares: the labels
+      // are part of it, so a publish after a catalog switch is not skipped.
+      it('writes again when the catalog switches, though no figure changed', async () => {
+        const version = translation.translationsVersion();
+
+        service.publish(input());
+        await settle();
+        switchCatalog('ja:');
+        service.publish(input());
+        await settle();
+
+        expect(translation.translationsVersion()).toBe(version + 1);
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(written(0).labels.title).toBe('dashboard.thisMonth');
+        expect(written(1).labels.title).toBe('ja:dashboard.thisMonth');
+        expect(written(1).labels.updated).toBe('ja:widget.updated|{"date":"medium:2026-9-14"}');
+        expect(written(1).figures!.spent).toBe(written(0).figures!.spent);
+      });
+
+      // The two payloads differ only in the list: the card's field is null both
+      // times, and the widget must still move from *No active budgets* to no
+      // section at all.
+      it('writes again when an already-empty card becomes hidden', async () => {
+        service.publish(input({ budgets: [] }));
+        await settle();
+        service.publish(input({ budgets: [], hidden: ['budgets'] }));
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(written(0).figures!.topBudget).toBeNull();
+        expect(written(1).figures!.topBudget).toBeNull();
+        expect(written(0).figures!.hidden).toEqual([]);
+        expect(written(1).figures!.hidden).toEqual(['budgets']);
+      });
+
       it('writes the same figures again on the next local day', async () => {
         service.publish(input({ now: new Date(2026, 8, 14, 23, 50) }));
         await settle();
@@ -348,10 +490,12 @@ describe('WidgetSnapshotService', () => {
         expect(written(1).labels.updated).toBe('widget.updated|{"date":"medium:2026-9-15"}');
       });
 
+      // publish() runs from the spec body, outside NgZone, so zone.js reports
+      // a write's rejection that nobody caught on console.error as the bare
+      // value, and window never hears it. The console spies are the detector;
+      // the write count is the positive proof that both publishes reached the
+      // plugin.
       it('settles a rejected write with no unhandled rejection and no console line, and tries again next time', async () => {
-        const unhandled: PromiseRejectionEvent[] = [];
-        const onUnhandled = (event: PromiseRejectionEvent) => unhandled.push(event);
-        window.addEventListener('unhandledrejection', onUnhandled);
         const consoleLines = [
           spyOn(console, 'error'),
           spyOn(console, 'warn'),
@@ -360,18 +504,13 @@ describe('WidgetSnapshotService', () => {
         ];
         write.and.rejectWith(Object.assign(new Error('unavailable'), { code: 'unavailable' }));
 
-        try {
-          service.publish(input());
-          await settle();
-          await settle();
-          service.publish(input());
-          await settle();
-          await settle();
-        } finally {
-          window.removeEventListener('unhandledrejection', onUnhandled);
-        }
+        service.publish(input());
+        await settle();
+        await settle();
+        service.publish(input());
+        await settle();
+        await settle();
 
-        expect(unhandled).toEqual([]);
         for (const line of consoleLines) expect(line).not.toHaveBeenCalled();
         expect(write).toHaveBeenCalledTimes(2);
       });
@@ -429,6 +568,103 @@ describe('WidgetSnapshotService', () => {
 
         expect(write).toHaveBeenCalledTimes(1);
         expect(written().state).toBe('signedOut');
+      });
+
+      // The catalog arrives after the effects' first write (a cold start composes
+      // against the empty table, or the English fallback), and no publish follows
+      // a lock or a sign-out to carry the words over.
+      it('writes the locked sentence again when the catalog switches', async () => {
+        canEngage.set(true);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().labels.locked).toBe('widget.locked');
+
+        switchCatalog('ja:');
+        TestBed.tick();
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(2);
+        const snapshot = written();
+        expect(snapshot.state).toBe('locked');
+        expect(snapshot.labels.locked).toBe('ja:widget.locked');
+      });
+
+      it('writes the signed-out sentence again when the catalog switches', async () => {
+        currentUser.set(null);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().labels.signedOut).toBe('widget.signedOut');
+
+        switchCatalog('ja:');
+        TestBed.tick();
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(2);
+        const snapshot = written();
+        expect(snapshot.state).toBe('signedOut');
+        expect(snapshot.labels.signedOut).toBe('ja:widget.signedOut');
+      });
+
+      // Documentation pin: a reload that brings no new word (the same language
+      // fetched again, or the error fallback re-loading the default) bumps the
+      // version, recomposes an equal payload, and the dedupe skips it. The
+      // positive proof that the write path stays live is the two cases above.
+      it('writes nothing more when the catalog reloads with the same words', async () => {
+        canEngage.set(true);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+
+        translation.translationsVersion.update(version => version + 1);
+        TestBed.tick();
+        await settle();
+
+        expect(write).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // The device ends a session on its own (an expired token, a revoked
+    // account) while the dashboard stays open, and the dashboard's effect then
+    // republishes the figures it still holds. Those must not replace the
+    // signed-out sentence the account's sign-out wrote.
+    describe('with nobody signed in', () => {
+      it('writes nothing more from publish after the signed-out snapshot, and writes again once someone is', async () => {
+        currentUser.set(null);
+        TestBed.tick();
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().state).toBe('signedOut');
+
+        service.publish(input());
+        await settle();
+        expect(write).withContext('a publish with nobody signed in').toHaveBeenCalledTimes(1);
+
+        // The positive proof: the same call reaches the plugin for an account.
+        currentUser.set(createMockUser('user-1'));
+        service.publish(input());
+        await settle();
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(written().state).toBe('figures');
+        expect(written().figures!.spent).toBe('JPY 4200');
+      });
+
+      it('writes nothing from publish while auth is still loading with no user, and writes again once someone is', async () => {
+        isLoading.set(true);
+        currentUser.set(null);
+        TestBed.tick();
+
+        service.publish(input());
+        await settle();
+        expect(write).withContext('a publish while loading').not.toHaveBeenCalled();
+
+        isLoading.set(false);
+        currentUser.set(createMockUser('user-1'));
+        service.publish(input());
+        await settle();
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(written().state).toBe('figures');
       });
     });
   });

@@ -21,7 +21,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideAppDatepicker } from '../../core/config/datepicker.config';
 import { MatDialog } from '@angular/material/dialog';
 import { provideAppCharts } from '../../core/config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
@@ -214,7 +214,7 @@ describe('Add entry points (emulator smoke test)', () => {
         },
         provideNoMotion(),
         provideHttpClient(),
-        provideNativeDateAdapter(),
+        provideAppDatepicker(),
         provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },

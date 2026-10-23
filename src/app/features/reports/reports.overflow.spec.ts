@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { EMPTY, of } from 'rxjs';
 
 import { REPORT_TABS, ReportsComponent } from './reports.component';
@@ -129,6 +130,7 @@ describe('overflow guard: the reports tab strip', () => {
         { provide: TranslationService, useValue: translation },
         { provide: AccessibilityService, useValue: accessibility },
         provideNoMotion(),
+        provideNativeDateAdapter(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
     })

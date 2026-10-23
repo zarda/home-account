@@ -43,6 +43,7 @@ import { NOTIFICATION_DURATION_MS, NotificationService } from '../../../core/ser
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnalyticsEventParams } from '../../../core/config/analytics-events';
+import { memberDisplayName } from '../../../core/utils/person-name.utils';
 import {
   ConfirmDialogComponent,
   ConfirmDialogData
@@ -101,7 +102,10 @@ interface Removal {
   /** The household the member was removed from. */
   household: Household;
   uid: string;
+  /** The member's name where a sentence opens with it: removed, and the purge that failed. */
   name: string;
+  /** The same where a sentence carries it mid-way: the purge running, and done. */
+  nameInline: string;
   state: 'running' | 'failed' | 'retrying';
   /** Copies purged, of those listed; 0 of 0 until they are. */
   done: number;
@@ -493,12 +497,16 @@ export class HouseholdMembersComponent {
   async remove(view: MemberView): Promise<void> {
     if (this.pending() || this.refusedOffline()) return;
     const opened = this.household.household();
-    const given = view.member.displayName.trim();
-    // The title asks about the member mid-sentence; the rest begin with them.
-    const name = given || this.t('household.unnamedMember');
+    const translate = (key: string) => this.t(key);
+    // A member with no name reads as a word, which is capitalised where a
+    // sentence opens with it and not where it carries them mid-way. Opening
+    // with them: removed, and the purge that failed. Carrying them: the title
+    // and the message that asks, and the purge running and done.
+    const name = memberDisplayName(view.member.displayName, translate);
+    const inline = memberDisplayName(view.member.displayName, translate, 'inline');
     const confirmed = await this.confirm({
-      title: this.t('household.members.removeTitle', { name: given || this.t('household.unnamedMemberInline') }),
-      message: this.t('household.members.removeMessage', { name }),
+      title: this.t('household.members.removeTitle', { name: inline }),
+      message: this.t('household.members.removeMessage', { name: inline }),
       confirmLabel: this.t('household.members.removeConfirm'),
       confirmColor: 'warn',
       icon: 'group_remove'
@@ -518,7 +526,7 @@ export class HouseholdMembersComponent {
     await this.run('remove', async () => {
       this.departing.set({ key: `member:${uid}`, landings: [...landings, '#household-members-title'] });
       const earlier = this.removals().get(key);
-      this.setRemoval(key, { household: opened, uid, name, state: 'running', done: 0, total: 0 });
+      this.setRemoval(key, { household: opened, uid, name, nameInline: inline, state: 'running', done: 0, total: 0 });
       try {
         await this.household.remove(uid, opened, this.purgeProgress(key));
       } catch (error) {
@@ -544,7 +552,7 @@ export class HouseholdMembersComponent {
     const removal = this.removals().get(key);
     const shown = this.purges().some(view => view.key === key);
     if (!removal || !shown || removal.state !== 'failed' || this.pending() || this.refusedOffline()) return;
-    const { household, uid, name } = removal;
+    const { household, uid, nameInline } = removal;
     await this.hold(async () => {
       this.setRemoval(key, { ...removal, state: 'retrying', done: 0, total: 0 });
       try {
@@ -554,7 +562,7 @@ export class HouseholdMembersComponent {
         return;
       }
       this.setRemoval(key, undefined);
-      this.notification.success(this.t('household.members.purged', { name }));
+      this.notification.success(this.t('household.members.purged', { name: nameInline }));
       focusWhenRendered(this.focus, ['#household-members-title']);
     });
   }

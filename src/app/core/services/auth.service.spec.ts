@@ -43,11 +43,23 @@ describe('buildNewUserProfile', () => {
     expect('photoURL' in profile).toBeFalse();
   });
 
-  it('defaults null email and display name', () => {
+  it('defaults null email and display name to empty strings', () => {
+    // A sign-in that names nobody stores no name. The key stays (the rules
+    // require it on create) but holds '', and every display reads a catalog
+    // word for it in the reader's language; an English word stored here
+    // would be read back as a real name in every language.
     const profile = buildNewUserProfile(firebaseUser({ email: null, displayName: null }), 'en');
 
     expect(profile.email).toBe('');
-    expect(profile.displayName).toBe('User');
+    expect(profile.displayName).toBe('');
+    expect('displayName' in profile).toBeTrue();
+  });
+
+  it('keeps an empty provider name empty', () => {
+    // Pin: a provider that hands back '' (not null) already stored ''.
+    const profile = buildNewUserProfile(firebaseUser({ displayName: '' }), 'en');
+
+    expect(profile.displayName).toBe('');
   });
 
   it('seeds the language it is handed, leaving the other defaults alone', () => {
@@ -696,8 +708,10 @@ describe('AuthService', () => {
       await new Promise(resolve => setTimeout(resolve, 0));
 
       // The account exists and the session is real; failing to adopt a
-      // language must not turn a completed sign-in into a rejected one — and
-      // an unhandled rejection here would fail the suite.
+      // language must not turn a completed sign-in into a rejected one. A
+      // rejection nobody caught would not fail the suite: zone.js logs it on
+      // console.error as the bare value and window never hears it. So the
+      // handler's own line, asserted below, is the proof it was caught.
       expect(healed.preferences.language).toBe('ja');
       expect(console.error).toHaveBeenCalledWith(
         '[Auth] Could not adopt the Google account language:',

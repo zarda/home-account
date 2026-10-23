@@ -1,6 +1,6 @@
 # 166. A hidden card closes what nothing else reads, the layout stores only what changed, and each card has a menu
 
-**Status:** Accepted, implemented · **Date:** 2026-10-08 · **Issues:** #442
+**Status:** Accepted, implemented; amended by [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md) · **Date:** 2026-10-08 · **Issues:** #442
 
 Reference documentation lives in [../dashboard.md](../dashboard.md) and
 [../widget.md](../widget.md). [../testing.md](../testing.md) records what
@@ -357,7 +357,10 @@ open.
   that it is back, not where.
 - **On a build with the widget plugin, a hidden Upcoming Bills card keeps
   its listener with no widget placed.** `available` means the plugin is
-  there, which is all the service can tell.
+  there, which is all the service can tell. *Closed by*
+  [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md):
+  the widget leaves out a card the account hid, so `available` is gone and
+  a hidden Upcoming Bills card keeps its listener only for the weekly recap.
 - **A build from before this one still writes the whole layout.** A device
   still running one writes the whole key on its next change, from its
   resolved layout: it pins the order again and drops any id it does not

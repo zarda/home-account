@@ -58,6 +58,7 @@ import {
   previousPeriodWindow,
   yearWindow,
 } from '../../core/utils/transaction-date.utils';
+import { welcomeGreeting } from '../../core/utils/person-name.utils';
 import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
 import { DASHBOARD_MAIN_COLUMN, dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
@@ -180,11 +181,20 @@ export class DashboardComponent implements OnInit {
   // change to it can't be told apart from the initial, still-unloaded state.
   private thisMonthPaints = signal(0);
 
-  // User info
-  userName = computed(() => {
-    const user = this.authService.currentUser();
-    return user?.displayName?.split(' ')[0] || 'User';
-  });
+  // The first day of the window the last this-month paint summed: the month
+  // the widget is told its figures belong to. Not the clock's, which a page
+  // left open past the month's end has moved on from; and not
+  // currentPeriod's, which a click moves before the new period's rows land,
+  // and a failed load leaves moved while this month's rows stay on the page.
+  private thisMonthPaintStart = this.currentPeriod().start;
+
+  // The welcome line, whole: the catalog writes the sentence around the first
+  // name, and the template prints it as it is.
+  greeting = computed(() =>
+    welcomeGreeting(this.authService.currentUser()?.displayName, (key, params) =>
+      this.translationService.t(key, params)
+    )
+  );
 
   baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));
 
@@ -303,13 +313,12 @@ export class DashboardComponent implements OnInit {
 
   // Booleans, so a change to another card or another preference never
   // reopens a listener. The recent rows are read by their card alone. The
-  // upcoming window also feeds the recap and, on a build with the widget
-  // plugin, the widget.
+  // upcoming window also feeds the recap; the widget reads it only while the
+  // card is shown, since it leaves out a card the account hid.
   private recentWanted = computed(() => !this.layout().hidden.includes('recent'));
   private upcomingWanted = computed(() =>
     !this.layout().hidden.includes('upcoming') ||
-    weeklyRecapEnabled(this.authService.currentUser()?.preferences) ||
-    this.widgetSnapshots.available
+    weeklyRecapEnabled(this.authService.currentUser()?.preferences)
   );
 
   gridAreas = computed(() => dashboardGridAreas(this.arrangedCards()));
@@ -408,18 +417,33 @@ export class DashboardComponent implements OnInit {
     // Hands the widget the figures this page already holds, each time it
     // repaints for this month — the dashboard is the landing route, so this
     // is every app open and every live change. Keyed on the paint counter,
-    // not publishedPeriodOption — see its declaration above for why.
+    // not publishedPeriodOption — see its declaration above for why. Also
+    // keyed on the base currency, which formats the figures, and on the
+    // catalog version, which words the labels: neither moves a paint, so a new
+    // currency or language would otherwise reach the widget only with the next
+    // unrelated change. The totals stay untracked, so a write to the shared
+    // transactions signal still cannot pass for a paint. And keyed on the
+    // layout the page renders, held while a change saves, so a card the
+    // account hides leaves the widget when it leaves the page; a reorder
+    // republishes an equal payload, which the service's dedupe skips. The
+    // figures go with the month they were summed over, so what a page left
+    // open past the month's end republishes reaches the widget as stale.
     effect(() => {
       const paints = this.thisMonthPaints();
+      const baseCurrency = this.baseCurrency();
+      const hidden = this.layout().hidden;
+      this.translationService.translationsVersion();
       this.activeBudgets();
       this.upcomingOccurrences();
       if (paints === 0 || untracked(() => this.publishedPeriodOption()) !== 'thisMonth') return;
       untracked(() => this.widgetSnapshots.publish({
         spent: this.totalExpenses(),
         net: this.balance(),
-        baseCurrency: this.baseCurrency(),
+        baseCurrency,
         budgets: this.activeBudgets(),
         upcoming: this.upcomingOccurrences(),
+        hidden,
+        month: this.thisMonthPaintStart,
       }));
     });
   }
@@ -431,8 +455,8 @@ export class DashboardComponent implements OnInit {
     // stack extra subscriptions, and takeUntilDestroyed stops destroyed
     // dashboard instances from reacting to later budget writes made
     // elsewhere in the app. Not gated on the budgets card: the banner, which
-    // cannot be hidden, the recap's alerts, insights, the widget and the
-    // reminder sweep all read the list.
+    // cannot be hidden, the recap's alerts, insights and the reminder sweep
+    // all read the list, and the widget does while the card is shown.
     this.budgetService.getBudgets()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
@@ -509,6 +533,7 @@ export class DashboardComponent implements OnInit {
           // Only a this-month paint feeds the widget; a switch to another
           // period must not republish it with rows that belong elsewhere.
           if (this.currentPeriod().option === 'thisMonth') {
+            this.thisMonthPaintStart = this.currentPeriod().start;
             this.thisMonthPaints.update(count => count + 1);
           }
         },
@@ -644,9 +669,24 @@ export class DashboardComponent implements OnInit {
 
   // Replacing the entry, so Back from the rules does not land on the link
   // again and come straight back.
+  //
+  // The reason is said once the rules page is open, never before. The
+  // announcer places messages in the order it gets them. On a cold start the
+  // budgets chunk is fetched while the navigation is pending, and the recap's
+  // composition lands in that window and queues its own sentence: with the
+  // reason said first, the recap's sentence is placed after it and the live
+  // region ends on that stale one. After the landing the dashboard and its
+  // cards are gone, so nothing on them can follow the reason. A navigation
+  // that did not land (a newer one superseded it, or a guard refused it)
+  // resolves false, and the reason would then describe a page the user is not
+  // on, so it is not said. One a guard redirected resolves with the
+  // redirect's outcome.
   private showRecurringRules(reason: string): void {
-    this.announcer.announce(reason);
-    void this.router.navigate(['/budgets'], { queryParams: { tab: 'recurring' }, replaceUrl: true });
+    void this.router
+      .navigate(['/budgets'], { queryParams: { tab: 'recurring' }, replaceUrl: true })
+      .then(landed => {
+        if (landed) this.announcer.announce(reason);
+      });
   }
 
   /**

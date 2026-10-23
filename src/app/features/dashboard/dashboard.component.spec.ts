@@ -12,6 +12,7 @@ import {
 } from '@angular/router';
 import { of, BehaviorSubject, Subject, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { DashboardComponent } from './dashboard.component';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
@@ -35,7 +36,10 @@ import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { WidgetSnapshotService } from '../../core/services/widget-snapshot.service';
 import { CloudLLMProviderService } from '../../core/services/cloud-llm-provider.service';
-import { WeeklyRecapService } from '../../core/services/weekly-recap.service';
+import { RecapStatus, WeeklyRecapService } from '../../core/services/weekly-recap.service';
+import { AnalyticsService } from '../../core/services/analytics.service';
+import { ReminderService } from '../../core/services/reminder.service';
+import { RecapFigures } from '../../core/utils/weekly-recap.utils';
 import {
   BudgetAlert,
   Category,
@@ -54,13 +58,15 @@ import {
   ratio,
   withTheme,
   provideNoMotion,
+  createTranslationStub,
+  TranslationStub,
 } from '../../core/services/testing';
 import {
   PeriodSelection,
   PeriodSelectorComponent,
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
-import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
+import { DateWindow, wholeDaysBetween } from '../../core/utils/transaction-date.utils';
 import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
 import { dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
@@ -141,7 +147,8 @@ describe('DashboardComponent', () => {
   let currencyService: jasmine.SpyObj<CurrencyService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let announcer: jasmine.SpyObj<AnnouncerService>;
-  let translation: jasmine.SpyObj<TranslationService>;
+  // The shared stub's real signals (locale, catalog version) with `t` a spy.
+  let translation: Omit<TranslationStub, 't'> & { t: jasmine.Spy<TranslationStub['t']> };
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
   let widgetSnapshots: jasmine.SpyObj<WidgetSnapshotService>;
@@ -174,6 +181,17 @@ describe('DashboardComponent', () => {
     return () => land();
   }
 
+  /**
+   * Holds the next `router.navigate` until the returned function settles it;
+   * `true` is a navigation that landed, `false` one that was superseded or
+   * refused.
+   */
+  function holdNavigation(): (landed: boolean) => void {
+    let land!: (landed: boolean) => void;
+    router.navigate.and.returnValue(new Promise<boolean>(resolve => (land = resolve)));
+    return land;
+  }
+
   // Each call hands out a fresh never-completing Subject, the shape of the
   // real Firestore wrappers: the only way a listener is released is an
   // explicit unsubscribe, so `observed` tells the truth about leaks.
@@ -185,12 +203,6 @@ describe('DashboardComponent', () => {
       return subject;
     });
     return created;
-  }
-
-  /** The device build: the widget plugin is present. */
-  function withWidget(): void {
-    const available = Object.getOwnPropertyDescriptor(widgetSnapshots, 'available')!.get as jasmine.Spy;
-    available.and.returnValue(true);
   }
 
   function setPreferences(preferences: Partial<User['preferences']>): void {
@@ -255,8 +267,7 @@ describe('DashboardComponent', () => {
       (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
     );
 
-    translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string) => k);
+    translation = { ...createTranslationStub(), t: jasmine.createSpy('t').and.callFake((k: string) => k) };
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);
@@ -264,7 +275,7 @@ describe('DashboardComponent', () => {
     router.navigate.and.returnValue(Promise.resolve(true));
     // Root-provided and reaches AppLockService, which throws on this suite's
     // userId-less AuthService double — doubled here rather than left real.
-    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish'], { available: false });
+    widgetSnapshots = jasmine.createSpyObj('WidgetSnapshotService', ['publish']);
     // Root-provided, and the real one constructs every provider's client.
     cloudLLM = { hasAnyCloudProvider: signal(false) };
     // Router is a spy here, so nothing else provides ActivatedRoute; the
@@ -308,16 +319,9 @@ describe('DashboardComponent', () => {
     expect(build().componentInstance).toBeTruthy();
   });
 
+  // The welcome line is asserted where it is printed: 'the greeting', in the
+  // real-template describe below.
   describe('user-derived signals', () => {
-    it('uses the first name when a display name exists', () => {
-      expect(build().componentInstance.userName()).toBe('Ada');
-    });
-
-    it('falls back to "User" when no display name', () => {
-      authService.currentUser.set(createUser({ displayName: '' }));
-      expect(build().componentInstance.userName()).toBe('User');
-    });
-
     it('reads the base currency from preferences with a USD fallback', () => {
       const component = build().componentInstance;
       expect(component.baseCurrency()).toBe('USD');
@@ -859,7 +863,9 @@ describe('DashboardComponent', () => {
     });
 
     describe('upcoming', () => {
-      it('never opens the upcoming listener while Upcoming is hidden, the recap is off and there is no widget', () => {
+      // The widget does not hold it open either (#441 P5): it leaves a hidden
+      // card's section out, so on a device build too nothing else reads it.
+      it('never opens the upcoming listener while Upcoming is hidden and the recap is off', () => {
         setPreferences(hiding('upcoming'));
         const fixture = build();
         fixture.detectChanges();
@@ -871,16 +877,6 @@ describe('DashboardComponent', () => {
       // A pin: the recap lists the week ahead's bills from the same window.
       it('keeps the upcoming listener for the recap while Upcoming is hidden', () => {
         setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
-        const fixture = build();
-        fixture.detectChanges();
-
-        expect(recurringService.getUpcomingSchedule).toHaveBeenCalledOnceWith(14);
-      });
-
-      // A pin: the widget publishes the next scheduled bill from the same window.
-      it('keeps the upcoming listener for the widget while Upcoming is hidden', () => {
-        withWidget();
-        setPreferences(hiding('upcoming'));
         const fixture = build();
         fixture.detectChanges();
 
@@ -924,8 +920,8 @@ describe('DashboardComponent', () => {
     });
 
     // A pin: budgets has a card, but the banner (which cannot be hidden), the
-    // recap's alerts, insights, the widget and the reminder sweep all read the
-    // list, so it stays ungated.
+    // recap's alerts, insights and the reminder sweep all read the list, so it
+    // stays ungated.
     it('subscribes to budgets exactly once, whatever is hidden', () => {
       setPreferences(hiding('recent', 'upcoming', 'chart', 'insights', 'budgets'));
       const fixture = build();
@@ -1126,17 +1122,41 @@ describe('DashboardComponent', () => {
     describe('?bill', () => {
       // The recap keeps the window's listener open while Upcoming is hidden;
       // the redirect does not wait for it to emit.
-      it('opens the recurring rules at once while Upcoming is hidden, and says why', () => {
+      it('opens the recurring rules at once while Upcoming is hidden, and says why', async () => {
         setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
         recurringService.getUpcomingSchedule.and.returnValue(new Subject<UpcomingSchedule>());
         open({ bill: 'r1' });
 
         const fixture = build();
         fixture.detectChanges();
+        await settle();
 
         expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
         expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkCardHidden');
         expect(fixture.componentInstance.billInFocus()).toBeNull();
+      });
+
+      // The sentence is said once the rules page is open, so no card on the
+      // page being left can follow it. The recap's own sentence lands while
+      // the budgets chunk is still being fetched and queues behind a reason
+      // said first, leaving the live region on the recap's sentence.
+      it('says why only once the recurring rules are open while Upcoming is hidden', async () => {
+        setPreferences({ ...hiding('upcoming'), enableWeeklyRecap: true });
+        recurringService.getUpcomingSchedule.and.returnValue(new Subject<UpcomingSchedule>());
+        const land = holdNavigation();
+        open({ bill: 'r1' });
+
+        const fixture = build();
+        fixture.detectChanges();
+        await settle();
+
+        expect(router.navigate).withContext('the navigation is under way').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).withContext('while the navigation is pending').not.toHaveBeenCalled();
+
+        land(true);
+        await settle();
+
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkCardHidden');
       });
 
       it('asks the card for the rule only once the window has emitted, and strips the link', () => {
@@ -1180,6 +1200,69 @@ describe('DashboardComponent', () => {
 
         expect(recurringService.getUpcomingScheduleFromServer).toHaveBeenCalledOnceWith(14);
         expect(router.navigate).toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
+      });
+
+      // The recap's composition lands while the budgets chunk is being fetched
+      // on a cold start, and its sentence queues behind this one if this is
+      // said first, leaving the live region on the recap's sentence. Said once
+      // the page is open, nothing on the dashboard being left can follow it.
+      it('says why only once the recurring rules are open', async () => {
+        open({ bill: 'gone' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+        const land = holdNavigation();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(router.navigate).withContext('the navigation is under way').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).withContext('while the navigation is pending').not.toHaveBeenCalled();
+
+        land(true);
+        await settle();
+
+        expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
+      });
+
+      // A navigation that was superseded (the user went elsewhere first) or
+      // refused by a guard resolves false: the sentence would describe a page
+      // the user is not on. One a guard redirected resolves with the
+      // redirect's outcome.
+      it('does not say why when the navigation to the recurring rules was superseded', async () => {
+        open({ bill: 'gone' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+        const land = holdNavigation();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+        land(false);
+        await settle();
+
+        expect(router.navigate).withContext('the navigation was made').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).not.toHaveBeenCalled();
+      });
+
+      it('says why only once the recurring rules are open when the server cannot be asked', async () => {
+        recurringService.getUpcomingScheduleFromServer.and.returnValue(Promise.reject(new Error('offline')));
+        open({ bill: 'r1' });
+        const fixture = build();
+        fixture.detectChanges();
+        router.navigate.calls.reset();
+        const land = holdNavigation();
+
+        fixture.componentInstance.onBillFocus('absent');
+        await settle();
+
+        expect(router.navigate).withContext('the navigation is under way').toHaveBeenCalledOnceWith(...TO_RECURRING);
+        expect(announcer.announce).withContext('while the navigation is pending').not.toHaveBeenCalled();
+
+        land(true);
+        await settle();
+
         expect(announcer.announce).toHaveBeenCalledOnceWith('dashboard.billLinkNotUpcoming');
       });
 
@@ -1656,6 +1739,41 @@ describe('DashboardComponent', () => {
     // Every case flushes the constructor effect with TestBed.tick(): the
     // signal writes below happen outside a template binding, so nothing else
     // schedules it.
+
+    /** The account's preferences with a new base currency, the rest as they stand. */
+    function setBaseCurrency(baseCurrency: string): void {
+      const current = authService.currentUser()!;
+      authService.currentUser.set({ ...current, preferences: { ...current.preferences, baseCurrency } });
+    }
+
+    /** A converter that reads 150 yen to the dollar, so a new base currency moves every figure. */
+    function convertYenAt150(): void {
+      currencyService.amountInBase.and.callFake(
+        (transaction: { amount: number }, baseCurrency: string) =>
+          transaction.amount * (baseCurrency === 'JPY' ? 150 : 1)
+      );
+    }
+
+    /** The first day of this month: the window the page opens on. */
+    function thisMonthStart(): Date {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    /** Income 1000 and expense 400 in the window, the this-month paint landed and flushed. */
+    function paintThisMonth(window$: Subject<Transaction[]>) {
+      transactionService.getByDateRange.and.returnValue(window$);
+      transactionService.transactions.set([
+        createTransaction({ type: 'income', amount: 1000 }),
+        createTransaction({ type: 'expense', amount: 400 }),
+      ]);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+      TestBed.tick();
+      return fixture;
+    }
+
     it('publishes the figures once the this-month window loads', () => {
       const window$ = new Subject<Transaction[]>();
       transactionService.getByDateRange.and.returnValue(window$);
@@ -1690,6 +1808,8 @@ describe('DashboardComponent', () => {
         baseCurrency: 'USD',
         budgets,
         upcoming,
+        hidden: [],
+        month: thisMonthStart(),
       });
     });
 
@@ -1716,8 +1836,9 @@ describe('DashboardComponent', () => {
     // stops a budget or occurrence change from republishing while parked on
     // another period. Switching periods alone touches none of the effect's
     // tracked signals, so the case above never runs the effect again to
-    // exercise it — this one changes activeBudgets and upcomingOccurrences
-    // directly, after the switch, to force that.
+    // exercise it — this one changes activeBudgets, upcomingOccurrences, the
+    // base currency and the catalog version directly, after the switch, to
+    // force that.
     it('does not republish when tracked signals change while parked on another period', () => {
       const window$ = new Subject<Transaction[]>();
       transactionService.getByDateRange.and.returnValue(window$);
@@ -1750,6 +1871,12 @@ describe('DashboardComponent', () => {
         date: new Date(2026, 8, 1),
       };
       occurrences$.next({ occurrences: [rent], olderCount: 0 });
+      TestBed.tick();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+
+      translation.translationsVersion.update(version => version + 1);
       TestBed.tick();
 
       expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
@@ -1812,11 +1939,115 @@ describe('DashboardComponent', () => {
       expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
     });
 
-    // A pin: the widget reads the upcoming window too, so hiding the card must
-    // not take the widget's next scheduled bill away.
-    it('publishes the upcoming window with Recent and Upcoming hidden, when there is a widget', () => {
-      withWidget();
-      setPreferences(hiding('recent', 'upcoming'));
+    // #441 P4: the figures are formatted in the base currency, and a currency
+    // change moves them without a new paint of the window.
+    it('republishes the figures in a new base currency', () => {
+      convertYenAt150();
+      paintThisMonth(new Subject<Transaction[]>());
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets: [],
+        upcoming: [],
+        hidden: [],
+        month: thisMonthStart(),
+      });
+      widgetSnapshots.publish.calls.reset();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 60000,
+        net: 90000,
+        baseCurrency: 'JPY',
+        budgets: [],
+        upcoming: [],
+        hidden: [],
+        month: thisMonthStart(),
+      });
+    });
+
+    // The labels are composed from the catalog, which arrives after the first
+    // paint on a cold start and again on a language switch.
+    it('republishes when a catalog loads', () => {
+      paintThisMonth(new Subject<Transaction[]>());
+      widgetSnapshots.publish.calls.reset();
+
+      translation.translationsVersion.update(version => version + 1);
+      TestBed.tick();
+
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets: [],
+        upcoming: [],
+        hidden: [],
+        month: thisMonthStart(),
+      });
+    });
+
+    // A pin: the effect reads the base currency, not the user it comes from, so
+    // an edit to the profile that leaves the currency alone stays quiet. Proved
+    // by mutation: reading `authService.currentUser()` in the effect fails it.
+    // The currency change after it is the positive proof the effect still runs.
+    it('does not republish when the account changes but the base currency does not', () => {
+      convertYenAt150();
+      paintThisMonth(new Subject<Transaction[]>());
+      widgetSnapshots.publish.calls.reset();
+
+      authService.currentUser.set({ ...authService.currentUser()!, displayName: 'Grace Hopper' });
+      TestBed.tick();
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+      expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+    });
+
+    // A pin: a currency or a catalog that changes before the window has painted
+    // has nothing to publish. Proved by mutation: dropping `paints === 0` from
+    // the guard fails it. The paint after it is the positive proof.
+    it('publishes nothing for a new currency or catalog before the first paint', () => {
+      convertYenAt150();
+      const window$ = new Subject<Transaction[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      transactionService.transactions.set([
+        createTransaction({ type: 'income', amount: 1000 }),
+        createTransaction({ type: 'expense', amount: 400 }),
+      ]);
+      const fixture = build();
+      fixture.detectChanges();
+      TestBed.tick();
+
+      setBaseCurrency('JPY');
+      TestBed.tick();
+      translation.translationsVersion.update(version => version + 1);
+      TestBed.tick();
+      expect(widgetSnapshots.publish).not.toHaveBeenCalled();
+
+      window$.next([]);
+      TestBed.tick();
+      expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
+        spent: 60000,
+        net: 90000,
+        baseCurrency: 'JPY',
+        budgets: [],
+        upcoming: [],
+        hidden: [],
+        month: thisMonthStart(),
+      });
+      expect(fixture.componentInstance.baseCurrency()).toBe('JPY');
+    });
+
+    // #441 P5: the recap keeps the upcoming window open with its card hidden,
+    // and the widget is handed the window with the hidden set beside it; the
+    // service leaves the section out ('a card the account hid' in
+    // widget-snapshot.service.spec.ts).
+    it('hands the widget the hidden set with the window the recap keeps open', () => {
+      setPreferences({ ...hiding('recent', 'upcoming'), enableWeeklyRecap: true });
       const window$ = new Subject<Transaction[]>();
       transactionService.getByDateRange.and.returnValue(window$);
       const upcoming: RecurringOccurrence[] = [{
@@ -1835,12 +2066,128 @@ describe('DashboardComponent', () => {
       window$.next([]);
       TestBed.tick();
 
+      expect(recurringService.getUpcomingSchedule).toHaveBeenCalledOnceWith(14);
       expect(widgetSnapshots.publish).toHaveBeenCalledOnceWith({
         spent: 0,
         net: 0,
         baseCurrency: 'USD',
         budgets: [],
         upcoming,
+        hidden: ['recent', 'upcoming'],
+        month: thisMonthStart(),
+      });
+    });
+
+    // #441 P5: the effect reads the layout the page renders, which is held
+    // while a change saves, so a card leaves the widget when it leaves the page.
+    it('republishes with the card hidden before the layout write lands', async () => {
+      const land = holdLayoutWrite();
+      const fixture = paintThisMonth(new Subject<Transaction[]>());
+      widgetSnapshots.publish.calls.reset();
+
+      const saved = TestBed.inject(DashboardLayoutService).hide('budgets');
+      fixture.detectChanges();
+
+      expect(authService.updatePreferenceFields).toHaveBeenCalledTimes(1);
+      expect(widgetSnapshots.publish).withContext('before the write lands').toHaveBeenCalledOnceWith({
+        spent: 400,
+        net: 600,
+        baseCurrency: 'USD',
+        budgets: [],
+        upcoming: [],
+        hidden: ['budgets'],
+        month: thisMonthStart(),
+      });
+
+      land();
+      await saved;
+      fixture.detectChanges();
+
+      expect(widgetSnapshots.publish.calls.mostRecent().args[0].hidden)
+        .withContext('once the write lands')
+        .toEqual(['budgets']);
+    });
+
+    // Nothing rolls the window over while the page lives, and iOS keeps a web
+    // view suspended across days: a page opened on 30 September still holds
+    // September on 2 October. What it republishes then is September's, and is
+    // handed over as September's, which the widget shows as stale.
+    describe("on a page left open past the month's end", () => {
+      const september = new Date(2026, 8, 1);
+
+      beforeEach(() => {
+        jasmine.clock().install();
+        jasmine.clock().mockDate(new Date(2026, 8, 30, 22, 0));
+      });
+
+      afterEach(() => {
+        jasmine.clock().uninstall();
+      });
+
+      it('hands the widget the month the page painted, not the month of the clock', () => {
+        const window$ = new Subject<Transaction[]>();
+        paintThisMonth(window$);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+        jasmine.clock().mockDate(new Date(2026, 9, 2, 8, 0));
+        widgetSnapshots.publish.calls.reset();
+
+        window$.next([]);
+        TestBed.tick();
+        expect(widgetSnapshots.publish).withContext('a listener emission').toHaveBeenCalledTimes(1);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+
+        budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+        TestBed.tick();
+        expect(widgetSnapshots.publish).withContext('a budgets emission').toHaveBeenCalledTimes(2);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+      });
+
+      // The selection moves on a click, before the new period's rows land, and
+      // stays moved when they fail to, while this month's rows stay on the
+      // page and the widget is still handed them: their month is the painted
+      // window's, not the selection's.
+      it("hands the widget the painted month while another period's rows have not landed", () => {
+        const fixture = paintThisMonth(new Subject<Transaction[]>());
+        transactionService.getByDateRange.and.returnValue(throwError(() => new Error('offline')));
+        fixture.componentInstance.onPeriodSelection(selection(
+          'lastMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59, 999)));
+        expect(fixture.componentInstance.publishedPeriodOption()).toBe('thisMonth');
+        widgetSnapshots.publish.calls.reset();
+
+        budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+        TestBed.tick();
+
+        expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+      });
+
+      // A pin: a this-month paint of a new window moves the month the widget
+      // is handed, so This month chosen again on 2 October hands over October's
+      // figures as October's. Proved by mutation: deleting the paint's
+      // `this.thisMonthPaintStart = this.currentPeriod().start` fails it.
+      it('hands the widget the new month once This month is chosen again after the month ends', () => {
+        const fixture = paintThisMonth(new Subject<Transaction[]>());
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
+        jasmine.clock().mockDate(new Date(2026, 9, 2, 8, 0));
+
+        const lastMonth$ = new Subject<Transaction[]>();
+        transactionService.getByDateRange.and.returnValue(lastMonth$);
+        fixture.componentInstance.onPeriodSelection(selection(
+          'lastMonth', september, new Date(2026, 8, 30, 23, 59, 59, 999)));
+        lastMonth$.next([]);
+        TestBed.tick();
+        expect(fixture.componentInstance.publishedPeriodOption()).toBe('lastMonth');
+        widgetSnapshots.publish.calls.reset();
+
+        const thisMonth$ = new Subject<Transaction[]>();
+        transactionService.getByDateRange.and.returnValue(thisMonth$);
+        fixture.componentInstance.onPeriodSelection(selection(
+          'thisMonth', new Date(2026, 9, 1), new Date(2026, 9, 31, 23, 59, 59, 999)));
+        thisMonth$.next([]);
+        TestBed.tick();
+
+        expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
+        expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(new Date(2026, 9, 1));
       });
     });
   });
@@ -1893,6 +2240,7 @@ describe('DashboardComponent', () => {
         imports: [DashboardComponent],
         providers: [
           provideNoMotion(),
+          provideNativeDateAdapter(),
           provideRouter([]),
           { provide: TransactionService, useValue: transactionService },
           { provide: BudgetService, useValue: budgetService },
@@ -2358,11 +2706,19 @@ describe('DashboardComponent', () => {
           });
         });
 
-        /** Fails the write `index`, then lets the corrections render. */
-        async function fail(index: number): Promise<void> {
+        /**
+         * Fails the write `index`, then lets the corrections render. Flushed
+         * through the fixture, whose pass runs inside the zone, not with
+         * `TestBed.tick()`: the fallback dirties the page's own effects, which
+         * run in the zone they were made in, and leaving that zone during a
+         * tick the spec body started calls the tick again (NG0101). The zone's
+         * own tick, once the fixture's pass has left it, runs the move
+         * correction's render hook.
+         */
+        async function fail(fixture: ComponentFixture<DashboardComponent>, index: number): Promise<void> {
           writes[index].fail();
           await settle();
-          TestBed.tick();
+          fixture.detectChanges();
         }
 
         it('counts the move correction over the cards back on the page when a hide joined the save', async () => {
@@ -2370,7 +2726,7 @@ describe('DashboardComponent', () => {
           press(fixture, 'app-spending-chart', 'down');
           press(fixture, 'app-recent-transactions', 'hide');
 
-          await fail(0);
+          await fail(fixture, 0);
 
           expect(said('settings.dashboardCardMoveReverted')).toEqual([
             'settings.dashboardCardMoveReverted:{"card":"dashboard.spendingByCategory","position":3,"total":5}',
@@ -2387,7 +2743,7 @@ describe('DashboardComponent', () => {
           writes[0].land();
           await settle();
 
-          await fail(1);
+          await fail(fixture, 1);
 
           expect(said('dashboard.cardHideReverted')).toEqual([]);
           expect(hostTags(fixture)).not.toContain('app-recent-transactions');
@@ -2403,7 +2759,7 @@ describe('DashboardComponent', () => {
           writes[0].land();
           await settle();
 
-          await fail(1);
+          await fail(fixture, 1);
 
           expect(said('settings.dashboardCardMoveReverted')).toEqual([]);
           expect(said('dashboard.cardHideReverted')).toEqual([
@@ -2537,6 +2893,66 @@ describe('DashboardComponent', () => {
       });
     });
 
+    // #500: the welcome is one sentence the catalog writes, with the first
+    // name inside it, so a language that puts the name elsewhere or adds a
+    // suffix says it its own way. An account with no name is greeted plainly.
+    describe('the greeting', () => {
+      const greetingFor = (displayName: string): string => {
+        authService.currentUser.set(createUser({ displayName }));
+        const fixture = build();
+        fixture.detectChanges();
+        return fixture.nativeElement.querySelector('.dashboard-subtitle').textContent.trim();
+      };
+
+      beforeEach(() => {
+        translation.t.and.callFake((key: string, params?: Record<string, unknown>) =>
+          params ? `${key}:${JSON.stringify(params)}` : key
+        );
+      });
+
+      it('welcomes an account by its first name, in the one sentence the catalog writes', () => {
+        expect(greetingFor('Ada Lovelace')).toBe('common.welcomeNamed:{"name":"Ada"}');
+      });
+
+      it('welcomes an account with no name by the plain welcome', () => {
+        for (const missing of ['', '   ', '　']) {
+          expect(greetingFor(missing)).withContext(JSON.stringify(missing)).toBe('common.welcome');
+        }
+      });
+
+      it('welcomes an account stored as "User" by that name, as any other', () => {
+        expect(greetingFor('User')).toBe('common.welcomeNamed:{"name":"User"}');
+      });
+
+      it('takes the first name from a name written with a tab or the ideographic space', () => {
+        expect(greetingFor('Ada\tLovelace')).toBe('common.welcomeNamed:{"name":"Ada"}');
+        expect(greetingFor('山田　太郎')).toBe('common.welcomeNamed:{"name":"山田"}');
+      });
+
+      it('joins nothing to the sentence: no comma of the template follows the welcome', () => {
+        expect(greetingFor('Ada Lovelace')).not.toContain(',');
+        expect(greetingFor('')).not.toContain(',');
+      });
+
+      it('says it again in the new language when the language switches (pin)', () => {
+        const lang = signal('en');
+        translation.t.and.callFake((key: string, params?: Record<string, unknown>) =>
+          `${lang()}|${params ? `${key}:${JSON.stringify(params)}` : key}`
+        );
+        authService.currentUser.set(createUser({ displayName: 'Ada Lovelace' }));
+        const fixture = build();
+        fixture.detectChanges();
+        const subtitle = () => fixture.nativeElement.querySelector('.dashboard-subtitle').textContent.trim();
+
+        expect(subtitle()).toBe('en|common.welcomeNamed:{"name":"Ada"}');
+
+        lang.set('ja');
+        fixture.detectChanges();
+
+        expect(subtitle()).toBe('ja|common.welcomeNamed:{"name":"Ada"}');
+      });
+    });
+
     it('names the refetch bar for a period change once the first load has painted', () => {
       const fixture = build();
       fixture.detectChanges();
@@ -2546,6 +2962,181 @@ describe('DashboardComponent', () => {
 
       const bar = fixture.nativeElement.querySelector('.refetch-bar');
       expect(bar.getAttribute('aria-label')).toBe('dashboard.refreshing');
+    });
+  });
+
+  // ADR 0144: whether a host that renders nothing still takes a gap is a fact
+  // about the rendered page, so it is asserted where the real template renders
+  // the real banner and the real recap between the page's own header and
+  // summary. Geometry only, no text: Karma serves no fonts.
+  describe('a banner or recap with nothing to show (real template)', () => {
+    const LAST_WEEK: DateWindow = {
+      start: new Date(2026, 8, 14),
+      end: new Date(2026, 8, 20, 23, 59, 59, 999),
+    };
+    const exceeded: BudgetAlert = {
+      budgetId: 'b1',
+      budgetName: 'Groceries',
+      percentUsed: 120,
+      remaining: 0,
+      severity: 'exceeded',
+    };
+
+    let money: jasmine.SpyObj<CurrencyService>;
+    let week: {
+      load: jasmine.Spy;
+      dismiss: jasmine.Spy;
+      weekKey: ReturnType<typeof signal<string>>;
+      visible: ReturnType<typeof signal<boolean>>;
+      window: ReturnType<typeof signal<DateWindow>>;
+      figures: ReturnType<typeof signal<RecapFigures | null>>;
+      narrative: ReturnType<typeof signal<string>>;
+      narrativeStatus: ReturnType<typeof signal<RecapStatus>>;
+    };
+
+    beforeEach(async () => {
+      // The page's own summary and the recap's amount both print through the
+      // currency service; the shared double has no formatter.
+      money = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase', 'formatCurrency']);
+      money.convert.and.callFake((amount: number) => amount);
+      money.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
+      week = {
+        load: jasmine.createSpy('load').and.resolveTo(),
+        dismiss: jasmine.createSpy('dismiss'),
+        weekKey: signal('2026-09-14'),
+        visible: signal(false),
+        window: signal(LAST_WEEK),
+        figures: signal<RecapFigures | null>({
+          spend: 320,
+          income: 1000,
+          count: 12,
+          previousSpend: 400,
+          spendDelta: -0.2,
+          topCategories: [],
+        }),
+        narrative: signal(''),
+        narrativeStatus: signal<RecapStatus>('idle'),
+      };
+
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DashboardComponent],
+        providers: [
+          provideNoMotion(),
+          provideNativeDateAdapter(),
+          provideRouter([]),
+          { provide: TransactionService, useValue: transactionService },
+          { provide: BudgetService, useValue: budgetService },
+          { provide: GoalService, useValue: goalService },
+          { provide: CategoryService, useValue: categoryService },
+          { provide: RecurringService, useValue: recurringService },
+          { provide: InsightSnapshotService, useValue: insightSnapshotService },
+          { provide: CurrencyService, useValue: money },
+          { provide: AuthService, useValue: authService },
+          { provide: TranslationService, useValue: translation },
+          { provide: MatSnackBar, useValue: snackBar },
+          { provide: AnnouncerService, useValue: announcer },
+          { provide: WidgetSnapshotService, useValue: widgetSnapshots },
+          { provide: CloudLLMProviderService, useValue: cloudLLM },
+          { provide: WeeklyRecapService, useValue: week },
+          { provide: ReminderService, useValue: { sweep: jasmine.createSpy('sweep').and.resolveTo() } },
+          {
+            provide: AnalyticsService,
+            useValue: jasmine.createSpyObj('AnalyticsService', ['trackBudgetExceededViewed']),
+          },
+        ],
+      })
+        .overrideComponent(DashboardComponent, {
+          // The banner, the recap and the summary stay real: they are the
+          // hosts whose geometry is under test. The grid's cards are not.
+          remove: {
+            imports: [
+              SpendingChartComponent,
+              RecentTransactionsComponent,
+              UpcomingBillsComponent,
+              BudgetProgressComponent,
+              AiSummaryComponent,
+              LoadingSpinnerComponent,
+            ],
+          },
+          add: { schemas: [NO_ERRORS_SCHEMA] },
+        })
+        .compileComponents();
+    });
+
+    function render(): HTMLElement {
+      const fixture = build();
+      fixture.detectChanges();
+      return fixture.nativeElement;
+    }
+
+    function part(page: HTMLElement, selector: string): HTMLElement {
+      const found = page.querySelector<HTMLElement>(selector);
+      expect(found).withContext(`${selector} rendered`).not.toBeNull();
+      return found!;
+    }
+
+    /** How far the lower element's top sits below the upper one's bottom. */
+    function distance(upper: HTMLElement, lower: HTMLElement): number {
+      return lower.getBoundingClientRect().top - upper.getBoundingClientRect().bottom;
+    }
+
+    it('takes no space for either host: an empty host is still a flex item, and holds only a comment anchor', () => {
+      const page = render();
+      const banner = part(page, 'app-budget-alert-banner');
+      const recapHost = part(page, 'app-weekly-recap');
+
+      // The premise, so this is not hiding for some other reason: each host
+      // holds Angular's comment anchor and nothing else, which :empty ignores.
+      expect(banner.matches(':empty')).withContext('the banner host holds nothing').toBeTrue();
+      expect(recapHost.matches(':empty')).withContext('the recap host holds nothing').toBeTrue();
+
+      expect(getComputedStyle(banner).display).withContext('the banner host').toBe('none');
+      expect(getComputedStyle(recapHost).display).withContext('the recap host').toBe('none');
+    });
+
+    it('leaves the summary one container gap below the header, not one more per empty host', () => {
+      const page = render();
+      const gap = parseFloat(getComputedStyle(part(page, '.dashboard-container')).rowGap);
+      expect(gap).withContext('the container gap').toBe(24);
+
+      expect(distance(part(page, 'app-page-header'), part(page, 'app-financial-summary')))
+        .withContext('header bottom to summary top')
+        .toBeCloseTo(gap, 1);
+    });
+
+    // A host with something to show is a flex item with content: it keeps its
+    // place, and the gap around it is the container's, once on each side. The
+    // other host stays empty here, so a rule that left it a gap would show as
+    // a second gap beside this one.
+    it('keeps a banner that has an alert to show, one gap from its neighbours', () => {
+      budgetService.budgetAlerts.set([exceeded]);
+
+      const page = render();
+      const banner = part(page, 'app-budget-alert-banner');
+      const header = part(page, 'app-page-header');
+      const summary = part(page, 'app-financial-summary');
+
+      expect(banner.matches(':empty')).withContext('the banner host holds the alert').toBeFalse();
+      expect(getComputedStyle(banner).display).withContext('the banner host').not.toBe('none');
+      expect(banner.getBoundingClientRect().height).withContext('the banner height').toBeGreaterThan(0);
+      expect(distance(header, banner)).withContext('header to banner').toBeCloseTo(24, 1);
+      expect(distance(banner, summary)).withContext('banner to summary').toBeCloseTo(24, 1);
+    });
+
+    it('keeps a recap that has a week to show, one gap from its neighbours', () => {
+      week.visible.set(true);
+
+      const page = render();
+      const recapHost = part(page, 'app-weekly-recap');
+      const header = part(page, 'app-page-header');
+      const summary = part(page, 'app-financial-summary');
+
+      expect(recapHost.matches(':empty')).withContext('the recap host holds the card').toBeFalse();
+      expect(getComputedStyle(recapHost).display).withContext('the recap host').not.toBe('none');
+      expect(recapHost.getBoundingClientRect().height).withContext('the recap height').toBeGreaterThan(0);
+      expect(distance(header, recapHost)).withContext('header to recap').toBeCloseTo(24, 1);
+      expect(distance(recapHost, summary)).withContext('recap to summary').toBeCloseTo(24, 1);
     });
   });
 });

@@ -1,6 +1,6 @@
 # 167. A notification carries its route and a tap lands on it, and the recap nudge needs a week with news
 
-**Status:** Accepted, implemented · **Date:** 2026-10-08 · **Issues:** #446
+**Status:** Accepted, implemented; amended by [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md) · **Date:** 2026-10-08 · **Issues:** #446
 
 Reference documentation lives in [../reminders.md](../reminders.md),
 [../weekly-recap.md](../weekly-recap.md),

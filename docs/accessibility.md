@@ -75,6 +75,16 @@ silently.
 appending to it would break the match between accessible name and visible text.
 That is what `aria-current` is for.
 
+**A short label is the name too.** The bottom nav names the dashboard with
+a shorter word than the other surfaces (ホーム in ja, where ダッシュボード
+does not fit the tab; [ui-overflow.md](ui-overflow.md#using-appfittext)).
+One translated string feeds both the visible label and the link's
+`aria-label`, so the name is still exactly what is shown. The active
+label's bold is unchanged: it costs that label no width, and in normal
+colour mode it is a cue that is not colour; under forced colors the outline
+above carries the state
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)).
+
 **A button that shows only a glyph or a colour is named for what it picks.**
 The category dialog's icon grid and colour swatches show no text: each
 button carries its icon's or colour's name from the catalog, and

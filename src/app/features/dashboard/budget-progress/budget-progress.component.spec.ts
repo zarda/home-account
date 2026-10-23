@@ -6,6 +6,7 @@ import { BudgetProgressComponent } from './budget-progress.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { ThemeService } from '../../../core/services/theme.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Budget, Category } from '../../../models';
 import {
   AUDIT_SCHEMES,
@@ -17,6 +18,7 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  textLines,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -398,6 +400,173 @@ describe('BudgetProgressComponent', () => {
             .not.toBe(painted.get('warning'));
         });
       }
+    });
+  });
+
+  // The dashboard's right-hand rail at 1024 px gives each budget's header row
+  // 160 px, where *Food & Dining* was cut to *Food & Dini…* with nothing to
+  // read the rest by. G3 in docs/ui-overflow.md: nothing truncates. A name
+  // too long for the row wraps, one with no break in it breaks where it must,
+  // and the amounts wrap at their spaces.
+  describe('a budget row at the rail width (real template)', () => {
+    const HEADER_ROW = 160;
+    // The card content's padding (12 px a side) and the row's own (10 px a
+    // side) around the header row.
+    const RAIL = HEADER_ROW + 2 * 12 + 2 * 10;
+    const COPY: Record<string, string> = {
+      'dashboard.budgetProgress': 'Budget Progress',
+      'budget.manage': 'Manage',
+      'transactions.monthly': 'Monthly',
+    };
+    const LONG_NAME = 'Groceries_Household_Pantry_Staples';
+    let host: HTMLElement;
+
+    const rows = () => Array.from(host.querySelectorAll('.budget-item')) as HTMLElement[];
+    const part = (row: HTMLElement, selector: string) => row.querySelector(selector) as HTMLElement;
+    const longRow = () => rows().find(row => part(row, '.budget-name').textContent?.trim() === LONG_NAME)!;
+    /** The rectangle of the first line `element`'s own text is laid out on. */
+    const firstLine = (element: HTMLElement) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return Array.from(range.getClientRects()).find(rect => rect.width > 0)!;
+    };
+    const middle = (box: DOMRect) => (box.top + box.bottom) / 2;
+    /** How wide `element`'s text is on one unbroken line, in its own font. */
+    const naturalWidth = (element: HTMLElement) => {
+      const copy = element.cloneNode(true) as HTMLElement;
+      copy.style.cssText = 'position: absolute; white-space: nowrap; width: max-content; max-width: none';
+      element.parentElement!.appendChild(copy);
+      try {
+        return copy.getBoundingClientRect().width;
+      } finally {
+        copy.remove();
+      }
+    };
+    /** Whether `period` follows `name` on its line or starts a line below it. */
+    const afterOrBelow = (name: DOMRect, period: DOMRect) =>
+      period.left >= name.right || period.top >= name.bottom - 0.5;
+
+    beforeEach(() => {
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake((key: string) => COPY[key] ?? key);
+      mockCurrencyService.formatCurrency.and.callFake((amount: number, currency: string) =>
+        new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
+      );
+      host = fixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = `${RAIL}px`;
+      // Karma serves none of the app's fonts, so each platform measures in its
+      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+      // to within a few pixels.
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+      document.body.appendChild(host);
+      setBudgets([
+        createMockBudget({ id: 'food', name: 'Food & Dining', amount: 600, spent: 0 }),
+        createMockBudget({ id: 'long', name: LONG_NAME, amount: 125000, spent: 98765.43 }),
+      ]);
+      fixture.detectChanges();
+    });
+
+    afterEach(() => host.remove());
+
+    it('wraps a name too long for the row rather than cutting it, inside its row', () => {
+      expect(rows().length).withContext('both budgets rendered').toBe(2);
+      for (const row of rows()) {
+        const name = part(row, '.budget-name');
+        const label = name.textContent!.trim();
+        const header = part(row, '.budget-header').getBoundingClientRect();
+        expect(header.width).withContext(`${label} header row at the rail width`).toBeCloseTo(HEADER_ROW, 0);
+        expect(getComputedStyle(name).textOverflow).withContext(`${label} no ellipsis`).not.toBe('ellipsis');
+        expect(name.scrollWidth)
+          .withContext(`${label} nothing hidden past the name's edge`)
+          .toBeLessThanOrEqual(name.clientWidth);
+
+        const period = part(row, '.budget-period').getBoundingClientRect();
+        const percentage = part(row, '.budget-percentage').getBoundingClientRect();
+        expect(afterOrBelow(name.getBoundingClientRect(), period))
+          .withContext(`${label} period word after the name on its line, or below it`)
+          .toBeTrue();
+        expect(period.right).withContext(`${label} period word before the percentage`).toBeLessThanOrEqual(percentage.left);
+        expect(percentage.right).withContext(`${label} percentage inside the row`).toBeLessThanOrEqual(header.right);
+      }
+      expect(textLines(part(longRow(), '.budget-name')))
+        .withContext('the unbreakable name wrapped')
+        .toBeGreaterThan(1);
+    });
+
+    it('wraps the amounts at their spaces rather than cutting them', () => {
+      for (const row of rows()) {
+        const amounts = part(row, '.budget-amounts');
+        const label = amounts.textContent!.trim();
+        expect(getComputedStyle(amounts).textOverflow).withContext(`${label} no ellipsis`).not.toBe('ellipsis');
+        expect(amounts.scrollWidth)
+          .withContext(`${label} nothing hidden past the line's edge`)
+          .toBeLessThanOrEqual(amounts.clientWidth);
+        expect(amounts.getBoundingClientRect().right)
+          .withContext(`${label} inside the row`)
+          .toBeLessThanOrEqual(part(row, '.budget-footer').getBoundingClientRect().right);
+      }
+    });
+
+    // A wrapped name is read from its first line, so the glyph and the
+    // percentage sit beside that line rather than floating between two, or
+    // on a line of their own above the name. The name has the row's width
+    // to wrap in, so the period word starts the line below it.
+    it("keeps the glyph and the percentage on a wrapped name's first line, and the period word below the name", () => {
+      const row = longRow();
+      const name = part(row, '.budget-name');
+      expect(textLines(name)).withContext('the name wrapped').toBeGreaterThan(1);
+      const line = firstLine(name);
+      for (const [label, selector] of [
+        ['glyph', '.budget-info mat-icon'],
+        ['percentage', '.budget-percentage'],
+      ] as const) {
+        const centre = middle(part(row, selector).getBoundingClientRect());
+        expect(centre).withContext(`${label} at or below the first line's top`).toBeGreaterThanOrEqual(line.top);
+        expect(centre).withContext(`${label} at or above the first line's bottom`).toBeLessThanOrEqual(line.bottom);
+      }
+      const period = part(row, '.budget-period').getBoundingClientRect();
+      expect(period.top)
+        .withContext("period word at or below the name's last line")
+        .toBeGreaterThanOrEqual(name.getBoundingClientRect().bottom - 0.5);
+      expect(period.right)
+        .withContext('period word inside the row')
+        .toBeLessThanOrEqual(part(row, '.budget-header').getBoundingClientRect().right);
+    });
+
+    // *Subscriptions* fits the row on its own but not beside the period
+    // word. Taking the period word's room split it as *Subscription* / *s*;
+    // the period word moves down instead, and the name keeps its line whole.
+    it('keeps a word that fits the row whole on one line, and moves the period word below it', () => {
+      setBudgets([createMockBudget({ id: 'subs', name: 'Subscriptions', amount: 600, spent: 0 })]);
+      fixture.detectChanges();
+      const [row] = rows();
+      const header = part(row, '.budget-header').getBoundingClientRect();
+      const info = part(row, '.budget-info');
+      const name = part(row, '.budget-name');
+      const period = part(row, '.budget-period');
+      expect(header.width).withContext('header row at the rail width').toBeCloseTo(HEADER_ROW, 0);
+
+      // The word is sized for the fallback face: wider than what the period
+      // word leaves it, no wider than what the glyph alone leaves it.
+      const gap = parseFloat(getComputedStyle(info).columnGap);
+      const word = naturalWidth(name);
+      const besideGlyph = info.getBoundingClientRect().width - part(row, '.budget-info mat-icon').getBoundingClientRect().width - gap;
+      const besidePeriod = besideGlyph - gap - period.getBoundingClientRect().width;
+      expect(word).withContext('precondition: too wide to sit beside the period word').toBeGreaterThan(besidePeriod);
+      expect(word).withContext('precondition: fits the row beside the glyph alone').toBeLessThanOrEqual(besideGlyph);
+
+      const nameBox = name.getBoundingClientRect();
+      expect(nameBox.height)
+        .withContext('the name on one line, its height one line-height')
+        .toBeCloseTo(parseFloat(getComputedStyle(name).lineHeight), 0);
+      expect(textLines(name)).withContext('the word whole on one line').toBe(1);
+      const periodBox = period.getBoundingClientRect();
+      expect(periodBox.top).withContext("period word below the name's line").toBeGreaterThanOrEqual(nameBox.bottom - 0.5);
+      expect(periodBox.right).withContext('period word inside the row').toBeLessThanOrEqual(header.right);
     });
   });
 

@@ -236,6 +236,16 @@ centre action included. What it no longer decides is what an item is *called*.
 Before this the sidebar said `nav.budget` and the bottom nav said `nav.budgets`
 for the same route; the `nav.budget` key is now gone from all three catalogs.
 
+One item has a second, shorter name, and the list holds it too: the
+dashboard's optional `shortLabelKey`, `nav.dashboardShort` (ホーム in ja),
+which only the bottom nav reads, because its tab has no room for
+ダッシュボード ([ui-overflow.md](ui-overflow.md#using-appfittext)). The
+sidebar and the palette translate `labelKey` and never read it; the page
+title reads its own `dashboard.title`. `navItemFor` still returns the whole
+item, and no other item carries a short name. `check-i18n.mjs` cannot see a
+key read as `t(item.labelKey)`, so `nav-items.spec.ts` checks every key in
+the list against the catalogs.
+
 **`core/services/quick-add.service.ts`** is the single add-transaction seam.
 Every entry point goes through it — the bottom nav, the transactions page, the
 transaction list's empty state, the first-run welcome, the `n` hotkey and the

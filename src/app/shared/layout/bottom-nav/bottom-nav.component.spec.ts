@@ -9,6 +9,8 @@ import { channels, provideNoMotion, withTheme } from '../../../core/services/tes
 
 const LABELS: Record<string, string> = {
   'nav.dashboard': 'Dashboard',
+  // A word distinct from `Dashboard`, so a case can tell the two keys apart.
+  'nav.dashboardShort': 'Dash',
   'nav.transactions': 'Transactions',
   'nav.add': 'Add',
   'nav.budgets': 'Budgets',
@@ -67,8 +69,9 @@ describe('BottomNavComponent', () => {
 
   // The four real destinations resolve through navItemFor rather than
   // carrying their own labelKey/icon — the whole point of the shared list
-  // is that the bottom nav and the sidebar can no longer say different
-  // things about the same route (the old nav.budget/nav.budgets drift).
+  // is that the bottom nav's icon and labelKey can no longer drift from the
+  // sidebar's for the same route (the old nav.budget/nav.budgets drift); the
+  // one allowed difference is a shortLabelKey (nav-items.ts).
   it('resolves its real destinations through the shared nav-items list', () => {
     const items = component.navItems();
     for (const route of ['/dashboard', '/transactions', '/budgets', '/reports']) {
@@ -89,7 +92,24 @@ describe('BottomNavComponent', () => {
       fixture.nativeElement.querySelectorAll('.nav-label'),
       (el) => (el as HTMLElement).textContent!.trim(),
     );
-    expect(labels).toEqual(['Dashboard', 'Transactions', 'Budgets', 'Reports']);
+    expect(labels).toEqual(['Dash', 'Transactions', 'Budgets', 'Reports']);
+  });
+
+  // The bar's room is the exception to one name per destination: the dashboard
+  // reads its short word here, in the visible label and in the accessible name
+  // alike, and no other slot carries one.
+  it('names the dashboard link by its short word, in its text and its aria-label', () => {
+    const link = fixture.nativeElement.querySelector(
+      'a.nav-item[href="/dashboard"]',
+    ) as HTMLElement;
+    expect(link.querySelector('.nav-label')!.textContent!.trim()).toBe('Dash');
+    expect(link.getAttribute('aria-label')).toBe('Dash');
+
+    const others = Array.from(
+      fixture.nativeElement.querySelectorAll('a.nav-item:not([href="/dashboard"])'),
+      (el) => (el as HTMLElement).getAttribute('aria-label'),
+    );
+    expect(others).toEqual(['Transactions', 'Budgets', 'Reports']);
   });
 
   // The drawer renders the sidebar's nav beside this one, and two unnamed
@@ -145,7 +165,7 @@ describe('BottomNavComponent', () => {
 
     it('leaves the centre Add button unmarked', async () => {
       await goTo('/dashboard');
-      expect(marked()).toEqual(['Dashboard']);
+      expect(marked()).toEqual(['Dash']);
       expect(
         fixture.nativeElement.querySelector('button.action-button[aria-current]'),
       ).toBeNull();

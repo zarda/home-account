@@ -374,7 +374,8 @@ describe('CategoryBreakdownComponent', () => {
             currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
             getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
             convert: (amount: number) => amount,
-            amountInBase: (t: Transaction) => t.amountInBaseCurrency
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+            formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`
           }
         },
         { provide: TranslationService, useValue: mockTranslationService },

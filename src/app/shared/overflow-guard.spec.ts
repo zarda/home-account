@@ -545,7 +545,15 @@ describe('overflow guard: the insight drill-down row', () => {
   let host: HTMLElement;
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [InsightRowProbeComponent] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [InsightRowProbeComponent],
+      providers: [
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
+        },
+      ],
+    }).compileComponents();
 
     const fixture = TestBed.createComponent(InsightRowProbeComponent);
     host = fixture.nativeElement as HTMLElement;
@@ -581,6 +589,6 @@ describe('overflow guard: the insight drill-down row', () => {
 
   it('shows every digit of the amount, scaling rather than shortening it', () => {
     const amount = host.querySelector('.transaction-amount') as HTMLElement;
-    expect(amount.textContent).toContain('123,456,789');
+    expect(amount.textContent).toContain('USD 123456789.50');
   });
 });

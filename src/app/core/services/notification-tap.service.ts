@@ -12,7 +12,8 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import type { ActionPerformed, LocalNotificationsPlugin } from '@capacitor/local-notifications';
 import { filter, take } from 'rxjs';
 
-import { safeAppRoute } from '../utils/notification-route.utils';
+import { WIDGET_SNAPSHOT_PLUGIN } from '../plugins/widget-snapshot.plugin';
+import { safeAppRoute, widgetRoute } from '../utils/notification-route.utils';
 
 /**
  * The type of the message `public/share-target-sw.js` posts to an open tab
@@ -28,15 +29,19 @@ const LOG = '[NotificationTapService]';
 
 /**
  * Opens the in-app path a tapped reminder names, in a page that is already
- * running.
+ * running, and the dashboard for a tap on the home-screen widget.
  *
  * On the web the worker owns the tap: it focuses an open tab and posts it
  * the route, because only the page's router can open it without a reload.
  * In the iOS app the plugin reports the tap to whichever listener is
- * attached, and holds a tap that started the app until one attaches.
+ * attached, and holds a tap that started the app until one attaches; the
+ * widget's plugin does the same for a tap on the widget, which exists only
+ * there.
  *
- * Every route is data from outside the page, so only what `safeAppRoute`
- * admits is opened, and anything else is ignored: the app stays where it is.
+ * A reminder's route is data from outside the page, so only what
+ * `safeAppRoute` admits is opened, and anything else is ignored: the app
+ * stays where it is. The widget's route is the app's own, and takes the same
+ * path.
  *
  * Loaded by dynamic import (`armNotificationTaps` in app.config.ts), so this
  * code stays out of the initial bundle: from an idle task on the web, and at
@@ -47,14 +52,19 @@ const LOG = '[NotificationTapService]';
 export class NotificationTapService {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly widget = inject(WIDGET_SNAPSHOT_PLUGIN);
   private armed = false;
 
-  /** Starts listening for taps; later calls do nothing. Never rejects. */
+  /**
+   * Starts listening for taps; later calls do nothing. Never rejects. In the
+   * iOS app the reminders and the widget arm side by side, and either one
+   * failing leaves the other armed.
+   */
   async arm(): Promise<void> {
     if (this.armed) return;
     this.armed = true;
     if (Capacitor.isNativePlatform()) {
-      await this.listenToPlugin();
+      await Promise.all([this.listenToPlugin(), this.listenToWidget()]);
     } else {
       this.listenToWorker();
     }
@@ -88,6 +98,20 @@ export class NotificationTapService {
       });
     } catch (error) {
       console.warn(`${LOG} Notification taps were not armed`, error);
+    }
+  }
+
+  /**
+   * The widget's tap carries no route: it always opens the dashboard. As with
+   * the reminders, only the listener's handle is awaited (ADR 0138).
+   */
+  private async listenToWidget(): Promise<void> {
+    const widget = this.widget;
+    if (!widget) return;
+    try {
+      await widget.addListener('tapped', () => this.open(widgetRoute()));
+    } catch (error) {
+      console.warn(`${LOG} Widget taps were not armed`, error);
     }
   }
 

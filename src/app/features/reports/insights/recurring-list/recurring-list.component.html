@@ -59,7 +59,7 @@
 
           <div class="row-amount">
             <span class="row-monthly">
-              {{ group.monthlyEquivalent | currency:currency():'symbol':'1.2-2' }}
+              {{ group.monthlyEquivalent | localeCurrency:currency() }}
             </span>
             <span class="row-monthly-label">{{ 'insights.perMonth' | translate }}</span>
           </div>

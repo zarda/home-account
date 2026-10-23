@@ -11,6 +11,8 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../../core/services/auth.service';
 import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { accountDisplayName } from '../../../core/utils/person-name.utils';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -47,6 +49,7 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
   private breakpointObserver = inject(BreakpointObserver);
   private dialog = inject(MatDialog);
   private keyboardShortcuts = inject(KeyboardShortcutService);
+  private translation = inject(TranslationService);
   private lastScrollY = 0;
   private routerSubscription?: Subscription;
   private scrollContainer: HTMLElement | null = null;
@@ -74,6 +77,11 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
 
   currentUser = computed(() => this.authService.currentUser());
   isVisible = signal(true);
+
+  /** The name the menu shows, or the catalog's word for an account that gave none. */
+  accountName = computed(() =>
+    accountDisplayName(this.currentUser()?.displayName, key => this.translation.t(key))
+  );
 
   // Resets to unfailed whenever the photo URL itself changes, so a stale
   // failure never survives a sign-in as a different account.

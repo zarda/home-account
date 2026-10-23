@@ -1,6 +1,6 @@
 # 145. A class found by reading becomes a gate
 
-**Status:** Accepted, implemented · **Date:** 2026-09-21 · **Issues:** #435
+**Status:** Accepted, implemented; amended by [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md) · **Date:** 2026-09-21 · **Issues:** #435
 
 Reference documentation lives in [../accessibility.md](../accessibility.md).
 

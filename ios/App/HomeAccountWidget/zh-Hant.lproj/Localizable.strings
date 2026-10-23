@@ -1,0 +1,2 @@
+/* The widget's name in Traditional Chinese. Mirrors app.title in src/assets/i18n/tc.json; npm run i18n:check holds the two equal. */
+"app.title" = "家庭記帳";

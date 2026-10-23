@@ -1,4 +1,5 @@
 export * from './category-glyph.pipe';
+export * from './locale-currency.pipe';
 export * from './locale-date.pipe';
 export * from './locale-number.pipe';
 export * from './location-label.pipe';

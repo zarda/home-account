@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS, MatFormFieldDefaultOptions, MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -76,7 +76,9 @@ function endNotBeforeStart(control: AbstractControl<Date | null>): ValidationErr
   imports: [
     DialogHeaderComponent,
     MatButtonModule,
-    MatDatepickerModule,
+    MatDatepicker,
+    MatDatepickerInput,
+    MatDatepickerToggle,
     MatDialogModule,
     MatFormFieldModule,
     MatIconModule,

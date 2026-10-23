@@ -181,7 +181,7 @@
               <span class="preview-date">{{ transaction.date | localeDate }}</span>
               <span class="preview-desc">{{ transaction.description }}</span>
               <span class="preview-amount" [class.income]="transaction.type === 'income'" [class.expense]="transaction.type === 'expense'">
-                {{ transaction.type === 'expense' ? '-' : '+' }}{{ transaction.amount | currency:(transaction.currency || baseCurrency()):'symbol' }}
+                {{ transaction.type === 'expense' ? '-' : '+' }}{{ transaction.amount | localeCurrency:(transaction.currency || baseCurrency()) }}
               </span>
             </div>
           }

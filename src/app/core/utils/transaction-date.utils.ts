@@ -10,7 +10,7 @@ import {
 /**
  * How this app reads and writes a local date.
  *
- * Four things here are load-bearing rather than conveniences:
+ * Five things here are load-bearing rather than conveniences:
  *
  * 1. `dateOf` is the single coercion for a transaction's date. Persisted rows
  *    carry a Firestore Timestamp, while specs and DTOs pass a plain Date, and
@@ -30,6 +30,14 @@ import {
  * 4. `dateAtClampedDay` clamps the day to the target month's length. Shifting a
  *    Date's month first and clamping after cannot work: 31 Jan + 1 month
  *    overflows to 3 Mar before anything reads February's length.
+ *
+ * 5. `parseTypedDate` is the one reader of a date a person typed. Which of
+ *    08/09/2026's two numbers is the month is the reader's format, not
+ *    something the digits say, so it takes the field order as an argument,
+ *    and it builds the Date from parts: `new Date(text)` would read a bare ISO
+ *    date as UTC midnight (the previous evening west of Greenwich) and a
+ *    slashed one in the platform's own order. A date field reaches it through
+ *    `DateFormatService.parseDate`, which supplies the reader's order.
  *
  * Everything reads *local* date parts, so day-of-week and day-of-month results
  * are a function of the runtime's IANA zone. Callers that persist those results
@@ -102,10 +110,11 @@ export function localDateFromParts(year: number, month: number, day: number): Da
 }
 
 /**
- * The anchors are load-bearing. An unanchored pattern also matches inside
+ * A date-only `yyyy-MM-dd`, whether or not it names a day. The anchors are
+ * load-bearing. An unanchored pattern also matches inside
  * `2026-08-01T10:30:00Z`, which would truncate a full instant to a date.
  */
-const DAY_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const DAY_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
  * Strict `yyyy-MM-dd` to local midnight — the exact inverse of `dayKey`. Null on
@@ -120,6 +129,85 @@ export function parseDayKey(value: unknown): Date | null {
     return null;
   }
   return localDateFromParts(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+/**
+ * The order a reader writes a numeric date's fields in: `ymd` for 2026/8/19,
+ * `mdy` for 8/19/2026, `dmy` for 19/8/2026.
+ */
+export type DateFieldOrder = 'ymd' | 'mdy' | 'dmy';
+
+/**
+ * Between two fields of a typed date: one of `/ . - 年 月 ・ ー 。` with any
+ * whitespace around it, or whitespace alone. `・` (U+30FB), `ー` (U+30FC) and
+ * `。` (U+3002) are what the Japanese IME types for `/`, for `-` and for `.`
+ * in kana mode; NFKC leaves all three as they are (and folds the half-width
+ * `｡` into `。`), unlike the full-width digits and slash it types.
+ * One separator per gap, so `2026//8/19` is four fields and is refused rather
+ * than quietly read as three.
+ */
+const TYPED_DATE_SEPARATOR = /\s*[/.\-年月・ー。]\s*|\s+/;
+
+const DIGITS_ONLY = /^[0-9]+$/;
+
+/**
+ * The year a typed field names: four digits as written, two digits as 20YY,
+ * and anything else (`6`, `202`) is not a year. A four-digit year below 100
+ * passes here and is refused one step later, by the round trip in
+ * `localDateFromParts`, because `Date` maps the years 0 to 99 onto the 1900s.
+ */
+function typedYear(field: string): number | null {
+  if (field.length === 4) {
+    return Number(field);
+  }
+  return field.length === 2 ? 2000 + Number(field) : null;
+}
+
+/**
+ * A date a reader typed into a date field, read in the order their format
+ * names its fields, as local midnight. Null when it is not a day.
+ *
+ * The text is NFKC-normalised first, so full-width digits and separators read
+ * as the ASCII they stand for, and one trailing `日` is dropped. A strict
+ * `yyyy-MM-dd` is read by `parseDayKey` whatever the order, because ISO is
+ * not an order a format chooses. Anything else must be exactly three
+ * numeric fields split on whitespace or one of `/ . - 年 月 ・ ー 。` (the last
+ * three are the Japanese IME's kana-mode slash, hyphen and full stop, which
+ * NFKC does not map). A leading four-digit field is the year and the other
+ * two are month then day, the way a year-first date is written; otherwise
+ * `order` says where the year, month and day sit, and a two-digit year is
+ * 20YY.
+ *
+ * Month-first against day-first is not guessable from the digits: `08/09/2026`
+ * is 9 August to one reader and 8 September to another, so the order is an
+ * argument and there is no default.
+ *
+ * Never `new Date(text)`: the platform reads a bare ISO date as UTC midnight,
+ * the previous evening west of Greenwich, and reads `08/09/2026` its own way
+ * whatever the reader's format.
+ */
+export function parseTypedDate(text: string, order: DateFieldOrder): Date | null {
+  const normalized = text.normalize('NFKC').trim().replace(/日$/, '').trim();
+  if (DAY_KEY_PATTERN.test(normalized)) {
+    return parseDayKey(normalized);
+  }
+  const fields = normalized.split(TYPED_DATE_SEPARATOR);
+  if (fields.length !== 3 || !fields.every(field => DIGITS_ONLY.test(field))) {
+    return null;
+  }
+  const [first, second, third] = fields;
+  let year: string;
+  let month: string;
+  let day: string;
+  if (first.length === 4 || order === 'ymd') {
+    [year, month, day] = [first, second, third];
+  } else if (order === 'mdy') {
+    [month, day, year] = [first, second, third];
+  } else {
+    [day, month, year] = [first, second, third];
+  }
+  const fullYear = typedYear(year);
+  return fullYear === null ? null : localDateFromParts(fullYear, Number(month) - 1, Number(day));
 }
 
 /**

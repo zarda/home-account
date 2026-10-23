@@ -4,6 +4,7 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
+import { provideNativeDateAdapter } from '@angular/material/core';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
@@ -27,6 +28,7 @@ import {
   textLines,
   withTheme,
   provideNoMotion,
+  createTranslationStub,
 } from '../../../../core/services/testing';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
 import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
@@ -174,10 +176,12 @@ describe('ImportWizardComponent', () => {
     mockDuplicateService.findWithinBatchDuplicates.and.returnValue([]);
     // Resolved, never bare: a bare spy method answers undefined, which the
     // re-check's try/catch lets through, and the merge behind it would then
-    // throw inside a void-ed promise — an unhandled rejection Jasmine pins
-    // on whichever spec happens to be running. Empty, it applies to no row
-    // and returns before the batch pass, so a case that needs the pass
-    // answers one check per row, as the service does.
+    // throw inside a void-ed promise. Window never hears that rejection under
+    // zone.js: from the component's zone it comes out of NgZone.onError, which
+    // TestBed rethrows as a global error Jasmine pins on whichever spec
+    // happens to be running. Empty, it applies to no row and returns before
+    // the batch pass, so a case that needs the pass answers one check per
+    // row, as the service does.
     mockDuplicateService.checkDuplicates.and.resolveTo([]);
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
@@ -3177,7 +3181,10 @@ describe('ImportWizardComponent', () => {
           { provide: NotificationService, useValue: notifications },
           { provide: AIImportService, useValue: mockImportService },
           { provide: CategoryService, useValue: mockCategoryService },
-          { provide: TranslationService, useValue: mockTranslationService },
+          // The stepper's labels follow the catalog through the service's
+          // signals, which a bare spy object does not carry. `t` is still the
+          // spy above, so what the cases below assert about it holds.
+          { provide: TranslationService, useValue: createTranslationStub({ t: mockTranslationService.t }) },
           { provide: MatSnackBar, useValue: mockSnackBar },
           { provide: AnnouncerService, useValue: mockAnnouncer },
           { provide: Router, useValue: mockRouter },
@@ -3202,7 +3209,8 @@ describe('ImportWizardComponent', () => {
           // whose currency memory reaches AuthService and from there the
           // Firebase Auth token the unit run has no provider for.
           { provide: AuthService, useValue: new MockAuthService() },
-          provideNoMotion()
+          provideNoMotion(),
+          provideNativeDateAdapter()
         ],
         schemas: [NO_ERRORS_SCHEMA]
       }).compileComponents();
@@ -3257,6 +3265,40 @@ describe('ImportWizardComponent', () => {
       realFixture.detectChanges();
 
       expect(back()!.disabled).toBeTrue();
+    });
+
+    // The upload step is finished once a file is chosen, and the wizard keeps
+    // it editable until the import is being written: a reader who has moved
+    // on hears the edit state's hidden text, and the done state's only while
+    // the steps are sealed. Both texts are Material's own, in English, unless
+    // the wizard provides the app's intl. This TestBed lists none, so these
+    // two cases are also the proof that the component brings its own.
+    describe('what a screen reader hears of a step it has moved past', () => {
+      const firstStepHidden = (state: 'edit' | 'done') =>
+        (realFixture.nativeElement as HTMLElement)
+          .querySelector('mat-step-header')
+          ?.querySelector(`.mat-step-icon-state-${state} .cdk-visually-hidden`)
+          ?.textContent?.trim();
+
+      beforeEach(() => {
+        realFixture.componentInstance.onFilesSelected([new File([''], 'january.csv', { type: 'text/csv' })]);
+        realFixture.detectChanges();
+        realFixture.componentInstance.stepper.next();
+        realFixture.detectChanges();
+      });
+
+      it('says the finished upload step is editable, in the language of the catalog', () => {
+        expect(realFixture.componentInstance.stepper.selectedIndex).withContext('the selected step').toBe(1);
+        expect(firstStepHidden('edit')).toBe('stepper.editable');
+      });
+
+      it('says it is completed once the import is being written and the steps are sealed', () => {
+        realFixture.componentInstance.isImporting.set(true);
+        realFixture.detectChanges();
+
+        expect(firstStepHidden('edit')).withContext('the edit state, gone').toBeUndefined();
+        expect(firstStepHidden('done')).toBe('stepper.completed');
+      });
     });
 
     it('puts a same-batch failure on the error card, with the stored photos named in it', fakeAsync(() => {

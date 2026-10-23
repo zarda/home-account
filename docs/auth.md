@@ -150,8 +150,9 @@ overwrite a real profile with defaults.
 is the string the user sees.
 
 Two readers wait on this rather than pressing ahead against the fallback.
-The home-screen widget's publish effect gates on `isLoading` so a cold start
-with no user yet never overwrites a signed-in account's last figures with a
+The home-screen widget's signed-out effect gates on `isLoading`, and
+`publish()` writes nothing while there is no user, so a cold start with no
+user yet never overwrites a signed-in account's last figures with a
 signed-out state. Closed-month snapshot generation
 ([docs/insights.md](insights.md)) gates on both `isLoading` and
 `profileDegraded`: a boot running on the fallback profile cannot read its

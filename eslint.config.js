@@ -6,13 +6,15 @@ const angular = require("angular-eslint");
 
 // Two SDK families are confined to the files that own them: the analytics
 // SDKs to AnalyticsService and its wiring (ADR 0003), the model SDKs to the
-// three provider services (ADR 0005). Flat config resolves a rule key to the
-// LAST matching config object's options, replaced wholesale — two blocks that
-// overlap on `files` and both set no-restricted-imports silently disable each
-// other, which is how the analytics ban died once (#262, ADR 0038). So each
-// ban is declared once here, and every block below restates the full set that
-// applies to its files. scripts/check-lint-guards.mjs resolves the real
-// config per file population and fails the build when a ban stops applying.
+// three provider services (ADR 0005). A third ban has no owner at all: the
+// Material date modules, which no file may import (below). Flat config
+// resolves a rule key to the LAST matching config object's options, replaced
+// wholesale — two blocks that overlap on `files` and both set
+// no-restricted-imports silently disable each other, which is how the
+// analytics ban died once (#262, ADR 0038). So each ban is declared once here,
+// and every block below restates the full set that applies to its files.
+// scripts/check-lint-guards.mjs resolves the real config per file population
+// and fails the build when a ban stops applying.
 const ANALYTICS_IMPORT_PATHS = [
   {
     name: "@angular/fire/analytics",
@@ -76,6 +78,24 @@ const DYNAMIC_ANALYTICS_IMPORT_MESSAGE =
   "consent gate exactly as a static one does; NativeAnalyticsTransport is the " +
   "one file that may load it, and it takes the loader as an injected seam.";
 
+// A spec that listens for a rejection nobody caught on window hears nothing
+// under zone.js (docs/testing.md). Angular-compiled code runs on
+// ZoneAwarePromise, which reports an unhandled rejection through the zone's
+// own hook and never dispatches the DOM event; so such a spec passes
+// vacuously, or never reaches its assertion. Both selectors name the event
+// itself: the first reads any string literal equal to an event name (an
+// addEventListener / removeEventListener / fromEvent argument, or a constant
+// holding it), the second the `on…` handler properties.
+const REJECTION_EVENT_LITERAL_SELECTOR =
+  "Literal[value=/^(unhandledrejection|rejectionhandled)$/]";
+const REJECTION_EVENT_HANDLER_SELECTOR =
+  "MemberExpression[property.name=/^on(unhandledrejection|rejectionhandled)$/]";
+const REJECTION_LISTENER_MESSAGE =
+  "zone.js never lets window hear a rejection nobody caught in Angular-compiled " +
+  "code (a ZoneAwarePromise): it goes to console.error, or to NgZone.onError for " +
+  "code created inside the Angular zone. Spy on the console or subscribe to " +
+  "NgZone.onError (docs/testing.md).";
+
 const MODEL_IMPORT_PATHS = [
   {
     name: "@google/generative-ai",
@@ -91,6 +111,36 @@ const MODEL_IMPORT_PATHS = [
     name: "@anthropic-ai/sdk",
     message:
       "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
+  },
+];
+
+// The Material date modules, for every file under src/app, specs included.
+// Each one provides again, in the injector of whatever imports it, something
+// the app already provides once at the root: MatDatepickerModule its own
+// MatDatepickerIntl (the calendar's English labels), MatNativeDateModule the
+// native date adapter and Material's default formats, NativeDateModule the
+// native adapter alone. A page that imports any of them shadows the app's one
+// adapter (which reads the reader's language and date format) and the app's
+// one set of labels, and its calendar answers in the browser's locale again
+// (#500). The pickers import the standalone pieces instead (MatDatepicker,
+// MatDatepickerInput, MatDatepickerToggle), which provide nothing; a spec that
+// renders one provides an adapter itself, provideNativeDateAdapter() or
+// provideAppDatepickerForTests when it asserts date text. Only the module
+// names are banned: the rest of both entry points stays importable.
+// scripts/check-lint-guards.mjs keys each of these paths with its importNames,
+// so a name dropped from a list is a diff, not a quietly narrower ban.
+const DATE_MODULE_IMPORT_PATHS = [
+  {
+    name: "@angular/material/datepicker",
+    importNames: ["MatDatepickerModule"],
+    message:
+      "Import MatDatepicker, MatDatepickerInput and MatDatepickerToggle instead. The module provides its own calendar labels, so this page would not use the app's.",
+  },
+  {
+    name: "@angular/material/core",
+    importNames: ["MatNativeDateModule", "NativeDateModule"],
+    message:
+      "The app provides its one date adapter at the root (provideAppDatepicker). A spec that renders a picker uses provideNativeDateAdapter(), or provideAppDatepickerForTests when it asserts date text.",
   },
 ];
 
@@ -150,18 +200,20 @@ module.exports = defineConfig([
     },
   },
   {
-    // Both bans, for everything in the app. A direct logEvent() in a
+    // Every ban, for everything in the app. A direct logEvent() in a
     // component would bypass the consent gate, the no-op paths and the
     // parameter allowlist at once, and nothing else would notice; a fourth
     // file issuing its own model call would be invisible to the prompt
-    // registry check and free to carry its own unregistered prompt. The two
-    // narrower blocks below win over this one for the files that own an SDK.
+    // registry check and free to carry its own unregistered prompt; a page
+    // importing a Material date module would bring its own adapter and labels
+    // and show the calendar in the wrong language. The two narrower blocks
+    // below win over this one for the files that own an SDK.
     files: ["src/app/**/*.ts"],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {
-          paths: [...ANALYTICS_IMPORT_PATHS, ...MODEL_IMPORT_PATHS],
+          paths: [...ANALYTICS_IMPORT_PATHS, ...MODEL_IMPORT_PATHS, ...DATE_MODULE_IMPORT_PATHS],
           patterns: [...ANALYTICS_IMPORT_PATTERNS],
         },
       ],
@@ -169,11 +221,12 @@ module.exports = defineConfig([
   },
   {
     // The analytics owners may import the analytics SDKs and must still not
-    // import a model SDK. This block matches them instead of ignoring them,
-    // so it resolves last — and because a later block's options replace the
-    // earlier ones wholesale, it restates the model ban in full. The globs
-    // cover the matching *.spec.ts too: the service's own specs and
-    // app.config.spec.ts legitimately import the SDK to assert the wiring.
+    // import a model SDK or a date module. This block matches them instead of
+    // ignoring them, so it resolves last — and because a later block's options
+    // replace the earlier ones wholesale, it restates the model and date-module
+    // bans in full. The globs cover the matching *.spec.ts too: the service's
+    // own specs and app.config.spec.ts legitimately import the SDK to assert
+    // the wiring.
     files: [
       "src/app/core/services/analytics*.ts",
       "src/app/core/config/analytics*.ts",
@@ -182,13 +235,14 @@ module.exports = defineConfig([
     rules: {
       "@typescript-eslint/no-restricted-imports": [
         "error",
-        { paths: [...MODEL_IMPORT_PATHS] },
+        { paths: [...MODEL_IMPORT_PATHS, ...DATE_MODULE_IMPORT_PATHS] },
       ],
     },
   },
   {
     // The three provider services may import their model SDKs and must still
-    // not import an analytics SDK — restated in full for the same reason.
+    // not import an analytics SDK or a date module — restated in full for the
+    // same reason.
     // The globs cover the matching *.spec.ts too: each provider's own spec
     // legitimately imports its SDK to type the fake client.
     files: [
@@ -200,7 +254,7 @@ module.exports = defineConfig([
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {
-          paths: [...ANALYTICS_IMPORT_PATHS],
+          paths: [...ANALYTICS_IMPORT_PATHS, ...DATE_MODULE_IMPORT_PATHS],
           patterns: [...ANALYTICS_IMPORT_PATTERNS],
         },
       ],
@@ -212,7 +266,9 @@ module.exports = defineConfig([
     // analytics SDK. Specs are ignored here, not just left unmatched by
     // `files`, because a fixture double calling a listener method by the same
     // name is not a warm cache — the rule has nothing to say about a spec's
-    // own stand-in.
+    // own stand-in. Specs have their own no-restricted-syntax block, the one
+    // after the analytics transport's, which bans listening for an uncaught
+    // rejection on window; neither block's selectors reach the other's files.
     //
     // The analytics selector is APPENDED to this array rather than given a
     // block of its own. A second block matching src/app/**/*.ts and setting
@@ -286,27 +342,52 @@ module.exports = defineConfig([
     },
   },
   {
+    // The spec-only ban: nothing in a spec may listen for a rejection nobody
+    // caught on window (the events, the `on…` handler properties). Under
+    // zone.js, Angular-compiled code runs on ZoneAwarePromise, which reports an
+    // unhandled rejection through the zone and never as a DOM event, so a
+    // window listener here never fires and the spec asserts nothing (#500).
+    //
+    // This is its own block because no other block matches a spec's syntax:
+    // the app block above ignores **/*.spec.ts, and the analytics-transport
+    // block names one non-spec file, so nothing replaces these options and
+    // these options replace nothing. scripts/check-lint-guards.mjs asserts the
+    // resolved selector list for specs in both directions — the two selectors
+    // here and none of the app's.
+    files: ["src/app/**/*.spec.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: REJECTION_EVENT_LITERAL_SELECTOR,
+          message: REJECTION_LISTENER_MESSAGE,
+        },
+        {
+          selector: REJECTION_EVENT_HANDLER_SELECTOR,
+          message: REJECTION_LISTENER_MESSAGE,
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.html"],
     extends: [
       angular.configs.templateRecommended,
       angular.configs.templateAccessibility,
     ],
     rules: {
-      // Angular's own `date` and `number` pipes format against the LOCALE_ID
-      // the bundle was built with, not the language the account chose, so a
-      // reader who switched to 日本語 kept seeing American dates and Western
-      // digit grouping. ADR 0058 swept every site onto LocaleDatePipe and
-      // LocaleNumberPipe, which read TranslationService.currentLocale and are
-      // impure so a language switch re-renders them. Both built-ins are at
-      // zero sites today; this is the guard that keeps them there, because
-      // the sweep found stragglers twice and nothing but reading would have
-      // found the third.
-      //
-      // `| currency` is deliberately NOT banned: there is no replacement to
-      // point at. locale-number.pipe.ts refuses currency on purpose — an
-      // amount needs its currency code and that currency's minor-unit rules,
-      // which CurrencyService owns — so the 27 live `| currency` sites are
-      // correct as written (monthly-comparison.component.html is the densest).
+      // Angular's own `date`, `number` and `currency` pipes format against
+      // the LOCALE_ID the bundle was built with, not the language the account
+      // chose, so a reader who switched to 日本語 kept seeing American dates,
+      // Western digit grouping and en-US amounts. ADR 0058 swept every site
+      // onto LocaleDatePipe and LocaleNumberPipe, which read
+      // TranslationService.currentLocale and are impure so a language switch
+      // re-renders them. An amount goes through LocaleCurrencyPipe, which
+      // returns CurrencyService.formatCurrency — the currency's own minor-unit
+      // rules, in the account's language. All three built-ins are at zero
+      // sites today; this is the guard that keeps them there, because the
+      // sweep found stragglers twice and nothing but reading would have found
+      // the third.
       //
       // @angular-eslint/template-parser tags its nodes with `type` and
       // publishes visitorKeys, so ESLint's core selector engine walks a
@@ -318,6 +399,17 @@ module.exports = defineConfig([
       // replacement hazard here; the inline-template virtual filename never
       // matches src/app/**/*.ts, so this and the firstValueFrom block cannot
       // collide either. scripts/check-lint-guards.mjs asserts both.
+      //
+      // The last selector is the same shape of guard for Material's sort
+      // header. It describes its action to a screen reader as the English
+      // word "Sort" unless the template binds `sortActionDescription`, so a
+      // header without the binding speaks English to a reader of any
+      // language. `mat-sort-header` is an attribute on the <th>, plain or
+      // bound; a header the structural `*matHeaderCellDef` sits on is still
+      // the Element the attributes belong to, since the Template node that
+      // wraps it holds only hoisted copies and is not matched. Only a BINDING
+      // satisfies it: a static `sortActionDescription="…"` is one language
+      // for every reader.
       "no-restricted-syntax": [
         "error",
         {
@@ -331,6 +423,21 @@ module.exports = defineConfig([
           message:
             "Use | localeNumber. Angular's number pipe groups digits against the build's " +
             "LOCALE_ID, so it ignores the language the account chose (ADR 0058).",
+        },
+        {
+          selector: 'BindingPipe[name="currency"]',
+          message:
+            "Use | localeCurrency:<code>. Angular's currency pipe formats against the build's " +
+            "LOCALE_ID, so it ignores the language the account chose (ADR 0058).",
+        },
+        {
+          selector:
+            'Element:has(> TextAttribute[name="mat-sort-header"], > BoundAttribute[name="mat-sort-header"])' +
+            ':not(:has(> BoundAttribute[name="sortActionDescription"]))',
+          message:
+            "Bind [sortActionDescription]=\"'transactions.sortBy' | translate\". Material describes " +
+            "a sortable header as the English word \"Sort\" otherwise, and a static " +
+            "sortActionDescription=\"…\" is one language for every reader.",
         },
       ],
     },

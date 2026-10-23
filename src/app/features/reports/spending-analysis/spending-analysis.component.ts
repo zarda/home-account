@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
-import { CommonModule, CurrencyPipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -14,6 +14,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme.service';
+import { LocaleCurrencyPipe } from '../../../shared/pipes/locale-currency.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { groupExpensesByCategory } from '../../../core/utils/transaction-aggregation.utils';
@@ -39,7 +40,7 @@ interface MonthlyData {
     MatIconModule,
     BaseChartDirective,
     EmptyStateComponent,
-    CurrencyPipe,
+    LocaleCurrencyPipe,
     LocaleNumberPipe,
     TranslatePipe
   ],

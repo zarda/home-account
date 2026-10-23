@@ -160,7 +160,8 @@ describe('MonthlyComparisonComponent', () => {
       getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
       convert: (amount: number) => amount, // 1:1 conversion for tests
     amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
-      t.amountInBaseCurrency ?? t.amount
+      t.amountInBaseCurrency ?? t.amount,
+      formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`,
     };
 
     const mockTranslationService = {
@@ -562,6 +563,7 @@ describe('MonthlyComparisonComponent, through its own template', () => {
             convert: (amount: number) => amount,
             amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
               t.amountInBaseCurrency ?? t.amount,
+            formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`,
           },
         },
         {
@@ -594,9 +596,18 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     expect(statLabels()[0]).toContain('reports.avgMonthlyIncome');
     expect(statLabels()[1]).toContain('reports.avgMonthlyExpenses');
     expect(cardByLabel('reports.avgMonthlyIncome')?.querySelector('.stat-value')?.textContent)
-      .toContain('$4,750.00');
+      .toContain('USD 4750.00');
     expect(cardByLabel('reports.avgMonthlyExpenses')?.querySelector('.stat-value')?.textContent)
-      .toContain('$250.00');
+      .toContain('USD 250.00');
+  });
+
+  it("routes a yen amount through the account's currency formatter", () => {
+    render(mockTransactionSet);
+    fixture.componentInstance.currency = 'JPY';
+    fixture.detectChanges();
+
+    expect(cardByLabel('reports.avgMonthlyIncome')?.querySelector('.stat-value')?.textContent)
+      .toContain('JPY 4750');
   });
 
   it('marks a profitable worst month positive, not negative', () => {
@@ -609,6 +620,32 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     const worst = cardByLabel('reports.worstMonth') as HTMLElement;
     const detail = worst.querySelector('.stat-detail') as HTMLElement;
     expect(detail.textContent?.trim().startsWith('+')).toBeTrue();
+    expect(detail.classList).toContain('detail-positive');
+    expect(detail.classList).not.toContain('detail-negative');
+  });
+
+  it("shows the best month's deficit as a deficit when every month is in deficit", () => {
+    // One month, expenses only: it is the best month and the worst at once.
+    // The card must not prefix a '+' to the formatter's own minus.
+    render(
+      [{ ...mockTransactionSet[0], id: 't8', amount: 345, amountInBaseCurrency: 345 }],
+      [],
+      { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) },
+    );
+
+    const detail = (cardByLabel('reports.bestMonth') as HTMLElement)
+      .querySelector('.stat-detail') as HTMLElement;
+    expect(detail.textContent?.trim()).toBe('USD -345.00');
+    expect(detail.classList).toContain('detail-negative');
+    expect(detail.classList).not.toContain('detail-positive');
+  });
+
+  it('keeps the best month a signed surplus when it is one', () => {
+    render(mockTransactionSet);
+
+    const detail = (cardByLabel('reports.bestMonth') as HTMLElement)
+      .querySelector('.stat-detail') as HTMLElement;
+    expect(detail.textContent?.trim()).toBe('+USD 4800.00');
     expect(detail.classList).toContain('detail-positive');
     expect(detail.classList).not.toContain('detail-negative');
   });
@@ -631,7 +668,8 @@ describe('MonthlyComparisonComponent, through its own template', () => {
 
     const detail = (cardByLabel('reports.worstMonth') as HTMLElement)
       .querySelector('.stat-detail') as HTMLElement;
-    expect(detail.textContent?.trim().startsWith('-')).toBeTrue();
+    // No '+' from the template: the minus is the formatter's own.
+    expect(detail.textContent?.trim()).toBe('USD -9000.00');
     expect(detail.classList).toContain('detail-negative');
   });
 

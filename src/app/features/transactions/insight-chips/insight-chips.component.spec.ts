@@ -1,10 +1,21 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { of } from 'rxjs';
 import { InsightChipsComponent } from './insight-chips.component';
 import { InsightChip, InsightChipsService } from '../../../core/services/insight-chips.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { CategoryService } from '../../../core/services/category.service';
+import { CurrencyService } from '../../../core/services/currency.service';
+import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { TransactionFilters } from '../../../models';
+import { Transaction, TransactionFilters, User } from '../../../models';
 import {
+  TranslationStub,
+  createCategory,
+  createTimestamp,
+  createTransaction,
+  createTranslationStub,
+  createUser,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -171,5 +182,82 @@ describe('InsightChipsComponent', () => {
         });
       }
     });
+  });
+});
+
+/**
+ * The chips through the page-provided service the component really reads, so
+ * a language switched while the page is open reaches the rendered chip.
+ */
+describe('InsightChipsComponent, through its own chips service', () => {
+  let fixture: ComponentFixture<InsightChipsComponent>;
+  let translation: TranslationStub;
+  // What every key reads through; `switchCatalog` moves to another one the
+  // way a language change does.
+  let catalog: string;
+
+  function switchCatalog(prefix: string): void {
+    catalog = prefix;
+    translation.translationsVersion.update(version => version + 1);
+  }
+
+  const now = new Date();
+  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15);
+
+  beforeEach(async () => {
+    catalog = '';
+    translation = createTranslationStub({
+      t: (key: string, params?: Record<string, string | number>) =>
+        `${catalog}${key}${params ? `:${Object.values(params).join(',')}` : ''}`,
+    });
+    const pets: Transaction = createTransaction({
+      type: 'expense',
+      amount: 30,
+      amountInBaseCurrency: 30,
+      categoryId: 'pets',
+      date: createTimestamp(thisMonth),
+    });
+    const transactionService = {
+      getExpensesInRange: jasmine.createSpy('getExpensesInRange').and.returnValue(of([pets])),
+      getPeriodCategoryTotals: jasmine.createSpy('getPeriodCategoryTotals').and.returnValue(
+        of({ income: 0, expense: 40, byCategory: [{ categoryId: 'food', total: 40 }] })),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [InsightChipsComponent],
+      providers: [
+        { provide: TransactionService, useValue: transactionService },
+        {
+          provide: CategoryService,
+          useValue: { categories: signal([createCategory({ id: 'pets', name: 'Pets', type: 'expense' })]) },
+        },
+        {
+          provide: CurrencyService,
+          useValue: { amountInBase: (t: Transaction) => t.amountInBaseCurrency ?? t.amount },
+        },
+        { provide: TranslationService, useValue: translation },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: () => createUser({ preferences: { baseCurrency: 'USD' } as User['preferences'] }),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(InsightChipsComponent);
+    fixture.detectChanges();
+  });
+
+  // ADR 0182: the sentence followed a switch and the category inside it did not.
+  it('renames the category inside a rendered chip when the catalog switches', () => {
+    const label = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('.insight-chip span')?.textContent?.trim();
+    expect(label()).toBe('transactions.chipNewCategory:Pets');
+
+    switchCatalog('ja:');
+    fixture.detectChanges();
+
+    expect(label()).toBe('ja:transactions.chipNewCategory:ja:Pets');
   });
 });

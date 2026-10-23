@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
@@ -1236,6 +1237,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         // second one from this component's own code would be caught.
         { provide: AnnouncerService, useValue: mockAnnouncer },
         provideNoMotion(),
+        provideNativeDateAdapter(),
       ],
     }).compileComponents();
 

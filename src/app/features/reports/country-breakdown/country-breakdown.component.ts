@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
-import { CommonModule, CurrencyPipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,6 +8,7 @@ import { Transaction } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
+import { LocaleCurrencyPipe } from '../../../shared/pipes/locale-currency.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { groupExpensesByCountry } from '../../../core/utils/transaction-aggregation.utils';
@@ -36,7 +37,7 @@ const MAX_ROWS = 8;
     MatCardModule,
     MatIconModule,
     EmptyStateComponent,
-    CurrencyPipe,
+    LocaleCurrencyPipe,
     LocaleNumberPipe,
     TranslatePipe,
   ],

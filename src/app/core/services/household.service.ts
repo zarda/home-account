@@ -22,6 +22,7 @@ import {
   isMemberPhotoUrl
 } from '../../models';
 import { errorCode, isRefused } from '../utils/firebase-error.utils';
+import { givenName } from '../utils/person-name.utils';
 import {
   HouseholdIndexData as IndexData,
   chunked,
@@ -1651,7 +1652,7 @@ export class HouseholdService {
     const user = this.auth.currentUser();
     const identity: HouseholdMemberIdentity = {
       uid,
-      displayName: clampText((user?.displayName ?? '').trim(), MEMBER_NAME_MAX_LENGTH)
+      displayName: clampText(givenName(user?.displayName), MEMBER_NAME_MAX_LENGTH)
     };
     const photo = user?.photoURL;
     if (isMemberPhotoUrl(photo)) identity.photoURL = photo;

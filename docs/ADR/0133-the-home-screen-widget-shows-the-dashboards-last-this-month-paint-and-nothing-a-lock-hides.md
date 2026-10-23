@@ -1,6 +1,6 @@
 # 133. The home-screen widget shows the dashboard's last this-month paint, and nothing a lock hides
 
-**Status:** Accepted, implemented · **Date:** 2026-09-16 · **Issues:** #85
+**Status:** Accepted, implemented; amended by [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md) · **Date:** 2026-09-16 · **Issues:** #85
 
 Reference documentation lives in [../widget.md](../widget.md).
 
@@ -307,18 +307,27 @@ system's own reload budget under real memory pressure — see Known gaps.
 
 - **No Lock Screen family.** `.supportedFamilies([.systemSmall,
   .systemMedium])` only; nothing here is an `.accessoryRectangular` or
-  `.accessoryCircular` widget.
+  `.accessoryCircular` widget. *Closed by*
+  [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md):
+  from iOS 16 the widget offers both Lock Screen families, each showing the
+  month's net balance.
 - **Figures are only as fresh as the last this-month paint.** With no data
   source of its own, an account that never opens the dashboard this month
   sees last month's figures — or, once the month turns, the stale sentence
   — until it does.
 - **No deep link.** Tapping the widget opens the app at whatever route it
   would otherwise land on; nothing sets `.widgetURL` to send the tap
-  straight to the dashboard.
+  straight to the dashboard. *Closed by*
+  [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md):
+  a tap on any size opens the dashboard, through the app lock when it is
+  on.
 - **The gallery name is English.** `.configurationDisplayName("Home
   Account")` is a literal, not a catalog key — the widget gallery's own
   name for this widget does not follow the account's language, unlike
-  everything the widget itself displays.
+  everything the widget itself displays. *Closed by*
+  [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md):
+  the gallery reads the name from the widget's own string tables, by the
+  device's language, and `i18n:check` holds them equal to the catalogs.
 - **No real-device run is recorded here.** Everything above was proved on an
   iPhone 17 simulator; nothing here exercises a real Secure Enclave, a real
   App Group on a physical device, or WidgetKit's actual reload budget under

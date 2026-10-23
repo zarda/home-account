@@ -236,10 +236,15 @@ round a number up will reach for `rem` again.
 - **Tailwind's `truncate` utility passes the truncation gate.** The budget
   card's name carried it. `check-truncation.mjs` scans for the
   `text-overflow` property in stylesheets and a utility class in a template is
-  not that — a G3 gap the gate does not close.
+  not that — a G3 gap the gate does not close. *Closed by*
+  [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md):
+  the gate reads the utility as an `@apply` token, a template class and a
+  host `class`, and the budget card's names and amounts wrap.
 - **`check-truncation.mjs` has no self-test.** Every other `*:check` script in
   `scripts/` has one — the oldest source gate does not, so nothing proves its
-  comment masking still works.
+  comment masking still works. *Closed by*
+  [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md):
+  its self-test runs ahead of every scan.
 - **A constructed `KeyboardEvent` carries `keyCode: 0`**, and Material's
   keydown listener sits on the label container rather than the header element.
   A run driving the strips by key has to set `keyCode` explicitly and dispatch
@@ -261,4 +266,5 @@ round a number up will reach for `rem` again.
 - **The Japanese and Traditional Chinese tab labels at 1.3 are unmeasured.**
   The strips scroll, so nothing is unreachable, but how much of the strip a
   wider catalog pushes off the edge was not read.
-- Both truncation gaps above, and the missing self-test.
+- The Material fixture's truncation gap above (#452's P5); the other two are
+  closed, as noted above.

@@ -10,14 +10,14 @@
     <div class="summary-stats">
       <app-stat-card
         [label]="'reports.avgMonthlyIncome' | translate"
-        [value]="(averageIncome() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
+        [value]="averageIncome() | localeCurrency:currencyCode"
         icon="trending_up"
         tone="income"
       />
 
       <app-stat-card
         [label]="'reports.avgMonthlyExpenses' | translate"
-        [value]="(averageExpense() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
+        [value]="averageExpense() | localeCurrency:currencyCode"
         icon="trending_down"
         tone="expense"
       />
@@ -27,8 +27,8 @@
           [label]="'reports.bestMonth' | translate"
           [value]="best.month"
           icon="emoji_events"
-          [detail]="'+' + (best.balance | currency:currencyCode:'symbol':'1.2-2')"
-          detailTone="positive"
+          [detail]="(best.balance >= 0 ? '+' : '') + (best.balance | localeCurrency:currencyCode)"
+          [detailTone]="best.balance >= 0 ? 'positive' : 'negative'"
         />
       }
 
@@ -37,7 +37,7 @@
           [label]="'reports.worstMonth' | translate"
           [value]="worst.month"
           icon="warning"
-          [detail]="(worst.balance >= 0 ? '+' : '') + (worst.balance | currency:currencyCode:'symbol':'1.2-2')"
+          [detail]="(worst.balance >= 0 ? '+' : '') + (worst.balance | localeCurrency:currencyCode)"
           [detailTone]="worst.balance >= 0 ? 'positive' : 'negative'"
         />
       }
@@ -78,7 +78,7 @@
             <ng-container matColumnDef="income">
               <th mat-header-cell *matHeaderCellDef>{{ 'common.income' | translate }}</th>
               <td mat-cell *matCellDef="let row" class="income-cell">
-                {{ row.income | currency:currencyCode:'symbol':'1.2-2' }}
+                {{ row.income | localeCurrency:currencyCode }}
                 @if (row.incomeChange !== null) {
                   <span class="change-indicator" [class.positive]="row.incomeChange >= 0" [class.negative]="row.incomeChange < 0">
                     <mat-icon>{{ row.incomeChange >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
@@ -92,7 +92,7 @@
             <ng-container matColumnDef="expense">
               <th mat-header-cell *matHeaderCellDef>{{ 'common.totalExpenses' | translate }}</th>
               <td mat-cell *matCellDef="let row" class="expense-cell">
-                {{ row.expense | currency:currencyCode:'symbol':'1.2-2' }}
+                {{ row.expense | localeCurrency:currencyCode }}
                 @if (row.expenseChange !== null) {
                   <span class="change-indicator" [class.positive]="row.expenseChange < 0" [class.negative]="row.expenseChange >= 0">
                     <mat-icon>{{ row.expenseChange >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
@@ -106,7 +106,7 @@
             <ng-container matColumnDef="balance">
               <th mat-header-cell *matHeaderCellDef>{{ 'common.balance' | translate }}</th>
               <td mat-cell *matCellDef="let row" [class.positive]="row.balance >= 0" [class.negative]="row.balance < 0">
-                {{ row.balance >= 0 ? '+' : '' }}{{ row.balance | currency:currencyCode:'symbol':'1.2-2' }}
+                {{ row.balance >= 0 ? '+' : '' }}{{ row.balance | localeCurrency:currencyCode }}
               </td>
             </ng-container>
 

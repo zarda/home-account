@@ -42,7 +42,8 @@ import {
   readAmountRow,
   readAtEveryScale,
   readReservedRows,
-  readSubscripts
+  readSubscripts,
+  typeInto
 } from '../household-plan-dialog.testing';
 import { PLAN_DIALOG_CONFIG } from '../household-plan-form';
 
@@ -431,6 +432,51 @@ describe('HouseholdBudgetDialogComponent', () => {
       expect(save).not.toHaveBeenCalled();
       expect(dialogRef.close).not.toHaveBeenCalled();
       expect(fixture.nativeElement.textContent).toContain('household.errors.planCategories');
+    });
+  });
+
+  describe('its date fields', () => {
+    beforeEach(() => create());
+
+    const errors = (): (string | undefined)[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-error'), error => error.textContent?.trim());
+
+    /** What the user does: replaces the field's text and leaves it. */
+    function enter(control: 'startDate' | 'endDate', text: string): void {
+      typeInto(fixture.nativeElement, `[formControlName="${control}"]`, text);
+      fixture.detectChanges();
+    }
+
+    // Typed text that names no day leaves null in the control, so the start
+    // date's required error is there too: the parse error takes precedence.
+    it('says a start date it cannot read is not one, in place of the required sentence', () => {
+      expect(errors()).toEqual([]);
+
+      enter('startDate', 'not a date');
+
+      expect(errors()).toEqual(['datepicker.dateInvalid']);
+    });
+
+    it('still asks for the start date once its text is cleared (pin)', () => {
+      enter('startDate', '');
+
+      expect(errors()).toEqual(['household.planForm.startRequired']);
+    });
+
+    it('says an end date it cannot read is not one, with the shared sentence', () => {
+      enter('endDate', 'not a date');
+
+      expect(errors()).toEqual(['datepicker.dateInvalid']);
+    });
+
+    it('shows nothing once the end date is cleared, the field being optional (pin)', () => {
+      component.form.controls.endDate.setValue(new Date(2030, 0, 1));
+      fixture.detectChanges();
+
+      enter('endDate', '');
+
+      expect(component.form.controls.endDate.value).toBeNull();
+      expect(errors()).toEqual([]);
     });
   });
 

@@ -3,7 +3,6 @@ import { registerLocaleData } from '@angular/common';
 import localeJa from '@angular/common/locales/ja';
 import localeZhHant from '@angular/common/locales/zh-Hant';
 import { provideRouter } from '@angular/router';
-import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideFirebaseApp, initializeApp, getApp } from '@angular/fire/app';
 import {
   Auth,
@@ -29,6 +28,7 @@ import { provideAnalytics, initializeAnalytics, setConsent } from '@angular/fire
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
 import { Directionality } from '@angular/cdk/bidi';
 import { provideAppCharts } from './core/config/chart.config';
+import { provideAppDatepicker } from './core/config/datepicker.config';
 import { provideHttpClient } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 
@@ -391,14 +391,16 @@ export function notificationTapLoader(injector: Injector = inject(Injector)): ()
 
 /**
  * Arms NotificationTapService, which opens what a tapped reminder names in a
- * page that is already running. On the web it loads the service from an idle
- * task, and a tab that receives the worker's message before then is only
- * focused. In the iOS app it loads it at once: the plugin holds a tap that
- * started the app until the listener attaches, and attaching it seconds
- * later would open that tap over wherever the user had gone meanwhile. The
- * chunk comes from the app's own files there, so nothing is downloaded early.
- * Nothing here throws, and a service that fails to load or arm is logged,
- * never handed to the ErrorHandler: the tap still focused the app.
+ * page that is already running, and the dashboard for a tap on the iOS
+ * widget. On the web it loads the service from an idle task, and a tab that
+ * receives the worker's message before then is only focused. In the iOS app
+ * it loads it at once: the notification plugin and the widget's each hold a
+ * tap that started the app until a listener attaches, and attaching one
+ * seconds later would open that tap over wherever the user had gone
+ * meanwhile. The chunk comes from the app's own files there, so nothing is
+ * downloaded early. Nothing here throws, and a service that fails to load or
+ * arm is logged, never handed to the ErrorHandler: the tap still focused the
+ * app.
  */
 export function armNotificationTaps(
   load: () => Promise<NotificationTapArmer> = notificationTapLoader(),
@@ -433,13 +435,14 @@ registerLocaleData(localeJa);
 registerLocaleData(localeZhHant);
 
 /**
- * The locale Angular's own machinery uses — the Material datepicker through
- * provideNativeDateAdapter, and any built-in pipe added later. Resolved once
- * at bootstrap, which is exactly why it cannot be the whole answer: user-
- * facing dates and numbers go through LocaleDatePipe/LocaleNumberPipe, which
- * follow the locale signal and so survive a language switch without a
- * reload. This provider is what keeps everything else correct on first
- * paint instead of silently en-US. See docs/locale-formatting.md.
+ * The locale Angular's own machinery reads: the registered locale data above,
+ * and the date adapter's starting locale before it follows the reader.
+ * Resolved once at bootstrap, which is exactly why it cannot be the whole
+ * answer: user-facing dates, numbers and amounts go through
+ * LocaleDatePipe/LocaleNumberPipe/LocaleCurrencyPipe, and the date pickers
+ * through the adapter provideAppDatepicker() hands them, all of which follow
+ * the locale signal and so survive a language switch without a reload. See
+ * docs/locale-formatting.md.
  */
 export function appLocaleIdFactory(
   translation: TranslationService = inject(TranslationService),
@@ -455,7 +458,7 @@ export const appConfig: ApplicationConfig = {
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    provideNativeDateAdapter(),
+    provideAppDatepicker(),
     provideHttpClient(),
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     // Each factory is wrapped rather than passed: a provider factory is
@@ -545,9 +548,10 @@ export const appConfig: ApplicationConfig = {
       armLedgerSweep();
     }),
     provideAppInitializer(() => {
-      // Opens what a tapped reminder names in a page already running, from a
-      // service loaded only then: after an idle task on the web, at once in
-      // the iOS app (armNotificationTaps).
+      // Opens what a tapped reminder names, or the dashboard for a tap on the
+      // iOS widget, in a page already running, from a service loaded only
+      // then: after an idle task on the web, at once in the iOS app
+      // (armNotificationTaps).
       armNotificationTaps();
     })
   ]

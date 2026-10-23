@@ -30,10 +30,10 @@ the account's own key.
 
 That is the point of them — nothing else in the repo exercises the wire or the
 deployed rules — and it is the reason for every constraint below. Read the
-whole thing as one rule: **the run is a reader with twelve permitted writes,
+whole thing as one rule: **the run is a reader with thirteen permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 100.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 103.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,7 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 100
+there too; neither touches a household or calls a function. Journeys 81 to 103
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
@@ -62,10 +62,13 @@ and then repaired and resumed, imports the page is made to refuse, a stored
 answer refreshed over an emptied catalog, the AI preferences a fresh origin
 stores, the account signed out under a bring-up held in the page, an expense
 and a rule in a category no catalog holds written past the rules, a scan
-whose drain waits on a key save held in the page, and a goal written past
-the rules. None of them calls a function, and only 82 and 89 open a
-household page: 82 to read a dialog it cancels, and 89 to read the copy of a
-posting journey 90 shared.
+whose drain waits on a key save held in the page, a goal written past
+the rules, an account's language, date format and name written the same way,
+and a yen row beside them. None of them calls a function, and only 82, 89,
+101 and 103 open a household page: 82 and 101 to read a dialog they cancel,
+89 to read the copy of a posting journey 90 shared, and 103 to read how a
+member with no name is listed, where the page's own load rewrites that
+member's document.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -177,7 +180,14 @@ connection and try again.* on this branch and *Import failed: {{error}}* on
 `697c13ab`. For the provider guards, the saved key, the unknown category and
 the filters it is the served catalog again:
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).aiPage.keySaveFailed`
-is defined on this branch and `undefined` on `b8d400ac`. For another branch
+is defined on this branch and `undefined` on `b8d400ac`. For the datepickers,
+Material's words, the reports' amounts and the account with no name it is the
+served catalog once more:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).datepicker?.openCalendar`
+reads *Open calendar* on this branch and `undefined` on `563c3eeb`, whose
+catalog holds no `datepicker` object, and
+`(await fetch('/assets/i18n/ja.json').then(r => r.json())).nav.dashboardShort`
+reads *ホーム*, a key `563c3eeb`'s catalog does not have. For another branch
 it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
@@ -512,15 +522,16 @@ const lowest = root => [...root.querySelectorAll('*')]
 
 ## What a run may touch
 
-Twelve writes are authorised — eleven in the live project, one on the device
+Thirteen writes are authorised — twelve in the live project, one on the device
 only. Each is put back before the run ends — where part of one cannot be, its
 row says what stays — and the restore is *confirmed* — on screen, or by a
 server read where nothing on screen shows it — not assumed. Three of the
-twelve are journey 78's, and one of those, the invite, is made **only on the
-user's explicit word**, like journey 19's cache writes. One is made from the
-iOS simulator rather than a tab, by the on-device receipt check of #464, which
-is no numbered journey: the failed-scan record it can leave is deleted by the
-user, not the run. Journey 67's two, which formed a household of the design
+thirteen are journey 78's, and one of those, the invite, is made **only on the
+user's explicit word**, like journey 19's cache writes. Two are made from the
+iOS simulator rather than a tab, and neither is a numbered journey: the
+on-device receipt check of #464, whose failed-scan record is deleted by the
+user, not the run, and the Home Screen widget's session of #441, whose three
+account writes the run puts back itself and reads back. Journey 67's two, which formed a household of the design
 merged in PRs #462 and #463 (ADRs 0152–0156), are withdrawn with that journey.
 The other nine rows write nothing at all and are listed with them anyway: four
 still cost the account a real provider call, two not even that, one leaves a
@@ -546,6 +557,7 @@ to be inferred.
 | Exporting a backup (journey 39) | Nothing on the account. Eleven server-only collection reads, and one JSON file in this browser profile's download folder holding the account's full ledger in clear text | The file is deleted at the end of the run. The restore picker is handed the same file and **cancelled** at the preview, so nothing is written back |
 | Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, one queue record that reaches `completed`, and — for an expense row — the `spent` of any budget on its category: the drain's `addTransaction` recomputes `spent` and `spentPeriod` on every active budget on the row's category and stamps its `updatedAt` | The row deleted through the list, which removes its receipt object with it and recomputes the budget; the list count read back; the completed queue entry cleared from the AI settings page. The delete's recompute writes `spent` and `spentPeriod` afresh and stamps `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
 | Scanning the device-only refund slips in the iOS simulator, signed in to production (#464's on-device check, [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)) | No document while a scan reads something: `refund.png`, `refund-tender.png` and `jp.png` ([model-probe/README.md](model-probe/README.md)) each go through the camera dialog's library picker and stop on the review card. When analytics consent is on, one `receipt_import` event per scan. A scan that reads nothing writes one failed Import History record, door `camera`. A native read under the strategy's usable floor (`USABLE_CONFIDENCE`, 0.4, `ai-strategy.service.ts`) may make one cloud request under the account's own key. The form's Scan Receipt is not driven: its only file input carries `capture="environment"`, which on the simulator opens a camera with no scene to shoot, so no fixture reaches it and the run takes no shot there. The in-form refund is covered by `transaction-form.component.spec.ts`, `transaction-form.smoke.spec.ts` and journey 79's step 7 | Nothing is confirmed or saved: each review card is left by **Cancel**. `/import/history` is read before the first scan and after the last, and any new failed record is reported: the user deletes it by its own **Delete** — the run does not — and the list is read back without it. The events and the provider requests cannot be recalled |
+| Driving the Home Screen widget in the iOS simulator, signed in to production (#441's session, [ADR 0183](ADR/0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md); [widget.md](widget.md#the-run-on-record) holds the record) | Three writes to the account's user document, each through the app's own control, and state on the device alone. **W1**, `preferences.enableAppLock`: a PIN made up for the session and set on this device, where it lives and never reaches the account, then *Require a PIN* switched on, so that the widget's locked sentence and a tap through the lock can be driven; the relock timeout is read and never written. **W2**, `preferences.dashboardLayout`: Budget Progress hidden from its card menu and Upcoming Bills from the editor in Settings, so that the widget file's hidden set can be read; the editor writes the whole order on any change. **W3**, `preferences.language`, only as a fallback when the device's language does not reach the web view: it did on 2026-10-22, and the write was not made. On the device alone: the widgets placed on the Home Screen and the Lock Screen, the App Group's snapshot file, the simulator's language and region (`AppleLanguages` and `AppleLocale`, each change followed by a reboot), the software keyboard's preference where a step needs it, and the app reinstalled over the top, never uninstalled, which would sign the account out. Opening the dashboard runs the account's normal catch-up and snapshot writes, as every open does. Never: the base currency, the relock timeout, a sign-out by the run, or a real credential, password or provider key typed by the run (W1's made-up PIN is the one value typed, and it stays on the device) | Each read before the first write, put back, and read again. W1: the lock state read first (off, with no PIN on this device, on 2026-10-22): *Remove PIN*, which turns the lock off, then *Require a PIN* read off, the PIN gone, and the widget's file back on its figures once the dashboard repaints. W2: the arrangement read first, put back with the editor's own switches and not with **Reset**, which would also bring back a card the account hides (AI Insights, on 2026-10-22), then the dashboard repainted and the file read back with `hidden []`. What stays: the editor writes the whole order on any change, so a layout that was absent may now hold the default order explicitly, the arrangement shown unchanged. A scroll that starts on a drag handle moves the card, as it did once on 2026-10-22, when it was moved back at once: scroll from the right edge, clear of the handles. W3: the value read first, written back and read back. The device's languages written back from the values read first, a reboot, and read back; the keyboard preference the same; the widgets removed from both screens; the app left installed, built from a clean tree. The shots stay out of the repository ([Evidence](#evidence)), and `ios/` is checked after every build and left as it was |
 | Importing a scanned receipt (journeys 46 and 50) | Everything *Scanning a receipt* writes, then at **Import**: one transaction document, one storage object under its id, one import-history record naming it, the `spent` of any budget on its category, and the category memory's entry for the receipt's merchant — with the tag memory's beside it where the row was offered a tag | Three restores, each confirmed by a read: the row deleted through the list, which removes its receipt object with it and recomputes the budget, and a search for its description read back empty; the import-history record the Import wrote deleted on `/import/history` by its own **Delete**, and the list read back without it; and every memory entry the Import added or changed — the category memory's for the merchant, and the tag memory's where one was written — through the two memory services, reached from the wizard before the Import. An entry the Import added is removed with `forget(merchantKey)`, and a server read (`exportAll()`) finds the key gone. An entry the merchant already had is put back with `restore(entry)` from a server read taken before the Import — the category memory's `categoryId`, `sampleDescription` and `count`, the tag memory's `tags`, `suppressed`, `sampleDescription` and `count` — and a second server read finds each of those fields as it was first read. Its `updatedAt` is not put back: the write stamps it with the time of the restore. Nor are a budget's fields: the delete's recompute writes `spent` and `spentPeriod` afresh on every active budget on the row's category and stamps its `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run. Those stamps, and such a refreshed figure, are what a run leaves changed. Journey 46 has both scripts |
 | Importing the two-row CSV on `/data` (journey 53) | Two transaction documents, and the `spent` of any budget on the expense row's category: the door writes the rows without a recompute each, then recomputes `spent` and `spentPeriod` once on every active budget on that category and stamps its `updatedAt`; the income row moves no budget. No provider call, no import record and no memory | Both deleted through the list, and a search for `e2e-53` read back empty. Deleting the expense row recomputes the same budgets, writing `spent` and `spentPeriod` afresh and stamping `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
 | Exporting the transactions CSV (journey 53) | Nothing on the account. One server-only read of every transaction, and one CSV file in this browser profile's download folder holding them all in clear text | The file is deleted at the end of the run |
@@ -577,7 +589,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 100 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 103 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -827,7 +839,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 100 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 103 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -856,19 +868,23 @@ met by the page's own sign-out (97); and the unknown category, the saved key
 and the filters of
 [ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)
 (98 to 100), whose reworded refusal journey 93 reads, and the resume after
-the save it asks for.
+the save it asks for; and the datepickers, Material's words, the reports'
+amounts and the account with no name of
+[ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)
+(101 to 103), the first of which also reads the bottom bar's dashboard tab.
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
-[locale-formatting.md](locale-formatting.md), [recurring.md](recurring.md),
+[locale-formatting.md](locale-formatting.md), [dates.md](dates.md),
+[recurring.md](recurring.md),
 [household.md](household.md), [smart-search.md](smart-search.md),
 [insights.md](insights.md), [backup-restore.md](backup-restore.md),
 [ai-models.md](ai-models.md), [auth.md](auth.md), [i18n.md](i18n.md),
 [csv-format.md](csv-format.md), [data.md](data.md) and
 [ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, and 97 to 100 on the
-language each one leaves, so 87 to 100 run in one emulator session, in this
+Journeys 87 to 96 build on one another's writes, and 97 to 103 on the
+language each one leaves, so 87 to 103 run in one emulator session, in this
 order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
@@ -898,7 +914,15 @@ order:
     queue journey 89's cleanup emptied, drains it twice, and ends in English
     with its queue and its records cleared;
 15. journey 100, which writes a goal, reads the filters in English and in
-    Japanese, and ends by switching the language back to English.
+    Japanese, and ends by switching the language back to English;
+16. journey 101, which puts Japanese on Alex past the rules, switches his
+    language and date format live, and ends with both restored past the
+    rules;
+17. journey 102, which writes a yen row, reads the reports in Japanese and in
+    Traditional Chinese, and ends in English with the row deleted;
+18. journey 103, **last**, which empties Alex's name and types one in, and
+    whose visit to the household page rewrites his member document there,
+    and ends with both restored.
 
 A run of journeys 93 to 96 alone first re-runs the steps of 87, 88 and 90
 they rest on, as regressions, in this order: journey 87's steps 4 and 5,
@@ -943,7 +967,7 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
-Journeys 97 to 100 rest on none of the earlier journeys' writes. A run of
+Journeys 97 to 103 rest on none of the earlier journeys' writes. A run of
 them alone starts from a fresh seed, in English, and journey 99's Sync Now
 then drains the one scan it queued.
 
@@ -1068,15 +1092,19 @@ larger scales, its button grew to hold it.
   scales. The review of the preview date's fix named it, the same defect in
   another place, and the venue confirmed it.
 
-Two findings were left as they are. Every datepicker formats, parses and
-labels its dates in the browser's language, not the account's: its date
-adapter takes its locale once, at boot, from the browser, and no
-`MatDatepickerIntl` is provided, so on a Japanese account in an English
-browser the pickers show month-first dates and English names. That is
-older than the branch and reaches every datepicker in the app, so it is
-left for a follow-up (ADR 0180's *Known gaps*). And the bottom
-navigation's ダッシュボード, bold while active, wraps at `appFitText`'s 12px
-floor, which is G3 as written ([ui-overflow.md](ui-overflow.md)).
+Two findings were left as they were, and the branch for #500 has since
+closed both. Every datepicker formatted, parsed and labelled its dates in the
+browser's language, not the account's: its date adapter took its locale once,
+at boot, from the browser, and no `MatDatepickerIntl` was provided, so on a
+Japanese account in an English browser the pickers showed month-first dates
+and English names. That was older than the branch and reached every
+datepicker in the app, so it was left for a follow-up (ADR 0180's *Known
+gaps*). [ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)
+closes it, and journey 101 reads it. And the bottom navigation's
+ダッシュボード, bold while active, wrapped at `appFitText`'s 12px floor, which
+was G3 as written ([ui-overflow.md](ui-overflow.md)): the tab now reads the
+catalog's short word, *ホーム* in Japanese, which fits, and journey 101's
+step 9 reads it at a real 375px.
 
 Two hidden-pane traps cost it a second read, and neither is the app's. A
 first read after a resize or a font-scale change can catch a layout that
@@ -1092,6 +1120,53 @@ Where a read and a screenshot disagree, read again
 [ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)'s
 *What the browser runs found* records both.
 
+The first run of journeys 101 to 103, on 2026-10-21, drove the branch for
+#500 and #441 in this venue, served from that branch's own checkout, with the
+emulators started without the functions emulator: the checkout has no
+`functions/.secret.local`, and none of the three calls a function. Its
+pre-flight passed. The server's working directory was the branch's, no script
+the page loaded named `home-accounter`, and the served catalogs held check
+1's probe. The browser reported `en-US`, the machine's zone was Asia/Taipei,
+and the pane was 1024×768, with 375px and 320px by emulation. It read each
+step by state, from the page's signals and DOM and past the rules, and kept
+those readings rather than shots, so the shots the three journeys name are
+for a run that takes them. Every step passed.
+
+It ran, as regressions, journey 68's step 1 as Sam, the surfaces of journey 77
+this branch touches (the household plans dialogs, read with the parse error
+and without it, at 1024px in the light theme and at 320px in both), and
+journeys 80, 83,
+84, 85, 87, 88, 93 and 100. They held, bar two steps: journey 85's step 2,
+whose live region ended on the wrong sentence, and journey 87's step 3, which
+the pane could not judge. Both are noted in those journeys below. A sweep of
+the main pages in Japanese, Traditional Chinese and English at 1024px and
+375px, and of every dialog that holds a date, found no page scrolling
+sideways and no clipped text but the screen-reader-only deltas and the recent
+transactions' chip row, which is a scroller by design. It found three
+defects, each older than the branch. Each was fixed in a commit of its own
+whose spec failed first, and each fix was re-checked in the same venue
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)'s
+*What the browser runs found* records them):
+
+- *fix(ui): the dashboard leaves no gap for a banner or recap it is not
+  showing*. The empty banner and recap hosts each took the dashboard's 24px
+  flex gap, a 48px blank band above the summary cards at every width.
+- *fix(a11y): a bill link that falls back to the rules says why once the
+  rules are open*. Journey 85's step 2 met it, on a full load.
+- *fix(ui): a budget's name and amounts wrap on the dashboard instead of
+  being cut*, with *test: fail the build on Tailwind's truncate utility, which
+  the truncation check could not see*. At 1024px the Budget Progress card cut
+  *Food & Dining* to *Food & Dini…* with a utility the truncation gate could
+  not see.
+
+Two pane traps cost a second read, and neither is the app's. After an emulated
+resize the Material `BreakpointObserver` sometimes heard no `matchMedia`
+change: 320px to 1024px kept the phone layout while `matchMedia` said desktop,
+and 1024px to 320px kept the sidebar's 256px. A reload at the size lays the
+page out right. And a screenshot under emulation can show a stale frame or one
+from the middle of a transition, so the DOM read is the evidence
+([Panes and viewports](#panes-and-viewports)).
+
 Journey 87's other steps stand alone, and each journey's opening paragraph
 names what it reads from the ones before it.
 
@@ -1104,7 +1179,7 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
 
-Journeys 79 to 100 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 103 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -1363,8 +1438,11 @@ for (const tone of ['success', 'info', 'error']) {
 Then read `window.e2eNotices` as a separate evaluation. The service has
 those three tones and no other. Arm it once per load: a second arming on the
 same page wraps the wrapper, and the first run's journey 94 logged its one
-notice twice that way. A page load drops the log and the wrappers with the
-page; a navigation inside the app keeps both. The log is evidence of the
+notice twice that way. The service is the root one, so the same object is
+wrapped whichever component it is reached from: arming on `/budgets` and
+again on `/data` in one load logs every notice from then on twice, as the run
+for #500 saw on journey 93's step 7. A page load drops the log and the
+wrappers with the page; a navigation inside the app keeps both. The log is evidence of the
 call, the sentence and its duration, not of the paint, which a pane in view
 shows.
 
@@ -1377,8 +1455,10 @@ sign-in, 90 two rules that cannot advance and one's row of the old shape, 91
 two import records, 92 rows that tie and a stored answer, 93 a rule outside
 its ranges, which no client can write since ADR 0178, 95 a stored answer,
 98 an expense and a rule in a category no catalog holds, which it deletes
-the same way with any row the rule posted, and 100 a goal, and 77 clears
-the database at its end; the superseded 60 and 63 wrote a quota and a name.
+the same way with any row the rule posted, 100 a goal, 101 the account's
+language and date format and 103 its name, which each puts back the same
+way, 102 a yen row it deletes, and 77 clears the database at its end; the
+superseded 60 and 63 wrote a quota and a name.
 The seeded households are `chen-home` and `trip-fund`; one made in a journey
 is listed under its owner's index, `users/<uid>/households`. A copy's id is
 `<author-uid>_<row-id>`, and the seeded rows this month are `tx-hh-1` onwards
@@ -1520,6 +1600,9 @@ log, and run the ports check again: it prints nothing.
 | 98 | An unknown category in Japanese (emulators) | A category no catalog holds named 不明 where a Japanese reader meets it: the dashboard's legend and its spoken name, the Recurring tab, both report tabs and the donut, the three CSVs from Reports, and the data page's own CSV read back through its real preview | `98-legend-unknown-ja.png`, `98-recurring-unknown-ja.png`, `98-breakdown-unknown-ja.png`, `98-csv-preview-ja.png` |
 | 99 | A key saved while Sync Now drains (emulators) | A real press of Sync Now during a held key save leaving the scan processing, its retries unspent, until the save lands; a double press raising one notice for one sync; and a refused save's own sentence in Japanese and in English | `99-history-no-provider-ja.png`, `99-key-save-refused-ja.png`, `99-key-save-refused-en.png` |
 | 100 | The filters read All (emulators) | The five filter selects reading *All*, floated and whole, in a real layout in English and Japanese, a choice and *All* putting the list back, and the resting labels inside their boxes at 1024px and at a real 375px | `100-filters-all-en.png`, `100-filters-375.png`, `100-filters-all-ja.png` |
+| 101 | The datepicker and the bottom bar in the account's language (emulators) | A Japanese account read in an English browser: both filter dates, their toggles and the open calendar in the account's words and date format, a switch of language or format re-rendering them with no reload and through the same adapter, a typed date read in each order, quick add following a switch made with it open, a household goal's dialog refusing a day that does not exist and a recurring rule's cleared start holding Save, and the dashboard tab on one line in a real 375px bar | `101-filters-ja.png`, `101-calendar-ja.png`, `101-quick-add-tc.png`, `101-bottom-bar-375.png` |
+| 102 | Material's words and the reports' amounts (emulators) | The import wizard's finished step and the sortable headers' description spoken by the catalog in Japanese, and a yen row and a dollar total in the reports written by the account's formatter in Japanese and in Traditional Chinese | `102-stepper-ja.png`, `102-category-panel-ja.png` |
+| 103 | An account with no name (emulators) | An empty name read as a catalog word on each page that shows one — the dashboard, the header menu, Settings and the household's chips — in three languages, a typed name greeting by its first word, a stored *User* left alone, and the member document the household page rewrites | `103-settings-no-name.png`, `103-household-a-member.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating. A partial re-check after a fix adds
@@ -5557,7 +5640,10 @@ closes, each where a browser shows it.
    year do not, and each paging button with no year left inside the bounds
    on its side reads `'true'`: both, while the bounds fit one page of the
    year view. The first run's page ran 2004 to 2027, with 2004 to 2025 off.
-   Close the picker by its backdrop. The other two hosts hold the same pair:
+   The paging buttons' names are the catalog's now, *Previous 24 years* and
+   *Next 24 years* in English, where Material read its own literals, and
+   *前の24年* and *次の24年* in Japanese (journey 101's step 3). Close the
+   picker by its backdrop. The other two hosts hold the same pair:
    `bounds()` of `app-period-selector` on `/reports` and of
    `app-transaction-filters` on `/transactions`. Shot: `83-year-bounds.png`.
 2. **Retry, on desktop.** `/transactions`, the period totals beside the add
@@ -5807,6 +5893,20 @@ done
    the page is on `/budgets?tab=recurring`, and the live region reads *That
    bill isn't in Upcoming Bills right now, so here are your recurring
    transactions instead.* Shot: `85-not-upcoming.png`.
+
+   **What the run for #500 found.** On a full load with the weekly recap
+   showing, the page landed on the recurring rules but the live region ended
+   on the recap's own sentence, *Weekly recap: you spent …*, not on the bill
+   sentence. `showRecurringRules()` announced its reason before the navigation
+   landed, and `AnnouncerService` queues: on a cold start the budgets chunk
+   loads while the recap's week arrives, and the recap's sentence was placed
+   after the reason. *fix(a11y): a bill link that falls back to the rules
+   says why once the rules are open* announces once the navigation resolves
+   true, and not when a later one superseded it or it was refused
+   ([dashboard.md](dashboard.md); ADR 0182's *What the browser runs found*).
+   Read the live region on a **full load** with the recap showing, as a
+   separate console evaluation: a client-side navigation to the same link
+   never met it. The re-check's full load ended on the reason.
 3. **The recap's week.** Back on `/dashboard`, read the week the card
    recaps:
 
@@ -6023,7 +6123,13 @@ what each removal could have broken, where only a browser shows it.
    site after the deploy, not here: the address falls to the hosting's SPA
    rewrite and answers with the app's own page, as it does for the version
    on main. A version built before the removal, such as `8a6e2c9a`'s,
-   served the worker's script there.
+   served the worker's script there. The run for #500 could not judge this
+   step: the in-app pane refused every service-worker script fetch, so
+   `register()` threw *An unknown error occurred when fetching the script*
+   while a page `fetch` and `curl` with the worker's headers both answered
+   200. That is the pane's environment, not the app's, and the step stays
+   unjudged until a pane registers one; `ShareIntakeService`, which registers
+   the worker, is untouched by that branch.
 4. **A scan queued offline.** On `/import/file`, tell the app the network
    has gone, as journey 71 does: `window.dispatchEvent(new Event('offline'))`.
    This is diagnostic-grade, and recorded as such: the app checks
@@ -7188,8 +7294,10 @@ own.
    the pointer past now, so the resume has nothing due to post, and nothing
    claims the rule before that 5th. Shot: `93-resumed-after-save.png`, the
    notice over the list.
-7. **A restore that skips one.** On `/data`, arm the notice log on
-   `app-data-management`, then hand the data page's hidden input a backup
+7. **A restore that skips one.** Load `/data` afresh (a navigation inside
+   the app keeps step 6's arming, and arming again logs every notice twice),
+   arm the notice log on `app-data-management`, then hand the data page's
+   hidden input a backup
    built in the page: version 1.5, no transactions, and one rule of the
    same shape, `r-93-restore`.
 
@@ -8496,6 +8604,614 @@ the emulators at the [teardown](#teardown).
 
 Three shots: the open panel in English, at 375px, and in Japanese.
 
+### 101. The datepicker and the bottom bar in the account's language
+
+**Emulators**, as Alex, at a desktop width of 1024px or more unless a step
+says otherwise, after journey 100, in English ([the run
+order](#emulator-journeys)). A date input took its locale once, at boot, from
+the browser, and Material named its months, weekdays and buttons in English
+whatever language the account spoke. Every picker now shows and reads the
+account's date format in the account's language, a change of either
+re-renders it with no reload, and nothing re-provides Material's adapter or
+words
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md),
+[locale-formatting.md](locale-formatting.md), [dates.md](dates.md)). The same
+record gives the bottom bar's dashboard tab a word that fits in Japanese
+([ui-overflow.md](ui-overflow.md), [accessibility.md](accessibility.md)).
+
+**The account's language must differ from the browser's**, or the journey
+proves nothing about the case the issue met: a Japanese account in an English
+browser. Read `navigator.language` before step 1 and record it beside each
+language the steps put on the account. The first run's was `en-US`. Where the
+browser's own language is one a step puts on the account, choose another for
+that step and read its words from that catalog.
+
+**The profile is read once, as the page loads.** A write past the rules to
+`preferences.*` reaches the page only after a reload. A switch that has to
+show without one goes through the page's own write path, the call the
+Settings selects make:
+
+```js
+await ng.getComponent(document.querySelector('app-header')).authService
+  .updateUserPreferences({ language: 'tc', dateFormat: 'auto' });
+'written';
+```
+
+or through the Settings controls themselves. `authService` is private,
+TypeScript's word, which the running page does not enforce, as journey 14
+says. Read what the account holds, past the rules, with:
+
+```bash
+curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>" |
+  node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const f=JSON.parse(s).fields,p=f.preferences.mapValue.fields;console.log(JSON.stringify([f.displayName.stringValue,p.language.stringValue,p.dateFormat.stringValue]))})'
+# ["Alex Chen","en","MM/DD/YYYY"]
+```
+
+The seed stores `language: 'en'` and `dateFormat: 'MM/DD/YYYY'` for Alex
+(`seed.mjs`). The journey reads the transaction filters' two date inputs,
+which the panel shows when it is opened from the toggle beside the period.
+State only, with each read inlined
+([In a hidden pane](#in-a-hidden-pane)); the date input's adapter is reached
+through its `MatDatepickerInput`, whose field is private, as above.
+
+1. **As seeded.** Load `/transactions`, open the filter panel by its toggle,
+   and flush the page. Then:
+
+   ```js
+   const fields = [...document.querySelectorAll('app-transaction-filters .filter-grid mat-form-field')]
+     .filter(field => field.querySelector('mat-datepicker-toggle'));
+   const adapters = fields.map(field => ng.getDirectives(field.querySelector('input'))
+     .find(directive => directive._dateAdapter)._dateAdapter);
+   window.__a101 ??= adapters[0];
+   ({
+     browser: navigator.language,
+     html: document.documentElement.lang,
+     locale: adapters[0].locale,
+     shared: adapters[0] === adapters[1],
+     kept: adapters[0] === window.__a101,
+     fields: fields.map(field => [field.querySelector('mat-label').textContent.trim(),
+       field.querySelector('input').value,
+       field.querySelector('mat-datepicker-toggle button').getAttribute('aria-label')]),
+   });
+   ```
+
+   **Pass:** `browser` `'en-US'`, `html` `'en'`, `locale` `'en-US'`, `shared`
+   `true` — one adapter serves both inputs — and `fields` `[['From',
+   '10/01/2026', 'Open calendar'], ['To', '10/31/2026', 'Open calendar']]`:
+   the month's own first and last day, in Alex's fixed `MM/DD/YYYY`, October
+   2026 in the first run. The account and the browser agree here, so a page
+   that still followed the browser would read the same; step 2 is where the
+   two part.
+2. **A Japanese account in an English browser.** Write the language past the
+   rules, with the mask on that one field:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -X PATCH \
+     -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+     "$FS/users/<alex-uid>?updateMask.fieldPaths=preferences.language" \
+     -d '{"fields":{"preferences":{"mapValue":{"fields":{"language":{"stringValue":"ja"}}}}}}'
+   # 200
+   ```
+
+   Reload, which is the issue's own cold path, open the panel, flush the page
+   and read step 1's read. **Pass:** `browser` still `'en-US'`, `html`
+   `'ja'`, `locale` `'ja-JP'`, and `fields` `[['開始', '10/01/2026',
+   'カレンダーを開く'], ['終了', '10/31/2026', 'カレンダーを開く']]`. The
+   labels and the toggles' names are the account's language's, and the dates
+   keep the account's fixed order: a language moves the words and the locale,
+   never a pattern the account pinned. Shot: `101-filters-ja.png`, the open
+   panel.
+3. **The calendar's words.** With a real click on the first date field's
+   toggle, *開始* (*From*), and the page flushed:
+
+   ```js
+   const calendar = document.querySelector('mat-calendar');
+   const period = calendar.querySelector('.mat-calendar-period-button');
+   const cell = calendar.querySelector('.mat-calendar-body-cell');
+   ({
+     period: period.querySelector('span[aria-hidden="true"]').textContent.trim(),
+     periodLabel: period.getAttribute('aria-label'),
+     paging: ['previous', 'next'].map(side => calendar.querySelector(`.mat-calendar-${side}-button`).getAttribute('aria-label')),
+     weekdays: [...calendar.querySelectorAll('.mat-calendar-table-header th span[aria-hidden="true"]')]
+       .map(span => span.textContent.trim()).join(''),
+     weekdayNames: [...calendar.querySelectorAll('.mat-calendar-table-header th .cdk-visually-hidden')]
+       .map(span => span.textContent.trim()),
+     firstCell: [cell.getAttribute('aria-label'), cell.textContent.trim()],
+     close: document.querySelector('.mat-datepicker-close-button').textContent.trim(),
+   });
+   ```
+
+   **Pass:** `period` `'2026年10月'`, `periodLabel` `'年と月を選択'`, `paging`
+   `['前の月', '次の月']`, `weekdays` `'日月火水木金土'`, `weekdayNames`
+   `['日曜日', '月曜日', …, '土曜日']`, `firstCell` `['2026年10月1日',
+   '1日']` and `close` `'カレンダーを閉じる'`, the visually hidden close
+   button's text, which is its name: Material sets no `aria-label` on it.
+   Shot: `101-calendar-ja.png`.
+   Then the period button, with a real click, and the same read. **Pass:**
+   `period` the page of 24 years that holds this year, `'2016年〜2039年'` in
+   2026, `periodLabel` `'日付を選択'` and `paging` `['前の24年',
+   '次の24年']`. Close the calendar with Escape.
+4. **The format on Automatic, with no reload.** Settings → Profile → *日付形式*
+   → *自動（言語に合わせる）* (the select's options are *自動（言語に合わせる）*,
+   *MM/DD/YYYY*, *DD/MM/YYYY* and *YYYY-MM-DD*). On the same page, **言語** →
+   **English** with the real select, flush the page and read the Date Format
+   select's trigger:
+
+   ```js
+   [...document.querySelectorAll('app-profile-settings mat-select')]
+     .find(select => ng.getComponent(select).value === 'auto')
+     .querySelector('.mat-mdc-select-value').textContent.trim();
+   ```
+
+   **Pass:** `'Automatic (follow language)'`, the word of the language just
+   picked, not the *自動（言語に合わせる）* the page opened with. Then
+   **Language** → **日本語** the same way and the same read:
+   `'自動（言語に合わせる）'`. Then back to `/transactions` by the sidebar and
+   the panel open. **Pass**, step 1's read: `fields` `[['開始',
+   '2026/10/1', …], ['終了', '2026/10/31', …]]` and `kept` `true`, the
+   input's adapter the very object it was before the switch, since nothing
+   reloaded the page in between. The profile read says `auto` for the
+   format.
+5. **Typing, day first and year first.** Write the format past the rules the same way
+   (`preferences.dateFormat`, `"DD/MM/YYYY"`), reload, open the panel and
+   read step 1's read. **Pass:** *開始* reads `'01/10/2026'`. Select that
+   field's text, type `05/03/2026` with the real keyboard and press Tab,
+   then:
+
+   ```js
+   const start = ng.getComponent(document.querySelector('app-transaction-filters')).filters.startDate;
+   [start && [start.getFullYear(), start.getMonth() + 1, start.getDate(), start.getHours(), start.getMinutes()],
+     ng.getComponent(document.querySelector('app-transactions')).transactions().length];
+   ```
+
+   **Pass:** `[[2026, 3, 5, 0, 0], <rows>]`: 5 March, read day first, at
+   local midnight, and the list counting every row from then on: 58 in the
+   first run, since the seed's rows begin in May. Then `08/09/2026`:
+   `[2026, 9, 8, 0, 0]` and fewer rows, 10 in the first run, whose REST read
+   of the account held no row from 8 to 30 September. Then `2026-03-05`,
+   which a leading four-digit year reads year, month, day under every order: `[2026, 3, 5, 0, 0]` again, at midnight where the
+   browser's own `Date.parse` would have read an ISO day as UTC and put it on
+   the previous evening in a zone west of Greenwich, and the input redraws it
+   as `05/03/2026`. Then `Aug 19 2026`:
+
+   ```js
+   const field = [...document.querySelectorAll('app-transaction-filters .filter-grid mat-form-field')]
+     .find(f => f.querySelector('mat-label').textContent.trim() === '開始');
+   [ng.getComponent(document.querySelector('app-transaction-filters')).filters.startDate,
+     field.classList.contains('mat-form-field-invalid'), field.querySelector('mat-error') !== null,
+     ng.getComponent(document.querySelector('app-transactions')).transactions().length];
+   ```
+
+   **Pass:** `[null, true, false, <rows>]`, with the count `05/03/2026`
+   gave, 58 in the first run: the text names no day in this order, so the
+   field is invalid and the filter is dropped. The error shows as the outline
+   alone, with no sentence: the filter's compact fields have no room for one,
+   which ADR 0182's *Known gaps* record. Clear the field.
+6. **Quick add, switched live.** On `/transactions`, first read the insight
+   chips above the list:
+
+   ```js
+   [...document.querySelectorAll('app-insight-chips .insight-chip span')].map(span => span.textContent.trim());
+   ```
+
+   **Pass:** each chip in Japanese, the seed's *New this month* chip, which
+   names Electricity, among them as `'今月新規: 電気代'`. Then press `n`: quick add
+   opens with today's date in the account's format, `21/10/2026` on the first
+   run's day. It is `disableClose`, so Escape and a navigation leave it open
+   and **Cancel** closes it. With it open, switch the language and the format
+   through the page's write path, the call at the top
+   (`{ language: 'tc', dateFormat: 'auto' }`), then, as a separate evaluation:
+
+   ```js
+   const dialog = document.querySelector('mat-dialog-container');
+   const toggle = dialog.querySelector('mat-datepicker-toggle button');
+   [dialog.textContent.includes('新增交易'), toggle.closest('mat-form-field').querySelector('input').value,
+     toggle.getAttribute('aria-label')];
+   ```
+
+   **Pass:** `[true, '2026/10/21', '開啟日曆']`: the dialog's own title, date
+   and toggle followed the switch with the dialog open. Press the toggle and
+   read step 3's read on its calendar, which opens as a touch dialog.
+   **Pass:** `period` `'2026年10月'`, `periodLabel` `'選擇年份和月份'`, `paging`
+   `['上個月', '下個月']`, `weekdays` `'日一二三四五六'` and `close`
+   `'關閉日曆'`. Shot: `101-quick-add-tc.png`. Close the calendar and press
+   **取消**. Then the chip read again. **Pass:** each chip's sentence and the
+   category inside it in Traditional Chinese, the same chip now
+   `'本月新增: 電費'`: the category followed the switch with the sentence.
+7. **A household goal.** Put the format back on `DD/MM/YYYY` through the
+   write path (`{ dateFormat: 'DD/MM/YYYY' }`), leave the language on
+   Traditional Chinese, and open `/household` → **New goal**
+   (`household.plans.newGoal`). In the target date field
+   (`household.planForm.targetDate`) type `31/02/2026` and press Tab, then
+   read the dialog's `mat-error` text and whether its field carries
+   `mat-form-field-invalid`. **Pass:** *請輸入有效的日期。* and `true`: a day that does not exist is
+   refused with the catalog's sentence in the account's language, where the
+   browser's parser would have rolled it into March. Cancel the dialog.
+8. **A recurring rule's cleared start.** On `/budgets?tab=recurring`, open
+   **Add Recurring Transaction** and fill its name, amount and category, so
+   that the start date is the one thing holding **建立**. Wrap
+   `console.error` first, with
+   `window.__errors101 = 0; const raise = console.error; console.error = (...args) => { window.__errors101++; raise(...args); };`.
+   Select the *Start Date* text with the keyboard and delete it, then press
+   Tab, and read, as a separate evaluation:
+
+   ```js
+   const dialog = ng.getComponent(document.querySelector('app-recurring-form-dialog'));
+   [document.querySelector('app-recurring-form-dialog input.mat-datepicker-input').value,
+     dialog.startDate, dialog.isValid, document.querySelector('app-recurring-form-dialog .frequency-preview') !== null,
+     window.__errors101];
+   ```
+
+   **Pass:** `['', null, false, false, 0]`, and **建立** disabled: a cleared
+   start is no date, so the preview row is gone, no error was raised and the
+   rule cannot be saved. A date typed again makes `isValid` `true`; the first
+   run set the model directly, which is diagnostic. **Cancel** the dialog.
+9. **The bottom bar, at 375px.** Load `/dashboard`, set the pane to 375px
+   and read in the same step ([Panes and viewports](#panes-and-viewports)),
+   the root font 16px:
+
+   ```js
+   [...document.querySelectorAll('app-bottom-nav a.nav-item')].map(link => {
+     const label = link.querySelector('.nav-label');
+     const style = getComputedStyle(label);
+     return [label.textContent.trim(), link.getAttribute('aria-label'), style.fontSize, style.fontWeight,
+       label.scrollWidth <= label.clientWidth, Math.round(label.getBoundingClientRect().height)];
+   });
+   ```
+
+   With the language on Traditional Chinese, then Japanese and then English
+   through the write path, each followed by the read. **Pass:** the
+   dashboard tab, the active one, reads `['儀表板', '儀表板', '12px', '700',
+   true, 12]`, `['ホーム', 'ホーム', '12px', '700', true, 12]` and
+   `['Dashboard', 'Dashboard', '12px', '700', true, 12]`: one line, the
+   accessible name the visible word, and every other label in the bar fits as
+   well. In Japanese, the dashboard's greeting
+   (`document.querySelector('.dashboard-subtitle').textContent.trim()`)
+   reads *おかえりなさい、Alexさん*. Shot: `101-bottom-bar-375.png`, in
+   Japanese. Clear the width.
+10. **Restore.** Put the language and the format back past the rules, in one
+    write, and read them back:
+
+    ```bash
+    curl -s -o /dev/null -w '%{http_code}\n' -X PATCH \
+      -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+      "$FS/users/<alex-uid>?updateMask.fieldPaths=preferences.language&updateMask.fieldPaths=preferences.dateFormat" \
+      -d '{"fields":{"preferences":{"mapValue":{"fields":{"language":{"stringValue":"en"},"dateFormat":{"stringValue":"MM/DD/YYYY"}}}}}}'
+    # 200
+    ```
+
+    **Pass:** the profile read answers `["Alex Chen","en","MM/DD/YYYY"]`, and
+    step 1's read, after a reload, is step 1's.
+
+**What the second run found.** Step 3's `close` read `null`: Material names
+the calendar's visually hidden close button by its text, and the read took
+an `aria-label` it does not carry. The read now takes the text; the Pass is
+unchanged. Beside the steps, the run loaded each page with the account in
+Traditional Chinese, switched it to English through the write path and read
+what stayed Chinese. Two surfaces did, each a word translated once and kept.
+The transaction list's *New this month* chip read *New this month: 電費* on an
+English page: the chips named their category when they were found, while the
+sentence around it was translated on every check. *fix(i18n): the
+transaction insight chips name a category in the language now showing* names
+it where the chip is read. On Settings with the format on Automatic, picking
+English turned Currency's select into *$ US Dollar (USD)* while Date Format's
+still read *自動（跟隨語言）*: its label was translated once, when the page was
+built. *fix(i18n): the date format's Automatic option follows a language
+change made on the Settings page* translates it in the template (ADR 0182's
+*What the browser runs found*). Steps 4 and 6 now read both. The re-check read step
+4's trigger as *Automatic (follow language)* after English was picked, and
+step 6's chip as `'本月新增: 電費'` after the switch.
+
+**What stays in the specs, and why.**
+
+- **The adapter's display and parse.** `app-date-adapter.spec.ts` holds each
+  fixed pattern zero-padded in English and Japanese, `auto` as the language's
+  own numeric date, a day-first reading, a typed ISO day as local midnight,
+  text it cannot read as an invalid date and a blank input as none, and one
+  re-render per switch of language or of format alone.
+  `transaction-date.utils.spec.ts` holds the parse itself: a leading
+  four-digit year, one separator per gap, and a month and a day not limited
+  in length; `date-format.service.spec.ts` holds the order the stored format
+  supplies.
+- **The calendar's words.** `app-datepicker-intl.spec.ts`, under *a rendered
+  picker*, reads each label from the catalog; `app.smoke.spec.ts` builds the
+  app's own provider graph and reads the filters' two toggles as the
+  `datepicker.openCalendar` key, since Karma serves no catalog.
+- **The forms.** `transaction-filters.component.spec.ts`, the recurring
+  dialog's spec (a cleared start, a parse error on the start and on the end,
+  **Save** held) and `household-goal-dialog.component.spec.ts`.
+- **The gates.** `lint` bans the date modules that would bring a page its own
+  adapter and labels, `npm run build` (NG8113, with the template checks) and
+  `test:ci` hold the pickers' standalone imports, and `i18n:check` reads the
+  catalogs.
+- **The bottom bar's word.** `nav-items.spec.ts`, `bottom-nav.component.spec.ts`
+  and `bottom-nav.overflow.spec.ts` hold that the bar reads `shortLabelKey`
+  and fits a stand-in font. Karma serves no fonts and a CJK width is never
+  asserted there, so step 9 reads the real word at a real 375px.
+
+**What it cannot show.** A typed date on a phone's Japanese keyboard: the
+specs cover the parse, full-width digits and `年月日` included, and step 5
+a day-first and a year-first entry; the simulator run typed none
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md#known-gaps)).
+A calendar that is open when the language switches keeps its hidden close
+button and comparison label in the language it opened in until it is
+reopened; no step switches under an open calendar.
+
+**Cleanup.** Step 10 restores the account. The emulators take the rest at
+the [teardown](#teardown).
+
+Four shots: the open panel and the open calendar in Japanese, quick add in
+Traditional Chinese, and the bottom bar at 375px.
+
+### 102. Material's words and the reports' amounts
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, after journey
+101, in English. Material's stepper and sort header spoke English through
+words of their own, and the reports formatted an amount with the build's
+locale rather than the account's. The app's stepper words now come from the
+catalog, the sort header's description is bound to it, and a report's amount
+is written by the account's currency formatter, so a yen amount drops its
+`.00` and a dollar amount reads in the account's language
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md),
+[locale-formatting.md](locale-formatting.md), [i18n.md](i18n.md)). Language
+switches are written as journey 101 says: past the rules, then a reload, or
+through the page's own write path.
+
+1. **The stepper's finished step.** Put Japanese on the account
+   (`{ language: 'ja' }` through the write path), load `/import/file` and
+   hand the wizard's input a backup built in the page, one row:
+
+   ```js
+   const backup = { transactions: [{ description: 'e2e-102-row', amount: 12.5, currency: 'USD',
+     type: 'expense', date: { seconds: 1773576000, nanoseconds: 0 } }] };
+   const dt = new DataTransfer();
+   dt.items.add(new File([JSON.stringify(backup)], 'backup.json', { type: 'application/json' }));
+   const input = document.querySelector('app-file-dropzone input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'handed';
+   ```
+
+   Press **AIで処理**. The wizard stops on the processing step, which reports
+   what it found, *1件の取引が見つかりました*, with **続ける**; press **続ける**,
+   and read once the review step shows:
+
+   ```js
+   [...document.querySelectorAll('app-import-wizard .mat-step-header')].map(header => [
+     [...header.querySelector('.mat-step-icon').classList].find(name => name.startsWith('mat-step-icon-state-')),
+     header.querySelector('.mat-step-icon-content .cdk-visually-hidden')?.textContent.trim() ?? null]);
+   ```
+
+   **Pass:** the upload step's header reads `['mat-step-icon-state-edit',
+   '編集可能']`, as does every header the wizard has finished and left, and no
+   header reads *Editable*; a step not yet reached reads
+   `['mat-step-icon-state-number', null]`. Read before **続ける**, the review
+   step's header already reads `edit` and *編集可能* though that step is not yet
+   shown, since the wizard marks it completed ahead of reaching it. Shot:
+   `102-stepper-ja.png`. Leave
+   the wizard by its back arrow without pressing Import, then read that no
+   row was written:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/transactions?pageSize=300" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).documents??[]).filter(d=>d.fields.description?.stringValue==="e2e-102-row").length))'
+   # 0
+   ```
+
+   The finished-and-sealed state, whose word is *完了*, exists only while an
+   import is being written, and this journey never presses Import; the unit
+   spec holds it.
+
+   **What the second run found.** The step said to read as the processing
+   finished and the review step showed, but nothing moves on by itself: the
+   wizard stops on the processing step, with its count and **続ける**, and
+   shows the review step only after it. The step now says to press **続ける**
+   first. No code was wrong: pressed, the run read the Pass exactly, the
+   upload step's header `['mat-step-icon-state-edit', '編集可能']` and no
+   *Editable*.
+2. **The sort headers' description.** `/transactions` at 1024px, in Japanese:
+
+   ```js
+   [...document.querySelectorAll('app-transaction-list th.mat-sort-header')].map(header => [
+     header.querySelector('.mat-sort-header-content').textContent.trim(),
+     document.getElementById(header.querySelector('.mat-sort-header-container').getAttribute('aria-describedby'))
+       ?.textContent.trim()]);
+   ```
+
+   **Pass:** `[['日付', '並べ替え'], ['説明', '並べ替え'], ['金額', '並べ替え']]`:
+   each sortable header is described by the catalog's *並べ替え*, where
+   Material's own is the English *Sort*. Below 768px the list renders rows
+   and no sortable header, which is why this step runs at the desktop width.
+3. **A yen row in the reports.** Write one past the rules, in a category the
+   seed's own *Bookshop* row (`tx-hh-5`, $23.99) already holds this month:
+
+   ```bash
+   node --input-type=module -e '
+   const [FS, uid] = process.argv.slice(1);
+   const at = new Date(); at.setDate(1); at.setHours(12, 0, 0, 0);
+   const s = v => ({ stringValue: v }), n = v => ({ integerValue: String(v) });
+   const t = d => ({ timestampValue: d.toISOString() });
+   const fields = { userId: s(uid), type: s("expense"), amount: n(1000), currency: s("JPY"),
+     amountInBaseCurrency: { doubleValue: 6.67 }, exchangeRate: { doubleValue: 0.00667 },
+     categoryId: s("education_booksAndSupplies"), description: s("e2e-102-yen"),
+     date: t(at), createdAt: t(at), updatedAt: t(at), isRecurring: { booleanValue: false } };
+   const res = await fetch(`${FS}/users/${uid}/transactions/e2e-102-yen`, { method: "PATCH",
+     headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+     body: JSON.stringify({ fields }) });
+   console.log(res.status);' "$FS" <alex-uid>
+   # 200
+   ```
+
+   Load `/reports?tab=categories` in Japanese, open the *教材・文房具* panel by
+   its header with a real click, and flush the page:
+
+   ```js
+   const panel = [...document.querySelectorAll('app-category-breakdown mat-expansion-panel')]
+     .find(p => p.querySelector('.category-name').textContent.includes('教材・文房具'));
+   [[...panel.querySelectorAll('.transaction-amount')].map(a => a.textContent.trim()),
+     [...panel.querySelectorAll('.stat-value')].slice(0, 2).map(v => v.textContent.trim())];
+   ```
+
+   **Pass:** the rows hold `'￥1,000'`, the yen amount in the full-width yen
+   sign and with no `.00`, and `'$23.99'`, and the total and the average read
+   `['$30.66', '$15.33']`: $23.99 and the yen row's $6.67, and half of that.
+   Shot: `102-category-panel-ja.png`. Then `/reports?tab=monthly`:
+
+   ```js
+   [...document.querySelectorAll('.monthly-table tr.mat-mdc-row')].map(row => [...row.querySelectorAll('td')]
+     .map(cell => (cell.firstChild?.textContent ?? '').trim()));
+   ```
+
+   **Pass:** the current month's row carries its income, its expenses and its
+   balance as `$6,800.00`, `$2,524.90` and `+$4,275.10` in the first run,
+   whose figures the journeys before it had moved: a dollar sign, thousands
+   separators, two decimals, and a `+` on a positive balance.
+4. **Traditional Chinese, live.** Switch through the write path
+   (`{ language: 'tc' }`) with the page open and read both again.
+   **Pass:** the monthly row's amounts read `US$6,800.00` and the like, and
+   the *書籍與文具* panel's rows read `'¥1,000'`, the half-width sign,
+   and `'US$23.99'`, with the total `'US$30.66'`: the account's language, not
+   the build's, writes the currency.
+5. **Restore.** Put English on the account, past the rules as step 2 of
+   journey 101 does with `"en"` and a reload, and delete the yen row:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -X DELETE \
+     -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/transactions/e2e-102-yen"
+   # 200
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/transactions/e2e-102-yen"
+   # 404
+   ```
+
+   **Pass:** the profile read answers `["Alex Chen","en","MM/DD/YYYY"]`, and
+   the row reads 404. The first run kept the row for its sweep of the pages
+   and the teardown took it.
+
+**What stays in the specs, and why.**
+
+- **The stepper's words.** `material-intl.spec.ts`, under *AppStepperIntl*,
+  holds all three labels from the catalog, the *completed* word included, and
+  `app.config.spec.ts` that `appConfig` does not provide the intl: the import
+  wizard provides it itself, since a root provider would pull the lazy
+  wizard's stepper into the initial bundle (ADR 0182's *Departures from the
+  plan*).
+- **The sort description.** The unit rendering describe in
+  `transaction-list.component.spec.ts` reads each sortable column's
+  description. Karma's 756px window is below the table's 768px breakpoint, so
+  no smoke renders a sortable header: `material:check` holds the
+  `MatSortModule` entry and the template lint rule holds the bound
+  `sortActionDescription`.
+- **The currency.** `locale-currency.pipe.spec.ts` holds the pipe, and
+  `lint` fails a `| currency` binding, which formats against the build's
+  locale ([locale-formatting.md](locale-formatting.md)).
+
+**Cleanup.** Step 5 restores the language and deletes the row.
+
+Two shots: the finished upload step in Japanese, and the category panel in
+Japanese.
+
+### 103. An account with no name
+
+**Emulators**, as Alex, at a desktop width of 1024px or more, **last**, after
+journey 102, in English ([the run order](#emulator-journeys)). A sign-in that
+names nobody now stores an empty name, and every place that shows one reads a
+word from the catalog in the reader's language: *No name set* for the account
+in the header and Settings, *A member* for a household member, and a plain
+*Welcome back* on the dashboard. A stored `User` is a name like any other
+([ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md),
+[i18n.md](i18n.md), [household.md](household.md)). The profile is read once,
+as the page loads (journey 101), so each write past the rules is followed by
+a reload. The journey ends on a household page, whose load rewrites a member
+document, which is why it runs after every journey that reads a name there.
+
+1. **No name.** Write it past the rules, with the mask on that one field:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -X PATCH \
+     -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+     "$FS/users/<alex-uid>?updateMask.fieldPaths=displayName" \
+     -d '{"fields":{"displayName":{"stringValue":""}}}'
+   # 200
+   ```
+
+   Reload on `/dashboard`:
+
+   ```js
+   [document.querySelector('.dashboard-subtitle').textContent.trim(),
+     ng.getComponent(document.querySelector('app-header')).accountName()];
+   ```
+
+   **Pass:** `['Welcome back', 'No name set']`: the subtitle has no trailing
+   comma and no name. Open the header's user menu and read
+   `document.querySelector('.user-name').textContent.trim()`, then load
+   `/settings` and read the same on the profile card, `span.user-name`.
+   **Pass:** *No name set* for each. Alex has no photo, so no avatar `alt` is
+   read. Then put Japanese on the account through the write path
+   (`{ language: 'ja' }`) and read the three again: *おかえりなさい* and
+   *名前未設定*, on the card too; and Traditional Chinese: *歡迎回來* and
+   *未設定名稱*. Shot: `103-settings-no-name.png`, the card.
+2. **A name typed.** Put English back, then Settings → Profile → *Display
+   Name*, type `Ken Ito` and press Tab: the field saves on blur. **Pass:** the
+   profile read answers `["Ken Ito", …]`, the header's `accountName()` reads
+   `'Ken Ito'`, and the dashboard greets *Welcome back, Ken*: the first word
+   of the name goes into the catalog's one sentence. In Japanese it reads
+   *おかえりなさい、Kenさん* and in Traditional Chinese *歡迎回來，Ken*, each
+   written by its own catalog.
+3. **A stored `User` is a name.** Write `"User"` past the rules as step 1
+   does, and reload. **Pass:** the subtitle reads *Welcome back, User*. An
+   account created before this branch holds that string and keeps it until
+   the name is changed (ADR 0182's *Known gaps*).
+4. **A member with no name.** Write `""` again, reload and open
+   `/household`:
+
+   ```js
+   [...document.querySelectorAll('app-member-chip')].map(chip => [
+     chip.querySelector('.member-name').textContent.trim(),
+     chip.querySelector('.member-placeholder') ? 'person' : chip.querySelector('.member-initial')?.textContent.trim() ?? null]);
+   ```
+
+   **Pass:** the chips and the members list read `['A member', 'person']` for
+   Alex, the placeholder icon where an initial would be, and `['Sam Lee',
+   'S']` for Sam. The visit itself wrote to the household: the service
+   rewrites a member's own document when the profile shows the account
+   otherwise, so `households/chen-home/members/<alex-uid>` now holds an empty
+   name:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/households/chen-home/members/<alex-uid>" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify(JSON.parse(s).fields.displayName)))'
+   # {"stringValue":""}
+   ```
+
+   Shot: `103-household-a-member.png`.
+5. **Restore.** Settings → *Display Name* → `Alex Chen` and Tab, then
+   `/household`. **Pass:** the profile read answers `["Alex Chen", …]` and the
+   member document's read answers `{"stringValue":"Alex Chen"}`: the page's own
+   load put the member document back, as it took it out.
+
+**What stays in the specs, and why.**
+
+- **The helpers.** `person-name.utils.spec.ts` holds the account's word, the
+  member's two forms, the greeting's first word split on any white space,
+  the ideographic space included, and `User` read as a name.
+- **Each surface.** `header.component.spec.ts` (the menu's name),
+  `settings.component.spec.ts` (the card), `dashboard.component.spec.ts` (the
+  greeting), `member-chip.component.spec.ts` and
+  `household-members.component.spec.ts` (the chip and the list).
+- **The store.** `auth.service.spec.ts` and `auth.service.smoke.spec.ts` hold
+  that a sign-in naming nobody stores `''`, and `firestore-rules.smoke.spec.ts`
+  that the rules admit an empty name on a profile and on a member document.
+  `i18n:check`'s fifth scan fails an English name fallback in the source.
+- **The member document's rewrite.** `household.service.spec.ts`.
+
+**What it cannot show.** The avatar's `alt` on an account with a photo: the
+seeded accounts have none.
+
+**Cleanup.** Step 5 restores the name and the member document, and the
+profile read confirms it.
+
+Two shots: the Settings card with no name, and the household's *A member*.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -8545,7 +9261,14 @@ in a real select (journeys 93 to 96); and the page's own sign-out under a
 bring-up held in a real page, a category no catalog holds named in the
 reader's language on each screen and in each file a real page saves, a real
 press of Sync Now during a held key save, and labels placed in a real
-layout (journeys 97 to 100).
+layout (journeys 97 to 100); and a Japanese account read in an English
+browser, with the pickers' words, order and parse following a switch with no
+reload and a dialog already open, a real keyboard's typed dates read in each
+order, a dashboard tab fitting a real 375px bar in three languages, Material's
+hidden words and a currency formatted in the account's language on the pages
+that paint them, and an account with no name read as a word on every page
+that names it, with the member document the household page rewrites
+(journeys 101 to 103).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -8569,7 +9292,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 100 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 103 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -8613,8 +9336,17 @@ name a category the catalog lacks reads under on a screen or in an export
 `ExportService.getCategoryName`), or the category catalog a page loads, the
 data page's among them; 99 the AI page's key save (`saveKey`,
 `applyProviderKey`), the drain's readiness wait (`cloudProvidersReady`) or
-Sync Now; and 100 the transaction filters' selects or their stylesheet, or
-the notch rule in `styles.scss`.
+Sync Now; 100 the transaction filters' selects or their stylesheet, or
+the notch rule in `styles.scss`; 101 the date adapter, its intl or its
+parse (`app-date-adapter.ts`, `app-datepicker-intl.ts`,
+`datepicker.config.ts`, `DateFormatService.parseDate`), a date field's
+unreadable-text error in any form, or the bottom bar's labels (`nav-items.ts`
+and its `shortLabelKey`); 102 the stepper's words (`app-material-intl.ts`),
+a sortable header's description, or how a report writes an amount
+(`LocaleCurrencyPipe`, `CurrencyService.formatCurrency`); and 103 how an
+account or a member with no name reads (`person-name.utils.ts`, the
+sign-in's stored name, the header's `accountName`, the member chip) or the
+dashboard's greeting.
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.

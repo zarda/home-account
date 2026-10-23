@@ -119,7 +119,8 @@ describe('SpendingAnalysisComponent', () => {
     },
     convert: (amount: number) => amount, // 1:1 conversion for tests
     amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
-      t.amountInBaseCurrency ?? t.amount
+      t.amountInBaseCurrency ?? t.amount,
+    formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`
   };
 
   const mockTranslationService = {

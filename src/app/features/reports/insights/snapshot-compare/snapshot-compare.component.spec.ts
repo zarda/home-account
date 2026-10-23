@@ -3,6 +3,7 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { SnapshotCompareComponent } from './snapshot-compare.component';
 import { CategoryService } from '../../../../core/services/category.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightSnapshot } from '../../../../models';
 import { createCategory } from '../../../../core/services/testing/test-data';
@@ -199,6 +200,10 @@ describe('SnapshotCompareComponent, through its own template', () => {
           },
         },
         {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
+        },
+        {
           provide: TranslationService,
           useValue: { ...createTranslationStub(), getIntlLocale: () => 'en-US' },
         },
@@ -252,7 +257,7 @@ describe('SnapshotCompareComponent, through its own template', () => {
     expect(headline(0).querySelector('.headline-label')?.textContent?.trim())
       .toBe('insights.compareSpending');
     const spending = headline(0).querySelector('.headline-value') as HTMLElement;
-    expect(spending.textContent).toContain('$200.00');
+    expect(spending.textContent).toContain('USD 200.00');
     expect(spending.classList).toContain('up');
     expect(spending.classList).not.toContain('down');
 
@@ -265,7 +270,7 @@ describe('SnapshotCompareComponent, through its own template', () => {
 
     // The headline is the change, not the month's own total.
     const spending = headline(0).querySelector('.headline-value') as HTMLElement;
-    expect(spending.textContent).toContain('-$200.00');
+    expect(spending.textContent).toContain('USD -200.00');
     expect(spending.classList).toContain('down');
     expect(spending.classList).not.toContain('up');
   });
@@ -280,7 +285,7 @@ describe('SnapshotCompareComponent, through its own template', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].querySelector('.change-name')?.textContent?.trim()).toBe('categoryNames.groceries');
     expect(rows[0].querySelector('.change-amount')?.classList).toContain('up');
-    expect(rows[0].querySelector('.change-amount')?.textContent).toContain('$200.00');
+    expect(rows[0].querySelector('.change-amount')?.textContent).toContain('USD 200.00');
   });
 
   it('names a moved category the catalog lacks in the reader\'s language, not by its id', () => {

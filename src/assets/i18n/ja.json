@@ -7,6 +7,27 @@
     "today": "今日",
     "yesterday": "昨日"
   },
+  "datepicker": {
+    "openCalendar": "カレンダーを開く",
+    "closeCalendar": "カレンダーを閉じる",
+    "previousMonth": "前の月",
+    "nextMonth": "次の月",
+    "previousYear": "前の年",
+    "nextYear": "次の年",
+    "previousYears": "前の{{years}}年",
+    "nextYears": "次の{{years}}年",
+    "chooseDate": "日付を選択",
+    "chooseMonthAndYear": "年と月を選択",
+    "comparisonRange": "比較期間",
+    "yearRange": "{{start}}〜{{end}}",
+    "yearRangeLabel": "{{start}}から{{end}}まで",
+    "dateInvalid": "正しい日付を入力してください。"
+  },
+  "stepper": {
+    "completed": "完了",
+    "editable": "編集可能",
+    "optional": "任意"
+  },
   "common": {
     "income": "収入",
     "expense": "支出",
@@ -47,6 +68,8 @@
     "closeSidebar": "サイドバーを閉じる",
     "navigation": "ナビゲーション",
     "welcome": "おかえりなさい",
+    "welcomeNamed": "おかえりなさい、{{name}}さん",
+    "unnamedAccount": "名前未設定",
     "tryAgain": "再試行",
     "selected": "件選択中",
     "transactions": "件の取引",
@@ -62,6 +85,7 @@
   },
   "nav": {
     "dashboard": "ダッシュボード",
+    "dashboardShort": "ホーム",
     "transactions": "取引履歴",
     "budgets": "予算",
     "reports": "レポート",
@@ -1849,7 +1873,6 @@
       "endDate": "終了日（任意）",
       "clearEndDate": "終了日をクリア",
       "endBeforeStart": "終了日は開始日より前にできません。",
-      "dateInvalid": "正しい日付を入力してください。",
       "threshold": "通知のしきい値（任意）",
       "thresholdHint": "上限額に対する割合です。空欄の場合は{{default}}%で通知します。",
       "thresholdRange": "{{min}}〜{{max}}の割合を入力してください。",

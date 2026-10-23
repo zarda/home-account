@@ -15,12 +15,14 @@
 // (CI wraps `npm run test:smoke` with `firebase emulators:exec --only auth,storage,firestore`.)
 //
 // i18n JSON is not served by the Karma asset config, so every label in a
-// snapshot is its raw key.
+// snapshot is its raw key — until the language case, which answers the
+// catalog request itself with a fixture.
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideAppDatepicker } from '../config/datepicker.config';
 import { provideAppCharts } from '../config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
@@ -38,12 +40,16 @@ import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/stora
 import { routes } from '../../app.routes';
 import { AuthService } from './auth.service';
 import { AppLockService } from './app-lock.service';
+import { BudgetService } from './budget.service';
+import { RecurringService } from './recurring.service';
+import { TranslationService } from './translation.service';
 import { WidgetSnapshotService } from './widget-snapshot.service';
 import { WIDGET_SNAPSHOT_PLUGIN } from '../plugins/widget-snapshot.plugin';
+import { DashboardLayoutService } from '../../features/dashboard/dashboard-layout.service';
 import { APP_LOCK_STORAGE_PREFIX } from '../utils/app-lock.utils';
 import { addDays, budgetPeriodWindow, dayKey } from '../utils/transaction-date.utils';
 import { MockAuthService, createMockUser, provideNoMotion } from './testing';
-import { DEFAULT_USER_PREFERENCES, User, WidgetSnapshot } from '../../models';
+import { DashboardCardId, DEFAULT_USER_PREFERENCES, User, WidgetSnapshot } from '../../models';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { stripProviderKeys } from './testing/provider-keys';
 silenceFirebaseWarnings();
@@ -63,6 +69,22 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
   // on-page display carries the pinned word joiner.
   const EXPENSES = [70, 50];
   const INCOME = 30;
+  // The language case's catalog: the one title, the sentences and the budget
+  // line the widget words, as the Japanese catalog words them.
+  const JA_CATALOG = {
+    dashboard: { thisMonth: '今月' },
+    widget: {
+      spent: '支出',
+      topBudget: '最も使った予算',
+      nextScheduled: '次の予定',
+      noBudgets: '有効な予算はありません',
+      locked: '今月の数字を見るにはアプリのロックを解除してください',
+      signedOut: '今月の数字を見るにはサインインしてください',
+      stale: '今月の数字を更新するにはアプリを開いてください',
+      updated: '{{date}}更新',
+      budgetDetail: '{{spent}} / {{limit}}'
+    }
+  };
 
   let app: FirebaseApp;
   let auth: Auth;
@@ -108,6 +130,12 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
       .map(el => (el.textContent ?? '').replace(/\u2060/g, '').trim());
   }
 
+  // A formatted amount reduced to its digits, so a case names the figure
+  // without naming the symbol, the grouping or the sign the formatter writes.
+  function digits(text: string | undefined): string {
+    return (text ?? '').replace(/\D/g, '');
+  }
+
   function localMonthKey(now: Date): string {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
@@ -118,13 +146,14 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
 
   // onboardingCompleted is restated because an override replaces the whole
   // preferences object rather than merging into it.
-  function accountUser(enableAppLock = false): User {
+  function accountUser(enableAppLock = false, baseCurrency = 'USD', hidden?: DashboardCardId[]): User {
     return createMockUser(uid, {
       preferences: {
         ...DEFAULT_USER_PREFERENCES,
         onboardingCompleted: true,
-        baseCurrency: 'USD',
-        enableAppLock
+        baseCurrency,
+        enableAppLock,
+        ...(hidden ? { dashboardLayout: { hidden } } : {})
       }
     });
   }
@@ -249,7 +278,9 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
         provideRouter(routes),
         provideNoMotion(),
         provideHttpClient(),
-        provideNativeDateAdapter(),
+        // After the real one, so a catalog request is the case's to answer.
+        provideHttpClientTesting(),
+        provideAppDatepicker(),
         provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },
@@ -334,6 +365,140 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
   );
 
   it(
+    'rewrites the figures in a new base currency as the open dashboard repaints them',
+    async () => {
+      mockAuth.setMockUser(accountUser());
+      TestBed.inject(WidgetSnapshotService);
+
+      await harness.navigateByUrl('/dashboard');
+      // Expenses 70 + 50 in dollars, written and painted.
+      await waitFor(
+        'the figures in dollars',
+        () => digits(lastWrite()?.figures?.spent) === '12000' && digits(statValues()[1]) === '12000'
+      );
+      const dollars = lastWrite()!;
+      expect(digits(dollars.figures?.net)).toBe('9000');
+
+      // The rows are at rate 1 and the cached rates read 150 yen to the dollar,
+      // so the page and the widget both move to 18,000 and 13,500 with no new
+      // row and no other change.
+      mockAuth.setMockUser(accountUser(false, 'JPY'));
+      await waitFor(
+        'the figures in yen, painted and written',
+        () => digits(statValues()[1]) === '18000' && digits(lastWrite()?.figures?.spent) === '18000'
+      );
+
+      const yen = lastWrite()!;
+      const [, expenses, balance] = statValues();
+      expect(yen.state).toBe('figures');
+      expect(yen.figures?.spent).withContext('the expenses stat card').toBe(expenses);
+      expect(yen.figures?.net).withContext('the balance stat card').toBe(balance);
+      expect(digits(yen.figures?.net)).toBe('13500');
+      expect(yen.figures?.spent).withContext('not the dollar sentence again').not.toBe(dollars.figures?.spent);
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  it(
+    'rewrites the labels when the language changes with the dashboard open',
+    async () => {
+      mockAuth.setMockUser(accountUser());
+      TestBed.inject(WidgetSnapshotService);
+      const http = TestBed.inject(HttpTestingController);
+      const translation = TestBed.inject(TranslationService);
+      // setLocale writes the document's language; the next case reads English.
+      const lang = document.documentElement.lang;
+
+      try {
+        await harness.navigateByUrl('/dashboard');
+        await waitFor(
+          'a figures write with the budget',
+          () => lastWrite()?.figures?.topBudget?.name === BUDGET_NAME
+        );
+        expect(lastWrite()!.labels.title).withContext('no catalog loaded yet').toBe('dashboard.thisMonth');
+        expect(lastWrite()!.figures?.topBudget?.detail).toBe('widget.budgetDetail');
+
+        // The way the settings page and the account's own language reach it:
+        // the real service, its request answered with the fixture.
+        const switching = translation.setLocale('ja');
+        http.expectOne('/assets/i18n/ja.json').flush(JA_CATALOG);
+        await switching;
+
+        await waitFor('the labels in the new language', () => lastWrite()?.labels.title === '今月');
+        const written = lastWrite()!;
+        expect(written.state).toBe('figures');
+        expect(written.labels.spent).toBe('支出');
+        expect(written.labels.topBudget).toBe('最も使った予算');
+        expect(written.figures?.topBudget?.name).toBe(BUDGET_NAME);
+        expect(written.figures?.topBudget?.detail).withContext('the budget line, recomposed too').toMatch(/ \/ /);
+        expect(written.figures?.topBudget?.detail).not.toContain('widget.budgetDetail');
+        expect(http.match(() => true).map(request => request.request.url))
+          .withContext('no other request left unanswered')
+          .toEqual([]);
+      } finally {
+        document.documentElement.lang = lang;
+      }
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  // #441 P5: the widget follows the account's hidden set. The budgets stream
+  // stays open for the banner and the other readers, so the seeded budget does
+  // reach the page; what is proved is that it does not reach the widget.
+  it(
+    'leaves out the cards the account hid, and brings one back once it is shown',
+    async () => {
+      mockAuth.setMockUser(accountUser(false, 'USD', ['budgets', 'upcoming']));
+      TestBed.inject(WidgetSnapshotService);
+      const budgets = TestBed.inject(BudgetService);
+      // The dashboard is the window's only caller, and with Upcoming hidden
+      // and the recap off nothing on it reads the window.
+      const upcomingListener = spyOn(TestBed.inject(RecurringService), 'getUpcomingSchedule').and.callThrough();
+
+      await harness.navigateByUrl('/dashboard');
+      await waitFor(
+        'the seeded budget loaded and a figures write',
+        () => budgets.activeBudgets().some(budget => budget.name === BUDGET_NAME) && lastWrite()?.state === 'figures'
+      );
+      // A window for the publishing effect to run on the loaded budget.
+      for (let pass = 0; pass < 5; pass++) {
+        harness.detectChanges();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const bothHidden = lastWrite()!;
+      expect(bothHidden.state).toBe('figures');
+      expect(bothHidden.figures?.hidden).toEqual(['budgets', 'upcoming']);
+      expect(bothHidden.figures?.topBudget).toBeNull();
+      expect(bothHidden.figures?.nextScheduled).toBeNull();
+      expect(JSON.stringify(bothHidden)).not.toContain(BUDGET_NAME);
+      expect(JSON.stringify(bothHidden)).not.toContain(RULE_NAME);
+      expect(upcomingListener).withContext('the recurring listener').not.toHaveBeenCalled();
+      // The positive proof: the same write carries the month's figures.
+      expect(digits(bothHidden.figures?.spent)).toBe('12000');
+
+      await TestBed.inject(DashboardLayoutService).show('budgets');
+      await waitFor('the budget back in the widget', () => lastWrite()?.figures?.topBudget?.name === BUDGET_NAME);
+
+      const shown = lastWrite()!;
+      expect(shown.figures?.hidden).toEqual(['upcoming']);
+      expect(shown.figures?.topBudget?.percent).toBe(82);
+      expect(shown.figures?.nextScheduled).toBeNull();
+      expect(upcomingListener).withContext('the recurring listener, still').not.toHaveBeenCalled();
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    },
+    CASE_TIMEOUT
+  );
+
+  it(
     'writes a locked snapshot with no figures once the lock can engage, without the dashboard',
     async () => {
       mockAuth.setMockUser(accountUser(true));
@@ -376,6 +541,41 @@ describe('widget snapshot from real rows (emulator smoke test)', () => {
       const signedOut = lastWrite()!;
       expect('figures' in signedOut).toBeFalse();
       expect(signedOut.labels.signedOut).toBe('widget.signedOut');
+    },
+    CASE_TIMEOUT
+  );
+
+  it(
+    'leaves the signed-out sentence when the session ends under the open dashboard',
+    async () => {
+      mockAuth.setMockUser(accountUser());
+      TestBed.inject(WidgetSnapshotService);
+
+      await harness.navigateByUrl('/dashboard');
+      await waitFor('a figures write', () => lastWrite()?.state === 'figures');
+
+      // The page stays alive, as it does when the device's SDK ends a session
+      // on its own: no navigation, no teardown, the dashboard still painted.
+      mockAuth.setMockUser(null);
+      // Any signed-out write, not the last one: the failure this case guards
+      // is a figures write landing after it.
+      await waitFor('a signed-out write', () => writes.some(write => write.state === 'signedOut'));
+      const signedOutAt = writes.findIndex(write => write.state === 'signedOut');
+
+      // A window for the dashboard's effect to republish what it still holds.
+      for (let pass = 0; pass < 15; pass++) {
+        harness.detectChanges();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      expect(writes.slice(signedOutAt + 1).map(write => write.state))
+        .withContext('writes after the signed-out one')
+        .toEqual([]);
+      expect(lastWrite()!.state).toBe('signedOut');
+      expect('figures' in lastWrite()!).toBeFalse();
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 200));
     },
     CASE_TIMEOUT
   );

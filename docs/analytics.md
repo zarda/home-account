@@ -344,11 +344,24 @@ once switched the analytics ban off without changing a visible line — lint
 stayed green while a direct `logEvent()` in a component would have shipped
 (ADR 0038).
 
-It deliberately does **not** probe every file (representative files only — a
-new exemption block needs a row in the script's population table), does not
-see a dynamic `import('firebase/analytics')` (the rule flags static imports
-only), and does not prove ESLint would fire on a banned import — only that the
-ban resolves for the file.
+Its `--self-test`, which `lint-guards:check` runs first, proves the bans fire
+as well as resolve. It lints a static import of a banned module in every
+population — an analytics path and the `firebase/analytics` pattern, a model
+SDK and the date modules, in a feature file, a spec, `app.config.ts` and each
+owner's own files, where the owner's own SDK must pass — and a dynamic
+`import()` of each analytics specifier. The `no-restricted-syntax`
+`ImportExpression` selector fails that dynamic import in app code (every
+non-spec file under `src/app`) everywhere but `analytics-transport.ts`; the
+self-test proves it on one app-code file and on the transport, where it must
+pass. Specs resolve to the two uncaught-rejection selectors only, so a spec's
+dynamic analytics import is not banned.
+
+What it still cannot see, among what the script's header lists: a population
+nobody listed (it probes representative files only, so a new exemption block
+needs a row in the script's population table); an analytics SDK reached some
+other way than a literal specifier — a `require()`, an `import()` of a
+computed specifier, or a global the SDK attaches to `window`; and a date
+module loaded by `import()`, which `no-restricted-imports` does not read.
 
 ## Console setup (one-time, by hand)
 

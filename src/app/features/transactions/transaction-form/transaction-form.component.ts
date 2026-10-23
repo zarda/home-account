@@ -10,9 +10,8 @@ import { Router } from '@angular/router';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectChange, MatSelectModule } from '@angular/material/select';
-import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
+import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
 import { Observable, Subscription, debounceTime, distinctUntilChanged, filter } from 'rxjs';
-import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
@@ -122,8 +121,9 @@ const OTHER_CURRENCY = 'other-currency';
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
+    MatDatepicker,
+    MatDatepickerInput,
+    MatDatepickerToggle,
     MatButtonModule,
     MatButtonToggleModule,
     MatIconModule,

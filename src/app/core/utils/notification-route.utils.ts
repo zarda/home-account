@@ -1,10 +1,10 @@
 /**
- * The in-app paths a tap on a reminder opens.
+ * The in-app paths a tap on a reminder or on the widget opens.
  *
- * Every builder returns a root-relative path, never a URL: the route rides in
- * a notification's payload and comes back from the worker or the operating
- * system as plain data, so anything that reads one passes it through
- * `safeAppRoute` before navigating.
+ * Every builder returns a root-relative path, never a URL: a reminder's route
+ * rides in a notification's payload and comes back from the worker or the
+ * operating system as plain data, so anything that reads one passes it
+ * through `safeAppRoute` before navigating.
  */
 
 /** The dashboard, asked to bring one upcoming bill into view. */
@@ -25,6 +25,14 @@ export function budgetRoute(): string {
  */
 export function recapRoute(weekKey: string): string {
   return `/dashboard?recap=${encodeURIComponent(weekKey)}`;
+}
+
+/**
+ * The dashboard, which a tap on the widget opens. The tap names no route
+ * (`WidgetSnapshot.tapURL` in the iOS widget), so the app picks it here.
+ */
+export function widgetRoute(): string {
+  return '/dashboard';
 }
 
 /**

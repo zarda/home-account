@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import {
   PeriodSelectorComponent,
   PeriodSelection,
@@ -25,6 +26,7 @@ describe('PeriodSelectorComponent', () => {
       imports: [PeriodSelectorComponent],
       providers: [
         provideNoMotion(),
+        provideNativeDateAdapter(),
         { provide: TranslationService, useValue: translation },
       ],
     }).compileComponents();
