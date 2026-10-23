@@ -90,11 +90,12 @@ describe('AppLockService', () => {
     });
 
     currentNavigation = signal<Navigation | null>(null);
-    router = jasmine.createSpyObj<Router>('Router', ['navigate', 'serializeUrl'], {
+    router = jasmine.createSpyObj<Router>('Router', ['navigate', 'navigateByUrl', 'serializeUrl'], {
       url: '/dashboard',
       currentNavigation
     });
     router.navigate.and.resolveTo(true);
+    router.navigateByUrl.and.resolveTo(true);
     router.serializeUrl.and.callFake((tree: UrlTree) => tree.toString());
 
     biometric = {
@@ -174,8 +175,10 @@ describe('AppLockService', () => {
     });
 
     // Not a path the SDK takes today: it hands the listener the same uid again
-    // only after a sign-out, which clears the unlocked state first. Pinned so
-    // that a later read failing under a locked session never opens it.
+    // only after a sign-out, which clears the unlocked state first, or as the
+    // registration's first emit repeats at start-up, before any unlock.
+    // Pinned so that a later read failing under a locked session never opens
+    // it.
     it('keeps a locked session locked when its profile turns degraded', async () => {
       await seedPin();
       setPreferences({ enableAppLock: true });
@@ -221,6 +224,149 @@ describe('AppLockService', () => {
       degrade();
 
       expect(service.isEnabled()).toBe(false);
+    });
+  });
+
+  // Nothing navigates when the real profile arrives, so lockGuard never sees
+  // a lock that came down with it: the service takes a lock screen that is
+  // showing down itself, as its relock effect puts one up.
+  describe('standing the lock screen down', () => {
+    function onLockScreen(): void {
+      (Object.getOwnPropertyDescriptor(router, 'url')!.get as jasmine.Spy).and.returnValue('/lock');
+    }
+
+    beforeEach(async () => {
+      await seedPin();
+      degrade();
+      // Runs the effects on the degraded profile; the relock effect remembers
+      // the page it sent to /lock, which the case then replaces.
+      TestBed.tick();
+      service.rememberRedirect('/transactions');
+    });
+
+    it('leaves the lock screen for the remembered page once the real profile asks for no lock', () => {
+      onLockScreen();
+      recover({ enableAppLock: false });
+      TestBed.tick();
+
+      expect(router.navigateByUrl).toHaveBeenCalledOnceWith('/transactions');
+    });
+
+    it('stays when the real profile asks for the lock', () => {
+      onLockScreen();
+      recover({ enableAppLock: true });
+      TestBed.tick();
+
+      expect(service.isLocked()).toBe(true);
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('leaves any page but the lock screen alone', () => {
+      recover({ enableAppLock: false });
+      TestBed.tick();
+
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // A cold start on the web can settle while its own navigation to /lock
+    // is still loading the screen: the stand-down waits for it rather than
+    // being lost to it.
+    it('waits out a navigation under way, then leaves the lock screen it landed on', () => {
+      currentNavigation.set({
+        extractedUrl: new DefaultUrlSerializer().parse('/lock'),
+      } as Navigation);
+      recover({ enableAppLock: false });
+      TestBed.tick();
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+
+      onLockScreen();
+      currentNavigation.set(null);
+      TestBed.tick();
+
+      expect(router.navigateByUrl).toHaveBeenCalledOnceWith('/transactions');
+    });
+
+    it('does nothing once a navigation under way lands anywhere but the lock screen', () => {
+      currentNavigation.set({
+        extractedUrl: new DefaultUrlSerializer().parse('/dashboard'),
+      } as Navigation);
+      recover({ enableAppLock: false });
+      TestBed.tick();
+
+      currentNavigation.set(null);
+      TestBed.tick();
+
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // Settled, then unknown again before the navigation it waited on landed:
+    // the lock holds once more, and the screen stays.
+    it('stays when the profile is unknown again by the time a navigation under way lands', () => {
+      currentNavigation.set({
+        extractedUrl: new DefaultUrlSerializer().parse('/lock'),
+      } as Navigation);
+      recover({ enableAppLock: false });
+      TestBed.tick();
+      degrade();
+      TestBed.tick();
+
+      onLockScreen();
+      currentNavigation.set(null);
+      TestBed.tick();
+
+      expect(service.isLocked()).toBe(true);
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('stands down once, not again on a later navigation', () => {
+      onLockScreen();
+      recover({ enableAppLock: false });
+      TestBed.tick();
+      currentNavigation.set({
+        extractedUrl: new DefaultUrlSerializer().parse('/settings'),
+      } as Navigation);
+      TestBed.tick();
+      currentNavigation.set(null);
+      TestBed.tick();
+
+      expect(router.navigateByUrl).toHaveBeenCalledTimes(1);
+    });
+
+    // The listener's signed-out branch lowers the flag too; the sign-out's
+    // own navigation goes to /login.
+    it('does nothing when the session ends', () => {
+      onLockScreen();
+      currentUser.set(null);
+      userId.set(null);
+      profileDegraded.set(false);
+      TestBed.tick();
+
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // A sign-out from the lock screen clears the PIN before the session
+    // ends, and a retry can land in between: the lock is down then, but the
+    // real profile asks for it, so the screen is not the stand-down's to take.
+    it('stays when the profile settles asking for the lock after the lock fell for another reason', () => {
+      onLockScreen();
+      service.clearCredential();
+      recover({ enableAppLock: true });
+      TestBed.tick();
+
+      expect(service.isLocked()).toBe(false);
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // Only the profile settling takes the screen down. A PIN removed in
+    // another tab is, more often than not, a sign-out on its way there, and
+    // the reload it brings places the page.
+    it('does not follow a lock that falls for any other reason', () => {
+      onLockScreen();
+      service.clearCredential();
+      TestBed.tick();
+
+      expect(service.isLocked()).toBe(false);
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
     });
   });
 
