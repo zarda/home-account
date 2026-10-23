@@ -36,6 +36,7 @@ describe('AppLockService', () => {
   let biometric: BiometricAuthDouble;
   let userId: ReturnType<typeof signal<string | null>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
+  let profileDegraded: ReturnType<typeof signal<boolean>>;
 
   const PIN = '246813';
 
@@ -45,6 +46,22 @@ describe('AppLockService', () => {
         preferences: { ...DEFAULT_USER_PREFERENCES, ...prefs },
       })
     );
+  }
+
+  /**
+   * What AuthService runs on when the profile read fails: an in-memory profile
+   * under the same uid, built from DEFAULT_USER_PREFERENCES, so it never names
+   * a lock.
+   */
+  function degrade(): void {
+    currentUser.set(createMockUser('user-1', { preferences: { ...DEFAULT_USER_PREFERENCES } }));
+    profileDegraded.set(true);
+  }
+
+  /** The retry swapping the stored profile in for the fallback. */
+  function recover(prefs: Partial<UserPreferences>): void {
+    setPreferences(prefs);
+    profileDegraded.set(false);
   }
 
   /** Seed a credential directly so tests do not pay the production PBKDF2 cost. */
@@ -64,10 +81,12 @@ describe('AppLockService', () => {
     currentUser = signal<User | null>(
       createMockUser('user-1', { preferences: { ...DEFAULT_USER_PREFERENCES } })
     );
+    profileDegraded = signal(false);
 
     auth = jasmine.createSpyObj<AuthService>('AuthService', ['signOut'], {
       userId,
       currentUser,
+      profileDegraded,
     });
 
     currentNavigation = signal<Navigation | null>(null);
@@ -129,6 +148,79 @@ describe('AppLockService', () => {
 
       expect(service.method()).toBe('pin');
       expect(service.isLocked()).toBe(true);
+    });
+  });
+
+  // The fallback profile cannot say whether the account asked for a lock. A
+  // PIN for this account on this device is the evidence that is left, so the
+  // lock takes it, and the real profile settles the question when it arrives.
+  describe('a profile that could not be read', () => {
+    it('locks a cold start when this device holds the account PIN', async () => {
+      await seedPin();
+      degrade();
+
+      expect(service.canEngage()).toBe(true);
+      expect(service.isLocked()).toBe(true);
+    });
+
+    // The device rule is unchanged: with nothing here to unlock with, locking
+    // would strand the user exactly as it would on a loaded profile.
+    it('stays unlocked when this device has no PIN', () => {
+      degrade();
+
+      expect(service.method()).toBe('none');
+      expect(service.canEngage()).toBe(false);
+      expect(service.isLocked()).toBe(false);
+    });
+
+    // Not a path the SDK takes today: it hands the listener the same uid again
+    // only after a sign-out, which clears the unlocked state first. Pinned so
+    // that a later read failing under a locked session never opens it.
+    it('keeps a locked session locked when its profile turns degraded', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      expect(service.isLocked()).toBe(true);
+
+      degrade();
+      TestBed.tick();
+
+      expect(service.isLocked()).toBe(true);
+    });
+
+    it('keeps an unlock made while degraded once the real profile arrives with the lock on', async () => {
+      await seedPin();
+      degrade();
+      // The account effect clears the unlocked state on its first run.
+      TestBed.tick();
+      expect(service.isLocked()).toBe(true);
+      expect(router.navigate).toHaveBeenCalledWith(['/lock']);
+      await expectAsync(service.unlockWithPin(PIN)).toBeResolvedTo(true);
+
+      recover({ enableAppLock: true });
+      TestBed.tick();
+
+      expect(service.canEngage()).toBe(true);
+      expect(service.isLocked()).toBe(false);
+    });
+
+    it('stands down once the real profile arrives without a lock', async () => {
+      await seedPin();
+      degrade();
+      expect(service.isLocked()).toBe(true);
+
+      recover({ enableAppLock: false });
+
+      expect(service.canEngage()).toBe(false);
+      expect(service.isLocked()).toBe(false);
+    });
+
+    // Settings reads isEnabled for its switch and its missing-PIN warning, so
+    // it keeps meaning what the account asked for, not what the lock does.
+    it('leaves isEnabled to the account preference', async () => {
+      await seedPin();
+      degrade();
+
+      expect(service.isEnabled()).toBe(false);
     });
   });
 

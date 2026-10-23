@@ -75,6 +75,8 @@ describe('overflow guard: the theme toggle', () => {
     const mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences', 'updateUserProfile'], {
       currentUser: signal(mockUser),
       userId: signal('user-1'),
+      // The security panel this page renders builds the real AppLockService.
+      profileDegraded: signal(false),
     });
     mockAuthService.updateUserPreferences.and.returnValue(Promise.resolve());
     mockAuthService.updateUserProfile.and.returnValue(Promise.resolve());
@@ -312,6 +314,8 @@ describe('overflow guard: profile-settings grid tracks (#450)', () => {
         preferences: { baseCurrency: 'USD', theme: 'light', dateFormat: 'MM/DD/YYYY', language: 'en' },
       }),
       userId: signal('user-1'),
+      // The security panel this page renders builds the real AppLockService.
+      profileDegraded: signal(false),
     });
     mockAuthService.updateUserPreferences.and.returnValue(Promise.resolve());
     mockAuthService.updateUserProfile.and.returnValue(Promise.resolve());
