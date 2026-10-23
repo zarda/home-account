@@ -386,7 +386,7 @@ on an account change it did not start ([auth.md](auth.md#an-account-change-this-
 ADR 0163), from inside the auth-state listener, which fires whenever the SDK
 calls back, not when a spec chooses. So the reload sits behind a root token,
 `PAGE_RELOAD` (`core/services/page-reload.ts`), and **every TestBed that
-builds the real `AuthService` provides a double for it**. Three suites do
+builds the real `AuthService` provides a double for it**. Five suites do
 today:
 
 - `auth.service.spec.ts`: a `reload` spy in the outer providers, and `null`
@@ -395,10 +395,15 @@ today:
   spreads. A block that lists its providers inline falls back to the real
   factory, and its first account change reloads the run away;
 - `analytics.service.smoke.spec.ts`: an inert function, since it signs in
-  once and never switches.
+  once and never switches;
+- `degraded-profile-lock.smoke.spec.ts`: a spy in `configure()`. Each case
+  signs its own client in before the TestBed builds anything, so the
+  listener's first delivery is never an account change;
+- `dashboard-layout.service.spec.ts`: a spy in its *over the real
+  AuthService* block.
 
 Every other suite provides an `AuthService` double and never builds the
-listener. A fourth that builds the real one must provide the token too.
+listener. A sixth that builds the real one must provide the token too.
 `page-reload.spec.ts` hands the factory a fake location, and never calls the
 function the root injector resolves.
 
@@ -624,11 +629,11 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` |
-|---|---|---|---|---|
-| ERROR | 40 | 53 | 53 | 44 |
-| WARN | 38 | 60 | 60 | 60 |
-| LOG | 26 | **0** | **0** | **0** |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` |
+|---|---|---|---|---|---|
+| ERROR | 40 | 53 | 53 | 44 | 44 |
+| WARN | 38 | 60 | 60 | 60 | 60 |
+| LOG | 26 | **0** | **0** | **0** | **0** |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
@@ -640,7 +645,9 @@ use the same method or it reads as a doubling that did not happen.
 SDK then warns three times that *Firebase App named 'firestore-unit-…' already
 deleted*. WARN reads 63 on those runs and 60 on the rest: the base of the
 `26.10.178` wave read 63, and that wave's measures read 60 and 63. Judge a new
-line by its text, not by that difference of three.
+line by its text, not by that difference of three. One more comes and goes:
+`offline-queue`'s *Reclaimed 1 item(s) interrupted mid-sync* printed one time
+fewer on one `26.10.179` run, which read 59 against two that read 60.
 
 LOG fell to zero because `no-console` now bans `console.log` outright; the five
 lines over the base when it was first recorded (43 ERROR and 40 WARN) are
@@ -654,7 +661,7 @@ three failed-save cases flushed with `TestBed.tick()` from the spec body,
 which entered the zone mid-tick and reported `NG0101`, nine ERROR lines
 before that wave and twelve once the widget's publishing effect tracked more
 reads. Those cases flush with `fixture.detectChanges()` now, and the spec
-prints none. **Rendering
+prints none. The wave that recorded `26.10.179` added none either. **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.

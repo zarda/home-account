@@ -160,6 +160,17 @@ own snapshots, so it defers rather than writing something the rules will
 only refuse — see
 [ADR 0137](ADR/0137-a-closed-month-is-generated-only-against-a-loaded-profile-and-the-servers-own-list.md).
 
+Three things read `profileDegraded` itself: onboarding
+([ADR 0072](ADR/0072-onboarding-runs-once-and-never-against-a-fallback-profile.md)),
+closed-month generation, and `AppLockService.canEngage()`. The first two
+wait for the real profile; the lock does not wait, it fails closed. The
+fallback never names a lock, so
+`canEngage()` treats a degraded profile as asking for one wherever this
+device holds the account's PIN, and the real profile settles it when the
+retry brings it in
+([docs/app-lock.md](app-lock.md#a-profile-that-could-not-be-read),
+[ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)).
+
 ## The retry
 
 `setupProfileRetryEffect` re-reads the profile when connectivity returns.

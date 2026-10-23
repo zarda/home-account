@@ -1,6 +1,9 @@
 # 133. The home-screen widget shows the dashboard's last this-month paint, and nothing a lock hides
 
-**Status:** Accepted, implemented; amended by [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md) · **Date:** 2026-09-16 · **Issues:** #85
+**Status:** Accepted, implemented; amended by
+[0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md)
+and [0184](0184-the-lock-fails-closed-while-the-profile-is-unknown.md)
+· **Date:** 2026-09-16 · **Issues:** #85
 
 Reference documentation lives in [../widget.md](../widget.md).
 

@@ -31,7 +31,9 @@ or did not engage, or changing it.
 `AppLockService.init()` runs from an app initializer, before the first guarded
 navigation. `authGuard` sends a locked session to `/lock` and remembers where
 it was going; `lockGuard` sends anyone with nothing to unlock back out again,
-so `/lock` is never a dead end.
+so `/lock` is never a dead end. When the real profile arrives asking for no
+lock, `AppLockService` takes a lock screen that is showing down itself
+([below](#the-lock-screen-stands-down)).
 
 ## The method ladder, and the fail-open rule
 
@@ -55,15 +57,73 @@ the biometric opt-in together.
 
 `isLocked()` is `canEngage() && unlockedAt() === null`. The unlocked timestamp
 lives in memory and starts null, so a cold start is locked by construction —
-there is no "locked" flag on disk to keep in sync or to edit. That holds once
-the profile loads: a profile read that fails leaves the lock off until the
-real profile arrives (see [Known gaps](#known-gaps)).
+there is no "locked" flag on disk to keep in sync or to edit. That holds
+on a profile that could not be read too, which counts as asking for the lock
+([below](#a-profile-that-could-not-be-read)).
 
 `canEngage()` alone — a lock configured on this device, not whether the app
 happens to be locked right now — is also what the iOS home-screen widget
 reads before it will write a figure to disk; a process that can only read a
 file has no way to see `isLocked()`'s in-memory timestamp at all. See
 [widget.md](widget.md).
+
+## A profile that could not be read
+
+When the profile read fails, `AuthService` keeps the session on an in-memory
+fallback profile and raises `profileDegraded`
+([auth.md](auth.md#the-degraded-profile)). The fallback is built from the
+defaults, so it never names a lock. Read as the account's answer, it opened
+the app with no PIN and let the widget write the month's figures until the
+retry swapped the real profile in. While the profile is degraded, nobody
+knows whether the account asked for a lock, so `canEngage()` treats it as
+asked:
+
+```
+canEngage = (isEnabled() || profileDegraded()) && method() !== 'none'
+```
+
+- **The device rule still decides.** With no PIN record for the account on
+  this device, `method()` is `'none'` and the app opens, exactly as it does
+  on a loaded profile. A PIN here is the only evidence the device has that a
+  lock was wanted.
+- **`isEnabled()` is unchanged.** It still reports what the account asked
+  for, which is what the settings switch and its missing-PIN warning read.
+- **The real profile settles it.** The retry swaps the stored profile in
+  under the same uid, so an unlock made in the meantime holds. If the
+  account asks for a lock, nothing else moves. If it does not, `canEngage()`
+  falls, and a lock screen that is showing
+  [stands down](#the-lock-screen-stands-down).
+
+The cost lands on one kind of account: one that switched the lock off but
+kept its PIN sees the lock screen on a degraded start, until the PIN is
+entered or the real profile arrives. The retry runs at once while online
+and again on each connectivity flip, and a failed retry waits for the next
+flip. So a refusal that persists (a rules or quota error) holds that screen
+until the PIN, or until a flip after the refusal has cleared; a device that
+stays online waits for the PIN. Why this rule and not a remembered setting
+is in [ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md).
+
+### The lock screen stands down
+
+`lockGuard` runs only on a navigation, and nothing navigates when the real
+profile arrives. So a second effect in `AppLockService`, beside the relock
+effect below, does what the relock effect does the other way round. When
+`profileDegraded` settles from true to false while the real profile asks
+for no lock (`isEnabled()` is false), the lock no longer holds, the session
+is live, the router is on `/lock` and no other navigation is under way, it
+goes to the remembered page (`consumeRedirect()`). Asking `isEnabled()` and
+not only `isLocked()` matters: a sign-out from the lock screen clears the
+PIN before the session ends, and a retry landing in between brings a real
+profile that asks for the lock while the lock is down.
+
+It is keyed on the profile settling and on nothing else. Every other way the
+lock falls brings its own navigation or reload: an unlock navigates, a
+sign-out goes to `/login`, and a PIN removed in another tab is usually a
+sign-out or an account deletion there, whose reload places this page. A
+screen that left on any fall of the lock would open the account before that
+navigation or reload lands; [ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md) records why. A
+settle that meets a navigation under way, such as a cold start still loading
+`/lock`, waits for it to end and is decided once against where it landed.
 
 ## Relocking, and a tap that races it
 
@@ -124,7 +184,9 @@ reported as "could not save the PIN" rather than as a lock that will not hold.
 A `storage` event on any key under the prefix bumps a credential version. That
 event fires only in the app's *other* tabs, and without it a tab sitting on
 the lock screen would keep a memoized method after the credential was removed
-elsewhere and stay stuck until reload.
+elsewhere and stay stuck until reload. With it the lock falls, so the next
+navigation passes the guards, but the screen itself stays until then (see
+[Known gaps](#known-gaps)).
 
 ## The backoff, and what does not spend it
 
@@ -308,17 +370,30 @@ device and switches `enableAppLock` back off on the account.
   session ([ADR 0183](ADR/0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md));
   it is older than that work and not fixed there. A follow-up is for the
   owner, #503.
-- **A degraded profile turns the lock off.** When the profile read fails,
-  `AuthService` continues on an in-memory fallback built from the defaults
-  (`buildNewUserProfile`), which has no `enableAppLock`. `isEnabled()` reads
-  only those preferences, so the app opens unlocked, and
-  `WidgetSnapshotService.publish()` writes figures for the widget, until the
-  profile retry swaps the real profile in. Closing it would take the lock
-  failing closed while the profile is degraded and this device holds a PIN
-  record for the uid, and the widget writing the locked sentence in that
-  state.
-- **No real-device run is on record.** Everything above was proved on a
-  simulator, which does not exercise the Secure Enclave, an enrolment change
+- **A degraded session relocks after the default delay.** The fallback
+  profile has no `appLockTimeoutMinutes`, so an account set to *Immediately*
+  or 1 minute relocks only after 5 minutes until the real profile arrives
+  ([ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)).
+- **Settings shows the fallback's switch.** On a degraded session *Require a
+  PIN* reads off even while the lock is engaged, as every other control on
+  the page shows the fallback's value.
+- **A lock screen whose PIN was removed in another tab stays.** *Remove PIN*
+  in an unlocked tab clears the record, and a tab sitting on `/lock` hears
+  it: its lock falls, but nothing navigates, and its PIN field can no longer
+  pass. *Sign out instead* or any navigation gets it out. A sign-out or an
+  account deletion in the other tab reloads it instead. This predates
+  [ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md).
+- **An unlock under way as the profile settles lands on the dashboard.**
+  The stand-down consumes the remembered page, and an unlock that was
+  already running then navigates to the default page; the later navigation
+  wins. A PIN check takes milliseconds, but a Face ID or Touch ID sheet
+  raised by the lock screen stays up over the app that has already opened,
+  for as long as the person takes to answer it.
+- **The degraded path has no device run.** It was proved against the
+  Firebase emulators (`degraded-profile-lock.smoke.spec.ts`). A simulator
+  start offline with an empty Firestore cache was not produced.
+- **No real-device run is on record.** Everything above except the
+  degraded path (emulators only, above) was proved on a simulator, which does not exercise the Secure Enclave, an enrolment change
   invalidating anything, or a real sensor.
 - **No privacy screen on resign-active** (#447). iOS screenshots the app
   when it goes to the background, so the last screen is visible in the app
