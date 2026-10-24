@@ -53,6 +53,10 @@ export class AppLockService {
   private backgroundedAt: number | null = null;
   private redirectUrl: string | null = null;
   private lifecycleAttached = false;
+  /** `profileDegraded` as the stand-down effect last saw it, to tell it settling. */
+  private wasDegraded = false;
+  /** The profile settled while a navigation was under way; decided when it ends. */
+  private standDownPending = false;
 
   readonly failedAttempts = this.failed.asReadonly();
   readonly attemptsExhausted = computed(() => this.failed() >= MAX_PIN_ATTEMPTS);
@@ -77,7 +81,17 @@ export class AppLockService {
     return 'pin';
   });
 
-  readonly canEngage = computed(() => this.isEnabled() && this.method() !== 'none');
+  /**
+   * A profile that could not be read (`AuthService.profileDegraded`) is the
+   * in-memory fallback, which never names a lock, so nobody knows whether the
+   * account asked for one: it is treated as asked, until the real profile
+   * arrives to say. The device rule is unchanged — with no PIN here there is
+   * nothing to unlock with, and the app stays open as it does for a loaded
+   * profile. `isEnabled` keeps reporting only what the account asked for.
+   */
+  readonly canEngage = computed(
+    () => (this.isEnabled() || this.auth.profileDegraded()) && this.method() !== 'none'
+  );
   readonly isLocked = computed(() => this.canEngage() && this.unlockedAt() === null);
 
   constructor() {
@@ -89,6 +103,34 @@ export class AppLockService {
       if (url.startsWith('/lock') || url.startsWith('/login')) return;
       this.rememberRedirect(url);
       void this.router.navigate(['/lock']);
+    });
+
+    // The other way round: a lock raised only because the profile could not
+    // be read comes down when the real profile arrives asking for none, and
+    // nothing is navigating then for lockGuard to see, so a lock screen that
+    // is showing would stay. Keyed on the profile settling and on nothing
+    // else: every other way the lock falls (an unlock, a sign-out, usually a
+    // PIN removed in another tab) brings its own navigation or reload, and a
+    // screen that left on any fall of the lock could open the account before
+    // it lands. A settle that meets a navigation under way (a cold start
+    // still loading /lock) waits for it to end, reading it tracked only then,
+    // and is decided once against where it landed.
+    effect(() => {
+      const degraded = this.auth.profileDegraded();
+      if (this.wasDegraded && !degraded) this.standDownPending = true;
+      this.wasDegraded = degraded;
+      if (!this.standDownPending || this.router.currentNavigation()) return;
+      this.standDownPending = false;
+      // `isEnabled()` and not only `isLocked()`: the screen is this effect's
+      // to take only when the real profile asks for no lock. A lock that fell
+      // for another reason as the profile settled (a sign-out from this
+      // screen clears the PIN before the session ends) is left to that
+      // reason's own navigation.
+      untracked(() => {
+        if (this.isEnabled() || this.isLocked() || !this.auth.userId()) return;
+        if (!this.router.url.startsWith('/lock')) return;
+        void this.router.navigateByUrl(this.consumeRedirect());
+      });
     });
 
     // Never carry one account's unlocked state into the next. The throttle is

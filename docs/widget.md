@@ -132,13 +132,15 @@ fourth purely from its own clock:
 | State | Set by | What the widget shows |
 |---|---|---|
 | `figures` | `publish()`, when someone is signed in and the lock cannot engage | The figures, unless the device's month has moved past `monthKey` |
-| `locked` | The constructor's lock effect, or `publish()` when the lock can engage | `labels.locked` |
+| `locked` | The constructor's lock effect, or `publish()` when the lock can engage, a profile that could not be read included | `labels.locked` |
 | `signedOut` | The constructor's sign-out effect | `labels.signedOut` |
 | *(derived)* `stale` | `WidgetSnapshot.display(now:calendar:)`, never written to disk | `labels.stale`, once the calendar has moved into a month after `monthKey` |
 
 **`AppLockService.canEngage()` decides `locked`, never `isLocked()` — and the
 difference is the whole point.** `canEngage()` means the account has a lock
-*configured on this device* — enabled, with a credential to satisfy it.
+*configured on this device* — enabled, with a credential to satisfy it — or
+that the profile could not be read and this device holds the account's PIN
+([app-lock.md](app-lock.md#a-profile-that-could-not-be-read)).
 `isLocked()` means the app is *locked right now*, tracked by an in-memory
 timestamp the widget process cannot see at all: it lives inside the running
 app, and the widget only ever reads a file. So **while the app lock is
@@ -146,10 +148,12 @@ turned on, the widget never shows figures again — unlocking the app does
 not bring them back.** The dashboard's next paint after an unlock still
 calls `publish()`, `publish()` still asks `canEngage()`, and `canEngage()`
 is still true, so it still writes `locked`. Figures return only once the
-lock is turned off entirely (verified on the simulator: see below). The one
-exception is a profile read that fails: the fallback profile has no lock, so
-`publish()` writes figures until the real profile arrives (see
-[Known gaps](#known-gaps)).
+lock is turned off entirely (verified on the simulator: see below). A
+profile read that fails changes none of this: the fallback profile names no
+lock, but `canEngage()` treats an unknown answer as a lock wherever this
+device holds the PIN, so the widget writes the locked sentence until the
+real profile arrives to say otherwise
+([ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)).
 
 **Startup arming.** `WidgetSnapshotService` is constructed from a
 `provideAppInitializer`, before the first guarded navigation — the same slot
@@ -485,10 +489,12 @@ widgets were removed.
 - **A Lock Screen tap can open an app that should have relocked.** A screen
   lock with the app in front fires no `visibilitychange`, so the relock
   clock never counts it ([app-lock.md](app-lock.md#known-gaps)).
-- **A degraded profile writes figures under a lock.** When the profile read
-  fails, the in-memory fallback profile has no `enableAppLock`, so
-  `canEngage()` is false and `publish()` writes figures until the profile
-  retry swaps the real profile in ([app-lock.md](app-lock.md#known-gaps)).
+- **A degraded start with no PIN writes the fallback's figures.** With no
+  PIN on the device the lock cannot engage, so a profile that could not be
+  read still lets the dashboard publish. The figures are composed from the
+  fallback profile, in its default currency and with no card hidden, until
+  the real profile arrives
+  ([ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)).
 - **Redaction is not proved.** The `.privacySensitive()` figures are
   redacted on a locked device with a passcode, and the simulator has none,
   so the redaction was never seen.
@@ -501,6 +507,8 @@ widgets were removed.
   scaling down, so a narrower phone or a larger text size may still cut it;
   neither was read. The signed-out and stale sentences were not placed, only
   measured against the locked one.
-- **No real-device run is recorded here.** Everything above was proved on a
-  simulator; nothing here exercises a real Secure Enclave, a real App Group
+- **No real-device run is recorded here.** Everything above except the
+  degraded profile's locked sentence (Firebase emulators only,
+  [ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md))
+  was proved on a simulator; nothing here exercises a real Secure Enclave, a real App Group
   on physical hardware, or the operating system's actual reload budget.

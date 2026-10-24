@@ -131,6 +131,38 @@ the rules admit ([emulator-blind-spots.md](emulator-blind-spots.md#a-commit-refu
   its transactions' commits one after another (they share its async queue),
   so two `commitOnline` calls from one stack never meet on the server.
 
+## Six connections to the emulator
+
+Chrome pools at most six HTTP/1.1 connections per origin (host and port).
+An online Firestore client in the Karma page holds a hanging request to
+`127.0.0.1:8080` for each open stream: a listen stream while it has
+listeners, and a write stream after a write, which the SDK closes after 60 s
+idle. Clients a spec file keeps online add up, and a write from another
+client then waits for a connection to free. A probe measured one client's
+profile write against N other online clients, each with one listener and
+one completed write: 180, 23 and 26 ms for N = 0, 1 and 2, and still pending
+after 8 s for N = 3. Auth (9099), storage (9199) and Karma (9876) are other
+origins, with pools of their own.
+
+- **What it looks like.** No failure line. Karma reports
+  *Disconnected, because no message in 30000 ms*, because the case that waits
+  says nothing for 30 s. The three runs seen stopping this way all stopped
+  at the same case, and two of six full runs before the fix did.
+- **Finding the case.** A reporter added for one run (`jasmine.getEnv()
+  .addReporter` with `specStarted`) logs each case as it starts; the last one
+  logged before the disconnect is the case that waited.
+- **What was measured, and what was not.** In
+  `degraded-profile-lock.smoke.spec.ts` the stall came in the full run only,
+  never with the file alone, with two recovered dashboard sessions and the
+  seeder online: fewer clients than stalled the probe, but busier ones, and
+  whatever else the full run held open was not measured. Deleting each
+  case's client as the case ends stopped it: three full runs since, all
+  green.
+- **The rule.** A case that brings its own client online deletes it in
+  `afterEach`. Deleting every app in `afterAll` keeps each case's client
+  online through every later case
+  ([ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)).
+
 ## A page opens first on the household its cache remembers
 
 Each account's client is made once per spec file, so its cache outlives a
@@ -386,7 +418,7 @@ on an account change it did not start ([auth.md](auth.md#an-account-change-this-
 ADR 0163), from inside the auth-state listener, which fires whenever the SDK
 calls back, not when a spec chooses. So the reload sits behind a root token,
 `PAGE_RELOAD` (`core/services/page-reload.ts`), and **every TestBed that
-builds the real `AuthService` provides a double for it**. Three suites do
+builds the real `AuthService` provides a double for it**. Five suites do
 today:
 
 - `auth.service.spec.ts`: a `reload` spy in the outer providers, and `null`
@@ -395,10 +427,15 @@ today:
   spreads. A block that lists its providers inline falls back to the real
   factory, and its first account change reloads the run away;
 - `analytics.service.smoke.spec.ts`: an inert function, since it signs in
-  once and never switches.
+  once and never switches;
+- `degraded-profile-lock.smoke.spec.ts`: a spy in `configure()`. Each case
+  signs its own client in before the TestBed builds anything, so the
+  listener's first delivery is never an account change;
+- `dashboard-layout.service.spec.ts`: a spy in its *over the real
+  AuthService* block.
 
 Every other suite provides an `AuthService` double and never builds the
-listener. A fourth that builds the real one must provide the token too.
+listener. A sixth that builds the real one must provide the token too.
 `page-reload.spec.ts` hands the factory a fake location, and never calls the
 function the root injector resolves.
 
@@ -624,11 +661,11 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` |
-|---|---|---|---|---|
-| ERROR | 40 | 53 | 53 | 44 |
-| WARN | 38 | 60 | 60 | 60 |
-| LOG | 26 | **0** | **0** | **0** |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` |
+|---|---|---|---|---|---|
+| ERROR | 40 | 53 | 53 | 44 | 44 |
+| WARN | 38 | 60 | 60 | 60 | 60 |
+| LOG | 26 | **0** | **0** | **0** | **0** |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
@@ -640,7 +677,9 @@ use the same method or it reads as a doubling that did not happen.
 SDK then warns three times that *Firebase App named 'firestore-unit-…' already
 deleted*. WARN reads 63 on those runs and 60 on the rest: the base of the
 `26.10.178` wave read 63, and that wave's measures read 60 and 63. Judge a new
-line by its text, not by that difference of three.
+line by its text, not by that difference of three. One more comes and goes:
+`offline-queue`'s *Reclaimed 1 item(s) interrupted mid-sync* printed one time
+fewer on one `26.10.179` run, which read 59 against two that read 60.
 
 LOG fell to zero because `no-console` now bans `console.log` outright; the five
 lines over the base when it was first recorded (43 ERROR and 40 WARN) are
@@ -654,7 +693,7 @@ three failed-save cases flushed with `TestBed.tick()` from the spec body,
 which entered the zone mid-tick and reported `NG0101`, nine ERROR lines
 before that wave and twelve once the widget's publishing effect tracked more
 reads. Those cases flush with `fixture.detectChanges()` now, and the spec
-prints none. **Rendering
+prints none. The wave that recorded `26.10.179` added none either. **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.

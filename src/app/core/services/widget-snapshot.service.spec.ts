@@ -1,18 +1,23 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
+import { Router, UrlTree } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { WidgetSnapshotService } from './widget-snapshot.service';
 import { AuthService } from './auth.service';
 import { AppLockService } from './app-lock.service';
+import { BiometricAuthService } from './biometric-auth.service';
 import { CurrencyService } from './currency.service';
 import { LocaleFormatService, LocaleDateStyle } from './locale-format.service';
 import { TranslationService } from './translation.service';
 import { createMockUser } from './testing/mock-auth.service';
 import { createTranslationStub, TranslationStub } from './testing/translation-stub';
 import { WIDGET_SNAPSHOT_PLUGIN, WidgetSnapshotPlugin } from '../plugins/widget-snapshot.plugin';
+import { clearPinRecord, writePinRecord } from '../utils/app-lock.utils';
+import { derivePinRecord } from '../utils/pin-hash.utils';
 import {
   Budget,
+  DEFAULT_USER_PREFERENCES,
   RecurringOccurrence,
   User,
   WidgetSnapshot,
@@ -91,6 +96,7 @@ describe('WidgetSnapshotService', () => {
   let currentUser: ReturnType<typeof signal<User | null>>;
   let isLoading: ReturnType<typeof signal<boolean>>;
   let canEngage: ReturnType<typeof signal<boolean>>;
+  let profileDegraded: ReturnType<typeof signal<boolean>>;
   let formatCurrency: jasmine.Spy<(amount: number, code: string) => string>;
   let translation: TranslationStub;
   // What every key reads through: '' is the echo catalog the cases assert on;
@@ -103,10 +109,20 @@ describe('WidgetSnapshotService', () => {
     translation.translationsVersion.update(version => version + 1);
   }
 
-  function configure(plugin: WidgetSnapshotPlugin | null, withFormatters = true): void {
+  /**
+   * `lock: 'real'` builds the real AppLockService over the AuthService double
+   * instead of standing in for it, for the cases where what the lock decides
+   * is the thing under test.
+   */
+  function configure(
+    plugin: WidgetSnapshotPlugin | null,
+    withFormatters = true,
+    lock: 'double' | 'real' = 'double'
+  ): void {
     currentUser = signal<User | null>(createMockUser('user-1'));
     isLoading = signal(false);
     canEngage = signal(false);
+    profileDegraded = signal(false);
     catalog = '';
     translation = createTranslationStub({
       t: (key: string, params?: Record<string, string | number>) =>
@@ -144,11 +160,46 @@ describe('WidgetSnapshotService', () => {
           { provide: LocaleFormatService, useFactory: unresolvable('LocaleFormatService') },
         ];
 
+    const lockProviders =
+      lock === 'double'
+        ? [
+            { provide: AuthService, useValue: { currentUser, isLoading } },
+            { provide: AppLockService, useValue: { canEngage } },
+          ]
+        : [
+            {
+              provide: AuthService,
+              useValue: {
+                currentUser,
+                isLoading,
+                profileDegraded,
+                userId: computed(() => currentUser()?.id ?? null),
+              },
+            },
+            {
+              provide: Router,
+              useValue: {
+                url: '/dashboard',
+                currentNavigation: signal(null),
+                navigate: jasmine.createSpy('navigate').and.resolveTo(true),
+                serializeUrl: (tree: UrlTree) => tree.toString(),
+              },
+            },
+            {
+              provide: BiometricAuthService,
+              useValue: {
+                available: signal(false),
+                biometry: signal('none'),
+                authenticate: jasmine.createSpy('authenticate'),
+                detectAvailability: jasmine.createSpy('detectAvailability').and.resolveTo(undefined),
+              },
+            },
+          ];
+
     TestBed.configureTestingModule({
       providers: [
         { provide: WIDGET_SNAPSHOT_PLUGIN, useValue: plugin },
-        { provide: AuthService, useValue: { currentUser, isLoading } },
-        { provide: AppLockService, useValue: { canEngage } },
+        ...lockProviders,
         ...formatters,
       ],
     });
@@ -666,6 +717,56 @@ describe('WidgetSnapshotService', () => {
         expect(write).toHaveBeenCalledTimes(1);
         expect(written().state).toBe('figures');
       });
+    });
+  });
+
+  // The lock decides between the locked sentence and figures, so a double of
+  // it cannot show what a profile that could not be read does to the widget.
+  // These run over the real AppLockService, on the fallback profile AuthService
+  // falls back to: the defaults under the same uid, naming no lock.
+  describe('over the real lock, on a profile that could not be read', () => {
+    let service: WidgetSnapshotService;
+
+    beforeEach(async () => {
+      writePinRecord('user-1', await derivePinRecord('246813', 1000));
+      write = jasmine.createSpy('write').and.resolveTo();
+      configure(
+        { write, addListener: jasmine.createSpy<WidgetSnapshotPlugin['addListener']>('addListener') },
+        true,
+        'real'
+      );
+      currentUser.set(createMockUser('user-1', { preferences: { ...DEFAULT_USER_PREFERENCES } }));
+      profileDegraded.set(true);
+      service = TestBed.inject(WidgetSnapshotService);
+    });
+
+    afterEach(() => clearPinRecord('user-1'));
+
+    it('writes the locked sentence at once on a device that holds the account PIN', async () => {
+      TestBed.tick();
+      await settle();
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(written().state).toBe('locked');
+    });
+
+    it('writes the locked sentence from a publish, and no figures', async () => {
+      service.publish(input({ budgets: [budget({ spent: 50 })], upcoming: [occurrence({})] }));
+      await settle();
+
+      expect(written().state).toBe('locked');
+      expect(written().figures).toBeUndefined();
+    });
+
+    it('writes figures once the real profile arrives without a lock', async () => {
+      currentUser.set(createMockUser('user-1', { preferences: { ...DEFAULT_USER_PREFERENCES } }));
+      profileDegraded.set(false);
+
+      service.publish(input());
+      await settle();
+
+      expect(written().state).toBe('figures');
+      expect(written().figures!.spent).toBe('JPY 4200');
     });
   });
 });

@@ -633,11 +633,14 @@ describe('AuthService (emulator smoke test)', () => {
    * the session-identity guard does not sit on.
    *
    * The degraded state is armed through the public signal rather than induced
-   * by a real failure. Inducing one is not reliable here: with the network
-   * disabled and a cold cache the profile read does not fail, it falls
-   * through to the create path and succeeds. What matters is that everything
-   * after the arming is real — a real Firestore read, a real effect, and the
-   * real guard deciding whether its answer may be written.
+   * by a real failure. Inducing one is not reliable here: this block's one
+   * client has read the profile online by the time a case could disable its
+   * network, so an offline read is answered from its cache. A client whose
+   * network is down before its first read does fail it, with `unavailable`,
+   * which is how degraded-profile-lock.smoke.spec.ts induces one (ADR 0184).
+   * What matters is that everything after the arming is real — a real
+   * Firestore read, a real effect, and the real guard deciding whether its
+   * answer may be written.
    */
   describe('degraded recovery', () => {
     let app: FirebaseApp;

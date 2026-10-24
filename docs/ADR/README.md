@@ -137,7 +137,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0130](0130-biometry-unlocks-the-app-and-the-pin-is-still-the-credential.md) | Biometry unlocks the app, and the PIN is still the credential | Accepted; applies 0040; first record of the app lock | 2026-09-13 |
 | [0131](0131-a-rung-a-boot-cannot-reach-is-reached-by-re-entering-the-ladder.md) | A rung a boot cannot reach is reached by re-entering the ladder | Accepted; extends 0127; a rejection of 0127 stands; Gemini-log gap corrected by 0134 | 2026-09-13 |
 | [0132](0132-the-dashboard-is-arranged-by-the-account-and-a-hidden-card-composes-nothing.md) | The dashboard is arranged by the account, and a hidden card composes nothing | Accepted; amended by 0166, which closes three of its gaps; amended by 0183 | 2026-09-16 |
-| [0133](0133-the-home-screen-widget-shows-the-dashboards-last-this-month-paint-and-nothing-a-lock-hides.md) | The home-screen widget shows the dashboard's last this-month paint, and nothing a lock hides | Accepted; Lock Screen, deep-link and gallery-name gaps closed by 0183; amended by 0183 | 2026-09-16 |
+| [0133](0133-the-home-screen-widget-shows-the-dashboards-last-this-month-paint-and-nothing-a-lock-hides.md) | The home-screen widget shows the dashboard's last this-month paint, and nothing a lock hides | Accepted; Lock Screen, deep-link and gallery-name gaps closed by 0183; amended by 0183 and 0184 | 2026-09-16 |
 | [0134](0134-an-emulator-run-carries-no-provider-key.md) | An emulator run carries no provider key | Accepted; corrects a gap of 0131 | 2026-09-16 |
 | [0135](0135-a-purchase-split-across-categories-is-stored-as-sibling-rows-sharing-a-group.md) | A purchase split across categories is stored as sibling rows sharing a group | Accepted | 2026-09-17 |
 | [0136](0136-the-shell-paints-the-status-bar-band-and-the-header-may-leave.md) | The shell paints the status-bar band, and the header may leave | Accepted | 2026-09-17 |
@@ -188,6 +188,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0181](0181-a-refused-commit-on-the-emulator-wakes-nobody-and-the-smoke-runs-keep-its-waiters-awake.md) | A refused commit on the emulator wakes nobody, and the smoke runs keep its waiters awake | Accepted; amends 0156 | 2026-10-17 |
 | [0182](0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md) | A control reads in the account's language and date format, and nothing re-provides Material's adapter or words | Accepted; amends 0058, 0128 and 0145; applies 0055; extends 0138; closes two gaps of 0180 and two gaps of 0140 | 2026-10-22 |
 | [0183](0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md) | The widget reaches the Lock Screen, opens the dashboard, names itself in the device's language, and follows the account's language, currency and hidden cards | Accepted; closes gaps of 0133 and 0166; amends 0132, 0133, 0166 and 0167 | 2026-10-22 |
+| [0184](0184-the-lock-fails-closed-while-the-profile-is-unknown.md) | The lock fails closed while the profile is unknown | Accepted; amends 0133 | 2026-10-23 |
 
 ## What belongs here
 

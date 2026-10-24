@@ -447,6 +447,8 @@ describe('AccountDeletionService (emulator smoke test)', () => {
           useValue: {
             userId: () => uid,
             currentUser: () => null,
+            // Read by the real AppLockService the deletion clears the PIN through.
+            profileDegraded: () => false,
             reauthenticate: async () => undefined,
             deleteFirebaseUser: async () => {
               deleteFirebaseUserCalls += 1;
