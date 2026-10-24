@@ -131,6 +131,38 @@ the rules admit ([emulator-blind-spots.md](emulator-blind-spots.md#a-commit-refu
   its transactions' commits one after another (they share its async queue),
   so two `commitOnline` calls from one stack never meet on the server.
 
+## Six connections to the emulator
+
+Chrome pools at most six HTTP/1.1 connections per origin (host and port).
+An online Firestore client in the Karma page holds a hanging request to
+`127.0.0.1:8080` for each open stream: a listen stream while it has
+listeners, and a write stream after a write, which the SDK closes after 60 s
+idle. Clients a spec file keeps online add up, and a write from another
+client then waits for a connection to free. A probe measured one client's
+profile write against N other online clients, each with one listener and
+one completed write: 180, 23 and 26 ms for N = 0, 1 and 2, and still pending
+after 8 s for N = 3. Auth (9099), storage (9199) and Karma (9876) are other
+origins, with pools of their own.
+
+- **What it looks like.** No failure line. Karma reports
+  *Disconnected, because no message in 30000 ms*, because the case that waits
+  says nothing for 30 s. The three runs seen stopping this way all stopped
+  at the same case, and two of six full runs before the fix did.
+- **Finding the case.** A reporter added for one run (`jasmine.getEnv()
+  .addReporter` with `specStarted`) logs each case as it starts; the last one
+  logged before the disconnect is the case that waited.
+- **What was measured, and what was not.** In
+  `degraded-profile-lock.smoke.spec.ts` the stall came in the full run only,
+  never with the file alone, with two recovered dashboard sessions and the
+  seeder online: fewer clients than stalled the probe, but busier ones, and
+  whatever else the full run held open was not measured. Deleting each
+  case's client as the case ends stopped it: three full runs since, all
+  green.
+- **The rule.** A case that brings its own client online deletes it in
+  `afterEach`. Deleting every app in `afterAll` keeps each case's client
+  online through every later case
+  ([ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)).
+
 ## A page opens first on the household its cache remembers
 
 Each account's client is made once per spec file, so its cache outlives a

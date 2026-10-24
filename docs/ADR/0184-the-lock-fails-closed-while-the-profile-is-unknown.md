@@ -199,6 +199,16 @@ the contract for a listener that someday re-reads a live session.
   dashboard listening, the tick lands inside one the page's own Firestore
   callbacks started, and Angular throws NG0101. The smoke lets the scheduler
   run the retry effect and flushes the fixture, as the widget smoke does.
+- **Six connections to one origin.** CI disconnected at the fourth smoke
+  case, with no failure line, after 30 s of silence, and so did two local
+  full runs. The case's first line, the seeder's write to `users/{uid}`,
+  never finished. Two recovered dashboard sessions from the cases before it
+  were still online, with the seeder. Chrome pools at most six HTTP/1.1
+  connections per origin, and a probe with lighter clients (one listener and
+  one write each) showed a write waiting with three of them online, against
+  about 25 ms with two. What else the full run held open was not measured.
+  Each case now deletes its client as it ends, and three full runs since
+  passed ([testing.md](../testing.md#six-connections-to-the-emulator)).
 - **A failing case has to destroy its page anyway.** While each case
   destroyed its page at its own end, a failing case left offline listeners
   behind, and the apps' deletion aborted them into `afterAll`. The page is
