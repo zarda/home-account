@@ -86,7 +86,9 @@ describe('A profile that could not be read, behind the app lock (emulator smoke 
   }
 
   const uid = `degraded-lock-${Date.now()}`;
-  const apps: FirebaseApp[] = [];
+  let seeder: FirebaseApp;
+  /** The case's own client, deleted after it whether it passed or not. */
+  let caseApp: FirebaseApp | undefined;
   let seederStore: Firestore;
   let createdAt: Timestamp;
   let pinRecord: PinRecord;
@@ -145,7 +147,7 @@ describe('A profile that could not be read, behind the app lock (emulator smoke 
       },
       `degraded-lock-${label}-${Date.now()}`
     );
-    apps.push(app);
+    caseApp = app;
     const auth = getAuth(app);
     connectAuthEmulator(auth, AUTH_URL, { disableWarnings: true });
     const firestore = getFirestore(app);
@@ -262,11 +264,10 @@ describe('A profile that could not be read, behind the app lock (emulator smoke 
       JSON.stringify({ rates: { USD: 1, EUR: 0.9, JPY: 150 }, lastUpdatedMs: Date.now() })
     );
 
-    const seeder = initializeApp(
+    seeder = initializeApp(
       { apiKey: 'fake-api-key', projectId: 'demo-home-account' },
       `degraded-lock-seeder-${Date.now()}`
     );
-    apps.push(seeder);
     const seederAuth = getAuth(seeder);
     connectAuthEmulator(seederAuth, AUTH_URL, { disableWarnings: true });
     seederStore = getFirestore(seeder);
@@ -280,11 +281,7 @@ describe('A profile that could not be read, behind the app lock (emulator smoke 
 
   afterAll(async () => {
     localStorage.removeItem(RATES_CACHE_KEY);
-    // A session that recovered its profile went on with an online boot's
-    // work, a closed-month snapshot among it. Deleting its app ends that
-    // work mid-flight, and it logs the abort on its way out.
-    spyOn(console, 'error');
-    await Promise.all(apps.map(app => deleteApp(app).catch(() => undefined)));
+    await deleteApp(seeder).catch(() => undefined);
   });
 
   beforeEach(() => {
@@ -292,15 +289,32 @@ describe('A profile that could not be read, behind the app lock (emulator smoke 
     spyOn(console, 'error');
   });
 
-  afterEach(() => {
-    // A page left live keeps its offline listeners, which the apps' deletion
-    // would abort under a later case.
-    livePage?.fixture.destroy();
-    livePage = undefined;
-    // PIN records are device-local and keyed by the account every case shares.
-    Object.keys(localStorage)
-      .filter(key => key.startsWith(APP_LOCK_STORAGE_PREFIX))
-      .forEach(key => localStorage.removeItem(key));
+  afterEach(async () => {
+    const app = caseApp;
+    caseApp = undefined;
+    try {
+      // A page left live keeps its offline listeners, which the app's
+      // deletion below would abort under a later case.
+      livePage?.fixture.destroy();
+    } finally {
+      livePage = undefined;
+      // Each case's client goes with the case, not at the end of the file.
+      // An online client holds a hanging request to the emulator for each
+      // open stream, and Chrome pools at most six HTTP/1.1 connections per
+      // origin. With the earlier cases' sessions left online, the next
+      // case's seeder write waited past Karma's 30 s of silence in the full
+      // run (testing.md, Six connections to the emulator).
+      if (app) await deleteApp(app).catch(() => undefined);
+      // A recovered session went on with an online boot's work, and the
+      // deletion aborts it; the abort is logged a macrotask later, so let it
+      // land under this case's spy.
+      await settle();
+      // PIN records are device-local and keyed by the account every case
+      // shares.
+      Object.keys(localStorage)
+        .filter(key => key.startsWith(APP_LOCK_STORAGE_PREFIX))
+        .forEach(key => localStorage.removeItem(key));
+    }
   });
 
   it(
