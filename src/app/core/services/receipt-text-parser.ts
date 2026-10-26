@@ -120,8 +120,24 @@ const TRIANGLE = '[\\u25B2\\u25B3]';
 // A currency sign, after up to three capitals (HK$, NT$, US$). Capitals only:
 // a CJK or lowercase letter there is a word (税込¥1,280), not part of the sign.
 const SIGN = '\\p{Lu}{0,3}\\p{Sc}';
+// The two forms of parenthesis a receipt prints, as class bodies without the
+// brackets so that one copy serves every pattern built from them.
+const OPEN_PARENS = '(\\uFF08';
+const CLOSE_PARENS = ')\\uFF09';
+// What a minus may follow and still be a mark on the figure: a space, a colon
+// or an equals sign (the last two also in their fullwidth forms), a Han or
+// Hangul letter, where a label and its figure print as one run (合計-1,280,
+// 합계-5,900), or an opening parenthesis ((-12.50)). Only the opening one:
+// after a closing one, the area code of TEL (03)-3461 would read its number as
+// a credit. Two scripts are named, not a class of letters:
+// \p{Lo} would take in kana, and OCR hands the katakana long-vowel mark back
+// as a hyphen (コーヒ-480). That is typography, not a word table (ADR 0008),
+// and it leaves a minus glued to kana, Thai, Arabic, Hebrew or Devanagari a
+// miss.
+const MINUS_FOLLOWS =
+  `[\\s:\\uFF1A=\\uFF1D\\p{Script=Han}\\p{Script=Hangul}${OPEN_PARENS}]`;
 // What must sit right before the figure for it to be negative. A minus counts
-// after the start of the line, a space or a colon, so one glued to a reference
+// after the start of the line or any of those, so one glued to a reference
 // (SKU-1234, 03-3461-8901, a row of dashes) does not; nor does a minus with a
 // gap before the price, which is a description's dash (Latte - $4.50). A minus
 // straight after the sign ($-12.50, US$-5.00) is the sign-first way of printing
@@ -132,13 +148,13 @@ const SIGN = '\\p{Lu}{0,3}\\p{Sc}';
 // 03-3461-8901 do. A dash after the figure is the stop a Japanese receipt
 // prints against alteration (¥10,000-), so nothing after it is read.
 const NEGATIVE_BEFORE = new RegExp(
-  `(?:(?:^|[\\s:\\uFF1A])${MINUS}(?:${SIGN}\\s?)?` +
+  `(?:(?:^|${MINUS_FOLLOWS})${MINUS}(?:${SIGN}\\s?)?` +
     `|(?:^|[^\\p{N}])${TRIANGLE}\\s?(?:${SIGN}\\s?)?` +
     `|\\p{Sc}${MINUS})$`,
   'u',
 );
-const OPENS_BEFORE = new RegExp(`[(\\uFF08](${SIGN})?$`, 'u');
-const CLOSES_AFTER = /^(\p{Sc})?[)\uFF09]/u;
+const OPENS_BEFORE = new RegExp(`[${OPEN_PARENS}](${SIGN})?$`, 'u');
+const CLOSES_AFTER = new RegExp(`^(\\p{Sc})?[${CLOSE_PARENS}]`, 'u');
 
 /** What a credit mark on the total is worth: typography, never a word. */
 const CREDIT_MARK_GRADE = 0.5;
