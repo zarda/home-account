@@ -213,11 +213,106 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.407 MB | 2.7 MB |
+| Initial bundle | 2.411 MB | 2.7 MB |
 
-Against 2,406,497 bytes (JavaScript 2,375,301, stylesheet 31,196, in 62
+Against 2,410,644 bytes (JavaScript 2,379,448, stylesheet 31,196, in 62
 initial files), measured by `npm run build:analyze` from a clean production
-build on 2026-10-22.
+build on 2026-10-27.
+
+The warning went up, to 2.411 MB, when the work of #464
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md):
+the cloud readers asked whether the money came back, a category that follows
+its row's side in the form and on the review card, the parser's misses, and the
+type grade reaching the import's record and the analytics) put the initial
+bundle 3,644 bytes over the 2.407 MB it stood at; it moved to the whole
+kilobyte above the figure and no more, which leaves 356 bytes of headroom
+(2,411,000 less 2,410,644). That work grew the initial JavaScript by 3,729
+bytes and left the stylesheet alone. No chunk was cut or added: the 62 initial
+files are the base's 62. All of it lands in initial chunks, but not all of it is
+code the first screen runs.
+
+The base was not the figure this page recorded. `f2b3d2c4`, the merge of #509,
+built at 2,406,915 bytes where this page said 2,406,497, so 418 bytes had gone
+in unrecorded. They are #509's
+([ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)),
+which moved the figure without a re-measure: a build of the merge before it,
+`4da72b6c`, reads 2,406,497 to the byte. Measured per input from the
+build's own stats, `app-lock.service.ts` took 506 bytes (4,163 to 4,669), the
+lock a profile that could not be read keeps and the stand-down that waits for
+the profile to settle. Six inputs around it came to 24 less between them
+(`app-lock.utils.ts` 9, `biometric-auth.service.ts` 8, `pin-hash.utils.ts` 6 and
+three moves of one byte), which is the minifier renaming around the changed
+module. The inputs came to 482 more and the output total to 418, a difference of
+64 bytes between the two measures that is not attributed. The figure was 85
+bytes under the 2.407 MB warning there, so the warning did not move for it.
+
+This work's growth, measured the same way against the stats of that base
+(summed over the initial outputs and matched by input path, since the output
+names and their hashes change between builds):
+`transaction-form.component.ts` took 2,185 bytes, initial because
+`quick-add.service.ts` imports the form, 56 of them its stylesheet, which the
+component carries (7,473 to 7,529). The type flag takes the checked segment's
+icon, where it sat beside the toggle, and each segment's name leads with the
+flag's sentence; a type change says aloud when it clears the category and keeps
+that category to give back on the way back; the scan's reading, which the type
+change drops from the form, is held for the save to report as `receipt_confirm`;
+and the flags on the amount and the date take focus from the keyboard.
+`receipt.prompts.ts` took 478 (13,892 to 14,370): the receipt prompts ask
+whether the money came back, in the same words for the three providers, and put
+`type` in the skeleton of the envelope they ask for. `import-review.utils.ts`
+took 441 (5,354 to 5,795): `readerFlaggedType`, `answerTypeFlag` and
+`countTypeAnswers`, which keep the side a reader flagged through a flip and
+count the answers, and the category a flip or a merge holds to its row's side.
+`receipt-extraction.utils.ts` took 433 (1,696 to 2,129): `readTransactionType`,
+which reads income only when a model says exactly that, `modelTypeGrade` with
+the grade it gives an income, and `extractedFieldConfidence`, now the one place
+a row's amount and date grades are built. That helper is why two services came
+out smaller: `ai-import.service.ts` 301 less (28,708 to 28,407) and
+`ai-strategy.service.ts` 161 less (11,465 to 11,304) each built the object by
+hand, twice in the first and once in the second, and each gained something
+besides, the type counts the import's record carries in the first and the type
+the receipt mapper passes on in the second, which it had filed as an expense.
+The report took 592 bytes between three inputs: `analytics-events.json` 289
+(1,991 to 2,280), the `receipt_confirm` entry and its four parameters;
+`receipt-attempt.service.ts` 227, `buildReceiptConfirmPayload`, the payload the
+camera, the wizard and the form all build; and `analytics.service.ts` 76,
+`trackReceiptConfirm`. `receipt-consolidation.ts` took 155, the type grade a
+consolidated receipt's row carries on every multi-photo path;
+`category.service.ts` 115, `categoriesOrDefaults`, the catalogue a receipt read
+before the account's categories load is filed against, which
+`cloud-llm-provider.base.ts` and
+`offline-queue-processor.service.ts` (12) now ask for; `receipt-text-parser.ts`
+103, a minus glued to a CJK label, a parenthesis or an equals sign marking a
+refund's total; `cloud-llm-provider.base.ts` 83 and `native-receipt.service.ts`
+77, the strict reading of a model's type answer, the refund a cloud reader finds
+on one photo filed as income and asked about, and a negative on a total the
+model did not read flagging its purchase; `gemini.service.ts` 14, the same
+strict reading and the direction of its one-row summary. `import-history.model.ts`
+took 47 (12 to 59), `gradeNeedsVerification`, the one rule that says whether a
+grade sends its field to review, which the form and `import-dto.utils.ts` (10
+less) read where each compared the threshold; the model's other additions are
+types and cost nothing, as do `ai-types.ts`, `llm-provider.interface.ts` and the
+signature of `import-history.service.ts`, which did not move.
+`duplicate-detection.service.ts` took 23: an exact match needs the same type, so
+a purchase and its refund on one day are two transactions. One input gave some
+back with no code of its own: `camera-capture.component.ts` came to 118 less
+(24,026 to 23,908) because its stylesheet lost the `min-width` the dialog's
+content kept from 768px up, wider than the content box the dialog gives it;
+the stylesheet's own output is 67 bytes smaller (4,433 to 4,366). Fifty-four
+other inputs moved by 1 to 35 bytes, 6 more between them, and none was edited:
+the largest, in the Firebase Analytics SDK's file, is the minifier renaming
+around the changed modules. The edits to the import wizard, the preview table
+(its marks, its merges, the category re-filed when the account's categories
+arrive) and Import History's tiles are in lazy chunks. The translation catalogs
+are fetched at runtime and are in no chunk. Summed over the 62 initial outputs
+the inputs come to 2,880,184 bytes (2,876,010 at the base), 4,174 more, against
+2,410,644 (2,406,915) on disk and 3,729 more, a difference of 445 bytes between
+the two measures that is not attributed.
+
+The `anyComponentStyle` budget stays at 12 kB for the warning and 16 kB for the
+error. The two largest component stylesheets are the import wizard's (10,798
+bytes) and the preview table's (10,736), and neither one's scss was edited, so
+they sit 1,202 and 1,264 bytes under the warning.
 
 The warning came down to 2.407 MB after the work of #500 and #441 (a date picker,
 an amount and a name that read in the account's language and date format, and
