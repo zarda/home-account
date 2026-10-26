@@ -138,6 +138,16 @@ export class AnalyticsService {
     this.send('receipt_import', params);
   }
 
+  /**
+   * A reviewed batch holding a receipt was confirmed and its record read
+   * back: how many of the types its reader flagged landed, and how many the
+   * reviewer flipped, as buckets. The counts themselves, and anything about
+   * the rows, are never sent.
+   */
+  trackReceiptConfirm(params: AnalyticsEventParams<'receipt_confirm'>): void {
+    this.send('receipt_confirm', params);
+  }
+
   /** A budget was created. */
   trackBudgetCreate(): void {
     this.send('budget_create', {});

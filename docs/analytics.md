@@ -104,6 +104,7 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `transaction_add` | The add-transaction form saved a new transaction. Not restore or offline replay. | `method`, `type`, `has_tags`, `has_location`, `receipt_image_count` | `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 1.16.91 |
 | `transaction_search` | A search was committed on the transaction list and recorded as new. | `has_filters` | `src/app/features/transactions/transaction-filters/transaction-filters.component.ts` | 1.16.91 |
 | `receipt_import` | A receipt attempt reached a terminal outcome: camera, wizard (receipt kind only) and the in-form scan. Statement screenshots and the offline queue drain are excluded. | `outcome`, `path`, `engine`, `provider`, `failure`, `duration` | `src/app/core/services/receipt-attempt.service.ts` | 1.16.91 |
+| `receipt_confirm` | The import wizard confirmed a batch holding a receipt and read its record back: the camera's hand-off, the transaction form's multi-receipt review, or the wizard's own receipt photos. Once per confirm round, a partial one included, with the type counts the record kept for the rows that landed. A batch with no receipt, a refused confirm and a failed read-back send nothing. | `path`, `engine`, `type_flagged`, `type_flipped` | `src/app/features/ai/import/import-wizard/import-wizard.component.ts` | 26.10.180 |
 | `budget_create` | A budget was created from the budgets page. | — | `src/app/features/budgets/budget-form/budget-form.component.ts` | 1.16.91 |
 | `budget_exceeded_viewed` | The dashboard budget-alert banner became visible, once per appearance. | `severity` | `src/app/features/dashboard/budget-alert-banner/budget-alert-banner.component.ts` | 1.16.91 |
 | `report_view` | A report tab was shown, including the one the page opens on. | `report_type` | `src/app/features/reports/reports.component.ts` | 1.16.91 |
@@ -125,11 +126,13 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `receipt_image_count` | `0`–`5` — images attached at creation; later appends and removals are not re-reported |
 | `has_filters` | `true`, `false` — any of type, category, currency, amount range, or a date range other than the default month |
 | `outcome` | `ok`, `failed`, `queued_offline` |
-| `path` | `camera`, `wizard`, `form` — which surface ran the receipt. The queue drain never reports. |
-| `engine` | `cloud`, `native`, `cloud_after_native` (native ran first and lost), `native_after_cloud`, `none` (nothing ran — no provider, queued, queue save failed) |
+| `path` | `camera`, `wizard`, `form` — which surface ran the receipt, or, on `receipt_confirm`, whose review was confirmed (the camera's hand-off, the wizard's own photos, the form's multi-receipt review). The queue drain never reports. |
+| `engine` | `cloud`, `native`, `cloud_after_native` (native ran first and lost), `native_after_cloud`, `none` (nothing ran — no provider, queued, queue save failed; on `receipt_confirm`, nothing was timed) |
 | `provider` | `gemini`, `openai`, `claude`, `none` — the cloud provider the attempt routed to; the key itself is never sent |
 | `failure` | `none` on success; otherwise `rate_limit`, `auth`, `network`, `quota`, `server`, `timeout`, `incomplete` (parseAIError's classes — `incomplete` is an answer that was cut short or was never the list the prompt asked for), `no_provider`, `nothing_extracted`, `queue_write`, `unknown`. Never the provider's wording. |
 | `duration` | `under_5s`, `5s_to_15s`, `15s_to_60s`, `over_60s`, `none` (nothing was timed) |
+| `type_flagged` | `none`, `one`, `several` — how many of the rows a confirm landed had their type flagged by the reader, whichever side each stands on now; the count itself is never sent |
+| `type_flipped` | `none`, `one`, `several` — how many of those flagged rows the reviewer moved to the other side and left there; a row flipped and flipped back is flagged and not flipped |
 | `severity` | `warning`, `critical`, `exceeded` |
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative`, `translation` (a note or receipt photo read back in the UI language — neither the note nor the image is ever sent here), `recap` (the weekly recap's sentence — figures and category names only) |
@@ -151,6 +154,13 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
   `receipt_import`. A bank statement is not a receipt. The wizard's handle is
   opened only for the receipt image kind, so the screenshot kind — which used
   to be counted — no longer is.
+- **A confirm that held no receipt, was refused, or whose record could not be
+  read back**, as `receipt_confirm`.
+  CSV, PDF and JSON imports and statement screenshots carry no receipt
+  reader's type flags; the wizard reads the batch's kind, not whether it was
+  an image. A refused confirm wrote nothing, and a failed read-back leaves the
+  record's counts unread, so neither reports. The queue drain confirms
+  nothing a reviewer saw, which is why the event's door excludes `queue`.
 - **Date format, display name, and the AI settings page.** The taxonomy
   enumerates the settings worth steering by; widening it to every control is
   how a taxonomy stops meaning anything.
@@ -398,7 +408,8 @@ it simply reports nothing.
    <!-- analytics-dimensions:start -->
    `method`, `type`, `has_tags`, `has_location`, `receipt_image_count`,
    `has_filters`, `outcome`, `path`, `engine`, `provider`, `failure`,
-   `duration`, `severity`, `report_type`, `feature`, `setting`, `action`.
+   `duration`, `type_flagged`, `type_flipped`, `severity`, `report_type`,
+   `feature`, `setting`, `action`.
    <!-- analytics-dimensions:end -->
    Unregistered parameters are still collected but appear in no report, and GA4
    does not backfill.

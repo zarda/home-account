@@ -38,7 +38,12 @@ import {
   NotificationTone,
 } from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
-import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
+import {
+  ReceiptAttemptService,
+  buildReceiptConfirmPayload,
+  provenanceOf,
+} from '../../../../core/services/receipt-attempt.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
@@ -108,6 +113,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private importService = inject(AIImportService);
   private duplicateService = inject(DuplicateDetectionService);
   private receiptAttempts = inject(ReceiptAttemptService);
+  private analytics = inject(AnalyticsService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private currencyService = inject(CurrencyService);
@@ -142,8 +148,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   // Which door actually ran the extraction the state carries — the camera
   // dialog's own capture by default, since it is the door that predates
   // this field; a producer that is not the camera (the transaction form's
-  // own multi-receipt review) names itself explicitly (#151).
-  private resultDoor: ReceiptDoor = 'camera';
+  // own multi-receipt review) names itself explicitly (#151). Only those two
+  // hand a review over: the queue drain confirms nothing a reviewer saw.
+  private resultDoor: Exclude<ReceiptDoor, 'queue'> = 'camera';
 
   /**
    * What each processed result actually was, row-counted.
@@ -455,7 +462,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       importResult?: ImportResult;
       fromCamera?: boolean;
       multiImage?: boolean;
-      door?: ReceiptDoor;
+      door?: Exclude<ReceiptDoor, 'queue'>;
     } | undefined;
 
     if (state?.importResult && state?.fromCamera) {
@@ -1057,8 +1064,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       const diagnostics = this.fromCamera
         ? this.cameraImportResult?.diagnostics ?? null
         : this.imageDiagnostics;
+      const door = this.fromCamera ? this.resultDoor : 'wizard';
       const provenance = this.processedBatches.some(b => b.source === 'image')
-        ? provenanceOf(this.fromCamera ? this.resultDoor : 'wizard', diagnostics)
+        ? provenanceOf(door, diagnostics)
         : undefined;
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),
@@ -1070,6 +1078,20 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         provenance
       );
       this.recordReached = true;
+
+      // A batch holding a receipt reports how many of the types its readers
+      // flagged landed and how many the reviewer flipped, as the record read
+      // back counted them. Sent before the round's outcome is sorted, so a
+      // partial round reports too, and in a try of its own, so a throw here
+      // can never relabel rows that landed as a failed import. A statement
+      // screenshot is an image and not a receipt, so the kind decides.
+      if (this.processedBatches.some(b => b.fileType === 'receipt_image')) {
+        try {
+          this.analytics.trackReceiptConfirm(buildReceiptConfirmPayload(door, diagnostics, result));
+        } catch {
+          // Usage statistics are never a precondition: the rows have landed.
+        }
+      }
 
       // Rows that saved without their photos. Said as sentences of their own
       // rather than folded into a failure count, because "partial" here would

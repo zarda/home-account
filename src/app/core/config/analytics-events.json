@@ -39,6 +39,15 @@
       "duration": ["under_5s", "5s_to_15s", "15s_to_60s", "over_60s", "none"]
     }
   },
+  "receipt_confirm": {
+    "since": "26.10.180",
+    "params": {
+      "path": ["camera", "wizard", "form"],
+      "engine": ["cloud", "native", "cloud_after_native", "native_after_cloud", "none"],
+      "type_flagged": ["none", "one", "several"],
+      "type_flipped": ["none", "one", "several"]
+    }
+  },
   "budget_create": {
     "since": "1.16.91",
     "params": {}
