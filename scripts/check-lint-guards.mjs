@@ -30,8 +30,8 @@
  * flag the cure; asserting the outcome catches every mechanism that kills a
  * ban, including ones not invented yet.
  *
- * Five further rules ride the same mechanism through no-restricted-syntax.
- * The first two share one options array precisely because a second block
+ * Six further rules ride the same mechanism through no-restricted-syntax.
+ * The first three share one options array precisely because a second block
  * setting the same key would replace it; the two template rules (the pipe ban
  * and the sort-header rule) govern templates and share the template block's
  * array, and the last governs specs, which the app block ignores, so each
@@ -51,6 +51,17 @@
  *     the initial bundle — and that exemption block is where the pair above
  *     is most likely to be dropped by accident, so its resolved selector list
  *     is asserted here in both directions.
+ *   - A transaction type read with a default, `x.type || 'expense'`, plain or
+ *     behind a cast (ADR 0162). `||` keeps any truthy answer, so a model's
+ *     "Income", "refund" or "credit" went on as the row's type; the type reader
+ *     in receipt-extraction.utils files exactly "income" as income and anything
+ *     else as an expense. The selector sits in the app block's array beside the
+ *     three above and is restated in the analytics transport's exemption block,
+ *     the one later block that replaces that array under src/app, so both rows
+ *     below list it. It is matched on the member name `type`: an optional
+ *     chain (the transaction form's `transaction?.type || 'expense'` seed) and
+ *     `??` (test data's default) are not reading an answer off a model or a
+ *     file, and the self-test proves both stay legal.
  *   - The built-in `date`, `number` and `currency` pipes in a template (ADR
  *     0058). All three are at zero sites, so nothing in the app would notice
  *     the ban dying — which is the exact condition under which the analytics
@@ -113,6 +124,10 @@
  *     as a template literal (a TemplateLiteral is not a Literal), or reached
  *     as a computed handler (`window['onunhandledrejection']`): the selectors
  *     read a literal name and a plain property name only.
+ *   - A type default written some other way than a `||` on a member named
+ *     `type`: a destructured `type || 'expense'`, a ternary, or a member called
+ *     something else. The selector reads the one shape the five sites it
+ *     replaced all had.
  *   - What a bound sort-header description says. The selector asks for a
  *     binding, not for the catalog key: `[sortActionDescription]="'Sort'"` is a
  *     binding and passes.
@@ -238,6 +253,18 @@ const DYNAMIC_ANALYTICS_IMPORT_SELECTOR =
   'ImportExpression[source.value=/^(@angular\\/fire\\/analytics|' +
   '@capacitor-firebase\\/analytics|@?firebase\\/analytics)/]';
 
+// A transaction type read with a default: `x.type || 'expense'`, plain or behind
+// a cast. A plain string, not imported, so a drift from eslint.config.js shows
+// up as a resolved-selector mismatch below rather than disappearing behind a
+// shared constant. It rides the app block's array with the three above and is
+// restated in the analytics transport's exemption block.
+const LOOSE_TYPE_DEFAULT_SELECTOR =
+  "LogicalExpression[operator='||'][right.value=/^(expense|income)$/]" +
+  ":matches([left.type='MemberExpression'][left.property.name='type'], " +
+  "[left.type='MemberExpression'][left.property.value='type'], " +
+  "[left.type='TSAsExpression'][left.expression.property.name='type'], " +
+  "[left.type='TSAsExpression'][left.expression.property.value='type'])";
+
 // The spec-only half: listening for a rejection nobody caught on window. Kept
 // as plain strings, not imported, so a drift from eslint.config.js shows up
 // as a resolved-selector mismatch below.
@@ -248,7 +275,7 @@ const REJECTION_EVENT_HANDLER_SELECTOR =
 
 const SYNTAX_POPULATIONS = [
   {
-    label: 'app code under the firstValueFrom-listener and dynamic-analytics bans',
+    label: 'app code under the firstValueFrom-listener, dynamic-analytics and loose-type-default bans',
     files: [
       'src/app/core/services/insight-snapshot.service.ts',
       'src/app/features/transactions/transactions.component.ts',
@@ -257,6 +284,7 @@ const SYNTAX_POPULATIONS = [
       DIRECT_LISTENER_SELECTOR,
       PIPED_LISTENER_SELECTOR,
       DYNAMIC_ANALYTICS_IMPORT_SELECTOR,
+      LOOSE_TYPE_DEFAULT_SELECTOR,
     ],
   },
   {
@@ -265,10 +293,16 @@ const SYNTAX_POPULATIONS = [
     // must resolve here is the two firstValueFrom selectors and NOT the
     // analytics one — asserting the absence is as load-bearing as asserting
     // the presence, because the cheap way to write this exemption is to
-    // forget to restate the pair.
-    label: 'the analytics transport — the listener ban only',
+    // forget to restate the pair. The loose-type-default selector is restated
+    // here too: this file is under src/app like any other, so the exemption
+    // exempts it from the analytics selector alone.
+    label: 'the analytics transport — the listener and loose-type-default bans only',
     files: ['src/app/core/services/analytics-transport.ts'],
-    expectedSelectors: [DIRECT_LISTENER_SELECTOR, PIPED_LISTENER_SELECTOR],
+    expectedSelectors: [
+      DIRECT_LISTENER_SELECTOR,
+      PIPED_LISTENER_SELECTOR,
+      LOOSE_TYPE_DEFAULT_SELECTOR,
+    ],
   },
   {
     label: 'templates under the built-in date/number/currency pipe and the sort-header description bans',
@@ -902,6 +936,42 @@ async function selfTest() {
     { filePath: 'src/app/core/services/rejection-fixture.service.ts' }
   );
   check('the same listener in app code is not this rule’s business', countSyntaxMessages(rejectionInApp), 0);
+
+  // The loose type default. The five sites it replaced read a type off a model
+  // or a file as `x.type || 'expense'`, plain or behind a cast; each shape of
+  // that must fail once in app code, in the analytics transport's restated
+  // block too, and the shapes that only resemble it must not.
+  const typeDefaultAppPath = 'src/app/core/services/type-fixture.service.ts';
+  const typeDefaultCases = [
+    ['a member type read with an expense default in app code', typeDefaultAppPath,
+      "declare const t: any;\nexport const type = t.type || 'expense';", 1],
+    ['an income default on a member type read in app code', typeDefaultAppPath,
+      "declare const t: any;\nexport const type = t.type || 'income';", 1],
+    ['a computed type read with a default in app code', typeDefaultAppPath,
+      "declare const t: any;\nexport const type = t['type'] || 'expense';", 1],
+    ['a cast type read with a default in app code (the backup door’s shape)', typeDefaultAppPath,
+      "declare const t: any;\nexport const type = (t['type'] as 'income' | 'expense') || 'expense';", 1],
+    ['a member type read with a default in the analytics transport', 'src/app/core/services/analytics-transport.ts',
+      "declare const t: any;\nexport const type = t.type || 'expense';", 1],
+    ['an optional-chain type read with a default in app code', typeDefaultAppPath,
+      "declare const t: any;\nexport const type = t?.type || 'expense';", 0],
+    ['a nullish type default in app code', typeDefaultAppPath,
+      "declare const t: any;\nexport const type = t.type ?? 'expense';", 0],
+    ['a default on a member that is not a type in app code', typeDefaultAppPath,
+      "declare const t: any;\nexport const kind = t.kind || 'expense';", 0],
+    ['a type default that is not a transaction side in app code', typeDefaultAppPath,
+      "declare const t: any;\nexport const type = t.type || 'unknown';", 0],
+    ['the hitting form in a spec', 'src/app/core/services/type-fixture.service.spec.ts',
+      "declare const t: any;\nexport const type = t.type || 'expense';", 0],
+  ];
+  for (const [shape, filePath, source, expected] of typeDefaultCases) {
+    const linted = await fixtureEslint.lintText(`${source}\n`, { filePath });
+    check(
+      `${shape} ${expected === 0 ? 'passes' : 'fails'} the rule${expected === 0 ? '' : ' once'}`,
+      countSyntaxMessages(linted),
+      expected
+    );
+  }
 
   // The static import bans. The population probe above proves each ban
   // resolves for a file; these prove it fires, on a real import declaration,

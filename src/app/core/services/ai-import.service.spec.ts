@@ -2427,6 +2427,24 @@ describe('AIImportService', () => {
         .toEqual([]);
     });
 
+    it('types a backup row an expense unless its type is exactly "income"', async () => {
+      // The strict reader (ADR 0162, ADR 0147): a hand-edited file's "Income"
+      // is not a word the app reads as a refund, and the old `|| 'expense'`
+      // carried it through as a type no category row can sit under.
+      const backup = {
+        transactions: [
+          { description: 'Reworded', amount: 9, type: 'Income' },
+          { description: 'Salary', amount: 5000, type: 'income' },
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.map(t => t.type)).toEqual(['expense', 'income']);
+      expect(result.transactions.map(t => t.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
+    });
+
     it('grades an empty category id as a default, not as the backup\'s own', async () => {
       const backup = {
         transactions: [
@@ -2980,6 +2998,19 @@ describe('AIImportService', () => {
       expect(result[0].currency).toBe('USD'); // fallback base currency
       expect(result[0].type).toBe('expense');
       expect(result[0].date instanceof Date).toBeTrue();
+    });
+
+    it('types a row an expense unless its type is exactly "income"', async () => {
+      // The strict reader (ADR 0162, ADR 0147): a model's "Income" is not an
+      // answer the app reads as income, and the old `|| 'expense'` carried it
+      // through as a type no category row can sit under.
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Reworded', amount: 9, type: 'Income' as never, currency: 'USD' },
+        { date: '2024-06-02', description: 'Payroll', amount: 900, type: 'income', currency: 'USD' },
+      ]);
+
+      expect(result.map(r => r.type)).toEqual(['expense', 'income']);
+      expect(result.map(r => r.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
     });
 
     it('flags an unreadable date with zero confidence instead of silently dating it today', async () => {

@@ -604,6 +604,58 @@ describe('CloudLLMProviderBase', () => {
     });
   });
 
+  describe('the type a model answers', () => {
+    // The strict reader (readTransactionType): only the exact string "income"
+    // files a row as income. A refund worded any other way, in another casing
+    // or as something that is not text at all is an expense, the side every
+    // row without an answer already lands on (ADR 0162, ADR 0147).
+    const answers: [unknown, 'income' | 'expense'][] = [
+      ['income', 'income'],
+      ['Income', 'expense'],
+      ['INCOME', 'expense'],
+      [' income', 'expense'],
+      ['refund', 'expense'],
+      ['credit', 'expense'],
+      ['expense', 'expense'],
+      [-1, 'expense'],
+      ['', 'expense'],
+      [null, 'expense'],
+      [undefined, 'expense'],
+    ];
+
+    it('files a row as income only when the model answered exactly "income"', async () => {
+      provider.response = {
+        text: JSON.stringify(answers.map(([type], index) => ({
+          date: '2024-06-01', description: `Row ${index}`, amount: 5, type, currency: 'USD',
+          imageIndex: 0, confidence: 0.9, receiptId: 1,
+        }))),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      expect(rows.map(row => row.type)).toEqual(answers.map(([, filed]) => filed));
+    });
+
+    it('files a statement row as income only on an exact "income", and never grades it', async () => {
+      provider.response = {
+        text: JSON.stringify(answers.map(([type], index) => ({
+          date: '2024-06-01', description: `Row ${index}`, amount: 5, type, currency: 'USD',
+        }))),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows.map(row => row.type)).toEqual(answers.map(([, filed]) => filed));
+      // A statement's credits are the page's own words, not a model's call on a
+      // receipt, so the type is all the reading carries: no grade rides on it.
+      for (const row of rows) {
+        expect('typeConfidence' in row).withContext(`${row.description} carries no type grade`).toBeFalse();
+      }
+    });
+  });
+
   describe('extractJson', () => {
     it('strips markdown fences', () => {
       expect(provider.callExtractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');

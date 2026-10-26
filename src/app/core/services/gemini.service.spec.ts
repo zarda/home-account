@@ -635,6 +635,33 @@ describe('GeminiService', () => {
       expect(result[1].location).toEqual({ name: 'Shibuya 1-2-3', country: 'JP' });
     });
 
+    it('files a row as income only when the model answered exactly "income"', async () => {
+      // The strict reader: any other casing, a synonym, a number or no answer
+      // at all is an expense (ADR 0162, ADR 0147).
+      const answers: [unknown, 'income' | 'expense'][] = [
+        ['income', 'income'],
+        ['Income', 'expense'],
+        ['INCOME', 'expense'],
+        [' income', 'expense'],
+        ['refund', 'expense'],
+        ['credit', 'expense'],
+        ['expense', 'expense'],
+        [-1, 'expense'],
+        ['', 'expense'],
+        [null, 'expense'],
+        [undefined, 'expense'],
+      ];
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify(
+        answers.map(([type], index) => ({
+          date: '2026-07-01', description: `Row ${index}`, amount: 3.5, type, currency: 'USD', confidence: 0.9,
+        }))
+      )));
+
+      const result = await service.extractTransactionsFromMultipleImages(['AAA']);
+
+      expect(result.map(row => row.type)).toEqual(answers.map(([, filed]) => filed));
+    });
+
     it('tells the model a single photo may contain several receipts', async () => {
       visionModel.generateContent.and.resolveTo(makeResult('[]'));
       await service.extractTransactionsFromMultipleImages(['AAA']);

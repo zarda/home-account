@@ -1,4 +1,7 @@
+import { VERIFY_FIELD_THRESHOLD } from '../../models';
 import {
+  MODEL_INCOME_GRADE,
+  modelTypeGrade,
   printedLocationSlot,
   readConfidence,
   readCountryCode,
@@ -6,6 +9,7 @@ import {
   readFieldConfidence,
   readPrintedLocation,
   readReceiptTotal,
+  readTransactionType,
 } from './receipt-extraction.utils';
 
 describe('readCurrencyCode', () => {
@@ -156,6 +160,35 @@ describe('readFieldConfidence', () => {
 
   it('keeps a reported zero rather than dropping the field', () => {
     expect(readFieldConfidence({ amountConfidence: 0 })).toEqual({ amount: 0 });
+  });
+});
+
+describe('readTransactionType', () => {
+  it('reads exactly "income" as income', () => {
+    expect(readTransactionType('income')).toBe('income');
+  });
+
+  // Strict on purpose: a normalizing reader would file a model's "Income" or
+  // " income" as income, and a refund the model merely worded differently is
+  // not an answer the reader may guess at (ADR 0162, ADR 0147).
+  it('reads every other answer as an expense: another casing, a synonym, a number or nothing', () => {
+    const answers: unknown[] = ['Income', 'INCOME', ' income', 'refund', 'credit', -1, '', null, undefined, {}];
+    for (const answer of answers) {
+      expect(readTransactionType(answer))
+        .withContext(`the answer ${JSON.stringify(answer) ?? 'undefined'}`)
+        .toBe('expense');
+    }
+  });
+});
+
+describe('modelTypeGrade', () => {
+  it('grades an income reading under the review bar, so it is always asked about', () => {
+    expect(modelTypeGrade('income')).withContext('an income reading carries a grade').toBe(MODEL_INCOME_GRADE);
+    expect(MODEL_INCOME_GRADE).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+  });
+
+  it('grades no purchase, so absence still means nothing said otherwise', () => {
+    expect(modelTypeGrade('expense')).toBeUndefined();
   });
 });
 
