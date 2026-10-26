@@ -380,7 +380,7 @@ it simply reports nothing.
    definitions → one event-scoped dimension per parameter: `method`, `type`,
    `has_tags`, `has_location`, `receipt_image_count`, `has_filters`, `outcome`,
    `path`, `engine`, `provider`, `failure`, `duration`, `severity`,
-   `report_type`, `feature`, `setting`.
+   `report_type`, `feature`, `setting`, `action`.
    Unregistered parameters are still collected but appear in no report, and GA4
    does not backfill.
 5. **Add an internal traffic filter** for developer IPs. `ng serve` uses the
