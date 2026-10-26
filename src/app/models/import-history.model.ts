@@ -263,6 +263,19 @@ export interface CategorizedImportTransaction {
    * survivor's category.
    */
   movedCategory?: { suggestedCategoryId: string; categoryConfidence: number };
+  /**
+   * A review-step mark, never written: the type the reader flagged on this
+   * row, kept once a flip answers the flag. The flip drops the type grade
+   * (the flag asked its question and was answered), and with it the only
+   * record that the reader doubted the row, so the flip files the type it
+   * stood on here (`answerTypeFlag`) and the batch can still count the
+   * flags raised and the ones the reviewer overturned (`countTypeAnswers`).
+   * The first verdict stays through a second flip. A pick or edit on the
+   * card never touches it, a split carries it on both halves, a merge
+   * between two rows of one side keeps the target's, and a merge across
+   * sides deletes it.
+   */
+  typeFlaggedAs?: 'income' | 'expense';
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
   isDuplicate: boolean;

@@ -47,6 +47,7 @@ import {
 } from '../../../../core/utils/categorization.utils';
 import {
   amountIsUnfilled,
+  answerTypeFlag,
   blankImportRow,
   datedToday,
   descriptionIsUnfilled,
@@ -315,7 +316,9 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * A flip is the reviewer's answer to the question the type's flag asked,
    * so the type grade goes with it, the way a date answer takes the date's.
    * The rest of the grade stays: the flip says nothing about the figure or
-   * the day.
+   * the day. The type the reader flagged stays on the row as a mark of its
+   * own (`answerTypeFlag`), since the grade was the only record of it, and
+   * the first flag survives a second flip.
    *
    * The category is held to the new side (`categoryOnSide`); left where it
    * was, an expense category would be written onto an income row, and a
@@ -328,7 +331,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     const filed = this.categoryOnSide(transaction, type);
     this.replaceRow(transaction, {
       type,
-      fieldConfidence: withoutFieldConfidence(transaction.fieldConfidence, 'type'),
+      ...answerTypeFlag(transaction),
       ...filed,
       ...EDITED_ON_CARD,
     });
