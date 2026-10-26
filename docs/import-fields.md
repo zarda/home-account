@@ -38,7 +38,7 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries thirteen more that are **review-step
+`CategorizedImportTransaction` carries fifteen more that are **review-step
 marks, not fields**: `currencyFellBack` (nobody read a currency, so the base
 currency is standing in), `dateAssumed` (the row's `date` is *now* rather than
 something read off the source, because `resolveImportDate` could not vouch
@@ -82,12 +82,23 @@ currency offer dismissed, a recurring link taken or let go — leave it standing
 see [ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)),
 `importAttempts` (how many confirm attempts the row has failed — at two the
 wizard hands it back deselected; a split starts both halves again at none, and
-a merge its survivor, since none of them is the row that was refused) and
+a merge its survivor, since none of them is the row that was refused),
 `editedOnCard` (the user changed something on this row on the card, which is
 what makes **Remove** ask before it throws the row away; see
-[ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)). None of them
+[ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)),
+`movedCategory` (the category and grade a change of side moved off the row —
+a flip, a merge's net or the catalogue's arrival — which a flip back
+restores; a pick forgets it, a split carries it to both halves, a merge on
+one side keeps the target's, and a merge across sides drops it, the re-file
+writing a fresh one where it moves the category) and
+`typeFlaggedAs` (the type the reader flagged, filed by the flip that
+answered the flag, since the flip drops the type grade that was the only
+record of it; the first verdict stands through a second flip, and the batch
+counts the flags raised and overturned from it — see
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)). None of them
 reaches the mapper — it names its fields, and its spec pins that `fileRate`,
-`importFailure`, `importAttempts` and `editedOnCard` never come out of it —
+`importFailure`, `importAttempts`, `editedOnCard`, `movedCategory` and
+`typeFlaggedAs` never come out of it —
 and none of them is ever written to a transaction as itself: `fileRate`
 reaches the write only as the snapshot the confirm step computes from it,
 over the amount actually being written.
@@ -130,7 +141,7 @@ it is the fourth door now, not an exception to the rule.
 | | CSV (data hub) | CSV (wizard) | Receipt photos | Statement photos | Bank PDF | JSON backup | Queued receipt (offline drain) |
 |---|---|---|---|---|---|---|---|
 | type, amount, currency, date, description | yes | yes | yes | yes | yes | yes | yes |
-| a refund filed as income | yes, the file's type | yes, the file's type | yes: the cloud read types each line and a receipt's net sets the row's type, except Gemini's read of a single photo, which asks for expense lines only; the camera's on-device read files income when the model says refund, or on the regex lane when the total prints as a negative, with the type graded for review ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)) | yes, a credit line | yes, a credit line | yes, the backup's type | yes when the device read it, unreviewed; no through the cloud's single-image prompt, which reads every receipt as a purchase |
+| a refund filed as income | yes, the file's type | yes, the file's type | yes, with the type graded for review: the cloud read types each line and a receipt's net sets the row's type; the camera's on-device read files income when the model says refund, or on the regex lane when the total prints as a negative ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md), [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)) | yes, a credit line, ungraded | yes, a credit line, ungraded | yes, the backup's type, ungraded | yes, whichever reader read it, unreviewed |
 | note | yes | yes | items list → note | — | — | yes | items list → note |
 | tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file; a rule link only when this account still holds the rule | `location` when the receipt prints one |
 | suggestions (tags, rule link) | — | yes | yes | yes | yes | — | — (no review step) |
@@ -141,13 +152,13 @@ it is the fourth door now, not an exception to the rule.
 | recorded as | n/a | `csv` / `generic_csv` | `image` / `receipt_image` | `image` / `screenshot` | `pdf` / `bank_pdf` | `json` / `backup_json` | a failed attempt only: `image` / `receipt_image`, door `queue` |
 
 The form's **Scan Receipt** writes through the form rather than the mapper,
-so it has no column, but it follows the same reading: a scan the device read
-as income switches the form to Income, flags the type beside the toggle, and
-leaves an expense category the model named blank for the user to fill. An
-expense reading never moves a type the user picked. The cloud's single-image
-prompts — `receiptParse`, which the form's scan and the drain use off the
-device, `receiptItems` and Gemini's `receiptSummary` — still read every
-receipt as a purchase (a known gap of ADR 0162).
+so it has no column, but it follows the same reading: a scan read as income,
+on the device or through the cloud's `receiptParse`, switches the form to
+Income, flags the type in the checked segment, and leaves an expense category
+the model named blank for the user to fill. An expense reading never moves a
+type the user picked. A category a type change blanks is said aloud and held,
+and a type turned back to the side it fits gets it back, said aloud too
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
 The data hub's CSV path has no review step, so it takes no suggestions and
 carries no marks. The JSON backup is the one wizard door that takes none
@@ -185,7 +196,13 @@ failed attempt by `ReceiptAttemptService`, and at confirm time for a
 successful one from `ImportResult.diagnostics`. A record for an import that
 completed with at least one row also carries `transactionIds`, the ids it
 created, in selected-row order
-([ADR 0075](ADR/0075-a-successful-import-remembers-the-transactions-it-created.md)).
+([ADR 0075](ADR/0075-a-successful-import-remembers-the-transactions-it-created.md)),
+and, when above zero, `typesFlagged` and `typesFlipped`: of the rows the write
+took, how many had their type flagged by the reader, and how many of those
+the reviewer moved to the other side and left there (`countTypeAnswers`,
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)). The importer builds and the history service stores one
+shape, `ImportCompletion`, a `Pick` of the record, so a count added there
+reaches the write without a second list to keep in step.
 A record also carries `totalsByCurrency` — what a write actually landed,
 per currency and whole in each, in the order the currencies were first
 seen. A record completed before the field existed carries none of it: its
@@ -245,26 +262,37 @@ does not hold goes to the row's catch-all at 0.3 — except that the backup door
 keeps its file's id, at 0.3, while the catalogue has not loaded.
 
 The card holds the reviewer to the same side
-([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)).
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 Its category menu lists only the categories that fit the row's type, `'both'`
 ones included, while a held category of the other side is still named on the
-chip. Flipping a row between income and expense, or a merge whose net turns
-the survivor to the other side, runs the row's category through the same
-grader the doors use: one the new side cannot hold moves to that side's
-catch-all, graded the lower of what the row had and 0.3, and the move is
-announced; one that fits both sides, or one the catalogue does not hold,
-stays.
+chip. Flipping a row between income and expense, and every merge, whichever
+side its net lands on, runs the row's category through the same grader the
+doors use: one the new side cannot hold moves to that side's catch-all,
+graded the lower of what the row had and 0.3, the row remembers what moved,
+and the move is announced; one that fits both sides, or one the catalogue
+does not hold, stays. A flip back restores the remembered category at its
+old grade. When the card's catalogue arrives after its rows, every row is
+held to its side once, and the card says so if they had already painted.
+
+The two readers that resolve a category before the account's catalogue may
+have loaded — the cloud single-photo read and the offline drain — read the
+shipped catalogue until then (`categoriesOrDefaults`), so the drain's check
+always has a side to read.
 
 The amount, date and type grades belong to the readers rather than the doors,
 and [receipt-import.md](receipt-import.md#where-the-amount-comes-from) has
-them — the on-device path's cross-check and its type verdict included. Only
-the on-device readers grade a type, and only where something on the receipt
-spoke to it: every income verdict, under the 0.7 bar so that the card asks,
-and an expense whose total the paper printed both marked and unmarked, or
-that the print disputed. A plain purchase carries no `type` grade, and no
-cloud reader sets one. A CSV or JSON row carries none of the three: nobody
-read it, so nothing is graded, and `resolveImportDate` skips its plausibility
-window for an ungraded date.
+them — the on-device path's cross-check and its type verdict included. Every
+receipt reader grades a type, and only where something spoke to it: every
+income verdict, on the device or from a cloud model, under the 0.7 bar so that
+the card asks; and, on the device, an expense whose total the paper printed
+both marked and unmarked, or that the print disputed, a negative printed on a
+total the model did not read included. A plain purchase carries no `type`
+grade, and a statement's, a PDF's or a backup's type never carries one: each
+is read strictly, exactly `income` or an expense, and a flag on every deposit
+would be noise. A CSV or JSON row carries none of the three: nobody read it,
+so nothing is graded, and `resolveImportDate` skips its plausibility window
+for an ungraded date.
 
 ## Photos
 
@@ -312,7 +340,11 @@ of it.
 A quota refusal (`RECEIPT_IMAGE_LIMIT_ERROR`) saves the row without its photo
 and counts it in `receiptsSkipped` on the history record — never in
 `errorCount`, whose rows the wizard re-offers for a second confirm. An upload
-failure (`RECEIPT_ATTACH_FAILED`) still fails the row.
+failure (`RECEIPT_ATTACH_FAILED`) saves the row without its photos too, and
+counts it in `receiptsFailed`: the transaction is the record, and the photo
+the evidence attached to it. Import History shows each count on a tile of its
+own, *Photos not attached* and *Photos not uploaded*
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
 ## What the review step corrects
 
@@ -333,16 +365,16 @@ runs again, and whether anything is remembered past the wizard.
 |---|---|---|---|---|
 | Date | the date button, and the question chip's change button beside **Keep**, open a modal picker seeded on the row's own day, and both say so with `aria-haspopup="dialog"`; **Keep** accepts the date as read | `dateAssumed`, `dateImplausible` and `fieldConfidence.date`; sets `dateReviewed` | yes | no |
 | Amount | inline editor — Enter or blur commits, Escape cancels. The figure is rounded to the currency's minor unit before it is compared or written (¥179 for 179.33 on a JPY row), and one that rounds to nothing is refused: the editor is held open, marked invalid, and says the minimum the row's currency can hold. The doors already round what they read to the same unit, so this is the same rule applied to a figure the reviewer typed rather than a different one ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)) | `fieldConfidence.amount` | yes | no |
-| Type | the income/expense toggle; a type the reader doubted swaps the toggle's icon for the verification flag, and its sentence leads the button's name | `fieldConfidence.type`; a category the new side cannot hold moves to that side's catch-all at no more than 0.3, and the move is announced | yes | no |
+| Type | the income/expense toggle; a type the reader doubted swaps the toggle's icon for the verification flag, and its sentence leads the button's name | `fieldConfidence.type`, filing the type the reader flagged as `typeFlaggedAs`, so the batch can count it; a category the new side cannot hold moves to that side's catch-all at no more than 0.3 and is kept as `movedCategory`, which a flip back restores at its old grade; either move is announced | yes | no |
 | Description | inline editor, same commit rules; an emptied field is a cancel | nothing | yes | it becomes the key the category is remembered under |
 | Currency | the chip's menu, and the header's **Currency for selected** for the whole selection; each ends with **Other currency…**, a dialog that takes a three-letter code the curated list does not carry, refuses one that is not a currency or that no loaded rate can convert, and applies the answer the way a listed pick is applied | `currencyFellBack` and the standing `currencySuggestion`; the amount is re-rounded to the new currency's minor unit, and one that rounds to nothing leaves the row unfilled — there is no editor to hold open — and raises *1 amount rounds to nothing in …*, the notice the bulk switch raises with its own count | only when the re-rounding moved the amount, on the rule every amount edit follows | no |
-| Category | the suggestion chip's menu, which lists the row's own side | nothing — the confidence dot follows the pick and reads as the reviewer's own | no | yes, per merchant, at confirm — whichever side the row is on, so a confirmed refund replaces the category that merchant's purchases were remembered under |
+| Category | the suggestion chip's menu, which lists the row's own side | `movedCategory`, so a flip back no longer brings back a category the reviewer has since replaced — the confidence dot follows the pick and reads as the reviewer's own | no | yes, per merchant, at confirm — whichever side the row is on, so a confirmed refund replaces the category that merchant's purchases were remembered under |
 | Notes | a **Notes** button on a row with no note opens a textarea through the card's one editing machine — a row edits one field at a time, notes included — and it files on the way out, on blur; a filed note's box is already on the card, so only a row with none shows the button | nothing | no | no |
 | Tags | a remove control on each chip, and **Add tag** over the account's own vocabulary — a native datalist, so what is typed is filed whether or not it is on the list | the tag | no | yes, kept and removed both, per merchant |
 | Location / country | one chip with three controls: the name is an inline editor, the country a menu over the bundled table with **No country** on it, and the removal clears both | a picked country clears `receiptCountry` and writes `location.country`; the removal clears `location` and `receiptCountry` together | no | no |
 | Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival while blank (a blank row has nothing to compare; a filled row that appears is checked, as the split row below is), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
-| Row (split) | **Split** in the extras opens an inline amount field; Enter takes that amount into a new row directly under the original, which keeps the purchase's identity — description, date and its marks, currency, type, category, location, tags, photo — and drops notes, the rule link and the verdict, and opens with its description editor focused. The figure taken and the remainder are each rounded to the row's own currency, and the refusal is judged on the rounded remainder; the trigger is hidden altogether on a row worth less than two minor units, since no figure would clear the floor on both halves | `fieldConfidence.amount` on both halves; the type's grade rides onto both, since a split does not touch the type | yes — the original by its amount, the part on arrival; the two are never each other's within-batch twins | no |
-| Row (merged) | **Merge into…** lists the other rows in the same currency that have an amount, a description and no standing verdict; the target keeps its id, the amounts net with the type following the sign, tags and photos union, notes join, and the source leaves the batch with everything keyed on its id | `fieldConfidence.amount` on the survivor, whose verdict is written clear, and `fieldConfidence.type` too when the two rows sat on opposite sides, since the net then decides the type; a survivor the net turned to the other side has its category held to that side as a flip holds it, announced | yes, the target — the row that merged away owes none | no |
+| Row (split) | **Split** in the extras opens an inline amount field; Enter takes that amount into a new row directly under the original, which keeps the purchase's identity — description, date and its marks, currency, type, category, location, tags, photo — and drops notes, the rule link and the verdict, and opens with its description editor focused. The figure taken and the remainder are each rounded to the row's own currency, and the refusal is judged on the rounded remainder; the trigger is hidden altogether on a row worth less than two minor units, since no figure would clear the floor on both halves | `fieldConfidence.amount` on both halves; the type's grade, `movedCategory` and `typeFlaggedAs` ride onto both, since a split does not touch the type, so each half counts as flagged | yes — the original by its amount, the part on arrival; the two are never each other's within-batch twins | no |
+| Row (merged) | **Merge into…** lists the other rows in the same currency that have an amount, a description and no standing verdict; the target keeps its id, the amounts net with the type following the sign, tags and photos union, notes join, and the source leaves the batch with everything keyed on its id | `fieldConfidence.amount` on the survivor, whose verdict is written clear, and `fieldConfidence.type`, `movedCategory` and `typeFlaggedAs` too when the two rows sat on opposite sides, since the net then decides the type, so the survivor counts as neither flagged nor flipped; on one side the target's ride through, and the source's never do. Whichever side the net lands on, the survivor's category is held to it as a flip holds it, announced | yes, the target — the row that merged away owes none | no |
 | Row (removed) | **Remove** in the extras takes the row off the batch, on any row — in one press for a row as it arrived, and after *Remove this row?* for one carrying work made on the card (`editedOnCard`, a split part, or a merge survivor); focus lands on the neighbour's Remove or Add a row | everything keyed on its id — the card's editing state, the wizard's overrule, stamp and verdict, and its entry in the receipt-row set | not for the removed row — nothing left to check — but yes for a survivor whose within-batch verdict named it, since that verdict is now about a row that has gone | no |
 | Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
 | Duplicate verdict | the badge's **Not a duplicate — import it** | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
@@ -380,9 +412,12 @@ split and the merge,
 editing machine and the landings,
 [ADR 0108](ADR/0108-the-review-step-removes-a-row.md) for **Remove**,
 [ADR 0109](ADR/0109-a-hand-typed-amount-is-whole-in-its-currency.md) for
-rounding a hand-typed figure to its currency, and
+rounding a hand-typed figure to its currency,
 [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)
-for the type's flag and the category a flip or a merge re-files.
+for the type's flag and the category a flip or a merge re-files, and
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
+for the category a flip back restores, the merge's re-file on either side,
+the catalogue's arrival and the type flags the batch counts.
 
 ## Suggestions, and what removing one means
 

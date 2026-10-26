@@ -32,10 +32,13 @@ scanned date that reads as **any day but today**, however sure the reader was
 of it — the flag clears once you move the date to a different **day**, since
 re-entering the day that was scanned is not an answer to it. Where the reader
 was also unsure, its doubt is the first sentence of the tooltip and the
-not-today note follows. A scan the device read as a refund switches the form
-to Income and flags the type beside its toggle until you change the type or
-discard the photo; an expense reading never moves a type you picked (see
-*Where the amount comes from*).
+not-today note follows. A scan read as a refund — on the device or by the
+cloud — switches the form to Income and flags the type in the checked
+segment, where the flag takes the trend icon's place, until you change the
+type or discard the photo; an expense reading never moves a type you picked
+(see *Where the amount comes from*). A category the new type cannot hold is
+cleared, and the form says which; turning the type back gives it back, and
+says that too (see *Categories*).
 
 The form's date is only ever flagged, never replaced or blocked: the wizard's
 review step re-dates a date it cannot vouch for and **lets you change it
@@ -50,7 +53,8 @@ printed.** What differs is how much work a path has to do to get there, because
 each of them is handed something different.
 
 **The in-form scan** asks for it outright. `receiptParse` returns `amount` as
-the total paid at the bottom of the receipt, along with `amountConfidence` and
+the total paid at the bottom of the receipt — on a refund, the total given
+back, always as a positive figure — along with `type`, `amountConfidence` and
 `dateConfidence`. One photo, one figure, nothing to reconcile.
 
 **The item pipeline** — `multiImageReceipts` and `receiptItems`, behind Camera
@@ -114,10 +118,18 @@ four-digit-year reading is kept.
 The parser also says **which way the money moved**, and reads that from
 typography as well. A minus, an East Asian accounting triangle (`▲`, `△`) or
 accounting parentheses printed on the winning total's own figure —
-`TOTAL -$14.03`, `合計▲1,280`, `($12.50)` — make it a credit. A word such as
-*REFUND* is never read, in any language; nor is a mark on any other figure, a
-coupon or the change; nor a dash that is not a minus — the closing dash of
-`¥10,000-`, the gap in `Latte - $4.50`, the hyphens of a phone number. The
+`TOTAL -$14.03`, `合計▲1,280`, `($12.50)` — make it a credit. A minus counts
+after the start of a line, a space, a colon or an equals sign, an opening
+parenthesis, or a Han or Hangul label printed in one run with its figure
+(`=-12.50`, `(-12.50)`, `合計-1,280`, `합계-5,900`); not glued to kana, whose
+long-vowel mark OCR hands back as a hyphen (`コーヒ-480`), nor to a Latin
+letter or a digit (`SKU-1234`), nor after a closing parenthesis
+(`TEL (03)-3461`)
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
+A word such as *REFUND* is never read, in any language; nor is a mark on any
+other figure, a coupon or the change; nor a dash that is not a minus — the
+closing dash of `¥10,000-`, the gap in `Latte - $4.50`, the hyphens of a phone
+number. The
 amount stays a positive figure either way. A refund slip can print its total
 again, unmarked, on the card line, so every copy of the total printed as money
 is read (every figure of its value, for a total read from the plain numbers):
@@ -148,9 +160,12 @@ replaced with today
 **Whether it was a purchase or a refund** is one verdict for both device
 lanes. The model's schema has a `kind`, *purchase* or *refund*, read from the
 receipt's words; the verdict weighs it against the parser's marks on the same
-total. The marks count only when the two readers agree on the total — when
-they differ, the marks belong to some other figure — and the regex lane,
-having no model, goes on the marks alone.
+total. The marks count as the row's own only when the two readers agree on
+the total — when they differ, the marks belong to some other figure — and the
+regex lane, having no model, goes on the marks alone. A negative the parser
+read on a total the model did not read still argues with a purchase, though
+it backs no refund: where the model read a total at all, the row is an
+expense, flagged.
 
 | The model says | The total prints | Type | Type grade |
 |---|---|---|---|
@@ -159,15 +174,36 @@ having no model, goes on the marks alone.
 | purchase | marked, or both ways | expense | 0.3 |
 | nothing (always, on the regex lane) | marked | income | 0.5 |
 | nothing (always, on the regex lane) | both ways | expense | 0.3 |
+| purchase, or nothing | a negative on another total than the model's | expense | 0.3 |
 | purchase, or nothing | unmarked | expense | — |
 
 Every grade there is under the 0.7 bar on purpose. No reader measures a
 direction, so the grade is policy: a device reading of income is always asked
-about — the review card flags the type toggle, the form flags the type beside
-its toggle — and so is a purchase the paper argued with, while a plain
-purchase carries no type grade and asks nothing. The flag's sentence names no
+about — the review card flags the type toggle, the form flags its checked type
+segment — and so is a purchase the paper argued with, while a plain purchase
+carries no type grade and asks nothing. The flag's sentence names no
 percentage, because there is no reading for one to report
-([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)).
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
+
+**The cloud readers say it too.** Every receipt prompt asks for `type` in the
+same words — *"income" for credits/refunds — money given back to the
+customer — "expense" for purchases/debits, whatever the payment method is
+called* — because a receipt prints its payment method as *CREDIT* or
+*クレジット*, and the bare word would file a card purchase as income. The
+answer is read strictly by `readTransactionType`: exactly `income` is a
+refund, and anything else, another casing, a synonym or no answer, a
+purchase. A model's income reading carries the same 0.5 the device gives
+one (`MODEL_INCOME_GRADE`), decided where each lane already decides its
+type: the single-photo read for `receiptParse`, consolidation for the item
+prompts, whose verdict is the receipt's net rather than any one line's, and
+Gemini's summary reader for `receiptSummary`. A purchase carries no type
+grade on the cloud either, and a statement's lines are typed the same strict
+way and never graded, since a flag on every deposit would be noise. The
+cloud has no second witness: no parser reads the paper behind a cloud answer,
+so a refund the model calls a purchase is an unflagged expense. The amount
+stays a positive figure, and its sign is never read for the direction
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
 Whichever of those produced it, the figure is **rounded to the currency's
 minor unit twice**: once where the review row is built, so the card, the
@@ -373,21 +409,35 @@ path reaches, door by door:
 | Path | Can it file income? |
 |---|---|
 | The camera dialog, read on the device (Apple Intelligence or the regex lane) | yes, flagged for review — when the model says refund, or on the regex lane when the total prints as a negative (*Where the amount comes from*, above) |
-| The camera dialog, read by the cloud — the strategy service's multi-image read, and the wizard read it falls back to | yes: `multiImageReceipts` types each line, and a receipt's net sets the row's type — except Gemini reading a single photo, which uses `receiptItems`, a prompt that asks for expense lines only |
-| The wizard's receipt photos | yes, through the same cloud read and with the same exception; the wizard never reads a photo on the device |
-| The form's Scan Receipt, read on the device | yes, flagged beside the type toggle: an income reading switches the form to Income |
-| The form's Scan Receipt, read by the cloud | no — `receiptParse`, mapped by `convertParsedReceipt`, which writes an expense |
-| The form's *Review separately*, for one photo holding several receipts | as the wizard's receipt photos; it is one photo, so on Gemini, no |
+| The camera dialog, read by the cloud — the strategy service's multi-image read, and the wizard read it falls back to | yes, flagged for review: `multiImageReceipts`, or Gemini's `receiptItems` for a single photo, types each line, and a receipt's net sets the row's type |
+| The wizard's receipt photos | yes, through the same cloud read; the wizard never reads a photo on the device |
+| The form's Scan Receipt, read on the device | yes, flagged in the checked type segment: an income reading switches the form to Income |
+| The form's Scan Receipt, read by the cloud | yes, the same way — `receiptParse` asks for `type`, and `convertParsedReceipt` files it |
+| The form's *Review separately*, for one photo holding several receipts | as the wizard's receipt photos |
 | The offline drain, read on the device | yes, but written with no review step |
-| The offline drain, read by the cloud | no — `receiptParse` again |
-| `importFromImage`'s single-shot fallback | yes on OpenAI and Claude, which read the photo as a statement; no on Gemini, whose `receiptSummary` writes an expense. No door reaches it today |
+| The offline drain, read by the cloud | yes, through `receiptParse`, but written with no review step |
+| `importFromImage`'s single-shot fallback | yes: on OpenAI and Claude, which read the photo as a statement, a credit line unflagged; on Gemini, whose `receiptSummary` asks for `type`, flagged. No door reaches it today |
 
 The on-device model is shown the expense side only, even for a refund: a
 refund slip lists the goods going back, which only expense entries name, and
-the row's type is decided apart from its category. The camera's import and
-the drain then move an expense category off an income row onto
+the row's type is decided apart from its category. The cloud receipt prompts
+offer expense names only (*Groceries*, *Restaurants*, …), so a cloud refund
+arrives naming one of the goods as well. The camera's import and the drain
+then move an expense category off an income row onto
 `other_income`, and the form leaves it blank for the user to fill
 ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)).
+
+**A receipt read before the account's categories load resolves against the
+shipped catalogue.** `CategoryService.categoriesOrDefaults()` answers the
+account's catalogue once it has loaded and the built-ins until then, and
+`loadCategories` always merges the built-ins in, so an empty cache is one that
+has not loaded. The cloud single-photo read resolves its model's category
+name through it, and the drain files a queued row through it. Before, an empty
+list matched nothing, and `receiptParse` filed every receipt read in that
+window on `other_expense`: a wrong-side id on a refund, which the drain then
+wrote, and a lost category on a purchase. Now *Groceries* resolves to
+`food_groceries`, and on a refund the drain moves it to `other_income`
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 The batch categorizer sends one catalogue per request, so it narrows the list
 only when every row it was handed points the same way, as a multi-image batch
 of purchases does; a CSV batch mixes both sides and keeps the full list, and
@@ -429,12 +479,31 @@ grade.
 
 **The review card holds the reviewer to the row's side as well.** The
 category menu lists the categories that fit the row's type, and flipping the
-type — or a merge whose net turns the survivor to the other side — moves a
-category the new side cannot hold to that side's catch-all, at no more than
-the review grade, and says so: *Category for {description} changed to
-{category}*. A category that fits both sides, or one the catalogue does not
-hold, stays where it was
-([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)).
+type moves a category the new side cannot hold to that side's catch-all, at
+no more than the review grade, and says so: *Category for {description}
+changed to {category}*. The row remembers what moved (`movedCategory`, never
+written), and flipping it back restores that category at the grade it had,
+announced the same way, so a purchase on *Groceries* flipped to income and
+back is on *Groceries* again. Picking a category forgets it. A merge holds the
+survivor's category to whichever side the net lands on, the target's side
+included, so a survivor still holding a category of the other side is
+re-filed as a flip would file it. A category that fits both sides, or one the
+catalogue does not hold, stays where it was
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
+
+**A late catalogue holds the rows already on the card.** The wizard reads
+the account's catalogue live, and it can land after the rows it judges;
+until it does, every category fits either side, so a row a door filed on the
+other side's category paints holding it. When the card's catalogue goes from
+empty to loaded, every row is held to its side as a flip would hold it, and
+no row is marked as edited. If the rows had already painted, the card says
+once, with no count, *Rows filed under the other side's category moved to
+this side's catch-all now that your categories have loaded*; on its first
+binding it simply opens with each row on its side. Only the arrival does
+this: a catalogue that changes after it has loaded moves no chip under the
+reviewer's hands, and a merge's re-file is the guard there
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
 ## Location and tags
 
@@ -544,7 +613,9 @@ category, location, tags, and a copy of the photo lineage — and drops what is
 singular: the note, the rule link and the duplicate verdict.
 Both halves lose the amount's grade, since the reviewer's hand settled
 both figures, and both keep the type's, since a split does not touch the
-type. The part opens with its description editor focused, because the
+type — and with it the category a flip moved off the row and the type a
+flip found flagged, so each half can still be flipped back, and each counts
+as flagged. The part opens with its description editor focused, because the
 copied description is rarely right for a line taken out on its own, and it
 carries `splitFrom`, a review-step mark naming the row it came off: the
 attachment planner keys it on its own id so **each part uploads its own copy of
@@ -568,10 +639,13 @@ ones, and a flagged one's verdict cleared on the way through would answer a
 question the reviewer was never shown. A row in another currency is never
 listed, because nothing here converts. When the two rows sat on opposite
 sides — a refund folded into its purchase — the net decides the type, so the
-survivor loses the type's grade, and a net that turns it to the other side
-moves a category that side cannot hold to its catch-all, announced, as a flip
-does
-([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)).
+survivor loses the type's grade, and with it the target's record of what a
+flip moved and which type its reader flagged. Whichever side the net lands
+on, a category that side cannot hold moves to its catch-all, announced, as a
+flip does; on one side, the target's grade and both of those marks ride
+through, and the source's never do
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
 **Remove** takes the row off the batch, and it stands on every row — filled,
 blank and flagged alike, unlike the other two. A row exactly as it arrived
@@ -823,7 +897,13 @@ and the rest of the batch; a verdict can be overruled per row from the badge's
 flight. A check that cannot reach history keeps the standing verdict and says
 so once, rather than leaving a flag standing with no explanation. Currency,
 notes, category, tags and the rule link are not detection inputs and change
-nothing. See
+nothing. Every duplicate verdict needs the two rows on the same side: a
+purchase and its refund, returned the day it was bought, share a merchant,
+an amount and a date, and are two transactions. The exact verdict — same day, same amount,
+similar description — once ignored the type, so such a refund was skipped as
+a copy of its purchase
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
+See
 [ADR 0101](ADR/0101-a-corrected-row-is-checked-for-duplicates-again.md).
 
 **An answer that ran out of room is read as far as it goes.** A model asked
@@ -927,6 +1007,28 @@ writes the same slots on its record at confirm time. Import History renders
 them as chips, with the error class on a failed record, and subscribes to
 the newest 200 records.
 
+**A completed record counts what the review answered.** Beside its
+transaction count and totals, a confirmed import's record carries
+`duplicatesSkipped`, `receiptsSkipped` (rows saved without their photos
+because the image quota refused them), `receiptsFailed` (rows saved without
+their photos because the upload failed), and two counts over the rows the
+write took: `typesFlagged`, the rows whose type a reader flagged, whatever
+side each ended on, and `typesFlipped`, those the reviewer moved to the other
+side and left there. A row flipped and flipped back is flagged and not
+flipped; split halves each count; a merge across sides counts as neither.
+Each optional count is written only when above zero, and `firestore.rules`
+holds the two type counts to whole numbers. Import History draws a tile for
+each count a record carries — *Duplicates skipped*, *Photos not attached*,
+*Photos not uploaded*, *Type flagged* and *Type changed* — and a spec fails
+when an optional count the record can carry has no tile. The same answers
+reach GA4 as `receipt_confirm`, sent once per confirm round of a batch
+holding a receipt, a round whose every row failed included, which reports
+`none` and `none`, after its record is read back, with the type counts
+bucketed `none`, `one` or `several`; the transaction form sends it too when
+it saves a new transaction its scan filled, counting that one row. A refused
+confirm, a failed read-back and the drain send nothing
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
+
 **A record's error lines are in the reader's language**, not the text it
 stored. A failed attempt that stored one of the app's own sentences, the
 classifier's line for a failure the app raised itself (no provider, cloud AI
@@ -1000,8 +1102,9 @@ dialog. `tx` itself is stripped from the URL once read, so reloading the link
 or pressing Back to it cannot replay the jump
 ([ADR 0082](ADR/0082-one-shot-query-params-leave-the-url-once-consumed.md)).
 Records written before the field existed, records where every row failed,
-and the in-form and queue doors — which write no success record at all — show
-no button. See
+and the queue and the form's single scan — which write no success record at
+all — show no button; the form's multi-receipt review hands its rows to the
+wizard, whose record, door `form`, does. See
 [ADR 0075](ADR/0075-a-successful-import-remembers-the-transactions-it-created.md).
 
 The classes a failure is filed under: `parseAIError`'s
@@ -1054,10 +1157,17 @@ paper cannot be photographed again.
 Every image in the batch is attempted, and the processing step says how many
 were kept — *{n} images queued for processing when online*, the same counting
 message the camera dialog uses — and offers **Done** and **Back** rather than
-a retry, which would only store them a second time. The kept images leave the
-picker, so neither Back nor a second **Process** can queue one capture twice:
-nothing keys a queued row to a photo's content, and two rows for one photo are
-two transactions when the drain runs. A batch that also held a CSV or a JSON
+a retry, which would only store them a second time. The processing card
+stands until the wizard's own run has settled: the service raises its
+processing flag only once a reader runs, so while photos were still being
+written to the queue the step once read *No Transactions Found* with **Try
+Again**, and **Process** stays disabled until that run has settled. The kept
+images leave the picker — the wizard's selection and the dropzone's own list
+both, since the dropzone re-sends its whole list on its next change — so
+neither Back nor a second **Process** can queue one capture twice: nothing
+keys a queued row to a photo's content, and two rows for one photo are two
+transactions when the drain runs. A photo picked while the write runs is not
+one of them, and stays picked. A batch that also held a CSV or a JSON
 backup still imports those rows, with the same count carried above the review
 list. Where the queue refuses the write, the step says the capture could not
 be stored — again in the camera dialog's own words — and offers no retry,
@@ -1100,6 +1210,19 @@ Draining is unattended by definition — a reconnect with no dialog
 open and possibly nobody looking — so there is no review step: what the model
 read goes straight into the ledger. They are ordinary transactions afterwards,
 editable like any other.
+
+**A drained refund is written as income.** The drain writes the type the
+reader filed, on the device or through the cloud's `receiptParse`, and files
+the category through the grader the camera's review rows pass through, so a
+refund named for one of the goods lands on `other_income`. Pages, not the
+launch, start the category listener, so a drain can run before the account's
+categories have loaded; the grader then reads the shipped catalogue until they
+have, rather than an empty list that shows no side for any id. What the drain
+cannot do is ask: the type's flag has no surface here, the grade is never
+written, and the drain writes no success record, so its flags reach neither
+Import History's counts nor analytics
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
 **A drain waits for its account's providers.** Before it opens its attempt
 or hands the photo on, the drain asks the strategy whether the cloud providers
@@ -1277,16 +1400,26 @@ names the image and the status it dropped, with the drain's warning beside it.
   many rows and photos did not land, never which, and it is not replay-stable:
   a later pass cannot see a photo an earlier pass dropped, so it reports one
   fewer than the first did.
-- **A refund read by the cloud's single-image prompts lands as a purchase.**
-  `receiptParse`, which the form's scan and the drain use whenever the device
-  does not read the receipt, reports no direction, and neither do Gemini's
-  `receiptItems` for a single photo or its `receiptSummary`. The row is an
-  expense with no type grade, so nothing flags it; the reviewer flips it on
-  the card, or the user in the form or the ledger. The device's reading has
-  its own limits — a minus glued to a label (`合計-1,280`), a minus Vision did
-  not read, a restated figure in parentheses that reads as a credit — and
+- **A refund a cloud model calls a purchase lands as a purchase.** Every
+  receipt prompt asks which way the money moved, but the cloud has one
+  reader: nothing reads the paper behind its answer, and a purchase carries
+  no type grade, so nothing flags it. A purchase receipt with a refund line
+  inside nets to a purchase the same way. No keyed model has yet read a
+  refund through the new wording; the specs and the browser runs answer from
+  the page. The reviewer flips such a row on the card, or the user in the
+  form or the ledger.
+- **The device's reading has its own limits.** A minus Vision did not read;
+  a minus glued to kana, or to a Thai, Arabic, Hebrew or Devanagari label; a
+  restated or labelled figure in parentheses that outranks the total and
+  reads as a credit; a points line on a receipt that prints no currency sign;
+  a size on a priced line that copies the total; and a reference number glued
+  to a Han label (`伝票-1234`), which now reads as a negative and, where it
+  wins the amount, files a flagged credit with the wrong amount. The two
+  misses land as plain purchases, the rest flagged, and
   [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)
-  lists them.
+  and
+  [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
+  list them, with the evidence for keeping each reading.
 - **Queueing an image while the queue is closed still fails outright.** The
   status writes a drain makes now report whether they landed, but an image
   captured after another tab has taken the database to a newer version is met

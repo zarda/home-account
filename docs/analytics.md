@@ -104,7 +104,7 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `transaction_add` | The add-transaction form saved a new transaction. Not restore or offline replay. | `method`, `type`, `has_tags`, `has_location`, `receipt_image_count` | `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 1.16.91 |
 | `transaction_search` | A search was committed on the transaction list and recorded as new. | `has_filters` | `src/app/features/transactions/transaction-filters/transaction-filters.component.ts` | 1.16.91 |
 | `receipt_import` | A receipt attempt reached a terminal outcome: camera, wizard (receipt kind only) and the in-form scan. Statement screenshots and the offline queue drain are excluded. | `outcome`, `path`, `engine`, `provider`, `failure`, `duration` | `src/app/core/services/receipt-attempt.service.ts` | 1.16.91 |
-| `receipt_confirm` | A receipt's reader had its type flag answered. Either the import wizard confirmed a batch holding a receipt and read its record back (the camera's hand-off, the transaction form's multi-receipt review, or the wizard's own receipt photos), once per confirm round, a partial one included, with the type counts the record kept for the rows that landed; or the transaction form saved a new transaction its scan filled, counted off that one row. A batch with no receipt, a refused confirm, a failed read-back, a manual or edited form save and a discarded or failed scan send nothing. | `path`, `engine`, `type_flagged`, `type_flipped` | `src/app/features/ai/import/import-wizard/import-wizard.component.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 26.10.180 |
+| `receipt_confirm` | A receipt's review was confirmed; it reports how many of its reader's type flags landed and how many were flipped, even when none were. Either the import wizard confirmed a batch holding a receipt and read its record back (the camera's hand-off, the transaction form's multi-receipt review, or the wizard's own receipt photos), once per confirm round, a partial one included, and one whose every row failed, which reports `none` and `none`, with the type counts the record kept for the rows that landed; or the transaction form saved a new transaction its scan filled, counted off that one row. A batch with no receipt, a refused confirm, a failed read-back, a manual or edited form save and a discarded or failed scan send nothing. | `path`, `engine`, `type_flagged`, `type_flipped` | `src/app/features/ai/import/import-wizard/import-wizard.component.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 26.10.180 |
 | `budget_create` | A budget was created from the budgets page. | — | `src/app/features/budgets/budget-form/budget-form.component.ts` | 1.16.91 |
 | `budget_exceeded_viewed` | The dashboard budget-alert banner became visible, once per appearance. | `severity` | `src/app/features/dashboard/budget-alert-banner/budget-alert-banner.component.ts` | 1.16.91 |
 | `report_view` | A report tab was shown, including the one the page opens on. | `report_type` | `src/app/features/reports/reports.component.ts` | 1.16.91 |
@@ -126,13 +126,13 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `receipt_image_count` | `0`–`5` — images attached at creation; later appends and removals are not re-reported |
 | `has_filters` | `true`, `false` — any of type, category, currency, amount range, or a date range other than the default month |
 | `outcome` | `ok`, `failed`, `queued_offline` |
-| `path` | `camera`, `wizard`, `form` — which surface ran the receipt, or, on `receipt_confirm`, whose review was confirmed (the camera's hand-off, the wizard's own photos, the form's multi-receipt review). The queue drain never reports. |
+| `path` | `camera`, `wizard`, `form` — which surface ran the receipt, or, on `receipt_confirm`, whose review was confirmed (the camera's hand-off, the wizard's own photos, the form's multi-receipt review) or, as `form`, the transaction form's save of a transaction its scan filled. The queue drain never reports. |
 | `engine` | `cloud`, `native`, `cloud_after_native` (native ran first and lost), `native_after_cloud`, `none` (nothing ran — no provider, queued, queue save failed; on `receipt_confirm`, nothing was timed) |
 | `provider` | `gemini`, `openai`, `claude`, `none` — the cloud provider the attempt routed to; the key itself is never sent |
 | `failure` | `none` on success; otherwise `rate_limit`, `auth`, `network`, `quota`, `server`, `timeout`, `incomplete` (parseAIError's classes — `incomplete` is an answer that was cut short or was never the list the prompt asked for), `no_provider`, `nothing_extracted`, `queue_write`, `unknown`. Never the provider's wording. |
 | `duration` | `under_5s`, `5s_to_15s`, `15s_to_60s`, `over_60s`, `none` (nothing was timed) |
-| `type_flagged` | `none`, `one`, `several` — how many of the rows a confirm landed had their type flagged by the reader, whichever side each stands on now; the count itself is never sent |
-| `type_flipped` | `none`, `one`, `several` — how many of those flagged rows the reviewer moved to the other side and left there; a row flipped and flipped back is flagged and not flipped |
+| `type_flagged` | `none`, `one`, `several` — how many of the rows a confirm landed had their type flagged by the reader, whichever side each stands on now; on the form's save, whether its scan flagged the type (`none` or `one`); the count itself is never sent |
+| `type_flipped` | `none`, `one`, `several` — how many of those flagged rows the reviewer moved to the other side and left there; on the form's save, whether the type saved is the other side from the one the scan flagged (`none` or `one`); a row flipped and flipped back is flagged and not flipped |
 | `severity` | `warning`, `critical`, `exceeded` |
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative`, `translation` (a note or receipt photo read back in the UI language — neither the note nor the image is ever sent here), `recap` (the weekly recap's sentence — figures and category names only) |
@@ -327,8 +327,9 @@ CI has no iOS job. Every native change here is verified only by a local
 3. Call it from the feature code, past whatever guard could have avoided the
    underlying work, so the event counts what happened rather than what was
    intended.
-4. Add a row to the registry table above, and its values to the parameter
-   table.
+4. Add a row to the registry table above, its values to the parameter
+   table, and each new parameter to the custom-dimension list under *Console
+   setup*, step 4, between its markers.
 5. Run `npm run analytics:check`.
 6. Register the new parameters as event-scoped custom dimensions in the GA4
    console, or they will not appear in any report.
