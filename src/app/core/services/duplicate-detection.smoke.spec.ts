@@ -229,4 +229,32 @@ describe('DuplicateDetectionService source of truth (emulator smoke test)', () =
     expect(checks[0].matchType).toBe('exact');
     expect(checks[0].existingTransactionId).toBe(TWIN_ID);
   }, 30000);
+
+  it('does not call a same-day refund a twin of the purchase it returns', async () => {
+    // A purchase bought and returned the same day: the refund slip names the
+    // same merchant, the same total and the same date. The stored twin is the
+    // purchase; the incoming income row is its refund.
+    const refund: CategorizedImportTransaction = {
+      ...importRow(),
+      id: 'import-duplicate-source-refund',
+      type: 'income'
+    };
+
+    const checks = await service.checkDuplicates([importRow(), refund]);
+
+    // The purchase imported again is still found, so the refund's verdict
+    // below is not a read that simply missed the stored row.
+    const purchase = checks.find(c => c.transactionId === importRow().id);
+    expect(purchase?.matchType)
+      .withContext('the same purchase imported twice is an exact duplicate')
+      .toBe('exact');
+    expect(purchase?.existingTransactionId).toBe(TWIN_ID);
+
+    const refunded = checks.find(c => c.transactionId === refund.id);
+    expect(refunded?.isDuplicate)
+      .withContext('a refund is never a duplicate of the purchase it returns')
+      .toBeFalse();
+    expect(refunded?.matchType).toBe('none');
+    expect(refunded?.existingTransactionId).toBeUndefined();
+  }, 30000);
 });

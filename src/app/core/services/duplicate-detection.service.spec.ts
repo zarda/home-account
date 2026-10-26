@@ -145,6 +145,24 @@ describe('DuplicateDetectionService', () => {
       expect(result.confidence).toBe(1.0);
     });
 
+    it('never marks a refund a duplicate of the purchase it returns, though the day, the amount and the description match', async () => {
+      // A purchase bought and returned the same day: the refund slip names the
+      // same merchant and the same total, and a transaction and its refund are
+      // never the same transaction.
+      mockTransactionService.getTransactionsOnce.and.resolveTo([
+        existing({ id: 'purchase', type: 'expense', amount: 14.03, description: 'Harbour Supplies' })
+      ]);
+
+      const [result] = await service.checkDuplicates([
+        importTxn({ id: 'refund', type: 'income', amount: 14.03, description: 'Harbour Supplies' })
+      ]);
+
+      expect(result.isDuplicate).withContext('the refund is not the purchase').toBeFalse();
+      expect(result.matchType).toBe('none');
+      expect(result.existingTransactionId).toBeUndefined();
+      expect(result.confidence).toBe(0);
+    });
+
     it('should treat an existing transaction with a Date (not Timestamp) date field', async () => {
       const withDate = existing({ id: 'existing-date' });
       (withDate as unknown as { date: Date }).date = new Date(2024, 5, 15);
