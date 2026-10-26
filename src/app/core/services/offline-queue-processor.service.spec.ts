@@ -319,6 +319,47 @@ describe('OfflineQueueProcessorService', () => {
       ]);
     });
 
+    it('files a cloud-read refund named for the expense side under the income catch-all while the account\'s categories have not loaded', async () => {
+      // The queue drains on the launch that starts the category listener, so a
+      // photo can be read before it has answered. An empty list shows no side
+      // for any id and used to let the name through; the shipped catalogue
+      // that stands in for it shows that this one is an expense category.
+      categories.set([]);
+      ai.processReceipt.and.resolveTo(
+        processingResult([
+          extracted({ description: 'Refund', type: 'income', suggestedCategoryId: 'food_groceries' }),
+        ]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledOnceWith(
+        jasmine.objectContaining({ type: 'income', categoryId: 'other_income' }),
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0) },
+      );
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
+    });
+
+    it('keeps an expense row\'s id no catalogue holds', async () => {
+      // A pin: the review card keeps an id its catalogue cannot place, because
+      // nothing shows it is wrong. The shipped catalogue the drain reads while
+      // the account's has not loaded is a lookup for an id's side, not a list
+      // of the ids allowed through, so an id it does not hold is kept too.
+      categories.set([]);
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted({ suggestedCategoryId: 'custom_hobbies' })]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledOnceWith(
+        jasmine.objectContaining({ type: 'expense', categoryId: 'custom_hobbies' }),
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0) },
+      );
+    });
+
     it('drains an on-device refund as income on the income catch-all, whatever its type grade', async () => {
       // A pin: the drain writes the row as read, through the same grader and
       // mapper as above, and holds nothing back for a type the reader doubted
